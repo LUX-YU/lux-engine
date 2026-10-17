@@ -1,0 +1,3425 @@
+{
+  "implementation": "b8b657839e42140214b0e8be7f590150c5ab97f2",
+  "parent": "c37f70b690334a20626e9dd78fc79feb444ff6fc",
+  "remote_observed": "78bcd220815f845466d85d31f994901e4db224ba",
+  "archive": "E:\\RenderV2Rebuild\\V12\\archive\\b8b657839e42140214b0e8be7f590150c5ab97f2\\n5-parameters",
+  "portable": "E:\\RenderV2Rebuild\\V12\\archive\\b8b657839e42140214b0e8be7f590150c5ab97f2\\n5-parameters-evidence.zip",
+  "portable_sha256": "60e4b7f6c10c333643c404c85f254b8e38cf3c232a92b930b1c0dbbc86797922",
+  "files": [
+    {
+      "path": "commit.txt",
+      "bytes": 2275,
+      "sha256": "694b14ff84a3c2a1486bac0075f81ccae837b1be21c2588499ce65c627ed572f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/build-RelWithDebInfo-20261017-073715-366.log",
+      "bytes": 19725,
+      "sha256": "1ebd5c5e1d65e63aa2950253a33325dce403e72d206ac1787f526bd68adce233"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/build-RelWithDebInfo-20261017-074009-671.log",
+      "bytes": 714,
+      "sha256": "a45b3743e45546e614bfca6c1996813f683ee295d990b006a1d3a465c0364742"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/build-RelWithDebInfo-20261017-074104-274.log",
+      "bytes": 1798,
+      "sha256": "7b001ba7b6c0832a1bd521036b303b1ca435ab44d39edd44d5eaf160c52da900"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/build-RelWithDebInfo-20261017-074243-963.log",
+      "bytes": 309,
+      "sha256": "7dd723d78da1c7ad522a35d9ffbec00bd747a4e616443e202d5a95db0ec3afd3"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/build-RelWithDebInfo-20261017-074347-593.log",
+      "bytes": 3765,
+      "sha256": "027389fbd6c1ad5a417566a9c787f56597ecc24cfcba074948629cccef567a36"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/build-RelWithDebInfo-20261017-074456-875.log",
+      "bytes": 18540,
+      "sha256": "f30da0904baa4f2d12148bb03968cb098d87d13ca0005f9ab7477c74524ece2c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/build-RelWithDebInfo-20261017-074640-824.log",
+      "bytes": 157,
+      "sha256": "95f7bcb7a501c462d5eda92979bd4c36b3aaa5b63c28e786a0fa9aea8ae7228b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/build-RelWithDebInfo-20261017-074939-257.log",
+      "bytes": 321,
+      "sha256": "ff382a1a413cf270136817c54df774a70b588ebadaede030834badc19e279674"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/build-RelWithDebInfo-20261017-074943-939.log",
+      "bytes": 157,
+      "sha256": "95f7bcb7a501c462d5eda92979bd4c36b3aaa5b63c28e786a0fa9aea8ae7228b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/generated-assets.json",
+      "bytes": 2270,
+      "sha256": "6523b482fc495a2b65387a41ec76b0ad356ba521a168f172047433b61e2f7bf5"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/protection-before-full.json",
+      "bytes": 23268,
+      "sha256": "6d00aea2f6baefa44212e232ddf611f9562ed5d14f5013258c08f80e500af872"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/protection-final.json",
+      "bytes": 23268,
+      "sha256": "6d00aea2f6baefa44212e232ddf611f9562ed5d14f5013258c08f80e500af872"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/core/execution/CompletionWork.hpp",
+      "bytes": 1582,
+      "sha256": "a817928bec4212f9c63e78a877c01425b6e4096dca128aaea436dd4d0a3d3e89"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/core/execution/ExecutionError.hpp",
+      "bytes": 964,
+      "sha256": "037f737b745ec6ed9706ab18baf40b8612090214055babc58b3dc99a4fcaf4d2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/core/execution/ExecutionRuntime.hpp",
+      "bytes": 5751,
+      "sha256": "546a9089086aaaf48e59fd75e6aeb2a7762128246de42ea93c54176fb805bf58"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/core/execution/PortSender.hpp",
+      "bytes": 7309,
+      "sha256": "334eaad95ba8d51855bc5ce1404c6fff014a9a013c92487999ad0821a3428da5"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/core/execution/Scheduler.hpp",
+      "bytes": 9020,
+      "sha256": "703c51131b0694588afbee046cd5c75def44f56c3683d46a2019b148e55e1047"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/core/execution/Task.hpp",
+      "bytes": 9216,
+      "sha256": "929aa7c76411f4004e4124c7c41cf68fec5fa3fa82db30e2f606eee7c643f80f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/core/execution/TaskInfo.hpp",
+      "bytes": 1489,
+      "sha256": "92862e9864619bf6a87acdd02028bea4c1ffa33dae89f4c54c216473da72ec33"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/core/execution/TaskScope.hpp",
+      "bytes": 3607,
+      "sha256": "9cdbe6c5e3e5aa97c2363e4b3f26c3fc309cbae9f085272f62427aa9f568145a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/core/execution/Timer.hpp",
+      "bytes": 8683,
+      "sha256": "60a88a3265dc8049588ca482e6580f283dfeef11ef7b2495d1e4c27104b10320"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/core/execution/visibility.h",
+      "bytes": 1101,
+      "sha256": "53a276db88c4a2bea447688f24a9d3950e9cf775c832295c67f0265688e58410"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/core/execution/WorkSchedule.hpp",
+      "bytes": 8661,
+      "sha256": "db21b7f566b7ed7afa3c1e6c95c13588a4d0dcb701dd53be973d489b05e8d26a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/description/DataLayout.hpp",
+      "bytes": 1423,
+      "sha256": "7a325c0ec276d727f8d2046c188ee9aec292d2b8c0d7eeb15d233297d4493960"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/description/ShaderInfo.hpp",
+      "bytes": 8026,
+      "sha256": "1e4cad801f5fd61bb7eca8fb0da5fe872b3791a612a327a568569e88353e2a74"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/core/Error.hpp",
+      "bytes": 909,
+      "sha256": "42b5f478d61ea18cebd4f3b5e5662deb8d64d09f348429c2ceb1f21e64c33052"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/core/Ids.hpp",
+      "bytes": 1394,
+      "sha256": "b1bbc41fab42e17cf6a44fc0e1ffa079df79abb55c32125b5f7dd8ac2a9fed6b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/core/Target.hpp",
+      "bytes": 1089,
+      "sha256": "de30e882e72c45427d67d7a77f4e1cd096fed7741ad539cc0c216e7cd0f22cc2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/data/ConfigValue.hpp",
+      "bytes": 5701,
+      "sha256": "af8e113ec095d2e62a310b8275d6174054b6cb1132c3ab0599268a0122c447d7"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/data/Encoding.hpp",
+      "bytes": 7834,
+      "sha256": "26effeec4050aa535dc3cf1274f04d3c15cd102e346d0c73f3dcb9645cfac680"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/data/Payload.hpp",
+      "bytes": 2154,
+      "sha256": "7f6769150fb1d7301d3a83e3559b79888433a34fece27b26dd0be2b24b6bb1de"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/data/Schema.hpp",
+      "bytes": 2340,
+      "sha256": "ff96bdd8ed632beb0958d4ac32b4b78589e8cf529fc5b06a7bbedb559643b273"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/data/Shader.hpp",
+      "bytes": 806,
+      "sha256": "a4d0e40378122c1ddb1a3361bce290f9c7b0cfd8f355de52d6ad7df190eb3dad"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/data/ShaderBlock.hpp",
+      "bytes": 1633,
+      "sha256": "a316c5940cdb97a6f79d6de9e4dc6f1ab5cb1589f3f7c560ddbfd080bad096eb"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/data/ShaderInterface.hpp",
+      "bytes": 1253,
+      "sha256": "02caffd4d023176f84fce8b4612e0fdeb3a557ba3230ecdd5ea0e135f4b34ecf"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/features/Assembly.hpp",
+      "bytes": 2352,
+      "sha256": "c6cd0af1e58a8a2f3aff530f1d1081a7af30d84415052060f2fdecd15f8a9156"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/features/Feature.hpp",
+      "bytes": 471,
+      "sha256": "979b743d39eb08b15ad5a306d670b12d7a2ae67acfaff6ca242b403ebbe79d7d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/features/Registration.hpp",
+      "bytes": 697,
+      "sha256": "9916a02ce1cc0a5ff66bfbdf133270ab4f858d869b92097f43d3eddbd612662a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/features/Resources.hpp",
+      "bytes": 1213,
+      "sha256": "a7292393caa7231a156feb639f7a198428990d9a5cd6bc0ed8a7a382e108a016"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/graph/Analysis.hpp",
+      "bytes": 1890,
+      "sha256": "84d64325650af1ea455b0e097bbfbe2093ccfdd2466bae009d14900d2b312d2d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/graph/Builder.hpp",
+      "bytes": 1256,
+      "sha256": "e663914be1fab5ef90d8802e80cc3dc25381c411dabeb34da3999f59c269e141"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/graph/Graph.hpp",
+      "bytes": 6008,
+      "sha256": "709655201d49655ee45ea20964e5766d5a6e7c415e1d21bd3519dc299e03d49f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/graph/Program.hpp",
+      "bytes": 747,
+      "sha256": "ba94ac3204a82fc206281132ab79dbb73330b6d4e349a18366df98421e025d01"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/CompiledGraph.hpp",
+      "bytes": 4622,
+      "sha256": "632cb39f87e1e9722e5d80bfcf2497306ce35dfe24c81195eaa6ad255ceb00a6"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/DescriptorArray.hpp",
+      "bytes": 2019,
+      "sha256": "46ceafbbee37f5bc4dcdedd0938321b7e8151c7f64f6b160e077e559b1267078"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/device/Device.hpp",
+      "bytes": 6700,
+      "sha256": "cb1081aca4025c2992433ab587803cd6c5f022816b818ca8a1c164f87c47a575"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/device/DeviceOptions.hpp",
+      "bytes": 879,
+      "sha256": "3e2f5c95ec99d4b9de298bfe57475702e272674671c231442ba5ca14909bcd6c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/DeviceSession.hpp",
+      "bytes": 7946,
+      "sha256": "fffc9790c49f5ac9f5980b80fa1958e428fb2c8cb8b398d79727fc8e9c9bce77"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/Error.hpp",
+      "bytes": 1179,
+      "sha256": "b64d4b4b2e8674512aa02d2971fa7674647f7f1ee364ca33a820620efa8622b3"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/ExecutionContext.hpp",
+      "bytes": 4296,
+      "sha256": "c56fdeed94aa0e161a911153e9ecff43d17b2350e1f2e489170796a089a28e8e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/memory/Memory.hpp",
+      "bytes": 5839,
+      "sha256": "f580810c9bd6de644f9a7eaba0e7ab312c02a7e3d9cfe30143d9b3761b3c0798"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/Readback.hpp",
+      "bytes": 4213,
+      "sha256": "f2e4333f57f800598676241a131cfe2b58d07385d76f23a0923f26b010516f5c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/retirement/Retirement.hpp",
+      "bytes": 7320,
+      "sha256": "be9c88e667b87c268cc279a2751e8d7af26d1ceef3c0e7ae25fb71d1a374b43d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/StorageBinding.hpp",
+      "bytes": 1275,
+      "sha256": "de69adb3ecfec81be40dbc15e26cce3a06aedd98c26545ce0de873fef3561b8d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/texture/TextureCommands.hpp",
+      "bytes": 1622,
+      "sha256": "f285d1071d618bea0833400593e1ce83bde5502d45f4204caed589c7181fbe61"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/texture/TextureStorage.hpp",
+      "bytes": 5808,
+      "sha256": "b8dae96e27b10b93f7b7d5096f578ad1ac13cb6adc6c32835ccf2535e8cefc4a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/transfer/GpuWork.hpp",
+      "bytes": 7715,
+      "sha256": "b1f9e5ccf603f2a654023fd8fb6d9242adf9b01491de31228c8cdbd8d4af8420"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/transfer/Submission.hpp",
+      "bytes": 8213,
+      "sha256": "52463bda86f4597be282c544b62e6cb72aeaa4c3e39b48a7414f32b580dea27d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/native/vulkan/transfer/Transfer.hpp",
+      "bytes": 4563,
+      "sha256": "50894bbb5705397f7fd9074a6d95dbf32914b56d547465defb6b47cd248c6425"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/protocol/AsyncCommand.hpp",
+      "bytes": 5761,
+      "sha256": "9a3433289efaf147abe4ddd4b803cc014e6d241f0f1589b68b2c9bf956f7d99e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/protocol/Protocol.hpp",
+      "bytes": 12402,
+      "sha256": "cd9ec771f99807f0ffc911478f3019e7ab30d7aba594c8e06b479b770e2cb95f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/resource/AsyncWork.hpp",
+      "bytes": 596,
+      "sha256": "c21121b5eb360da9583c9f42a51935cffa50c75f47be5183aa0db9edfcee8bdf"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/resource/Binding.hpp",
+      "bytes": 1109,
+      "sha256": "3f29ddb6b12a4de086444e2093bc9f9e732a824dda444c3eabe40da88e07aedf"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/resource/Factory.hpp",
+      "bytes": 4498,
+      "sha256": "844942a61e17190a650ed47d47e06fc11519cb36bcf7a65920ad26a612a911c7"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/resource/ResourceRegistry.hpp",
+      "bytes": 4164,
+      "sha256": "a48f8b407e14636b855fd364c717e5637e1bea0cbc112421734fb9a1c1f1dcab"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/resource/Storage.hpp",
+      "bytes": 2527,
+      "sha256": "8c94557f4c96e00740f3e9fbd4a1fd67e67195a221eb250adeb543f6f815293a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/resource/StorageSet.hpp",
+      "bytes": 3690,
+      "sha256": "56d68a0dfb4f2ee5d56c27277d8ad3980a7574c2fd2f82ae50435fd5cf96aa89"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/resource/Texture.hpp",
+      "bytes": 4690,
+      "sha256": "37dcc827d9576b4323b4beed9af6f52864cc0c9b084a40d6463ff7ef60f4311e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/resource/TransferOptions.hpp",
+      "bytes": 360,
+      "sha256": "c83c9b5fb516c2f73e8d53b9ed8f173fdab17d881cb0da2867eea96e1c95f361"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/resource/Upload.hpp",
+      "bytes": 630,
+      "sha256": "b418b6623265a91b7ccc7ce86648fc14674014525af7ffb0fc14d05d8bbf5dad"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/runtime/Commands.hpp",
+      "bytes": 14134,
+      "sha256": "c4870963d3abc921c4bdfc594bc68a868a1ce102d1c866d1dac253b59d623dfb"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/runtime/CommandValue.hpp",
+      "bytes": 4556,
+      "sha256": "3db9177176d84f8f48b458425a4b7f489e5872c14c39a0c9cd10bca96c0d7ed7"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/runtime/RenderClient.hpp",
+      "bytes": 11461,
+      "sha256": "d0a2c3435f2863f2a241bbae24d8ba0fc6fa5a7ea9ddb6f5cafe7a28b95260e2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/render/runtime/RenderServer.hpp",
+      "bytes": 12167,
+      "sha256": "addd957cbd11146cde0b34952fc146f82b2395950f31ad305297b412f6ed39a3"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/0/lux/engine/resource/visibility.h",
+      "bytes": 955,
+      "sha256": "5d76a5110e1b463f655068e501bac3e01e31ba9c2cc406e848530c660a6bd20e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/core/execution/CompletionWork.hpp",
+      "bytes": 1582,
+      "sha256": "a817928bec4212f9c63e78a877c01425b6e4096dca128aaea436dd4d0a3d3e89"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/core/execution/ExecutionError.hpp",
+      "bytes": 964,
+      "sha256": "037f737b745ec6ed9706ab18baf40b8612090214055babc58b3dc99a4fcaf4d2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/core/execution/ExecutionRuntime.hpp",
+      "bytes": 5751,
+      "sha256": "546a9089086aaaf48e59fd75e6aeb2a7762128246de42ea93c54176fb805bf58"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/core/execution/PortSender.hpp",
+      "bytes": 7309,
+      "sha256": "334eaad95ba8d51855bc5ce1404c6fff014a9a013c92487999ad0821a3428da5"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/core/execution/Scheduler.hpp",
+      "bytes": 9020,
+      "sha256": "703c51131b0694588afbee046cd5c75def44f56c3683d46a2019b148e55e1047"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/core/execution/Task.hpp",
+      "bytes": 9216,
+      "sha256": "929aa7c76411f4004e4124c7c41cf68fec5fa3fa82db30e2f606eee7c643f80f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/core/execution/TaskInfo.hpp",
+      "bytes": 1489,
+      "sha256": "92862e9864619bf6a87acdd02028bea4c1ffa33dae89f4c54c216473da72ec33"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/core/execution/TaskScope.hpp",
+      "bytes": 3607,
+      "sha256": "9cdbe6c5e3e5aa97c2363e4b3f26c3fc309cbae9f085272f62427aa9f568145a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/core/execution/Timer.hpp",
+      "bytes": 8683,
+      "sha256": "60a88a3265dc8049588ca482e6580f283dfeef11ef7b2495d1e4c27104b10320"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/core/execution/visibility.h",
+      "bytes": 1101,
+      "sha256": "53a276db88c4a2bea447688f24a9d3950e9cf775c832295c67f0265688e58410"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/core/execution/WorkSchedule.hpp",
+      "bytes": 8661,
+      "sha256": "db21b7f566b7ed7afa3c1e6c95c13588a4d0dcb701dd53be973d489b05e8d26a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/description/DataLayout.hpp",
+      "bytes": 1423,
+      "sha256": "7a325c0ec276d727f8d2046c188ee9aec292d2b8c0d7eeb15d233297d4493960"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/description/ShaderInfo.hpp",
+      "bytes": 8026,
+      "sha256": "1e4cad801f5fd61bb7eca8fb0da5fe872b3791a612a327a568569e88353e2a74"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/core/Error.hpp",
+      "bytes": 909,
+      "sha256": "42b5f478d61ea18cebd4f3b5e5662deb8d64d09f348429c2ceb1f21e64c33052"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/core/Ids.hpp",
+      "bytes": 1394,
+      "sha256": "b1bbc41fab42e17cf6a44fc0e1ffa079df79abb55c32125b5f7dd8ac2a9fed6b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/core/Target.hpp",
+      "bytes": 1089,
+      "sha256": "de30e882e72c45427d67d7a77f4e1cd096fed7741ad539cc0c216e7cd0f22cc2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/data/ConfigValue.hpp",
+      "bytes": 5701,
+      "sha256": "af8e113ec095d2e62a310b8275d6174054b6cb1132c3ab0599268a0122c447d7"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/data/Encoding.hpp",
+      "bytes": 7834,
+      "sha256": "26effeec4050aa535dc3cf1274f04d3c15cd102e346d0c73f3dcb9645cfac680"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/data/Payload.hpp",
+      "bytes": 2154,
+      "sha256": "7f6769150fb1d7301d3a83e3559b79888433a34fece27b26dd0be2b24b6bb1de"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/data/Schema.hpp",
+      "bytes": 2340,
+      "sha256": "ff96bdd8ed632beb0958d4ac32b4b78589e8cf529fc5b06a7bbedb559643b273"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/data/Shader.hpp",
+      "bytes": 806,
+      "sha256": "a4d0e40378122c1ddb1a3361bce290f9c7b0cfd8f355de52d6ad7df190eb3dad"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/data/ShaderBlock.hpp",
+      "bytes": 1633,
+      "sha256": "a316c5940cdb97a6f79d6de9e4dc6f1ab5cb1589f3f7c560ddbfd080bad096eb"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/data/ShaderInterface.hpp",
+      "bytes": 1253,
+      "sha256": "02caffd4d023176f84fce8b4612e0fdeb3a557ba3230ecdd5ea0e135f4b34ecf"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/features/Assembly.hpp",
+      "bytes": 2352,
+      "sha256": "c6cd0af1e58a8a2f3aff530f1d1081a7af30d84415052060f2fdecd15f8a9156"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/features/Feature.hpp",
+      "bytes": 471,
+      "sha256": "979b743d39eb08b15ad5a306d670b12d7a2ae67acfaff6ca242b403ebbe79d7d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/features/Registration.hpp",
+      "bytes": 697,
+      "sha256": "9916a02ce1cc0a5ff66bfbdf133270ab4f858d869b92097f43d3eddbd612662a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/features/Resources.hpp",
+      "bytes": 1213,
+      "sha256": "a7292393caa7231a156feb639f7a198428990d9a5cd6bc0ed8a7a382e108a016"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/graph/Analysis.hpp",
+      "bytes": 1890,
+      "sha256": "84d64325650af1ea455b0e097bbfbe2093ccfdd2466bae009d14900d2b312d2d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/graph/Builder.hpp",
+      "bytes": 1256,
+      "sha256": "e663914be1fab5ef90d8802e80cc3dc25381c411dabeb34da3999f59c269e141"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/graph/Graph.hpp",
+      "bytes": 6008,
+      "sha256": "709655201d49655ee45ea20964e5766d5a6e7c415e1d21bd3519dc299e03d49f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/graph/Program.hpp",
+      "bytes": 747,
+      "sha256": "ba94ac3204a82fc206281132ab79dbb73330b6d4e349a18366df98421e025d01"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/CompiledGraph.hpp",
+      "bytes": 4622,
+      "sha256": "632cb39f87e1e9722e5d80bfcf2497306ce35dfe24c81195eaa6ad255ceb00a6"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/DescriptorArray.hpp",
+      "bytes": 2019,
+      "sha256": "46ceafbbee37f5bc4dcdedd0938321b7e8151c7f64f6b160e077e559b1267078"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/device/Device.hpp",
+      "bytes": 6700,
+      "sha256": "cb1081aca4025c2992433ab587803cd6c5f022816b818ca8a1c164f87c47a575"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/device/DeviceOptions.hpp",
+      "bytes": 879,
+      "sha256": "3e2f5c95ec99d4b9de298bfe57475702e272674671c231442ba5ca14909bcd6c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/DeviceSession.hpp",
+      "bytes": 7946,
+      "sha256": "fffc9790c49f5ac9f5980b80fa1958e428fb2c8cb8b398d79727fc8e9c9bce77"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/Error.hpp",
+      "bytes": 1179,
+      "sha256": "b64d4b4b2e8674512aa02d2971fa7674647f7f1ee364ca33a820620efa8622b3"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/ExecutionContext.hpp",
+      "bytes": 4296,
+      "sha256": "c56fdeed94aa0e161a911153e9ecff43d17b2350e1f2e489170796a089a28e8e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/memory/Memory.hpp",
+      "bytes": 5839,
+      "sha256": "f580810c9bd6de644f9a7eaba0e7ab312c02a7e3d9cfe30143d9b3761b3c0798"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/Readback.hpp",
+      "bytes": 4213,
+      "sha256": "f2e4333f57f800598676241a131cfe2b58d07385d76f23a0923f26b010516f5c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/retirement/Retirement.hpp",
+      "bytes": 7320,
+      "sha256": "be9c88e667b87c268cc279a2751e8d7af26d1ceef3c0e7ae25fb71d1a374b43d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/StorageBinding.hpp",
+      "bytes": 1275,
+      "sha256": "de69adb3ecfec81be40dbc15e26cce3a06aedd98c26545ce0de873fef3561b8d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/texture/TextureCommands.hpp",
+      "bytes": 1622,
+      "sha256": "f285d1071d618bea0833400593e1ce83bde5502d45f4204caed589c7181fbe61"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/texture/TextureStorage.hpp",
+      "bytes": 5808,
+      "sha256": "b8dae96e27b10b93f7b7d5096f578ad1ac13cb6adc6c32835ccf2535e8cefc4a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/transfer/GpuWork.hpp",
+      "bytes": 7715,
+      "sha256": "b1f9e5ccf603f2a654023fd8fb6d9242adf9b01491de31228c8cdbd8d4af8420"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/transfer/Submission.hpp",
+      "bytes": 8213,
+      "sha256": "52463bda86f4597be282c544b62e6cb72aeaa4c3e39b48a7414f32b580dea27d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/native/vulkan/transfer/Transfer.hpp",
+      "bytes": 4563,
+      "sha256": "50894bbb5705397f7fd9074a6d95dbf32914b56d547465defb6b47cd248c6425"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/protocol/AsyncCommand.hpp",
+      "bytes": 5761,
+      "sha256": "9a3433289efaf147abe4ddd4b803cc014e6d241f0f1589b68b2c9bf956f7d99e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/protocol/Protocol.hpp",
+      "bytes": 12402,
+      "sha256": "cd9ec771f99807f0ffc911478f3019e7ab30d7aba594c8e06b479b770e2cb95f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/resource/AsyncWork.hpp",
+      "bytes": 596,
+      "sha256": "c21121b5eb360da9583c9f42a51935cffa50c75f47be5183aa0db9edfcee8bdf"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/resource/Binding.hpp",
+      "bytes": 1109,
+      "sha256": "3f29ddb6b12a4de086444e2093bc9f9e732a824dda444c3eabe40da88e07aedf"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/resource/Factory.hpp",
+      "bytes": 4498,
+      "sha256": "844942a61e17190a650ed47d47e06fc11519cb36bcf7a65920ad26a612a911c7"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/resource/ResourceRegistry.hpp",
+      "bytes": 4164,
+      "sha256": "a48f8b407e14636b855fd364c717e5637e1bea0cbc112421734fb9a1c1f1dcab"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/resource/Storage.hpp",
+      "bytes": 2527,
+      "sha256": "8c94557f4c96e00740f3e9fbd4a1fd67e67195a221eb250adeb543f6f815293a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/resource/StorageSet.hpp",
+      "bytes": 3690,
+      "sha256": "56d68a0dfb4f2ee5d56c27277d8ad3980a7574c2fd2f82ae50435fd5cf96aa89"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/resource/Texture.hpp",
+      "bytes": 4690,
+      "sha256": "37dcc827d9576b4323b4beed9af6f52864cc0c9b084a40d6463ff7ef60f4311e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/resource/TransferOptions.hpp",
+      "bytes": 360,
+      "sha256": "c83c9b5fb516c2f73e8d53b9ed8f173fdab17d881cb0da2867eea96e1c95f361"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/resource/Upload.hpp",
+      "bytes": 630,
+      "sha256": "b418b6623265a91b7ccc7ce86648fc14674014525af7ffb0fc14d05d8bbf5dad"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/runtime/Commands.hpp",
+      "bytes": 14134,
+      "sha256": "c4870963d3abc921c4bdfc594bc68a868a1ce102d1c866d1dac253b59d623dfb"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/runtime/CommandValue.hpp",
+      "bytes": 4556,
+      "sha256": "3db9177176d84f8f48b458425a4b7f489e5872c14c39a0c9cd10bca96c0d7ed7"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/runtime/RenderClient.hpp",
+      "bytes": 11461,
+      "sha256": "d0a2c3435f2863f2a241bbae24d8ba0fc6fa5a7ea9ddb6f5cafe7a28b95260e2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/render/runtime/RenderServer.hpp",
+      "bytes": 12167,
+      "sha256": "addd957cbd11146cde0b34952fc146f82b2395950f31ad305297b412f6ed39a3"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/1/lux/engine/resource/visibility.h",
+      "bytes": 955,
+      "sha256": "5d76a5110e1b463f655068e501bac3e01e31ba9c2cc406e848530c660a6bd20e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/core/execution/CompletionWork.hpp",
+      "bytes": 1582,
+      "sha256": "a817928bec4212f9c63e78a877c01425b6e4096dca128aaea436dd4d0a3d3e89"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/core/execution/ExecutionError.hpp",
+      "bytes": 964,
+      "sha256": "037f737b745ec6ed9706ab18baf40b8612090214055babc58b3dc99a4fcaf4d2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/core/execution/ExecutionRuntime.hpp",
+      "bytes": 5751,
+      "sha256": "546a9089086aaaf48e59fd75e6aeb2a7762128246de42ea93c54176fb805bf58"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/core/execution/PortSender.hpp",
+      "bytes": 7309,
+      "sha256": "334eaad95ba8d51855bc5ce1404c6fff014a9a013c92487999ad0821a3428da5"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/core/execution/Scheduler.hpp",
+      "bytes": 9020,
+      "sha256": "703c51131b0694588afbee046cd5c75def44f56c3683d46a2019b148e55e1047"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/core/execution/Task.hpp",
+      "bytes": 9216,
+      "sha256": "929aa7c76411f4004e4124c7c41cf68fec5fa3fa82db30e2f606eee7c643f80f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/core/execution/TaskInfo.hpp",
+      "bytes": 1489,
+      "sha256": "92862e9864619bf6a87acdd02028bea4c1ffa33dae89f4c54c216473da72ec33"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/core/execution/TaskScope.hpp",
+      "bytes": 3607,
+      "sha256": "9cdbe6c5e3e5aa97c2363e4b3f26c3fc309cbae9f085272f62427aa9f568145a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/core/execution/Timer.hpp",
+      "bytes": 8683,
+      "sha256": "60a88a3265dc8049588ca482e6580f283dfeef11ef7b2495d1e4c27104b10320"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/core/execution/visibility.h",
+      "bytes": 1101,
+      "sha256": "53a276db88c4a2bea447688f24a9d3950e9cf775c832295c67f0265688e58410"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/core/execution/WorkSchedule.hpp",
+      "bytes": 8661,
+      "sha256": "db21b7f566b7ed7afa3c1e6c95c13588a4d0dcb701dd53be973d489b05e8d26a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/description/DataLayout.hpp",
+      "bytes": 1423,
+      "sha256": "7a325c0ec276d727f8d2046c188ee9aec292d2b8c0d7eeb15d233297d4493960"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/description/ShaderInfo.hpp",
+      "bytes": 8026,
+      "sha256": "1e4cad801f5fd61bb7eca8fb0da5fe872b3791a612a327a568569e88353e2a74"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/core/Error.hpp",
+      "bytes": 909,
+      "sha256": "42b5f478d61ea18cebd4f3b5e5662deb8d64d09f348429c2ceb1f21e64c33052"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/core/Ids.hpp",
+      "bytes": 1394,
+      "sha256": "b1bbc41fab42e17cf6a44fc0e1ffa079df79abb55c32125b5f7dd8ac2a9fed6b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/core/Target.hpp",
+      "bytes": 1089,
+      "sha256": "de30e882e72c45427d67d7a77f4e1cd096fed7741ad539cc0c216e7cd0f22cc2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/data/ConfigValue.hpp",
+      "bytes": 5701,
+      "sha256": "af8e113ec095d2e62a310b8275d6174054b6cb1132c3ab0599268a0122c447d7"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/data/Encoding.hpp",
+      "bytes": 7834,
+      "sha256": "26effeec4050aa535dc3cf1274f04d3c15cd102e346d0c73f3dcb9645cfac680"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/data/Payload.hpp",
+      "bytes": 2154,
+      "sha256": "7f6769150fb1d7301d3a83e3559b79888433a34fece27b26dd0be2b24b6bb1de"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/data/Schema.hpp",
+      "bytes": 2340,
+      "sha256": "ff96bdd8ed632beb0958d4ac32b4b78589e8cf529fc5b06a7bbedb559643b273"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/data/Shader.hpp",
+      "bytes": 806,
+      "sha256": "a4d0e40378122c1ddb1a3361bce290f9c7b0cfd8f355de52d6ad7df190eb3dad"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/data/ShaderBlock.hpp",
+      "bytes": 1633,
+      "sha256": "a316c5940cdb97a6f79d6de9e4dc6f1ab5cb1589f3f7c560ddbfd080bad096eb"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/data/ShaderInterface.hpp",
+      "bytes": 1253,
+      "sha256": "02caffd4d023176f84fce8b4612e0fdeb3a557ba3230ecdd5ea0e135f4b34ecf"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/features/Assembly.hpp",
+      "bytes": 2352,
+      "sha256": "c6cd0af1e58a8a2f3aff530f1d1081a7af30d84415052060f2fdecd15f8a9156"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/features/Feature.hpp",
+      "bytes": 471,
+      "sha256": "979b743d39eb08b15ad5a306d670b12d7a2ae67acfaff6ca242b403ebbe79d7d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/features/Registration.hpp",
+      "bytes": 697,
+      "sha256": "9916a02ce1cc0a5ff66bfbdf133270ab4f858d869b92097f43d3eddbd612662a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/features/Resources.hpp",
+      "bytes": 1213,
+      "sha256": "a7292393caa7231a156feb639f7a198428990d9a5cd6bc0ed8a7a382e108a016"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/graph/Analysis.hpp",
+      "bytes": 1890,
+      "sha256": "84d64325650af1ea455b0e097bbfbe2093ccfdd2466bae009d14900d2b312d2d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/graph/Builder.hpp",
+      "bytes": 1256,
+      "sha256": "e663914be1fab5ef90d8802e80cc3dc25381c411dabeb34da3999f59c269e141"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/graph/Graph.hpp",
+      "bytes": 6008,
+      "sha256": "709655201d49655ee45ea20964e5766d5a6e7c415e1d21bd3519dc299e03d49f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/graph/Program.hpp",
+      "bytes": 747,
+      "sha256": "ba94ac3204a82fc206281132ab79dbb73330b6d4e349a18366df98421e025d01"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/CompiledGraph.hpp",
+      "bytes": 4622,
+      "sha256": "632cb39f87e1e9722e5d80bfcf2497306ce35dfe24c81195eaa6ad255ceb00a6"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/DescriptorArray.hpp",
+      "bytes": 2019,
+      "sha256": "46ceafbbee37f5bc4dcdedd0938321b7e8151c7f64f6b160e077e559b1267078"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/device/Device.hpp",
+      "bytes": 6700,
+      "sha256": "cb1081aca4025c2992433ab587803cd6c5f022816b818ca8a1c164f87c47a575"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/device/DeviceOptions.hpp",
+      "bytes": 879,
+      "sha256": "3e2f5c95ec99d4b9de298bfe57475702e272674671c231442ba5ca14909bcd6c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/DeviceSession.hpp",
+      "bytes": 7946,
+      "sha256": "fffc9790c49f5ac9f5980b80fa1958e428fb2c8cb8b398d79727fc8e9c9bce77"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/Error.hpp",
+      "bytes": 1179,
+      "sha256": "b64d4b4b2e8674512aa02d2971fa7674647f7f1ee364ca33a820620efa8622b3"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/ExecutionContext.hpp",
+      "bytes": 4296,
+      "sha256": "c56fdeed94aa0e161a911153e9ecff43d17b2350e1f2e489170796a089a28e8e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/memory/Memory.hpp",
+      "bytes": 5839,
+      "sha256": "f580810c9bd6de644f9a7eaba0e7ab312c02a7e3d9cfe30143d9b3761b3c0798"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/Readback.hpp",
+      "bytes": 4213,
+      "sha256": "f2e4333f57f800598676241a131cfe2b58d07385d76f23a0923f26b010516f5c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/retirement/Retirement.hpp",
+      "bytes": 7320,
+      "sha256": "be9c88e667b87c268cc279a2751e8d7af26d1ceef3c0e7ae25fb71d1a374b43d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/StorageBinding.hpp",
+      "bytes": 1275,
+      "sha256": "de69adb3ecfec81be40dbc15e26cce3a06aedd98c26545ce0de873fef3561b8d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/texture/TextureCommands.hpp",
+      "bytes": 1622,
+      "sha256": "f285d1071d618bea0833400593e1ce83bde5502d45f4204caed589c7181fbe61"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/texture/TextureStorage.hpp",
+      "bytes": 5808,
+      "sha256": "b8dae96e27b10b93f7b7d5096f578ad1ac13cb6adc6c32835ccf2535e8cefc4a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/transfer/GpuWork.hpp",
+      "bytes": 7715,
+      "sha256": "b1f9e5ccf603f2a654023fd8fb6d9242adf9b01491de31228c8cdbd8d4af8420"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/transfer/Submission.hpp",
+      "bytes": 8213,
+      "sha256": "52463bda86f4597be282c544b62e6cb72aeaa4c3e39b48a7414f32b580dea27d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/native/vulkan/transfer/Transfer.hpp",
+      "bytes": 4563,
+      "sha256": "50894bbb5705397f7fd9074a6d95dbf32914b56d547465defb6b47cd248c6425"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/protocol/AsyncCommand.hpp",
+      "bytes": 5761,
+      "sha256": "9a3433289efaf147abe4ddd4b803cc014e6d241f0f1589b68b2c9bf956f7d99e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/protocol/Protocol.hpp",
+      "bytes": 12402,
+      "sha256": "cd9ec771f99807f0ffc911478f3019e7ab30d7aba594c8e06b479b770e2cb95f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/resource/AsyncWork.hpp",
+      "bytes": 596,
+      "sha256": "c21121b5eb360da9583c9f42a51935cffa50c75f47be5183aa0db9edfcee8bdf"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/resource/Binding.hpp",
+      "bytes": 1109,
+      "sha256": "3f29ddb6b12a4de086444e2093bc9f9e732a824dda444c3eabe40da88e07aedf"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/resource/Factory.hpp",
+      "bytes": 4498,
+      "sha256": "844942a61e17190a650ed47d47e06fc11519cb36bcf7a65920ad26a612a911c7"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/resource/ResourceRegistry.hpp",
+      "bytes": 4164,
+      "sha256": "a48f8b407e14636b855fd364c717e5637e1bea0cbc112421734fb9a1c1f1dcab"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/resource/Storage.hpp",
+      "bytes": 2527,
+      "sha256": "8c94557f4c96e00740f3e9fbd4a1fd67e67195a221eb250adeb543f6f815293a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/resource/StorageSet.hpp",
+      "bytes": 3690,
+      "sha256": "56d68a0dfb4f2ee5d56c27277d8ad3980a7574c2fd2f82ae50435fd5cf96aa89"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/resource/Texture.hpp",
+      "bytes": 4690,
+      "sha256": "37dcc827d9576b4323b4beed9af6f52864cc0c9b084a40d6463ff7ef60f4311e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/resource/TransferOptions.hpp",
+      "bytes": 360,
+      "sha256": "c83c9b5fb516c2f73e8d53b9ed8f173fdab17d881cb0da2867eea96e1c95f361"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/resource/Upload.hpp",
+      "bytes": 630,
+      "sha256": "b418b6623265a91b7ccc7ce86648fc14674014525af7ffb0fc14d05d8bbf5dad"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/runtime/Commands.hpp",
+      "bytes": 14134,
+      "sha256": "c4870963d3abc921c4bdfc594bc68a868a1ce102d1c866d1dac253b59d623dfb"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/runtime/CommandValue.hpp",
+      "bytes": 4556,
+      "sha256": "3db9177176d84f8f48b458425a4b7f489e5872c14c39a0c9cd10bca96c0d7ed7"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/runtime/RenderClient.hpp",
+      "bytes": 11461,
+      "sha256": "d0a2c3435f2863f2a241bbae24d8ba0fc6fa5a7ea9ddb6f5cafe7a28b95260e2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/render/runtime/RenderServer.hpp",
+      "bytes": 12167,
+      "sha256": "addd957cbd11146cde0b34952fc146f82b2395950f31ad305297b412f6ed39a3"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/backup/2/lux/engine/resource/visibility.h",
+      "bytes": 955,
+      "sha256": "5d76a5110e1b463f655068e501bac3e01e31ba9c2cc406e848530c660a6bd20e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/sdk-sync/manifest.json",
+      "bytes": 125081,
+      "sha256": "c931e0bf52e9ec7aef0101e95cd433e9fdd07352a02a0f99849fe1fd00cf5fc2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log",
+      "bytes": 6150,
+      "sha256": "0eccbee5196efeb988575a606f2735d193932cd74ee5c5ae27d1afd3394ea8ca"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.ctest.txt",
+      "bytes": 5989,
+      "sha256": "2964a81821cf9bad117f4d92d6ea73c3ff91c41d82239c46120508d53ccd768e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/ipc/test/ipc-cold.csv",
+      "bytes": 1279,
+      "sha256": "30c48368e8885da11cf9e7ea1d3f5b9b93aa593308e62757abec532891270ce1"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/ipc/test/ipc-operation.csv",
+      "bytes": 487942,
+      "sha256": "fa11225428d522cb2145e717c06e644936f99dc720a0fd89c33da7d748f50153"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/ipc/test/ipc-queue.csv",
+      "bytes": 98906,
+      "sha256": "42ef2e4425b5b43c7d807227ab1b0101db97ca16a702a2284c3083e871cd649c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/ipc/test/ipc-roundtrip.csv",
+      "bytes": 795697,
+      "sha256": "5d57c387eca6e17e01f69a8cc94ab33f7f9b1802bd3feb5711c5c4607274c999"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/ipc/test/ipc-ticks.csv",
+      "bytes": 491348,
+      "sha256": "c4b9990ca89f7b3845cebbde4a5f536a70c3c77f963830c73175ea720ee8e19f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/ipc/test/ipc-two-core.csv",
+      "bytes": 515916,
+      "sha256": "a1ec4c2ba4b24c6302e73bf5e48dc1a5a5cc2058492c4a21e6973e1f65d81570"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "bytes": 7835,
+      "sha256": "650dd80c7c39b114da0391c8728e78fd66e78a577275df836bd3b8c3587a41f2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "bytes": 9052,
+      "sha256": "db6a819b542cb6922c5080faf0cbd4a9bfbf77b813e2757468b498336c8fc4b1"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "bytes": 1112,
+      "sha256": "70c0b5ecade6a378ca15c3e75d3621a20fa1cd98737e3835507d8a3ac44be1c9"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "bytes": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/native/vulkan/test/zero-retirement.csv",
+      "bytes": 96678,
+      "sha256": "307a866c99a042403abaaa689528579ce1c49386c600d9c31b3d104878aa0b71"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/async-cost-drains.csv",
+      "bytes": 89240,
+      "sha256": "e4693ee1e9e07526b812c9d269db5d9b870c3512aeef295b7e4967e40799d333"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/async-cost-events.csv",
+      "bytes": 13446520,
+      "sha256": "ad7dc0c427b79f5942868070ef1ebe30053edd82cbbc9f5c426e62a9a1c12e81"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/async-cost-summary.csv",
+      "bytes": 6588,
+      "sha256": "209d103cb39a186e2b7776b24c4debf9d7697cb02725c9e6f86cb50d4d2e6bfa"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "b9ac6b3e330d9ee7979ce06caf55eb93225cee5fd51c1061a9c730b712bcee00"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/runtime-api.csv",
+      "bytes": 1318,
+      "sha256": "ec8287a97454ad2684bc5c57d98b8a42f78ff7c16af49be26c290a7394353778"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "bytes": 6553,
+      "sha256": "707d5d7e47fbc92148c6206a70cc7975a9e8a619643a334e4f1245990c9876a4"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "bytes": 87064,
+      "sha256": "227686918f9355bd070e0aed0cb9c5cbd70384d7f937adeed6c4df62c53131e5"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "bytes": 31744,
+      "sha256": "c6ea7eeee59a24656b304c1896e53d6b71af44c03794e1531c7740f7e7a0b64b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "bytes": 21612,
+      "sha256": "31a0e151988ceec5468d2130db8cef12f33f9b14ff121afd223b2039db3bf6db"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "84d142c2b3dafffe2229b83c7a7f5d56aac11baa79ddfc77f40b811cb4a1ed94"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "bytes": 12642,
+      "sha256": "cefa8ce818c9ef34537c9ab52449924c31636f600445f545bad980c72ed49d0f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "bytes": 12672,
+      "sha256": "b54024c41177cd537264242d6a9d6230f602c8234865ffa46c19f932bed03570"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/texture-progress.csv",
+      "bytes": 281,
+      "sha256": "be95221c491c1af2da2785d298ffdaf8b70dca4becf759bbe3b63604818ff7dd"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "bytes": 1366,
+      "sha256": "8e538735ea6d67fbd203fe7aa2391a7c72e21a822bffe85922852c4b79db0ba6"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-073909-431.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "bytes": 1365,
+      "sha256": "aa5f4a72962e7b176e340252cbc23af03a37492a55212d23c05bda556804a10e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log",
+      "bytes": 4149,
+      "sha256": "229802effba14adb83f18bacd99a3e6b028a78730d25e20be233dfe2eca57e85"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.ctest.txt",
+      "bytes": 4243,
+      "sha256": "a4697c97bddee1d57a20d02f5754357e6a32e479bd62830300c80b3ca05dbb10"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/ipc/test/ipc-cold.csv",
+      "bytes": 1279,
+      "sha256": "30c48368e8885da11cf9e7ea1d3f5b9b93aa593308e62757abec532891270ce1"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/ipc/test/ipc-operation.csv",
+      "bytes": 487942,
+      "sha256": "fa11225428d522cb2145e717c06e644936f99dc720a0fd89c33da7d748f50153"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/ipc/test/ipc-queue.csv",
+      "bytes": 98906,
+      "sha256": "42ef2e4425b5b43c7d807227ab1b0101db97ca16a702a2284c3083e871cd649c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/ipc/test/ipc-roundtrip.csv",
+      "bytes": 795697,
+      "sha256": "5d57c387eca6e17e01f69a8cc94ab33f7f9b1802bd3feb5711c5c4607274c999"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/ipc/test/ipc-ticks.csv",
+      "bytes": 491348,
+      "sha256": "c4b9990ca89f7b3845cebbde4a5f536a70c3c77f963830c73175ea720ee8e19f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/ipc/test/ipc-two-core.csv",
+      "bytes": 515916,
+      "sha256": "a1ec4c2ba4b24c6302e73bf5e48dc1a5a5cc2058492c4a21e6973e1f65d81570"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "bytes": 7835,
+      "sha256": "650dd80c7c39b114da0391c8728e78fd66e78a577275df836bd3b8c3587a41f2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "bytes": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "bytes": 10563,
+      "sha256": "226b8874ac9222e4dcff1251f021850d53f981ff1b1c0c72bbbebf113320bc24"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "bytes": 1112,
+      "sha256": "70c0b5ecade6a378ca15c3e75d3621a20fa1cd98737e3835507d8a3ac44be1c9"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "bytes": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/native/vulkan/test/zero-retirement.csv",
+      "bytes": 96678,
+      "sha256": "307a866c99a042403abaaa689528579ce1c49386c600d9c31b3d104878aa0b71"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/async-cost-drains.csv",
+      "bytes": 89240,
+      "sha256": "e4693ee1e9e07526b812c9d269db5d9b870c3512aeef295b7e4967e40799d333"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/async-cost-events.csv",
+      "bytes": 13446520,
+      "sha256": "ad7dc0c427b79f5942868070ef1ebe30053edd82cbbc9f5c426e62a9a1c12e81"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/async-cost-summary.csv",
+      "bytes": 6588,
+      "sha256": "209d103cb39a186e2b7776b24c4debf9d7697cb02725c9e6f86cb50d4d2e6bfa"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "b9ac6b3e330d9ee7979ce06caf55eb93225cee5fd51c1061a9c730b712bcee00"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/runtime-api.csv",
+      "bytes": 1318,
+      "sha256": "ec8287a97454ad2684bc5c57d98b8a42f78ff7c16af49be26c290a7394353778"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "bytes": 6553,
+      "sha256": "707d5d7e47fbc92148c6206a70cc7975a9e8a619643a334e4f1245990c9876a4"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "bytes": 87064,
+      "sha256": "227686918f9355bd070e0aed0cb9c5cbd70384d7f937adeed6c4df62c53131e5"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "bytes": 31744,
+      "sha256": "c6ea7eeee59a24656b304c1896e53d6b71af44c03794e1531c7740f7e7a0b64b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "bytes": 21612,
+      "sha256": "31a0e151988ceec5468d2130db8cef12f33f9b14ff121afd223b2039db3bf6db"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "84d142c2b3dafffe2229b83c7a7f5d56aac11baa79ddfc77f40b811cb4a1ed94"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "bytes": 12642,
+      "sha256": "cefa8ce818c9ef34537c9ab52449924c31636f600445f545bad980c72ed49d0f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "bytes": 12672,
+      "sha256": "b54024c41177cd537264242d6a9d6230f602c8234865ffa46c19f932bed03570"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/texture-progress.csv",
+      "bytes": 281,
+      "sha256": "be95221c491c1af2da2785d298ffdaf8b70dca4becf759bbe3b63604818ff7dd"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "bytes": 1366,
+      "sha256": "8e538735ea6d67fbd203fe7aa2391a7c72e21a822bffe85922852c4b79db0ba6"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074016-789.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "bytes": 1365,
+      "sha256": "aa5f4a72962e7b176e340252cbc23af03a37492a55212d23c05bda556804a10e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log",
+      "bytes": 1642,
+      "sha256": "b57dbd51ae7bfeefe568a6a1289319686725f155817728e3032c87b604cb223a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.ctest.txt",
+      "bytes": 1180,
+      "sha256": "47eae96a99af38b8b35defa47afdd7e2504f4c25bffd40c430a1931f116dc44b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/ipc/test/ipc-cold.csv",
+      "bytes": 1279,
+      "sha256": "30c48368e8885da11cf9e7ea1d3f5b9b93aa593308e62757abec532891270ce1"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/ipc/test/ipc-operation.csv",
+      "bytes": 487942,
+      "sha256": "fa11225428d522cb2145e717c06e644936f99dc720a0fd89c33da7d748f50153"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/ipc/test/ipc-queue.csv",
+      "bytes": 98906,
+      "sha256": "42ef2e4425b5b43c7d807227ab1b0101db97ca16a702a2284c3083e871cd649c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/ipc/test/ipc-roundtrip.csv",
+      "bytes": 795697,
+      "sha256": "5d57c387eca6e17e01f69a8cc94ab33f7f9b1802bd3feb5711c5c4607274c999"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/ipc/test/ipc-ticks.csv",
+      "bytes": 491348,
+      "sha256": "c4b9990ca89f7b3845cebbde4a5f536a70c3c77f963830c73175ea720ee8e19f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/ipc/test/ipc-two-core.csv",
+      "bytes": 515916,
+      "sha256": "a1ec4c2ba4b24c6302e73bf5e48dc1a5a5cc2058492c4a21e6973e1f65d81570"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "bytes": 7835,
+      "sha256": "650dd80c7c39b114da0391c8728e78fd66e78a577275df836bd3b8c3587a41f2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "bytes": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "bytes": 10563,
+      "sha256": "226b8874ac9222e4dcff1251f021850d53f981ff1b1c0c72bbbebf113320bc24"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "bytes": 1112,
+      "sha256": "70c0b5ecade6a378ca15c3e75d3621a20fa1cd98737e3835507d8a3ac44be1c9"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "bytes": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/native/vulkan/test/zero-retirement.csv",
+      "bytes": 96678,
+      "sha256": "307a866c99a042403abaaa689528579ce1c49386c600d9c31b3d104878aa0b71"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/async-cost-drains.csv",
+      "bytes": 89240,
+      "sha256": "e4693ee1e9e07526b812c9d269db5d9b870c3512aeef295b7e4967e40799d333"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/async-cost-events.csv",
+      "bytes": 13446520,
+      "sha256": "ad7dc0c427b79f5942868070ef1ebe30053edd82cbbc9f5c426e62a9a1c12e81"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/async-cost-summary.csv",
+      "bytes": 6588,
+      "sha256": "209d103cb39a186e2b7776b24c4debf9d7697cb02725c9e6f86cb50d4d2e6bfa"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "b9ac6b3e330d9ee7979ce06caf55eb93225cee5fd51c1061a9c730b712bcee00"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/runtime-api.csv",
+      "bytes": 1318,
+      "sha256": "ec8287a97454ad2684bc5c57d98b8a42f78ff7c16af49be26c290a7394353778"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "bytes": 6553,
+      "sha256": "707d5d7e47fbc92148c6206a70cc7975a9e8a619643a334e4f1245990c9876a4"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "bytes": 87064,
+      "sha256": "227686918f9355bd070e0aed0cb9c5cbd70384d7f937adeed6c4df62c53131e5"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "bytes": 31744,
+      "sha256": "c6ea7eeee59a24656b304c1896e53d6b71af44c03794e1531c7740f7e7a0b64b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "bytes": 21612,
+      "sha256": "31a0e151988ceec5468d2130db8cef12f33f9b14ff121afd223b2039db3bf6db"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "84d142c2b3dafffe2229b83c7a7f5d56aac11baa79ddfc77f40b811cb4a1ed94"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "bytes": 12642,
+      "sha256": "cefa8ce818c9ef34537c9ab52449924c31636f600445f545bad980c72ed49d0f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "bytes": 12672,
+      "sha256": "b54024c41177cd537264242d6a9d6230f602c8234865ffa46c19f932bed03570"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/texture-progress.csv",
+      "bytes": 281,
+      "sha256": "be95221c491c1af2da2785d298ffdaf8b70dca4becf759bbe3b63604818ff7dd"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "bytes": 1366,
+      "sha256": "8e538735ea6d67fbd203fe7aa2391a7c72e21a822bffe85922852c4b79db0ba6"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074141-962.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "bytes": 1365,
+      "sha256": "aa5f4a72962e7b176e340252cbc23af03a37492a55212d23c05bda556804a10e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log",
+      "bytes": 1642,
+      "sha256": "36631f27b8e5cff11f52759dcf81a2301410587056553bfededc9fe9e23e2b49"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.ctest.txt",
+      "bytes": 1180,
+      "sha256": "d877364e66dfa7ba2f5079a65b245701bfee8744ed447b65a9af92828f26f1e4"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/ipc/test/ipc-cold.csv",
+      "bytes": 1279,
+      "sha256": "30c48368e8885da11cf9e7ea1d3f5b9b93aa593308e62757abec532891270ce1"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/ipc/test/ipc-operation.csv",
+      "bytes": 487942,
+      "sha256": "fa11225428d522cb2145e717c06e644936f99dc720a0fd89c33da7d748f50153"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/ipc/test/ipc-queue.csv",
+      "bytes": 98906,
+      "sha256": "42ef2e4425b5b43c7d807227ab1b0101db97ca16a702a2284c3083e871cd649c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/ipc/test/ipc-roundtrip.csv",
+      "bytes": 795697,
+      "sha256": "5d57c387eca6e17e01f69a8cc94ab33f7f9b1802bd3feb5711c5c4607274c999"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/ipc/test/ipc-ticks.csv",
+      "bytes": 491348,
+      "sha256": "c4b9990ca89f7b3845cebbde4a5f536a70c3c77f963830c73175ea720ee8e19f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/ipc/test/ipc-two-core.csv",
+      "bytes": 515916,
+      "sha256": "a1ec4c2ba4b24c6302e73bf5e48dc1a5a5cc2058492c4a21e6973e1f65d81570"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "bytes": 7835,
+      "sha256": "650dd80c7c39b114da0391c8728e78fd66e78a577275df836bd3b8c3587a41f2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "bytes": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "bytes": 10563,
+      "sha256": "226b8874ac9222e4dcff1251f021850d53f981ff1b1c0c72bbbebf113320bc24"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "bytes": 1112,
+      "sha256": "70c0b5ecade6a378ca15c3e75d3621a20fa1cd98737e3835507d8a3ac44be1c9"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "bytes": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/native/vulkan/test/zero-retirement.csv",
+      "bytes": 96678,
+      "sha256": "307a866c99a042403abaaa689528579ce1c49386c600d9c31b3d104878aa0b71"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/async-cost-drains.csv",
+      "bytes": 89240,
+      "sha256": "e4693ee1e9e07526b812c9d269db5d9b870c3512aeef295b7e4967e40799d333"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/async-cost-events.csv",
+      "bytes": 13446520,
+      "sha256": "ad7dc0c427b79f5942868070ef1ebe30053edd82cbbc9f5c426e62a9a1c12e81"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/async-cost-summary.csv",
+      "bytes": 6588,
+      "sha256": "209d103cb39a186e2b7776b24c4debf9d7697cb02725c9e6f86cb50d4d2e6bfa"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "b9ac6b3e330d9ee7979ce06caf55eb93225cee5fd51c1061a9c730b712bcee00"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/runtime-api.csv",
+      "bytes": 1318,
+      "sha256": "ec8287a97454ad2684bc5c57d98b8a42f78ff7c16af49be26c290a7394353778"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "bytes": 6553,
+      "sha256": "707d5d7e47fbc92148c6206a70cc7975a9e8a619643a334e4f1245990c9876a4"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "bytes": 87064,
+      "sha256": "227686918f9355bd070e0aed0cb9c5cbd70384d7f937adeed6c4df62c53131e5"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "bytes": 31744,
+      "sha256": "c6ea7eeee59a24656b304c1896e53d6b71af44c03794e1531c7740f7e7a0b64b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "bytes": 21612,
+      "sha256": "31a0e151988ceec5468d2130db8cef12f33f9b14ff121afd223b2039db3bf6db"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "84d142c2b3dafffe2229b83c7a7f5d56aac11baa79ddfc77f40b811cb4a1ed94"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "bytes": 12642,
+      "sha256": "cefa8ce818c9ef34537c9ab52449924c31636f600445f545bad980c72ed49d0f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "bytes": 12672,
+      "sha256": "b54024c41177cd537264242d6a9d6230f602c8234865ffa46c19f932bed03570"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/texture-progress.csv",
+      "bytes": 281,
+      "sha256": "be95221c491c1af2da2785d298ffdaf8b70dca4becf759bbe3b63604818ff7dd"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "bytes": 1366,
+      "sha256": "8e538735ea6d67fbd203fe7aa2391a7c72e21a822bffe85922852c4b79db0ba6"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074249-930.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "bytes": 1365,
+      "sha256": "aa5f4a72962e7b176e340252cbc23af03a37492a55212d23c05bda556804a10e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log",
+      "bytes": 1642,
+      "sha256": "9412023a30ae850c56fbbb9e8c2e1e5c66df93b3f4c10b5d1117a18ac3a7ed94"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.ctest.txt",
+      "bytes": 1180,
+      "sha256": "3022c5b93645483d85f503162c90c082d3a239d497b37d88e6d72c63d443b612"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/ipc/test/ipc-cold.csv",
+      "bytes": 1279,
+      "sha256": "30c48368e8885da11cf9e7ea1d3f5b9b93aa593308e62757abec532891270ce1"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/ipc/test/ipc-operation.csv",
+      "bytes": 487942,
+      "sha256": "fa11225428d522cb2145e717c06e644936f99dc720a0fd89c33da7d748f50153"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/ipc/test/ipc-queue.csv",
+      "bytes": 98906,
+      "sha256": "42ef2e4425b5b43c7d807227ab1b0101db97ca16a702a2284c3083e871cd649c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/ipc/test/ipc-roundtrip.csv",
+      "bytes": 795697,
+      "sha256": "5d57c387eca6e17e01f69a8cc94ab33f7f9b1802bd3feb5711c5c4607274c999"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/ipc/test/ipc-ticks.csv",
+      "bytes": 491348,
+      "sha256": "c4b9990ca89f7b3845cebbde4a5f536a70c3c77f963830c73175ea720ee8e19f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/ipc/test/ipc-two-core.csv",
+      "bytes": 515916,
+      "sha256": "a1ec4c2ba4b24c6302e73bf5e48dc1a5a5cc2058492c4a21e6973e1f65d81570"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "bytes": 7835,
+      "sha256": "650dd80c7c39b114da0391c8728e78fd66e78a577275df836bd3b8c3587a41f2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "bytes": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "bytes": 10563,
+      "sha256": "226b8874ac9222e4dcff1251f021850d53f981ff1b1c0c72bbbebf113320bc24"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "bytes": 1112,
+      "sha256": "70c0b5ecade6a378ca15c3e75d3621a20fa1cd98737e3835507d8a3ac44be1c9"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "bytes": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/native/vulkan/test/zero-retirement.csv",
+      "bytes": 96678,
+      "sha256": "307a866c99a042403abaaa689528579ce1c49386c600d9c31b3d104878aa0b71"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/async-cost-drains.csv",
+      "bytes": 89240,
+      "sha256": "e4693ee1e9e07526b812c9d269db5d9b870c3512aeef295b7e4967e40799d333"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/async-cost-events.csv",
+      "bytes": 13446520,
+      "sha256": "ad7dc0c427b79f5942868070ef1ebe30053edd82cbbc9f5c426e62a9a1c12e81"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/async-cost-summary.csv",
+      "bytes": 6588,
+      "sha256": "209d103cb39a186e2b7776b24c4debf9d7697cb02725c9e6f86cb50d4d2e6bfa"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "b9ac6b3e330d9ee7979ce06caf55eb93225cee5fd51c1061a9c730b712bcee00"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/runtime-api.csv",
+      "bytes": 1318,
+      "sha256": "ec8287a97454ad2684bc5c57d98b8a42f78ff7c16af49be26c290a7394353778"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "bytes": 6553,
+      "sha256": "707d5d7e47fbc92148c6206a70cc7975a9e8a619643a334e4f1245990c9876a4"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "bytes": 87064,
+      "sha256": "227686918f9355bd070e0aed0cb9c5cbd70384d7f937adeed6c4df62c53131e5"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "bytes": 31744,
+      "sha256": "c6ea7eeee59a24656b304c1896e53d6b71af44c03794e1531c7740f7e7a0b64b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "bytes": 21612,
+      "sha256": "31a0e151988ceec5468d2130db8cef12f33f9b14ff121afd223b2039db3bf6db"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "84d142c2b3dafffe2229b83c7a7f5d56aac11baa79ddfc77f40b811cb4a1ed94"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "bytes": 12642,
+      "sha256": "cefa8ce818c9ef34537c9ab52449924c31636f600445f545bad980c72ed49d0f"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "bytes": 12672,
+      "sha256": "b54024c41177cd537264242d6a9d6230f602c8234865ffa46c19f932bed03570"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/texture-progress.csv",
+      "bytes": 281,
+      "sha256": "be95221c491c1af2da2785d298ffdaf8b70dca4becf759bbe3b63604818ff7dd"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "bytes": 1366,
+      "sha256": "8e538735ea6d67fbd203fe7aa2391a7c72e21a822bffe85922852c4b79db0ba6"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074356-495.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "bytes": 1365,
+      "sha256": "aa5f4a72962e7b176e340252cbc23af03a37492a55212d23c05bda556804a10e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log",
+      "bytes": 635297,
+      "sha256": "7ee1b9193d51286e875e2f3ea425757b53ab88d514318adae9dc046f160004fc"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.ctest.txt",
+      "bytes": 647471,
+      "sha256": "73288c8237c634133258d8b67b789a4e6f350fb524356679af4f1e1a4d32160e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/ipc/test/ipc-cold.csv",
+      "bytes": 1267,
+      "sha256": "482c3627aa787c881d50224790dcad217d7f64bcddacd05397043657293550c5"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/ipc/test/ipc-operation.csv",
+      "bytes": 488306,
+      "sha256": "4e1c92116962d0178d225f772fb72a60f9ffb61764c2ac97a4edd179eac2c4c8"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/ipc/test/ipc-queue.csv",
+      "bytes": 98909,
+      "sha256": "353fb13789536a9f8185c74d5269adc968a9d8f9e96153a26109425ee612cab2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/ipc/test/ipc-roundtrip.csv",
+      "bytes": 795700,
+      "sha256": "c235bb13145c0011be0121e0cc15930ee216cc25cada38cdd607bfcf53991341"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/ipc/test/ipc-ticks.csv",
+      "bytes": 497887,
+      "sha256": "b879b8da90df55a6e6529125e2a7d01aa184e828ad0b771fc1c917de2709fdbf"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/ipc/test/ipc-two-core.csv",
+      "bytes": 516641,
+      "sha256": "4c5e850d3be5fb1252b585af09f8b39741e122678096730bea547dce3bd678d2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "bytes": 7835,
+      "sha256": "ed72dee8b1c0051ae801b0432270549115db0ab8d933f7d043cd25d6101e4908"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "bytes": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "bytes": 10597,
+      "sha256": "0282d3c0bc6763636120bdc651fc84a380a2a00ddcfcd6de407534cc9affaed7"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "bytes": 1115,
+      "sha256": "a68b2e7e2480eee1931897e1b5a59104490ad36a6cad43fe7c34799afc1781dd"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "bytes": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/native/vulkan/test/zero-retirement.csv",
+      "bytes": 96326,
+      "sha256": "759d13b8a7ac816261bb806fa0cd156e7f84c33e8f88247095d06abdb7a2ed3c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/async-cost-drains.csv",
+      "bytes": 88497,
+      "sha256": "5b9d4f526da3e0fa52da72fcc6a41b240e1c6d52b087618940b5f04be7eb4ccb"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/async-cost-events.csv",
+      "bytes": 13446835,
+      "sha256": "d079e80a373125653ef0f592c60fafa577581e88defa53e86cd248a0c729738b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/async-cost-summary.csv",
+      "bytes": 6551,
+      "sha256": "106e8aa23a91c6be9071ba09805e11d819bb09a2b6dac899a2e15b058315e610"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "d934343f4ebe6acd1955d737d768ccb20f04d548ffa3229d38433984ec46a92a"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/runtime-api.csv",
+      "bytes": 1308,
+      "sha256": "3d83cc8ee039e3683e8a4edb8af8e724f763a8567af9fcdf4333b7455d062474"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "bytes": 3375,
+      "sha256": "b382655f39c37e1f9d103acb0972764f54c1cd3145760d88623fbd190352330c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "bytes": 87052,
+      "sha256": "6c1258cc35f77dd83c60c6e1b310d522dcd131b6533520023fe3b56e22162e7b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "bytes": 31465,
+      "sha256": "df79e4066a5f8739ec8c45f51f5f012d6e4a352af5e3c73509bf197d818b1d5b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "bytes": 21604,
+      "sha256": "67c89f4c631d5675f3eef6f96cf7044ff0e0c626c6f2b5dd55c7aa6c203983d4"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "996da88ad396708e73cab341a001e31e9507d88490f8f6a8576c12f421880720"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "bytes": 11547,
+      "sha256": "15547fadd2f6e68f217ad338bde26f9a865db3ac28e7fa7249f4328e92119522"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "bytes": 13137,
+      "sha256": "ceae73049c32648909389c105f08f14ef91a1e458b0008a27c7f25ca6d1ff629"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/texture-progress.csv",
+      "bytes": 281,
+      "sha256": "4cf07d5d63969a4f2f4107fafc94c2df24623bcc768b3329eb471a744bbfd0b0"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "bytes": 1146,
+      "sha256": "eb09afba5d28b90a1dac4d18f0d1a33d553908f975617ccfb25566c1dae89f7d"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074642-680.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "bytes": 1405,
+      "sha256": "c8cd254bad0432d1e0418c69c5e2daefddcfe8444b551c870e47cf37e93e3b2e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log",
+      "bytes": 635000,
+      "sha256": "61edbbefb481cd1e62f10f93ee4d802c7feca777ad96d2461932db5276eda958"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.ctest.txt",
+      "bytes": 647594,
+      "sha256": "b30af6a829d78632d4f4c1898c889c25bcf784325e34277bb2f04655087a57a4"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/ipc/test/ipc-cold.csv",
+      "bytes": 1268,
+      "sha256": "d5d96e00283e83fa1c064b786adc47dc4529264f70662d5c2ea50e4ee28b87a4"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/ipc/test/ipc-operation.csv",
+      "bytes": 487885,
+      "sha256": "8bc35205c7944b02f7901d1680309d48d8540e1af267c3792045ee0eaf7bc9cc"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/ipc/test/ipc-queue.csv",
+      "bytes": 98910,
+      "sha256": "fe2323279624e0298477910105fa60c684ed72f76be540c0c50ee53765fb7f1b"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/ipc/test/ipc-roundtrip.csv",
+      "bytes": 795695,
+      "sha256": "8f183e143c14e47b8cd3f7d27787eb2245bb00d3a962c050b6aa7170438e5637"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/ipc/test/ipc-ticks.csv",
+      "bytes": 498849,
+      "sha256": "0c7f196246bcd5de68c104c0d266e53e7dad38ff2dca3fb3320d274db21ceac1"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/ipc/test/ipc-two-core.csv",
+      "bytes": 515975,
+      "sha256": "11a04ce50f7dac06ee988b715d5e3a03eb8ca64d1a8ba2f80bf8aa43f306fc34"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "bytes": 7835,
+      "sha256": "67067a35369c98861aa5634796219795f53ebc6adb33c36293c42b260c33a962"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "bytes": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "bytes": 10434,
+      "sha256": "6a2efdbe1fe3cafd1eaa58e1ef216e3bcd1e817391fd42d4b7849e8430170a3c"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "bytes": 1114,
+      "sha256": "b925a91c15005cdaf20abef12fd73ef89f5afffdb64445c8e342e59dda41e096"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "bytes": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/native/vulkan/test/zero-retirement.csv",
+      "bytes": 96532,
+      "sha256": "d9da9dce063add900e91a625a60fea9b6ce80afe58cd5976b8197c629460b449"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/async-cost-drains.csv",
+      "bytes": 85401,
+      "sha256": "d62f88c8f5b33d464703ca8c13d52655dcdef5f7ec1004c644a5d841cc0ccb09"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/async-cost-events.csv",
+      "bytes": 13446520,
+      "sha256": "8eb9e8621aa14e9e810cd608dc6b62878e614eecd890d8e8df997943c72bc5bc"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/async-cost-summary.csv",
+      "bytes": 6514,
+      "sha256": "735f95097179c99f7424f80eefaf1b745c96bff800d21a0585041f7645699bd2"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "6fdcb6e8bb10d3ce6f6edda77d5192acb3d29afc33a73467ce46cfe62d5be321"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/runtime-api.csv",
+      "bytes": 1326,
+      "sha256": "94b365cb9534fbb10029893f5f3fdff4d639b171181468a3ea35e39245a18865"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "bytes": 5816,
+      "sha256": "0ad2c160d1874b90ea4abc0e200162c7eef512e3f435f8dba23d0e076736edce"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "bytes": 87066,
+      "sha256": "c5d733b82d8579c588f749d845e17de7b71a8d5fccbe6d4fc49d615c4fcfea36"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "bytes": 31423,
+      "sha256": "c5b773005d2ea2958901409cf730afac50653e60f4dc709e7e7d96b120a649e9"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "bytes": 21605,
+      "sha256": "c6f97eacb974fbdd02808a418fa1bffb5e00ccb174dacf44b9c3fafdb0bcd739"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "890d72362f141bee18b6924f3ae84aeb27d1c130d9a1fbaf0470615ced5cf7ad"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "bytes": 12162,
+      "sha256": "3a7a0c5654e6aa6e1d6b7b3f48df3e0552dac6be6686cdf6f351970bcde68516"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "bytes": 12852,
+      "sha256": "fb0b1f59464d9cba5688a9e1cad2f669ccd55fc6d58e9b07c8f629f6838713d5"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/texture-progress.csv",
+      "bytes": 281,
+      "sha256": "e06aa95b98fb52009a8b315d10b6acc0436906b89a44c0cad6c8acac5a2a3130"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "bytes": 1256,
+      "sha256": "5a739187acc72688f8e02ccfebe9c6929ea79e589c8fdfdb8ea7c555e22f88ac"
+    },
+    {
+      "path": "implementation-attempts/n54-parameters/test-RelWithDebInfo-20261017-074945-648.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "bytes": 1407,
+      "sha256": "aabc209e4f93c0093055dcbe13a00f5540c7a1f84fb25cb7da16466d02de953c"
+    },
+    {
+      "path": "implementation.diff",
+      "bytes": 79730,
+      "sha256": "9ad584b90d05f789d264347da573be6980a166ebf49998a02c1f1e62fd3ccaf5"
+    },
+    {
+      "path": "n5-block-independent.log",
+      "bytes": 655,
+      "sha256": "f9f54be47a3ca759d80b6a792b1383e41d3b894ab4942d085dc9df43e4f6b600"
+    },
+    {
+      "path": "N5-readonly-audit.txt",
+      "bytes": 6288,
+      "sha256": "03684933ffd477306fd11bcceb75dcc525a187c246462255d5a9fa4ae8c9a028"
+    },
+    {
+      "path": "n51-tracking.py",
+      "bytes": 741,
+      "sha256": "1ed88bad1f5cd0454238fdf3b6c9b3b7fd549496c11d5b5460d787465d2a0b21"
+    },
+    {
+      "path": "n51-typed-bindings.py",
+      "bytes": 4105,
+      "sha256": "52f4e028233cc82c043bc62f45a25080c95bce88250d712d563372986db67e54"
+    },
+    {
+      "path": "n52-live-lowering.py",
+      "bytes": 4488,
+      "sha256": "b301ecdf7abadbe73149b7d69f902bf55a2b4c5c7b7f4dc9c976caaecf17a0b1"
+    },
+    {
+      "path": "n52-program-test.py",
+      "bytes": 2973,
+      "sha256": "dc7db1f2c199790abad1f7b403d7172eaad09b81e67e756c981601042898d15d"
+    },
+    {
+      "path": "n54-track.py",
+      "bytes": 2036,
+      "sha256": "2e5fb0996305f443b4ace9522c2c94f5146608a45041ea3cd922b36cf9fa186d"
+    },
+    {
+      "path": "prepare-n5-color-report.py",
+      "bytes": 3211,
+      "sha256": "e6e62be29f34dc7ac6dc60d52d2068b4d6bac7119b819a37169be1f4933b6438"
+    },
+    {
+      "path": "prepare-n5-sdk-script.py",
+      "bytes": 416,
+      "sha256": "49c285c88a37ac85670ca861459561add4088ae4ef96bf91a22407d337ede718"
+    },
+    {
+      "path": "prepare-n54-sync.py",
+      "bytes": 776,
+      "sha256": "8fb1af372fadd6fc8a850411217804d09e8ea4c40980a1032576aaf152c530cb"
+    },
+    {
+      "path": "report-n5-block.py",
+      "bytes": 6088,
+      "sha256": "9f085dbdc1dcf9625c0bc6f14fccdafd4ddec6d0d9fae4c6383caedea8c521f5"
+    },
+    {
+      "path": "report-n5-cold.py",
+      "bytes": 6174,
+      "sha256": "a02cb848313227ef6c75626c83a3b803c6715fc036f8698ae4d8310bcd983820"
+    },
+    {
+      "path": "report-n5-color.py",
+      "bytes": 5789,
+      "sha256": "e53f109d1eb48c688d12f4083b830b0027e8ca02b9d165cf9664ad8d1c0064c1"
+    },
+    {
+      "path": "report-n5-layout.py",
+      "bytes": 6622,
+      "sha256": "7048a45e055d70e235d9ecd1884d9f9207f2df39ae2283710a77c074f256d60a"
+    },
+    {
+      "path": "report-n5-parameters.py",
+      "bytes": 6460,
+      "sha256": "843830b49691a98e74779e666b83cd8e5d2994bb3f753357653a51b1a98ee5ea"
+    },
+    {
+      "path": "report-n5-stages.py",
+      "bytes": 5360,
+      "sha256": "0b7da16bd6aeb7be057783a472bd1bc63989ad01f45b6f7ea2cd4bbe10a9a7f8"
+    },
+    {
+      "path": "run.ps1",
+      "bytes": 3390,
+      "sha256": "13664375bd5eb7413a7c95fa5e46e1dbd38faedb3d9203eaf199f792666abc9b"
+    },
+    {
+      "path": "sync-n5-cold-sdk.py",
+      "bytes": 2397,
+      "sha256": "0183391652d5079048f9a4d83dbb86e7c7bdbef629105cb006a8cef73c04288f"
+    },
+    {
+      "path": "sync-n5-color-sdk.py",
+      "bytes": 2400,
+      "sha256": "bc693a73dc2549920739a6dcc3a85261d707c11d14af8730eefd728bc3c7d049"
+    },
+    {
+      "path": "sync-n53-layout-sdk.py",
+      "bytes": 2641,
+      "sha256": "58b90b5a9a1a08f744f78a7650700f3acd37815c2c6f34eaee033ff6a030bb43"
+    },
+    {
+      "path": "sync-n54-block-sdk.py",
+      "bytes": 2774,
+      "sha256": "7e4ba91a62b872e103afd304b93003ee48c1eb1f8097dbc87caacba5d0a0841c"
+    },
+    {
+      "path": "sync-n54-parameters-sdk.py",
+      "bytes": 2781,
+      "sha256": "f58f45f50fcca54613d704633082d0b4f3778afe6d8342212e5e450d7cea1e37"
+    },
+    {
+      "path": "sync-n54-stages-sdk.py",
+      "bytes": 2641,
+      "sha256": "12189dbbdfb47651743605bbe6d727dd563859f95071f561cdedc3fa842308ee"
+    },
+    {
+      "path": "verification/independent/a/build-20261017-075601.console.log",
+      "bytes": 43041,
+      "sha256": "8ee4333ad4b8c643fdf19cb82975d92b420a5b22b147507ded9b346ca3c83c2c"
+    },
+    {
+      "path": "verification/independent/a/build-20261017-075841.console.log",
+      "bytes": 456,
+      "sha256": "0d9815b77b5bd3f656a4b782c39076f9f60c435bdd05eae96f33c4637919b7ee"
+    },
+    {
+      "path": "verification/independent/a/build-RelWithDebInfo-20261017-075602-861.log",
+      "bytes": 42798,
+      "sha256": "599c617e2f8b7d1fd2b50793c99166f55a0b9ddc4abb47c77931197e5038b60e"
+    },
+    {
+      "path": "verification/independent/a/build-RelWithDebInfo-20261017-075842-776.log",
+      "bytes": 213,
+      "sha256": "7288e799b7eef81f0d14e8dd89ae0a6a8e4e84b0a57f63d041262da4db47cba3"
+    },
+    {
+      "path": "verification/independent/a/configure-20261017-075555.console.log",
+      "bytes": 1886,
+      "sha256": "07abe4622f1eda53bfabdaa2f839eaf7f9ac8ed6196712902634c52015b41c4b"
+    },
+    {
+      "path": "verification/independent/a/configure-RelWithDebInfo-20261017-075557-662.log",
+      "bytes": 1643,
+      "sha256": "264b3f80f1ebb2e09a89e9ed0f5c64ccb12406f5e844ae3170b8c2064598f7b1"
+    },
+    {
+      "path": "verification/independent/a/snapshot-20261017-075545.console.log",
+      "bytes": 637,
+      "sha256": "0339bd265fb3c984f1cfb58fa6049cdc44dea51f6d6004ac83620ddaca9b4045"
+    },
+    {
+      "path": "verification/independent/a/snapshot-RelWithDebInfo-20261017-075547-308.log",
+      "bytes": 394,
+      "sha256": "a49b093b491ba3a10f5bf507bca48d77aa0bacde4bf024b603e57298f7876acf"
+    },
+    {
+      "path": "verification/independent/a/test-20261017-075842.console.log",
+      "bytes": 695269,
+      "sha256": "087bb3a6eecc8cbd17c14645ceeff3d2df3e7db1d2d985f2ed5a60da6ab80d56"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log",
+      "bytes": 695026,
+      "sha256": "7387567b0ea7d34c0941bf022309f502f143fe53bdad00567d474c639d1bf219"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.ctest.txt",
+      "bytes": 707480,
+      "sha256": "a2a6250651af4d04e23cad505013ac0cc7559fccad10d26f7c7a46e325f3b65a"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/ipc/test/ipc-cold.csv",
+      "bytes": 1521,
+      "sha256": "7dcd686af04c794c45b2512d37a3971222114bf5e98371676cccaa529174e9dd"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/ipc/test/ipc-operation.csv",
+      "bytes": 507873,
+      "sha256": "7391c04c4e59689bc8c2f480e358c977d3e4bf94975fb57377204badbb79b9d8"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/ipc/test/ipc-queue.csv",
+      "bytes": 98944,
+      "sha256": "97f78194ae2ba28d2bd323c675b1e42c8fe450e60741fcc83bb0c50685e07093"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/ipc/test/ipc-roundtrip.csv",
+      "bytes": 818534,
+      "sha256": "f25d4e4950320e849ebd14963557e83cf6d9b043641a8260bd717c0fee1b03cb"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/ipc/test/ipc-ticks.csv",
+      "bytes": 538365,
+      "sha256": "84eb78b7dfdd5ac800edaeb8734f88ca70bb08dfba924a2ef98b30a733bb7f9b"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/ipc/test/ipc-two-core.csv",
+      "bytes": 553251,
+      "sha256": "00f47d2496cee1701506aec069e4decc07680531582130ea89e79ae7299e9b3c"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "bytes": 7835,
+      "sha256": "09bd4d9ef4d1b7fdcefc375ae10edc1130c46458ccf2e154bc3c51f5e97a04ae"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "bytes": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "bytes": 10721,
+      "sha256": "4e2909665779f6b7d2dad30f2dff751bfbf82097c6db605f1b6dd5b29569615e"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "bytes": 1126,
+      "sha256": "a7acf2da448ebdd4deec263ed72d7c533a792918e43d10a6087e804737054859"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "bytes": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/native/vulkan/test/zero-retirement.csv",
+      "bytes": 102650,
+      "sha256": "4ac6989a322d03422172d4be479bac1fe027a7b558da17449ebceb2fa5ea2a46"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/async-cost-drains.csv",
+      "bytes": 86562,
+      "sha256": "d75a9bda3aaa38ebeb494c93764e723c98d96f1b7cd631a5b249ed827c9f9766"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/async-cost-events.csv",
+      "bytes": 13446520,
+      "sha256": "1c853619935832e613dbe03fb43893a3aae5204a4c2969a8404b45884b4a8881"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/async-cost-summary.csv",
+      "bytes": 6743,
+      "sha256": "f7b7d3c5e397f6557d01acf504c5b322ff1390c8791d00c8e1b200bd53d68d3d"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "00b0894816c0dc15755f549f317a13932d44df106bbc6515319bbf1a2c59e1aa"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/runtime-api.csv",
+      "bytes": 1314,
+      "sha256": "c96eb01d55469647a9d63ca7f02050694ea0694ee5cf4b433a0b56be61fd3eed"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "bytes": 4172,
+      "sha256": "7de7ce82f5c7c1a2d0e928012339f996049f685d8edd994b70483b5e4a36e8c1"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "bytes": 87052,
+      "sha256": "5eb0c1ccb0aececc8047f5efa61eea351141eb3e7cbe75befe777b315e106648"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "bytes": 33522,
+      "sha256": "545ac71438e46e14af0fd252e06de398ea1ecffd3046b8b1962d2d20060a667b"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "bytes": 21637,
+      "sha256": "99eefb610c9cbd3cf0e733a860ab0c7f395784f6582a42149400feb1c5768658"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "bytes": 87046,
+      "sha256": "e854775517e47a76f50f694b04b7edb00e9f3971d3a446e0a149512d419bd189"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "bytes": 11697,
+      "sha256": "c3d35e88e9e1702ee47de45e8c0faed7a649ba6b8f5465681a8cd25673063c9f"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "bytes": 11502,
+      "sha256": "a0f528cbeeba8f4f0901cb0d80c4c92ebdc6d32fccca57588ffbca8c0af1fe2d"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/texture-progress.csv",
+      "bytes": 284,
+      "sha256": "12cccd63e0bc273febc89356e42dfda4f3f7bbcf5ecc7494df779125451326a8"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "bytes": 1254,
+      "sha256": "51c08b9cef395ea0398d21de86e2208048bf499e37e7bb5e0dadae119e0a6785"
+    },
+    {
+      "path": "verification/independent/a/test-RelWithDebInfo-20261017-075844-620.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "bytes": 1257,
+      "sha256": "3f392b03158cd6b005c2994eb5c47c047136d43a853dbb59264e817f935379db"
+    },
+    {
+      "path": "verification/protection-independent.json",
+      "bytes": 23332,
+      "sha256": "a484c279dd5577bd9173911d1cf989792cba084f28a9d6737dedf262729cdc99"
+    },
+    {
+      "path": "verification/protection-source.json",
+      "bytes": 23719,
+      "sha256": "cd7709819e87788f3bb767c2f7b071321643a9989ee99519f7c1e6485b825723"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/core/execution/CompletionWork.hpp",
+      "bytes": 1582,
+      "sha256": "a817928bec4212f9c63e78a877c01425b6e4096dca128aaea436dd4d0a3d3e89"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/core/execution/ExecutionError.hpp",
+      "bytes": 964,
+      "sha256": "037f737b745ec6ed9706ab18baf40b8612090214055babc58b3dc99a4fcaf4d2"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/core/execution/ExecutionRuntime.hpp",
+      "bytes": 5751,
+      "sha256": "546a9089086aaaf48e59fd75e6aeb2a7762128246de42ea93c54176fb805bf58"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/core/execution/PortSender.hpp",
+      "bytes": 7309,
+      "sha256": "334eaad95ba8d51855bc5ce1404c6fff014a9a013c92487999ad0821a3428da5"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/core/execution/Scheduler.hpp",
+      "bytes": 9020,
+      "sha256": "703c51131b0694588afbee046cd5c75def44f56c3683d46a2019b148e55e1047"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/core/execution/Task.hpp",
+      "bytes": 9216,
+      "sha256": "929aa7c76411f4004e4124c7c41cf68fec5fa3fa82db30e2f606eee7c643f80f"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/core/execution/TaskInfo.hpp",
+      "bytes": 1489,
+      "sha256": "92862e9864619bf6a87acdd02028bea4c1ffa33dae89f4c54c216473da72ec33"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/core/execution/TaskScope.hpp",
+      "bytes": 3607,
+      "sha256": "9cdbe6c5e3e5aa97c2363e4b3f26c3fc309cbae9f085272f62427aa9f568145a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/core/execution/Timer.hpp",
+      "bytes": 8683,
+      "sha256": "60a88a3265dc8049588ca482e6580f283dfeef11ef7b2495d1e4c27104b10320"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/core/execution/visibility.h",
+      "bytes": 1101,
+      "sha256": "53a276db88c4a2bea447688f24a9d3950e9cf775c832295c67f0265688e58410"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/core/execution/WorkSchedule.hpp",
+      "bytes": 8661,
+      "sha256": "db21b7f566b7ed7afa3c1e6c95c13588a4d0dcb701dd53be973d489b05e8d26a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/description/DataLayout.hpp",
+      "bytes": 1423,
+      "sha256": "7a325c0ec276d727f8d2046c188ee9aec292d2b8c0d7eeb15d233297d4493960"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/description/ShaderInfo.hpp",
+      "bytes": 8026,
+      "sha256": "1e4cad801f5fd61bb7eca8fb0da5fe872b3791a612a327a568569e88353e2a74"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/core/Error.hpp",
+      "bytes": 909,
+      "sha256": "42b5f478d61ea18cebd4f3b5e5662deb8d64d09f348429c2ceb1f21e64c33052"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/core/Ids.hpp",
+      "bytes": 1394,
+      "sha256": "b1bbc41fab42e17cf6a44fc0e1ffa079df79abb55c32125b5f7dd8ac2a9fed6b"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/core/Target.hpp",
+      "bytes": 1089,
+      "sha256": "de30e882e72c45427d67d7a77f4e1cd096fed7741ad539cc0c216e7cd0f22cc2"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/data/ConfigValue.hpp",
+      "bytes": 5701,
+      "sha256": "af8e113ec095d2e62a310b8275d6174054b6cb1132c3ab0599268a0122c447d7"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/data/Encoding.hpp",
+      "bytes": 7834,
+      "sha256": "26effeec4050aa535dc3cf1274f04d3c15cd102e346d0c73f3dcb9645cfac680"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/data/Payload.hpp",
+      "bytes": 2154,
+      "sha256": "7f6769150fb1d7301d3a83e3559b79888433a34fece27b26dd0be2b24b6bb1de"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/data/Schema.hpp",
+      "bytes": 2340,
+      "sha256": "ff96bdd8ed632beb0958d4ac32b4b78589e8cf529fc5b06a7bbedb559643b273"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/data/Shader.hpp",
+      "bytes": 806,
+      "sha256": "a4d0e40378122c1ddb1a3361bce290f9c7b0cfd8f355de52d6ad7df190eb3dad"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/data/ShaderBlock.hpp",
+      "bytes": 1633,
+      "sha256": "a316c5940cdb97a6f79d6de9e4dc6f1ab5cb1589f3f7c560ddbfd080bad096eb"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/data/ShaderInterface.hpp",
+      "bytes": 1253,
+      "sha256": "02caffd4d023176f84fce8b4612e0fdeb3a557ba3230ecdd5ea0e135f4b34ecf"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/features/Assembly.hpp",
+      "bytes": 2352,
+      "sha256": "c6cd0af1e58a8a2f3aff530f1d1081a7af30d84415052060f2fdecd15f8a9156"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/features/Feature.hpp",
+      "bytes": 471,
+      "sha256": "979b743d39eb08b15ad5a306d670b12d7a2ae67acfaff6ca242b403ebbe79d7d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/features/Registration.hpp",
+      "bytes": 697,
+      "sha256": "9916a02ce1cc0a5ff66bfbdf133270ab4f858d869b92097f43d3eddbd612662a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/features/Resources.hpp",
+      "bytes": 1213,
+      "sha256": "a7292393caa7231a156feb639f7a198428990d9a5cd6bc0ed8a7a382e108a016"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/graph/Analysis.hpp",
+      "bytes": 1890,
+      "sha256": "84d64325650af1ea455b0e097bbfbe2093ccfdd2466bae009d14900d2b312d2d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/graph/Builder.hpp",
+      "bytes": 1256,
+      "sha256": "e663914be1fab5ef90d8802e80cc3dc25381c411dabeb34da3999f59c269e141"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/graph/Graph.hpp",
+      "bytes": 6008,
+      "sha256": "709655201d49655ee45ea20964e5766d5a6e7c415e1d21bd3519dc299e03d49f"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/graph/Program.hpp",
+      "bytes": 747,
+      "sha256": "ba94ac3204a82fc206281132ab79dbb73330b6d4e349a18366df98421e025d01"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/CompiledGraph.hpp",
+      "bytes": 4622,
+      "sha256": "632cb39f87e1e9722e5d80bfcf2497306ce35dfe24c81195eaa6ad255ceb00a6"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/DescriptorArray.hpp",
+      "bytes": 2019,
+      "sha256": "46ceafbbee37f5bc4dcdedd0938321b7e8151c7f64f6b160e077e559b1267078"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/device/Device.hpp",
+      "bytes": 6700,
+      "sha256": "cb1081aca4025c2992433ab587803cd6c5f022816b818ca8a1c164f87c47a575"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/device/DeviceOptions.hpp",
+      "bytes": 879,
+      "sha256": "3e2f5c95ec99d4b9de298bfe57475702e272674671c231442ba5ca14909bcd6c"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/DeviceSession.hpp",
+      "bytes": 7946,
+      "sha256": "fffc9790c49f5ac9f5980b80fa1958e428fb2c8cb8b398d79727fc8e9c9bce77"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/Error.hpp",
+      "bytes": 1179,
+      "sha256": "b64d4b4b2e8674512aa02d2971fa7674647f7f1ee364ca33a820620efa8622b3"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/ExecutionContext.hpp",
+      "bytes": 4296,
+      "sha256": "c56fdeed94aa0e161a911153e9ecff43d17b2350e1f2e489170796a089a28e8e"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/memory/Memory.hpp",
+      "bytes": 5839,
+      "sha256": "f580810c9bd6de644f9a7eaba0e7ab312c02a7e3d9cfe30143d9b3761b3c0798"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/Readback.hpp",
+      "bytes": 4213,
+      "sha256": "f2e4333f57f800598676241a131cfe2b58d07385d76f23a0923f26b010516f5c"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/retirement/Retirement.hpp",
+      "bytes": 7320,
+      "sha256": "be9c88e667b87c268cc279a2751e8d7af26d1ceef3c0e7ae25fb71d1a374b43d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/StorageBinding.hpp",
+      "bytes": 1275,
+      "sha256": "de69adb3ecfec81be40dbc15e26cce3a06aedd98c26545ce0de873fef3561b8d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/texture/TextureCommands.hpp",
+      "bytes": 1622,
+      "sha256": "f285d1071d618bea0833400593e1ce83bde5502d45f4204caed589c7181fbe61"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/texture/TextureStorage.hpp",
+      "bytes": 5808,
+      "sha256": "b8dae96e27b10b93f7b7d5096f578ad1ac13cb6adc6c32835ccf2535e8cefc4a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/transfer/GpuWork.hpp",
+      "bytes": 7715,
+      "sha256": "b1f9e5ccf603f2a654023fd8fb6d9242adf9b01491de31228c8cdbd8d4af8420"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/transfer/Submission.hpp",
+      "bytes": 8213,
+      "sha256": "52463bda86f4597be282c544b62e6cb72aeaa4c3e39b48a7414f32b580dea27d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/native/vulkan/transfer/Transfer.hpp",
+      "bytes": 4563,
+      "sha256": "50894bbb5705397f7fd9074a6d95dbf32914b56d547465defb6b47cd248c6425"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/protocol/AsyncCommand.hpp",
+      "bytes": 5761,
+      "sha256": "9a3433289efaf147abe4ddd4b803cc014e6d241f0f1589b68b2c9bf956f7d99e"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/protocol/Protocol.hpp",
+      "bytes": 12402,
+      "sha256": "cd9ec771f99807f0ffc911478f3019e7ab30d7aba594c8e06b479b770e2cb95f"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/resource/AsyncWork.hpp",
+      "bytes": 596,
+      "sha256": "c21121b5eb360da9583c9f42a51935cffa50c75f47be5183aa0db9edfcee8bdf"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/resource/Binding.hpp",
+      "bytes": 1109,
+      "sha256": "3f29ddb6b12a4de086444e2093bc9f9e732a824dda444c3eabe40da88e07aedf"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/resource/Factory.hpp",
+      "bytes": 4498,
+      "sha256": "844942a61e17190a650ed47d47e06fc11519cb36bcf7a65920ad26a612a911c7"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/resource/ResourceRegistry.hpp",
+      "bytes": 4164,
+      "sha256": "a48f8b407e14636b855fd364c717e5637e1bea0cbc112421734fb9a1c1f1dcab"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/resource/Storage.hpp",
+      "bytes": 2527,
+      "sha256": "8c94557f4c96e00740f3e9fbd4a1fd67e67195a221eb250adeb543f6f815293a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/resource/StorageSet.hpp",
+      "bytes": 3690,
+      "sha256": "56d68a0dfb4f2ee5d56c27277d8ad3980a7574c2fd2f82ae50435fd5cf96aa89"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/resource/Texture.hpp",
+      "bytes": 4690,
+      "sha256": "37dcc827d9576b4323b4beed9af6f52864cc0c9b084a40d6463ff7ef60f4311e"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/resource/TransferOptions.hpp",
+      "bytes": 360,
+      "sha256": "c83c9b5fb516c2f73e8d53b9ed8f173fdab17d881cb0da2867eea96e1c95f361"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/resource/Upload.hpp",
+      "bytes": 630,
+      "sha256": "b418b6623265a91b7ccc7ce86648fc14674014525af7ffb0fc14d05d8bbf5dad"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/runtime/Commands.hpp",
+      "bytes": 14134,
+      "sha256": "c4870963d3abc921c4bdfc594bc68a868a1ce102d1c866d1dac253b59d623dfb"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/runtime/CommandValue.hpp",
+      "bytes": 4556,
+      "sha256": "3db9177176d84f8f48b458425a4b7f489e5872c14c39a0c9cd10bca96c0d7ed7"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/runtime/RenderClient.hpp",
+      "bytes": 11461,
+      "sha256": "d0a2c3435f2863f2a241bbae24d8ba0fc6fa5a7ea9ddb6f5cafe7a28b95260e2"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/render/runtime/RenderServer.hpp",
+      "bytes": 12167,
+      "sha256": "addd957cbd11146cde0b34952fc146f82b2395950f31ad305297b412f6ed39a3"
+    },
+    {
+      "path": "verification/sdk-sync/backup/0/lux/engine/resource/visibility.h",
+      "bytes": 955,
+      "sha256": "5d76a5110e1b463f655068e501bac3e01e31ba9c2cc406e848530c660a6bd20e"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/core/execution/CompletionWork.hpp",
+      "bytes": 1582,
+      "sha256": "a817928bec4212f9c63e78a877c01425b6e4096dca128aaea436dd4d0a3d3e89"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/core/execution/ExecutionError.hpp",
+      "bytes": 964,
+      "sha256": "037f737b745ec6ed9706ab18baf40b8612090214055babc58b3dc99a4fcaf4d2"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/core/execution/ExecutionRuntime.hpp",
+      "bytes": 5751,
+      "sha256": "546a9089086aaaf48e59fd75e6aeb2a7762128246de42ea93c54176fb805bf58"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/core/execution/PortSender.hpp",
+      "bytes": 7309,
+      "sha256": "334eaad95ba8d51855bc5ce1404c6fff014a9a013c92487999ad0821a3428da5"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/core/execution/Scheduler.hpp",
+      "bytes": 9020,
+      "sha256": "703c51131b0694588afbee046cd5c75def44f56c3683d46a2019b148e55e1047"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/core/execution/Task.hpp",
+      "bytes": 9216,
+      "sha256": "929aa7c76411f4004e4124c7c41cf68fec5fa3fa82db30e2f606eee7c643f80f"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/core/execution/TaskInfo.hpp",
+      "bytes": 1489,
+      "sha256": "92862e9864619bf6a87acdd02028bea4c1ffa33dae89f4c54c216473da72ec33"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/core/execution/TaskScope.hpp",
+      "bytes": 3607,
+      "sha256": "9cdbe6c5e3e5aa97c2363e4b3f26c3fc309cbae9f085272f62427aa9f568145a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/core/execution/Timer.hpp",
+      "bytes": 8683,
+      "sha256": "60a88a3265dc8049588ca482e6580f283dfeef11ef7b2495d1e4c27104b10320"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/core/execution/visibility.h",
+      "bytes": 1101,
+      "sha256": "53a276db88c4a2bea447688f24a9d3950e9cf775c832295c67f0265688e58410"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/core/execution/WorkSchedule.hpp",
+      "bytes": 8661,
+      "sha256": "db21b7f566b7ed7afa3c1e6c95c13588a4d0dcb701dd53be973d489b05e8d26a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/description/DataLayout.hpp",
+      "bytes": 1423,
+      "sha256": "7a325c0ec276d727f8d2046c188ee9aec292d2b8c0d7eeb15d233297d4493960"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/description/ShaderInfo.hpp",
+      "bytes": 8026,
+      "sha256": "1e4cad801f5fd61bb7eca8fb0da5fe872b3791a612a327a568569e88353e2a74"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/core/Error.hpp",
+      "bytes": 909,
+      "sha256": "42b5f478d61ea18cebd4f3b5e5662deb8d64d09f348429c2ceb1f21e64c33052"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/core/Ids.hpp",
+      "bytes": 1394,
+      "sha256": "b1bbc41fab42e17cf6a44fc0e1ffa079df79abb55c32125b5f7dd8ac2a9fed6b"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/core/Target.hpp",
+      "bytes": 1089,
+      "sha256": "de30e882e72c45427d67d7a77f4e1cd096fed7741ad539cc0c216e7cd0f22cc2"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/data/ConfigValue.hpp",
+      "bytes": 5701,
+      "sha256": "af8e113ec095d2e62a310b8275d6174054b6cb1132c3ab0599268a0122c447d7"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/data/Encoding.hpp",
+      "bytes": 7834,
+      "sha256": "26effeec4050aa535dc3cf1274f04d3c15cd102e346d0c73f3dcb9645cfac680"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/data/Payload.hpp",
+      "bytes": 2154,
+      "sha256": "7f6769150fb1d7301d3a83e3559b79888433a34fece27b26dd0be2b24b6bb1de"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/data/Schema.hpp",
+      "bytes": 2340,
+      "sha256": "ff96bdd8ed632beb0958d4ac32b4b78589e8cf529fc5b06a7bbedb559643b273"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/data/Shader.hpp",
+      "bytes": 806,
+      "sha256": "a4d0e40378122c1ddb1a3361bce290f9c7b0cfd8f355de52d6ad7df190eb3dad"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/data/ShaderBlock.hpp",
+      "bytes": 1633,
+      "sha256": "a316c5940cdb97a6f79d6de9e4dc6f1ab5cb1589f3f7c560ddbfd080bad096eb"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/data/ShaderInterface.hpp",
+      "bytes": 1253,
+      "sha256": "02caffd4d023176f84fce8b4612e0fdeb3a557ba3230ecdd5ea0e135f4b34ecf"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/features/Assembly.hpp",
+      "bytes": 2352,
+      "sha256": "c6cd0af1e58a8a2f3aff530f1d1081a7af30d84415052060f2fdecd15f8a9156"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/features/Feature.hpp",
+      "bytes": 471,
+      "sha256": "979b743d39eb08b15ad5a306d670b12d7a2ae67acfaff6ca242b403ebbe79d7d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/features/Registration.hpp",
+      "bytes": 697,
+      "sha256": "9916a02ce1cc0a5ff66bfbdf133270ab4f858d869b92097f43d3eddbd612662a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/features/Resources.hpp",
+      "bytes": 1213,
+      "sha256": "a7292393caa7231a156feb639f7a198428990d9a5cd6bc0ed8a7a382e108a016"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/graph/Analysis.hpp",
+      "bytes": 1890,
+      "sha256": "84d64325650af1ea455b0e097bbfbe2093ccfdd2466bae009d14900d2b312d2d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/graph/Builder.hpp",
+      "bytes": 1256,
+      "sha256": "e663914be1fab5ef90d8802e80cc3dc25381c411dabeb34da3999f59c269e141"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/graph/Graph.hpp",
+      "bytes": 6008,
+      "sha256": "709655201d49655ee45ea20964e5766d5a6e7c415e1d21bd3519dc299e03d49f"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/graph/Program.hpp",
+      "bytes": 747,
+      "sha256": "ba94ac3204a82fc206281132ab79dbb73330b6d4e349a18366df98421e025d01"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/CompiledGraph.hpp",
+      "bytes": 4622,
+      "sha256": "632cb39f87e1e9722e5d80bfcf2497306ce35dfe24c81195eaa6ad255ceb00a6"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/DescriptorArray.hpp",
+      "bytes": 2019,
+      "sha256": "46ceafbbee37f5bc4dcdedd0938321b7e8151c7f64f6b160e077e559b1267078"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/device/Device.hpp",
+      "bytes": 6700,
+      "sha256": "cb1081aca4025c2992433ab587803cd6c5f022816b818ca8a1c164f87c47a575"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/device/DeviceOptions.hpp",
+      "bytes": 879,
+      "sha256": "3e2f5c95ec99d4b9de298bfe57475702e272674671c231442ba5ca14909bcd6c"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/DeviceSession.hpp",
+      "bytes": 7946,
+      "sha256": "fffc9790c49f5ac9f5980b80fa1958e428fb2c8cb8b398d79727fc8e9c9bce77"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/Error.hpp",
+      "bytes": 1179,
+      "sha256": "b64d4b4b2e8674512aa02d2971fa7674647f7f1ee364ca33a820620efa8622b3"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/ExecutionContext.hpp",
+      "bytes": 4296,
+      "sha256": "c56fdeed94aa0e161a911153e9ecff43d17b2350e1f2e489170796a089a28e8e"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/memory/Memory.hpp",
+      "bytes": 5839,
+      "sha256": "f580810c9bd6de644f9a7eaba0e7ab312c02a7e3d9cfe30143d9b3761b3c0798"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/Readback.hpp",
+      "bytes": 4213,
+      "sha256": "f2e4333f57f800598676241a131cfe2b58d07385d76f23a0923f26b010516f5c"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/retirement/Retirement.hpp",
+      "bytes": 7320,
+      "sha256": "be9c88e667b87c268cc279a2751e8d7af26d1ceef3c0e7ae25fb71d1a374b43d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/StorageBinding.hpp",
+      "bytes": 1275,
+      "sha256": "de69adb3ecfec81be40dbc15e26cce3a06aedd98c26545ce0de873fef3561b8d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/texture/TextureCommands.hpp",
+      "bytes": 1622,
+      "sha256": "f285d1071d618bea0833400593e1ce83bde5502d45f4204caed589c7181fbe61"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/texture/TextureStorage.hpp",
+      "bytes": 5808,
+      "sha256": "b8dae96e27b10b93f7b7d5096f578ad1ac13cb6adc6c32835ccf2535e8cefc4a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/transfer/GpuWork.hpp",
+      "bytes": 7715,
+      "sha256": "b1f9e5ccf603f2a654023fd8fb6d9242adf9b01491de31228c8cdbd8d4af8420"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/transfer/Submission.hpp",
+      "bytes": 8213,
+      "sha256": "52463bda86f4597be282c544b62e6cb72aeaa4c3e39b48a7414f32b580dea27d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/native/vulkan/transfer/Transfer.hpp",
+      "bytes": 4563,
+      "sha256": "50894bbb5705397f7fd9074a6d95dbf32914b56d547465defb6b47cd248c6425"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/protocol/AsyncCommand.hpp",
+      "bytes": 5761,
+      "sha256": "9a3433289efaf147abe4ddd4b803cc014e6d241f0f1589b68b2c9bf956f7d99e"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/protocol/Protocol.hpp",
+      "bytes": 12402,
+      "sha256": "cd9ec771f99807f0ffc911478f3019e7ab30d7aba594c8e06b479b770e2cb95f"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/resource/AsyncWork.hpp",
+      "bytes": 596,
+      "sha256": "c21121b5eb360da9583c9f42a51935cffa50c75f47be5183aa0db9edfcee8bdf"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/resource/Binding.hpp",
+      "bytes": 1109,
+      "sha256": "3f29ddb6b12a4de086444e2093bc9f9e732a824dda444c3eabe40da88e07aedf"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/resource/Factory.hpp",
+      "bytes": 4498,
+      "sha256": "844942a61e17190a650ed47d47e06fc11519cb36bcf7a65920ad26a612a911c7"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/resource/ResourceRegistry.hpp",
+      "bytes": 4164,
+      "sha256": "a48f8b407e14636b855fd364c717e5637e1bea0cbc112421734fb9a1c1f1dcab"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/resource/Storage.hpp",
+      "bytes": 2527,
+      "sha256": "8c94557f4c96e00740f3e9fbd4a1fd67e67195a221eb250adeb543f6f815293a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/resource/StorageSet.hpp",
+      "bytes": 3690,
+      "sha256": "56d68a0dfb4f2ee5d56c27277d8ad3980a7574c2fd2f82ae50435fd5cf96aa89"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/resource/Texture.hpp",
+      "bytes": 4690,
+      "sha256": "37dcc827d9576b4323b4beed9af6f52864cc0c9b084a40d6463ff7ef60f4311e"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/resource/TransferOptions.hpp",
+      "bytes": 360,
+      "sha256": "c83c9b5fb516c2f73e8d53b9ed8f173fdab17d881cb0da2867eea96e1c95f361"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/resource/Upload.hpp",
+      "bytes": 630,
+      "sha256": "b418b6623265a91b7ccc7ce86648fc14674014525af7ffb0fc14d05d8bbf5dad"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/runtime/Commands.hpp",
+      "bytes": 14134,
+      "sha256": "c4870963d3abc921c4bdfc594bc68a868a1ce102d1c866d1dac253b59d623dfb"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/runtime/CommandValue.hpp",
+      "bytes": 4556,
+      "sha256": "3db9177176d84f8f48b458425a4b7f489e5872c14c39a0c9cd10bca96c0d7ed7"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/runtime/RenderClient.hpp",
+      "bytes": 11461,
+      "sha256": "d0a2c3435f2863f2a241bbae24d8ba0fc6fa5a7ea9ddb6f5cafe7a28b95260e2"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/render/runtime/RenderServer.hpp",
+      "bytes": 12167,
+      "sha256": "addd957cbd11146cde0b34952fc146f82b2395950f31ad305297b412f6ed39a3"
+    },
+    {
+      "path": "verification/sdk-sync/backup/1/lux/engine/resource/visibility.h",
+      "bytes": 955,
+      "sha256": "5d76a5110e1b463f655068e501bac3e01e31ba9c2cc406e848530c660a6bd20e"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/core/execution/CompletionWork.hpp",
+      "bytes": 1582,
+      "sha256": "a817928bec4212f9c63e78a877c01425b6e4096dca128aaea436dd4d0a3d3e89"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/core/execution/ExecutionError.hpp",
+      "bytes": 964,
+      "sha256": "037f737b745ec6ed9706ab18baf40b8612090214055babc58b3dc99a4fcaf4d2"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/core/execution/ExecutionRuntime.hpp",
+      "bytes": 5751,
+      "sha256": "546a9089086aaaf48e59fd75e6aeb2a7762128246de42ea93c54176fb805bf58"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/core/execution/PortSender.hpp",
+      "bytes": 7309,
+      "sha256": "334eaad95ba8d51855bc5ce1404c6fff014a9a013c92487999ad0821a3428da5"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/core/execution/Scheduler.hpp",
+      "bytes": 9020,
+      "sha256": "703c51131b0694588afbee046cd5c75def44f56c3683d46a2019b148e55e1047"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/core/execution/Task.hpp",
+      "bytes": 9216,
+      "sha256": "929aa7c76411f4004e4124c7c41cf68fec5fa3fa82db30e2f606eee7c643f80f"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/core/execution/TaskInfo.hpp",
+      "bytes": 1489,
+      "sha256": "92862e9864619bf6a87acdd02028bea4c1ffa33dae89f4c54c216473da72ec33"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/core/execution/TaskScope.hpp",
+      "bytes": 3607,
+      "sha256": "9cdbe6c5e3e5aa97c2363e4b3f26c3fc309cbae9f085272f62427aa9f568145a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/core/execution/Timer.hpp",
+      "bytes": 8683,
+      "sha256": "60a88a3265dc8049588ca482e6580f283dfeef11ef7b2495d1e4c27104b10320"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/core/execution/visibility.h",
+      "bytes": 1101,
+      "sha256": "53a276db88c4a2bea447688f24a9d3950e9cf775c832295c67f0265688e58410"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/core/execution/WorkSchedule.hpp",
+      "bytes": 8661,
+      "sha256": "db21b7f566b7ed7afa3c1e6c95c13588a4d0dcb701dd53be973d489b05e8d26a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/description/DataLayout.hpp",
+      "bytes": 1423,
+      "sha256": "7a325c0ec276d727f8d2046c188ee9aec292d2b8c0d7eeb15d233297d4493960"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/description/ShaderInfo.hpp",
+      "bytes": 8026,
+      "sha256": "1e4cad801f5fd61bb7eca8fb0da5fe872b3791a612a327a568569e88353e2a74"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/core/Error.hpp",
+      "bytes": 909,
+      "sha256": "42b5f478d61ea18cebd4f3b5e5662deb8d64d09f348429c2ceb1f21e64c33052"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/core/Ids.hpp",
+      "bytes": 1394,
+      "sha256": "b1bbc41fab42e17cf6a44fc0e1ffa079df79abb55c32125b5f7dd8ac2a9fed6b"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/core/Target.hpp",
+      "bytes": 1089,
+      "sha256": "de30e882e72c45427d67d7a77f4e1cd096fed7741ad539cc0c216e7cd0f22cc2"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/data/ConfigValue.hpp",
+      "bytes": 5701,
+      "sha256": "af8e113ec095d2e62a310b8275d6174054b6cb1132c3ab0599268a0122c447d7"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/data/Encoding.hpp",
+      "bytes": 7834,
+      "sha256": "26effeec4050aa535dc3cf1274f04d3c15cd102e346d0c73f3dcb9645cfac680"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/data/Payload.hpp",
+      "bytes": 2154,
+      "sha256": "7f6769150fb1d7301d3a83e3559b79888433a34fece27b26dd0be2b24b6bb1de"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/data/Schema.hpp",
+      "bytes": 2340,
+      "sha256": "ff96bdd8ed632beb0958d4ac32b4b78589e8cf529fc5b06a7bbedb559643b273"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/data/Shader.hpp",
+      "bytes": 806,
+      "sha256": "a4d0e40378122c1ddb1a3361bce290f9c7b0cfd8f355de52d6ad7df190eb3dad"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/data/ShaderBlock.hpp",
+      "bytes": 1633,
+      "sha256": "a316c5940cdb97a6f79d6de9e4dc6f1ab5cb1589f3f7c560ddbfd080bad096eb"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/data/ShaderInterface.hpp",
+      "bytes": 1253,
+      "sha256": "02caffd4d023176f84fce8b4612e0fdeb3a557ba3230ecdd5ea0e135f4b34ecf"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/features/Assembly.hpp",
+      "bytes": 2352,
+      "sha256": "c6cd0af1e58a8a2f3aff530f1d1081a7af30d84415052060f2fdecd15f8a9156"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/features/Feature.hpp",
+      "bytes": 471,
+      "sha256": "979b743d39eb08b15ad5a306d670b12d7a2ae67acfaff6ca242b403ebbe79d7d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/features/Registration.hpp",
+      "bytes": 697,
+      "sha256": "9916a02ce1cc0a5ff66bfbdf133270ab4f858d869b92097f43d3eddbd612662a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/features/Resources.hpp",
+      "bytes": 1213,
+      "sha256": "a7292393caa7231a156feb639f7a198428990d9a5cd6bc0ed8a7a382e108a016"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/graph/Analysis.hpp",
+      "bytes": 1890,
+      "sha256": "84d64325650af1ea455b0e097bbfbe2093ccfdd2466bae009d14900d2b312d2d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/graph/Builder.hpp",
+      "bytes": 1256,
+      "sha256": "e663914be1fab5ef90d8802e80cc3dc25381c411dabeb34da3999f59c269e141"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/graph/Graph.hpp",
+      "bytes": 6008,
+      "sha256": "709655201d49655ee45ea20964e5766d5a6e7c415e1d21bd3519dc299e03d49f"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/graph/Program.hpp",
+      "bytes": 747,
+      "sha256": "ba94ac3204a82fc206281132ab79dbb73330b6d4e349a18366df98421e025d01"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/CompiledGraph.hpp",
+      "bytes": 4622,
+      "sha256": "632cb39f87e1e9722e5d80bfcf2497306ce35dfe24c81195eaa6ad255ceb00a6"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/DescriptorArray.hpp",
+      "bytes": 2019,
+      "sha256": "46ceafbbee37f5bc4dcdedd0938321b7e8151c7f64f6b160e077e559b1267078"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/device/Device.hpp",
+      "bytes": 6700,
+      "sha256": "cb1081aca4025c2992433ab587803cd6c5f022816b818ca8a1c164f87c47a575"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/device/DeviceOptions.hpp",
+      "bytes": 879,
+      "sha256": "3e2f5c95ec99d4b9de298bfe57475702e272674671c231442ba5ca14909bcd6c"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/DeviceSession.hpp",
+      "bytes": 7946,
+      "sha256": "fffc9790c49f5ac9f5980b80fa1958e428fb2c8cb8b398d79727fc8e9c9bce77"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/Error.hpp",
+      "bytes": 1179,
+      "sha256": "b64d4b4b2e8674512aa02d2971fa7674647f7f1ee364ca33a820620efa8622b3"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/ExecutionContext.hpp",
+      "bytes": 4296,
+      "sha256": "c56fdeed94aa0e161a911153e9ecff43d17b2350e1f2e489170796a089a28e8e"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/memory/Memory.hpp",
+      "bytes": 5839,
+      "sha256": "f580810c9bd6de644f9a7eaba0e7ab312c02a7e3d9cfe30143d9b3761b3c0798"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/Readback.hpp",
+      "bytes": 4213,
+      "sha256": "f2e4333f57f800598676241a131cfe2b58d07385d76f23a0923f26b010516f5c"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/retirement/Retirement.hpp",
+      "bytes": 7320,
+      "sha256": "be9c88e667b87c268cc279a2751e8d7af26d1ceef3c0e7ae25fb71d1a374b43d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/StorageBinding.hpp",
+      "bytes": 1275,
+      "sha256": "de69adb3ecfec81be40dbc15e26cce3a06aedd98c26545ce0de873fef3561b8d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/texture/TextureCommands.hpp",
+      "bytes": 1622,
+      "sha256": "f285d1071d618bea0833400593e1ce83bde5502d45f4204caed589c7181fbe61"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/texture/TextureStorage.hpp",
+      "bytes": 5808,
+      "sha256": "b8dae96e27b10b93f7b7d5096f578ad1ac13cb6adc6c32835ccf2535e8cefc4a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/transfer/GpuWork.hpp",
+      "bytes": 7715,
+      "sha256": "b1f9e5ccf603f2a654023fd8fb6d9242adf9b01491de31228c8cdbd8d4af8420"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/transfer/Submission.hpp",
+      "bytes": 8213,
+      "sha256": "52463bda86f4597be282c544b62e6cb72aeaa4c3e39b48a7414f32b580dea27d"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/native/vulkan/transfer/Transfer.hpp",
+      "bytes": 4563,
+      "sha256": "50894bbb5705397f7fd9074a6d95dbf32914b56d547465defb6b47cd248c6425"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/protocol/AsyncCommand.hpp",
+      "bytes": 5761,
+      "sha256": "9a3433289efaf147abe4ddd4b803cc014e6d241f0f1589b68b2c9bf956f7d99e"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/protocol/Protocol.hpp",
+      "bytes": 12402,
+      "sha256": "cd9ec771f99807f0ffc911478f3019e7ab30d7aba594c8e06b479b770e2cb95f"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/resource/AsyncWork.hpp",
+      "bytes": 596,
+      "sha256": "c21121b5eb360da9583c9f42a51935cffa50c75f47be5183aa0db9edfcee8bdf"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/resource/Binding.hpp",
+      "bytes": 1109,
+      "sha256": "3f29ddb6b12a4de086444e2093bc9f9e732a824dda444c3eabe40da88e07aedf"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/resource/Factory.hpp",
+      "bytes": 4498,
+      "sha256": "844942a61e17190a650ed47d47e06fc11519cb36bcf7a65920ad26a612a911c7"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/resource/ResourceRegistry.hpp",
+      "bytes": 4164,
+      "sha256": "a48f8b407e14636b855fd364c717e5637e1bea0cbc112421734fb9a1c1f1dcab"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/resource/Storage.hpp",
+      "bytes": 2527,
+      "sha256": "8c94557f4c96e00740f3e9fbd4a1fd67e67195a221eb250adeb543f6f815293a"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/resource/StorageSet.hpp",
+      "bytes": 3690,
+      "sha256": "56d68a0dfb4f2ee5d56c27277d8ad3980a7574c2fd2f82ae50435fd5cf96aa89"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/resource/Texture.hpp",
+      "bytes": 4690,
+      "sha256": "37dcc827d9576b4323b4beed9af6f52864cc0c9b084a40d6463ff7ef60f4311e"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/resource/TransferOptions.hpp",
+      "bytes": 360,
+      "sha256": "c83c9b5fb516c2f73e8d53b9ed8f173fdab17d881cb0da2867eea96e1c95f361"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/resource/Upload.hpp",
+      "bytes": 630,
+      "sha256": "b418b6623265a91b7ccc7ce86648fc14674014525af7ffb0fc14d05d8bbf5dad"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/runtime/Commands.hpp",
+      "bytes": 14134,
+      "sha256": "c4870963d3abc921c4bdfc594bc68a868a1ce102d1c866d1dac253b59d623dfb"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/runtime/CommandValue.hpp",
+      "bytes": 4556,
+      "sha256": "3db9177176d84f8f48b458425a4b7f489e5872c14c39a0c9cd10bca96c0d7ed7"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/runtime/RenderClient.hpp",
+      "bytes": 11461,
+      "sha256": "d0a2c3435f2863f2a241bbae24d8ba0fc6fa5a7ea9ddb6f5cafe7a28b95260e2"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/render/runtime/RenderServer.hpp",
+      "bytes": 12167,
+      "sha256": "addd957cbd11146cde0b34952fc146f82b2395950f31ad305297b412f6ed39a3"
+    },
+    {
+      "path": "verification/sdk-sync/backup/2/lux/engine/resource/visibility.h",
+      "bytes": 955,
+      "sha256": "5d76a5110e1b463f655068e501bac3e01e31ba9c2cc406e848530c660a6bd20e"
+    },
+    {
+      "path": "verification/sdk-sync/manifest.json",
+      "bytes": 125081,
+      "sha256": "c931e0bf52e9ec7aef0101e95cd433e9fdd07352a02a0f99849fe1fd00cf5fc2"
+    },
+    {
+      "path": "verification/test-matrix.json",
+      "bytes": 7401,
+      "sha256": "5a658fa22d44fbbde7ac29ffe2708f921e0a8e9a118afbca092684f14c4d84fe"
+    },
+    {
+      "path": "verify-n5-block.ps1",
+      "bytes": 1253,
+      "sha256": "60c1cd9f73aad7698ca72b8482722e94dddefafdd2754003399f5e1b71cbf9ed"
+    },
+    {
+      "path": "verify-n5-cold.ps1",
+      "bytes": 1227,
+      "sha256": "684476e609a27816b937069c956bc0e216d7f9bc7305d6a88bc7845972efb742"
+    },
+    {
+      "path": "verify-n5-color.ps1",
+      "bytes": 1232,
+      "sha256": "630d928766fa9a2b55c292a06ff5e3103965038ef4734e533100af37a027fef7"
+    },
+    {
+      "path": "verify-n5-layout.ps1",
+      "bytes": 1256,
+      "sha256": "d4e70da48379d86723920be3b648b0ba6adbdaee58b33399254a4af9111704ff"
+    },
+    {
+      "path": "verify-n5-parameters.ps1",
+      "bytes": 1268,
+      "sha256": "d2d0b8addf28c06cf8dee176342d321875449fc4a78fa17eb5dd264239de3377"
+    },
+    {
+      "path": "verify-n5-stages.ps1",
+      "bytes": 1215,
+      "sha256": "5d21478fcd291b7bdb6dbb04dcffa5b77930c3986564744be2a0ee0dd76f308d"
+    }
+  ]
+}

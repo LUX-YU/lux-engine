@@ -188,7 +188,7 @@ namespace lux::render::vulkan
             shared_descriptors_ = std::move(*table);
         }
         const auto draws = std::ranges::count_if(passes_, [](const auto& pass) {
-            return pass.recipe->recipe == ERecipe::DRAW;
+            return pass.recipe->recipe == ERecipe::DRAW || pass.recipe->recipe == ERecipe::DISPATCH;
         });
         if (!layout.private_bindings.empty() && draws)
         {
@@ -207,7 +207,7 @@ namespace lux::render::vulkan
         }
         for (auto& pass : passes_)
         {
-            if (pass.recipe->recipe != ERecipe::DRAW) continue;
+            if (pass.recipe->recipe != ERecipe::DRAW && pass.recipe->recipe != ERecipe::DISPATCH) continue;
             pass.descriptors.resize(code_->descriptor_layouts_.size());
             if (shared_descriptors_) pass.descriptors[layout.shared_set] = shared_descriptors_->descriptors();
             if (descriptor_pool_)
@@ -267,7 +267,8 @@ namespace lux::render::vulkan
                     copy.source->data() + copy.source_offset, copy.bytes);
             for (std::size_t i = 0; i < pass.buffers.size(); ++i)
                 pass.buffers[i].buffer = bindings_[pass.recipe->buffers[i].resource].buffer->native();
-            if (pass.recipe->recipe != ERecipe::DRAW || !descriptor_pool_) continue;
+            if ((pass.recipe->recipe != ERecipe::DRAW && pass.recipe->recipe != ERecipe::DISPATCH) ||
+                !descriptor_pool_) continue;
             const auto descriptors = pass.private_descriptors[descriptor_bank_];
             pass.descriptors[layout.private_set] = descriptors;
             for (const auto& use : layout.programs[pass.recipe->layout_program].uses)
@@ -404,7 +405,8 @@ namespace lux::render::vulkan
                     LUX_RECORD("cmd_bind", vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, recipe.pipeline));
                 if (!pass.descriptors.empty())
                     LUX_RECORD("cmd_descriptor", vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        code_->layout(), 0, std::uint32_t(pass.descriptors.size()), pass.descriptors.data(), 0, nullptr));
+                        code_->layout(), 0, std::uint32_t(pass.descriptors.size()), pass.descriptors.data(), 0, nullptr
+                    ));
                 if (!pass.parameters.empty())
                     vkCmdPushConstants(command, code_->layout(), code_->descriptor_plan_->parameter_stages, 0,
                         std::uint32_t(pass.parameters.size()), pass.parameters.data());
@@ -412,6 +414,19 @@ namespace lux::render::vulkan
                 if (recipe.end_rendering) LUX_RECORD("cmd_end", vkCmdEndRendering(command));
                 break;
             }
+            case ERecipe::DISPATCH:
+                LUX_RECORD("cmd_bind", vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, recipe.pipeline));
+                if (!pass.descriptors.empty())
+                    LUX_RECORD("cmd_descriptor", vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE,
+                        code_->layout(), 0, std::uint32_t(pass.descriptors.size()), pass.descriptors.data(), 0, nullptr
+                    ));
+                if (!pass.parameters.empty())
+                    vkCmdPushConstants(command, code_->layout(), code_->descriptor_plan_->parameter_stages, 0,
+                        std::uint32_t(pass.parameters.size()), pass.parameters.data());
+                LUX_RECORD("cmd_dispatch", vkCmdDispatch(
+                    command, recipe.dispatch[0], recipe.dispatch[1], recipe.dispatch[2]
+                ));
+                break;
             case ERecipe::CLEAR_IMAGE:
             {
                 VkClearColorValue value;

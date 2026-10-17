@@ -127,11 +127,14 @@ namespace lux::render::vulkan
                 cursor == expected.fields.size();
         }
 
-        bool validateStage(const SpirvStage& input, SpvExecutionModel stage, const ShaderInterface& interface) noexcept
+        bool validateStage(
+            const SpirvStage& input, SpvExecutionModel stage, const ShaderInterface& interface,
+            const VkPhysicalDeviceLimits& limits
+        ) noexcept
         {
             const bool invalid_entry = input.entry.empty() || input.entry.find('\0') != std::string::npos;
             if (invalid_entry) return false;
-            const auto stage_bit = stage == SpvExecutionModelVertex ? 1u : 2u;
+            const auto stage_bit = stage == SpvExecutionModelVertex ? 1u : stage == SpvExecutionModelFragment ? 2u : 4u;
             const auto words = std::span(input.words);
             // Use the existing SPIR-V tools, not another shader parser or handwritten instruction decoder.
             const auto validation = spvContextCreate(SPV_ENV_VULKAN_1_3);
@@ -170,6 +173,25 @@ namespace lux::render::vulkan
             const bool is_entry_mismatch = count != 1 || entries[0].execution_model != stage ||
                 input.entry != entries[0].name;
             if (is_entry_mismatch) return false;
+            if (stage == SpvExecutionModelGLCompute)
+            {
+                const SpvExecutionMode* modes{};
+                std::size_t mode_count = 0;
+                if (!check(spvc_compiler_get_execution_modes(compiler, &modes, &mode_count))) return false;
+                const auto mode_list = std::span(modes, mode_count);
+                const bool has_local = std::ranges::find(mode_list, SpvExecutionModeLocalSize) != mode_list.end();
+                const bool specialized = std::ranges::find(mode_list, SpvExecutionModeLocalSizeId) != mode_list.end();
+                if (!has_local || specialized) return false;
+                std::uint64_t invocations = 1;
+                for (unsigned axis = 0; axis < 3; ++axis)
+                {
+                    const auto size = spvc_compiler_get_execution_mode_argument_by_index(
+                        compiler, SpvExecutionModeLocalSize, axis);
+                    if (!size || size > limits.maxComputeWorkGroupSize[axis]) return false;
+                    invocations *= size;
+                    if (invocations > limits.maxComputeWorkGroupInvocations) return false;
+                }
+            }
             if (!check(spvc_compiler_create_shader_resources(compiler, &resources))) return false;
             for (unsigned kind = SPVC_RESOURCE_TYPE_UNIFORM_BUFFER; kind <= SPVC_RESOURCE_TYPE_SHADER_RECORD_BUFFER;
                 ++kind)
@@ -221,6 +243,16 @@ namespace lux::render::vulkan
                         }
                         else
                         {
+                            const SpvDecoration* decorations{};
+                            std::size_t decoration_count = 0;
+                            if (!check(spvc_compiler_get_buffer_block_decorations(
+                                compiler, list[i].id, &decorations, &decoration_count))) return false;
+                            const auto flags = std::span(decorations, decoration_count);
+                            const bool read = std::ranges::find(flags, SpvDecorationNonReadable) == flags.end();
+                            const bool write = std::ranges::find(flags, SpvDecorationNonWritable) == flags.end();
+                            const bool access_mismatch = read != (expected->access != EStorageAccess::WRITE_ONLY) ||
+                                write != (expected->access != EStorageAccess::READ_ONLY);
+                            if (access_mismatch) return false;
                             const auto structure = spvc_compiler_get_type_handle(compiler, list[i].base_type_id);
                             const bool invalid_block = spvc_type_get_num_array_dimensions(type) != 0 ||
                                 expected->count != 1 || !validateBlock(compiler, structure, expected->block);
@@ -279,6 +311,40 @@ namespace lux::render::vulkan
         return handle.handle(); // Transfer the handle to the caller's existing aggregate owner.
     }
 
+    RenderResult<VkPipeline> compileCompute(
+        const VulkanDevice& device, VkPipelineLayout layout, const SpirvArtifact& shader
+    ) noexcept
+    {
+        const bool wrong_stage = shader.stages.size() != 1 ||
+            shader.stages[0].stage != rdesc::EShaderType::COMPUTE;
+        if (wrong_stage) return cxx::unexpected(RenderError{kInvalidArgument});
+        const auto& code = shader.stages[0];
+        if (!validateStage(code, SpvExecutionModelGLCompute, shader.interface, device.properties().limits))
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        VkShaderModuleCreateInfo module{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+        module.codeSize = code.words.size() * sizeof(std::uint32_t);
+        module.pCode = code.words.data();
+        VkShaderModule handle{};
+        const auto created = LUX_NATIVE("shader", vkCreateShaderModule(device.native(), &module, nullptr, &handle));
+        if (created != VK_SUCCESS) return cxx::unexpected(nativeError(created));
+        VkComputePipelineCreateInfo info{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+        info.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        info.stage.module = handle;
+        info.stage.pName = code.entry.c_str();
+        info.layout = layout;
+        VkPipeline pipeline{};
+        const auto result = LUX_NATIVE("pipeline", vkCreateComputePipelines(
+            device.native(), {}, 1, &info, nullptr, &pipeline));
+        LUX_DESTROY("shader", vkDestroyShaderModule(device.native(), handle, nullptr));
+        if (result != VK_SUCCESS)
+        {
+            if (pipeline) LUX_DESTROY("pipeline", vkDestroyPipeline(device.native(), pipeline, nullptr));
+            return cxx::unexpected(nativeError(result));
+        }
+        return pipeline;
+    }
+
     RenderResult<VkPipeline> compileGraphics(
         const VulkanDevice& device, VkPipelineLayout layout, const SpirvArtifact& shader
     ) noexcept
@@ -299,8 +365,9 @@ namespace lux::render::vulkan
         }
         const bool missing_stage = !vertex_stage || !fragment_stage;
         if (missing_stage) return cxx::unexpected(RenderError{kInvalidArgument});
-        const bool is_invalid_shader = !validateStage(*vertex_stage, SpvExecutionModelVertex, shader.interface) ||
-            !validateStage(*fragment_stage, SpvExecutionModelFragment, shader.interface);
+        const auto& limits = device.properties().limits;
+        const bool is_invalid_shader = !validateStage(*vertex_stage, SpvExecutionModelVertex, shader.interface, limits) ||
+            !validateStage(*fragment_stage, SpvExecutionModelFragment, shader.interface, limits);
         if (is_invalid_shader)
             return cxx::unexpected(RenderError{kInvalidArgument});
         struct Modules final

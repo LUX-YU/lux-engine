@@ -22,7 +22,7 @@ namespace lux::render::vulkan
 
     };
 
-    enum class ERecipe : std::uint8_t { DRAW, CLEAR_IMAGE, FILL_BUFFER, COPY_IMAGE_BUFFER, COPY_BUFFER };
+    enum class ERecipe : std::uint8_t { DRAW, DISPATCH, CLEAR_IMAGE, FILL_BUFFER, COPY_IMAGE_BUFFER, COPY_BUFFER };
 
     struct ImageBarrier final
     {
@@ -48,6 +48,7 @@ namespace lux::render::vulkan
         VkAttachmentLoadOp load = VK_ATTACHMENT_LOAD_OP_CLEAR;
         std::array<float, 4> clear_color{};
         std::uint32_t vertex_count = 0;
+        std::array<std::uint32_t, 3> dispatch{};
         bool begin_rendering = true;
         bool end_rendering = true;
         bool bind_pipeline = true;

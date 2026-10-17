@@ -7,6 +7,8 @@
 
 namespace lux::render
 {
+    enum class EStorageAccess : std::uint8_t { READ_ONLY, WRITE_ONLY, READ_WRITE };
+
     enum class EDescriptorKind : std::uint8_t { SAMPLED_IMAGE_ARRAY, STORAGE_BUFFER };
 
     // Cooked descriptor reflection facts. Source locations are provisional; Native LayoutPlan owns
@@ -19,6 +21,7 @@ namespace lux::render
         ShaderBlock block; // Full owned member/stride ABI for Buffer resources; empty for opaque descriptors.
         std::string name; // Cooked shader variable name, resolved to a Graph resource only during compilation.
         std::uint32_t stages = 2; // Existing PassContract stage bits: Vertex=1, Fragment=2, Compute=4.
+        EStorageAccess access = EStorageAccess::READ_ONLY;
         bool operator==(const ShaderBinding&) const noexcept = default;
     };
 

@@ -276,3 +276,28 @@ add_test(NAME render.native.lglsl_parameters COMMAND render_parameters_test
 )
 
 set_tests_properties(render.native.lglsl_parameters PROPERTIES TIMEOUT 60)
+
+foreach(asset Compute.comp ComputeUpdate.comp Compute.frag)
+    add_custom_command(
+        OUTPUT "${render_asset_dir}/${asset}.spv"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${render_asset_dir}"
+        COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.2
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/${asset}" -o "${render_asset_dir}/${asset}.spv"
+        DEPENDS "assets/${asset}"
+        VERBATIM
+    )
+endforeach()
+
+add_executable(render_compute_test Compute.cpp Allocation.cpp
+    "${render_asset_dir}/Compute.comp.spv" "${render_asset_dir}/ComputeUpdate.comp.spv"
+    "${render_asset_dir}/Compute.frag.spv"
+)
+
+target_link_libraries(render_compute_test PRIVATE render_native_vulkan)
+
+add_test(NAME render.native.compute COMMAND render_compute_test
+    "${render_asset_dir}/Compute.comp.spv" "${render_asset_dir}/ComputeUpdate.comp.spv"
+    "${render_asset_dir}/Compute.frag.spv"
+)
+
+set_tests_properties(render.native.compute PROPERTIES TIMEOUT 60)

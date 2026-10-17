@@ -816,7 +816,7 @@
   },
   "N5.5": {
     "title": "Indexed indirect depth and compute primitives",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/features/",
       "modules/function/render/graph/",

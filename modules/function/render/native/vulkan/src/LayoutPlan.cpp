@@ -28,12 +28,19 @@ namespace lux::render::vulkan
             if (!source) return cxx::unexpected(RenderError{kInvalidArgument, {id.index}});
             const auto& pass = graph.passes()[id.index];
             auto& output = plan.programs[id.index];
+            unsigned present_stages = 0;
+            for (const auto& stage : source->shader.stages)
+            {
+                if (stage.stage == rdesc::EShaderType::VERTEX) present_stages |= 1;
+                if (stage.stage == rdesc::EShaderType::FRAGMENT) present_stages |= 2;
+                if (stage.stage == rdesc::EShaderType::COMPUTE) present_stages |= 4;
+            }
             if (source->shader.interface.bindings.size() > UINT32_MAX)
                 return cxx::unexpected(RenderError{kCapacity});
             const auto& parameters = source->shader.interface.parameters;
             const auto stages = source->shader.interface.parameter_stages;
             const bool invalid_parameters = source->parameter_values.size() != parameters.size ||
-                (parameters.size == 0) != (stages == 0) || (stages & ~7u) || parameters.size % 4 ||
+                (parameters.size == 0) != (stages == 0) || (stages & ~present_stages) || parameters.size % 4 ||
                 parameters.size > device.properties().limits.maxPushConstantsSize || parameters.runtime_records;
             if (invalid_parameters) return cxx::unexpected(RenderError{kStorageContract});
             plan.parameter_bytes = std::max(plan.parameter_bytes, parameters.size);
@@ -79,10 +86,13 @@ namespace lux::render::vulkan
             for (std::size_t field = 0; field < output.bindings.size(); ++field)
             {
                 auto& binding = output.bindings[field];
-                const bool invalid_identity = binding.name.empty() || !binding.stages || (binding.stages & ~7u);
+                const bool invalid_identity = binding.name.empty() || !binding.stages ||
+                    (binding.stages & ~present_stages) ||
+                    binding.access > EStorageAccess::READ_WRITE;
                 const bool invalid_shape = binding.kind > EDescriptorKind::STORAGE_BUFFER ||
                     (binding.kind == EDescriptorKind::STORAGE_BUFFER && binding.count != 1) ||
-                    (binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY && binding.count != 0);
+                    (binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY &&
+                        (binding.count != 0 || binding.access != EStorageAccess::READ_ONLY));
                 if (invalid_identity || invalid_shape) return cxx::unexpected(RenderError{kStorageContract});
                 for (std::size_t previous = 0; previous < field; ++previous)
                 {
@@ -103,9 +113,11 @@ namespace lux::render::vulkan
                 if (resource == graph.resources().end()) return cxx::unexpected(RenderError{kStorageContract});
                 const auto index = static_cast<std::uint32_t>(resource - graph.resources().begin());
                 const auto usage = binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY ?
-                    EGraphUse::SAMPLED : EGraphUse::STORAGE_READ;
+                    EGraphUse::SAMPLED : binding.access == EStorageAccess::READ_ONLY ? EGraphUse::STORAGE_READ :
+                    binding.access == EStorageAccess::WRITE_ONLY ?
+                        EGraphUse::STORAGE_WRITE : EGraphUse::STORAGE_READ_WRITE;
                 const bool declared = std::ranges::any_of(pass.uses, [&](const auto& use) {
-                    return use.version.resource.index == index && use.access == EGraphAccess::READ && use.usage == usage;
+                    return use.version.resource.index == index && use.usage == usage;
                 });
                 const bool image = std::holds_alternative<GraphImageDesc>(resource->description);
                 const bool wrong_kind = image != (binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY);
@@ -127,7 +139,8 @@ namespace lux::render::vulkan
             }
             for (const auto& use : pass.uses)
             {
-                const bool shader_read = use.usage == EGraphUse::SAMPLED || use.usage == EGraphUse::STORAGE_READ;
+                const bool shader_read = use.usage == EGraphUse::SAMPLED || use.usage == EGraphUse::STORAGE_READ ||
+                    use.usage == EGraphUse::STORAGE_WRITE || use.usage == EGraphUse::STORAGE_READ_WRITE;
                 if (shader_read && std::ranges::none_of(output.uses, [&](const auto& value) {
                     return value.resource == use.version.resource.index;
                 })) return cxx::unexpected(RenderError{kStorageContract});

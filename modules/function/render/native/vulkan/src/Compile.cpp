@@ -56,6 +56,11 @@ namespace lux::render::vulkan
                     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
             case EGraphUse::TRANSFER_SOURCE:
                 return {VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL};
+            case EGraphUse::STORAGE_WRITE:
+                return {VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT};
+            case EGraphUse::STORAGE_READ_WRITE:
+                return {VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                    VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT};
             case EGraphUse::STORAGE_READ:
                 return {VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT};
             case EGraphUse::SAMPLED:
@@ -187,8 +192,7 @@ namespace lux::render::vulkan
             const auto& pass = graph.passes()[id.index];
             const auto* binding = pass_programs[id.index];
             if (!binding) return cxx::unexpected(RenderError{kInvalidArgument, {id.index}});
-            const bool is_unsupported_pass = pass.conditional || pass.kind == EGraphPassKind::COMPUTE ||
-                pass.uses.empty();
+            const bool is_unsupported_pass = pass.conditional || pass.uses.empty();
             if (is_unsupported_pass) return cxx::unexpected(RenderError{kUnsupported, {id.index}});
             if (!std::ranges::all_of(binding->clear_color, [](float x) { return std::isfinite(x); }))
                 return cxx::unexpected(RenderError{kInvalidArgument});
@@ -196,6 +200,17 @@ namespace lux::render::vulkan
             compiled.layout_program = id.index;
             compiled.clear_color = binding->clear_color;
             compiled.vertex_count = binding->vertex_count;
+            compiled.dispatch = binding->dispatch;
+            const bool compute = pass.kind == EGraphPassKind::COMPUTE;
+            if (compute)
+            {
+                if (!(device.queue(EQueueRole::GRAPHICS).flags & VK_QUEUE_COMPUTE_BIT))
+                    return cxx::unexpected(RenderError{kUnsupported});
+                for (unsigned axis = 0; axis < 3; ++axis)
+                    if (!binding->dispatch[axis] ||
+                        binding->dispatch[axis] > device.properties().limits.maxComputeWorkGroupCount[axis])
+                        return cxx::unexpected(RenderError{kInvalidArgument});
+            }
             unsigned reads = 0, writes = 0;
             for (const auto& use : pass.uses)
             {
@@ -208,10 +223,13 @@ namespace lux::render::vulkan
                 else { compiled.destination = index; ++writes; }
                 if (resource.origin == EGraphOrigin::IMPORTED && use.access != EGraphAccess::READ)
                     return cxx::unexpected(RenderError{kUnsupported});
-                if (use.usage == EGraphUse::SAMPLED || use.usage == EGraphUse::STORAGE_READ)
+                const bool storage_use = use.usage == EGraphUse::STORAGE_READ ||
+                    use.usage == EGraphUse::STORAGE_WRITE || use.usage == EGraphUse::STORAGE_READ_WRITE;
+                if (use.usage == EGraphUse::SAMPLED || storage_use)
                 {
                     const bool is_image = std::holds_alternative<GraphImageDesc>(resource.description);
-                    const bool is_invalid_binding = resource.origin != EGraphOrigin::IMPORTED || !resource.storage ||
+                    const bool is_invalid_binding = (resource.origin == EGraphOrigin::IMPORTED && !resource.storage) ||
+                        (is_image && resource.origin != EGraphOrigin::IMPORTED) ||
                         is_image != (use.usage == EGraphUse::SAMPLED);
                     if (is_invalid_binding) return cxx::unexpected(RenderError{kStorageContract});
                     if (is_image)
@@ -226,7 +244,7 @@ namespace lux::render::vulkan
                 if (resource.origin == EGraphOrigin::IMPORTED && std::holds_alternative<GraphImageDesc>(resource.description))
                     return cxx::unexpected(RenderError{kUnsupported});
                 auto current = accessFor(use);
-                if (use.usage == EGraphUse::STORAGE_READ)
+                if (storage_use)
                 {
                     current.stage = VK_PIPELINE_STAGE_2_NONE;
                     const auto& program = layout_plan.programs[id.index];
@@ -262,34 +280,38 @@ namespace lux::render::vulkan
                     VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
                     barrier.srcStageMask = source.stage;
                     barrier.srcAccessMask = source.access;
-                    if (!used[index] && resource.origin == EGraphOrigin::IMPORTED)
+                    if (!used[index])
                     {
+                        // The same physical transient Buffer is reused on the next Execute. Order prior
+                        // device accesses as well as imported host/transfer publication before its first use.
                         barrier.srcStageMask = VK_PIPELINE_STAGE_2_HOST_BIT | VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-                        barrier.srcAccessMask = VK_ACCESS_2_HOST_WRITE_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+                        barrier.srcAccessMask = VK_ACCESS_2_HOST_WRITE_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT |
+                            VK_ACCESS_2_MEMORY_READ_BIT;
                     }
                     barrier.dstStageMask = current.stage;
                     barrier.dstAccessMask = current.access;
                     barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                     barrier.size = VK_WHOLE_SIZE;
                     compiled.buffers.push_back({index, barrier});
-                    resource.buffer_usage |= use.usage == EGraphUse::STORAGE_READ ? VK_BUFFER_USAGE_STORAGE_BUFFER_BIT :
+                    resource.buffer_usage |= storage_use ? VK_BUFFER_USAGE_STORAGE_BUFFER_BIT :
                         use.usage == EGraphUse::TRANSFER_SOURCE ?
                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT : VK_BUFFER_USAGE_TRANSFER_DST_BIT;
                 }
                 used[index] = true;
                 previous[index] = current;
             }
-            const bool is_unsupported_recipe = writes != 1 || (pass.kind == EGraphPassKind::TRANSFER && reads > 1) ||
+            const bool is_unsupported_recipe = (!compute && writes != 1) || (compute && writes == 0) ||
+                (pass.kind == EGraphPassKind::TRANSFER && reads > 1) ||
                 (pass.kind == EGraphPassKind::TRANSFER &&
                  !binding->shader.stages.empty());
             if (is_unsupported_recipe) return cxx::unexpected(RenderError{kUnsupported});
             const bool writes_image = std::holds_alternative<GraphImageDesc>(
                 result.resources_[compiled.destination].description);
-            if (pass.kind == EGraphPassKind::GRAPHICS)
+            if (pass.kind == EGraphPassKind::GRAPHICS || compute)
             {
-                if (!writes_image || binding->vertex_count == 0)
+                if (!compute && (!writes_image || binding->vertex_count == 0))
                     return cxx::unexpected(RenderError{kStorageContract});
-                compiled.recipe = ERecipe::DRAW;
+                compiled.recipe = compute ? ERecipe::DISPATCH : ERecipe::DRAW;
                 if (!result.layout_)
                 {
                     const VkPushConstantRange range{
@@ -314,7 +336,8 @@ namespace lux::render::vulkan
                     compiled.pipeline = result.pipelines_[same - result.shader_identities_.begin()];
                 else
                 {
-                    auto pipeline = compileGraphics(device, result.layout_, *shader);
+                    auto pipeline = compute ? compileCompute(device, result.layout_, *shader) :
+                        compileGraphics(device, result.layout_, *shader);
                     if (!pipeline) return cxx::unexpected(pipeline.error());
                     compiled.pipeline = *pipeline;
                     result.pipelines_.push_back(*pipeline);

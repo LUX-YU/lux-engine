@@ -32,6 +32,7 @@ namespace lux::render
         std::array<float, 4> clear_color{0, 0, 0, 1};
         std::uint32_t vertex_count = 3;
         std::vector<ProgramResourceBinding> resources;
+        std::array<std::uint32_t, 3> dispatch{1, 1, 1}; // Actual Compute workgroup count.
         std::vector<std::byte> parameter_values; // Complete initial Shader ABI bytes, owned by the compiled result.
         ShaderBlock context_parameters; // Declared frame input ABI, shared by this Graph's Context.
         std::vector<ProgramParameterBinding> parameters; // Named Storage/Context fields override initial bytes.

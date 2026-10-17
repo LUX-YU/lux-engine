@@ -63,9 +63,13 @@ namespace lux::render::vulkan
         return context.complete(*result);
     }
 
+}
+
+namespace lux::render
+{
     StorageFactory StorageProvider<render::TextureStorage>::factory() noexcept
     {
-        return textureStorageFactory();
+        return vulkan::textureStorageFactory();
     }
 
     StorageCppType StorageProvider<render::TextureStorage>::implementationType() noexcept

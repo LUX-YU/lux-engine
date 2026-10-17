@@ -1,3 +1,4 @@
+#include "ServerFixture.hpp"
 #include "Discovery.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
@@ -113,7 +114,7 @@ public:
     void install(const Ack&, Reply<InstallLate> reply) noexcept
     {
         // Actual Owner-thread dispatch is the directory mutation safe point, not a concurrent caller.
-        auto installed = server_.emplaceHandler<LateHandler>("late", {}, counts_);
+        auto installed = server_.emplaceHandler<LateHandler>("late", counts_);
         if (!installed) check(bool(reply.fail(installed.error())));
         else check(bool(reply.complete(*installed)));
     }
@@ -133,20 +134,20 @@ template <class C> static lux::platform::ipc::IpcMessage call(runtime_test::Peer
 int main()
 {
     Counts counts, rejected, late_counts;
-    auto server = take(RenderServer::create({"runtime.handlers", true}));
+    auto server = take(createTestServer({"runtime.handlers", true}));
     const auto directory_id = take(server->commandId<ListCommands>());
     check(!directory_id.isNull());
     check(!server->commandId<First>());
-    auto first = take(server->emplaceHandler<Handler>("A", {}, counts, 100));
-    auto duplicate = take(server->emplaceHandler<Handler>("A", {}, counts, 999));
-    auto second = take(server->emplaceHandler<Handler>("B", {}, counts, 200));
+    auto first = take(server->emplaceHandler<Handler>("A", counts, 100));
+    auto duplicate = take(server->emplaceHandler<Handler>("A", counts, 999));
+    auto second = take(server->emplaceHandler<Handler>("B", counts, 200));
     check(first == duplicate && first != second && counts.created == 2 && counts.destroyed == 0);
     const auto first_command_id = take(server->commandId<First>());
     check(server->commandId<Mismatch>().error().type == kProtocolContract);
-    auto invalid = server->emplaceHandler<InvalidHandler>("bad", {}, rejected);
+    auto invalid = server->emplaceHandler<InvalidHandler>("bad", rejected);
     check(!invalid && invalid.error().type == kProtocolContract);
     check(rejected.created == 1 && rejected.destroyed == 1);
-    (void)take(server->emplaceHandler<Installer>("installer", {}, *server, late_counts));
+    (void)take(server->emplaceHandler<Installer>("installer", *server, late_counts));
 
     RenderResult<void> run;
     std::thread thread([&] { run = server->run(); });

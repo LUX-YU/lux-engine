@@ -1,3 +1,4 @@
+#include "ServerFixture.hpp"
 #include "Discovery.hpp"
 #include "../../native/vulkan/test/Support.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -45,7 +46,7 @@ struct WrongHandler final
     using Bindings = std::tuple<CommandMethod<WrongQuery, &WrongHandler::query>>;
 };
 
-namespace lux::render::vulkan
+namespace lux::render
 {
     template <> struct StorageProvider<::TrackedTexture> final
     {
@@ -82,8 +83,9 @@ template <unsigned Mode> static void exercise()
     const auto original_constructed = constructed, original_destroyed = destroyed;
     {
         RenderServerConfig config{"test.bundle." + std::to_string(Mode), true};
-        config.device.texture_descriptors = Mode != 0;
-        auto server = take(RenderServer::create(config));
+        vulkan::DeviceOptions config_device{.dynamic_rendering = true};
+        config_device.texture_descriptors = Mode != 0;
+        auto server = take(createTestServer(config, config_device));
         if constexpr (Mode == 4)
         {
             TextureStorageConfig explicit_config;

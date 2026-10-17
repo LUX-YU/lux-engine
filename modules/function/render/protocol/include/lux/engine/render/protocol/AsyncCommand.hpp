@@ -12,16 +12,13 @@ namespace lux::render
     // A callback borrow of the one Runtime pending slot. Completion transfers the result before returning;
     // the sender must not read its operation state after set_value/error/stopped. The execution host
     // must also keep the sender provider's code alive until its terminal callback has returned.
-    // Runtime cannot infer that lifetime from an arbitrary sender. The production CPU scheduler
-    // adapter implements this with host-stack code pins; process-lifetime senders need no module pin.
+    // Host joins the execution source and releases all returned objects before unloading its module.
     struct CommandAsyncReceiver final
     {
         void* owner;
         void (*finish)(void*, ECommandOutcome, RenderError, void*) noexcept;
         stdexec::inplace_stop_token stop_token;
         execution::CompletionPost<RenderError> post;
-        const std::shared_ptr<const void>* implementation_pin;
-        const std::shared_ptr<const void>* provider_pin;
     };
 
     // One static table per actual finite sender. It never owns a request or allocates an identity.
@@ -49,8 +46,6 @@ namespace lux::render
                     { return target.stop_token; }
                     [[nodiscard]] execution::CompletionPost<RenderError>
                     query(execution::GetCompletionPost) const noexcept { return target.post; }
-                    [[nodiscard]] auto query(execution::GetWorkCodePins) const noexcept
-                    { return std::pair{*target.implementation_pin, *target.provider_pin}; }
                 };
 
                 [[nodiscard]] Env get_env() const noexcept { return {target}; }

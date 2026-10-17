@@ -89,13 +89,17 @@ namespace lux::render::vulkan
         }
     }
 
+}
+
+namespace lux::render
+{
     feature_detail::Implementation FeatureProvider<BasicMeshFeature>::definition() const noexcept
     {
-        return {&BasicMeshFeature::descriptor, &BasicMeshFeature::graph, programs<false>};
+        return {&BasicMeshFeature::descriptor, &BasicMeshFeature::graph, vulkan::programs<false>};
     }
 
     feature_detail::Implementation FeatureProvider<DepthOnlyFeature>::definition() const noexcept
     {
-        return {&DepthOnlyFeature::descriptor, &DepthOnlyFeature::graph, programs<true>};
+        return {&DepthOnlyFeature::descriptor, &DepthOnlyFeature::graph, vulkan::programs<true>};
     }
 }

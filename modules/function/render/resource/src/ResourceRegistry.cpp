@@ -30,10 +30,10 @@ namespace lux::render
         return index.isNull() ? nullptr : &types_.find(index)->factory;
     }
 
-    const void* ResourceRegistry::configuration(StorageNameView type) const noexcept
+    const ConfigValue* ResourceRegistry::configuration(StorageTypeId type) const noexcept
     {
-        const auto index = typeId(type);
-        return index.isNull() ? nullptr : types_.find(index)->configuration.data();
+        const auto* entry = types_.find(type);
+        return entry ? &entry->configuration : nullptr;
     }
 
     RenderResult<void> ResourceRegistry::validateFactory(

@@ -26,7 +26,7 @@ struct WorkCompletion final
             CHECK(!completion.done);
             completion.result = std::move(value);
             completion.done = true;
-        }, {}, {});
+        });
     }
 };
 

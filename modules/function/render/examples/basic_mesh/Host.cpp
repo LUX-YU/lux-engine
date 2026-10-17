@@ -1,7 +1,7 @@
 #include "Sample.hpp"
 #include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/render/runtime/RenderServer.hpp>
+#include <lux/engine/render/runtime/VulkanServer.hpp>
 #include <lux/engine/render/native/vulkan/features/MeshFeature.hpp>
 #include <cstdio>
 #include <cstdlib>
@@ -21,10 +21,6 @@ namespace
         return std::move(*value);
     }
 
-    RenderError mapCpuError(lux::execution::EExecutionError error) noexcept
-    {
-        return {kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}};
-    }
 
     // An actual second Command implementation installed by this application, not a Server switch branch.
     // It counts accepted dispatches and delegates Native work to the same supported Texture algorithm.
@@ -50,9 +46,9 @@ namespace
     struct AlternateProvider final
     {
         using Handler = AlternateTexture;
-        static StorageFactory factory() noexcept { return vulkan::StorageProvider<TextureStorage>::factory(); }
+        static StorageFactory factory() noexcept { return StorageProvider<TextureStorage>::factory(); }
         static StorageCppType implementationType() noexcept
-        { return vulkan::StorageProvider<TextureStorage>::implementationType(); }
+        { return StorageProvider<TextureStorage>::implementationType(); }
     };
 }
 
@@ -66,13 +62,12 @@ int main(int argc, char** argv)
     auto created = lux::execution::ExecutionRuntime::create({2, 128, 128, {128}});
     if (!created) return 3;
     auto execution = std::move(*created);
-    auto scheduler = execution.cpu();
+    vulkan::DeviceOptions options{.dynamic_rendering = true};
     RenderServerConfig config{"example.offscreen3d", true};
-    config.device.texture_descriptors = true;
-    config.device.multiple_queues = true;
-    config.cpu = CpuSchedule::bind<mapCpuError>(scheduler);
+    options.texture_descriptors = true;
+    options.multiple_queues = true;
     config.uploads = TransferOptions{65536, 2, 2 * 1024 * 1024};
-    auto server = require(RenderServer::create(config));
+    auto server = require(vulkan::createRenderServer(config, execution, options));
     (void)require(server->registerFeature<BasicMeshFeature>());
     (void)require(server->registerFeature<DepthOnlyFeature>());
     (void)require(server->registerStorage<TextureStorage, AlternateProvider>({}, "B"));

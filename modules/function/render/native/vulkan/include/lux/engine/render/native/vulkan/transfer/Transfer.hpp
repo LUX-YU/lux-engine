@@ -33,8 +33,7 @@ namespace lux::render::vulkan
         Transfer& operator=(const Transfer&) = delete;
         using TerminalFn = void (*)(void*, RenderResult<void>) noexcept;
         [[nodiscard]] RenderResult<void> prepareCompletion() noexcept;
-        void start(CompletionPost post, void* owner, TerminalFn terminal,
-            std::shared_ptr<const void> implementation = {}, std::shared_ptr<const void> registration = {}) noexcept;
+        void start(CompletionPost post, void* owner, TerminalFn terminal) noexcept;
         void cancel() noexcept;
         [[nodiscard]] VkDevice device() const noexcept;
         [[nodiscard]] std::optional<SubmissionTicket> lastSubmission() const noexcept { return ticket_; }
@@ -75,7 +74,6 @@ namespace lux::render::vulkan
         std::uint32_t row_ = 0, rows_ = 0;
         std::size_t row_bytes_ = 0, chunk_size_ = 0;
         CompletionPost completion_post_;
-        std::shared_ptr<const void> implementation_pin_, registration_pin_;
         std::unique_ptr<CpuPreparation> cpu_preparation_;
         std::optional<RenderError> failure_;
         std::uint64_t prepare_ns_ = 0;

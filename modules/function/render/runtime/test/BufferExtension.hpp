@@ -139,7 +139,7 @@ namespace extension_test
 
 }
 
-namespace lux::render::vulkan
+namespace lux::render
 {
     template <> struct StorageProvider<extension_test::TestBufferStorage> final
     {
@@ -150,7 +150,7 @@ namespace lux::render::vulkan
     };
 }
 
-namespace lux::render::vulkan
+namespace lux::render
 {
     template <> struct FeatureProvider<extension_test::TestBufferFeature> final
     {

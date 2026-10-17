@@ -1,3 +1,4 @@
+#include "ServerFixture.hpp"
 #include <lux/engine/render/data/Encoding.hpp>
 #include "Discovery.hpp"
 #include "TypedTest.hpp"
@@ -200,12 +201,12 @@ struct ConflictingCommands final
 int main()
 {
     FeatureState state;
-    auto server = take(RenderServer::create({"runtime.open", true}));
+    auto server = take(createTestServer({"runtime.open", true}));
     const auto installed = server->registerFeature<SetExposure>(
-        feature_test::Provider<ExposureCommands>{{&feature, &feature_graph, nullptr}}, "", {}, state);
+        feature_test::Provider<ExposureCommands>{{&feature, &feature_graph, nullptr}}, "", state);
     check(bool(installed));
     const auto repeated = server->registerFeature<SetExposure>(
-        feature_test::Provider<ExposureCommands>{{&feature, &feature_graph, nullptr}}, "", {}, state);
+        feature_test::Provider<ExposureCommands>{{&feature, &feature_graph, nullptr}}, "", state);
     check(repeated && *repeated == *installed);
     const FeatureDescriptor collision_feature{FeatureName("test.real.hash.collision"), {}};
     const FeatureGraphOps collision_feature_graph{feature_graph.describe, nullptr};
@@ -220,7 +221,7 @@ int main()
     const FeatureGraphOps premature_feature_graph{feature_graph.describe, nullptr};
     check(bool(server->registerFeature<TransferredReply>(
         feature_test::Provider<TransferredCommands>{{&premature_feature, &premature_feature_graph, nullptr}},
-        "", {}, state)));
+        "", state)));
     const auto catalog = take(server->commandId<ListCommands>());
     auto a = take(runtime_test::connect("runtime.open", catalog));
     auto b = take(runtime_test::connect("runtime.open", catalog));

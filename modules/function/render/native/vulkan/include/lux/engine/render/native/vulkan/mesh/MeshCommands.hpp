@@ -9,7 +9,6 @@ namespace lux::render::vulkan
 {
     class DeviceSession;
     class MeshStorage;
-    template <class Declaration> struct StorageProvider;
 
     class MeshCommands final
     {
@@ -26,10 +25,16 @@ namespace lux::render::vulkan
         DeviceSession& device_;
     };
 
+}
+
+namespace lux::render
+{
+    template <class Declaration> struct StorageProvider;
+
     template <> struct StorageProvider<render::MeshStorage> final
     {
-        using Storage = MeshStorage;
-        using Handler = MeshCommands;
+        using Storage = vulkan::MeshStorage;
+        using Handler = vulkan::MeshCommands;
         [[nodiscard]] static StorageFactory factory() noexcept;
         [[nodiscard]] static StorageCppType implementationType() noexcept;
     };

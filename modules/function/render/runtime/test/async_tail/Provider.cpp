@@ -114,11 +114,8 @@ namespace async_tail_test
 
     static RenderResult<void> invoke(Host& host, const Command::Request& value, Reply<Command>& context) noexcept
     {
-        auto pin = host.module.lock();
-        if (!pin) return lux::cxx::unexpected(RenderError{kProtocolContract});
-        // CpuSchedule::bind was instantiated in the EXE. Its real worker
-        // trampoline retains both code pins across this provider's callback.
-        auto source = host.cpu.schedule([](void*) noexcept {}, nullptr, pin, pin);
+        // The Host joins its worker before unloading this callback code.
+        auto source = host.cpu.schedule([](void*) noexcept {}, nullptr);
         return context.completeWhen(TailSender{std::move(source), *host.gate, value});
     }
 }
@@ -137,7 +134,7 @@ namespace async_tail_test
 }
 
 extern "C" __declspec(dllexport) void makeAsyncTailFeature(
-    lux::render::RenderServer& server, async_tail_test::Host& host, const std::shared_ptr<const void>& pin,
+    lux::render::RenderServer& server, async_tail_test::Host& host,
     lux::render::RenderResult<lux::render::FeatureId>& output
 ) noexcept
 {
@@ -146,5 +143,5 @@ extern "C" __declspec(dllexport) void makeAsyncTailFeature(
     static const FeatureGraphOps graph{[](const void*, std::string_view,
         ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
     output = server.registerFeature<async_tail_test::Command>(
-        feature_test::Provider<async_tail_test::TailCommands>{{&definition, &graph, nullptr}}, "", pin, host);
+        feature_test::Provider<async_tail_test::TailCommands>{{&definition, &graph, nullptr}}, "", host);
 }

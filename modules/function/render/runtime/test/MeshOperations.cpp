@@ -17,9 +17,10 @@ int main()
 {
     CpuFixture host;
     RenderServerConfig config{"runtime.mesh.operations", true};
-    config.device.multiple_queues = true;
+    vulkan::DeviceOptions config_device{.dynamic_rendering = true};
+    config_device.multiple_queues = true;
     config.uploads = TransferOptions{65536, 2, 131072};
-    auto server = take(RenderServer::create(withCpu(host, config)));
+    auto server = take(createTestServer(host, config, config_device));
     const auto type = take(server->registerStorage<lux::render::MeshStorage>());
     CHECK(take(server->registerStorage<lux::render::MeshStorage>()) == type);
     bool run_ok = false;

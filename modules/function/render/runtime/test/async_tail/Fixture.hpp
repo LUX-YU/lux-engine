@@ -35,14 +35,13 @@ namespace async_tail_test
     struct Host final
     {
         lux::render::CpuSchedule cpu;
-        std::weak_ptr<const void> module;
         Gate* gate;
     };
 
     // The export has a stable symbol name; its parameters still require the
     // same C++ toolchain/ABI on both sides, as do the real Feature contracts.
     using MakeFeature = void (*)(
-        lux::render::RenderServer&, Host&, const std::shared_ptr<const void>&,
+        lux::render::RenderServer&, Host&,
         lux::render::RenderResult<lux::render::FeatureId>&
     ) noexcept;
 }

@@ -54,14 +54,12 @@ namespace lux::render
         ConfigValue(const ConfigValue&) noexcept = default;
 
         ConfigValue(ConfigValue&& other) noexcept
-            : code_pin_(std::move(other.code_pin_)), value_(std::move(other.value_)),
+            : value_(std::move(other.value_)),
               type_(std::exchange(other.type_, {})), retained_bytes_(std::exchange(other.retained_bytes_, 0)) {}
 
         ConfigValue& operator=(ConfigValue other) noexcept
         {
-            // Both pins remain live until the corresponding old shared control block is destroyed.
             using std::swap;
-            swap(code_pin_, other.code_pin_);
             swap(value_, other.value_);
             swap(type_, other.type_);
             swap(retained_bytes_, other.retained_bytes_);
@@ -76,14 +74,13 @@ namespace lux::render
                         -> std::same_as<RenderResult<std::size_t>>;
                 }
         [[nodiscard]] static RenderResult<ConfigValue>
-        make(T&& value, const std::shared_ptr<const void>& source_code_pin = {}) noexcept
+        make(T&& value) noexcept
         {
             using Value = std::remove_cvref_t<T>;
             auto bytes = ConfigValueTraits<Value>::retainedBytes(value);
             if (!bytes) return cxx::unexpected(bytes.error());
             if (*bytes < sizeof(Value)) return cxx::unexpected(RenderError{kInvalidConfig});
             ConfigValue result;
-            result.code_pin_ = source_code_pin;
             result.value_ = std::make_shared<const Value>(std::forward<T>(value));
             static constexpr Metadata type{typeOf<Value>(), equality<Value>()};
             result.type_ = &type;
@@ -126,7 +123,6 @@ namespace lux::render
                 return nullptr;
         }
 
-        std::shared_ptr<const void> code_pin_;
         std::shared_ptr<const void> value_;
         const Metadata* type_ = nullptr;
         std::size_t retained_bytes_ = 0;

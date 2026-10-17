@@ -1,11 +1,28 @@
 #include "ServerImpl.hpp"
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
+
+#ifdef LUX_RUNTIME_CPU_TEST_SEAM
+namespace lux::render::runtime_cpu_test { extern CpuSchedule controlled_cpu; }
+#endif
 
 namespace lux::render
 {
-    RenderServer::Impl::Impl(
-        RenderServerConfig value, ipc::IpcResponder input
-    ) : config(std::move(value)), responder(std::move(input))
+    namespace
     {
+        RenderError mapCpuError(execution::EExecutionError error) noexcept
+        {
+            return {kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}};
+        }
+    }
+
+    RenderServer::Impl::Impl(
+        RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler host_scheduler
+    ) : config(std::move(value)), scheduler(std::move(host_scheduler)),
+        cpu(CpuSchedule::bind<mapCpuError>(scheduler)), responder(std::move(input))
+    {
+#ifdef LUX_RUNTIME_CPU_TEST_SEAM
+        cpu = runtime_cpu_test::controlled_cpu;
+#endif
         addBuiltin<CreateScene, &Impl::createScene>();
         addBuiltin<RemoveScene, &Impl::removeScene>();
         addBuiltin<CreateView, &Impl::createView>();
@@ -44,7 +61,7 @@ namespace lux::render
         return VK_FALSE;
     }
 
-    RenderResult<void> RenderServer::Impl::initialize() noexcept
+    RenderResult<void> RenderServer::Impl::initialize(vulkan::DeviceOptions options) noexcept
     {
         auto& s = *this;
         auto instance = vulkan::InstanceContext::create({{}, s.config.validation, Impl::diagnostic, &s});
@@ -53,7 +70,6 @@ namespace lux::render
             return cxx::unexpected(instance.error());
         }
         s.instance.emplace(std::move(*instance));
-        auto options = s.config.device;
         options.host_query_reset |= s.config.uploads && s.config.uploads->measure_gpu;
         auto device = vulkan::DeviceSession::create(*s.instance, options, 3, s.config.retirement_capacity);
         if (!device)
@@ -63,7 +79,7 @@ namespace lux::render
         s.device = std::move(*device);
         if (s.config.uploads)
         {
-            auto uploads = s.device->configureUploads(*s.config.uploads, s.config.cpu);
+            auto uploads = s.device->configureUploads(*s.config.uploads, s.cpu);
             if (!uploads)
             {
                 return cxx::unexpected(uploads.error());
@@ -80,14 +96,26 @@ namespace lux::render
         if (impl_->device) impl_->shutdown();
     }
 
-    RenderResult<std::unique_ptr<RenderServer>> RenderServer::create(RenderServerConfig config) noexcept
+    RenderResult<std::unique_ptr<RenderServer>> runtime_detail::ServerBootstrap::create(
+        RenderServerConfig config, execution::ExecutionRuntime& runtime, vulkan::DeviceOptions options
+    ) noexcept
     {
         const bool invalid = config.requests_per_tick == 0 || config.max_config_bytes == 0;
         if (invalid) return cxx::unexpected(RenderError{kRuntimeCapacity});
         auto responder = ipc::IpcCore::instance().createResponder(config.channel_name);
         if (!responder) return cxx::unexpected(RenderError{kRuntimeState});
-        auto state = std::make_unique<Impl>(std::move(config), std::move(*responder));
-        if (auto initialized = state->initialize(); !initialized) return cxx::unexpected(initialized.error());
+        auto state = std::make_unique<RenderServer::Impl>(std::move(config), std::move(*responder), runtime.cpu());
+        if (auto initialized = state->initialize(options); !initialized) return cxx::unexpected(initialized.error());
         return std::unique_ptr<RenderServer>(new RenderServer(std::move(state)));
     }
 } // namespace lux::render
+
+namespace lux::render::vulkan
+{
+    RenderResult<std::unique_ptr<RenderServer>> createRenderServer(
+        RenderServerConfig config, execution::ExecutionRuntime& runtime, DeviceOptions options
+    ) noexcept
+    {
+        return runtime_detail::ServerBootstrap::create(std::move(config), runtime, options);
+    }
+}

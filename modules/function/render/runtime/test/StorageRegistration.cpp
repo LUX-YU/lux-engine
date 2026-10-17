@@ -1,3 +1,5 @@
+#include "../../resource/test/FactoryAudit.hpp"
+#include "ServerFixture.hpp"
 #include "Discovery.hpp"
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/data/ConfigValue.hpp>
@@ -22,31 +24,28 @@ template <unsigned Fault> struct BrokenStorage final
     static inline constexpr auto description = TextureStorage::description;
 };
 
-namespace lux::render::vulkan
+namespace lux::render
 {
     template <unsigned Fault> struct StorageProvider<::BrokenStorage<Fault>> final
     {
-        using Storage = TextureStorage;
-        using Handler = TextureCommands;
+        using Storage = vulkan::TextureStorage;
+        using Handler = vulkan::TextureCommands;
         static StorageCppType implementationType() noexcept
         { return StorageProvider<render::TextureStorage>::implementationType(); }
         static StorageFactory factory() noexcept
         {
-            auto value = StorageProvider<render::TextureStorage>::factory();
-            if constexpr (Fault == 0) value.create = nullptr;
-            if constexpr (Fault == 1) value.config_type = storageCppType<unsigned>();
-            if constexpr (Fault == 2) value.ops_type = storageCppType<unsigned>();
-            if constexpr (Fault == 3) value.native_type = storageCppType<unsigned>();
-            if constexpr (Fault == 4)
-            {
-                static const auto wrong = [] {
-                    auto result = render::TextureStorage::description;
-                    result.required_capabilities = 0;
-                    return result;
-                }();
-                value.description = &wrong;
-            }
-            return value;
+            const auto value = StorageProvider<render::TextureStorage>::factory();
+            static const auto wrong = [] {
+                auto result = render::TextureStorage::description;
+                result.required_capabilities = 0;
+                return result;
+            }();
+            return resource_detail::StorageFactoryAudit::make(
+                Fault == 4 ? &wrong : value.description, value.ops,
+                Fault == 0 ? nullptr : value.create, value.compatible_config, value.binding_ops,
+                Fault == 1 ? storageCppType<unsigned>() : value.config_type,
+                Fault == 2 ? storageCppType<unsigned>() : value.ops_type,
+                Fault == 3 ? storageCppType<unsigned>() : value.native_type);
         }
     };
 }
@@ -74,17 +73,17 @@ struct Installer final
 {
     static constexpr std::string_view name = "test.storage.installer";
     RenderServer& server;
-    std::shared_ptr<const void> code_pin;
+    unsigned& destroyed;
 
-    Installer(RenderServer& value, std::shared_ptr<const void> pin) noexcept
-        : server(value), code_pin(std::move(pin)) {}
+    Installer(RenderServer& value, unsigned& count) noexcept : server(value), destroyed(count) {}
+    ~Installer() noexcept { ++destroyed; }
 
     void install(const unsigned& mode, Reply<InstallTextures> reply) noexcept
     {
         TextureStorageConfig config;
         if (mode == 2) config.resident_versions_budget = 16;
         const auto key = mode == 0 ? "" : (mode == 1 ? "second" : "failed");
-        auto installed = server.registerStorage<TextureStorage>(config, key, code_pin);
+        auto installed = server.registerStorage<TextureStorage>(config, key);
         const auto completed = installed ? reply.complete(*installed) : reply.fail(installed.error());
         if (!completed) std::abort();
     }
@@ -92,14 +91,10 @@ struct Installer final
     using Bindings = std::tuple<CommandMethod<InstallTextures, &Installer::install>>;
 };
 
-static int exerciseRegistration(unsigned& pin_releases)
+static int exerciseRegistration(unsigned& handler_destructions)
 {
-    auto pin = std::shared_ptr<const void>(new unsigned{}, [&pin_releases](const void* value) noexcept {
-        delete static_cast<const unsigned*>(value);
-        ++pin_releases;
-    });
     {
-        auto limited = RenderServer::create({"test.storage.capabilities", true});
+        auto limited = createTestServer({"test.storage.capabilities", true});
         CHECK(limited);
         auto unavailable = (*limited)->registerStorage<TextureStorage>();
         CHECK(!unavailable && unavailable.error().type == kStorageCapability);
@@ -107,8 +102,9 @@ static int exerciseRegistration(unsigned& pin_releases)
         // A type cannot silently rebuild a Session to enable missing device features.
     }
     RenderServerConfig config{"test.storage.registration", true};
-    config.device.texture_descriptors = true;
-    auto created = RenderServer::create(config);
+    vulkan::DeviceOptions config_device{.dynamic_rendering = true};
+    config_device.texture_descriptors = true;
+    auto created = createTestServer(config, config_device);
     CHECK(created);
     auto& server = **created;
     CHECK(!server.registerStorage<BrokenStorage<0>>());
@@ -116,8 +112,7 @@ static int exerciseRegistration(unsigned& pin_releases)
     CHECK(!server.registerStorage<BrokenStorage<2>>());
     CHECK(!server.registerStorage<BrokenStorage<3>>());
     CHECK(!server.registerStorage<BrokenStorage<4>>());
-    CHECK(server.emplaceHandler<Installer>("", {}, server, pin));
-    pin.reset();
+    CHECK(server.emplaceHandler<Installer>("", server, handler_destructions));
     auto input = runtime_test::connect(config.channel_name, *server.commandId<ListCommands>());
     CHECK(input);
     auto client = std::move(*input);
@@ -219,15 +214,15 @@ static int exerciseRegistration(unsigned& pin_releases)
     CHECK(run_ok && server.stats().validation_errors == 0);
     created->reset();
     // Directory values own their strings and survive the Server; no message carries a module pin.
-    CHECK(pin_releases == 1);
+    CHECK(handler_destructions == 1);
     CHECK(storage.name == TextureStorage::description.type.name());
     return 0;
 }
 
 int main()
 {
-    unsigned pin_releases = 0;
-    CHECK(exerciseRegistration(pin_releases) == 0);
-    CHECK(pin_releases == 1);
+    unsigned handler_destructions = 0;
+    CHECK(exerciseRegistration(handler_destructions) == 0);
+    CHECK(handler_destructions == 1);
     return 0;
 }

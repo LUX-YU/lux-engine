@@ -56,7 +56,7 @@ int main()
     CHECK(cameraParameters(CameraState{}).size() == 128);
     CpuFixture host;
     RenderServerConfig config{"runtime.camera", true};
-    auto server = take(RenderServer::create(withCpu(host, config)));
+    auto server = take(createTestServer(host, config));
     const FeatureGraphOps graph_ops{describe, native_fixture::build};
     const auto feature = take(feature_test::registerGraph(*server,
         {&native_fixture::definition, &graph_ops, programs}));

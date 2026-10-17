@@ -1,3 +1,4 @@
+#include "ServerFixture.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/render/protocol/AsyncCommand.hpp>
@@ -77,8 +78,8 @@ int main()
 {
     std::atomic<unsigned> calls{0}, destroyed{0};
     std::atomic<const unsigned*> observed{nullptr};
-    auto server = take(RenderServer::create({"runtime.raw", true}));
-    (void)take(server->emplaceHandler<Handler>("main", {}, calls, observed));
+    auto server = take(createTestServer({"runtime.raw", true}));
+    (void)take(server->emplaceHandler<Handler>("main", calls, observed));
     const auto command = take(server->commandId<Work>());
     auto a = take(ipc::IpcCore::instance().createRequester("runtime.raw", {256, 1}));
     auto b = take(ipc::IpcCore::instance().createRequester("runtime.raw", {256, 1}));

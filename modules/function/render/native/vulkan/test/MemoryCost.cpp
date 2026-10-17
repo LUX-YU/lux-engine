@@ -56,7 +56,7 @@ namespace lux::render::vulkan
                 const auto factory = resource_detail::StorageFactoryAudit::make(&description, &ops,
                     [](void*, StorageId, const void*) noexcept -> RenderResult<NativeStorage> {
                         return NativeStorage{new std::byte{}, [](void* p) noexcept { delete static_cast<std::byte*>(p); }};
-                    }, [](const void*, const void*) noexcept { return true; }, {}, nullptr,
+                    }, [](const void*, const void*) noexcept { return true; }, nullptr,
                     storageCppType<unsigned>(), storageCppType<unsigned>());
                 if (!registry.installFactory(factory, 0u))
                     std::abort();
@@ -98,7 +98,7 @@ namespace lux::render::vulkan
                     if (!buffer) return cxx::unexpected(buffer.error());
                     return NativeStorage{new LiveBuffer{session, std::move(*reservation), std::move(*buffer)},
                         [](void* value) noexcept { delete static_cast<LiveBuffer*>(value); }};
-                }, [](const void*, const void*) noexcept { return true; }, {}, nullptr,
+                }, [](const void*, const void*) noexcept { return true; }, nullptr,
                 storageCppType<unsigned>(), storageCppType<unsigned>());
             const auto type = take(session->resources().installFactory(std::move(factory), 0u));
             std::ofstream raw("zero-retirement.csv");

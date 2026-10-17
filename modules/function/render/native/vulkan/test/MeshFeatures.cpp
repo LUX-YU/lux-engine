@@ -96,7 +96,7 @@ int main(int argc, char** argv)
         config.instances = {2, InstanceDrawGroup{mesh, material.material}};
         config.readback = true;
         const auto compile = [&]<class Feature>() {
-            const auto metadata = vulkan::FeatureProvider<Feature>{}.definition();
+            const auto metadata = FeatureProvider<Feature>{}.definition();
             auto value = checked(ConfigValue::make(config));
             const FeatureInstanceView selected{metadata.descriptor, metadata.graph, &value, "main"};
             auto assembled = checked(assembleFeatures({&selected, 1}, 1024 * 1024));
@@ -133,7 +133,7 @@ int main(int argc, char** argv)
         auto resized = config.target;
         resized.width = resized.height = 32;
         const auto prepare_resized = [&]<class Feature>(const std::shared_ptr<CompiledGraph>& code) {
-            const auto metadata = vulkan::FeatureProvider<Feature>{}.definition();
+            const auto metadata = FeatureProvider<Feature>{}.definition();
             const auto contribution = checked(metadata.programs(&config, "main"));
             auto* context = checked(session->prepare(code, resized, &scene, nullptr, contribution.arguments));
             CHECK(context->setContextParameters(cameraParameters(CameraState{})));

@@ -295,9 +295,10 @@ int main(int argc, char** argv)
     if (transfer_mode) sample_prefix = dedicated ? "dedicated-" : "same-family-";
     CpuFixture workers(2);
     RenderServerConfig config{"runtime.g10", true};
-    config.device.multiple_queues = transfer_mode;
-    config.device.prefer_dedicated_queues = dedicated;
-    auto server = take(RenderServer::create(withCpu(workers, config)));
+    vulkan::DeviceOptions config_device{.dynamic_rendering = true};
+    config_device.multiple_queues = transfer_mode;
+    config_device.prefer_dedicated_queues = dedicated;
+    auto server = take(createTestServer(workers, config, config_device));
     CHECK((server->registerFeature<UploadProbe>(feature_test::Provider<ProbeCommands>{{&feature, &feature_graph, nullptr}})));
     CHECK(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs}));
     const auto catalog = take(server->commandId<ListCommands>());
@@ -640,9 +641,10 @@ int main(int argc, char** argv)
     hold_fences.store(false);
     hold_observation.store(true);
     RenderServerConfig closing_config{"runtime.g10.closing", true};
-    closing_config.device.multiple_queues = transfer_mode;
-    closing_config.device.prefer_dedicated_queues = dedicated;
-    auto closing_server = take(RenderServer::create(withCpu(workers, closing_config)));
+    vulkan::DeviceOptions closing_config_device{.dynamic_rendering = true};
+    closing_config_device.multiple_queues = transfer_mode;
+    closing_config_device.prefer_dedicated_queues = dedicated;
+    auto closing_server = take(createTestServer(workers, closing_config, closing_config_device));
     CHECK((closing_server->registerFeature<UploadProbe>(feature_test::Provider<ProbeCommands>{{&feature, &feature_graph, nullptr}})));
     auto closing_client = take(runtime_test::connect(closing_config.channel_name, take(closing_server->commandId<ListCommands>())));
     bool closing_ok = false;

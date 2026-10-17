@@ -1,3 +1,4 @@
+#include "ServerFixture.hpp"
 #include "CameraFixture.hpp"
 #include "FeatureFixture.hpp"
 #include "CompletionTest.hpp"
@@ -13,7 +14,7 @@
 #include <latch>
 #include <thread>
 
-namespace lux::render::vulkan
+namespace lux::render
 {
     template <> struct StorageProvider<buffer_fixture::Declaration> final
     {
@@ -23,6 +24,8 @@ namespace lux::render::vulkan
         static StorageCppType implementationType() noexcept { return storageCppType<Storage>(); }
     };
 }
+
+namespace lux::render::runtime_cpu_test { CpuSchedule controlled_cpu; }
 
 using namespace lux::render;
 using namespace std::chrono_literals;
@@ -89,7 +92,7 @@ int main()
 {
     CpuFixture worker;
     RenderServerConfig options{"runtime.offscreen", true};
-    auto server = take(RenderServer::create(withCpu(worker, options)));
+    auto server = take(createTestServer(worker, options));
     CHECK(server->registerStorage<buffer_fixture::Declaration>());
     CHECK(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs}));
     auto client = take(TestClient::create("runtime.offscreen", take(server->commandId<ListCommands>())));

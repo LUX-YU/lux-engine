@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/runtime/RenderServer.hpp>
+#include <lux/engine/render/runtime/VulkanServer.hpp>
+#include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/engine/render/runtime/Error.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
@@ -54,15 +55,14 @@ namespace lux::render
         struct FeatureEntry final
         {
             // Stable table construction binds views only after their owned metadata exists.
-            std::shared_ptr<const void> code_pin;
             FeatureId id;
             std::string name;
             FeatureDescriptor descriptor;
             FeatureGraphOps graph;
             decltype(feature_detail::Implementation::programs) programs;
 
-            FeatureEntry(feature_detail::Implementation input, std::shared_ptr<const void> pin) noexcept
-                : code_pin(std::move(pin)), name(input.descriptor->type.name()), descriptor(*input.descriptor),
+            FeatureEntry(feature_detail::Implementation input) noexcept
+                : name(input.descriptor->type.name()), descriptor(*input.descriptor),
                   graph(*input.graph), programs(input.programs)
             {
                 descriptor.type = FeatureName(name);
@@ -79,10 +79,8 @@ namespace lux::render
         {
             CommandId id;
             CommandHandler binding;
-            std::shared_ptr<const void> code_pin;
             std::vector<SupportedHandler> supported;
             HandlerId selected;
-            const std::shared_ptr<const void>* active_code_pin = nullptr;
         };
 
         struct CommandEntry final
@@ -104,12 +102,14 @@ namespace lux::render
         static const CommandCompletionFns command_completion_functions;
         static const CommandCompletionFns deferred_completion_functions;
 
-        [[nodiscard]] RenderResult<void> initialize() noexcept;
+        [[nodiscard]] RenderResult<void> initialize(vulkan::DeviceOptions options) noexcept;
         [[nodiscard]] RenderResult<void> run() noexcept;
         void stop() noexcept { stop_requested.store(true); }
         [[nodiscard]] RenderServerStats stats() const noexcept;
 
         RenderServerConfig config;
+        execution::CpuScheduler scheduler; // Borrowed from the Host runtime.
+        CpuSchedule cpu;
         ipc::IpcResponder responder;
         cxx::StableSlotMap<FeatureEntry, FeatureTag> features;
         cxx::SlotMap<CommandEntry, CommandTag> command_table;
@@ -129,7 +129,7 @@ namespace lux::render
         std::atomic<std::uint64_t> validation_errors{0}, validation_warnings{0};
         std::atomic<std::uint64_t> scoped_buffers_created{0};
 
-        Impl(RenderServerConfig value, ipc::IpcResponder input);
+        Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler scheduler);
 
         template <RenderCommand C, RenderResult<void> (Impl::*Method)(RenderRequest&) noexcept>
         void addBuiltin() noexcept
@@ -140,13 +140,10 @@ namespace lux::render
                     return (static_cast<Impl*>(owner)->*Method)(accepted);
                 }, this
             });
-            addCommand(binding, config.implementation_code_pin);
+            addCommand(binding);
         }
 
-        CommandId addCommand(
-            CommandHandler binding,
-            std::shared_ptr<const void> pin = {}
-        ) noexcept;
+        CommandId addCommand(CommandHandler binding) noexcept;
 
         void settle(RenderRequest request, RenderResult<void> result) noexcept;
         void retryReplies() noexcept;

@@ -9,7 +9,6 @@ namespace lux::render::vulkan
 {
     class DeviceSession;
     class TextureStorage;
-    template <class Declaration> struct StorageProvider;
 
     // One device-borrowing object for all Texture Commands. Storage remains separately scope-owned.
     class TextureCommands final
@@ -32,10 +31,16 @@ namespace lux::render::vulkan
         DeviceSession& device_;
     };
 
+}
+
+namespace lux::render
+{
+    template <class Declaration> struct StorageProvider;
+
     template <> struct StorageProvider<render::TextureStorage> final
     {
-        using Storage = TextureStorage;
-        using Handler = TextureCommands;
+        using Storage = vulkan::TextureStorage;
+        using Handler = vulkan::TextureCommands;
         [[nodiscard]] static StorageFactory factory() noexcept;
         [[nodiscard]] static StorageCppType implementationType() noexcept;
     };

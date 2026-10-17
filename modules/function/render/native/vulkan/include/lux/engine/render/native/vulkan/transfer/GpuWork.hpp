@@ -56,8 +56,7 @@ namespace lux::render::vulkan
         { return !transfer_->requirements().empty(); }
         [[nodiscard]] bool deviceLost() const noexcept { return session_->deviceLost(); }
         [[nodiscard]] RenderResult<void> prepareCompletion() noexcept;
-        void start(CompletionPost post, void* owner, Transfer::TerminalFn terminal,
-            std::shared_ptr<const void> implementation, std::shared_ptr<const void> registration) noexcept;
+        void start(CompletionPost post, void* owner, Transfer::TerminalFn terminal) noexcept;
         [[nodiscard]] RenderResult<void> publish() noexcept;
         void cancel() noexcept { if (transfer_) transfer_->cancel(); }
         void reset() noexcept
@@ -122,9 +121,7 @@ namespace lux::render::vulkan
                     return;
                 }
                 stop_.emplace(token, OnStop{this});
-                auto pins = execution::getWorkCodePins(environment);
-                work_.start(execution::getCompletionPost(environment), this, finish,
-                    std::move(pins.first), std::move(pins.second));
+                work_.start(execution::getCompletionPost(environment), this, finish);
                 // start/finish may synchronously publish; no state access follows publication.
             }
 

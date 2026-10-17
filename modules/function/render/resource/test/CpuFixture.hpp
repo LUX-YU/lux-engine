@@ -48,6 +48,8 @@ namespace lux::render::test
             return CpuSchedule::bind<mapError>(scheduler_);
         }
 
+        [[nodiscard]] execution::ExecutionRuntime& runtime() noexcept { return runtime_; }
+
         void reject(bool value) noexcept
         {
             control_.reject.store(value, std::memory_order_release);

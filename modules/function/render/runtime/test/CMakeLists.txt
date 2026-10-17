@@ -92,7 +92,9 @@ set_target_properties(render_runtime_lifetime_test PROPERTIES RUNTIME_OUTPUT_DIR
 add_test(NAME render.runtime.lifetime COMMAND render_runtime_lifetime_test)
 set_tests_properties(render.runtime.lifetime PROPERTIES TIMEOUT 90)
 
-add_executable(render_runtime_offscreen_test Offscreen.cpp ../../native/vulkan/test/Allocation.cpp)
+add_executable(render_runtime_offscreen_test Offscreen.cpp ../../native/vulkan/test/Allocation.cpp ${LUX_RUNTIME_SOURCES})
+target_compile_definitions(render_runtime_offscreen_test PRIVATE LUX_RUNTIME_CPU_TEST_SEAM)
+target_include_directories(render_runtime_offscreen_test PRIVATE ../pinclude ../../native/vulkan/sinclude)
 target_include_directories(render_runtime_offscreen_test PRIVATE ../../native/vulkan/test)
 target_link_libraries(render_runtime_offscreen_test PRIVATE render_runtime)
 set_target_properties(render_runtime_offscreen_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
@@ -124,13 +126,19 @@ add_test(
         -P "${CMAKE_CURRENT_SOURCE_DIR}/../../core/test/Installed.cmake"
 )
 
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/VulkanServer.cpp" CONTENT
+    "#include <lux/engine/render/runtime/VulkanServer.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
+)
+add_library(render_runtime_header_VulkanServer OBJECT "${CMAKE_CURRENT_BINARY_DIR}/VulkanServer.cpp")
+target_link_libraries(render_runtime_header_VulkanServer PRIVATE render_runtime)
+
 foreach(header RenderServer Commands Error)
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" CONTENT
         "#include <lux/engine/render/runtime/${header}.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\nstatic_assert(__cplusplus >= 202002L);\n"
     )
     add_library(render_runtime_header_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")
     if(header STREQUAL "RenderServer")
-        # Server configuration names the selected Backend's narrow options, without Vulkan/OS types.
+        # Server declaration stays neutral; only VulkanServer exposes the selected Native installation.
         target_link_libraries(render_runtime_header_${header} PRIVATE render_runtime)
     else()
         target_link_libraries(render_runtime_header_${header} PRIVATE render_commands render_features)
@@ -177,6 +185,7 @@ add_test(NAME render.runtime.gpu_ready_same_family COMMAND render_runtime_gpu_re
 set_tests_properties(render.runtime.gpu_ready_transfer render.runtime.gpu_ready_same_family PROPERTIES TIMEOUT 120)
 
 add_executable(render_texture_progress_test TextureProgress.cpp ${LUX_RUNTIME_SOURCES})
+target_compile_definitions(render_texture_progress_test PRIVATE LUX_RUNTIME_CPU_TEST_SEAM)
 
 target_include_directories(render_texture_progress_test PRIVATE ../pinclude ../../native/vulkan/test ../../native/vulkan/sinclude)
 

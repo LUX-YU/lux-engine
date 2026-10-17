@@ -1,3 +1,4 @@
+#include "ServerFixture.hpp"
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include "ProtocolAudit.hpp"
@@ -298,10 +299,10 @@ int main()
     static const std::array descriptors{commandDescriptor<Async>(), commandDescriptor<TransferredAsync>()};
     const FeatureDescriptor definition{FeatureName("test.async.feature"), {}};
     const FeatureGraphOps definition_graph{[](const void*, std::string_view, ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
-    auto server = take(RenderServer::create({"runtime.async", true}));
-    check(bool(server->registerFeature<Async>(feature_test::Provider<AsyncCommands>{{&definition, &definition_graph, nullptr}}, "", {}, state)));
-    const auto first_handler = take(server->emplaceHandler<AsyncCommands>("", {}, state));
-    const auto second_handler = take(server->emplaceHandler<AsyncCommands>("alternate", {}, alternate));
+    auto server = take(createTestServer({"runtime.async", true}));
+    check(bool(server->registerFeature<Async>(feature_test::Provider<AsyncCommands>{{&definition, &definition_graph, nullptr}}, "", state)));
+    const auto first_handler = take(server->emplaceHandler<AsyncCommands>("", state));
+    const auto second_handler = take(server->emplaceHandler<AsyncCommands>("alternate", alternate));
     check(first_handler != second_handler);
     RenderResult<void> run;
     std::atomic<bool> run_returned{false};

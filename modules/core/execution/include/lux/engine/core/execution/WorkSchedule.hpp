@@ -3,7 +3,6 @@
 #include <lux/cxx/compile_time/expected.hpp>
 #include <exec/any_sender_of.hpp>
 #include <exception>
-#include <memory>
 #include <type_traits>
 #include <utility>
 
@@ -39,13 +38,6 @@ namespace lux::execution
     };
     inline constexpr GetCompletionPost getCompletionPost{};
 
-    struct GetWorkCodePins final : stdexec::forwarding_query_t
-    {
-        template <class Env> [[nodiscard]] auto operator()(const Env& env) const noexcept
-        { return env.query(*this); }
-    };
-    inline constexpr GetWorkCodePins getWorkCodePins{};
-
     namespace cpu_detail
     {
         using Work = void (*)(void*) noexcept;
@@ -58,10 +50,8 @@ namespace lux::execution
                 stdexec::set_value_t(), stdexec::set_error_t(Error), stdexec::set_stopped_t()
             >;
 
-            WorkSender(Scheduler scheduler, Work work, void* owner,
-                std::shared_ptr<const void> implementation, std::shared_ptr<const void> registration) noexcept
-                : scheduler_(std::move(scheduler)), work_(work), owner_(owner),
-                  implementation_(std::move(implementation)), registration_(std::move(registration)) {}
+            WorkSender(Scheduler scheduler, Work work, void* owner) noexcept
+                : scheduler_(std::move(scheduler)), work_(work), owner_(owner) {}
 
             template<class Receiver> class Operation final
             {
@@ -77,14 +67,12 @@ namespace lux::execution
 
                     void set_value() && noexcept
                     {
-                        auto implementation = std::move(operation->implementation_);
-                        auto registration = std::move(operation->registration_);
                         const auto work = operation->work_;
                         auto* owner = operation->owner_;
                         auto receiver = std::move(operation->receiver_);
                         work(owner);
                         stdexec::set_value(std::move(receiver));
-                        // This host-TU stack retains both modules even if completion destroys the operation.
+                        // Host retains code through this callback tail; operation may already be destroyed.
                     }
 
                     template<class ScheduledError> void set_error(ScheduledError&& error) && noexcept
@@ -95,8 +83,6 @@ namespace lux::execution
                         }
                         else
                         {
-                            auto implementation = std::move(operation->implementation_);
-                            auto registration = std::move(operation->registration_);
                             auto receiver = std::move(operation->receiver_);
                             const Error mapped = MapError(std::forward<ScheduledError>(error));
                             stdexec::set_error(std::move(receiver), mapped);
@@ -105,8 +91,6 @@ namespace lux::execution
 
                     void set_stopped() && noexcept
                     {
-                        auto implementation = std::move(operation->implementation_);
-                        auto registration = std::move(operation->registration_);
                         auto receiver = std::move(operation->receiver_);
                         stdexec::set_stopped(std::move(receiver));
                     }
@@ -120,7 +104,6 @@ namespace lux::execution
 
                 Operation(WorkSender input, Receiver receiver)
                     : receiver_(std::move(receiver)), work_(input.work_), owner_(input.owner_),
-                      implementation_(std::move(input.implementation_)), registration_(std::move(input.registration_)),
                       scheduled_(stdexec::connect(stdexec::schedule(input.scheduler_), Scheduled{this})) {}
 
                 Operation(const Operation&) = delete;
@@ -134,7 +117,6 @@ namespace lux::execution
                 Receiver receiver_;
                 Work work_;
                 void* owner_;
-                std::shared_ptr<const void> implementation_, registration_;
                 ScheduledOperation scheduled_;
             };
 
@@ -147,7 +129,6 @@ namespace lux::execution
             Scheduler scheduler_;
             Work work_;
             void* owner_;
-            std::shared_ptr<const void> implementation_, registration_;
         };
     }
 
@@ -161,26 +142,20 @@ namespace lux::execution
 
         template<auto MapError, class Scheduler> [[nodiscard]] static CpuSchedule bind(Scheduler& scheduler) noexcept
         {
-            return {&scheduler, [](void* host, Work work, void* owner, std::shared_ptr<const void> implementation,
-                std::shared_ptr<const void> registration) noexcept -> CpuSender<Error> {
-                return cpu_detail::WorkSender<Error, Scheduler, MapError>{*static_cast<Scheduler*>(host), work, owner,
-                    std::move(implementation), std::move(registration)};
+            return {&scheduler, [](void* host, Work work, void* owner) noexcept -> CpuSender<Error> {
+                return cpu_detail::WorkSender<Error, Scheduler, MapError>{*static_cast<Scheduler*>(host), work, owner};
             }};
         }
 
-        [[nodiscard]] CpuSender<Error> schedule(
-            Work work, void* owner,
-            std::shared_ptr<const void> implementation = {}, std::shared_ptr<const void> registration = {}
-        ) const noexcept
+        [[nodiscard]] CpuSender<Error> schedule(Work work, void* owner) const noexcept
         {
-            return schedule_(host_, work, owner, std::move(implementation), std::move(registration));
+            return schedule_(host_, work, owner);
         }
 
         [[nodiscard]] explicit operator bool() const noexcept { return schedule_ != nullptr; }
 
     private:
-        using Schedule = CpuSender<Error> (*)(void*, Work, void*, std::shared_ptr<const void>,
-            std::shared_ptr<const void>) noexcept;
+        using Schedule = CpuSender<Error> (*)(void*, Work, void*) noexcept;
         CpuSchedule(void* host, Schedule schedule) noexcept : host_(host), schedule_(schedule) {}
         void* host_ = nullptr;
         Schedule schedule_ = nullptr;

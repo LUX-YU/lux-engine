@@ -7,7 +7,7 @@
 #include <lux/engine/render/native/vulkan/material/MaterialCommands.hpp>
 #include <lux/engine/render/native/vulkan/instance/InstanceCommands.hpp>
 
-namespace lux::render::vulkan
+namespace lux::render
 {
     template <class Declaration> struct FeatureProvider;
 

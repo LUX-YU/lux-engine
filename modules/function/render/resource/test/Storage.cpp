@@ -74,11 +74,12 @@ int main()
         },
         [](const void* instance, const void* config) noexcept {
             return static_cast<const Value*>(instance)->value == *static_cast<const unsigned*>(config);
-        }, {}, nullptr, storageCppType<unsigned>(), storageCppType<Ops>()
+        }, nullptr, storageCppType<unsigned>(), storageCppType<Ops>()
     );
     require(bool(validateStorageFactory(original, factory)));
-    auto wrong_factory = factory;
-    wrong_factory.description = nullptr;
+    static_assert(!std::is_assignable_v<StorageFactory&, StorageFactory>);
+    auto wrong_factory = resource_detail::StorageFactoryAudit::make(nullptr, factory.ops,
+        factory.create, factory.compatible_config, factory.binding_ops, factory.config_type, factory.ops_type);
     require(!validateStorageFactory(original, wrong_factory));
     const unsigned config = 73, other = 19;
     auto instance = factory.create(nullptr, StorageId{1, 1}, &config);
@@ -86,6 +87,7 @@ int main()
     require(ops.read(instance->get()) == config);
     require(factory.compatible_config(instance->get(), &config));
     require(!factory.compatible_config(instance->get(), &other));
-    factory.ops = nullptr;
-    require(!validateStorageFactory(original, factory));
+    auto wrong_ops = resource_detail::StorageFactoryAudit::make(factory.description, nullptr,
+        factory.create, factory.compatible_config, factory.binding_ops, factory.config_type, factory.ops_type);
+    require(!validateStorageFactory(original, wrong_ops));
 }

@@ -44,11 +44,11 @@ static void sourceOwnerCode()
         const auto* original = owner->data();
         const auto capacity = owner->capacity();
         const auto references = owner.use_count();
-        require(!RenderPayload::fromVector(owner, 31, 2, pin), "invalid source range accepted");
+        require(!RenderPayload::fromVector(owner, 31, 2), "invalid source range accepted");
         require(owner.use_count() == references && owner->data() == original && pin_alive && destroyed == 0,
             "failed construction changed the original Owner or module qualification");
-        auto payload = RenderPayload::fromVector(owner, 8, 4, pin);
-        auto sibling = RenderPayload::fromVector(owner, 4, 3, pin);
+        auto payload = RenderPayload::fromVector(owner, 8, 4);
+        auto sibling = RenderPayload::fromVector(owner, 4, 3);
         require(bool(payload) && bool(sibling), "valid source ranges rejected");
         require(payload->bytes().data() == original + 8 && sibling->bytes().data() == original + 4,
             "Payload must borrow both original Asset subranges without copying");
@@ -71,12 +71,11 @@ static void sourceOwnerCode()
         require(final->bytes().data() == original + 8 && final->retainedBytes() == capacity,
             "self assignment lost ownership or the retained backing size");
         owner.reset();
-        pin.reset();
         *payload = {};
         *sibling = {};
         moved = {};
         require(pin_alive && GetModuleHandleW(L"render_data_payload_plugin.dll") != nullptr && destroyed == 0,
-            "the final Payload must pin the Asset deleter independently of Command code");
+            "Host keeps Asset deleter code loaded until the final owner is gone");
         require(final->bytes().view()[0] == std::byte{7}, "late source bytes became inaccessible");
         std::printf("Asset DLL: path=%u pin_alive=%d module_loaded=%d destroyed=%d; releasing final Asset owner\n",
             release_path, int(pin_alive),
@@ -89,8 +88,9 @@ static void sourceOwnerCode()
         else *final = std::move(replacement);
         require(destroyed == 1 && unpinned_destroyed == 0,
             "Asset deleter must complete exactly once before the module is unpinned");
+        pin.reset(); // Host unloads after every foreign deleter has returned.
         require(!pin_alive && GetModuleHandleW(L"render_data_payload_plugin.dll") == nullptr,
-            "the final Payload must release the module after the Owner is gone");
+            "Host must release the module after the Owner is gone");
         if (final) require(final->bytes().view()[0] == std::byte{11}, "assignment lost the replacement Payload");
     }
     std::printf("Asset DLL: source code lifetime PASS, sizeof(RenderPayload)=%zu\n", sizeof(RenderPayload));

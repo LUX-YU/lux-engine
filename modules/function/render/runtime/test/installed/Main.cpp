@@ -1,6 +1,7 @@
-#include <lux/engine/render/runtime/RenderServer.hpp>
+#include <lux/engine/render/runtime/VulkanServer.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <chrono>
 #include <thread>
 #include <cstdlib>
@@ -9,7 +10,9 @@ int main()
 {
     using namespace lux::render;
     namespace ipc = lux::platform::ipc;
-    auto server = RenderServer::create({"installed.runtime", true});
+    auto host = lux::execution::ExecutionRuntime::create({2, 128, 128, {128}});
+    if (!host) return 1;
+    auto server = vulkan::createRenderServer({"installed.runtime", true}, *host);
     auto client = ipc::IpcCore::instance().createRequester("installed.runtime");
     if (!server || !client) return 1;
     auto directory_id = (*server)->commandId<ListCommands>();

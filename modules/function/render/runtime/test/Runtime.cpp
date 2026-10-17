@@ -1,3 +1,4 @@
+#include "ServerFixture.hpp"
 #include "CameraFixture.hpp"
 #include "FeatureFixture.hpp"
 #include "CompletionTest.hpp"
@@ -133,8 +134,10 @@ int main()
     // Actual published directory remains valid after the Server, with no request lease.
 
     RenderServerConfig invalid{"runtime.failure", true};
-    invalid.device.physical_device_index = 0xfffffffe;
-    check(!createTestServer(invalid)); // Device failure belongs to create, before a usable Server is returned.
+
+    vulkan::DeviceOptions invalid_device{.dynamic_rendering = true};
+    invalid_device.physical_device_index = 0xfffffffe;
+    check(!createTestServer(invalid, invalid_device)); // Device failure belongs to create, before a usable Server is returned.
     // Failed initialization relinquishes the name and every partial Native owner.
     auto replacement = take(createTestServer({"runtime.failure", true}));
     replacement->stop();

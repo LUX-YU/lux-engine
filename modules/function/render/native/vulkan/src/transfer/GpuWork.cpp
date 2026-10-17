@@ -7,10 +7,9 @@ namespace lux::render::vulkan
         return transfer_->prepareCompletion();
     }
 
-    void GpuWork::start(CompletionPost post, void* owner, Transfer::TerminalFn terminal,
-        std::shared_ptr<const void> implementation, std::shared_ptr<const void> registration) noexcept
+    void GpuWork::start(CompletionPost post, void* owner, Transfer::TerminalFn terminal) noexcept
     {
-        transfer_->start(post, owner, terminal, std::move(implementation), std::move(registration));
+        transfer_->start(post, owner, terminal);
     }
 
     RenderResult<void> GpuWork::publish() noexcept

@@ -26,17 +26,14 @@ int main(int argc, char** argv)
     CHECK(source.read(reinterpret_cast<char*>(program.fragment.words.data()), bytes));
     program.parameter_count = 1;
     program.defaults[0] = {.25f, .25f, .25f, 1};
-    std::atomic<unsigned> code_released{0};
-    auto pin = std::shared_ptr<const void>(new int, [&](const void* value) {
-        delete static_cast<const int*>(value); ++code_released;
-    });
-    auto cooked = take(ConfigValue::make(std::move(program), pin));
+    auto cooked = take(ConfigValue::make(std::move(program)));
     const auto* original_words = cooked.borrow<MaterialProgram>()->fragment.words.data();
     CpuFixture host;
     RenderServerConfig config{"runtime.material.operations", true};
-    config.device.multiple_queues = true;
+    vulkan::DeviceOptions config_device{.dynamic_rendering = true};
+    config_device.multiple_queues = true;
     config.uploads = TransferOptions{65536, 2, 131072};
-    auto server = take(RenderServer::create(withCpu(host, config)));
+    auto server = take(createTestServer(host, config, config_device));
     const auto type = take(server->registerStorage<lux::render::MaterialStorage>());
     CHECK(take(server->registerStorage<lux::render::MaterialStorage>()) == type);
     bool run_ok = false;
@@ -90,11 +87,9 @@ int main(int argc, char** argv)
     CHECK(call<ReleaseMaterial>(*b, release, material_b).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
     server->stop(); thread.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
-    server.reset(); b.reset(); cooked = {}; pin.reset();
+    server.reset(); b.reset(); cooked = {};
     input = {}; other = {};
-    CHECK(code_released == 1);
     replaced.reset();
-    CHECK(code_released == 1);
     std::puts("Material typed operations: exact source, business failure, shared program ownership, two clients PASS");
 }
 

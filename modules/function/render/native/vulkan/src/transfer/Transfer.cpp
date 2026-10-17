@@ -50,8 +50,7 @@ namespace lux::render::vulkan
         Operation operation;
 
         explicit CpuPreparation(Transfer& transfer)
-            : operation(stdexec::connect(transfer.session_->uploads_->cpu.schedule(Transfer::prepare, &transfer,
-                  transfer.implementation_pin_, transfer.registration_pin_), Receiver{&transfer})) {}
+            : operation(stdexec::connect(transfer.session_->uploads_->cpu.schedule(Transfer::prepare, &transfer), Receiver{&transfer})) {}
     };
 
     DeviceSession::UploadState::~UploadState() noexcept
@@ -251,15 +250,12 @@ namespace lux::render::vulkan
         return {};
     }
 
-    void Transfer::start(CompletionPost post, void* owner, TerminalFn terminal,
-        std::shared_ptr<const void> implementation, std::shared_ptr<const void> registration) noexcept
+    void Transfer::start(CompletionPost post, void* owner, TerminalFn terminal) noexcept
     {
         if (started_ || !copy_callback_.reserved() || !post || !terminal) std::terminate();
         completion_post_ = post;
         terminal_owner_ = owner;
         terminal_ = terminal;
-        implementation_pin_ = std::move(implementation);
-        registration_pin_ = std::move(registration);
         started_ = true;
         continueTransfer();
     }

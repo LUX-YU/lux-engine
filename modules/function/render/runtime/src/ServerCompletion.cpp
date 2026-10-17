@@ -51,9 +51,9 @@ namespace lux::render
             vulkan::ReadbackSender{*found->context, &submissions, [](void* value) noexcept {
                 ++*static_cast<std::atomic<std::uint64_t>*>(value);
             }, resource},
-            [pin = config.implementation_code_pin](std::vector<std::byte> bytes) noexcept {
+            [](std::vector<std::byte> bytes) noexcept {
                 auto owner = std::make_shared<const std::vector<std::byte>>(std::move(bytes));
-                auto payload = RenderPayload::fromVector(owner, 0, owner->size(), pin);
+                auto payload = RenderPayload::fromVector(owner, 0, owner->size());
                 if (!payload) std::terminate(); // exact vector range
                 return ReadbackResult{std::move(*payload)};
             }
@@ -132,9 +132,8 @@ namespace lux::render
             auto& slot = *static_cast<DeferredCompletion*>(value);
             auto& completion = slot.operation;
             completion.destroy = operations.destroy;
-            auto& server = *static_cast<Impl*>(slot.server);
             completion.operation = operations.connect(sender, {&slot, completeOperation, slot.stop.get_token(),
-                slot.post(), &server.config.implementation_code_pin, &server.config.implementation_code_pin});
+                slot.post()});
             // Owner-thread start cannot reenter event draining. The Receiver only publishes.
             operations.start(completion.operation);
             return {};

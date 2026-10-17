@@ -208,10 +208,10 @@ struct BatchCommands final
 
 static std::unique_ptr<RenderServer> create(batch_fixture::State& state, CpuFixture& host)
 {
-    auto server = take(RenderServer::create(withCpu(host, {"runtime.typed.batch", true})));
+    auto server = take(createTestServer(host, {"runtime.typed.batch", true}));
     CHECK(server->registerFeature<batch_fixture::SetValues>(
         feature_test::Provider<BatchCommands>{{&batch_fixture::definition, &batch_fixture::definition_graph, nullptr}},
-        "", {}, state));
+        "", state));
     CHECK(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs}));
     return server;
 }

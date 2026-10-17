@@ -2,7 +2,7 @@
 #include <lux/engine/render/runtime/Commands.hpp>
 #include "Fixture.hpp"
 #include "../../../resource/test/CpuFixture.hpp"
-#include <lux/engine/render/runtime/RenderServer.hpp>
+#include <lux/engine/render/runtime/VulkanServer.hpp>
 
 #define NOMINMAX
 #include <Windows.h>
@@ -53,12 +53,11 @@ static void exercise(const char* library, ETerminal terminal)
 
     auto cpu = std::make_unique<lux::render::test::CpuFixture>(1, 16);
     Gate gate{terminal};
-    Host host{cpu->cpu(), pin, &gate};
+    Host host{cpu->cpu(), &gate};
     RenderServerConfig config{"runtime.async.dll_callback_tail", true};
-    config.cpu = cpu->cpu();
-    auto server = take(RenderServer::create(std::move(config)));
+    auto server = take(vulkan::createRenderServer(std::move(config), cpu->runtime()));
     RenderResult<FeatureId> installed = lux::cxx::unexpected(RenderError{kRuntimeState});
-    make(*server, host, pin, installed);
+    make(*server, host, installed);
     check(bool(installed), "Feature registration failed");
     const auto catalog = take(server->commandId<ListCommands>());
     std::atomic<bool> finished{false};
@@ -84,8 +83,7 @@ static void exercise(const char* library, ETerminal terminal)
         }
         else check(reply.metadata<ReplyHeader>().outcome == ECommandOutcome::CANCELLED, "stopped terminal changed");
         check(gate.published.try_acquire_for(15s), "provider did not enter its callback tail");
-        // All Reply, original Request, bound type and manifest code pins are
-        // destroyed with this scope, before checking the callback's own pin.
+        // Reply storage ends before Server shutdown; the Host still owns the loaded module.
     }
 
     server->stop();
@@ -96,8 +94,7 @@ static void exercise(const char* library, ETerminal terminal)
     server.reset();
     check(gate.states_destroyed.load(std::memory_order_acquire) == 1,
         "operation state was not destroyed before the callback returned");
-    pin.reset();
-    check(unloaded.load(std::memory_order_acquire) == 0 && !host.module.expired() &&
+    check(unloaded.load(std::memory_order_acquire) == 0 &&
         GetModuleHandleA("render_async_tail_plugin.dll") != nullptr,
         "provider unloaded while its terminal callback was still executing");
     check(gate.tails_returned.load(std::memory_order_acquire) == 0, "callback tail was not held");
@@ -107,7 +104,8 @@ static void exercise(const char* library, ETerminal terminal)
     // an operation-state polling loop. It waits for the worker callback to return.
     cpu.reset();
     check(gate.tails_returned.load(std::memory_order_acquire) == 1, "callback did not return exactly once");
-    check(unloaded.load(std::memory_order_acquire) == 1 && host.module.expired() &&
+    pin.reset(); // Host unload occurs only after the actual worker callback has returned.
+    check(unloaded.load(std::memory_order_acquire) == 1 &&
         GetModuleHandleA("render_async_tail_plugin.dll") == nullptr,
         "final host callback return did not release its module exactly once");
     std::printf("async DLL tail: terminal=%u state_destroyed=1 tail_returned=1 module_unloaded=1\n",

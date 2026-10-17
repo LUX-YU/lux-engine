@@ -33,7 +33,7 @@ int main(int argc, char** argv)
     CpuFixture host;
     RenderServerConfig config{"runtime.instance.operations", true};
     config.uploads = TransferOptions{65536, 2, 131072};
-    auto server = take(RenderServer::create(withCpu(host, config)));
+    auto server = take(createTestServer(host, config));
     CHECK(server->registerStorage<lux::render::MaterialStorage>());
     CHECK(server->registerStorage<lux::render::MeshStorage>());
     CHECK(server->registerStorage<lux::render::InstanceStorage>());

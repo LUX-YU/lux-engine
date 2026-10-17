@@ -9,7 +9,6 @@ namespace lux::render::vulkan
 {
     class DeviceSession;
     class InstanceStorage;
-    template <class Declaration> struct StorageProvider;
 
     class InstanceCommands final
     {
@@ -28,10 +27,16 @@ namespace lux::render::vulkan
         DeviceSession& device_;
     };
 
+}
+
+namespace lux::render
+{
+    template <class Declaration> struct StorageProvider;
+
     template <> struct StorageProvider<render::InstanceStorage> final
     {
-        using Storage = InstanceStorage;
-        using Handler = InstanceCommands;
+        using Storage = vulkan::InstanceStorage;
+        using Handler = vulkan::InstanceCommands;
         [[nodiscard]] static StorageFactory factory() noexcept;
         [[nodiscard]] static StorageCppType implementationType() noexcept;
     };

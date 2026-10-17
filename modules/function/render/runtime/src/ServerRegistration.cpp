@@ -106,7 +106,6 @@ namespace lux::render
         {
             entry->cold->selected = {};
             entry->active = {};
-            entry->cold->active_code_pin = &entry->cold->code_pin;
             return request.reply();
         }
         const auto& supported = entry->cold->supported;
@@ -114,23 +113,20 @@ namespace lux::render
         if (found == supported.end()) return cxx::unexpected(RenderError{kRuntimeIdentity});
         entry->cold->selected = found->id;
         entry->active = found->call;
-        entry->cold->active_code_pin = &(*handlers.find(found->id))->code_pin;
         return request.reply();
     }
 
     CommandId RenderServer::Impl::addCommand(
-        CommandHandler binding,
-        std::shared_ptr<const void> pin
+        CommandHandler binding
     ) noexcept
     {
         // Full registration comparison proved equivalence; retain the template's static contract.
         auto metadata = std::make_unique<CommandMetadata>(
-            CommandMetadata{{}, binding, std::move(pin)}
+            CommandMetadata{{}, binding}
         );
         auto* cold = metadata.get();
         const auto id = command_table.emplace(CommandEntry{binding.call(), std::move(metadata)});
         cold->id = id;
-        cold->active_code_pin = &cold->code_pin;
         return id;
     }
 
@@ -151,9 +147,9 @@ namespace lux::render
         return impl_->handlers.find(id)->get();
     }
 
-    vulkan::DeviceSession& RenderServer::nativeDevice() noexcept
+    vulkan::DeviceSession& runtime_detail::ServerBootstrap::device(RenderServer& server) noexcept
     {
-        return *impl_->device;
+        return *server.impl_->device;
     }
 
     RenderResult<std::vector<CommandId>> RenderServer::prepareHandler(
@@ -161,15 +157,13 @@ namespace lux::render
     ) const noexcept
     {
         const auto& state = *impl_;
-        const bool is_invalid_installation = !owner.object || owner.name.empty() || calls.empty() ||
-            state.stop_requested.load();
+        const bool is_invalid_installation = owner.name.empty() || calls.empty() || state.stop_requested.load();
         if (is_invalid_installation) return cxx::unexpected(RenderError{kFeatureContract});
         std::vector<CommandId> commands(calls.size());
         for (std::size_t i = 0; i < calls.size(); ++i)
         {
             const auto& call = calls[i];
-            if (!call.valid() || call.call().object != owner.object.get())
-                return cxx::unexpected(RenderError{kFeatureContract});
+            // Only CommandMethod::bind on this owned typed object reaches this private transaction.
             if (auto valid = validateCommand(*call.descriptor()); !valid)
                 return cxx::unexpected(valid.error());
             for (std::size_t j = 0; j < i; ++j)
@@ -207,13 +201,12 @@ namespace lux::render
                         break;
                     }
             const bool first = commands[i].isNull();
-            if (first) commands[i] = state.addCommand(calls[i], handler->code_pin);
+            if (first) commands[i] = state.addCommand(calls[i]);
             auto& entry = *state.command_table.find(commands[i]);
             entry.cold->supported.push_back({id, calls[i].call()});
             if (first)
             {
                 entry.cold->selected = id;
-                entry.cold->active_code_pin = &handler->code_pin;
             }
             // Existing active remains unchanged, including a deliberately unbound command.
         }
@@ -242,8 +235,8 @@ namespace lux::render
         // A Feature dependency honours an explicitly installed compatible configuration.
         if (!ensure)
         {
-            const auto* original = resources.configuration(factory.description->type);
-            if (!original || !candidate.equal(original, candidate.config.data()))
+            const auto* original = resources.configuration(id);
+            if (!original || *original != candidate.config)
                 return cxx::unexpected(RenderError{kStorageMismatch});
         }
         return id;
@@ -252,7 +245,7 @@ namespace lux::render
     RenderResult<StorageTypeId> RenderServer::installStorage(StorageInstall candidate) noexcept
     {
         if (impl_->stop_requested.load()) return cxx::unexpected(RenderError{kRuntimeState});
-        if (candidate.handler)
+        if (candidate.owner)
         {
             auto commands = prepareHandler(*candidate.handler, candidate.calls);
             if (!commands) return cxx::unexpected(commands.error());
@@ -271,7 +264,7 @@ namespace lux::render
     }
 
     RenderResult<FeatureId> RenderServer::installFeature(
-        feature_detail::Implementation definition, std::shared_ptr<const void> code_pin,
+        feature_detail::Implementation definition,
         HandlerEntry* handler, std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls, std::vector<StorageInstall> dependencies
     ) noexcept
     {
@@ -282,7 +275,7 @@ namespace lux::render
         if (state.stop_requested.load()) return cxx::unexpected(RenderError{kRuntimeState});
         if (is_invalid_definition) return cxx::unexpected(RenderError{kFeatureContract});
         std::vector<CommandId> commands;
-        if (handler)
+        if (owner)
         {
             auto prepared = prepareHandler(*handler, calls);
             if (!prepared) return cxx::unexpected(prepared.error());
@@ -320,7 +313,7 @@ namespace lux::render
             }
             if (storage->isNull() && !duplicate)
                 factories.push_back({candidate.factory, candidate.config});
-            if (!candidate.handler) continue;
+            if (!candidate.owner) continue;
             auto prepared = prepareHandler(*candidate.handler, candidate.calls);
             if (!prepared) return cxx::unexpected(prepared.error());
             candidate.commands = std::move(*prepared);
@@ -340,7 +333,7 @@ namespace lux::render
         // All recoverable checks are complete. Stable Feature entries survive later directory growth.
         if (id.isNull())
         {
-            id = state.features.emplace(definition, std::move(code_pin));
+            id = state.features.emplace(definition);
             state.features.find(id)->id = id;
         }
         if (owner) publishHandler(std::move(owner), calls, std::move(commands));

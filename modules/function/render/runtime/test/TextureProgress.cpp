@@ -16,6 +16,8 @@
 #include <fstream>
 #include <latch>
 
+namespace lux::render::runtime_cpu_test { CpuSchedule controlled_cpu; }
+
 using namespace foundation_test;
 using namespace std::chrono_literals;
 using Clock = std::chrono::steady_clock;
@@ -129,9 +131,10 @@ static void shutdownAndLoss()
         Pause host;
         worker.setBeforeWork(&host, Pause::before);
         RenderServerConfig config{"runtime.texture.stop", true};
-        config.device.multiple_queues = true;
+        vulkan::DeviceOptions config_device{.dynamic_rendering = true};
+        config_device.multiple_queues = true;
         config.uploads = TransferOptions{1024 * 1024, 1, 32 * 1024 * 1024};
-        auto server = take(RenderServer::create(withCpu(worker, config)));
+        auto server = take(createTestServer(worker, config, config_device));
         const auto catalog = take(server->commandId<ListCommands>());
         CHECK(server->registerFeature<TextureProbe>(feature_test::Provider<ProbeCommands>{{&definition, &definition_graph, nullptr}}));
         std::atomic<bool> run_finished{false};
@@ -185,10 +188,11 @@ static void productionShutdownAndLoss()
         Pause host;
         worker.setBeforeWork(&host, Pause::before);
         RenderServerConfig config{"runtime.texture.production.stop", true};
-        config.device.multiple_queues = true;
-        config.device.texture_descriptors = true;
+        vulkan::DeviceOptions config_device{.dynamic_rendering = true};
+        config_device.multiple_queues = true;
+        config_device.texture_descriptors = true;
         config.uploads = TransferOptions{1024 * 1024, 1, 32 * 1024 * 1024};
-        auto server = take(RenderServer::create(withCpu(worker, config)));
+        auto server = take(createTestServer(worker, config, config_device));
         const auto catalog = take(server->commandId<ListCommands>());
         CHECK(server->registerStorage<lux::render::TextureStorage>({16, 32 * 1024 * 1024}));
         std::atomic<bool> run_finished{false};
@@ -238,10 +242,11 @@ int main()
     {
         CpuFixture host;
         RenderServerConfig config{"runtime.texture.progress", true};
-        config.device.multiple_queues = mode != 0;
-        config.device.prefer_dedicated_queues = mode == 2;
+        vulkan::DeviceOptions config_device{.dynamic_rendering = true};
+        config_device.multiple_queues = mode != 0;
+        config_device.prefer_dedicated_queues = mode == 2;
         config.uploads = TransferOptions{1024 * 1024, 1, 128 * 1024 * 1024};
-        auto server = take(RenderServer::create(withCpu(host, config)));
+        auto server = take(createTestServer(host, config, config_device));
         const auto catalog = take(server->commandId<ListCommands>());
         CHECK(server->registerFeature<TextureProbe>(feature_test::Provider<ProbeCommands>{{&definition, &definition_graph, nullptr}}));
         bool run_ok = false;

@@ -24,7 +24,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<StorageTypeId>
         installFactory(StorageFactory factory, Config configuration) noexcept
         {
-            auto value = ConfigValue::make(std::move(configuration), factory.code_pin);
+            auto value = ConfigValue::make(std::move(configuration));
             if (!value) return cxx::unexpected(value.error());
             return installFactory(std::move(factory), std::move(*value));
         }
@@ -45,7 +45,7 @@ namespace lux::render
         [[nodiscard]] StorageTypeId typeId(StorageNameView name) const noexcept;
         [[nodiscard]] const StorageFactory* factory(StorageTypeId type) const noexcept;
         [[nodiscard]] const StorageFactory* factory(StorageNameView type) const noexcept;
-        [[nodiscard]] const void* configuration(StorageNameView type) const noexcept;
+        [[nodiscard]] const ConfigValue* configuration(StorageTypeId type) const noexcept;
 
         // Boundary lookup; the instance index borrows, never owns a Native object.
         template <class T>

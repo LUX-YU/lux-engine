@@ -37,7 +37,7 @@ static void lateReply(EReplyCase mode)
 {
     const auto module = LoadLibraryW(L"render_server_dll_plugin.dll");
     check(module != nullptr, "plugin load failed");
-    using Create = RenderServer* (*)(const char*, const CpuSchedule*) noexcept;
+    using Create = RenderServer* (*)(const char*, lux::execution::ExecutionRuntime*) noexcept;
     using Readback = bool (*)(const char*, CommandId, RenderPayload*) noexcept;
     using Directory = CommandId (*)(RenderServer*) noexcept;
     using Run = bool (*)(RenderServer*) noexcept;
@@ -51,10 +51,8 @@ static void lateReply(EReplyCase mode)
     const auto directory = reinterpret_cast<Directory>(GetProcAddress(module, "serverDllDirectory"));
     check(create && run && stop && destroy && readback && directory, "plugin exports missing");
 
-    std::optional<test::CpuFixture> cpu;
-    if (mode == EReplyCase::EXTRACTED_READBACK) cpu.emplace();
-    const auto scheduler = cpu ? cpu->cpu() : CpuSchedule{};
-    auto* server = create("runtime.server.dll", &scheduler);
+    auto cpu = std::make_unique<test::CpuFixture>();
+    auto* server = create("runtime.server.dll", &cpu->runtime());
     check(server != nullptr, "plugin server create failed");
     const auto catalog = directory(server);
     check(!catalog.isNull(), "cold directory ID missing");

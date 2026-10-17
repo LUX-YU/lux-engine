@@ -38,7 +38,11 @@ namespace lux::render::vulkan
         return reply.complete(Ack{});
     }
 
-    StorageFactory StorageProvider<render::InstanceStorage>::factory() noexcept { return instanceStorageFactory(); }
+}
+
+namespace lux::render
+{
+    StorageFactory StorageProvider<render::InstanceStorage>::factory() noexcept { return vulkan::instanceStorageFactory(); }
 
     StorageCppType StorageProvider<render::InstanceStorage>::implementationType() noexcept
     {

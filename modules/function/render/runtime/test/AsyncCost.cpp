@@ -1,3 +1,4 @@
+#include "ServerFixture.hpp"
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include "ProtocolAudit.hpp"
@@ -424,9 +425,8 @@ int main()
     const FeatureGraphOps feature_graph{[](const void*, std::string_view, ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
     RenderServerConfig config{"runtime.async.cost", true};
     config.requests_per_tick = 128;
-    config.cpu = state->cpu;
-    auto server = take(RenderServer::create(config));
-    check(bool(server->registerFeature<CpuOperation>(feature_test::Provider<CpuCommands>{{&feature, &feature_graph, nullptr}}, "", {}, *state)));
+    auto server = take(createTestServer(host, config));
+    check(bool(server->registerFeature<CpuOperation>(feature_test::Provider<CpuCommands>{{&feature, &feature_graph, nullptr}}, "", *state)));
     const auto catalog = take(server->commandId<ListCommands>());
     RenderResult<void> run;
     std::thread render([&] { run = server->run(); });

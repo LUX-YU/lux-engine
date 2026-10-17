@@ -132,8 +132,7 @@ namespace lux::render
         stdexec::connect_result_t<CpuSender, Receiver> operation;
 
         CompileState(vulkan::DeviceSession& native, CpuSchedule& cpu, DeferredCompletion& pending,
-            std::vector<const FeatureEntry*> selected, std::size_t config_bytes,
-            const std::shared_ptr<const void>& implementation_pin)
+            std::vector<const FeatureEntry*> selected, std::size_t config_bytes)
             : device(native), request(pending.request->get<CreateEffectRequest>()), features(std::move(selected)),
               max_config_bytes(config_bytes), slot(&pending),
               operation(stdexec::connect(
@@ -145,9 +144,7 @@ namespace lux::render
                               state.device, state.request, state.features, state.max_config_bytes
                           );
                       },
-                      this,
-                      implementation_pin,
-                      {}
+                      this
                   ),
                   Receiver{&pending}
               ))
@@ -173,7 +170,6 @@ namespace lux::render
 
     RenderResult<void> RenderServer::Impl::createEffect(RenderRequest& request) noexcept
     {
-        if (!config.cpu) return cxx::unexpected(RenderError{kRuntimeUnsupported});
         const auto& input = request.get<CreateEffectRequest>();
         if (input.features.empty())
             return cxx::unexpected(RenderError{kFeatureContract});
@@ -190,13 +186,13 @@ namespace lux::render
         auto* slot = reserveCompletion();
         if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
         slot->request.emplace(std::move(request));
-        auto& cpu = slot->operation;
-        cpu.destroy = [](void* state) noexcept { delete static_cast<CompileState*>(state); };
-        cpu.adopt = CompileState::adopt;
-        cpu.operation = new CompileState(
-            *device, config.cpu, *slot, std::move(selected), config.max_config_bytes, config.implementation_code_pin
+        auto& completion = slot->operation;
+        completion.destroy = [](void* state) noexcept { delete static_cast<CompileState*>(state); };
+        completion.adopt = CompileState::adopt;
+        completion.operation = new CompileState(
+            *device, cpu, *slot, std::move(selected), config.max_config_bytes
         );
-        stdexec::start(static_cast<CompileState*>(cpu.operation)->operation);
+        stdexec::start(static_cast<CompileState*>(completion.operation)->operation);
         return {};
     }
 

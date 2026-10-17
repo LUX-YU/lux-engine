@@ -15,7 +15,13 @@ find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution
 add_executable(client_consumer Client.cpp)
 target_link_libraries(client_consumer PRIVATE lux::engine::render::render_commands lux::engine::platform::platform_ipc)
 add_executable(runtime_consumer Main.cpp)
-target_link_libraries(runtime_consumer PRIVATE lux::engine::render::render_runtime)
+target_link_libraries(runtime_consumer PRIVATE lux::engine::render::render_runtime lux::engine::core::core_execution)
+add_custom_command(TARGET runtime_consumer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:lux::engine::core::core_execution>" "$<TARGET_FILE_DIR:runtime_consumer>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:lux::engine::core::error>" "$<TARGET_FILE_DIR:runtime_consumer>"
+)
 
 foreach(consumer client_consumer runtime_consumer)
     add_custom_command(TARGET ${consumer} POST_BUILD

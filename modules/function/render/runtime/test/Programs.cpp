@@ -1,3 +1,4 @@
+#include "ServerFixture.hpp"
 #include "FeatureFixture.hpp"
 #include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -101,8 +102,9 @@ int main()
             return pass ? RenderResult<void>{} : lux::cxx::unexpected(pass.error());
         }};
     RenderServerConfig server_config{"runtime.program.ownership", true};
-    server_config.device.texture_descriptors = true;
-    auto server = take(createTestServer(server_config));
+    vulkan::DeviceOptions server_config_device{.dynamic_rendering = true};
+    server_config_device.texture_descriptors = true;
+    auto server = take(createTestServer(server_config, server_config_device));
     check(bool(server->registerStorage<TextureStorage>()));
     check(bool(feature_test::registerGraph(*server, {&dead, &dead_graph, nullptr})));
     check(bool(feature_test::registerGraph(*server, {&parameters, &parameter_graph, zeroPassParameters})));

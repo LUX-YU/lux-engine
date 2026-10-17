@@ -1,3 +1,4 @@
+#include "ServerFixture.hpp"
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -69,10 +70,10 @@ static void featureDirectory()
     descriptions.reserve(count);
     ids.reserve(count);
     const FeatureGraphOps graph{describe, nullptr};
-    auto created = RenderServer::create({"test.feature.directory", true});
+    auto created = createTestServer({"test.feature.directory", true});
     check(bool(created));
     auto server = std::move(*created);
-    check(bool(server->emplaceHandler<DirectoryInstaller>("", {}, *server)));
+    check(bool(server->emplaceHandler<DirectoryInstaller>("", *server)));
     for (std::size_t i = 0; i < count; ++i)
     {
         names.push_back("test.feature." + std::to_string(i));
@@ -130,7 +131,7 @@ static void featureDirectory()
     // A persisted preset saves the stable name, never the Server-local FeatureId. Reversing the
     // install order on a new Server makes stale numeric reuse visible instead of accidentally passing.
     const std::string preset = completed->features.front().name;
-    auto restarted = RenderServer::create({"test.feature.directory", true});
+    auto restarted = createTestServer({"test.feature.directory", true});
     check(bool(restarted));
     auto next = std::move(*restarted);
     const FeatureDescriptor other{FeatureName("test.feature.restart-first"), {}};
@@ -180,7 +181,7 @@ template <unsigned Fault> static void registrationFault()
     const FeatureDescriptor first{FeatureName("test.registration.a"), {}};
     const FeatureDescriptor second{FeatureName("test.registration.b"), {}};
     const FeatureGraphOps graph{describe, nullptr};
-    auto created = RenderServer::create({"test.feature.registration", false});
+    auto created = createTestServer({"test.feature.registration", false});
     check(bool(created));
     auto server = std::move(*created);
     auto installed = server->registerFeature<First>(

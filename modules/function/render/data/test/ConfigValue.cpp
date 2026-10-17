@@ -77,7 +77,7 @@ int main()
 
     auto module = LoadLibraryA("render_config_plugin.dll");
     check(module != nullptr);
-    using Make = bool (*)(const std::shared_ptr<const void>*, bool*, unsigned*, ConfigValue*) noexcept;
+    using Make = bool (*)(bool*, unsigned*, ConfigValue*) noexcept;
     const auto make = reinterpret_cast<Make>(GetProcAddress(module, "makeForeignConfig"));
     check(make != nullptr);
     bool pin_alive = true;
@@ -88,12 +88,11 @@ int main()
         pin_alive = false;
     });
     ConfigValue foreign;
-    check(make(&pin, &pin_alive, &foreign_destroyed, &foreign));
+    check(make( &pin_alive, &foreign_destroyed, &foreign));
     const auto* object = foreign.borrow<config_test::ForeignConfig>();
     check(object && object->bytes.size() == 3 && object->bytes.capacity() >= 8192);
     check(reinterpret_cast<std::uintptr_t>(object) % alignof(config_test::ForeignConfig) == 0);
     check(foreign.retainedBytes() == sizeof(*object) + object->bytes.capacity());
-    pin.reset();
     auto late = foreign;
     unsigned local_destroyed = 0;
     bool local_alive = true;
@@ -108,7 +107,9 @@ int main()
     foreign = take(ConfigValue::make(91u));
     check(pin_alive && foreign_destroyed == 0 && late.data() == object);
     late = {};
-    check(!pin_alive && foreign_destroyed == 1);
+    check(pin_alive && foreign_destroyed == 1);
+    pin.reset(); // Host unloads only after the final foreign object destructor returned.
+    check(!pin_alive);
     std::printf("ConfigValue sizeof=%zu align=%zu: retained backing, cold type and foreign lifetime PASS\n",
         sizeof(ConfigValue), alignof(ConfigValue));
 }

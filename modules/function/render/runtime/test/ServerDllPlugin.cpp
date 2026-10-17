@@ -2,7 +2,7 @@
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/render/runtime/Commands.hpp>
-#include <lux/engine/render/runtime/RenderServer.hpp>
+#include <lux/engine/render/runtime/VulkanServer.hpp>
 #include "../../native/vulkan/test/SceneFixture.hpp"
 #include <chrono>
 #include <thread>
@@ -18,12 +18,11 @@ static RenderResult<ProgramContribution> programs(const void* wire, std::string_
 }
 
 extern "C" __declspec(dllexport) RenderServer*
-serverDllCreate(const char* name, const CpuSchedule* cpu) noexcept
+serverDllCreate(const char* name, lux::execution::ExecutionRuntime* runtime) noexcept
 {
     lux::render::RenderServerConfig config{name, true};
-    config.cpu = *cpu;
-    auto server = RenderServer::create(std::move(config));
-    if (server && *cpu && !feature_test::registerGraph(**server, {&native_fixture::definition, &native_fixture::definition_graph, programs}))
+    auto server = vulkan::createRenderServer(std::move(config), *runtime);
+    if (server && !feature_test::registerGraph(**server, {&native_fixture::definition, &native_fixture::definition_graph, programs}))
         return nullptr;
     return server ? server->release() : nullptr;
 }

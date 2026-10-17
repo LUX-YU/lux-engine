@@ -40,10 +40,11 @@ int main()
     using namespace extension_test;
     CpuFixture compiler(2);
     RenderServerConfig config{"runtime.external.buffer", true};
-    config.device.multiple_queues = true;
+    vulkan::DeviceOptions config_device{.dynamic_rendering = true};
+    config_device.multiple_queues = true;
     config.uploads = TransferOptions{65536, 2, 131072};
-    config.device.texture_descriptors = true;
-    auto server = take(RenderServer::create(withCpu(compiler, config)));
+    config_device.texture_descriptors = true;
+    auto server = take(createTestServer(compiler, config, config_device));
     const auto catalog = take(server->commandId<ListCommands>());
     CHECK(server->registerStorage<lux::render::TextureStorage>());
     const auto buffer_type = take(server->registerStorage<TestBufferStorage>());

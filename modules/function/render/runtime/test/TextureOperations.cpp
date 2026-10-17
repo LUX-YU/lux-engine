@@ -11,10 +11,11 @@ int main()
 {
     CpuFixture host;
     RenderServerConfig config{"runtime.texture.operations", true};
-    config.device.multiple_queues = true;
+    vulkan::DeviceOptions config_device{.dynamic_rendering = true};
+    config_device.multiple_queues = true;
     config.uploads = TransferOptions{1024 * 1024, 2, 128 * 1024 * 1024};
-    config.device.texture_descriptors = true;
-    auto server = take(RenderServer::create(withCpu(host, config)));
+    config_device.texture_descriptors = true;
+    auto server = take(createTestServer(host, config, config_device));
     const auto catalog = take(server->commandId<ListCommands>());
     CHECK(server->registerStorage<lux::render::TextureStorage>({16, 256 * 1024 * 1024}));
     bool run_ok = false;

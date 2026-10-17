@@ -115,7 +115,7 @@ namespace
             },
             [](const void* instance, const void* config) noexcept {
                 return static_cast<const Value*>(instance)->initial == *static_cast<const unsigned*>(config);
-            }, {}, nullptr, storageCppType<unsigned>(), storageCppType<TestStorage::Ops>()
+            }, nullptr, storageCppType<unsigned>(), storageCppType<TestStorage::Ops>()
         );
     }
 }
@@ -143,8 +143,10 @@ int main()
         counts.registry = &directory;
         auto description = TestStorage::description;
         description.required_capabilities = 2u;
-        auto candidate = factory();
-        candidate.description = &description;
+        const auto original_factory = factory();
+        auto candidate = resource_detail::StorageFactoryAudit::make(&description, original_factory.ops,
+            original_factory.create, original_factory.compatible_config, original_factory.binding_ops,
+            original_factory.config_type, original_factory.ops_type);
         auto unsupported = directory.installFactory(candidate, 7u);
         require(!unsupported && unsupported.error().type == kStorageCapability);
         require(directory.typeId(description.type).isNull() && counts.created == 0);
@@ -162,13 +164,14 @@ int main()
         require(bool(original));
         auto other_description = TestStorage::description;
         other_description.type = StorageNameView("test.late.storage");
-        auto other_factory = factory();
-        other_factory.description = &other_description;
+        auto other_factory = resource_detail::StorageFactoryAudit::make(&other_description, original_factory.ops,
+            original_factory.create, original_factory.compatible_config, original_factory.binding_ops,
+            original_factory.config_type, original_factory.ops_type);
         auto other_type = directory.installFactory(other_factory);
         require(bool(other_type));
         require(!global.acquire(*other_type, "missing")); // no Schema never means no Config
         require(counts.created == 1 && static_cast<Value*>(directory.native(original->id()))->value == 7u);
-        require(directory.configuration(description.type) != nullptr);
+        require(directory.configuration(*installed) != nullptr);
     }
     {
         constexpr std::size_t count = 600;
@@ -185,8 +188,10 @@ int main()
             names.push_back("test.storage." + std::to_string(i));
             descriptions.push_back(TestStorage::description);
             descriptions.back().type = StorageNameView(names.back());
-            auto candidate = factory();
-            candidate.description = &descriptions.back();
+            const auto original_factory = factory();
+        auto candidate = resource_detail::StorageFactoryAudit::make(&descriptions.back(), original_factory.ops,
+            original_factory.create, original_factory.compatible_config, original_factory.binding_ops,
+            original_factory.config_type, original_factory.ops_type);
             require(bool(directory.installFactory(std::move(candidate))));
             const auto id = directory.typeId(descriptions.back().type);
             require(!id.isNull() && directory.factory(id) == directory.factory(descriptions.back().type));
@@ -211,7 +216,7 @@ int main()
         const auto installed = registry.installFactory(factory(), 7u);
         require(bool(installed));
         require(!registry.installFactory(factory(), 8u));
-        require(*static_cast<const unsigned*>(registry.configuration(TestStorage::description.type)) == 7u);
+        require(*registry.configuration(registry.typeId(TestStorage::description.type))->borrow<unsigned>() == 7u);
         auto wrong = ConfigValue::make(WrongConfig{7});
         require(wrong && !global.acquire(*installed, "wrong", std::move(*wrong)));
         require(!global.acquire<WrongOpsStorage>("wrong-ops-explicit", config(7)));

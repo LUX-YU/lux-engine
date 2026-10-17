@@ -59,6 +59,7 @@ component_add_internal_dependencies(render_runtime
 
 target_link_libraries(render_runtime PRIVATE
     lux::engine::platform::platform_ipc lux::engine::platform::platform_process
+    lux::engine::core::core_execution
 )
 
 component_add_transitive_commands(render_runtime

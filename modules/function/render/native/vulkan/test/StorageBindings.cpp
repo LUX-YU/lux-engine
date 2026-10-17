@@ -72,6 +72,21 @@ int main()
     auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, programs, extension_test::target)));
     CHECK(session->resources().size() == count_before); // compiling cannot create physical scoped instances
     auto& arguments = contribution.arguments;
+    const auto native_before = session->resources().size();
+    auto wrong_arguments = arguments;
+    wrong_arguments.front().value = take(ConfigValue::make(std::uint32_t{1}));
+    auto wrong_type = session->prepare(code, extension_test::target, nullptr, nullptr, wrong_arguments);
+    CHECK(!wrong_type && wrong_type.error().type == kStorageContract);
+    CHECK(session->resources().size() == native_before);
+    CHECK(!session->prepare(code, extension_test::target)); // Required typed arguments are not implicit defaults.
+    wrong_arguments = arguments;
+    wrong_arguments.front().resource_key = "unknown";
+    CHECK(!session->prepare(code, extension_test::target, nullptr, nullptr, wrong_arguments));
+    wrong_arguments = arguments;
+    wrong_arguments.push_back({arguments.front().resource_key, take(ConfigValue::make(TextureBinding{}))});
+    auto conflicting_argument = session->prepare(code, extension_test::target, nullptr, nullptr, wrong_arguments);
+    CHECK(!conflicting_argument && conflicting_argument.error().type == kStorageMismatch);
+    CHECK(session->resources().size() == native_before);
     auto* context = take(session->prepare(code, extension_test::target, nullptr, nullptr, arguments));
     execute(*context, *session, 64);
     // Reflection mismatches are rejected, including type, layout, set and array extent.

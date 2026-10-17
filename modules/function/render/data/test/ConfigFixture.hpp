@@ -19,6 +19,8 @@ namespace config_test
             : bytes(std::move(other.bytes)), pin_alive(std::exchange(other.pin_alive, nullptr)),
               destroyed(std::exchange(other.destroyed, nullptr)) {}
 
+        bool operator==(const ForeignConfig& other) const noexcept { return bytes == other.bytes; }
+
         ~ForeignConfig() noexcept
         {
             if (destroyed)

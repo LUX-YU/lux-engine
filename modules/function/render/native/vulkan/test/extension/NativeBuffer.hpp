@@ -211,17 +211,15 @@ namespace extension_test
         }
         std::size_t backingCount() const noexcept { return physical_->resident; }
         bool compatible(const TestBufferStorage::Config& config) const noexcept { return config == config_; }
-        RenderResult<void> prepare(const vk::NativeResourcePlan& plan, std::span<const std::byte> bytes,
+        RenderResult<void> prepare(const vk::NativeResourcePlan& plan, const BufferBinding& argument,
             vk::PreparedStorageBinding& binding) noexcept
         {
             const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
             if (!description || description->size != 16) return lux::cxx::unexpected(RenderError{kStorageMismatch});
-            lux::cxx::BinaryReader reader(bytes, bytes.size());
-            auto argument = DataSchema<BufferBinding>::decode(reader, EncodedDataView{DataSchema<BufferBinding>::schema, bytes, {}});
-            if (argument->id.storage != id_) return lux::cxx::unexpected(RenderError{kStorageIdentity});
-            auto* entry = entries_.find(argument->id.local);
+            if (argument.id.storage != id_) return lux::cxx::unexpected(RenderError{kStorageIdentity});
+            auto* entry = entries_.find(argument.id.local);
             if (!entry || !entry->current) return lux::cxx::unexpected(RenderError{kStorageIdentity});
-            auto use = std::make_unique<Use>(*this, argument->id, nullptr, binding);
+            auto use = std::make_unique<Use>(*this, argument.id, nullptr, binding);
             use->update(*entry->current);
             uses_.push_back(use.get());
             binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};
@@ -267,9 +265,9 @@ namespace extension_test
             return static_cast<const NativeBuffer*>(object)->exists(id);
         }};
         static const vk::StorageBindingOps binding{
-            [](void* object, const vk::NativeResourcePlan& plan, std::span<const std::byte> argument,
+            [](void* object, const vk::NativeResourcePlan& plan, const void* argument,
                 vk::PreparedStorageBinding& binding) noexcept {
-                return static_cast<NativeBuffer*>(object)->prepare(plan, argument, binding);
+                return static_cast<NativeBuffer*>(object)->prepare(plan, *static_cast<const BufferBinding*>(argument), binding);
             }
         };
         static const auto create = +[](vk::DeviceSession& session, StorageId id, const TestBufferStorage::Config& config) noexcept

@@ -90,8 +90,25 @@ namespace lux::render::vulkan
             target.height > device.properties().limits.maxImageDimension2D;
         if (is_unsupported_target) return cxx::unexpected(RenderError{kUnsupported});
         CompiledGraph result(device.native(), target);
+        // Resolve author keys once at the cold compiler boundary, then index by GraphPassId.
+        std::vector<const PassProgram*> pass_programs(graph.passes().size(), nullptr);
+        for (const auto& program : programs)
+        {
+            const auto found = std::ranges::find(graph.passes(), program.pass_key, &GraphPass::key);
+            if (found == graph.passes().end()) return cxx::unexpected(RenderError{kInvalidArgument});
+            const auto index = static_cast<std::size_t>(found - graph.passes().begin());
+            if (pass_programs[index]) return cxx::unexpected(RenderError{kInvalidArgument});
+            pass_programs[index] = &program;
+        }
+        std::vector<bool> live_resources(graph.resources().size(), false);
+        for (const auto pass : analysis.execution_order)
+            for (const auto& use : graph.passes()[pass.index].uses) live_resources[use.version.resource.index] = true;
+        for (const auto& output : graph.outputs()) live_resources[output.version.resource.index] = true;
         for (const auto& resource : graph.resources())
         {
+            const auto index = result.resources_.size();
+            result.resources_.push_back({resource.key, resource.description, resource.origin});
+            if (!live_resources[index]) continue;
             const bool is_history = resource.origin == EGraphOrigin::HISTORY_PREVIOUS ||
                 resource.origin == EGraphOrigin::HISTORY_CURRENT;
             if (is_history) return cxx::unexpected(RenderError{kUnsupported});
@@ -105,7 +122,6 @@ namespace lux::render::vulkan
                         image->format != rdesc::ETextureFormat::RGBA8_UNORM || resource.origin != EGraphOrigin::TRANSIENT);
                 if (is_unsupported_image) return cxx::unexpected(RenderError{kUnsupported});
             }
-            result.resources_.push_back({resource.key, resource.description, resource.origin});
         }
         const auto install = [&](std::span<const GraphStorageBinding> source,
             std::vector<std::uint32_t>& indices) -> RenderResult<void> {
@@ -113,6 +129,7 @@ namespace lux::render::vulkan
             {
                 if (binding.resource.index >= result.resources_.size())
                     return cxx::unexpected(RenderError{kInvalidArgument});
+                if (!live_resources[binding.resource.index]) continue;
                 auto& resource = result.resources_[binding.resource.index];
                 if (resource.storage) return cxx::unexpected(RenderError{kInvalidArgument});
                 const auto* factory = session.resources().factory(binding.storage.type.view());
@@ -143,8 +160,11 @@ namespace lux::render::vulkan
         if (result.output_ == kGraphInvalidIndex) return cxx::unexpected(RenderError{kInvalidArgument});
         // Layouts depend only on installed static contracts/configuration, never on a live asset or Storage instance.
         std::vector<ShaderBinding> contracts;
-        for (const auto& program : programs)
-            for (const auto& binding : program.shader.interface.bindings)
+        for (const auto pass : analysis.execution_order)
+        {
+            const auto* program = pass_programs[pass.index];
+            if (!program) return cxx::unexpected(RenderError{kInvalidArgument, {pass.index}});
+            for (const auto& binding : program->shader.interface.bindings)
             {
                 auto found = std::ranges::find_if(contracts, [&](const auto& value) {
                     return value.set == binding.set && value.binding == binding.binding;
@@ -158,6 +178,7 @@ namespace lux::render::vulkan
                     return cxx::unexpected(RenderError{kUnsupported});
                 contracts.push_back(binding);
             }
+        }
         std::ranges::sort(contracts, [](const auto& a, const auto& b) {
             return std::pair(a.set, a.binding) < std::pair(b.set, b.binding);
         });
@@ -185,16 +206,6 @@ namespace lux::render::vulkan
             auto layout = createDescriptorLayout(device, std::span(&contract, 1), *count, "shader_layout");
             if (!layout) return cxx::unexpected(layout.error());
             result.descriptor_layouts_.push_back(*layout);
-        }
-        // Resolve author keys once at the cold compiler boundary, then index by GraphPassId.
-        std::vector<const PassProgram*> pass_programs(graph.passes().size(), nullptr);
-        for (const auto& program : programs)
-        {
-            const auto found = std::ranges::find(graph.passes(), program.pass_key, &GraphPass::key);
-            if (found == graph.passes().end()) return cxx::unexpected(RenderError{kInvalidArgument});
-            const auto index = static_cast<std::size_t>(found - graph.passes().begin());
-            if (pass_programs[index]) return cxx::unexpected(RenderError{kInvalidArgument});
-            pass_programs[index] = &program;
         }
         std::vector<Access> previous(result.resources_.size());
         std::vector<bool> used(result.resources_.size(), false);

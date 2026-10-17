@@ -376,7 +376,7 @@
       "source": "latest user decisions + IMPLEMENTATION section 1"
     },
     "work_package": "N4.2",
-    "status": "PLANNED",
+    "status": "PASS_TESTED_SCOPE",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -403,7 +403,25 @@
       "T-GPU-07",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N4-OWNERS-VERIFICATION.md",
+      "N4-OWNERS-evidence-index.json"
+    ],
+    "implementation": "221b70f9b3434a5469988e08803ba9b3bfad1649",
+    "verification": "752ad5dcf379d8165c72291222af23833e405195",
+    "implementation_symbols": [
+      "resource/StorageSet.hpp:StorageSet",
+      "resource/ResourceRegistry.hpp:ResourceRegistry",
+      "runtime/ServerImpl.hpp:Scene/View",
+      "native/vulkan/ExecutionContext.hpp:ExecutionContext::storages_"
+    ],
+    "verified_tests": [
+      "render.resource.registry",
+      "render.native.resource_domains",
+      "render.native.texture_sampling",
+      "render.runtime.control"
+    ],
+    "qualification": "Actual N4 owners/identity/device-limited growth/retirement; final layout and safe-point rebind remain N5, cross-version performance remains PARTIAL."
   },
   {
     "id": "decision.D12",
@@ -413,7 +431,7 @@
       "source": "latest user decisions + IMPLEMENTATION section 1"
     },
     "work_package": "N4.6",
-    "status": "PLANNED",
+    "status": "PASS_TESTED_SCOPE",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -440,7 +458,24 @@
       "T-GPU-07",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N4-OWNERS-VERIFICATION.md",
+      "N4-OWNERS-evidence-index.json"
+    ],
+    "implementation": "221b70f9b3434a5469988e08803ba9b3bfad1649",
+    "verification": "752ad5dcf379d8165c72291222af23833e405195",
+    "implementation_symbols": [
+      "native/vulkan/retirement/Retirement.hpp:RetirementReservation",
+      "native/vulkan/src/retirement/Retirement.cpp:RetirementQueue::collect",
+      "native/vulkan/src/texture/TextureStorage.cpp:physical backing custody"
+    ],
+    "verified_tests": [
+      "render.native.failures",
+      "render.native.last_use",
+      "render.native.texture_sampling",
+      "render.native.storage_bindings"
+    ],
+    "qualification": "Actual N4 owners/identity/device-limited growth/retirement; final layout and safe-point rebind remain N5, cross-version performance remains PARTIAL."
   },
   {
     "id": "decision.D13",
@@ -479,7 +514,7 @@
       "source": "latest user decisions + IMPLEMENTATION section 1"
     },
     "work_package": "N4.5",
-    "status": "PLANNED",
+    "status": "PASS_TESTED_SCOPE",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -506,7 +541,23 @@
       "T-GPU-07",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N4-OWNERS-VERIFICATION.md",
+      "N4-OWNERS-evidence-index.json"
+    ],
+    "implementation": "221b70f9b3434a5469988e08803ba9b3bfad1649",
+    "verification": "752ad5dcf379d8165c72291222af23833e405195",
+    "implementation_symbols": [
+      "resource/StorageSet.hpp:records_",
+      "native/vulkan/src/DescriptorArray.cpp:device descriptor limits",
+      "resource/Texture.hpp:TextureStorageConfig"
+    ],
+    "verified_tests": [
+      "render.native.texture_storage",
+      "render.native.memory_cost",
+      "render.resource.registry"
+    ],
+    "qualification": "Actual N4 owners/identity/device-limited growth/retirement; final layout and safe-point rebind remain N5, cross-version performance remains PARTIAL."
   },
   {
     "id": "decision.D15",
@@ -1181,7 +1232,7 @@
       "action": "StorageId直达；注册/Attach冷查找保留"
     },
     "work_package": "N4.3",
-    "status": "PLANNED",
+    "status": "PASS_TESTED_SCOPE",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -1208,7 +1259,23 @@
       "T-GPU-07",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N4-OWNERS-VERIFICATION.md",
+      "N4-OWNERS-evidence-index.json"
+    ],
+    "implementation": "221b70f9b3434a5469988e08803ba9b3bfad1649",
+    "verification": "752ad5dcf379d8165c72291222af23833e405195",
+    "implementation_symbols": [
+      "resource/src/ResourceRegistry.cpp:native",
+      "resource/src/StorageSet.cpp:erase",
+      "resource/Storage.hpp:StorageResourceId"
+    ],
+    "verified_tests": [
+      "render.resource.registry",
+      "render.native.resource_domains",
+      "render.runtime.control"
+    ],
+    "qualification": "Actual N4 owners/identity/device-limited growth/retirement; final layout and safe-point rebind remain N5, cross-version performance remains PARTIAL."
   },
   {
     "id": "review.R17",
@@ -1225,7 +1292,7 @@
       "action": "只推进退休候选，不扫描所有live对象"
     },
     "work_package": "N4.6",
-    "status": "PLANNED",
+    "status": "PASS_TESTED_SCOPE",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -1252,7 +1319,22 @@
       "T-GPU-07",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N4-OWNERS-VERIFICATION.md",
+      "N4-OWNERS-evidence-index.json"
+    ],
+    "implementation": "221b70f9b3434a5469988e08803ba9b3bfad1649",
+    "verification": "752ad5dcf379d8165c72291222af23833e405195",
+    "implementation_symbols": [
+      "native/vulkan/src/retirement/Retirement.cpp:queue frontier lists",
+      "native/vulkan/src/texture/TextureStorage.cpp:retireUnused"
+    ],
+    "verified_tests": [
+      "render.native.memory_cost",
+      "render.native.last_use",
+      "render.native.texture_sampling"
+    ],
+    "qualification": "Actual N4 owners/identity/device-limited growth/retirement; final layout and safe-point rebind remain N5, cross-version performance remains PARTIAL."
   },
   {
     "id": "review.R18",
@@ -1268,7 +1350,7 @@
       "action": "先摘除再回调/析构，合法间接释放安全"
     },
     "work_package": "N4.6",
-    "status": "PLANNED",
+    "status": "PASS_TESTED_SCOPE",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -1295,7 +1377,22 @@
       "T-GPU-07",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N4-OWNERS-VERIFICATION.md",
+      "N4-OWNERS-evidence-index.json"
+    ],
+    "implementation": "221b70f9b3434a5469988e08803ba9b3bfad1649",
+    "verification": "752ad5dcf379d8165c72291222af23833e405195",
+    "implementation_symbols": [
+      "native/vulkan/src/retirement/Retirement.cpp:release detached entry",
+      "resource/src/StorageSet.cpp:erase indices before native deleter"
+    ],
+    "verified_tests": [
+      "render.resource.registry",
+      "render.native.failures",
+      "render.native.memory_cost"
+    ],
+    "qualification": "Actual N4 owners/identity/device-limited growth/retirement; final layout and safe-point rebind remain N5, cross-version performance remains PARTIAL."
   },
   {
     "id": "review.R19",
@@ -3245,7 +3342,7 @@
       "status": "PROTECT"
     },
     "work_package": "N4.6",
-    "status": "PROTECTED_PENDING_RERUN",
+    "status": "PASS_TESTED_SCOPE",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -3272,6 +3369,23 @@
       "T-GPU-07",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N4-OWNERS-VERIFICATION.md",
+      "N4-OWNERS-evidence-index.json"
+    ],
+    "implementation": "221b70f9b3434a5469988e08803ba9b3bfad1649",
+    "verification": "752ad5dcf379d8165c72291222af23833e405195",
+    "implementation_symbols": [
+      "native/vulkan/src/transfer/Submission.cpp:SubmissionRequirements::merge",
+      "native/vulkan/src/Execution.cpp:accepted submit LastUse",
+      "native/vulkan/src/transfer/Transfer.cpp:accepted copy LastUse"
+    ],
+    "verified_tests": [
+      "render.native.last_use",
+      "render.native.transfer",
+      "render.native.texture_upload",
+      "render.native.storage_bindings"
+    ],
+    "qualification": "Actual N4 owners/identity/device-limited growth/retirement; final layout and safe-point rebind remain N5, cross-version performance remains PARTIAL."
   }
 ]

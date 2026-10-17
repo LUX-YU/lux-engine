@@ -1,3 +1,4 @@
+#include <lux/engine/render/data/Encoding.hpp>
 #include "ServerImpl.hpp"
 
 namespace lux::render

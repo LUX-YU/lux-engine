@@ -516,7 +516,7 @@
   },
   "N4.2": {
     "title": "StorageSet ownership and borrowed index",
-    "status": "IN_PROGRESS",
+    "status": "PASS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -544,13 +544,18 @@
       "T-GPU-12"
     ],
     "evidence": [
-      "N4.2-IDENTITY-IMPLEMENTATION.md",
-      "N4-OWNERS-IMPLEMENTATION.md"
-    ]
+      "N4-OWNERS-IMPLEMENTATION.md",
+      "N4-RELEASE-CORRECTION.md",
+      "N4-OWNERS-VERIFICATION.md",
+      "N4-OWNERS-evidence-index.json"
+    ],
+    "implementation": "221b70f9b3434a5469988e08803ba9b3bfad1649",
+    "verification": "752ad5dcf379d8165c72291222af23833e405195",
+    "qualification": "N4 tested ownership/capacity/retirement scope; final Shader layout and complete safe-point rebinding remain N5. Historical performance PARTIAL."
   },
   "N4.3": {
     "title": "Storage discovery and qualified handles",
-    "status": "IN_PROGRESS",
+    "status": "PASS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -578,12 +583,18 @@
       "T-GPU-12"
     ],
     "evidence": [
-      "N4-OWNERS-IMPLEMENTATION.md"
-    ]
+      "N4-OWNERS-IMPLEMENTATION.md",
+      "N4-RELEASE-CORRECTION.md",
+      "N4-OWNERS-VERIFICATION.md",
+      "N4-OWNERS-evidence-index.json"
+    ],
+    "implementation": "221b70f9b3434a5469988e08803ba9b3bfad1649",
+    "verification": "752ad5dcf379d8165c72291222af23833e405195",
+    "qualification": "N4 tested ownership/capacity/retirement scope; final Shader layout and complete safe-point rebinding remain N5. Historical performance PARTIAL."
   },
   "N4.4": {
     "title": "Attach withdrawal and resource leases",
-    "status": "IN_PROGRESS",
+    "status": "PASS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -611,12 +622,18 @@
       "T-GPU-12"
     ],
     "evidence": [
-      "N4-OWNERS-IMPLEMENTATION.md"
-    ]
+      "N4-OWNERS-IMPLEMENTATION.md",
+      "N4-RELEASE-CORRECTION.md",
+      "N4-OWNERS-VERIFICATION.md",
+      "N4-OWNERS-evidence-index.json"
+    ],
+    "implementation": "221b70f9b3434a5469988e08803ba9b3bfad1649",
+    "verification": "752ad5dcf379d8165c72291222af23833e405195",
+    "qualification": "N4 tested ownership/capacity/retirement scope; final Shader layout and complete safe-point rebinding remain N5. Historical performance PARTIAL."
   },
   "N4.5": {
     "title": "Logical growth and descriptor allocation",
-    "status": "IN_PROGRESS",
+    "status": "PASS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -644,12 +661,18 @@
       "T-GPU-12"
     ],
     "evidence": [
-      "N4-OWNERS-IMPLEMENTATION.md"
-    ]
+      "N4-OWNERS-IMPLEMENTATION.md",
+      "N4-RELEASE-CORRECTION.md",
+      "N4-OWNERS-VERIFICATION.md",
+      "N4-OWNERS-evidence-index.json"
+    ],
+    "implementation": "221b70f9b3434a5469988e08803ba9b3bfad1649",
+    "verification": "752ad5dcf379d8165c72291222af23833e405195",
+    "qualification": "N4 tested ownership/capacity/retirement scope; final Shader layout and complete safe-point rebinding remain N5. Historical performance PARTIAL."
   },
   "N4.6": {
     "title": "Event-driven physical retirement",
-    "status": "IN_PROGRESS",
+    "status": "PASS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -677,12 +700,18 @@
       "T-GPU-12"
     ],
     "evidence": [
-      "N4-OWNERS-IMPLEMENTATION.md"
-    ]
+      "N4-OWNERS-IMPLEMENTATION.md",
+      "N4-RELEASE-CORRECTION.md",
+      "N4-OWNERS-VERIFICATION.md",
+      "N4-OWNERS-evidence-index.json"
+    ],
+    "implementation": "221b70f9b3434a5469988e08803ba9b3bfad1649",
+    "verification": "752ad5dcf379d8165c72291222af23833e405195",
+    "qualification": "N4 tested ownership/capacity/retirement scope; final Shader layout and complete safe-point rebinding remain N5. Historical performance PARTIAL."
   },
   "N5.1": {
     "title": "Typed arguments and actual owner placement",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/features/",
       "modules/function/render/graph/",
@@ -701,11 +730,14 @@
       "T-GPU-11",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N5-COLD-IMPLEMENTATION.md"
+    ],
+    "qualification": "Typed argument/requirement and live lowering checkpoint; final parameter and LayoutPlan contracts still in progress."
   },
   "N5.2": {
     "title": "Live graph and parameter plans",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/features/",
       "modules/function/render/graph/",
@@ -724,7 +756,10 @@
       "T-GPU-11",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N5-COLD-IMPLEMENTATION.md"
+    ],
+    "qualification": "Typed argument/requirement and live lowering checkpoint; final parameter and LayoutPlan contracts still in progress."
   },
   "N5.3": {
     "title": "Single shader layout and relocation",

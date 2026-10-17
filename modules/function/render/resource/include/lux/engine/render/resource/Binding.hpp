@@ -2,7 +2,6 @@
 
 #include <lux/engine/render/resource/Storage.hpp>
 #include <lux/engine/render/core/Ids.hpp>
-#include <lux/cxx/memory/SharedBytes.hpp>
 #include <string>
 #include <vector>
 
@@ -32,7 +31,7 @@ namespace lux::render
     struct StorageArgument final
     {
         std::string resource_key;
-        lux::cxx::SharedBytes<> bytes;
+        ConfigValue value;
     };
 
 }

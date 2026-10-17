@@ -47,6 +47,17 @@ int main()
         StorageSet view(resources);
         const native_fixture::Config config{32, 32, 1, 1};
         auto assembly = take(native_fixture::assemble(config));
+        for (auto* group : {&assembly.external_bindings.global, &assembly.external_bindings.scene,
+            &assembly.external_bindings.view, &assembly.external_bindings.attachment})
+            for (auto& binding : *group) binding.storage.config = take(ConfigValue::make(buffer_fixture::Config{16}));
+        {
+            auto wrong = assembly.external_bindings;
+            wrong.global.front().storage.config = take(ConfigValue::make(std::uint32_t{16}));
+            auto wrong_code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly.definition,
+                assembly.analysis, wrong, native_fixture::programs(config), native_fixture::target(config))));
+            CHECK(!session->prepare(wrong_code, native_fixture::target(config), &scene, &view));
+            CHECK(resources.size() == 0 && (live == std::array<int, 3>{}));
+        }
         auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
             native_fixture::programs(config), native_fixture::target(config))));
         CHECK(!session->prepare(code, native_fixture::target(config), &other->globalStorages(), &view));

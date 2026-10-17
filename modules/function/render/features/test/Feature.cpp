@@ -349,6 +349,16 @@ static int claims()
     required[0].participation = EResourceClaim::REQUIRE;
     required[0].initial_ranges = {GraphBufferRange{0, 256}, GraphBufferRange{0, 256}};
     CHECK(run()); // Whole-range spelling and duplicates normalize.
+    provided[0].storage->config = *ConfigValue::make(std::uint32_t{31});
+    required[0].storage->config = *ConfigValue::make(std::uint32_t{31});
+    CHECK(run()); // Separate immutable values compare semantically, not by owner address.
+    required[0].storage->config = *ConfigValue::make(std::uint32_t{32});
+    auto config_conflict = run();
+    CHECK(!config_conflict && config_conflict.error().type == kFeatureResourceMismatch);
+    required[0].storage->config = *ConfigValue::make(float{31});
+    CHECK(!run()); // Equal-looking values of a different C++ type are not interchangeable.
+    required[0].storage->config = {};
+    CHECK(!run()); // Missing configuration does not silently replace the provider's configuration.
     reset();
     provided[0].description = GraphBufferDesc{0};
     required[0].description = provided[0].description;

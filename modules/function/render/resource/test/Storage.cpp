@@ -23,6 +23,12 @@ int main()
     require(bool(validateStorage(original)));
     require(bool(compatibleStorage(original, original)));
     auto changed = original;
+    changed.binding_type = ConfigValue::typeOf<std::uint32_t>();
+    require(bool(validateStorage(changed)) && !compatibleStorage(original, changed));
+    auto other_binding = changed;
+    other_binding.binding_type = ConfigValue::typeOf<float>();
+    require(!compatibleStorage(changed, other_binding));
+    changed = original;
     changed.type = StorageNameView("test.Other");
     require(!compatibleStorage(original, changed));
     changed = original;

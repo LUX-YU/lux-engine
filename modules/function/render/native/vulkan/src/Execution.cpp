@@ -1,4 +1,3 @@
-#include <lux/engine/render/data/Encoding.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include "Native.hpp"
 #include <algorithm>
@@ -45,6 +44,18 @@ namespace lux::render::vulkan
         const bool is_wrong_owner = (scene && &scene->registry() != &resources_) ||
             (view && &view->registry() != &resources_);
         if (is_wrong_owner) return cxx::unexpected(RenderError{kStorageIdentity});
+        std::vector<const ConfigValue*> resolved_arguments(code->resources().size());
+        for (const auto& argument : arguments)
+        {
+            const auto plan = std::ranges::find(code->resources(), argument.resource_key, &NativeResourcePlan::key);
+            if (plan == code->resources().end()) return cxx::unexpected(RenderError{kStorageContract});
+            if (!plan->image_usage && !plan->buffer_usage) continue;
+            if (!plan->storage) return cxx::unexpected(RenderError{kStorageContract});
+            const auto index = static_cast<std::size_t>(plan - code->resources().begin());
+            const auto* previous = resolved_arguments[index];
+            if (previous && *previous != argument.value) return cxx::unexpected(RenderError{kStorageMismatch});
+            resolved_arguments[index] = &argument.value;
+        }
         auto reservation = retirement().reserve();
         if (!reservation) return cxx::unexpected(reservation.error());
         auto context = std::unique_ptr<ExecutionContext>(new ExecutionContext(*this, queue(), std::move(code), target));
@@ -59,21 +70,17 @@ namespace lux::render::vulkan
                 auto& binding = context->bindings_[i];
                 const auto* factory = resources_.factory(plan.storage->type.view());
                 const auto key = plan.storage->key.empty() ? plan.key : plan.storage->key;
-                const auto argument = std::ranges::find(arguments, plan.key, &StorageArgument::resource_key);
-                const auto bytes = argument == arguments.end() ? std::span<const std::byte>{} : argument->bytes.view();
-                if (factory->description->binding_schema)
-                {
-                    const auto& schema = *factory->description->binding_schema;
-                    if (auto valid = validateBoundEncodedData({schema, bytes, {}}, {schema.fixed_size, 0}); !valid)
-                        return cxx::unexpected(valid.error());
-                }
-                else if (!bytes.empty()) return cxx::unexpected(RenderError{kStorageContract});
-                auto instance = set->acquire(resources_.typeId(plan.storage->type.view()), key);
+                const auto* argument = resolved_arguments[i];
+                const auto type = argument ? argument->typeInfo() : ConfigValue::Type{};
+                if (type != factory->description->binding_type)
+                    return cxx::unexpected(RenderError{kStorageContract});
+                const auto* value = argument ? argument->data() : nullptr;
+                auto instance = set->acquire(resources_.typeId(plan.storage->type.view()), key, plan.storage->config);
                 if (!instance) return cxx::unexpected(instance.error());
                 const auto id = instance->id();
                 auto& lease = context->leases_.emplace_back(std::move(*instance), PreparedStorageBinding{}, i);
                 const auto& ops = *static_cast<const StorageBindingOps*>(factory->binding_ops);
-                if (auto prepared = ops.prepare(resources_.native(id), plan, bytes, lease.binding); !prepared)
+                if (auto prepared = ops.prepare(resources_.native(id), plan, value, lease.binding); !prepared)
                     return cxx::unexpected(prepared.error());
                 binding.buffer = lease.binding.buffer;
                 prepared_bindings[i] = &lease.binding;

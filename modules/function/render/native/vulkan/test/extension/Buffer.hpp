@@ -22,7 +22,11 @@ namespace extension_test
     using namespace lux::render;
     struct BufferTag;
     using BufferId = StorageResourceId<BufferTag>;
-    struct BufferBinding final { BufferId id; };
+    struct BufferBinding final
+    {
+        BufferId id;
+        bool operator==(const BufferBinding&) const noexcept = default;
+    };
     struct SetBuffer final
     {
         static constexpr std::string_view name = "test.extension.SetBuffer";
@@ -87,45 +91,13 @@ namespace lux::render
         }
     };
 
-    template <> struct DataSchema<extension_test::BufferBinding>
-    {
-        static inline constexpr DataField fields[]{
-            {"storage_index", cxx::EScalarKind::U32}, {"storage_generation", cxx::EScalarKind::U32},
-            {"index", cxx::EScalarKind::U32}, {"generation", cxx::EScalarKind::U32}
-        };
-        static inline constexpr DataSchemaDescriptor schema{
-            DataTypeIdView("test.extension.BufferBinding"), {2, 0}, {2, 0}, fields, 16, 4
-        };
-        static const DataSchemaDescriptor& describe() noexcept { return schema; }
-        static RenderResult<std::size_t> encodedSize(const extension_test::BufferBinding&) noexcept { return 16; }
-        static RenderResult<void> encode(const extension_test::BufferBinding& value, cxx::BinarySpanWriter& out) noexcept
-        {
-            out.writeUnsigned(value.id.storage.index);
-            out.writeUnsigned(value.id.storage.gen);
-            out.writeUnsigned(value.id.local.index);
-            out.writeUnsigned(value.id.local.gen);
-            return {};
-        }
-        static RenderResult<extension_test::BufferBinding> decode(cxx::BinaryReader& in, EncodedDataView) noexcept
-        {
-            extension_test::BufferBinding value;
-            in.readUnsigned(value.id.storage.index);
-            in.readUnsigned(value.id.storage.gen);
-            in.readUnsigned(value.id.local.index);
-            in.readUnsigned(value.id.local.gen);
-            return value;
-        }
-        static RenderResult<extension_test::BufferBinding> decode(cxx::BinaryReader& in, RetainableEncodedDataView wire) noexcept
-        {
-            return decode(in, EncodedDataView{wire.schema, wire.bytes.view(), {}});
-        }
-    };
+
 }
 
 namespace extension_test
 {
     inline const StorageDescriptor TestBufferStorage::description{
         StorageNameView("test.extension.BufferStorage"),
-        0, 0, bindings, &DataSchema<BufferBinding>::schema
+        0, 0, bindings, ConfigValue::typeOf<BufferBinding>()
     };
 }

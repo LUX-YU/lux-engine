@@ -1,7 +1,8 @@
 #include "FeatureFixture.hpp"
 #include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include "SceneFixture.hpp"
+#include "TextureSceneFixture.hpp"
+#include <lux/engine/render/native/vulkan/texture/TextureCommands.hpp>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -32,30 +33,38 @@ static TestCompletion call(TestClient& client, const TestCommand& command)
 static RenderResult<ProgramContribution> ownPrograms(const void* wire, std::string_view name) noexcept
 {
     if (mode == 4) { entered.count_down(); resume.wait(); }
-    const auto* config = static_cast<const native_fixture::Config*>(wire);
-    auto values = native_fixture::programs(*config, name);
+    const auto* config = static_cast<const texture_fixture::Config*>(wire);
+    auto values = texture_fixture::programs(*config, name);
     if (mode == 1) values.clear(); // foreign Feature tries to supply these instead
     if (mode == 2) values.push_back(values.front());
     if (mode == 3) values.pop_back(); // live Pass lacks a program
-    return ProgramContribution{std::move(values), {{"test.argument", lux::cxx::SharedBytes<>::copyOf(
-        std::array{std::byte{1}})}}};
+    auto arguments = texture_fixture::arguments(*config);
+    if (mode == 7) arguments.front().resource_key = "unknown.argument";
+    return ProgramContribution{std::move(values), std::move(arguments)};
 }
 
 static RenderResult<ProgramContribution> foreignPrograms(const void*, std::string_view) noexcept
 {
-    if (mode == 1) return ProgramContribution{native_fixture::programs({}, "main"), {}};
-    return ProgramContribution{{}, {{"test.argument", lux::cxx::SharedBytes<>::copyOf(
-        std::array{mode == 5 ? std::byte{2} : std::byte{1}})}}};
+    if (mode == 1) return ProgramContribution{texture_fixture::programs({}, "main"), {}};
+    ProgramContribution result{{}, {{"shared:texture", *ConfigValue::make(TextureBinding{{}, mode == 5 ? 1u : 0u})}}};
+    if (mode == 8)
+    {
+        PassProgram dead{featureKey(FeatureName("test.aaa.foreign"), "foreign", "unused")};
+        dead.shader.interface.bindings = {{99, 99, EDescriptorKind::STORAGE_BUFFER, 99, 99}};
+        dead.shader.vertex = {0}; // This Pass is pruned by the single G4 analysis.
+        result.programs.push_back(std::move(dead));
+    }
+    return result;
 }
 
 static std::atomic<unsigned> parameter_calls{0};
 static RenderResult<ProgramContribution> zeroPassParameters(const void* input, std::string_view) noexcept
 {
     ++parameter_calls;
-    const auto value = *static_cast<const std::uint32_t*>(input);
-    check(value == 1);
-    return ProgramContribution{{}, {{"test.argument", lux::cxx::SharedBytes<>::copyOf(
-        std::array{mode == 6 ? std::byte{2} : std::byte{1}})}}};
+    auto value = *static_cast<const TextureBinding*>(input);
+    check(value.lod == 0);
+    if (mode == 6) value.lod = 1;
+    return ProgramContribution{{}, {{"shared:texture", *ConfigValue::make(value)}}};
 }
 
 static RenderResult<void> emptyDescribe(const void*, std::string_view, ResourceClaims&) noexcept
@@ -72,11 +81,23 @@ int main()
                 EGraphPassKind::TRANSFER, {}});
             return pass ? RenderResult<void>{} : lux::cxx::unexpected(pass.error());
         }};
-    const FeatureDescriptor parameters{FeatureName("test.zzz.parameters"), ConfigValue::typeOf<std::uint32_t>()};
+    const FeatureDescriptor parameters{FeatureName("test.zzz.parameters"), ConfigValue::typeOf<TextureBinding>()};
     const FeatureGraphOps parameter_graph{emptyDescribe, nullptr};
-    auto server = take(createTestServer({"runtime.program.ownership", true}));
+    const FeatureDescriptor dead{FeatureName("test.dead.no.program"), {}};
+    const FeatureGraphOps dead_graph{emptyDescribe,
+        [](const void*, std::string_view name, std::span<const ResolvedResource>, RenderGraphBuilder& builder) noexcept
+            -> RenderResult<void> {
+            auto pass = builder.addPass({featureKey(FeatureName("test.dead.no.program"), name, "unused"),
+                EGraphPassKind::TRANSFER, {}});
+            return pass ? RenderResult<void>{} : lux::cxx::unexpected(pass.error());
+        }};
+    RenderServerConfig server_config{"runtime.program.ownership", true};
+    server_config.device.texture_descriptors = true;
+    auto server = take(createTestServer(server_config));
+    check(bool(server->registerStorage<TextureStorage>()));
+    check(bool(feature_test::registerGraph(*server, {&dead, &dead_graph, nullptr})));
     check(bool(feature_test::registerGraph(*server, {&parameters, &parameter_graph, zeroPassParameters})));
-    check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, ownPrograms})));
+    check(bool(feature_test::registerGraph(*server, {&texture_fixture::definition, &texture_fixture::definition_graph, ownPrograms})));
     check(bool(feature_test::registerGraph(*server, {&foreign, &foreign_graph, foreignPrograms})));
     auto client = take(TestClient::create("runtime.program.ownership"));
     bool run_ok = false;
@@ -84,10 +105,11 @@ int main()
     TestCommand command;
     command.session = call(*client, command).session;
     command.operation = ETestCommand::CREATE_EFFECT;
-    command.description = native_fixture::target({});
-    command.features.push_back({std::string(native_fixture::type.name()), "main", take(ConfigValue::make(native_fixture::Config{}))});
+    command.description = texture_fixture::target({});
+    command.features.push_back({std::string(texture_fixture::type.name()), "main", take(ConfigValue::make(texture_fixture::Config{}))});
     command.features.push_back({"test.aaa.foreign", "foreign", {}});
-    command.features.push_back({"test.zzz.parameters", "parameters", take(ConfigValue::make(std::uint32_t{1}))});
+    command.features.push_back({"test.zzz.parameters", "parameters", take(ConfigValue::make(TextureBinding{}))});
+    command.features.push_back({"test.dead.no.program", "dead", {}});
     // Input order differs from canonical assembly order; provenance is the input index, not a name guess.
     check(call(*client, command).header.outcome == ECommandOutcome::SUCCESS);
     check(parameter_calls == 1); // Zero Pass still contributes typed parameters, with no DataSchema.
@@ -110,6 +132,13 @@ int main()
     auto zero_pass_conflict = call(*client, command);
     check(zero_pass_conflict.header.outcome == ECommandOutcome::FAILED &&
         zero_pass_conflict.header.error.type == kStorageMismatch && server->stats().compiled_graphs == 2);
+    mode = 7;
+    auto unknown_argument = call(*client, command);
+    check(unknown_argument.header.outcome == ECommandOutcome::FAILED &&
+        unknown_argument.header.error.type == kStorageContract && server->stats().compiled_graphs == 2);
+    mode = 8;
+    check(call(*client, command).header.outcome == ECommandOutcome::SUCCESS);
+    check(server->stats().compiled_graphs == 3);
     mode = 4;
     take(client->submit(command));
     entered.wait();
@@ -119,20 +148,20 @@ int main()
     const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (server->stats().ticks < ticks + 100 && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(1ms);
-    check(server->stats().ticks >= ticks + 100 && server->stats().compiled_graphs == 2);
+    check(server->stats().ticks >= ticks + 100 && server->stats().compiled_graphs == 3);
     server->stop();
     server->stop();
     worker.join();
     check(run_ok && server->stats().validation_errors == 0);
     auto missing = take(createTestServer({"runtime.no.program", true}));
-    check(bool(feature_test::registerGraph(*missing, {&native_fixture::definition, &native_fixture::definition_graph, nullptr})));
+    check(bool(feature_test::registerGraph(*missing, {&texture_fixture::definition, &texture_fixture::definition_graph, nullptr})));
     auto no_program = take(TestClient::create("runtime.no.program"));
     bool missing_run_ok = false;
     std::thread missing_worker([&] { missing_run_ok = bool(missing->run()); });
     TestCommand missing_command;
     missing_command.session = call(*no_program, missing_command).session;
     missing_command.operation = ETestCommand::CREATE_EFFECT;
-    missing_command.description = native_fixture::target({});
+    missing_command.description = texture_fixture::target({});
     missing_command.features.push_back(command.features.front());
     auto missing_reply = call(*no_program, missing_command);
     check(missing_reply.header.outcome == ECommandOutcome::FAILED &&

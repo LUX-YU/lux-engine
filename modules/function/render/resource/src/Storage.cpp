@@ -35,7 +35,6 @@ namespace lux::render
                 if (descriptor.bindings[j].set == binding.set && descriptor.bindings[j].binding == binding.binding)
                     return cxx::unexpected(RenderError{kStorageContract});
         }
-        if (descriptor.binding_schema) return validateDataSchema(*descriptor.binding_schema);
         return {};
     }
 
@@ -45,10 +44,9 @@ namespace lux::render
         const bool policy_mismatch = expected.required_capabilities != actual.required_capabilities ||
             expected.optional_capabilities != actual.optional_capabilities;
         const bool binding_mismatch = !std::ranges::equal(expected.bindings, actual.bindings) ||
-            bool(expected.binding_schema) != bool(actual.binding_schema);
+            expected.binding_type != actual.binding_type;
         if (identity_mismatch || policy_mismatch || binding_mismatch)
             return cxx::unexpected(RenderError{kStorageMismatch});
-        if (expected.binding_schema) return compatibleDataSchemas(*expected.binding_schema, *actual.binding_schema);
         return {};
     }
 

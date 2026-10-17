@@ -39,7 +39,16 @@ namespace lux::render
             return {cxx::typeToken<T>(), sizeof(T), alignof(T)};
         }
 
-        [[nodiscard]] Type typeInfo() const noexcept { return type_ ? *type_ : Type{}; }
+        [[nodiscard]] Type typeInfo() const noexcept { return type_ ? type_->identity : Type{}; }
+
+        // Cold semantic agreement only. No object representation/padding comparison and no hash shortcut.
+        // Non-comparable configurations can still be shared by copying their existing immutable owner.
+        [[nodiscard]] bool operator==(const ConfigValue& other) const noexcept
+        {
+            if (typeInfo() != other.typeInfo()) return false;
+            if (value_.get() == other.value_.get()) return true;
+            return type_ && type_->equal && type_->equal(value_.get(), other.value_.get());
+        }
 
         ConfigValue() noexcept = default;
         ConfigValue(const ConfigValue&) noexcept = default;
@@ -76,16 +85,16 @@ namespace lux::render
             ConfigValue result;
             result.code_pin_ = source_code_pin;
             result.value_ = std::make_shared<const Value>(std::forward<T>(value));
-            static constexpr Type type = typeOf<Value>();
+            static constexpr Metadata type{typeOf<Value>(), equality<Value>()};
             result.type_ = &type;
             result.retained_bytes_ = *bytes;
             return result;
         }
 
         [[nodiscard]] explicit operator bool() const noexcept { return bool(value_); }
-        [[nodiscard]] cxx::TypeToken type() const noexcept { return type_ ? type_->token : cxx::TypeToken{}; }
-        [[nodiscard]] std::size_t objectSize() const noexcept { return type_ ? type_->size : 0; }
-        [[nodiscard]] std::size_t objectAlignment() const noexcept { return type_ ? type_->alignment : 0; }
+        [[nodiscard]] cxx::TypeToken type() const noexcept { return typeInfo().token; }
+        [[nodiscard]] std::size_t objectSize() const noexcept { return typeInfo().size; }
+        [[nodiscard]] std::size_t objectAlignment() const noexcept { return typeInfo().alignment; }
         [[nodiscard]] std::size_t retainedBytes() const noexcept { return retained_bytes_; }
 
         template <class T>
@@ -100,9 +109,26 @@ namespace lux::render
         [[nodiscard]] const void* data() const noexcept { return value_.get(); }
 
     private:
+        using Equal = bool (*)(const void*, const void*) noexcept;
+        struct Metadata final
+        {
+            Type identity;
+            Equal equal;
+        };
+
+        template <class T> static constexpr Equal equality() noexcept
+        {
+            if constexpr (requires(const T& a, const T& b) { { a == b } noexcept -> std::convertible_to<bool>; })
+                return [](const void* a, const void* b) noexcept {
+                    return *static_cast<const T*>(a) == *static_cast<const T*>(b);
+                };
+            else
+                return nullptr;
+        }
+
         std::shared_ptr<const void> code_pin_;
         std::shared_ptr<const void> value_;
-        const Type* type_ = nullptr;
+        const Metadata* type_ = nullptr;
         std::size_t retained_bytes_ = 0;
     };
 }

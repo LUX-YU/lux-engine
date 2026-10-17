@@ -81,7 +81,7 @@ namespace texture_fixture
 
     inline std::vector<StorageArgument> arguments(Config c)
     {
-        return {{"shared:texture", *encodeData(TextureBinding{c.texture, c.lod}, {}, {20, 0})}};
+        return {{"shared:texture", *ConfigValue::make(TextureBinding{c.texture, c.lod})}};
     }
 
     inline RenderResult<FeatureAssembly> assemble(Config c)

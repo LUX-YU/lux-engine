@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/data/Schema.hpp>
+#include <lux/engine/render/data/ConfigValue.hpp>
+#include <lux/cxx/core/Schema.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/data/ShaderInterface.hpp>
 
@@ -30,6 +31,7 @@ namespace lux::render
     {
         StorageName type;
         std::string key; // empty uses the Graph semantic key; otherwise names the Storage instance in its actual owner
+        ConfigValue config;
         bool operator==(const StorageRequirement&) const noexcept = default;
     };
 
@@ -41,7 +43,7 @@ namespace lux::render
         std::uint32_t required_capabilities = 0;
         std::uint32_t optional_capabilities = 0;
         std::span<const ShaderBinding> bindings;
-        const DataSchemaDescriptor* binding_schema = nullptr;
+        ConfigValue::Type binding_type;
     };
 
     inline constexpr auto kStorageContract = error::errorId("lux.render.resource.contract");

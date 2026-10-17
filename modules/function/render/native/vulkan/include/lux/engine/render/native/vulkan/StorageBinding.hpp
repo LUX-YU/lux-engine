@@ -23,7 +23,7 @@ namespace lux::render::vulkan
 
     struct StorageBindingOps final
     {
-        RenderResult<void> (*prepare)(void*, const NativeResourcePlan&, std::span<const std::byte>,
+        RenderResult<void> (*prepare)(void*, const NativeResourcePlan&, const void*,
             PreparedStorageBinding&) noexcept;
         RenderResult<std::uint32_t> (*descriptor_count)(const DeviceSession&, const void* configuration) noexcept = nullptr;
     };

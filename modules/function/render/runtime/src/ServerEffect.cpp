@@ -27,7 +27,11 @@ namespace lux::render
             const auto index = contribution.input_index;
             if (!registrations[index]->programs)
             {
-                if (contribution.pass_count != 0) return cxx::unexpected(RenderError{kFeatureContract});
+                const bool has_live_pass = std::ranges::any_of(assembly->analysis.execution_order, [&](auto pass) {
+                    return pass.index >= contribution.first_pass &&
+                        pass.index - contribution.first_pass < contribution.pass_count;
+                });
+                if (has_live_pass) return cxx::unexpected(RenderError{kFeatureContract});
                 continue;
             }
             const auto& selection = selected[index];
@@ -49,11 +53,29 @@ namespace lux::render
                 programs.push_back(std::move(value));
             for (auto& argument : values->arguments)
             {
+                const auto resource = std::ranges::find(assembly->definition.resources(),
+                    argument.resource_key, &GraphResource::key);
+                if (resource == assembly->definition.resources().end())
+                    return cxx::unexpected(RenderError{kStorageContract});
+                const auto resource_index = static_cast<std::uint32_t>(resource - assembly->definition.resources().begin());
+                const auto declared = [&](const auto& group) {
+                    return std::ranges::any_of(group, [&](const auto& binding) {
+                        return binding.resource.index == resource_index;
+                    });
+                };
+                const auto& bindings = assembly->external_bindings;
+                const bool has_declaration = declared(bindings.global) || declared(bindings.scene) ||
+                    declared(bindings.view) || declared(bindings.attachment);
+                if (!has_declaration) return cxx::unexpected(RenderError{kStorageContract});
+                const bool is_live = std::ranges::any_of(assembly->analysis.lifetimes, [&](const auto& lifetime) {
+                    return lifetime.version.resource.index == resource_index;
+                });
+                if (!is_live) continue;
                 const auto existing =
                     std::ranges::find(arguments, argument.resource_key, &StorageArgument::resource_key);
                 if (existing == arguments.end())
                     arguments.push_back(std::move(argument));
-                else if (!std::ranges::equal(existing->bytes.view(), argument.bytes.view()))
+                else if (existing->value != argument.value)
                     return cxx::unexpected(RenderError{kStorageMismatch});
             }
         }

@@ -185,14 +185,11 @@ namespace lux::render::vulkan
         }
     };
 
-    RenderResult<void> TextureStorage::prepare(const NativeResourcePlan& plan, std::span<const std::byte> bytes,
+    RenderResult<void> TextureStorage::prepare(const NativeResourcePlan& plan, const TextureBinding& argument,
         PreparedStorageBinding& binding) noexcept
     {
-        cxx::BinaryReader reader(bytes, bytes.size()); // schema/length already checked at Attach boundary
-        auto argument = DataSchema<TextureBinding>::decode(reader,
-            EncodedDataView{DataSchema<TextureBinding>::schema, bytes, {}});
-        if (argument->texture.storage != id_) return cxx::unexpected(RenderError{kStorageIdentity});
-        auto* record = textures_.find(argument->texture.local);
+        if (argument.texture.storage != id_) return cxx::unexpected(RenderError{kStorageIdentity});
+        auto* record = textures_.find(argument.texture.local);
         if (!record || !record->current) return cxx::unexpected(RenderError{kWrongOwner});
         auto& backing = *record->current;
         const auto* expected = std::get_if<GraphImageDesc>(&plan.description);
@@ -202,9 +199,9 @@ namespace lux::render::vulkan
             expected->format == rdesc::ETextureFormat::RGBA8_SRGB ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
         const bool mismatch = expected->width != actual.width || expected->height != actual.height ||
             expected->mips != actual.mip_count || expected->layers != actual.layers || format != backing.image().format() ||
-            argument->lod >= actual.mip_count;
+            argument.lod >= actual.mip_count;
         if (mismatch) return cxx::unexpected(RenderError{kStorageMismatch});
-        auto use = std::make_unique<Use>(this, argument->texture, nullptr, &binding, argument->lod);
+        auto use = std::make_unique<Use>(this, argument.texture, nullptr, &binding, argument.lod);
         use->update(backing);
         binding.descriptors = physical_->descriptors->descriptors();
         binding.provides_parameters = true;
@@ -229,9 +226,9 @@ namespace lux::render::vulkan
             }
         };
         static const StorageBindingOps binding_ops{
-            [](void* storage, const NativeResourcePlan& plan, std::span<const std::byte> argument,
+            [](void* storage, const NativeResourcePlan& plan, const void* argument,
                 PreparedStorageBinding& binding) noexcept {
-                return static_cast<TextureStorage*>(storage)->prepare(plan, argument, binding);
+                return static_cast<TextureStorage*>(storage)->prepare(plan, *static_cast<const TextureBinding*>(argument), binding);
             }, [](const DeviceSession& session, const void*) noexcept {
             return session.sampledImageCapacity();
         }};

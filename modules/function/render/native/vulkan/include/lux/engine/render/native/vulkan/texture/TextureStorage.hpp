@@ -89,7 +89,7 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<std::unique_ptr<Candidate>> reserve(Transfer&, const rdesc::TextureInfo&,
             TextureId, std::uint64_t expected_revision) noexcept;
         struct Use;
-        RenderResult<void> prepare(const NativeResourcePlan&, std::span<const std::byte>, PreparedStorageBinding&) noexcept;
+        RenderResult<void> prepare(const NativeResourcePlan&, const TextureBinding&, PreparedStorageBinding&) noexcept;
         std::vector<Use*> uses_; // non-owning subscriptions, changed only at Attach/publication/detach
         struct Record final { Backing* current = nullptr; bool updating = false; };
         TextureStorage(DeviceSession& session, StorageId id, TextureStorageConfig config) noexcept;

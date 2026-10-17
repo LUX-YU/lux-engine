@@ -38,7 +38,7 @@ namespace buffer_fixture
     {
         static const Declaration::Ops size = [](const void* value) noexcept { return static_cast<const Native*>(value)->config.size; };
         static const native::StorageBindingOps bindings{
-            [](void* object, const native::NativeResourcePlan& plan, std::span<const std::byte>,
+            [](void* object, const native::NativeResourcePlan& plan, const void*,
                 native::PreparedStorageBinding& binding) noexcept -> RenderResult<void> {
                 auto& value = *static_cast<Native*>(object);
                 auto* buffer = value.device.borrow(value.permit);

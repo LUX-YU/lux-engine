@@ -118,9 +118,7 @@ namespace extension_test
             auto owner = std::make_unique<Read>(session, std::move(*lease), vk::PreparedStorageBinding{}, vk::BufferPermit{},
                 std::optional<vk::SubmissionTicket>{}, output);
             vk::NativeResourcePlan plan{"values", GraphBufferDesc{16}, EGraphOrigin::IMPORTED};
-            auto argument = encodeData(input, {}, {16, 0});
-            if (!argument) return pending->fail(argument.error());
-            auto prepared = (*storage)->prepare(plan, argument->view(), owner->source);
+            auto prepared = (*storage)->prepare(plan, input, owner->source);
             if (!prepared) return pending->fail(prepared.error());
             auto buffer = session.createBuffer(16, VK_BUFFER_USAGE_TRANSFER_DST_BIT, vk::EMemoryAccess::READBACK);
             if (!buffer) return pending->fail(buffer.error());

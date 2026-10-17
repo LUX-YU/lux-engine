@@ -6,6 +6,7 @@
 #include "TypedTest.hpp"
 #include "TextureFixture.hpp"
 #include <lux/engine/render/resource/Texture.hpp>
+#include <lux/engine/render/data/Encoding.hpp>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include "Support.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>

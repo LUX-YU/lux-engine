@@ -1,6 +1,7 @@
 #include <lux/engine/render/features/Registration.hpp>
 #include <lux/engine/render/resource/Texture.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
+#include <lux/engine/render/data/Encoding.hpp>
 
 #include <cstdio>
 
@@ -12,7 +13,7 @@ using namespace lux::render;
 static_assert(RenderCommand<SetTexture> && RenderCommand<SetTextureRegion> &&
     RenderCommand<ReleaseTexture> && RenderCommand<QueryTexture>);
 static_assert(!EncodableData<SetTexture::Request> && !EncodableData<SetTextureRegion::Request>);
-static_assert(EncodableData<TextureBinding>);
+static_assert(!EncodableData<TextureBinding>);
 // The authoritative member list now belongs to the Native Handler; tested at its installation boundary.
 
 int main()
@@ -51,10 +52,13 @@ int main()
     CHECK(destroyed == 1);
 
     TextureBinding binding{{{7, 4}, {3, 2}}, 1};
-    auto encoded = encodeData(binding, {}, {20, 0});
-    CHECK(encoded);
-    auto decoded = decodeData<TextureBinding>({DataSchema<TextureBinding>::describe(), *encoded, {}}, {20, 0});
+    auto argument = ConfigValue::make(binding);
+    CHECK(argument && argument->retainedBytes() == sizeof(binding));
+    auto retained = *argument;
+    *argument = {};
+    const auto* decoded = retained.borrow<TextureBinding>();
     CHECK(decoded && decoded->texture == binding.texture && decoded->lod == binding.lod);
+    CHECK(!retained.borrow<TexturePublished>());
     auto config = ConfigValue::make(TextureStorage::Config{});
     CHECK(config && config->type() == lux::cxx::typeToken<TextureStorage::Config>());
     return 0;

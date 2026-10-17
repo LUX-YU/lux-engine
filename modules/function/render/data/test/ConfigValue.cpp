@@ -48,6 +48,9 @@ int main()
     ConfigValue empty;
     check(!empty && !empty.type().isValid() && empty.retainedBytes() == 0);
     auto scalar = take(ConfigValue::make(17u));
+    check(scalar == take(ConfigValue::make(17u)));
+    check(scalar != take(ConfigValue::make(18u)) && scalar != take(ConfigValue::make(17.0f)));
+    check(empty == ConfigValue{} && scalar != empty);
     check(*scalar.borrow<unsigned>() == 17 && scalar.borrow<float>() == nullptr);
     auto copied = scalar;
     check(copied.data() == scalar.data());
@@ -65,6 +68,8 @@ int main()
     source.reset();
     check(destroyed == 0 && asset.borrow<AssetConfig>()->asset.bytes().data() == original + 31);
     auto retained = asset;
+    check(retained == asset);
+    check(retained != take(ConfigValue::make(AssetConfig{asset.borrow<AssetConfig>()->asset})));
     asset = {};
     check(destroyed == 0);
     retained = {};
@@ -90,6 +95,16 @@ int main()
     check(foreign.retainedBytes() == sizeof(*object) + object->bytes.capacity());
     pin.reset();
     auto late = foreign;
+    unsigned local_destroyed = 0;
+    bool local_alive = true;
+    {
+        auto local = take(ConfigValue::make(config_test::ForeignConfig{
+            std::vector<std::byte>(3, std::byte{0x43}), local_alive, local_destroyed
+        }));
+        check(local.data() != foreign.data() && local == foreign && foreign == local);
+        check(pin_alive && foreign_destroyed == 0);
+    }
+    check(local_destroyed == 1);
     foreign = take(ConfigValue::make(91u));
     check(pin_alive && foreign_destroyed == 0 && late.data() == object);
     late = {};

@@ -74,6 +74,40 @@ int main()
             std::printf("graphics=%u live_passes=%zu resources=%zu G5_callbacks_unchanged=1\n",
                 graphics, compiled.passes().size(), compiled.resources().size());
         }
+        for (bool export_dead : {false, true})
+        {
+            RenderGraphBuilder live_builder;
+            const native_fixture::Config config{};
+            const auto color = take(live_builder.declareResource({"shared:color", GraphImageDesc{32, 32}}));
+            const ResolvedResource resolved{"color", {color, 1}};
+            CHECK(native_fixture::build(&config, "main", {&resolved, 1}, live_builder));
+            const auto history = take(live_builder.declareResource({"dead.history", GraphBufferDesc{16},
+                EGraphOrigin::HISTORY_PREVIOUS, {GraphBufferRange{0, 16}}}));
+            const auto dead = take(live_builder.declareResource({"dead.image",
+                GraphImageDesc{32, 32, 1, 1, lux::rdesc::ETextureFormat::R8_UNORM}}));
+            CHECK(live_builder.addPass({"dead.pass", EGraphPassKind::TRANSFER,
+                {{{history, 0}, {}, EGraphAccess::READ, 0, {}, EGraphUse::TRANSFER_SOURCE},
+                 {{dead, 1}, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::TRANSFER_DESTINATION}}}));
+            if (export_dead) CHECK(live_builder.exportOutput({{dead, 1}}));
+            auto graph = take(std::move(live_builder).finish());
+            auto analysis = take(analyze(graph));
+            auto programs = native_fixture::programs(config);
+            PassProgram unused{"dead.pass"};
+            unused.shader.vertex = {0};
+            unused.shader.interface.bindings = {{999, 999, EDescriptorKind::STORAGE_BUFFER, 99, 99}};
+            programs.push_back(std::move(unused));
+            GraphStorageBindings bindings;
+            bindings.global.push_back({history, {StorageName("test.uninstalled.dead")}});
+            auto code = compileGraph(*session, graph, analysis, bindings, programs, native_fixture::target(config));
+            if (export_dead)
+                CHECK(!code); // The same unsupported resource becomes relevant when exported.
+            else
+            {
+                CHECK(code && code->passes().size() == 2 && code->storageGroups().empty());
+                CHECK(code->resources()[history.index].buffer_usage == 0 &&
+                    code->resources()[dead.index].image_usage == 0);
+            }
+        }
         RenderGraphBuilder builder;
         const auto image = take(builder.declareResource({"color", GraphImageDesc{32, 32}}));
         CHECK(!builder.addPass({"invalid", EGraphPassKind::TRANSFER,

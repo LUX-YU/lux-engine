@@ -1,3 +1,4 @@
+#include <lux/engine/render/data/Encoding.hpp>
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/platform/ipc/IpcCore.hpp>

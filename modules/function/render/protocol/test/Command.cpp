@@ -131,6 +131,18 @@ static int descriptor()
     return 0;
 }
 
+namespace lux::render::protocol_detail
+{
+    struct ReplyAudit final
+    {
+        template <RenderCommand C> static Reply<C> make(CommandInvocation& invocation) noexcept
+        { return Reply<C>(invocation); }
+    };
+}
+
+static_assert(!std::is_constructible_v<Reply<Query>, CommandInvocation&>);
+static_assert(!std::is_copy_constructible_v<Reply<Query>> && std::is_nothrow_move_constructible_v<Reply<Query>>);
+
 struct Completion final
 {
     bool pending = true;
@@ -162,7 +174,7 @@ static int context()
     Query::Request input{91};
     Completion completion;
     CommandInvocation invocation{&input, &completion, &functions};
-    Reply<Query> context(invocation);
+    auto context = protocol_detail::ReplyAudit::make<Query>(invocation);
     CHECK(&context.request() == &input && context.request().key == 91 && context.active());
     Query::Response response{1, 2, 3};
     const auto* allocation = response.data();
@@ -175,16 +187,16 @@ static int context()
 
     completion = {};
     completion.gpu_ready = true;
-    Reply<Query> rejected(invocation);
+    auto rejected = protocol_detail::ReplyAudit::make<Query>(invocation);
     CHECK(!rejected.complete(duplicate) && rejected.active() && duplicate.data() == retained);
     CHECK(rejected.fail(RenderError{kProtocolContract, {17}}));
     CHECK(completion.outcome == ECommandOutcome::FAILED && completion.error.args[0] == 17);
     completion = {};
-    Reply<Query> cancelled(invocation);
+    auto cancelled = protocol_detail::ReplyAudit::make<Query>(invocation);
     CHECK(cancelled.cancel());
     CHECK(completion.outcome == ECommandOutcome::CANCELLED && completion.calls == 1);
     completion = {};
-    Reply<Query> fresh(invocation);
+    auto fresh = protocol_detail::ReplyAudit::make<Query>(invocation);
     Reply<Query> moved(std::move(fresh));
     CHECK(!fresh.active() && moved.active());
     CHECK(moved.complete(Query::Response{6, 7}));

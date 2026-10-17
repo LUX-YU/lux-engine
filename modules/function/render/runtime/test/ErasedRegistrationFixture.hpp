@@ -4,6 +4,12 @@
 
 namespace lux::render::protocol_detail
 {
+    struct ReplyAudit final
+    {
+        template <RenderCommand C> static Reply<C> make(CommandInvocation& invocation) noexcept
+        { return Reply<C>(invocation); }
+    };
+
     struct CommandHandlerAudit final
     {
         static CommandHandler make(const CommandDescriptor* descriptor,

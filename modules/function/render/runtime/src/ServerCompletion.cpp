@@ -250,7 +250,8 @@ namespace lux::render
             return {};
         },
         nullptr,
-        [](void* value) noexcept { completeCpu(value, ECommandOutcome::CANCELLED, {}, nullptr); }
+        // A dropped capability proves neither rollback nor absence of accepted side effects.
+        [](void* value) noexcept { completeCpu(value, ECommandOutcome::OUTCOME_UNKNOWN, {}, nullptr); }
     };
 
     void RenderServer::Impl::drainCompletions(std::size_t budget) noexcept
@@ -285,6 +286,8 @@ namespace lux::render
             RenderResult<void> result;
             if (cpu->adopt)
                 result = cpu->adopt(cpu->operation, this, *slot->request);
+            else if (cpu->outcome == ECommandOutcome::OUTCOME_UNKNOWN)
+                result = slot->request->unknown();
             else if (stop_requested.load())
             {
                 cpu->reply.reset();

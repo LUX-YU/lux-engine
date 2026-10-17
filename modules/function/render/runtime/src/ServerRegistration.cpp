@@ -11,7 +11,44 @@ namespace lux::render
         return request.reply(std::move(result));
     }
 
-    void RenderServer::Impl::addCommand(
+    RenderResult<void> RenderServer::Impl::listCommands(RenderRequest& request) noexcept
+    {
+        CommandList result;
+        result.commands.reserve(command_table.size());
+        for (const auto& entry : command_table)
+            result.commands.push_back({entry.cold->id, std::string(entry.cold->binding.descriptor()->name.name()),
+                entry.active.invoke != nullptr});
+        return request.reply(std::move(result));
+    }
+
+    RenderResult<void> RenderServer::Impl::listCommandBindings(RenderRequest& request) noexcept
+    {
+        const auto* entry = command_table.find(request.get<CommandId>());
+        if (!entry) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        CommandBindings result{entry->cold->selected};
+        result.handlers.reserve(entry->cold->supported.size());
+        for (const auto& support : entry->cold->supported)
+        {
+            const auto& owner = **handlers.find(support.id);
+            result.handlers.push_back({support.id, owner.name, owner.key});
+        }
+        return request.reply(std::move(result));
+    }
+
+    RenderResult<void> RenderServer::Impl::selectCommandBinding(RenderRequest& request) noexcept
+    {
+        const auto& input = request.get<CommandSelection>();
+        auto* entry = command_table.find(input.command);
+        if (!entry) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        const auto& supported = entry->cold->supported;
+        const auto found = std::ranges::find(supported, input.handler, &SupportedHandler::id);
+        if (found == supported.end()) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        entry->cold->selected = found->id;
+        entry->active = found->call;
+        return request.reply();
+    }
+
+    CommandId RenderServer::Impl::addCommand(
         CommandRegistration binding,
         CommandTransport transport,
         const StorageDescriptor* storage,
@@ -26,6 +63,7 @@ namespace lux::render
         auto* cold = metadata.get();
         const auto id = command_table.emplace(CommandEntry{binding.call(), std::move(metadata)});
         cold->id = id;
+        return id;
     }
 
     RenderResult<void> RenderServer::Impl::validateHandlers(
@@ -50,6 +88,76 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kFeatureDuplicate});
         }
         return {};
+    }
+
+    RenderResult<HandlerId> RenderServer::findHandler(CommandValueType type, std::string_view key) const noexcept
+    {
+        for (const auto& entry : impl_->handlers)
+        {
+            if (entry->type.type.name() != type.type.name() || entry->key != key) continue;
+            if (entry->type != type) return cxx::unexpected(RenderError{kProtocolContract});
+            return entry->id;
+        }
+        return HandlerId{};
+    }
+
+    RenderResult<HandlerId> RenderServer::installHandler(
+        std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls,
+        std::span<const CommandTransport> transports
+    ) noexcept
+    {
+        auto& state = *impl_;
+        const bool is_invalid_installation = !owner->object || owner->name.empty() || calls.empty() ||
+            calls.size() != transports.size() || state.stop_requested.load();
+        if (is_invalid_installation) return cxx::unexpected(RenderError{kFeatureContract});
+        const auto same_ops = [](const ipc::IpcTypeOps& left, const ipc::IpcTypeOps& right) noexcept {
+            return left.token() == right.token() && left.size() == right.size() &&
+                left.alignment() == right.alignment() && left.abi() == right.abi() &&
+                left.usesInlineStorage() == right.usesInlineStorage();
+        };
+        std::vector<CommandId> commands(calls.size());
+        for (std::size_t i = 0; i < calls.size(); ++i)
+        {
+            const auto& call = calls[i];
+            if (!call.valid() || call.call().object != owner->object.get())
+                return cxx::unexpected(RenderError{kFeatureContract});
+            if (auto valid = validateCommand(*call.descriptor()); !valid)
+                return cxx::unexpected(valid.error());
+            if (auto valid = compatibleCommands(*call.descriptor(), *transports[i].descriptor); !valid)
+                return cxx::unexpected(valid.error());
+            // The old Native bridge is removed at the joint N2/N3 gate, not bypassed by this installer.
+            if (call.descriptor()->completion == ECompletionContract::RESOURCE_GPU_READY)
+                return cxx::unexpected(RenderError{kProtocolContract});
+            for (std::size_t j = 0; j < i; ++j)
+                if (calls[j].descriptor()->name.name() == call.descriptor()->name.name())
+                    return cxx::unexpected(RenderError{kFeatureDuplicate});
+            for (const auto& old : state.command_table)
+            {
+                if (old.cold->binding.descriptor()->name.name() != call.descriptor()->name.name()) continue;
+                if (auto valid = compatibleCommands(*old.cold->binding.descriptor(), *call.descriptor()); !valid)
+                    return cxx::unexpected(valid.error());
+                const auto& transport = old.cold->transport;
+                if (!same_ops(*transport.request, *transports[i].request) ||
+                    !same_ops(*transport.response, *transports[i].response))
+                    return cxx::unexpected(RenderError{kProtocolContract});
+                commands[i] = old.cold->id;
+                break;
+            }
+        }
+        // All recoverable qualification precedes publication. Ordinary heap exhaustion is fatal.
+        auto* handler = owner.get();
+        const auto id = state.handlers.emplace(std::move(owner));
+        handler->id = id;
+        for (std::size_t i = 0; i < calls.size(); ++i)
+        {
+            const bool first = commands[i].isNull();
+            if (first) commands[i] = state.addCommand(calls[i], transports[i], nullptr, handler->code_pin);
+            auto& entry = *state.command_table.find(commands[i]);
+            entry.cold->supported.push_back({id, calls[i].call()});
+            if (first) entry.cold->selected = id;
+            // Existing active remains unchanged, including a deliberately unbound command.
+        }
+        return id;
     }
 
     RenderResult<FeatureId> RenderServer::Impl::registerFeature(

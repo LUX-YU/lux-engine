@@ -84,10 +84,52 @@ namespace lux::render
             }(static_cast<typename T::Commands*>(nullptr));
         }
 
+        // Cold provider installation. The caller is the Server owner; no concurrent directory mutation.
+        // H::Bindings is a tuple of CommandMethod entries. Reusing type + key is idempotent.
+        template <class H, class... Args>
+        [[nodiscard]] RenderResult<HandlerId> emplaceHandler(
+            std::string_view key, std::shared_ptr<const void> code_pin, Args&&... args
+        ) noexcept
+        {
+            static_assert(std::is_nothrow_constructible_v<H, Args...> && std::is_nothrow_destructible_v<H>);
+            static_assert(std::tuple_size_v<typename H::Bindings> != 0);
+            const CommandValueType type{cxx::typeToken<H>(), sizeof(H), alignof(H)};
+            auto existing = findHandler(type, key);
+            if (!existing) return cxx::unexpected(existing.error());
+            if (!existing->isNull()) return *existing;
+            auto owner = std::make_unique<HandlerEntry>();
+            owner->code_pin = std::move(code_pin);
+            owner->type = type;
+            owner->name = H::name;
+            owner->key = key;
+            auto object = std::make_unique<H>(std::forward<Args>(args)...);
+            auto& handler = *object;
+            owner->object = {object.release(), [](void* value) noexcept { delete static_cast<H*>(value); }};
+            return [&]<typename... B>(std::tuple<B...>*) noexcept {
+                const std::array calls{B::bind(handler)...};
+                const std::array transports{runtime_detail::commandTransport<typename B::Command>()...};
+                return installHandler(std::move(owner), calls, transports);
+            }(static_cast<typename H::Bindings*>(nullptr));
+        }
+
         [[nodiscard]] RenderResult<void> run() noexcept;
         void stop() noexcept;
         [[nodiscard]] RenderServerStats stats() const noexcept;
     private:
+        struct HandlerEntry final
+        {
+            // Foreign object/deleter destruction precedes release of its source module.
+            std::shared_ptr<const void> code_pin;
+            HandlerId id;
+            CommandValueType type;
+            std::string name;
+            std::string key;
+            std::unique_ptr<void, void (*)(void*) noexcept> object{nullptr, [](void*) noexcept {}};
+        };
+
+        [[nodiscard]] RenderResult<HandlerId> findHandler(CommandValueType, std::string_view) const noexcept;
+        [[nodiscard]] RenderResult<HandlerId> installHandler(std::unique_ptr<HandlerEntry>,
+            std::span<const CommandHandler>, std::span<const runtime_detail::CommandTransport>) noexcept;
         [[nodiscard]] RenderResult<FeatureId> registerFeatureImpl(FeatureRegistration,
             std::span<const runtime_detail::CommandTransport>) noexcept;
         [[nodiscard]] RenderResult<void> registerStorageImpl(StorageRegistration,

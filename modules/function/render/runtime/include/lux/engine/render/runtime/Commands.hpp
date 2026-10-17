@@ -104,6 +104,81 @@ namespace lux::render
         }
     };
 
+    struct CommandInfo final
+    {
+        CommandId id;
+        std::string name;
+        bool bound = false;
+    };
+    struct CommandList final { std::vector<CommandInfo> commands; };
+    struct HandlerInfo final
+    {
+        HandlerId id;
+        std::string name;
+        std::string instance;
+    };
+    struct CommandBindings final
+    {
+        HandlerId selected;
+        std::vector<HandlerInfo> handlers;
+    };
+    struct CommandSelection final { CommandId command; HandlerId handler; };
+    struct ListCommands final
+    {
+        static constexpr std::string_view name{"render.commands.list"};
+        using Request = EmptyRequest;
+        using Response = CommandList;
+    };
+    struct ListCommandBindings final
+    {
+        static constexpr std::string_view name{"render.commands.bindings"};
+        using Request = CommandId;
+        using Response = CommandBindings;
+    };
+    struct SelectCommandBinding final
+    {
+        static constexpr std::string_view name{"render.commands.select"};
+        using Request = CommandSelection;
+        using Response = Ack;
+    };
+    template <> struct CommandValueTraits<CommandList>
+    {
+        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const CommandList& value) noexcept
+        {
+            std::size_t bytes = sizeof(value);
+            if (value.commands.capacity() > (SIZE_MAX - bytes) / sizeof(CommandInfo))
+                return cxx::unexpected(RenderError{kProtocolContract});
+            bytes += value.commands.capacity() * sizeof(CommandInfo);
+            for (const auto& command : value.commands)
+            {
+                if (command.name.capacity() >= SIZE_MAX - bytes)
+                    return cxx::unexpected(RenderError{kProtocolContract});
+                bytes += command.name.capacity() + 1;
+            }
+            return bytes;
+        }
+    };
+    template <> struct CommandValueTraits<CommandBindings>
+    {
+        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const CommandBindings& value) noexcept
+        {
+            std::size_t bytes = sizeof(value);
+            if (value.handlers.capacity() > (SIZE_MAX - bytes) / sizeof(HandlerInfo))
+                return cxx::unexpected(RenderError{kProtocolContract});
+            bytes += value.handlers.capacity() * sizeof(HandlerInfo);
+            for (const auto& handler : value.handlers)
+            {
+                if (handler.name.capacity() >= SIZE_MAX - bytes)
+                    return cxx::unexpected(RenderError{kProtocolContract});
+                bytes += handler.name.capacity() + 1;
+                if (handler.instance.capacity() >= SIZE_MAX - bytes)
+                    return cxx::unexpected(RenderError{kProtocolContract});
+                bytes += handler.instance.capacity() + 1;
+            }
+            return bytes;
+        }
+    };
+
     struct CreateScene final
     {
         static constexpr std::string_view name{"render.scene.create"};

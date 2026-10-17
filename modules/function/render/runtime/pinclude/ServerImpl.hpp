@@ -56,6 +56,12 @@ namespace lux::render
             FeatureRegistration definition;
         };
 
+        struct SupportedHandler final
+        {
+            HandlerId id;
+            HandlerCall call;
+        };
+
         struct CommandMetadata final
         {
             CommandId id;
@@ -64,6 +70,8 @@ namespace lux::render
             std::shared_ptr<const void> code_pin;
             const StorageDescriptor* storage = nullptr;
             bool available = true;
+            std::vector<SupportedHandler> supported;
+            HandlerId selected;
         };
 
         struct CommandEntry final
@@ -105,6 +113,7 @@ namespace lux::render
         cxx::StableSlotMap<FeatureEntry, FeatureTag> features;
         std::vector<StorageRegistration> storage_types;
         cxx::SlotMap<CommandEntry, CommandTag> command_table;
+        cxx::SlotMap<std::unique_ptr<HandlerEntry>, HandlerTag> handlers;
         HelloResponse manifest;
         cxx::SlotMap<Scene, SceneTag> scenes;
         cxx::SlotMap<Target, TargetTag> targets;
@@ -137,7 +146,7 @@ namespace lux::render
             addCommand(bindCommand<C, handler>(*this), commandTransport<C>(), nullptr, config.implementation_code_pin);
         }
 
-        void addCommand(
+        CommandId addCommand(
             CommandRegistration binding,
             CommandTransport transport,
             const StorageDescriptor* storage = nullptr,
@@ -220,6 +229,9 @@ namespace lux::render
         RenderResult<void> queryRenderStats(RenderRequest& request) noexcept;
 
         RenderResult<void> listFeatures(RenderRequest& request) noexcept;
+        RenderResult<void> listCommands(RenderRequest& request) noexcept;
+        RenderResult<void> listCommandBindings(RenderRequest& request) noexcept;
+        RenderResult<void> selectCommandBinding(RenderRequest& request) noexcept;
 
         RenderResult<void> stopCommand(RenderRequest& request) noexcept;
 

@@ -102,6 +102,8 @@ namespace lux::render
         }
         else if (descriptor->response.size > frame.reply_capacity)
             result = cxx::unexpected(RenderError{kRuntimeCapacity});
+        else if (!entry->active.invoke)
+            result = cxx::unexpected(RenderError{kRuntimeUnsupported});
         else
         {
             GpuAdmission admission{*this, request};
@@ -161,6 +163,7 @@ namespace lux::render
         undelivered.clear();
         responder.reset();
         effects.clear();
+        handlers.clear(); // All operations ended; professional Handler borrows still have a live Device.
         device.reset();
         instance.reset();
         running.store(false);

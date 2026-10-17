@@ -246,7 +246,7 @@ static const FeatureGraphOps feature_graph{[](const RetainableEncodedDataView*, 
 static const std::array handlers{
     vulkan::nativeCommand<UploadProbe, upload>(),
     test_registration::erased(&cpu, [](void*, CommandInvocation& invocation) noexcept {
-        return Reply<CpuResult>(invocation).complete(CpuResult::Response{});
+        return protocol_detail::ReplyAudit::make<CpuResult>(invocation).complete(CpuResult::Response{});
     })
 };
 static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view name) noexcept

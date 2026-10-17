@@ -180,7 +180,7 @@ int main()
         CommandRegistration{bindCommand<SetExposure, setExposure>(state)},
         CommandRegistration{bindCommand<AcceptCustomData, acceptData>(state)},
         test_registration::erased(&commandDescriptor<InvalidReply>(), [](void*, CommandInvocation& invocation) noexcept {
-            Reply<InvalidReply> context(invocation);
+            auto context = protocol_detail::ReplyAudit::make<InvalidReply>(invocation);
             OversizedResult result{std::vector<std::byte>(4096)};
             const auto* owner = result.bytes.data();
             auto status = context.complete(result);
@@ -199,11 +199,11 @@ int main()
     const FeatureGraphOps collision_feature_graph{feature_graph.describe, nullptr};
     const std::array collision_handlers{
         test_registration::erased(&commandDescriptor<CollidingA>(), [](void*, CommandInvocation& invocation) noexcept {
-            Reply<CollidingA> context(invocation);
+            auto context = protocol_detail::ReplyAudit::make<CollidingA>(invocation);
             return context.complete(Exposure{context.request().value + 1000});
         }),
         test_registration::erased(&commandDescriptor<CollidingB>(), [](void*, CommandInvocation& invocation) noexcept {
-            Reply<CollidingB> context(invocation);
+            auto context = protocol_detail::ReplyAudit::make<CollidingB>(invocation);
             return context.complete(Exposure{context.request().value + 2000});
         })
     };
@@ -220,7 +220,7 @@ int main()
     const FeatureGraphOps premature_feature_graph{feature_graph.describe, nullptr};
     const std::array premature_handlers{
         test_registration::erased(&commandDescriptor<PrematureGpu>(), [](void* owner, CommandInvocation& invocation) noexcept {
-            Reply<PrematureGpu> context(invocation);
+            auto context = protocol_detail::ReplyAudit::make<PrematureGpu>(invocation);
             auto reply = context.complete(Exposure{9});
             check(!reply && reply.error().type == kProtocolContract && context.active());
             ++static_cast<FeatureState*>(owner)->premature_rejected;

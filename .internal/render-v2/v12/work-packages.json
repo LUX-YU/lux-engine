@@ -230,7 +230,8 @@
       "T-FEATURE-07"
     ],
     "evidence": [
-      "N3-REPLY-CHECKPOINT.md"
+      "N3-REPLY-CHECKPOINT.md",
+      "N2-HANDLERS-CHECKPOINT.md"
     ]
   },
   "N2.4": {
@@ -268,7 +269,7 @@
   },
   "N2.5": {
     "title": "Client control and FeatureId",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -297,7 +298,9 @@
       "T-FEATURE-06",
       "T-FEATURE-07"
     ],
-    "evidence": []
+    "evidence": [
+      "N2-HANDLERS-CHECKPOINT.md"
+    ]
   },
   "N3.1": {
     "title": "Typed Reply and unique Pending",
@@ -327,7 +330,8 @@
       "T-GPU-06"
     ],
     "evidence": [
-      "N3-REPLY-CHECKPOINT.md"
+      "N3-REPLY-CHECKPOINT.md",
+      "N2-HANDLERS-CHECKPOINT.md"
     ]
   },
   "N3.2": {

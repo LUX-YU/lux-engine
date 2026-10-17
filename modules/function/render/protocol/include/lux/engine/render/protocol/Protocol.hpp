@@ -16,9 +16,11 @@
 namespace lux::render
 {
     struct CommandTag;
+    struct HandlerTag;
     struct CommandNameTag;
     struct RequestTag;
     using CommandId = cxx::SlotKey<CommandTag>;
+    using HandlerId = cxx::SlotKey<HandlerTag>;
     using CommandName = cxx::SchemaIdView<CommandNameTag>;
     using RequestId = cxx::SlotKey<RequestTag>;
     using SessionIdentity = std::array<std::uint64_t, 2>;
@@ -106,7 +108,8 @@ namespace lux::render
 
     struct CommandAsyncOps;
     struct CommandInvocation;
-    namespace protocol_detail { struct ReplyAccess; }
+    namespace protocol_detail { struct ReplyAccess; struct ReplyAudit; }
+    class CommandHandler;
 
     struct CommandCompletionFns final
     {
@@ -131,7 +134,6 @@ namespace lux::render
     class Reply final
     {
     public:
-        explicit Reply(CommandInvocation& invocation) noexcept : invocation_(&invocation) {}
         Reply(const Reply&) = delete;
         Reply& operator=(const Reply&) = delete;
         Reply(Reply&& other) noexcept : invocation_(std::exchange(other.invocation_, nullptr)) {}
@@ -193,7 +195,10 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> completeWhen(Sender&& sender) noexcept;
 
     private:
+        friend class CommandHandler;
         friend struct protocol_detail::ReplyAccess;
+        friend struct protocol_detail::ReplyAudit;
+        explicit Reply(CommandInvocation& invocation) noexcept : invocation_(&invocation) {}
         [[nodiscard]] RenderResult<void> finish(ECommandOutcome outcome, RenderError error, void* response) noexcept
         {
             auto* invocation = std::exchange(invocation_, nullptr);
@@ -240,6 +245,19 @@ namespace lux::render
             }, state};
         }
 
+        template <RenderCommand C, auto Method, class Handler>
+            requires std::same_as<decltype(Method),
+                void (Handler::*)(const typename C::Request&, Reply<C>) noexcept>
+        [[nodiscard]] static CommandHandler bind(Handler* handler) noexcept
+        {
+            return {&commandDescriptor<C>(), [](void* object, CommandInvocation& invocation) noexcept {
+                Reply<C> reply(invocation);
+                const auto& request = reply.request();
+                (static_cast<Handler*>(object)->*Method)(request, std::move(reply));
+                return RenderResult<void>{};
+            }, handler};
+        }
+
     private:
         friend struct protocol_detail::CommandHandlerAudit;
         using Invoke = RenderResult<void> (*)(void*, CommandInvocation&) noexcept;
@@ -256,6 +274,26 @@ namespace lux::render
     {
         return CommandHandler::bind<C, Function>(&state);
     }
+
+    template <RenderCommand C, auto Method, class Handler>
+        requires std::same_as<decltype(Method),
+            void (Handler::*)(const typename C::Request&, Reply<C>) noexcept>
+    [[nodiscard]] CommandHandler bindCommand(Handler& handler) noexcept
+    {
+        return CommandHandler::bind<C, Method>(&handler);
+    }
+
+    // Compile-time member list consumed by a typed installation; it has no runtime owner or registry.
+    template <RenderCommand C, auto Method>
+    struct CommandMethod final
+    {
+        using Command = C;
+        template <class H>
+        [[nodiscard]] static CommandHandler bind(H& handler) noexcept
+        {
+            return bindCommand<C, Method>(handler);
+        }
+    };
 
     [[nodiscard]] RenderResult<void> validateCommand(const CommandDescriptor& descriptor) noexcept;
     [[nodiscard]] RenderResult<void>

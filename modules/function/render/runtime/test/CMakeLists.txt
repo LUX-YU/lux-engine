@@ -312,3 +312,13 @@ set_target_properties(render_feature_registration_test PROPERTIES RUNTIME_OUTPUT
 add_test(NAME render.features.operations COMMAND render_feature_registration_test)
 
 set_tests_properties(render.features.operations PROPERTIES TIMEOUT 60)
+
+add_executable(render_handler_ownership_test Handlers.cpp)
+
+target_link_libraries(render_handler_ownership_test PRIVATE render_runtime)
+
+set_target_properties(render_handler_ownership_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.handlers COMMAND render_handler_ownership_test)
+
+set_tests_properties(render.runtime.handlers PROPERTIES TIMEOUT 60)

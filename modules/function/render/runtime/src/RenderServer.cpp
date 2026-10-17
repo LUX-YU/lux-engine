@@ -31,6 +31,9 @@ namespace lux::render
         addBuiltin<Stop, &Impl::stopCommand>();
         addBuiltin<QueryRenderStats, &Impl::queryRenderStats>();
         addBuiltin<ListFeatures, &Impl::listFeatures>();
+        addBuiltin<ListCommands, &Impl::listCommands>();
+        addBuiltin<ListCommandBindings, &Impl::listCommandBindings>();
+        addBuiltin<SelectCommandBinding, &Impl::selectCommandBinding>();
     }
 
     VKAPI_ATTR VkBool32 VKAPI_CALL RenderServer::Impl::diagnostic(

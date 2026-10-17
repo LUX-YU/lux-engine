@@ -116,7 +116,7 @@ struct State final
     };
     std::array<Gate, 129> gates;
     std::atomic<unsigned> started{0}, destroyed{0}, premature_destroy{0}, gpu_rejected{0};
-    std::atomic<unsigned> stop_notifications{0};
+    std::atomic<unsigned> stop_notifications{0}, committed{0};
     std::atomic<bool> synchronous_start{false};
 
     void finish(std::size_t index)
@@ -211,7 +211,7 @@ static RenderResult<void> invoke(State& state, const Async::Request& input, Repl
         check(!duplicate && duplicate.error().type == kProtocolContract);
         return completed;
     }
-    if (mode == 6 || mode == 7)
+    if (mode == 6 || mode == 7 || mode == 9)
     {
         const auto old_address = reinterpret_cast<std::uintptr_t>(&input);
         auto pending = context.defer();
@@ -220,7 +220,12 @@ static RenderResult<void> invoke(State& state, const Async::Request& input, Repl
         const auto& stable = pending->request();
         check(reinterpret_cast<std::uintptr_t>(&stable) != old_address);
         check(stable.value == result.value && stable.owner == result.owner);
-        if (mode == 7) return {}; // Dropping the sole deferred Reply publishes cancellation exactly once.
+        if (mode == 7)
+        {
+            ++state.committed;
+            return {}; // No terminal evidence after a side effect: destruction must not promise cancellation.
+        }
+        if (mode == 9) return pending->cancel();
         return pending->completeWhen(GateSender{&state, stable.slot, {stable.value, stable.owner}, false});
     }
     if (mode == 8)
@@ -286,7 +291,7 @@ int main()
     const std::array handlers{
         CommandRegistration{bindCommand<Async, invoke>(state)},
         test_registration::erased(&commandDescriptor<InvalidGpuAsync>(), [](void* user, CommandInvocation& invocation) noexcept {
-            Reply<InvalidGpuAsync> context(invocation);
+            auto context = protocol_detail::ReplyAudit::make<InvalidGpuAsync>(invocation);
             auto rejected = context.completeWhen(stdexec::just(Output{}));
             check(!rejected && rejected.error().type == kProtocolContract && context.active());
             ++static_cast<State*>(user)->gpu_rejected;
@@ -332,8 +337,8 @@ int main()
     check(state.premature_destroy.load() == 0);
 
     // Explicit promotion moves an inline Request once, then only the stable borrow is used.
-    // Cancellation also returns that exact owned input and refunds its transport budget.
-    for (const auto mode : {6u, 7u})
+    // Explicit cancellation and unknown outcome both return the owned input without inventing rollback.
+    for (const auto mode : {6u, 7u, 9u})
     {
         std::atomic<unsigned> destroyed{0};
         const auto budget_before = a->retainedBytes();
@@ -346,6 +351,9 @@ int main()
             check(result.request().owner.get() == backing && result.request().value == 913);
             check(destroyed.load() == 0 && a->retainedBytes() > budget_before);
             if (mode == 6) check(result.response().value == 913 && result.response().owner.get() == backing);
+            else if (mode == 7)
+                check(result.header().outcome == ECommandOutcome::OUTCOME_UNKNOWN &&
+                    !result.tryResponse() && state.committed.load() == 1);
             else check(result.header().outcome == ECommandOutcome::CANCELLED && !result.tryResponse());
         }
         until([&] { return destroyed.load() == 1; });

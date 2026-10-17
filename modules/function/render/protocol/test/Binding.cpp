@@ -27,6 +27,26 @@ static_assert(CanBind<apply>);
 static_assert(!CanBind<wrong> && !CanBind<throwing>);
 static_assert(sizeof(OtherRequest) == sizeof(Command::Request));
 
+struct MemberHandler final
+{
+    unsigned calls = 0;
+
+    void apply(const Command::Request& input, Reply<Command> reply) noexcept
+    {
+        ++calls;
+        if (!reply.complete(unsigned(input.value + 1))) std::abort();
+    }
+
+    void wrong(const OtherRequest&, Reply<Command>) noexcept {}
+    void throwing(const Command::Request&, Reply<Command>) {}
+};
+
+template <auto Method>
+concept CanBindMember = requires(MemberHandler& handler) { bindCommand<Command, Method>(handler); };
+static_assert(CanBindMember<&MemberHandler::apply>);
+static_assert(!CanBindMember<&MemberHandler::wrong> && !CanBindMember<&MemberHandler::throwing>);
+static_assert(!std::is_same_v<HandlerId, CommandId>);
+
 int main()
 {
     State state;
@@ -42,4 +62,8 @@ int main()
     const Command::Request input{47};
     CommandInvocation invocation{&input, &result, &completion};
     if (!handler.invoke(invocation) || state.value != 47 || result != 47) std::abort();
+    MemberHandler member;
+    const auto bound = bindCommand<Command, &MemberHandler::apply>(member);
+    if (!bound.invoke(invocation) || member.calls != 1 || result != 48) std::abort();
+    if (bound.call().object != &member || sizeof(HandlerCall) != 2 * sizeof(void*)) std::abort();
 }

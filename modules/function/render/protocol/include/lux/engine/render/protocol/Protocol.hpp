@@ -110,8 +110,7 @@ namespace lux::render
         void (*abandon)(void*) noexcept = nullptr;
     };
 
-    // A handler-call borrow, never retained by asynchronous work. The extension
-    // is the existing Native completion bridge, not a service directory.
+    // A handler-call borrow. Asynchronous work first transfers its Reply to the stable pending slot.
     struct CommandInvocation final
     {
         const void* request_value;
@@ -146,7 +145,6 @@ namespace lux::render
 
         // Capacity rejection preserves the response. After transfer, the original
         // reply owner retains it even if the peer closes before publication.
-        // GPU_READY cannot succeed through this ordinary completion.
         [[nodiscard]] RenderResult<void> complete(typename C::Response& response) noexcept
         {
             return finish(ECommandOutcome::SUCCESS, {}, &response);
@@ -238,6 +236,19 @@ namespace lux::render
 
         template <RenderCommand C, auto Method, class Handler>
             requires std::same_as<decltype(Method),
+                RenderResult<void> (Handler::*)(const typename C::Request&, Reply<C>&) noexcept>
+        [[nodiscard]] static CommandHandler bind(Handler* handler) noexcept
+        {
+            auto result = CommandHandler{&commandDescriptor<C>(), [](void* object, CommandInvocation& invocation) noexcept {
+                Reply<C> reply(invocation);
+                return (static_cast<Handler*>(object)->*Method)(reply.request(), reply);
+            }, handler};
+            if (!handler) result.call_.invoke = nullptr;
+            return result;
+        }
+
+        template <RenderCommand C, auto Method, class Handler>
+            requires std::same_as<decltype(Method),
                 void (Handler::*)(const typename C::Request&, Reply<C>) noexcept>
         [[nodiscard]] static CommandHandler bind(Handler* handler) noexcept
         {
@@ -269,8 +280,10 @@ namespace lux::render
     }
 
     template <RenderCommand C, auto Method, class Handler>
-        requires std::same_as<decltype(Method),
-            void (Handler::*)(const typename C::Request&, Reply<C>) noexcept>
+        requires (std::same_as<decltype(Method),
+            void (Handler::*)(const typename C::Request&, Reply<C>) noexcept> ||
+            std::same_as<decltype(Method),
+            RenderResult<void> (Handler::*)(const typename C::Request&, Reply<C>&) noexcept>)
     [[nodiscard]] CommandHandler bindCommand(Handler& handler) noexcept
     {
         return CommandHandler::bind<C, Method>(&handler);

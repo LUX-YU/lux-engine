@@ -95,9 +95,6 @@ namespace lux::render
         [[nodiscard]] RenderResult<FeatureId> registerFeature(
             FeatureRegistration feature, std::span<const CommandTransport> transports
         ) noexcept;
-        [[nodiscard]] RenderResult<StorageTypeId> registerStorage(
-            StorageRegistration storage, std::span<const CommandTransport> transports
-        ) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] RenderResult<void> run() noexcept;
         void stop() noexcept { stop_requested.store(true); }

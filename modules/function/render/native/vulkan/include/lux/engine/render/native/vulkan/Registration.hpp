@@ -22,6 +22,8 @@ namespace lux::render::registration_detail
 
 namespace lux::render::vulkan
 {
+    template <class Declaration> struct StorageProvider;
+
     template <RenderCommand C, auto Function>
         requires std::same_as<decltype(Function),
             RenderResult<void> (*)(DeviceSession&, const typename C::Request&, Reply<C>&) noexcept>

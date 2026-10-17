@@ -13,11 +13,7 @@ static_assert(RenderCommand<SetTexture> && RenderCommand<SetTextureRegion> &&
     RenderCommand<ReleaseTexture> && RenderCommand<QueryTexture>);
 static_assert(!EncodableData<SetTexture::Request> && !EncodableData<SetTextureRegion::Request>);
 static_assert(EncodableData<TextureBinding>);
-static_assert(std::tuple_size_v<TextureStorage::Commands> == 4);
-static_assert(std::same_as<std::tuple_element_t<0, TextureStorage::Commands>, SetTexture>);
-static_assert(std::same_as<std::tuple_element_t<1, TextureStorage::Commands>, SetTextureRegion>);
-static_assert(std::same_as<std::tuple_element_t<2, TextureStorage::Commands>, ReleaseTexture>);
-static_assert(std::same_as<std::tuple_element_t<3, TextureStorage::Commands>, QueryTexture>);
+// The authoritative member list now belongs to the Native Handler; tested at its installation boundary.
 
 int main()
 {

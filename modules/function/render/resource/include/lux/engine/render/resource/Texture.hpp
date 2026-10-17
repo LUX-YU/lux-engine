@@ -12,8 +12,6 @@
 namespace lux::render
 {
     class ResourceRegistry;
-    struct StorageRegistration;
-    template <typename T> [[nodiscard]] StorageRegistration nativeStorageBinding() noexcept;
     struct TextureTag;
     using TextureId = cxx::SlotKey<TextureTag>; // Server session-local; not an asset hash or descriptor index.
     inline constexpr StorageNameView kTextureStorageType("lux.render.TextureStorage");
@@ -134,7 +132,6 @@ namespace lux::render
     {
     public:
         using Config = TextureStorageConfig;
-        using Commands = std::tuple<SetTexture, SetTextureRegion, ReleaseTexture, QueryTexture>;
         static inline constexpr DataField config_fields[]{
             {"capacity", cxx::EScalarKind::U32}, {"byte_limit", cxx::EScalarKind::U64}
         };
@@ -176,5 +173,4 @@ namespace lux::render
         };
     };
 
-    template <> [[nodiscard]] StorageRegistration nativeStorageBinding<TextureStorage>() noexcept;
 }

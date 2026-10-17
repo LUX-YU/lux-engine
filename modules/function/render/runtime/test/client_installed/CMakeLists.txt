@@ -69,6 +69,7 @@ foreach(header
     lux/engine/render/runtime/Commands.hpp
     lux/engine/render/runtime/CommandValue.hpp
     lux/engine/render/native/vulkan/Readback.hpp
+    lux/engine/render/native/vulkan/texture/TextureCommands.hpp
 )
     if(NOT EXISTS "${installed_prefix}/include/${header}")
         message(FATAL_ERROR "Missing current public contract: ${header}")

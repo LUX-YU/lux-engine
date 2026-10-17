@@ -249,7 +249,8 @@
       "N3-REPLY-CHECKPOINT.md",
       "N2-HANDLERS-CHECKPOINT.md",
       "N2-HANDLERS-VERIFICATION.md",
-      "N2-DIRECTORY-VERIFICATION.md"
+      "N2-DIRECTORY-VERIFICATION.md",
+      "N2-TYPED-STORAGE-CHECKPOINT.md"
     ]
   },
   "N2.4": {
@@ -284,7 +285,8 @@
       "T-FEATURE-07"
     ],
     "evidence": [
-      "N2-STORAGE-INSTALL-CHECKPOINT.md"
+      "N2-STORAGE-INSTALL-CHECKPOINT.md",
+      "N2-TYPED-STORAGE-CHECKPOINT.md"
     ]
   },
   "N2.5": {

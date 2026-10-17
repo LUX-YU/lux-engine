@@ -117,6 +117,7 @@ namespace lux::render
 
     RenderResult<HandlerId> RenderServer::findHandler(CommandValueType type, std::string_view key) const noexcept
     {
+        if (impl_->stop_requested.load()) return cxx::unexpected(RenderError{kRuntimeState});
         for (const auto& entry : impl_->handlers)
         {
             if (entry->type.type.name() != type.type.name() || entry->key != key) continue;
@@ -126,13 +127,23 @@ namespace lux::render
         return HandlerId{};
     }
 
-    RenderResult<HandlerId> RenderServer::installHandler(
-        std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls,
-        std::span<const CommandTransport> transports
-    ) noexcept
+    RenderServer::HandlerEntry* RenderServer::handlerEntry(HandlerId id) noexcept
     {
-        auto& state = *impl_;
-        const bool is_invalid_installation = !owner->object || owner->name.empty() || calls.empty() ||
+        return impl_->handlers.find(id)->get();
+    }
+
+    vulkan::DeviceSession& RenderServer::nativeDevice() noexcept
+    {
+        return *impl_->device;
+    }
+
+    RenderResult<std::vector<CommandId>> RenderServer::prepareHandler(
+        const HandlerEntry& owner, std::span<const CommandHandler> calls,
+        std::span<const CommandTransport> transports
+    ) const noexcept
+    {
+        const auto& state = *impl_;
+        const bool is_invalid_installation = !owner.object || owner.name.empty() || calls.empty() ||
             calls.size() != transports.size() || state.stop_requested.load();
         if (is_invalid_installation) return cxx::unexpected(RenderError{kFeatureContract});
         const auto same_ops = [](const ipc::IpcTypeOps& left, const ipc::IpcTypeOps& right) noexcept {
@@ -144,7 +155,7 @@ namespace lux::render
         for (std::size_t i = 0; i < calls.size(); ++i)
         {
             const auto& call = calls[i];
-            if (!call.valid() || call.call().object != owner->object.get())
+            if (!call.valid() || call.call().object != owner.object.get())
                 return cxx::unexpected(RenderError{kFeatureContract});
             if (auto valid = validateCommand(*call.descriptor()); !valid)
                 return cxx::unexpected(valid.error());
@@ -166,6 +177,15 @@ namespace lux::render
                 break;
             }
         }
+        return commands;
+    }
+
+    HandlerId RenderServer::publishHandler(
+        std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls,
+        std::span<const CommandTransport> transports, std::vector<CommandId> commands
+    ) noexcept
+    {
+        auto& state = *impl_;
         // All recoverable qualification precedes publication. Ordinary heap exhaustion is fatal.
         auto* handler = owner.get();
         const auto id = state.handlers.emplace(std::move(owner));
@@ -183,6 +203,58 @@ namespace lux::render
             }
             // Existing active remains unchanged, including a deliberately unbound command.
         }
+        return id;
+    }
+
+    RenderResult<HandlerId> RenderServer::installHandler(
+        std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls,
+        std::span<const CommandTransport> transports
+    ) noexcept
+    {
+        auto commands = prepareHandler(*owner, calls, transports);
+        if (!commands) return cxx::unexpected(commands.error());
+        return publishHandler(std::move(owner), calls, transports, std::move(*commands));
+    }
+
+    RenderResult<StorageTypeId> RenderServer::installStorage(
+        StorageFactory factory, ConfigValue config, bool (*equal)(const void*, const void*) noexcept,
+        HandlerEntry* handler, std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls,
+        std::span<const CommandTransport> transports
+    ) noexcept
+    {
+        auto& state = *impl_;
+        if (state.stop_requested.load()) return cxx::unexpected(RenderError{kRuntimeState});
+        std::vector<CommandId> commands;
+        if (handler)
+        {
+            auto prepared = prepareHandler(*handler, calls, transports);
+            if (!prepared) return cxx::unexpected(prepared.error());
+            commands = std::move(*prepared);
+        }
+        auto& resources = state.device->resources();
+        auto id = resources.typeId(factory.description->type);
+        if (id.isNull())
+        {
+            auto installed = resources.installFactory(std::move(factory), std::move(config));
+            if (!installed) return cxx::unexpected(installed.error());
+            id = *installed;
+        }
+        else
+        {
+            const auto& previous = *resources.factory(id);
+            if (auto valid = compatibleStorage(*previous.description, *factory.description); !valid)
+                return cxx::unexpected(valid.error());
+            const bool is_wrong_implementation = previous.native_type != factory.native_type ||
+                previous.config_type != factory.config_type || previous.ops_type != factory.ops_type ||
+                previous.create != factory.create || previous.ops != factory.ops ||
+                previous.binding_ops != factory.binding_ops || previous.collect != factory.collect ||
+                previous.compatible_config != factory.compatible_config;
+            if (is_wrong_implementation) return cxx::unexpected(RenderError{kStorageMismatch});
+            const auto* original = resources.configuration(factory.description->type);
+            if (!original || !equal(original, config.data())) return cxx::unexpected(RenderError{kStorageMismatch});
+        }
+        // Registry admission and all Command qualifications succeeded. Only infallible publication remains.
+        if (owner) publishHandler(std::move(owner), calls, transports, std::move(commands));
         return id;
     }
 
@@ -214,28 +286,4 @@ namespace lux::render
         return impl_->registerFeature(std::move(feature), transports);
     }
 
-    RenderResult<StorageTypeId> RenderServer::Impl::registerStorage(
-        StorageRegistration storage, std::span<const CommandTransport> transports
-    ) noexcept
-    {
-        if (stop_requested.load() || !storage.description) return cxx::unexpected(RenderError{kRuntimeState});
-        if (!storage.factory.description) return cxx::unexpected(RenderError{kStorageFactory});
-        if (auto valid = compatibleStorage(*storage.description, *storage.factory.description); !valid)
-            return cxx::unexpected(valid.error());
-        if (auto valid = validateHandlers(storage.handlers, transports); !valid)
-            return cxx::unexpected(valid.error());
-        // This is the last recoverable operation. Command publication below cannot fail for capacity.
-        auto installed = device->resources().installFactory(storage.factory, std::move(storage.configuration));
-        if (!installed) return cxx::unexpected(installed.error());
-        for (std::size_t i = 0; i < storage.handlers.size(); ++i)
-            addCommand(storage.handlers[i], transports[i], storage.factory.code_pin);
-        return *installed;
-    }
-
-    RenderResult<StorageTypeId> RenderServer::registerStorageImpl(
-        StorageRegistration storage, std::span<const CommandTransport> transports
-    ) noexcept
-    {
-        return impl_->registerStorage(std::move(storage), transports);
-    }
 } // namespace lux::render

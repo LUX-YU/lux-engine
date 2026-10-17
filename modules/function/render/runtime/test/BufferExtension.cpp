@@ -50,8 +50,8 @@ int main()
     config.device.texture_descriptors = true;
     auto server = take(RenderServer::create(withCpu(compiler, config)));
     CHECK(server->registerStorage<lux::render::TextureStorage>());
-    CHECK(server->registerStorage<TestBufferStorage>());
-    CHECK(!server->registerStorage<TestBufferStorage>());
+    const auto buffer_type = take(server->registerStorage<TestBufferStorage>());
+    CHECK(take(server->registerStorage<TestBufferStorage>()) == buffer_type);
     CHECK(server->registerFeature<TestBufferFeature>());
     CHECK(server->registerFeature({&texture_fixture::definition, &texture_fixture::definition_graph,
         [](const RetainableEncodedDataView* wire, std::string_view name) noexcept -> RenderResult<ProgramContribution> {

@@ -13,7 +13,7 @@ namespace lux::render::resource_detail
             std::shared_ptr<const void> pin, const void* bindings, void (*collect)(void*) noexcept,
             StorageCppType config_type, StorageCppType ops_type) noexcept
         {
-            return {description, ops, create, compatible, std::move(pin), bindings, collect, config_type, ops_type};
+            return {description, ops, create, compatible, std::move(pin), bindings, collect, config_type, ops_type, {}};
         }
     };
 }

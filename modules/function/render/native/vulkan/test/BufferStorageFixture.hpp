@@ -1,4 +1,3 @@
-#include "../../../resource/test/FactoryAudit.hpp"
 #pragma once
 
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
@@ -27,9 +26,16 @@ namespace buffer_fixture
         }
     };
 
+    struct Declaration final
+    {
+        using Config = buffer_fixture::Config;
+        using Ops = std::uint32_t (*)(const void*) noexcept;
+        static inline constexpr auto description = buffer_fixture::description;
+    };
+
     inline StorageFactory factory() noexcept
     {
-        static const auto size = [](const void* value) noexcept { return static_cast<const Native*>(value)->config.size; };
+        static const Declaration::Ops size = [](const void* value) noexcept { return static_cast<const Native*>(value)->config.size; };
         static const native::StorageBindingOps bindings{
             [](void* object, const native::NativeResourcePlan& plan, std::span<const std::byte>,
                 native::PreparedStorageBinding& binding) noexcept -> RenderResult<void> {
@@ -43,25 +49,22 @@ namespace buffer_fixture
                 return {};
             }
         };
-        return resource_detail::StorageFactoryAudit::make(
-            &description, &size,
-            [](void* device, const void* config) noexcept -> RenderResult<NativeStorage> {
-                auto& session = *static_cast<native::DeviceSession*>(device);
-                const auto value = *static_cast<const Config*>(config);
-                auto candidate = std::make_unique<Native>(session, value);
-                auto buffer = session.createBuffer(value.size,
-                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, native::EMemoryAccess::UPLOAD);
-                if (!buffer) return lux::cxx::unexpected(buffer.error());
-                candidate->permit = std::move(*buffer);
-                const std::vector<std::byte> zero(value.size);
-                if (auto written = session.write(*session.borrow(candidate->permit), 0, zero); !written)
-                    return lux::cxx::unexpected(written.error());
-                return NativeStorage{candidate.release(), [](void* instance) noexcept { delete static_cast<Native*>(instance); }};
-            },
-            [](const void* instance, const void* config) noexcept {
-                return static_cast<const Native*>(instance)->config == *static_cast<const Config*>(config);
-            }, {}, &bindings, nullptr, storageCppType<Config>(), storageCppType<decltype(size)>()
-        );
+        static const auto create = +[](native::DeviceSession& session, const Config& value) noexcept
+            -> RenderResult<std::unique_ptr<Native>> {
+            auto candidate = std::make_unique<Native>(session, value);
+            auto buffer = session.createBuffer(value.size,
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, native::EMemoryAccess::UPLOAD);
+            if (!buffer) return lux::cxx::unexpected(buffer.error());
+            candidate->permit = std::move(*buffer);
+            const std::vector<std::byte> zero(value.size);
+            if (auto written = session.write(*session.borrow(candidate->permit), 0, zero); !written)
+                return lux::cxx::unexpected(written.error());
+            return candidate;
+        };
+        static const auto compatible = +[](const Native& instance, const Config& config) noexcept {
+            return instance.config == config;
+        };
+        return makeStorageFactory<Declaration, Native, native::DeviceSession, create, compatible>(size, &bindings);
     }
 
     inline RenderResult<void> install(native::DeviceSession& session) noexcept

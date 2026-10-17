@@ -37,6 +37,7 @@ namespace lux::render
         void (*collect)(void*) noexcept = nullptr;
         StorageCppType config_type;
         StorageCppType ops_type;
+        StorageCppType native_type;
 
     private:
         friend struct resource_detail::StorageFactoryAudit;
@@ -52,10 +53,10 @@ namespace lux::render
             RenderResult<NativeStorage> (*create)(void*, const void*) noexcept,
             bool (*compatible_config)(const void*, const void*) noexcept,
             std::shared_ptr<const void> code_pin, const void* binding_ops, void (*collect)(void*) noexcept,
-            StorageCppType config_type, StorageCppType ops_type) noexcept
+            StorageCppType config_type, StorageCppType ops_type, StorageCppType native_type) noexcept
             : description(description), ops(ops), create(create), compatible_config(compatible_config),
               code_pin(std::move(code_pin)), binding_ops(binding_ops), collect(collect),
-              config_type(config_type), ops_type(ops_type) {}
+              config_type(config_type), ops_type(ops_type), native_type(native_type) {}
 
     };
 
@@ -77,7 +78,8 @@ namespace lux::render
             }, [](const void* instance, const void* config) noexcept {
                 return Compatible(*static_cast<const Native*>(instance), *static_cast<const typename Declaration::Config*>(config));
             }, std::move(code_pin), binding_ops, collect,
-            storageCppType<typename Declaration::Config>(), storageCppType<typename Declaration::Ops>()};
+            storageCppType<typename Declaration::Config>(), storageCppType<typename Declaration::Ops>(),
+            storageCppType<Native>()};
     }
 
     [[nodiscard]] RenderResult<void>

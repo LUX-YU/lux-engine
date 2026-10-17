@@ -7,6 +7,7 @@
 #include <lux/engine/render/resource/Registration.hpp>
 #include <optional>
 #include <lux/engine/render/native/vulkan/device/DeviceOptions.hpp>
+#include <lux/engine/render/native/vulkan/texture/TextureCommands.hpp>
 
 namespace lux::render
 {
@@ -55,26 +56,53 @@ namespace lux::render
             return registerFeatureImpl(std::move(feature), transports);
         }
 
-        template <RenderCommand... C>
-        [[nodiscard]] RenderResult<StorageTypeId> registerStorage(StorageRegistration storage) noexcept
+        // Provider pins its Native factory code. source_code_pin additionally covers the calling
+        // module's template thunks/configuration; omitted means the factory module or process lifetime.
+        template <class T, class Provider = vulkan::StorageProvider<T>>
+        [[nodiscard]] RenderResult<StorageTypeId>
+        registerStorage(const typename T::Config& config = {}, std::string_view handler_key = {},
+            std::shared_ptr<const void> source_code_pin = {}) noexcept
         {
-            const std::array<runtime_detail::CommandTransport, sizeof...(C)> transports{runtime_detail::commandTransport<C>()...};
-            return registerStorageImpl(std::move(storage), transports);
-        }
-
-        template <class T>
-        [[nodiscard]] RenderResult<StorageTypeId> registerStorage(const typename T::Config& config = {}) noexcept
-        {
-            auto registration = nativeStorageBinding<T>();
-            if (!registration.description) return cxx::unexpected(RenderError{kStorageContract});
-            if (auto valid = compatibleStorage(T::description, *registration.description); !valid)
+            using H = typename Provider::Handler;
+            using Config = typename T::Config;
+            static_assert(requires(const Config& a, const Config& b) { { a == b } noexcept -> std::same_as<bool>; });
+            auto factory = Provider::factory();
+            if (!factory.description) return cxx::unexpected(RenderError{kStorageContract});
+            if (auto valid = compatibleStorage(T::description, *factory.description); !valid)
                 return cxx::unexpected(valid.error());
-            auto configuration = ConfigValue::make(config, registration.factory.code_pin);
+            const bool is_wrong_provider = factory.native_type != Provider::implementationType() ||
+                factory.config_type != storageCppType<Config>() || factory.ops_type != storageCppType<typename T::Ops>();
+            if (is_wrong_provider) return cxx::unexpected(RenderError{kStorageMismatch});
+            if (!source_code_pin) source_code_pin = factory.code_pin;
+            auto configuration = ConfigValue::make(config, source_code_pin);
             if (!configuration) return cxx::unexpected(configuration.error());
-            registration.configuration = std::move(*configuration);
-            return [&]<typename... C>(std::tuple<C...>*) noexcept {
-                return registerStorage<C...>(std::move(registration));
-            }(static_cast<typename T::Commands*>(nullptr));
+            static constexpr auto equal = +[](const void* a, const void* b) noexcept {
+                return *static_cast<const Config*>(a) == *static_cast<const Config*>(b);
+            };
+            if constexpr (std::is_void_v<H>)
+            {
+                return installStorage(std::move(factory), std::move(*configuration), equal, nullptr, {}, {}, {});
+            }
+            else
+            {
+                const CommandValueType type{cxx::typeToken<H>(), sizeof(H), alignof(H)};
+                auto existing = findHandler(type, handler_key);
+                if (!existing) return cxx::unexpected(existing.error());
+                std::unique_ptr<HandlerEntry> owner;
+                auto* entry = existing->isNull() ? nullptr : handlerEntry(*existing);
+                if (!entry)
+                {
+                    owner = makeHandler<H>(handler_key, std::move(source_code_pin), nativeDevice());
+                    entry = owner.get();
+                }
+                auto& handler = *static_cast<H*>(entry->object.get());
+                return [&]<typename... B>(std::tuple<B...>*) noexcept {
+                    const std::array calls{B::bind(handler)...};
+                    const std::array transports{runtime_detail::commandTransport<typename B::Command>()...};
+                    return installStorage(std::move(factory), std::move(*configuration), equal, entry,
+                        std::move(owner), calls, transports);
+                }(static_cast<typename H::Bindings*>(nullptr));
+            }
         }
 
         template <class T>
@@ -98,14 +126,8 @@ namespace lux::render
             auto existing = findHandler(type, key);
             if (!existing) return cxx::unexpected(existing.error());
             if (!existing->isNull()) return *existing;
-            auto owner = std::make_unique<HandlerEntry>();
-            owner->code_pin = std::move(code_pin);
-            owner->type = type;
-            owner->name = H::name;
-            owner->key = key;
-            auto object = std::make_unique<H>(std::forward<Args>(args)...);
-            auto& handler = *object;
-            owner->object = {object.release(), [](void* value) noexcept { delete static_cast<H*>(value); }};
+            auto owner = makeHandler<H>(key, std::move(code_pin), std::forward<Args>(args)...);
+            auto& handler = *static_cast<H*>(owner->object.get());
             return [&]<typename... B>(std::tuple<B...>*) noexcept {
                 const std::array calls{B::bind(handler)...};
                 const std::array transports{runtime_detail::commandTransport<typename B::Command>()...};
@@ -128,12 +150,34 @@ namespace lux::render
             std::unique_ptr<void, void (*)(void*) noexcept> object{nullptr, [](void*) noexcept {}};
         };
 
+        template <class H, class... Args>
+        static std::unique_ptr<HandlerEntry> makeHandler(
+            std::string_view key, std::shared_ptr<const void> pin, Args&&... args
+        ) noexcept
+        {
+            static_assert(std::is_nothrow_constructible_v<H, Args...> && std::is_nothrow_destructible_v<H>);
+            auto owner = std::make_unique<HandlerEntry>();
+            owner->code_pin = std::move(pin);
+            owner->type = {cxx::typeToken<H>(), sizeof(H), alignof(H)};
+            owner->name = H::name;
+            owner->key = key;
+            owner->object = {new H(std::forward<Args>(args)...), [](void* value) noexcept { delete static_cast<H*>(value); }};
+            return owner;
+        }
+
         [[nodiscard]] RenderResult<HandlerId> findHandler(CommandValueType, std::string_view) const noexcept;
+        [[nodiscard]] HandlerEntry* handlerEntry(HandlerId) noexcept;
+        [[nodiscard]] vulkan::DeviceSession& nativeDevice() noexcept;
+        [[nodiscard]] RenderResult<std::vector<CommandId>> prepareHandler(const HandlerEntry&,
+            std::span<const CommandHandler>, std::span<const runtime_detail::CommandTransport>) const noexcept;
+        HandlerId publishHandler(std::unique_ptr<HandlerEntry>, std::span<const CommandHandler>,
+            std::span<const runtime_detail::CommandTransport>, std::vector<CommandId>) noexcept;
+        [[nodiscard]] RenderResult<StorageTypeId> installStorage(StorageFactory, ConfigValue,
+            bool (*)(const void*, const void*) noexcept, HandlerEntry*, std::unique_ptr<HandlerEntry>,
+            std::span<const CommandHandler>, std::span<const runtime_detail::CommandTransport>) noexcept;
         [[nodiscard]] RenderResult<HandlerId> installHandler(std::unique_ptr<HandlerEntry>,
             std::span<const CommandHandler>, std::span<const runtime_detail::CommandTransport>) noexcept;
         [[nodiscard]] RenderResult<FeatureId> registerFeatureImpl(FeatureRegistration,
-            std::span<const runtime_detail::CommandTransport>) noexcept;
-        [[nodiscard]] RenderResult<StorageTypeId> registerStorageImpl(StorageRegistration,
             std::span<const runtime_detail::CommandTransport>) noexcept;
         struct Impl;
         explicit RenderServer(std::unique_ptr<Impl> state) noexcept;

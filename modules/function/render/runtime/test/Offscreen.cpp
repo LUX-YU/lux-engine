@@ -11,6 +11,17 @@
 #include <latch>
 #include <thread>
 
+namespace lux::render::vulkan
+{
+    template <> struct StorageProvider<buffer_fixture::Declaration> final
+    {
+        using Storage = buffer_fixture::Native;
+        using Handler = void; // Graph-only zero-buffer provider; no dummy operation object.
+        static StorageFactory factory() noexcept { return buffer_fixture::factory(); }
+        static StorageCppType implementationType() noexcept { return storageCppType<Storage>(); }
+    };
+}
+
 using namespace lux::render;
 using namespace std::chrono_literals;
 static void require(bool value, int line)
@@ -79,8 +90,7 @@ int main()
     RenderServerConfig options{"runtime.offscreen", true};
     options.compile_capacity = 1;
     auto server = take(RenderServer::create(withCpu(worker, options)));
-    CHECK(server->registerStorage({&buffer_fixture::description, {}, buffer_fixture::factory(), false,
-        take(ConfigValue::make(buffer_fixture::Config{}))}));
+    CHECK(server->registerStorage<buffer_fixture::Declaration>());
     CHECK(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs}));
     auto client = take(TestClient::create("runtime.offscreen"));
     bool run_ok = false;

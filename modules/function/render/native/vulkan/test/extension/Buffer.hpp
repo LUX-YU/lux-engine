@@ -14,8 +14,6 @@
 
 namespace lux::render
 {
-    struct StorageRegistration;
-    template <typename T> [[nodiscard]] StorageRegistration nativeStorageBinding() noexcept;
 }
 
 namespace extension_test
@@ -44,7 +42,6 @@ namespace extension_test
     };
     struct TestBufferStorage final
     {
-        using Commands = std::tuple<SetBuffer, RemoveBuffer, ReadBuffer>;
         struct Config final
         {
             std::uint32_t capacity = 8;
@@ -68,8 +65,6 @@ namespace extension_test
 
 namespace lux::render
 {
-    template <>
-    [[nodiscard]] StorageRegistration nativeStorageBinding<extension_test::TestBufferStorage>() noexcept;
 
     template <> struct CommandValueTraits<extension_test::SetBuffer::Request> final
     {

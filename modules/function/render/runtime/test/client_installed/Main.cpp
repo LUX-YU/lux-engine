@@ -17,7 +17,7 @@ struct ExternalCommand final
 {
     static constexpr std::string_view name = "installed.client.external";
     using Request = std::vector<unsigned>;
-    using Response = unsigned;
+    using Response = RenderResult<unsigned>;
 };
 static_assert(RenderCommand<ExternalCommand>);
 static_assert(sizeof(RequestId) == sizeof(std::uint64_t));
@@ -33,25 +33,25 @@ int main()
     const auto* backing = input.data();
     const auto capacity = input.capacity();
     const RequestId request{1}; // Assigned and tracked by this application.
-    message.setMetadata(RequestHeader{request, CommandId{1, 1}});
     for (unsigned i = 0; i < 4; ++i)
     {
-        CHECK(!peer->trySend(message));
+        CHECK(!peer->trySend(commandTag(CommandId{1, 1}), request.value, message));
         CHECK(message.get<ExternalCommand::Request>().data() == backing);
         CHECK(message.get<ExternalCommand::Request>().capacity() == capacity);
     }
     auto service = ipc::IpcCore::instance().createResponder("installed.direct.client");
-    CHECK(service && peer->trySend(message));
+    CHECK(service && peer->trySend(commandTag(CommandId{1, 1}), request.value, message));
     ipc::ReceivedRequest accepted;
     CHECK(service->tryReceive(accepted) == ipc::EIpcReceive::RECEIVED);
     CHECK(accepted.message().get<ExternalCommand::Request>().data() == backing);
-    const auto header = accepted.message().metadata<RequestHeader>();
     ipc::IpcMessage result;
-    result.emplace<ExternalCommand::Response>(accepted.message().get<ExternalCommand::Request>()[0] + 1);
-    result.setMetadata(ReplyHeader{header.request, ECommandOutcome::SUCCESS});
-    CHECK(service->tryReply(accepted, result));
-    CHECK(peer->tryReceive(message) == ipc::EIpcReceive::RECEIVED);
-    CHECK(message.metadata<ReplyHeader>().request == request);
+    auto& response = result.emplace<ExternalCommand::Response>(lux::cxx::unexpected(RenderError{kProtocolContract}));
+    response.emplace(accepted.message().get<ExternalCommand::Request>()[0] + 1);
+    CHECK(service->trySendResponse(accepted.requesterId(), accepted.correlation(), result));
+    accepted.reset();
+    std::uint64_t correlation = 0;
+    CHECK(peer->tryReceive(correlation, message) == ipc::EIpcReceive::RECEIVED);
+    CHECK(correlation == request.value);
     CHECK(message.get<ExternalCommand::Response>() == 18);
     service->reset();
     peer->reset();

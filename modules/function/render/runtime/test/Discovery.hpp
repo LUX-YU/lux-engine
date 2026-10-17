@@ -44,8 +44,7 @@ namespace runtime_test
         const RequestId id{peer.next++};
         ipc::IpcMessage message;
         message.emplace<typename C::Request>(std::move(input));
-        message.setMetadata(RequestHeader{id, command});
-        if (!peer.requester.trySend(message)) return lux::cxx::unexpected(RenderError{kRuntimeState});
+        if (!peer.requester.trySend(commandTag(command), id.value, message)) return lux::cxx::unexpected(RenderError{kRuntimeState});
         return id;
     }
 
@@ -55,25 +54,26 @@ namespace runtime_test
         ipc::IpcMessage message;
         for (;;)
         {
-            const auto status = peer.requester.tryReceive(message);
+            std::uint64_t correlation = 0;
+            const auto status = peer.requester.tryReceive(correlation, message);
             if (status == ipc::EIpcReceive::CLOSED || std::chrono::steady_clock::now() >= deadline) std::abort();
             if (status == ipc::EIpcReceive::RECEIVED)
             {
-                if (message.metadata<ReplyHeader>().request != id) std::abort();
+                if (correlation != id.value) std::abort();
                 return message;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
 
-    template <RenderCommand C> RenderResult<typename C::Response> result(ipc::IpcMessage message) noexcept
+    template <RenderCommand C> typename C::Response result(ipc::IpcMessage message) noexcept
     {
-        if (message.metadata<ReplyHeader>().outcome != ECommandOutcome::SUCCESS)
+        if (message.typeHash() == lux::cxx::type_hash<RenderError>())
             return lux::cxx::unexpected(message.get<RenderError>());
         return std::move(message.get<typename C::Response>());
     }
 
-    template <RenderCommand C> RenderResult<typename C::Response> coldCall(Peer& peer,
+    template <RenderCommand C> typename C::Response coldCall(Peer& peer,
         typename C::Request input) noexcept
     {
         auto command = find<C>(peer);
@@ -81,7 +81,7 @@ namespace runtime_test
         auto sent = send<C>(peer, *command, std::move(input));
         if (!sent) return lux::cxx::unexpected(sent.error());
         auto message = wait(peer, *sent);
-        if (message.metadata<ReplyHeader>().outcome != ECommandOutcome::SUCCESS)
+        if (message.typeHash() == lux::cxx::type_hash<RenderError>())
             return lux::cxx::unexpected(message.get<RenderError>());
         return std::move(message.get<typename C::Response>());
     }
@@ -91,9 +91,11 @@ namespace runtime_test
         auto sent = send<ListCommands>(peer, peer.list_commands, {});
         if (!sent) return lux::cxx::unexpected(sent.error());
         auto message = wait(peer, *sent);
-        if (message.metadata<ReplyHeader>().outcome != ECommandOutcome::SUCCESS)
+        if (message.typeHash() == lux::cxx::type_hash<RenderError>())
             return lux::cxx::unexpected(message.get<RenderError>());
-        peer.commands = std::move(message.get<CommandList>());
+        auto& response = message.get<ListCommands::Response>();
+        if (!response) return lux::cxx::unexpected(response.error());
+        peer.commands = std::move(*response);
         return {};
     }
 

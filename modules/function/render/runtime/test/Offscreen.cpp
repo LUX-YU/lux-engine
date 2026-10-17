@@ -34,6 +34,17 @@ static void require(bool value, int line)
     if (!value) { std::fprintf(stderr, "Offscreen assertion %d\n", line); std::abort(); }
 }
 #define CHECK(value) require(bool(value), __LINE__)
+namespace lux::render::runtime_cpu_test
+{
+    std::thread::id render_owner;
+    unsigned adopted = 0;
+    void effectAdopted() noexcept
+    {
+        CHECK(std::this_thread::get_id() == render_owner);
+        ++adopted;
+    }
+}
+
 template <class T> static T take(RenderResult<T> result)
 {
     if (!result) { std::fprintf(stderr, "Runtime error %llu\n", result.error().type); std::abort(); }
@@ -72,10 +83,10 @@ static TestCompletion call(TestClient& client, const TestCommand& command, bool 
     auto reply = wait(client, take(client.submit(command)));
     if (success)
     {
-        if (reply.header.outcome != ECommandOutcome::SUCCESS)
+        if (reply.header.outcome != ETestOutcome::SUCCESS)
             std::fprintf(stderr, "operation=%u outcome=%u error=%llu\n", unsigned(command.operation),
                 unsigned(reply.header.outcome), reply.error.type);
-        CHECK(reply.header.outcome == ECommandOutcome::SUCCESS);
+        CHECK(reply.header.outcome == ETestOutcome::SUCCESS);
     }
     return reply;
 }
@@ -99,6 +110,7 @@ int main()
     bool run_ok = false;
     std::thread thread([&] {
         render_allocation::participate = true;
+        runtime_cpu_test::render_owner = std::this_thread::get_id();
         run_ok = bool(server->run());
     });
     TestCommand command;
@@ -134,7 +146,7 @@ int main()
         attached[i].operation = ETestCommand::READBACK;
     }
     CHECK(server->stats().compiled_graphs == 1 && server->stats().scoped_buffers_created == 11);
-    CHECK(call(*client, command, false).header.outcome == ECommandOutcome::FAILED); // duplicate Target writer
+    CHECK(call(*client, command, false).header.outcome == ETestOutcome::FAILED); // duplicate Target writer
     for (unsigned i = 0; i < 4; ++i)
     {
         auto reply = call(*client, attached[i]);
@@ -154,7 +166,7 @@ int main()
     CHECK(after.compiled_graphs == 1 && after.scoped_buffers_created == 11);
 
     auto upload = take(TestClient::create("runtime.offscreen", take(server->commandId<ListCommands>())));
-    CHECK(call(*upload, {}).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(call(*upload, {}).header.outcome == ETestOutcome::SUCCESS);
     TestCommand create;
     create.operation = ETestCommand::CREATE_SCENE;
     std::array<RequestId, 64> paused;
@@ -173,9 +185,9 @@ int main()
         ++upload_progress;
     }
     CHECK(upload_progress > 10 && server->stats().submissions > before_progress.submissions + 40);
-    for (auto id : paused) CHECK(wait(*client, id).header.outcome == ECommandOutcome::SUCCESS);
+    for (auto id : paused) CHECK(wait(*client, id).header.outcome == ETestOutcome::SUCCESS);
 
-    CHECK(wait(*client, beyond_old_limit).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(wait(*client, beyond_old_limit).header.outcome == ETestOutcome::SUCCESS);
 
     // All four original groups stay attached while an independent candidate is blocked in cold code.
     auto candidate = command;
@@ -203,7 +215,7 @@ int main()
         CHECK(server->stats().compiled_graphs == 1);
         resume.count_down();
         const auto completed = wait(*upload, pending_compile);
-        CHECK(completed.header.outcome == ECommandOutcome::SUCCESS);
+        CHECK(completed.header.outcome == ETestOutcome::SUCCESS);
         auto remove = candidate;
         remove.operation = ETestCommand::REMOVE_EFFECT;
         remove.features.clear();
@@ -215,7 +227,7 @@ int main()
     command = attached[0];
     command.operation = ETestCommand::DETACH;
     call(*client, command);
-    CHECK(call(*client, attached[0], false).header.outcome == ECommandOutcome::FAILED);
+    CHECK(call(*client, attached[0], false).header.outcome == ETestOutcome::FAILED);
     pixel(call(*client, attached[1]), 32, 16, 16, expected[1]);
     command = attached[1];
     command.operation = ETestCommand::RESIZE_TARGET;
@@ -226,13 +238,13 @@ int main()
     CHECK(larger.bytes().size() == 64 * 48 * 4);
     pixel(larger, 64, 32, 24, expected[1]);
     command.description.samples = 4;
-    CHECK(call(*client, command, false).header.outcome == ECommandOutcome::FAILED);
+    CHECK(call(*client, command, false).header.outcome == ETestOutcome::FAILED);
     CHECK(call(*client, attached[1]).bytes().size() == 64 * 48 * 4);
     CHECK(server->stats().compiled_graphs == 2);
     command.operation = ETestCommand::REMOVE_SCENE;
     command.scene = scenes[0];
     call(*client, command);
-    CHECK(call(*client, attached[1], false).header.outcome == ECommandOutcome::FAILED);
+    CHECK(call(*client, attached[1], false).header.outcome == ETestOutcome::FAILED);
     pixel(call(*client, attached[2]), 32, 16, 16, expected[2]);
 
     command = {};
@@ -307,7 +319,7 @@ int main()
         CHECK(status == ERenderReceive::RECEIVED);
         if (completion.header.request == stopped)
         {
-            CHECK(!saw_stop && completion.header.outcome == ECommandOutcome::SUCCESS);
+            CHECK(!saw_stop && completion.header.outcome == ETestOutcome::SUCCESS);
             saw_stop = true;
             resume.count_down();
         }
@@ -315,14 +327,15 @@ int main()
         {
             CHECK(completion.header.request == pending && !saw_readback);
             const auto terminal = completion.header.outcome;
-            CHECK(terminal == ECommandOutcome::CANCELLED || terminal == ECommandOutcome::SUCCESS);
+            CHECK(terminal == ETestOutcome::CANCELLED || terminal == ETestOutcome::SUCCESS);
             saw_readback = true;
         }
     }
     CHECK(saw_stop && saw_readback);
-    CHECK(wait(*upload, blocked).header.outcome == ECommandOutcome::CANCELLED);
+    CHECK(wait(*upload, blocked).header.outcome == ETestOutcome::CANCELLED);
     thread.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
+    CHECK(runtime_cpu_test::adopted == server->stats().compiled_graphs);
     std::printf("G9 Runtime: 2 Scenes/4 Views/1 code; hot ticks=%llu submissions=%llu engine_new=%zu; "
         "Validation/SyncValidation errors=%llu warnings=%llu; API_us p50=%.3f p95=%.3f p99=%.3f; upload_progress=%u\n",
         after.ticks - before.ticks, after.submissions - before.submissions, allocations,

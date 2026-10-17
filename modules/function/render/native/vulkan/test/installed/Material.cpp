@@ -1,5 +1,5 @@
 #include "../TextureFixture.hpp"
-#include <lux/engine/render/native/vulkan/material/MaterialCommands.hpp>
+#include <lux/engine/render/native/vulkan/material/MaterialCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/material/MaterialStorage.hpp>
 #include <fstream>
 

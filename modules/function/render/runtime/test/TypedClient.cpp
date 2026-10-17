@@ -1,9 +1,12 @@
 #include "ServerFixture.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
-#include <lux/engine/render/protocol/AsyncCommand.hpp>
+#include <lux/engine/render/runtime/CommandBinding.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include "TestHooks.hpp"
+#include "Allocation.hpp"
+#include <array>
+#include <fstream>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -28,48 +31,76 @@ struct Work final
 {
     static constexpr std::string_view name = "test.raw.work";
     struct Request final { std::unique_ptr<Source> source; unsigned mode = 0; };
-    using Response = unsigned;
+    using Response = RenderResult<unsigned>;
 };
+struct Small final
+{
+    static constexpr std::string_view name = "test.raw.small";
+    struct Request final { unsigned sample; };
+    struct Value final { unsigned sample; unsigned value; };
+    using Response = RenderResult<Value>;
+};
+struct SmallSample final
+{
+    std::int64_t submit_begin, submit_end, handler_begin, handler_end, publication_begin, publication_end;
+    std::int64_t receive_begin, receive_end;
+};
+static std::array<SmallSample, 1020> small_samples{};
+static std::int64_t now() noexcept
+{ return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count(); }
+namespace lux::render::runtime_detail::test
+{
+    void* beforeResponsePublication(std::uint64_t, const ipc::IpcMessage& message) noexcept
+    {
+        if (message.typeHash() != lux::cxx::type_hash<Small::Response>()) return nullptr;
+        const auto& result = message.get<Small::Response>();
+        CHECK(result && result->sample < small_samples.size());
+        auto& sample = small_samples[result->sample];
+        sample.publication_begin = now();
+        return &sample;
+    }
+    void afterResponsePublication(void* value) noexcept
+    { if (value) static_cast<SmallSample*>(value)->publication_end = now(); }
+}
 struct Handler final
 {
     static constexpr std::string_view name = "test.raw.handler";
     std::atomic<unsigned>& calls;
     std::atomic<const unsigned*>& observed;
     Handler(std::atomic<unsigned>& c, std::atomic<const unsigned*>& o) noexcept : calls(c), observed(o) {}
-    void work(const Work::Request& input, Reply<Work> reply) noexcept
+    void work(const Work::Request& input, Work::Response& response) noexcept
     {
         ++calls;
         observed = input.source->values.data();
         const auto result = input.source->values.front() + 1;
         switch (input.mode)
         {
-        case 0: CHECK(reply.complete(unsigned(result))); break;
-        case 1: CHECK(reply.fail(RenderError{kRuntimeState, {17}})); break;
-        case 2: CHECK(reply.cancel()); break;
-        case 3:
-        {
-            auto stable = take(reply.defer());
-            CHECK(stable.request().source->values.front() + 1 == result);
-            CHECK(stable.completeWhen(stdexec::just(unsigned(result))));
-            break;
-        }
-        case 4: CHECK(reply.completeWhen(stdexec::just_error(RenderError{kRuntimeState, {23}}))); break;
-        case 5: CHECK(reply.completeWhen(stdexec::just_stopped())); break;
+        case 0: response = result; break;
+        case 1: response = lux::cxx::unexpected(RenderError{kRuntimeState, {17}}); break;
+        case 2: response = lux::cxx::unexpected(RenderError{kCommandCancelled}); break;
         default: std::abort();
         }
     }
-    using Bindings = std::tuple<CommandMethod<Work, &Handler::work>>;
+    void small(const Small::Request& input, Small::Response& response) noexcept
+    {
+        auto& sample = small_samples[input.sample];
+        sample.handler_begin = now();
+        response.emplace(Small::Value{input.sample, input.sample + 1});
+        sample.handler_end = now();
+    }
+    using Bindings = std::tuple<CommandMethod<Work, &Handler::work>, CommandMethod<Small, &Handler::small>>;
 };
 
-static ipc::IpcMessage receive(ipc::IpcRequester& peer)
+static ipc::IpcMessage receive(ipc::IpcRequester& peer, std::uint64_t expected)
 {
     const auto deadline = Clock::now() + 10s;
     ipc::IpcMessage message;
     for (;;)
     {
-        const auto status = peer.tryReceive(message);
+        std::uint64_t correlation = 0;
+        const auto status = peer.tryReceive(correlation, message);
         CHECK(status != ipc::EIpcReceive::CLOSED && Clock::now() < deadline);
-        if (status == ipc::EIpcReceive::RECEIVED) return message;
+        if (status == ipc::EIpcReceive::RECEIVED) { CHECK(correlation == expected); return message; }
         std::this_thread::yield();
     }
 }
@@ -81,13 +112,13 @@ int main()
     auto server = take(createTestServer({"runtime.raw", true}));
     (void)take(server->emplaceHandler<Handler>("main", calls, observed));
     const auto command = take(server->commandId<Work>());
+    const auto small_command = take(server->commandId<Small>());
     auto a = take(ipc::IpcCore::instance().createRequester("runtime.raw", {256, 1}));
     auto b = take(ipc::IpcCore::instance().createRequester("runtime.raw", {256, 1}));
     const auto send = [&](ipc::IpcRequester& peer, RequestId id, unsigned value, unsigned mode = 0) {
         ipc::IpcMessage message;
         message.emplace<Work::Request>(Work::Request{std::make_unique<Source>(destroyed, value), mode});
-        message.setMetadata(RequestHeader{id, command});
-        CHECK(peer.trySend(message));
+        CHECK(peer.trySend(commandTag(command), id.value, message));
         CHECK(message.empty());
     };
     const auto wait_destroyed = [&](unsigned expected) {
@@ -100,43 +131,89 @@ int main()
     // Actual reply growth allocation failure after side effects. Existing segment slots still work.
     ipc::testing::failSegmentAllocations(100000);
     bool ran = false;
-    std::thread owner([&] { ran = bool(server->run()); });
+    std::thread owner([&] { render_allocation::participate = true; ran = bool(server->run()); });
     auto deadline = Clock::now() + 10s;
     while (calls.load() != 2) { CHECK(Clock::now() < deadline); std::this_thread::yield(); }
     send(b, {1}, 100); // Same caller-chosen number, separate source Link.
-    auto other = receive(b);
-    CHECK(other.metadata<ReplyHeader>().request == RequestId{1} && other.get<unsigned>() == 101);
-    wait_destroyed(2); // A's first and B completed; A's unpublished second source still owned.
-    auto first = receive(a);
-    CHECK(first.metadata<ReplyHeader>().request == RequestId{1} && first.get<unsigned>() == 11);
-    auto second = receive(a);
-    CHECK(second.metadata<ReplyHeader>().request == RequestId{2} && second.get<unsigned>() == 21);
+    auto other = receive(b, 1);
+    CHECK(other.get<Work::Response>() == 101);
+    wait_destroyed(3); // Outbox retains only responses; all three synchronous inputs are already released.
+    auto first = receive(a, 1);
+    CHECK(first.get<Work::Response>() == 11);
+    auto second = receive(a, 2);
+    CHECK(second.get<Work::Response>() == 21);
     wait_destroyed(3);
     CHECK(calls == 3 && destroyed == 3); // Delivery retried without repeating the handler.
     ipc::testing::failSegmentAllocations(0);
-    for (unsigned mode = 1; mode <= 5; ++mode)
+    for (unsigned mode = 1; mode <= 2; ++mode)
     {
         send(a, {100 + mode}, 30, mode);
-        auto result = receive(a);
-        const auto header = result.metadata<ReplyHeader>();
-        CHECK(header.request == RequestId{100 + mode});
-        if (mode == 3) CHECK(header.outcome == ECommandOutcome::SUCCESS && result.get<unsigned>() == 31);
-        else if (mode == 2 || mode == 5)
-            CHECK(header.outcome == ECommandOutcome::CANCELLED && !result.get<RenderError>().type);
-        else CHECK(header.outcome == ECommandOutcome::FAILED && result.get<RenderError>().type == kRuntimeState);
+        auto result = receive(a, 100 + mode);
+        const auto& response = result.get<Work::Response>();
+        CHECK(!response);
+        CHECK(response.error().type == (mode == 2 ? kCommandCancelled : kRuntimeState));
     }
     // A valid but stale CommandId is rejected before typed payload access.
     ipc::IpcMessage stale;
     stale.emplace<Ack>();
-    stale.setMetadata(RequestHeader{RequestId{999}, CommandId{command.index, command.gen + 1}});
-    CHECK(a.trySend(stale));
-    auto rejected = receive(a);
-    CHECK(rejected.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
-    CHECK(rejected.get<RenderError>().type == kRuntimeIdentity && calls == 8);
+    CHECK(a.trySend(commandTag(CommandId{command.index, command.gen + 1}), 999, stale));
+    auto rejected = receive(a, 999);
+    CHECK(rejected.get<RenderError>().type == kProtocolContract && calls == 5);
+    render_allocation::participate = true;
+    for (unsigned i = 0; i < small_samples.size(); ++i)
+    {
+        if (i == 20)
+        {
+            render_allocation::calls = 0;
+            render_allocation::window = true;
+            ipc::testing::startAllocations();
+        }
+        auto& sample = small_samples[i];
+        sample.submit_begin = now();
+        ipc::IpcMessage input;
+        input.emplace<Small::Request>(Small::Request{i});
+        CHECK(a.trySend(commandTag(small_command), 2000 + i, input));
+        sample.submit_end = now();
+        const auto deadline = Clock::now() + 5s;
+        ipc::IpcMessage output;
+        for (;;)
+        {
+            std::uint64_t correlation = 0;
+            sample.receive_begin = now();
+            const auto status = a.tryReceive(correlation, output);
+            if (status == ipc::EIpcReceive::RECEIVED)
+            {
+                CHECK(correlation == 2000 + i);
+                const auto& result = output.get<Small::Response>();
+                CHECK(result && result->value == i + 1);
+                sample.receive_end = now();
+                break;
+            }
+            CHECK(status != ipc::EIpcReceive::CLOSED && Clock::now() < deadline);
+            std::this_thread::yield(); // Client scheduling is measured separately from the successful receive call.
+        }
+    }
+    render_allocation::window = false;
+    const auto dll_allocations = ipc::testing::stopAllocations();
+    CHECK(render_allocation::calls == 0 && dll_allocations == 0);
     server->stop(); owner.join();
-    CHECK(ran && server->stats().validation_errors == 0 && destroyed == 8);
+    std::ofstream csv("runtime-small-command.csv");
+    csv << "sample,submit_begin,submit_end,handler_begin,handler_end,publication_begin,publication_end,receive_begin,receive_end\n";
+    for (unsigned i = 20; i < small_samples.size(); ++i)
+    {
+        const auto& x = small_samples[i];
+        CHECK(x.submit_begin <= x.handler_begin && x.handler_begin <= x.handler_end &&
+            x.handler_end <= x.publication_begin && x.publication_begin <= x.publication_end &&
+            x.publication_begin <= x.receive_end);
+        csv << i << ',' << x.submit_begin << ',' << x.submit_end << ',' << x.handler_begin << ',' << x.handler_end
+            << ',' << x.publication_begin << ',' << x.publication_end << ',' << x.receive_begin << ',' << x.receive_end << '\n';
+    }
+    std::printf("1000 complete small Commands: EXE new=%zu IPC DLL allocations=%zu; publish bounds include producer tail\n",
+        render_allocation::calls.load(), dll_allocations);
+    CHECK(ran && server->stats().validation_errors == 0 && destroyed == 5);
     server.reset();
-    CHECK(a.tryReceive(stale) == ipc::EIpcReceive::CLOSED);
-    CHECK(first.get<unsigned>() == 11 && other.get<unsigned>() == 101);
+    std::uint64_t correlation = 0;
+    CHECK(a.tryReceive(correlation, stale) == ipc::EIpcReceive::CLOSED);
+    CHECK(first.get<Work::Response>() == 11 && other.get<Work::Response>() == 101);
     std::puts("Raw Commands: isolated caller IDs, real reply-growth OOM retry once, sync/async terminal, late owned results");
 }

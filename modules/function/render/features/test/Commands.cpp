@@ -24,7 +24,7 @@ int main()
     CHECK(validateCommand(commandDescriptor<QueryTexture>()));
     CHECK(commandDescriptor<SetTexture>().request.type == lux::cxx::typeToken<TextureWrite>());
     CHECK(commandDescriptor<SetTextureRegion>().request.type == lux::cxx::typeToken<TextureRegionWrite>());
-    CHECK(commandDescriptor<ReleaseTexture>().response.type == lux::cxx::typeToken<Ack>());
+    CHECK(commandDescriptor<ReleaseTexture>().response.type == lux::cxx::typeToken<RenderResult<Ack>>());
     CHECK(commandDescriptor<ReleaseTexture>().request.type == lux::cxx::typeToken<TexturePublished>());
     CHECK(commandDescriptor<QueryTexture>().response.type == lux::cxx::typeToken<QueryTexture::Response>());
 

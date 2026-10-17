@@ -1,7 +1,7 @@
 #pragma once
 #include "../../resource/test/CpuFixture.hpp"
 #include <lux/engine/render/runtime/VulkanServer.hpp>
-#include <lux/engine/render/native/vulkan/texture/TextureCommands.hpp>
+#include <lux/engine/render/native/vulkan/texture/TextureCommandHandler.hpp>
 
 using lux::render::test::CpuFixture;
 

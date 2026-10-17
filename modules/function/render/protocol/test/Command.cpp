@@ -1,4 +1,4 @@
-#include <lux/engine/render/protocol/CommandHandler.hpp>
+#include <lux/engine/render/protocol/CommandMethod.hpp>
 
 #include <cstdio>
 #include <string>
@@ -15,14 +15,14 @@ struct Query final
 {
     static constexpr std::string_view name = "test.Query";
     struct Request final { std::uint64_t key = 0; };
-    using Response = std::vector<std::uint32_t>;
+    using Response = RenderResult<std::vector<std::uint32_t>>;
 };
 
 struct Signal final
 {
     static constexpr std::string_view name = "test.Signal";
     using Request = Ack;
-    using Response = Ack;
+    using Response = RenderResult<Ack>;
 };
 
 struct MissingResponse final
@@ -40,14 +40,11 @@ struct InvalidCommand final
 {
     static constexpr std::string_view name = "test.InvalidCommand";
     using Request = ThrowingMove;
-    using Response = Ack;
+    using Response = RenderResult<Ack>;
 };
 
 static_assert(RenderCommand<Query> && RenderCommand<Signal>);
 static_assert(!RenderCommand<MissingResponse> && !RenderCommand<InvalidCommand>);
-static_assert(sizeof(CommandInvocation) == 3 * sizeof(void*)); // No Native completion extension.
-static_assert(sizeof(Reply<Query>) == sizeof(void*));
-static_assert(!std::is_copy_constructible_v<Reply<Query>>);
 
 static int descriptor()
 {
@@ -123,81 +120,8 @@ static int descriptor()
     return 0;
 }
 
-namespace lux::render::protocol_detail
-{
-    struct ReplyAudit final
-    {
-        template <RenderCommand C> static Reply<C> make(CommandInvocation& invocation) noexcept
-        { return Reply<C>(invocation); }
-    };
-}
-
-static_assert(!std::is_constructible_v<Reply<Query>, CommandInvocation&>);
-static_assert(!std::is_copy_constructible_v<Reply<Query>> && std::is_nothrow_move_constructible_v<Reply<Query>>);
-
-struct Completion final
-{
-    bool pending = true;
-    bool reject_success = false;
-    unsigned calls = 0;
-    ECommandOutcome outcome = ECommandOutcome::OUTCOME_UNKNOWN;
-    RenderError error{};
-    Query::Response response;
-
-    static RenderResult<void> finish(void* value, ECommandOutcome outcome, RenderError error, void* response) noexcept
-    {
-        auto& self = *static_cast<Completion*>(value);
-        if (!self.pending || (self.reject_success && outcome == ECommandOutcome::SUCCESS))
-            return cxx::unexpected(RenderError{kProtocolContract});
-        if (response) self.response = std::move(*static_cast<Query::Response*>(response));
-        self.outcome = outcome;
-        self.error = error;
-        self.pending = false;
-        ++self.calls;
-        return {};
-    }
-
-    static bool active(const void* value) noexcept { return static_cast<const Completion*>(value)->pending; }
-};
-
-static int context()
-{
-    static constexpr CommandCompletionFns functions{Completion::finish, Completion::active};
-    Query::Request input{91};
-    Completion completion;
-    CommandInvocation invocation{&input, &completion, &functions};
-    auto context = protocol_detail::ReplyAudit::make<Query>(invocation);
-    CHECK(&context.request() == &input && context.request().key == 91 && context.active());
-    Query::Response response{1, 2, 3};
-    const auto* allocation = response.data();
-    CHECK(context.complete(response));
-    CHECK(!context.active() && completion.calls == 1 && completion.response.data() == allocation);
-    Query::Response duplicate{4, 5};
-    const auto* retained = duplicate.data();
-    CHECK(!context.complete(duplicate) && duplicate.data() == retained && duplicate.size() == 2);
-    CHECK(completion.calls == 1);
-
-    completion = {};
-    completion.reject_success = true;
-    auto rejected = protocol_detail::ReplyAudit::make<Query>(invocation);
-    CHECK(!rejected.complete(duplicate) && rejected.active() && duplicate.data() == retained);
-    CHECK(rejected.fail(RenderError{kProtocolContract, {17}}));
-    CHECK(completion.outcome == ECommandOutcome::FAILED && completion.error.args[0] == 17);
-    completion = {};
-    auto cancelled = protocol_detail::ReplyAudit::make<Query>(invocation);
-    CHECK(cancelled.cancel());
-    CHECK(completion.outcome == ECommandOutcome::CANCELLED && completion.calls == 1);
-    completion = {};
-    auto fresh = protocol_detail::ReplyAudit::make<Query>(invocation);
-    Reply<Query> moved(std::move(fresh));
-    CHECK(!fresh.active() && moved.active());
-    CHECK(moved.complete(Query::Response{6, 7}));
-    CHECK(completion.response == Query::Response({6, 7}));
-    return 0;
-}
 
 int main()
 {
-    if (auto result = descriptor()) return result;
-    return context();
+    return descriptor();
 }

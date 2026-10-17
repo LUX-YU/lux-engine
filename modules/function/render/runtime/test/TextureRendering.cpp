@@ -57,8 +57,8 @@ static RenderResult<ProgramContribution> programs(const void* wire, std::string_
 
 static void pixels(const lux::platform::ipc::IpcMessage& value, unsigned expected)
 {
-    CHECK(value.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-    const auto bytes = value.get<Readback::Response>().pixels.bytes().view();
+    CHECK(value.get<Readback::Response>().has_value());
+    const auto bytes = value.get<Readback::Response>()->pixels.bytes().view();
     CHECK(bytes.size() == 16 * 16 * 4);
     for (auto b : bytes) CHECK(std::to_integer<unsigned>(b) == expected);
 }
@@ -140,8 +140,8 @@ int main(int argc, char** argv)
         input.source = owner[0];
         texture = decoded<TexturePublished>(call<SetTexture>(*b, upload, input));
         block_compile = false; resume.count_down();
-        CHECK(wait(*a, ca).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-        CHECK(wait(*b, cb).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+        CHECK(wait(*a, ca).get<CreateEffect::Response>().has_value());
+        CHECK(wait(*b, cb).get<CreateEffect::Response>().has_value());
     }
     for (const auto& attachment : attachments) pixels(call<Readback>(*a, read, {attachment, {}}), 64);
 
@@ -176,8 +176,8 @@ int main(int argc, char** argv)
     }
     measure_phase = 0;
     CHECK(progress >= 2 && server->stats().submissions > stalled.submissions + 40);
-    for (auto id : paused) CHECK(wait(*a, id).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-    CHECK(wait(*a, additional).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    for (auto id : paused) CHECK(wait(*a, id).get<CreateScene::Response>().has_value());
+    CHECK(wait(*a, additional).get<CreateScene::Response>().has_value());
     b.reset(); // creation Client and its transient Owner are independent of Global Texture.
     asset.reset(); payload = {}; input.source = {};
     CHECK(destroyed == 1);

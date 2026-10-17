@@ -29,7 +29,7 @@ namespace lux::render
     template <unsigned Fault> struct StorageProvider<::BrokenStorage<Fault>> final
     {
         using Storage = vulkan::TextureStorage;
-        using Handler = vulkan::TextureCommands;
+        using Handler = vulkan::TextureCommandHandler;
         static StorageCppType implementationType() noexcept
         { return StorageProvider<render::TextureStorage>::implementationType(); }
         static StorageFactory factory() noexcept
@@ -55,7 +55,7 @@ template <class S> concept AcceptsErasedFactory = requires(S& server, StorageFac
 };
 static_assert(!AcceptsErasedFactory<RenderServer>);
 
-using TextureBindings = vulkan::TextureCommands::Bindings;
+using TextureBindings = vulkan::TextureCommandHandler::Bindings;
 static_assert(std::tuple_size_v<TextureBindings> == 4);
 static_assert(std::same_as<std::tuple_element_t<0, TextureBindings>::Command, SetTexture>);
 static_assert(std::same_as<std::tuple_element_t<1, TextureBindings>::Command, SetTextureRegion>);
@@ -66,7 +66,7 @@ struct InstallTextures final
 {
     static constexpr std::string_view name = "test.install.textures";
     using Request = unsigned;
-    using Response = StorageTypeId;
+    using Response = RenderResult<StorageTypeId>;
 };
 
 struct Installer final
@@ -78,14 +78,13 @@ struct Installer final
     Installer(RenderServer& value, unsigned& count) noexcept : server(value), destroyed(count) {}
     ~Installer() noexcept { ++destroyed; }
 
-    void install(const unsigned& mode, Reply<InstallTextures> reply) noexcept
+    void install(const unsigned& mode, InstallTextures::Response& reply) noexcept
     {
         TextureStorageConfig config;
         if (mode == 2) config.resident_versions_budget = 16;
         const auto key = mode == 0 ? "" : (mode == 1 ? "second" : "failed");
         auto installed = server.registerStorage<TextureStorage>(config, key);
-        const auto completed = installed ? reply.complete(*installed) : reply.fail(installed.error());
-        if (!completed) std::abort();
+        reply = std::move(installed);
     }
 
     using Bindings = std::tuple<CommandMethod<InstallTextures, &Installer::install>>;

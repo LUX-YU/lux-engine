@@ -65,21 +65,21 @@ namespace lux::render
     {
         static constexpr std::string_view name = "lux.render.SetMesh";
         using Request = MeshWrite;
-        using Response = MeshPublished;
+        using Response = RenderResult<MeshPublished>;
     };
 
     struct QueryMesh final
     {
         static constexpr std::string_view name = "lux.render.QueryMesh";
         using Request = MeshId;
-        using Response = MeshInformation;
+        using Response = RenderResult<MeshInformation>;
     };
 
     struct ReleaseMesh final
     {
         static constexpr std::string_view name = "lux.render.ReleaseMesh";
         using Request = MeshPublished;
-        using Response = Ack;
+        using Response = RenderResult<Ack>;
     };
 
 

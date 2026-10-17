@@ -1,19 +1,72 @@
-# Typed Render Client and owner-thread Server
+# Render commands and owner-thread Server
 
-render_client depends on Core/Data/Protocol and Platform IPC. It does not link Native, Vulkan or stdexec. render_runtime assembles the Vulkan Server on a host-owned thread. Its public templates install the exact Command transport qualification; its Server-only installation API uses the selected Vulkan provider types. Client and neutral headers do not include Native types. Consumers include RenderClient and builtin Commands explicitly when used.
+Applications use Platform IPC directly with neutral `render_commands` declarations.
+They choose a RequestId, encode the discovered CommandId with `commandTag()`, send
+a typed Request and receive its declared typed Response. There is no RenderClient,
+client pending registry or Command wire codec. Pure command consumers need neither
+Vulkan nor stdexec. Server-only installation uses the selected Native provider.
 
-There is one RenderServer::Impl definition in pinclude/ServerImpl.hpp. Registration, Effect compilation, Scene/Target mutation, completion settlement, Loop and bootstrap are separate implementation files, not separate owners. Impl owns the sole CommandId SlotMap, Scene/Target/Effect tables, Responder, DeviceSession and bounded deferred slots. Scene owns View. Effect owns one immutable CompiledGraph, instance binding arguments and ExecutionGroups (exactly SceneId, ViewId, TargetId, ExecutionContext*).
+`RenderServer::Impl` owns one `CommandRegistry`, `ResponseOutbox`, stable pending
+operation table, completion queue, Responder and DeviceSession. Scene owns View.
+Effect owns its immutable CompiledGraph and four-field execution groups:
+SceneId, ViewId, TargetId and ExecutionContext pointer.
 
-Hello supplies only bootstrap directory controls. Clients explicitly request ListCommands and adopt it with refreshCommands(); later installations become visible on another explicit refresh. bind<C>() validates full Command identity, C++ type/ABI/size/alignment and capability once. BoundCommand cannot be forged through the public API. The inbound Server boundary checks Session/SlotKey generation, Canonical TypeOps and reply capacity once, then indexes the sole Command table. Typed CommandMethod construction establishes the thunk's Request/Reply/owner types. A separate stable Handler table owns each object exactly once; Command routes hold only the active {invoke, object}. Cold selection changes future dispatch without redirecting an accepted asynchronous operation.
+## Registration and dispatch
 
-IpcMessage constructs and moves real C++ values, with the existing 80-byte SBO and CodePin. Client RequestId is local to each connection. Failed submit preserves input and budgets. Completion owns the returned original request; FAILED/CANCELLED allow typed recovery, whereas OUTCOME_UNKNOWN does not invent a returned request or known side effect. Payload accounting includes vector capacity and complete retained asset backing. Pins outlive the actual destructor/deleter return.
+CommandRegistry owns the CommandId table and HandlerId owner table. Each Handler
+object is destroyed once; active command routes contain just `{invoke, object}`.
+Cold registration compares complete declarations and installs typed member thunks.
+Clients explicitly query ListCommands/ListCommandBindings and may select a binding.
+Selection affects future dispatch, never an already-started operation.
 
-CPU compilation and finite async Commands borrow the host's CpuSchedule. Receivers publish bounded completion events; the owner loop consumes arrived events. Reply<C>::defer() reserves the sole stable Pending slot before an irreversible side effect; the promoted request is borrowed again after its move. Generic Protocol has no GPU completion category. Native upload operations preserve their actual Copy/Acquire/publication success contract through real queue-scoped Ticket callbacks. Readback waits for the actual GPU result and pauses reuse of its execution context. No second worker, pending table, polling registry or completion owner exists.
+`CommandMethod<C, &H::method>` accepts exactly one of these noexcept signatures:
 
-Compile workers borrow immutable registry contracts/config and Device capabilities; they create independent Shader/Pipeline candidates without a shared PipelineCache. They never mutate queues, allocator, live Storage, contexts or Effect tables. Stop closes admission, requests cancellation, drains accepted CPU/GPU work and settles every ReceivedRequest before Responder reset. Native resources retire before Device/Instance destruction. The host stops and joins run before destroying Server; borrowed scheduler and code modules outlive accepted work.
+```cpp
+void H::method(const C::Request&, C::Response&) noexcept;
+ConcreteSender H::method(C::Request&&) noexcept;
+```
 
-Factory installation occurs only in cold explicit registration. DeviceSession does not install Texture by default. Attach validates resource identity/binding once, creates a complete context candidate and publishes its four-field group on success. Stable frames use prepared context/slot pointers: no Feature dispatch, Graph analysis, config decoding or name lookup. Queue capacity 3 and sleep_for(1ms) are unchanged; Alias scheduling and resource collection cost remain separate performance debts.
+Responses use `RenderResult<Success>`. Synchronous dispatch creates an error-initialized
+Response directly in an Outbox message before entering the Handler. No temporary
+Response or PendingOperation is needed. Dispatch is not reentrant: a Handler may
+install declarations but must not recursively dispatch or flush the Outbox.
 
-FeatureUse carries FeatureId, a local instance name and an immutable owned ConfigValue. The existing stable Feature entry is resolved on the owner thread; workers borrow only those entries, request configuration and necessary Device capabilities. Type/size/alignment and full backing budget are checked before contribution. Feature config is not serialized; persistent Data Schema/Wire and the remaining Storage binding codec are separate contracts pending their relevant migration. Tests may use ControlFixture to adapt historical behavioral scripts, but it is never installed.
+An asynchronous thunk first creates a stable PendingOperation, then invokes the
+Handler, connects its concrete Sender and starts the operation owned by that slot.
+The Sender moves every source owner needed after the Handler returns. Its generic
+Receiver maps value, RenderError, CommandFailure and stopped into one typed result
+and publishes the existing completion event. RenderThread moves ready results to
+Outbox, then releases the ended operation. Publication is the producer's final
+state access; host scheduler/module lifetimes cover callback tails.
 
-The random 128-bit Server epoch comes from the existing Platform Process component's OS entropy function. Failure has no deterministic fallback. Windows implementation uses BCrypt; no Win32 dependency remains in Render source. Linux/Android platform builds are not qualified by this work.
+Outbox alone publishes finished results, with bounded fair retries when a reply
+segment cannot grow. A closed requester cannot hold ready output indefinitely.
+The source route is independent of input ownership. Invalid CommandId or wrong
+request type produces one raw RenderError(kProtocolContract); known commands
+produce only their declared Response. Accepted uncertain effects use kOutcomeUnknown,
+never a guaranteed cancellation.
+
+## Native work and shutdown
+
+CreateEffectSender owns the complete compile transaction. Its worker only calls
+compileEffect with the moved request, stable Feature borrows and Device. CompletionPost
+returns the candidate to RenderThread, which alone allocates EffectId and produces
+success. Graph analysis/compiler and the existing Native retirement algorithms are
+unchanged. GPU upload senders retain source Payload through actual Transfer completion;
+Copy/Acquire/publication determines success. Readback waits for its own GPU work.
+
+Stop closes dispatch, requests operation stops, drains accepted CPU/GPU work and
+publishes/discards ready output before resetting the Responder. Native objects retire
+by real LastUse tickets before Device/Instance destruction. The host must stop and
+join run before destroying Server, and keep its ExecutionRuntime and code modules alive
+through accepted callback tails. Disconnection is not GPU cancellation.
+
+Storage Factory installation remains explicit. Attach prepares the context once;
+stable frames use prepared pointers without Feature dispatch, name/schema lookup,
+Graph analysis or Shader/Pipeline compilation. Resource/Graph/Material architecture
+and historical un-attributed performance qualifications are outside this refactor.
+
+The single RenderThread alternates bounded request, completion and response work with ready View execution.
+There is no unconditional sleep: successful work starts the next round immediately. Only a round with no progress
+waits on IpcCore's epoch; requests, CPU completion and stop wake it. A requested 1ms idle deadline observes GPU fences
+and unvisited Links in the bounded IPC roster. This is an idle observation deadline, subject to OS scheduling, not a rendering rate limit.

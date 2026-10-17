@@ -2,7 +2,10 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 
 #ifdef LUX_RUNTIME_CPU_TEST_SEAM
-namespace lux::render::runtime_cpu_test { extern CpuSchedule controlled_cpu; }
+namespace lux::render::runtime_cpu_test
+{
+    extern CpuSchedule controlled_cpu;
+}
 #endif
 
 namespace lux::render
@@ -13,12 +16,11 @@ namespace lux::render
         {
             return {kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}};
         }
-    }
+    } // namespace
 
-    RenderServer::Impl::Impl(
-        RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler host_scheduler
-    ) : config(std::move(value)), scheduler(std::move(host_scheduler)),
-        cpu(CpuSchedule::bind<mapCpuError>(scheduler)), responder(std::move(input))
+    RenderServer::Impl::Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler host_scheduler)
+        : config(std::move(value)), scheduler(std::move(host_scheduler)),
+          cpu(CpuSchedule::bind<mapCpuError>(scheduler)), responder(std::move(input))
     {
 #ifdef LUX_RUNTIME_CPU_TEST_SEAM
         cpu = runtime_cpu_test::controlled_cpu;
@@ -30,11 +32,10 @@ namespace lux::render
         addBuiltin<RemoveView, &Impl::removeView>();
         addBuiltin<CreateTarget, &Impl::createTarget>();
         addBuiltin<ResizeTarget, &Impl::resizeTarget>();
-        addBuiltin<CreateEffect, &Impl::createEffect>();
+        installAsyncBuiltins();
         addBuiltin<RemoveEffect, &Impl::removeEffect>();
-        addBuiltin<Attach, &Impl::attach>();
-        addBuiltin<Detach, &Impl::detach>();
-        addBuiltin<Readback, &Impl::readback>();
+        addBuiltin<Attach, &Impl::attachEffect>();
+        addBuiltin<Detach, &Impl::detachEffect>();
         addBuiltin<Stop, &Impl::stopCommand>();
         addBuiltin<QueryRenderStats, &Impl::queryRenderStats>();
         addBuiltin<QueryExecutionProgress, &Impl::queryExecutionProgress>();
@@ -56,8 +57,14 @@ namespace lux::render
     ) noexcept
     {
         auto& state = *static_cast<Impl*>(user);
-        if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ++state.validation_errors;
-        if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) ++state.validation_warnings;
+        if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+        {
+            ++state.validation_errors;
+        }
+        if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+        {
+            ++state.validation_warnings;
+        }
         return VK_FALSE;
     }
 
@@ -92,20 +99,37 @@ namespace lux::render
 
     RenderServer::~RenderServer() noexcept
     {
-        if (impl_->running.load()) std::terminate(); // host must stop + join
-        if (impl_->device) impl_->shutdown();
+        if (impl_->running.load())
+        {
+            std::terminate(); // host must stop + join
+        }
+        if (impl_->device)
+        {
+            impl_->shutdown();
+        }
     }
 
     RenderResult<std::unique_ptr<RenderServer>> runtime_detail::ServerBootstrap::create(
-        RenderServerConfig config, execution::ExecutionRuntime& runtime, vulkan::DeviceOptions options
+        RenderServerConfig config,
+        execution::ExecutionRuntime& runtime,
+        vulkan::DeviceOptions options
     ) noexcept
     {
-        const bool invalid = config.requests_per_tick == 0 || config.max_config_bytes == 0;
-        if (invalid) return cxx::unexpected(RenderError{kRuntimeCapacity});
+        const bool invalid = config.request_work_budget == 0 || config.max_config_bytes == 0;
+        if (invalid)
+        {
+            return cxx::unexpected(RenderError{kRuntimeCapacity});
+        }
         auto responder = ipc::IpcCore::instance().createResponder(config.channel_name);
-        if (!responder) return cxx::unexpected(RenderError{kRuntimeState});
+        if (!responder)
+        {
+            return cxx::unexpected(RenderError{kRuntimeState});
+        }
         auto state = std::make_unique<RenderServer::Impl>(std::move(config), std::move(*responder), runtime.cpu());
-        if (auto initialized = state->initialize(options); !initialized) return cxx::unexpected(initialized.error());
+        if (auto initialized = state->initialize(options); !initialized)
+        {
+            return cxx::unexpected(initialized.error());
+        }
         return std::unique_ptr<RenderServer>(new RenderServer(std::move(state)));
     }
 } // namespace lux::render
@@ -113,9 +137,11 @@ namespace lux::render
 namespace lux::render::vulkan
 {
     RenderResult<std::unique_ptr<RenderServer>> createRenderServer(
-        RenderServerConfig config, execution::ExecutionRuntime& runtime, DeviceOptions options
+        RenderServerConfig config,
+        execution::ExecutionRuntime& runtime,
+        DeviceOptions options
     ) noexcept
     {
         return runtime_detail::ServerBootstrap::create(std::move(config), runtime, options);
     }
-}
+} // namespace lux::render::vulkan

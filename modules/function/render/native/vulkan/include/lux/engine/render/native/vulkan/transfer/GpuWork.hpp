@@ -3,6 +3,7 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Transfer.hpp>
 #include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/render/data/Payload.hpp>
 #include <lux/engine/core/execution/WorkSchedule.hpp>
 #include <stdexec/execution.hpp>
 #include <optional>
@@ -74,8 +75,9 @@ namespace lux::render::vulkan
         std::unique_ptr<void, void (*)(void*) noexcept> owner_{nullptr, [](void*) noexcept {}};
         RenderResult<void> (*ready_)(void*, Transfer&, DeviceSession&) noexcept = nullptr;
     };
-    // Finite Native adapter around the existing Transfer. It owns no request, queue or Device.
-    // The caller reserves Reply capacity and reborrows its stable input before creating this work.
+    // Finite Native sender around the existing Transfer. It retains the moved upload payload until
+    // Transfer ends; no additional queue, Device or request wrapper is created.
+    // Runtime acquires its PendingOperation before the Handler prepares this owned Native work.
     template <class Response> class GpuWorkSender final
     {
     public:
@@ -85,8 +87,10 @@ namespace lux::render::vulkan
             stdexec::set_error_t(CommandFailure), stdexec::set_stopped_t()
         >;
 
-        GpuWorkSender(Response response, GpuWork work) noexcept
-            : response_(std::move(response)), work_(std::move(work)) {}
+        GpuWorkSender(Response response, GpuWork work, RenderPayload source = {}) noexcept
+            : source_(std::move(source)), response_(std::move(response)), work_(std::move(work)) {}
+
+        explicit GpuWorkSender(RenderError error) noexcept : response_(cxx::unexpected(error)), initial_error_(error) {}
 
         template <class Receiver> class Operation final
         {
@@ -98,13 +102,15 @@ namespace lux::render::vulkan
 
         public:
             using operation_state_concept = stdexec::operation_state_t;
-            Operation(Response response, GpuWork work, Receiver receiver) noexcept
-                : response_(std::move(response)), work_(std::move(work)), receiver_(std::move(receiver)) {}
+            Operation(RenderPayload source, Response response, GpuWork work, RenderError initial_error, Receiver receiver) noexcept
+                : source_(std::move(source)), response_(std::move(response)), work_(std::move(work)), initial_error_(initial_error),
+                  receiver_(std::move(receiver)) {}
             Operation(const Operation&) = delete;
             Operation(Operation&&) = delete;
 
             void start() noexcept
             {
+                if (initial_error_.type != 0) { stdexec::set_error(std::move(receiver_), initial_error_); return; }
                 const auto environment = stdexec::get_env(receiver_);
                 const auto token = stdexec::get_stop_token(environment);
                 if (token.stop_requested())
@@ -133,7 +139,7 @@ namespace lux::render::vulkan
                 const bool device_lost = self.work_.deviceLost();
                 const bool unknown = (stopping || device_lost) && self.work_.submitted();
                 if (result && !stopping && !device_lost) result = self.work_.publish();
-                self.work_.reset(); // Native candidate ends before the source Request can be returned.
+                self.work_.reset(); // Native work ends before the source payload owner is released.
                 auto receiver = std::move(self.receiver_);
                 auto response = std::move(self.response_);
                 if (unknown)
@@ -148,20 +154,24 @@ namespace lux::render::vulkan
                     stdexec::set_value(std::move(receiver), std::move(response));
             }
 
+            RenderPayload source_;
             Response response_;
             GpuWork work_;
+            RenderError initial_error_;
             Receiver receiver_;
             std::optional<stdexec::inplace_stop_callback<OnStop>> stop_;
         };
 
         template <class Receiver> [[nodiscard]] Operation<std::decay_t<Receiver>> connect(Receiver&& receiver) &&
         {
-            return {std::move(response_), std::move(work_), std::forward<Receiver>(receiver)};
+            return {std::move(source_), std::move(response_), std::move(work_), initial_error_, std::forward<Receiver>(receiver)};
         }
 
     private:
+        RenderPayload source_;
         Response response_;
         GpuWork work_;
+        RenderError initial_error_;
     };
 
 }

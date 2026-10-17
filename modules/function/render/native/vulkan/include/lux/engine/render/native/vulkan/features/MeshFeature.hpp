@@ -2,10 +2,10 @@
 
 #include <lux/engine/render/features/MeshFeature.hpp>
 #include <lux/engine/render/features/Registration.hpp>
-#include <lux/engine/render/native/vulkan/texture/TextureCommands.hpp>
-#include <lux/engine/render/native/vulkan/mesh/MeshCommands.hpp>
-#include <lux/engine/render/native/vulkan/material/MaterialCommands.hpp>
-#include <lux/engine/render/native/vulkan/instance/InstanceCommands.hpp>
+#include <lux/engine/render/native/vulkan/texture/TextureCommandHandler.hpp>
+#include <lux/engine/render/native/vulkan/mesh/MeshCommandHandler.hpp>
+#include <lux/engine/render/native/vulkan/material/MaterialCommandHandler.hpp>
+#include <lux/engine/render/native/vulkan/instance/InstanceCommandHandler.hpp>
 
 namespace lux::render
 {

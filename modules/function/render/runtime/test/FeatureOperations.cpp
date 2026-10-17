@@ -35,7 +35,7 @@ struct SetExposure final
 {
     static constexpr std::string_view name = "test.setExposure";
     using Request = Exposure;
-    using Response = Exposure;
+    using Response = RenderResult<Exposure>;
 };
 // Primary vectors: pstibrany/fnv-1a-64bit-collisions@4dac53c19e5d53fbfb8d1050af37524b3313acf8.
 // Identical value contracts ensure this exercise distinguishes Command names, not Request type tables.
@@ -43,13 +43,13 @@ struct CollidingA final
 {
     static constexpr std::string_view name = "gMPflVXtwGDXbIhP73TX";
     using Request = Exposure;
-    using Response = Exposure;
+    using Response = RenderResult<Exposure>;
 };
 struct CollidingB final
 {
     static constexpr std::string_view name = "LtHf1prlU1bCeYZEdqWf";
     using Request = Exposure;
-    using Response = Exposure;
+    using Response = RenderResult<Exposure>;
 };
 static_assert(CommandName(CollidingA::name).hash() == 0x8FCF3BE2DE898214ULL);
 static_assert(CommandName(CollidingA::name).hash() == CommandName(CollidingB::name).hash());
@@ -59,44 +59,44 @@ struct AcceptCustomData final
 {
     static constexpr std::string_view name = "test.acceptCustomData";
     struct Request final { RenderPayload source; };
-    using Response = Exposure;
+    using Response = RenderResult<Exposure>;
 };
 struct OversizedResult final { std::vector<std::byte> bytes; };
 struct InvalidReply final
 {
     static constexpr std::string_view name = "test.invalidReply";
     using Request = Exposure;
-    using Response = OversizedResult;
+    using Response = RenderResult<OversizedResult>;
 };
 struct UnqualifiedType final
 {
     static constexpr std::string_view name = "test.unqualifiedType";
     using Request = Exposure;
-    using Response = Exposure;
+    using Response = RenderResult<Exposure>;
 };
 struct TransferredReply final
 {
     static constexpr std::string_view name = "test.transferredReply";
     using Request = Exposure;
-    using Response = Exposure;
+    using Response = RenderResult<Exposure>;
 };
 struct WrongRequest final
 {
     static constexpr std::string_view name = SetExposure::name;
     using Request = std::uint64_t;
-    using Response = Exposure;
+    using Response = RenderResult<Exposure>;
 };
 struct WrongResponse final
 {
     static constexpr std::string_view name = SetExposure::name;
     using Request = Exposure;
-    using Response = std::uint64_t;
+    using Response = RenderResult<std::uint64_t>;
 };
 struct EquivalentCommand final
 {
     static constexpr std::string_view name = SetExposure::name;
     using Request = Exposure;
-    using Response = Exposure;
+    using Response = RenderResult<Exposure>;
 };
 struct FeatureState final
 {
@@ -111,27 +111,23 @@ static const std::array descriptors{
 };
 static const FeatureDescriptor feature{FeatureName("test.open.operation"), {}};
 static const FeatureGraphOps feature_graph{[](const void*, std::string_view, ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
-template <class T>
-concept CanReplyExposure = requires(Reply<SetExposure>& context, T& value) { context.complete(value); };
-static_assert(CanReplyExposure<Exposure> && !CanReplyExposure<std::array<std::byte, 3>>);
-
-static RenderResult<void> setExposure(FeatureState& state, const SetExposure::Request& input, Reply<SetExposure>& context) noexcept
+static void setExposure(FeatureState& state, const SetExposure::Request& input, SetExposure::Response& response) noexcept
 {
     const auto start = Clock::now();
     state.exposure = input.value;
-    auto result = context.complete(Exposure{state.exposure});
+    response = Exposure{state.exposure};
     state.handler_ns.store(std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count());
     state.handler_value.store(static_cast<int>(state.exposure), std::memory_order_release);
-    return result;
+    return;
 }
 
-static RenderResult<void> acceptData(FeatureState& state, const AcceptCustomData::Request& input, Reply<AcceptCustomData>& context) noexcept
+static void acceptData(FeatureState& state, const AcceptCustomData::Request& input, AcceptCustomData::Response& response) noexcept
 {
     const auto source = input.source.bytes().view();
-    if (source.empty()) return cxx::unexpected(RenderError{kInvalidDataReference});
+    if (source.empty()) { response = cxx::unexpected(RenderError{kInvalidDataReference}); return; }
     check(source.front() == std::byte{37} && source.back() == std::byte{37});
     state.source.store(source.data());
-    return context.complete(Exposure{float(source.size())});
+    response = Exposure{float(source.size())};
 }
 
 struct ExposureCommands final
@@ -139,14 +135,14 @@ struct ExposureCommands final
     static constexpr std::string_view name = "test.exposure.commands";
     FeatureState& state;
     explicit ExposureCommands(FeatureState& value) noexcept : state(value) {}
-    RenderResult<void> set(const SetExposure::Request& input, Reply<SetExposure>& reply) noexcept
-    { return setExposure(state, input, reply); }
-    RenderResult<void> accept(const AcceptCustomData::Request& input, Reply<AcceptCustomData>& reply) noexcept
-    { return acceptData(state, input, reply); }
-    RenderResult<void> invalid(const InvalidReply::Request&, Reply<InvalidReply>& reply) noexcept
+    void set(const SetExposure::Request& input, SetExposure::Response& reply) noexcept
+    { setExposure(state, input, reply); }
+    void accept(const AcceptCustomData::Request& input, AcceptCustomData::Response& reply) noexcept
+    { acceptData(state, input, reply); }
+    void invalid(const InvalidReply::Request&, InvalidReply::Response& reply) noexcept
     {
-        OversizedResult result{std::vector<std::byte>(4096)};
-        return reply.complete(std::move(result));
+        reply.emplace();
+        reply->bytes.resize(4096);
     }
     using Bindings = std::tuple<CommandMethod<SetExposure, &ExposureCommands::set>,
         CommandMethod<AcceptCustomData, &ExposureCommands::accept>,
@@ -154,36 +150,19 @@ struct ExposureCommands final
 };
 
 template <class C> concept CanBindExposure = requires(ExposureCommands& object) {
-    bindCommand<C, &ExposureCommands::set>(object);
+    CommandBinding::bind<C, &ExposureCommands::set>(object);
 };
 static_assert(!CanBindExposure<WrongRequest> && !CanBindExposure<WrongResponse>);
 
 struct CollisionCommands final
 {
     static constexpr std::string_view name = "test.collision.commands";
-    RenderResult<void> a(const CollidingA::Request& input, Reply<CollidingA>& reply) noexcept
-    { return reply.complete(Exposure{input.value + 1000}); }
-    RenderResult<void> b(const CollidingB::Request& input, Reply<CollidingB>& reply) noexcept
-    { return reply.complete(Exposure{input.value + 2000}); }
+    void a(const CollidingA::Request& input, CollidingA::Response& reply) noexcept
+    { reply = Exposure{input.value + 1000}; }
+    void b(const CollidingB::Request& input, CollidingB::Response& reply) noexcept
+    { reply = Exposure{input.value + 2000}; }
     using Bindings = std::tuple<CommandMethod<CollidingA, &CollisionCommands::a>,
         CommandMethod<CollidingB, &CollisionCommands::b>>;
-};
-
-struct TransferredCommands final
-{
-    static constexpr std::string_view name = "test.transferred.commands";
-    FeatureState& state;
-    explicit TransferredCommands(FeatureState& value) noexcept : state(value) {}
-    RenderResult<void> run(const TransferredReply::Request&, Reply<TransferredReply>& reply) noexcept
-    {
-        auto pending = reply.defer();
-        check(bool(pending));
-        auto rejected = reply.complete(Exposure{9});
-        check(!rejected && rejected.error().type == kProtocolContract && !reply.active());
-        ++state.premature_rejected;
-        return pending->fail(rejected.error());
-    }
-    using Bindings = std::tuple<CommandMethod<TransferredReply, &TransferredCommands::run>>;
 };
 
 // A real typed installation conflicts with the existing command's response contract.
@@ -191,9 +170,9 @@ struct TransferredCommands final
 struct ConflictingCommands final
 {
     static constexpr std::string_view name = "test.conflicting.commands";
-    RenderResult<void> run(const WrongResponse::Request&, Reply<WrongResponse>& reply) noexcept
+    void run(const WrongResponse::Request&, WrongResponse::Response& reply) noexcept
     {
-        return reply.complete(std::uint64_t{0});
+        reply = std::uint64_t{0};
     }
     using Bindings = std::tuple<CommandMethod<WrongResponse, &ConflictingCommands::run>>;
 };
@@ -217,11 +196,6 @@ int main()
     auto rejected = server->registerFeature<UnqualifiedType>(
         feature_test::Provider<ConflictingCommands>{{&unqualified_feature, &unqualified_graph, nullptr}});
     check(!rejected && rejected.error().type == kProtocolContract);
-    const FeatureDescriptor premature_feature{FeatureName("test.transferred.reply"), {}};
-    const FeatureGraphOps premature_feature_graph{feature_graph.describe, nullptr};
-    check(bool(server->registerFeature<TransferredReply>(
-        feature_test::Provider<TransferredCommands>{{&premature_feature, &premature_feature_graph, nullptr}},
-        "", state)));
     const auto catalog = take(server->commandId<ListCommands>());
     auto a = take(runtime_test::connect("runtime.open", catalog));
     auto b = take(runtime_test::connect("runtime.open", catalog));
@@ -240,7 +214,7 @@ int main()
     {
         auto reply_b = wait(*b, id_b);
         auto reply_a = wait(*a, id_a);
-        check(reply_a.get<Exposure>().value == 3 && reply_b.get<Exposure>().value == 7);
+        check(reply_a.get<SetExposure::Response>()->value == 3 && reply_b.get<SetExposure::Response>()->value == 7);
     }
 
     // The real Server publishes both capabilities and routes the same C++ input type to distinct handlers.
@@ -253,22 +227,16 @@ int main()
     {
         auto reply_a = wait(*a, collision_id_a);
         auto reply_b = wait(*b, collision_id_b);
-        check(reply_a.get<Exposure>().value == 1005 && reply_b.get<Exposure>().value == 2005);
+        check(reply_a.get<SetExposure::Response>()->value == 1005 && reply_b.get<SetExposure::Response>()->value == 2005);
 
     }
     std::puts("Real Command hash collision: two capabilities, distinct local IDs and handlers, original Client replies");
 
     auto bad = take(runtime_test::find<InvalidReply>(*a));
     auto failed = call<InvalidReply>(*a, bad, Exposure{});
-    check(failed.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-    check(failed.get<OversizedResult>().bytes.size() == 4096);
+    check(bool(failed.get<InvalidReply::Response>()));
+    check(failed.get<InvalidReply::Response>()->bytes.size() == 4096);
     failed = {};
-    auto premature = take(runtime_test::find<TransferredReply>(*a));
-    failed = call<TransferredReply>(*a, premature, Exposure{});
-    check(failed.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED && failed.get<RenderError>().type == kProtocolContract);
-    check(state.premature_rejected == 1);
-    failed = {};
-
     std::atomic<unsigned> destroyed{0};
     auto owner = std::shared_ptr<const std::vector<std::byte>>(new std::vector<std::byte>(1024 * 1024, std::byte{37}),
         [&](auto* p) { delete p; ++destroyed; });
@@ -276,15 +244,15 @@ int main()
     auto data_binding = take(runtime_test::find<AcceptCustomData>(*b));
     check(!RenderPayload::fromVector(owner, owner->size() - 1, 64));
     auto invalid_data = call<AcceptCustomData>(*b, data_binding, {});
-    check(invalid_data.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED &&
-        invalid_data.get<RenderError>().type == kInvalidDataReference);
+    check(!invalid_data.get<AcceptCustomData::Response>() &&
+        invalid_data.get<AcceptCustomData::Response>().error().type == kInvalidDataReference);
     invalid_data = {};
     AcceptCustomData::Request data{take(RenderPayload::fromVector(owner, 17, 64))};
     const auto accepted = take(runtime_test::send<AcceptCustomData>(*b, data_binding, std::move(data)));
     check(data.source.bytes().empty() && data.source.retainedBytes() == 0);
     {
         auto uploaded = wait(*b, accepted);
-        check(uploaded.get<Exposure>().value == 64 && state.source.load() == address);
+        check(uploaded.get<SetExposure::Response>()->value == 64 && state.source.load() == address);
         owner.reset();
         const auto deadline = Clock::now() + 10s;
         while (destroyed == 0) { check(Clock::now() < deadline); std::this_thread::yield(); }
@@ -315,12 +283,13 @@ int main()
         while (Clock::now() - submitted < 10s)
         {
             const auto attempt = Clock::now();
-            auto status = a->requester.tryReceive(result);
+            std::uint64_t correlation = 0;
+            auto status = a->requester.tryReceive(correlation, result);
             if (status == lux::platform::ipc::EIpcReceive::RECEIVED)
             {
-                check(result.metadata<ReplyHeader>().request == id);
-                check(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-                check(result.get<Exposure>().value == float(i));
+                check(correlation == id.value);
+                check(bool(result.get<SetExposure::Response>()));
+                check(result.get<SetExposure::Response>()->value == float(i));
                 received = Clock::now();
                 consume = std::chrono::duration_cast<std::chrono::nanoseconds>(received - attempt).count();
                 consumed = true;
@@ -355,17 +324,16 @@ int main()
     ++stale.gen;
     ipc::IpcMessage message;
     message.emplace<Exposure>();
-    message.setMetadata(RequestHeader{id, stale});
-    check(bool(raw.trySend(message)));
+    check(bool(raw.trySend(commandTag(stale), id.value, message)));
     ipc::IpcMessage rejected_reply;
     const auto deadline = Clock::now() + 10s;
     ipc::EIpcReceive status;
-    do { status = raw.tryReceive(rejected_reply); check(Clock::now() < deadline); }
+    std::uint64_t correlation = 0;
+    do { status = raw.tryReceive(correlation, rejected_reply); check(Clock::now() < deadline); }
     while (status == ipc::EIpcReceive::EMPTY);
     check(status == ipc::EIpcReceive::RECEIVED);
-    check(rejected_reply.metadata<ReplyHeader>().request == id);
-    check(rejected_reply.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
-    check(rejected_reply.get<RenderError>().type == kRuntimeIdentity);
+    check(correlation == id.value);
+    check(rejected_reply.get<RenderError>().type == kProtocolContract);
     raw.reset();
     auto held = call<SetExposure>(*a, bound_a, Exposure{42});
     a.reset();
@@ -373,7 +341,7 @@ int main()
     worker.join();
     check(run_ok && server->stats().validation_errors == 0);
     server.reset();
-    check(held.get<Exposure>().value == 42);
+    check(held.get<SetExposure::Response>()->value == 42);
     std::printf("Zero-Pass Feature; full-name collision separation; stale Command rejection; "
         "1000 direct IPC requests, actual results survive Server; GPU validation errors=0\n");
 }

@@ -1,17 +1,18 @@
 #pragma once
 
-#include <lux/engine/render/runtime/VulkanServer.hpp>
-#include <lux/engine/core/execution/Scheduler.hpp>
-#include <lux/engine/render/runtime/Error.hpp>
-#include <lux/engine/render/runtime/Commands.hpp>
-#include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
-#include <lux/engine/platform/ipc/IpcCore.hpp>
-#include "Deferred.hpp"
-#include <lux/cxx/core/CheckedArithmetic.hpp>
+#include "CommandDispatchContext.hpp"
+#include "CommandRegistry.hpp"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <lux/cxx/core/CheckedArithmetic.hpp>
+#include <lux/engine/core/execution/Scheduler.hpp>
+#include <lux/engine/platform/ipc/IpcCore.hpp>
+#include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
+#include <lux/engine/render/runtime/Commands.hpp>
+#include <lux/engine/render/runtime/Error.hpp>
+#include <lux/engine/render/runtime/VulkanServer.hpp>
 #include <thread>
 
 namespace lux::render
@@ -25,19 +26,24 @@ namespace lux::render
         {
             CameraState camera;
             StorageSet storages;
+
             View(ResourceRegistry& registry, CameraState value) noexcept : camera(value), storages(registry) {}
         };
+
         struct Scene final
         {
             StorageSet storages;
             cxx::StableSlotMap<View, ViewTag> views;
+
             explicit Scene(ResourceRegistry& registry) noexcept : storages(registry) {}
         };
+
         struct Target final
         {
             TargetDesc description;
             std::uint64_t epoch = 1;
         };
+
         struct ExecutionGroup final
         {
             SceneId scene;
@@ -45,6 +51,7 @@ namespace lux::render
             TargetId target;
             vulkan::ExecutionContext* context;
         };
+
         struct RenderEffect final
         {
             std::shared_ptr<const vulkan::CompiledGraph> code;
@@ -52,6 +59,7 @@ namespace lux::render
             std::vector<ExecutionGroup> groups;
             std::size_t next_group = 0;
         };
+
         struct FeatureEntry final
         {
             // Stable table construction binds views only after their owned metadata exists.
@@ -62,49 +70,26 @@ namespace lux::render
             decltype(feature_detail::Implementation::programs) programs;
 
             FeatureEntry(feature_detail::Implementation input) noexcept
-                : name(input.descriptor->type.name()), descriptor(*input.descriptor),
-                  graph(*input.graph), programs(input.programs)
+                : name(input.descriptor->type.name()), descriptor(*input.descriptor), graph(*input.graph),
+                  programs(input.programs)
             {
                 descriptor.type = FeatureName(name);
             }
         };
 
-        struct SupportedHandler final
-        {
-            HandlerId id;
-            HandlerCall call;
-        };
-
-        struct CommandMetadata final
-        {
-            CommandId id;
-            CommandHandler binding;
-            std::vector<SupportedHandler> supported;
-            HandlerId selected;
-        };
-
-        struct CommandEntry final
-        {
-            HandlerCall active;
-            std::unique_ptr<CommandMetadata> cold;
-        };
     } // namespace runtime_detail
 
     struct RenderServer::Impl final
     {
-        // One handler-call borrow; every table and deferred request remains owned by this Impl.
-        struct CommandCall final
-        {
-            Impl& server;
-            RenderRequest& request;
-        };
-
-        static const CommandCompletionFns command_completion_functions;
-        static const CommandCompletionFns deferred_completion_functions;
-
         [[nodiscard]] RenderResult<void> initialize(vulkan::DeviceOptions options) noexcept;
         [[nodiscard]] RenderResult<void> run() noexcept;
-        void stop() noexcept { stop_requested.store(true); }
+
+        void stop() noexcept
+        {
+            stop_requested.store(true);
+            ipc::IpcCore::instance().notifyWork();
+        }
+
         [[nodiscard]] RenderServerStats stats() const noexcept;
 
         RenderServerConfig config;
@@ -112,15 +97,14 @@ namespace lux::render
         CpuSchedule cpu;
         ipc::IpcResponder responder;
         cxx::StableSlotMap<FeatureEntry, FeatureTag> features;
-        cxx::SlotMap<CommandEntry, CommandTag> command_table;
-        cxx::SlotMap<std::unique_ptr<HandlerEntry>, HandlerTag> handlers;
+        CommandRegistry command_registry_;
         cxx::StableSlotMap<Scene, SceneTag> scenes;
         cxx::SlotMap<Target, TargetTag> targets;
         cxx::SlotMap<RenderEffect, EffectTag> effects;
         std::optional<vulkan::InstanceContext> instance;
         std::unique_ptr<vulkan::DeviceSession> device;
-        std::vector<RenderRequest> undelivered;
-        DeferredSlots deferred;
+        ResponseOutbox response_outbox_;
+        PendingSlots pending_operations_;
         CompletionQueue completion_events;
         std::atomic<std::size_t> completion_publishers{0};
         std::size_t next_effect = 0;
@@ -131,38 +115,25 @@ namespace lux::render
 
         Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler scheduler);
 
-        template <RenderCommand C, RenderResult<void> (Impl::*Method)(RenderRequest&) noexcept>
-        void addBuiltin() noexcept
+        template <RenderCommand C, auto Method> void addBuiltin() noexcept
         {
-            auto binding = CommandHandler::bindInvocation<C>({
-                [](void* owner, CommandInvocation& invocation) noexcept {
-                    auto& accepted = static_cast<CommandCall*>(invocation.completion_owner)->request;
-                    return (static_cast<Impl*>(owner)->*Method)(accepted);
-                }, this
-            });
-            addCommand(binding);
+            command_registry_.registerCommand(CommandBinding::bind<C, Method>(*this));
         }
 
-        CommandId addCommand(CommandHandler binding) noexcept;
+        RenderResult<void> detachExecutionGroup(RenderEffect& effect, std::size_t index) noexcept;
 
-        void settle(RenderRequest request, RenderResult<void> result) noexcept;
-        void retryReplies() noexcept;
+        RenderResult<StorageSet*> findStorageSet(const VStorageOwner&) noexcept;
+        void findStorage(const FindStorage::Request&, FindStorage::Response&) noexcept;
+        void prepareStorage(const PrepareStorage::Request&, PrepareStorage::Response&) noexcept;
+        void releasePreparedStorage(const ReleasePreparedStorage::Request&, ReleasePreparedStorage::Response&) noexcept;
 
-        RenderResult<void> withdraw(RenderEffect& effect, std::size_t index) noexcept;
+        void attachEffect(const Attach::Request&, Attach::Response&) noexcept;
 
-        RenderResult<StorageSet*> storageOwner(const VStorageOwner&) noexcept;
-        RenderResult<void> findStorage(RenderRequest&) noexcept;
-        RenderResult<void> prepareStorage(RenderRequest&) noexcept;
-        RenderResult<void> releasePreparedStorage(RenderRequest&) noexcept;
+        RenderResult<void> resizeTargetResources(TargetId id, Target& target, const TargetDesc& description) noexcept;
 
-        RenderResult<void> attach(RenderRequest& request) noexcept;
+        auto readBackOutput(Readback::Request&&) noexcept;
 
-        RenderResult<void> resize(TargetId id, Target& target, const TargetDesc& description) noexcept;
-
-        RenderResult<void> readback(RenderRequest& request) noexcept;
-
-
-        RenderResult<void> tick() noexcept;
+        RenderResult<void> advanceRendering() noexcept;
 
         static VKAPI_ATTR VkBool32 VKAPI_CALL diagnostic(
             VkDebugUtilsMessageSeverityFlagBitsEXT severity,
@@ -171,49 +142,43 @@ namespace lux::render
             void* user
         ) noexcept;
 
-        RenderResult<void> createScene(RenderRequest& request) noexcept;
+        void createScene(const CreateScene::Request&, CreateScene::Response&) noexcept;
 
-        RenderResult<void> removeScene(RenderRequest& request) noexcept;
+        void removeScene(const RemoveScene::Request&, RemoveScene::Response&) noexcept;
 
-        RenderResult<void> createView(RenderRequest& request) noexcept;
-        RenderResult<void> updateCamera(RenderRequest& request) noexcept;
+        void createView(const CreateView::Request&, CreateView::Response&) noexcept;
+        void updateCamera(const UpdateCamera::Request&, UpdateCamera::Response&) noexcept;
 
-        RenderResult<void> removeView(RenderRequest& request) noexcept;
+        void removeView(const RemoveView::Request&, RemoveView::Response&) noexcept;
 
-        RenderResult<void> createTarget(RenderRequest& request) noexcept;
+        void createTarget(const CreateTarget::Request&, CreateTarget::Response&) noexcept;
 
-        RenderResult<void> resizeTarget(RenderRequest& request) noexcept;
+        void resizeTarget(const ResizeTarget::Request&, ResizeTarget::Response&) noexcept;
 
-        DeferredCompletion* reserveCompletion() noexcept;
+        struct CreateEffectSender;
+        CreateEffectSender createEffect(CreateEffect::Request&&) noexcept;
+        void installAsyncBuiltins() noexcept;
+        void installReadbackCommand() noexcept;
 
-        static void completeOperation(void* value, ECommandOutcome outcome, RenderError error, void* response) noexcept;
+        std::size_t drainCompletions(std::size_t budget = 128) noexcept;
 
-        RenderResult<CommandInvocation*> deferCommand(RenderRequest& request) noexcept;
+        void removeEffect(const RemoveEffect::Request&, RemoveEffect::Response&) noexcept;
 
-        struct CompileState;
+        void detachEffect(const Detach::Request&, Detach::Response&) noexcept;
 
-        RenderResult<void> createEffect(RenderRequest& request) noexcept;
+        void queryRenderStats(const QueryRenderStats::Request&, QueryRenderStats::Response&) noexcept;
+        void queryExecutionProgress(const QueryExecutionProgress::Request&, QueryExecutionProgress::Response&) noexcept;
 
-        void drainCompletions(std::size_t budget = 128) noexcept;
+        void listFeatures(const ListFeatures::Request&, ListFeatures::Response&) noexcept;
+        void listStorages(const ListStorages::Request&, ListStorages::Response&) noexcept;
 
-        RenderResult<void> removeEffect(RenderRequest& request) noexcept;
+        void listCommands(const ListCommands::Request&, ListCommands::Response&) noexcept;
+        void listCommandBindings(const ListCommandBindings::Request&, ListCommandBindings::Response&) noexcept;
+        void selectCommandBinding(const SelectCommandBinding::Request&, SelectCommandBinding::Response&) noexcept;
 
-        RenderResult<void> detach(RenderRequest& request) noexcept;
+        void stopCommand(const Stop::Request&, Stop::Response&) noexcept;
 
-        RenderResult<void> queryRenderStats(RenderRequest& request) noexcept;
-        RenderResult<void> queryExecutionProgress(RenderRequest& request) noexcept;
-
-        RenderResult<void> listFeatures(RenderRequest& request) noexcept;
-        RenderResult<void> listStorages(RenderRequest& request) noexcept;
-        [[nodiscard]] CommandList commandDirectory() const noexcept;
-
-        RenderResult<void> listCommands(RenderRequest& request) noexcept;
-        RenderResult<void> listCommandBindings(RenderRequest& request) noexcept;
-        RenderResult<void> selectCommandBinding(RenderRequest& request) noexcept;
-
-        RenderResult<void> stopCommand(RenderRequest& request) noexcept;
-
-        void dispatch(ipc::ReceivedRequest received) noexcept;
+        void dispatchRequest(ipc::ReceivedRequest received) noexcept;
 
         void shutdown() noexcept;
     };

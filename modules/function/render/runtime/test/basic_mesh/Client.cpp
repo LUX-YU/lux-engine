@@ -53,38 +53,38 @@ namespace mesh_sample
             return found->id;
         }
 
-        template <RenderCommand C> typename C::Response call(
+        template <RenderCommand C> typename C::Response::value_type call(
             ipc::IpcRequester& client, std::uint64_t& next, CommandId id, typename C::Request input
         )
         {
             const RequestId request{next++};
             ipc::IpcMessage message;
             message.emplace<typename C::Request>(std::move(input));
-            message.setMetadata(RequestHeader{request, id});
-            check(bool(client.trySend(message)));
+            check(bool(client.trySend(commandTag(id), request.value, message)));
             const auto deadline = Clock::now() + 20s;
             for (;;)
             {
-                const auto status = client.tryReceive(message);
+                std::uint64_t correlation = 0;
+                const auto status = client.tryReceive(correlation, message);
                 check(status != ipc::EIpcReceive::CLOSED && Clock::now() < deadline);
                 if (status == ipc::EIpcReceive::RECEIVED)
                 {
-                    const auto header = message.metadata<ReplyHeader>();
-                    check(header.request == request);
-                    if (header.outcome != ECommandOutcome::SUCCESS)
+                    check(correlation == request.value);
+                    auto& response = message.get<typename C::Response>();
+                    if (!response)
                     {
-                        const auto error = message.get<RenderError>();
+                        const auto error = response.error();
                         std::fprintf(stderr, "Command %.*s failed error=%llu\n", int(C::name.size()), C::name.data(),
                             static_cast<unsigned long long>(error.type));
                         std::abort();
                     }
-                    return std::move(message.get<typename C::Response>());
+                    return std::move(*response);
                 }
                 std::this_thread::sleep_for(1ms); // Application scheduling, not queue latency.
             }
         }
 
-        template <RenderCommand C> typename C::Response coldCall(
+        template <RenderCommand C> typename C::Response::value_type coldCall(
             ipc::IpcRequester& client, const CommandList& directory, std::uint64_t& next, typename C::Request input
         )
         {

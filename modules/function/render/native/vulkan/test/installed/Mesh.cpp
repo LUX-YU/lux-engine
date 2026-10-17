@@ -1,5 +1,5 @@
 #include "../TextureFixture.hpp"
-#include <lux/engine/render/native/vulkan/mesh/MeshCommands.hpp>
+#include <lux/engine/render/native/vulkan/mesh/MeshCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshStorage.hpp>
 
 int main()

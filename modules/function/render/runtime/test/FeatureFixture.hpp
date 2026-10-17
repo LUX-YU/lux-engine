@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/runtime/VulkanServer.hpp>
-#include <lux/engine/render/native/vulkan/texture/TextureCommands.hpp>
+#include <lux/engine/render/native/vulkan/texture/TextureCommandHandler.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include "Discovery.hpp"
 #include <chrono>

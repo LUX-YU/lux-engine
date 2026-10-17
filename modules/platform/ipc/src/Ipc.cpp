@@ -1,6 +1,8 @@
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 
 #include <exception>
+#include <climits>
+#include <lux/cxx/concurrent/AtomicWait.hpp>
 #include <cstring>
 #include <string>
 #ifdef LUX_IPC_TESTING
@@ -37,6 +39,15 @@ namespace lux::platform::ipc
 
     namespace
     {
+        struct QueueEntry final
+        {
+            std::uint64_t tag;
+            std::uint64_t correlation;
+            IpcMessage payload;
+            QueueEntry(std::uint64_t input_tag, std::uint64_t input_correlation, IpcMessage&& input) noexcept
+                : tag(input_tag), correlation(input_correlation), payload(std::move(input)) {}
+        };
+
         // Internal storage of one SPSC direction, uniquely owned by Link. No node is freed while roles live.
         class MessageQueue final
         {
@@ -76,32 +87,32 @@ namespace lux::platform::ipc
             MessageQueue& operator=(const MessageQueue&) = delete;
             [[nodiscard]] static bool validCapacity(std::size_t value) noexcept
             {
-                const bool is_representable = value != 0 && value <= (SIZE_MAX - sizeof(Segment)) / sizeof(IpcMessage);
+                const bool is_representable = value != 0 && value <= (SIZE_MAX - sizeof(Segment)) / sizeof(QueueEntry);
                 return is_representable && (value & (value - 1)) == 0;
             }
 
             [[nodiscard]] bool valid() const noexcept { return tail_ != nullptr; }
 
-            [[nodiscard]] bool tryPush(IpcMessage& input) noexcept
+            [[nodiscard]] bool tryPush(std::uint64_t tag, std::uint64_t correlation, IpcMessage& input) noexcept
             {
                 const auto write = tail_->write.load(std::memory_order_relaxed);
                 const auto read = tail_->read.load(std::memory_order_acquire);
                 if (write - read < capacity_)
                 {
-                    std::construct_at(slot(tail_, write), std::move(input));
+                    std::construct_at(slot(tail_, write), tag, correlation, std::move(input));
                     tail_->write.store(write + 1, std::memory_order_release);
                     return true;
                 }
                 auto* next = acquireSegment();
                 if (!next) return false;
-                std::construct_at(slot(next, 0), std::move(input));
+                std::construct_at(slot(next, 0), tag, correlation, std::move(input));
                 next->write.store(1, std::memory_order_relaxed);
                 tail_->next.store(next, std::memory_order_release);
                 tail_ = next;
                 return true;
             }
 
-            [[nodiscard]] bool tryPop(IpcMessage& output) noexcept
+            [[nodiscard]] bool tryPop(std::uint64_t& tag, std::uint64_t& correlation, IpcMessage& output) noexcept
             {
                 for (;;)
                 {
@@ -110,7 +121,9 @@ namespace lux::platform::ipc
                     if (read != write)
                     {
                         auto* value = std::launder(slot(head_, read));
-                        output = std::move(*value);
+                        tag = value->tag;
+                        correlation = value->correlation;
+                        output = std::move(value->payload);
                         std::destroy_at(value);
                         head_->read.store(read + 1, std::memory_order_release);
                         return true;
@@ -134,10 +147,10 @@ namespace lux::platform::ipc
             }
 
         private:
-            [[nodiscard]] IpcMessage* slot(Segment* segment, std::size_t position) const noexcept
+            [[nodiscard]] QueueEntry* slot(Segment* segment, std::size_t position) const noexcept
             {
                 auto* storage = reinterpret_cast<std::byte*>(segment) + sizeof(Segment);
-                return reinterpret_cast<IpcMessage*>(storage + (position & (capacity_ - 1)) * sizeof(IpcMessage));
+                return reinterpret_cast<QueueEntry*>(storage + (position & (capacity_ - 1)) * sizeof(QueueEntry));
             }
 
             [[nodiscard]] Segment* allocate() noexcept
@@ -149,8 +162,8 @@ namespace lux::platform::ipc
                     if (segment_allocation_failures.compare_exchange_weak(remaining, remaining - 1)) return nullptr;
                 }
 #endif
-                if (capacity_ > (SIZE_MAX - sizeof(Segment)) / sizeof(IpcMessage)) return nullptr;
-                void* storage = ::operator new(sizeof(Segment) + capacity_ * sizeof(IpcMessage),
+                if (capacity_ > (SIZE_MAX - sizeof(Segment)) / sizeof(QueueEntry)) return nullptr;
+                void* storage = ::operator new(sizeof(Segment) + capacity_ * sizeof(QueueEntry),
                     std::align_val_t{alignof(Segment)}, std::nothrow);
                 if (!storage) return nullptr;
                 auto* segment = std::construct_at(static_cast<Segment*>(storage));
@@ -221,6 +234,7 @@ namespace lux::platform::ipc
         {
             explicit Name(std::string_view value) : text(value) {}
             const std::string text;
+            std::atomic<std::uint64_t> next_epoch{1};
             std::atomic<Name*> next{nullptr};
             std::atomic<Channel*> current{nullptr};
             std::atomic<Channel*> retired{nullptr};
@@ -229,19 +243,20 @@ namespace lux::platform::ipc
 
         struct Channel final
         {
-            explicit Channel(Name* value) noexcept : name(value)
+            explicit Channel(Name* value) noexcept : name(value), epoch(value->next_epoch.fetch_add(1))
             {
+                require(epoch != 0 && epoch != UINT64_MAX);
                 ++channel_count;
 #ifdef LUX_IPC_TESTING
                 ++allocations;
 #endif
             }
             Name* name;
+            const std::uint64_t epoch;
             std::atomic<std::size_t> role_uses{1};
             std::atomic<EState> state{EState::WAITING};
             std::atomic<Link*> owned{nullptr};
             std::atomic<Link*> pending{nullptr};
-            std::size_t borrowed_requests = 0; // responder-only precondition counter; not lifetime ownership
             Channel* retired_next = nullptr;
         };
     }
@@ -358,7 +373,6 @@ namespace lux::platform::ipc
     {
         if (this == &other) return *this;
         reset();
-        metadata_ = other.metadata_;
         operations_ = std::exchange(other.operations_, nullptr);
 #ifdef LUX_IPC_TESTING
         testing::recordMove();
@@ -377,6 +391,37 @@ namespace lux::platform::ipc
     {
         static IpcCore core;
         return core;
+    }
+
+    std::uint64_t IpcCore::workEpoch() const noexcept
+    {
+        return work_epoch_.load(std::memory_order_acquire);
+    }
+
+    void IpcCore::notifyWork() noexcept
+    {
+        work_epoch_.fetch_add(1, std::memory_order_release);
+#if defined(_WIN32)
+        using WakeFn = VOID (WINAPI*)(PVOID);
+        static const auto wake = []() noexcept
+        {
+            const auto module = ::GetModuleHandleW(L"KernelBase.dll");
+            const auto function = reinterpret_cast<WakeFn>(::GetProcAddress(module, "WakeByAddressAll"));
+            if (!function) std::terminate();
+            return function;
+        }();
+        wake(&work_epoch_);
+#elif defined(__linux__) || defined(__ANDROID__)
+        (void)::syscall(SYS_futex, reinterpret_cast<std::uint32_t*>(&work_epoch_),
+            FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
+#else
+        work_epoch_.notify_all();
+#endif
+    }
+
+    void IpcCore::waitUntil(std::uint64_t observed, std::chrono::steady_clock::time_point deadline) noexcept
+    {
+        (void)cxx::concurrent::waitAtomicU64Until(work_epoch_, observed, deadline);
     }
 
     detail::Name* IpcCore::findName(std::string_view value) noexcept
@@ -490,27 +535,37 @@ namespace lux::platform::ipc
         return channel_ && channel_->state.load() == EState::OPEN;
     }
 
-    Result<void> IpcRequester::trySend(IpcMessage& message) noexcept
+    RequesterId IpcRequester::id() const noexcept
+    {
+        return channel_ ? RequesterId{channel_->name, channel_->epoch, link_} : RequesterId{};
+    }
+
+    Result<void> IpcRequester::trySend(std::uint64_t tag, std::uint64_t correlation, IpcMessage& message) noexcept
     {
         if (!channel_) return cxx::unexpected(EIpcError::CLOSED);
         const auto state = channel_->state.load();
         if (state == EState::WAITING) return cxx::unexpected(EIpcError::NOT_READY);
         if (state == EState::CLOSED) return cxx::unexpected(EIpcError::CLOSED);
-        const auto result = link_->requests.tryPush(message);
-        if (result) return {};
+        const auto result = link_->requests.tryPush(tag, correlation, message);
+        if (result)
+        {
+            IpcCore::instance().notifyWork();
+            return {};
+        }
         return cxx::unexpected(EIpcError::WOULD_BLOCK);
     }
 
-    EIpcReceive IpcRequester::tryReceive(IpcMessage& output) noexcept
+    EIpcReceive IpcRequester::tryReceive(std::uint64_t& correlation, IpcMessage& output) noexcept
     {
         if (!channel_) return EIpcReceive::CLOSED;
-        auto result = link_->replies.tryPop(output);
+        std::uint64_t tag = 0;
+        auto result = link_->replies.tryPop(tag, correlation, output);
 #ifdef LUX_IPC_TESTING
         if (!result) point(testing::EPoint::REPLY_EMPTY);
 #endif
         const bool is_closed = channel_->state.load() == EState::CLOSED;
         // Recheck after CLOSED: a final publication may follow the first empty observation.
-        if (!result && is_closed) result = link_->replies.tryPop(output);
+        if (!result && is_closed) result = link_->replies.tryPop(tag, correlation, output);
         if (result)
         {
             return EIpcReceive::RECEIVED;
@@ -539,7 +594,6 @@ namespace lux::platform::ipc
     void IpcResponder::reset() noexcept
     {
         if (!channel_) return;
-        require(channel_->borrowed_requests == 0);
         channel_->state.store(EState::CLOSED);
         auto* expected = channel_;
         channel_->name->current.compare_exchange_strong(expected, nullptr);
@@ -583,64 +637,34 @@ namespace lux::platform::ipc
 #ifdef LUX_IPC_TESTING
             point(testing::EPoint::RING_READ);
 #endif
-            if (link->requests.tryPop(output.message_))
+            if (link->requests.tryPop(output.tag_, output.correlation_, output.message_))
             {
-                ++channel_->borrowed_requests;
-                output.channel_ = channel_;
-                output.link_ = link;
+                output.requester_id_ = RequesterId{channel_->name, channel_->epoch, link};
                 return EIpcReceive::RECEIVED;
             }
         }
         return EIpcReceive::EMPTY;
     }
 
-    Result<void> IpcResponder::tryReply(ReceivedRequest& request, IpcMessage& reply) noexcept
+    Result<void> IpcResponder::trySendResponse(
+        RequesterId requester, std::uint64_t correlation, IpcMessage& response
+    ) noexcept
     {
-        if (!request.link_) return cxx::unexpected(EIpcError::INVALID_SOURCE);
         if (!channel_) return cxx::unexpected(EIpcError::CLOSED);
-        if (request.channel_ != channel_) return cxx::unexpected(EIpcError::INVALID_SOURCE);
-        auto* link = request.link_;
+        // Validate the live responder epoch before touching the borrowed pointer. Old Channel/Link
+        // addresses may already have been reused, but a Name's issued epoch is never reused.
+        const bool is_wrong_epoch = requester.name_ != channel_->name || requester.epoch_ != channel_->epoch;
+        if (requester.isNull() || is_wrong_epoch) return cxx::unexpected(EIpcError::INVALID_SOURCE);
+        auto* link = requester.link_;
         if (!link->open.load()) return cxx::unexpected(EIpcError::CLOSED);
 #ifdef LUX_IPC_TESTING
         point(testing::EPoint::REPLY_PUBLISH);
 #endif
-        const auto result = link->replies.tryPush(reply);
-        if (!result) return cxx::unexpected(EIpcError::WOULD_BLOCK);
+        if (!link->replies.tryPush(0, correlation, response)) return cxx::unexpected(EIpcError::WOULD_BLOCK);
 #ifdef LUX_IPC_TESTING
         point(testing::EPoint::REPLY_PUBLISHED);
 #endif
-        request.message_.reset();
-        --channel_->borrowed_requests;
-        request.link_ = nullptr;
-        request.channel_ = nullptr;
         return {};
-    }
-
-    ReceivedRequest::~ReceivedRequest() noexcept { reset(); }
-
-    ReceivedRequest::ReceivedRequest(ReceivedRequest&& other) noexcept
-        : channel_(std::exchange(other.channel_, nullptr)), link_(std::exchange(other.link_, nullptr)),
-          message_(std::move(other.message_)) {}
-
-    ReceivedRequest& ReceivedRequest::operator=(ReceivedRequest&& other) noexcept
-    {
-        if (this != &other)
-        {
-            reset();
-            channel_ = std::exchange(other.channel_, nullptr);
-            link_ = std::exchange(other.link_, nullptr);
-            message_ = std::move(other.message_);
-        }
-        return *this;
-    }
-
-    void ReceivedRequest::reset() noexcept
-    {
-        if (!link_) return;
-        message_.reset(); // disconnected disposal is a documented cold operation
-        --channel_->borrowed_requests;
-        link_ = nullptr;
-        channel_ = nullptr;
     }
 
 #ifdef LUX_IPC_TESTING

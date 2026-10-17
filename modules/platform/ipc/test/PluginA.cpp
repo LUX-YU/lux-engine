@@ -1,4 +1,5 @@
 #include <lux/engine/platform/ipc/IpcCore.hpp>
+#include <array>
 
 namespace
 {

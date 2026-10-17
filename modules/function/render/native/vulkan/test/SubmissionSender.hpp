@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/protocol/AsyncCommand.hpp>
+#include <lux/engine/render/protocol/Protocol.hpp>
+#include <stdexec/execution.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 
 namespace native_test
@@ -19,6 +20,9 @@ namespace native_test
         SubmissionSender(Response response, std::unique_ptr<Work> work) noexcept
             : response_(std::move(response)), work_(std::move(work)) {}
 
+        explicit SubmissionSender(lux::render::RenderError error) noexcept
+            : response_(lux::cxx::unexpected(error)) {}
+
         template <class Receiver> class Operation final
         {
         public:
@@ -29,6 +33,7 @@ namespace native_test
 
             void start() noexcept
             {
+                if (!work_) { stdexec::set_value(std::move(receiver_), std::move(response_)); return; }
                 if (stdexec::get_stop_token(stdexec::get_env(receiver_)).stop_requested())
                 {
                     work_.reset();

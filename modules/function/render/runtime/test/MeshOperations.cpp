@@ -2,7 +2,7 @@
 #include "Discovery.hpp"
 #include "ServerFixture.hpp"
 #include "TypedTest.hpp"
-#include <lux/engine/render/native/vulkan/mesh/MeshCommands.hpp>
+#include <lux/engine/render/native/vulkan/mesh/MeshCommandHandler.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/resource/Mesh.hpp>
 #include <cstring>
@@ -51,13 +51,13 @@ int main()
     input.expected_revision = 7;
     {
         auto failed = call<SetMesh>(*a, set_a, input);
-        CHECK(failed.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+        CHECK(!failed.get<SetMesh::Response>());
     }
     input.expected_revision = 0;
     auto other = input;
     // Balance one failed request on B so equal numbers still exercise separate physical origins.
     other.expected_revision = 7;
-    CHECK(call<SetMesh>(*b, set_b, std::move(other)).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    CHECK(call<SetMesh>(*b, set_b, std::move(other)).get<SetMesh::Response>().has_value() == false);
     other = input;
     const auto id_a = take(runtime_test::send<SetMesh>(*a, set_a, input));
     const auto id_b = take(runtime_test::send<SetMesh>(*b, set_b, other));
@@ -67,23 +67,23 @@ int main()
     {
         auto result_a = wait(*a, id_a);
         auto result_b = wait(*b, id_b);
-        CHECK(result_a.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-        CHECK(result_b.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-        mesh_a = result_a.get<SetMesh::Response>(); mesh_b = result_b.get<SetMesh::Response>();
+        CHECK(result_a.get<SetMesh::Response>().has_value());
+        CHECK(result_b.get<SetMesh::Response>().has_value());
+        mesh_a = result_a.get<SetMesh::Response>().value(); mesh_b = result_b.get<SetMesh::Response>().value();
         CHECK(mesh_a.mesh != mesh_b.mesh);
     }
     a.reset();
     input.mesh = mesh_a.mesh;
     input.expected_revision = mesh_a.revision;
     std::optional replaced{call<SetMesh>(*b, set_b, input)};
-    CHECK(replaced->metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS && replaced->get<SetMesh::Response>().revision == 2);
+    CHECK(replaced->get<SetMesh::Response>().has_value() && replaced->get<SetMesh::Response>()->revision == 2);
     auto information = call<QueryMesh>(*b, query, mesh_a.mesh);
-    CHECK(information.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-    CHECK(information.get<QueryMesh::Response>().description == description && information.get<QueryMesh::Response>().bytes == 60);
-    CHECK(call<ReleaseMesh>(*b, release, mesh_a).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
-    CHECK(call<ReleaseMesh>(*b, release, replaced->get<SetMesh::Response>()).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-    CHECK(call<QueryMesh>(*b, query, mesh_a.mesh).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
-    CHECK(call<ReleaseMesh>(*b, release, mesh_b).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    CHECK(information.get<QueryMesh::Response>().has_value());
+    CHECK(information.get<QueryMesh::Response>()->description == description && information.get<QueryMesh::Response>()->bytes == 60);
+    CHECK(call<ReleaseMesh>(*b, release, mesh_a).get<ReleaseMesh::Response>().has_value() == false);
+    CHECK(call<ReleaseMesh>(*b, release, replaced->get<SetMesh::Response>().value()).get<ReleaseMesh::Response>().has_value());
+    CHECK(call<QueryMesh>(*b, query, mesh_a.mesh).get<QueryMesh::Response>().has_value() == false);
+    CHECK(call<ReleaseMesh>(*b, release, mesh_b).get<ReleaseMesh::Response>().has_value());
     server->stop(); thread.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
     server.reset(); b.reset(); asset.reset();

@@ -91,7 +91,7 @@ namespace lux::render
             }
             auto& handler = *static_cast<H*>(entry->object.get());
             return [&]<typename... B>(std::tuple<B...>*) noexcept {
-                const std::array calls{B::bind(handler)...};
+                const std::array calls{CommandBinding::bind<typename B::Command, B::method>(handler)...};
                 return installFeature(definition, entry, std::move(owner), calls, std::move(dependencies));
             }(static_cast<typename H::Bindings*>(nullptr));
         }
@@ -138,7 +138,7 @@ namespace lux::render
             }
             auto& handler = *static_cast<H*>(result.handler->object.get());
             [&]<typename... B>(std::tuple<B...>*) noexcept {
-                result.calls = {B::bind(handler)...};
+                result.calls = {CommandBinding::bind<typename B::Command, B::method>(handler)...};
             }(static_cast<typename H::Bindings*>(nullptr));
         }
         return result;

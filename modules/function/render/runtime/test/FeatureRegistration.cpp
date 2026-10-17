@@ -22,13 +22,13 @@ struct First final
 {
     static constexpr std::string_view name = "test.registration.first";
     using Request = std::uint32_t;
-    using Response = Ack;
+    using Response = RenderResult<Ack>;
 };
 struct Second final
 {
     static constexpr std::string_view name = "test.registration.second";
     using Request = std::uint32_t;
-    using Response = Ack;
+    using Response = RenderResult<Ack>;
 };
 static RenderResult<void> describe(const void*, std::string_view, ResourceClaims&) noexcept
 {
@@ -39,7 +39,7 @@ struct InstallFeature final
 {
     static constexpr std::string_view name = "test.feature.install";
     using Request = unsigned;
-    using Response = FeatureId;
+    using Response = RenderResult<FeatureId>;
 };
 
 struct DirectoryInstaller final
@@ -48,13 +48,13 @@ struct DirectoryInstaller final
     RenderServer& server;
     explicit DirectoryInstaller(RenderServer& value) noexcept : server(value) {}
 
-    RenderResult<void> install(const unsigned& number, Reply<InstallFeature>& reply) noexcept
+    void install(const unsigned& number, InstallFeature::Response& reply) noexcept
     {
         const auto name = "test.feature." + std::to_string(number);
         const FeatureDescriptor descriptor{FeatureName(name), {}};
         const FeatureGraphOps graph{describe, nullptr};
         auto result = feature_test::registerGraph(server, {&descriptor, &graph, nullptr});
-        return result ? reply.complete(*result) : reply.fail(result.error());
+        reply = std::move(result);
     }
 
     using Bindings = std::tuple<CommandMethod<InstallFeature, &DirectoryInstaller::install>>;
@@ -164,12 +164,12 @@ template <unsigned Fault> struct TestedHandler final
         static constexpr std::string_view name = Fault == 5 ? "" : Fault == 4 ? Second::name : First::name;
         using Request = std::conditional_t<Fault == 1, std::uint64_t,
             std::conditional_t<Fault == 2, AlignedRequest, std::uint32_t>>;
-        using Response = std::conditional_t<Fault == 3, std::uint32_t, Ack>;
+        using Response = RenderResult<std::conditional_t<Fault == 3, std::uint32_t, Ack>>;
     };
 
-    RenderResult<void> run(const typename Command::Request&, Reply<Command>& reply) noexcept
+    void run(const typename Command::Request&, typename Command::Response& reply) noexcept
     {
-        return reply.complete(typename Command::Response{});
+        reply.emplace();
     }
 
     using Binding = CommandMethod<Command, &TestedHandler::run>;

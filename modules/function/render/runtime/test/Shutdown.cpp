@@ -62,7 +62,7 @@ static TestCompletion wait(TestClient& client, RequestId id)
 static TestCompletion call(TestClient& client, const TestCommand& command)
 {
     auto result = wait(client, take(client.submit(command)));
-    check(result.header.outcome == ECommandOutcome::SUCCESS);
+    check(result.header.outcome == ETestOutcome::SUCCESS);
     return result;
 }
 
@@ -109,7 +109,7 @@ static void exercise(bool close_requester)
     {
         command.operation = ETestCommand::STOP;
         call(*client, command);
-        check(wait(*client, request).header.outcome == ECommandOutcome::CANCELLED);
+        check(wait(*client, request).header.outcome == ETestOutcome::CANCELLED);
     }
     thread.join();
     check(run_ok && backing == 0 && waited && server->stats().validation_errors == 0);
@@ -150,7 +150,7 @@ static void retirementAtomicity()
     call(*client, command);
     command.target = third_target;
     auto unprepared = wait(*client, take(client->submit(command)));
-    check(unprepared.header.outcome == ECommandOutcome::FAILED);
+    check(unprepared.header.outcome == ETestOutcome::FAILED);
     check(unprepared.error.type == vulkan::kCapacity);
     check(backing == 6 && !waited); // capacity failure precedes Native Context/backing publication
     const auto deadline = std::chrono::steady_clock::now() + 10s;
@@ -168,13 +168,13 @@ static void retirementAtomicity()
         command.operation = ETestCommand::RESIZE_TARGET;
         command.description.width = 16;
         auto rejected = wait(*client, take(client->submit(command)));
-        check(rejected.header.outcome == ECommandOutcome::FAILED);
+        check(rejected.header.outcome == ETestOutcome::FAILED);
         check(rejected.error.type == vulkan::kCapacity);
         check(!take(receiveExpected(*client, request)) && backing == 6 && !waited);
     }
     hold.store(false); // observe real fence completion; the untouched readback must still succeed
     const auto pixels = wait(*client, request);
-    check(pixels.header.outcome == ECommandOutcome::SUCCESS);
+    check(pixels.header.outcome == ETestOutcome::SUCCESS);
     check(pixels.bytes().size() == 32 * 32 * 4);
     const auto center = (16 * 32 + 16) * 4;
     check(pixels.bytes()[center] == std::byte{255} && pixels.bytes()[center + 1] == std::byte{0});

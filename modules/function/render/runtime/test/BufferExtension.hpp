@@ -1,4 +1,4 @@
-#include <lux/engine/render/protocol/AsyncCommand.hpp>
+#include <lux/engine/render/runtime/CommandBinding.hpp>
 #pragma once
 
 #include "../../native/vulkan/test/extension/NativeBuffer.hpp"
@@ -18,43 +18,6 @@ namespace extension_test
         explicit BufferCommands(vk::DeviceSession& session) noexcept : session_(session) { ++constructed; }
         ~BufferCommands() noexcept { ++destroyed; }
 
-        RenderResult<void> setBuffer(const SetBuffer::Request&,
-            Reply<SetBuffer>& context) noexcept
-        {
-            auto& session = session_;
-            auto pending = context.defer();
-            if (!pending) return lux::cxx::unexpected(pending.error());
-            auto& registry = session.resources();
-            auto storage = registry.borrow<NativeBuffer>(pending->request().id.storage);
-            if (!storage) return pending->fail(storage.error());
-            auto upload = lux::render::upload(**storage, pending->request());
-            if (!upload) return pending->fail(upload.error());
-            return pending->completeWhen(vk::GpuWorkSender<BufferBinding>{
-                std::move(upload->first), std::move(upload->second)
-            });
-        }
-
-        RenderResult<void> removeBuffer(const RemoveBuffer::Request& input,
-            Reply<RemoveBuffer>& context) noexcept
-        {
-            auto& session = session_;
-            auto& registry = session.resources();
-            auto storage = registry.borrow<NativeBuffer>(input.id.storage);
-            if (!storage) return lux::cxx::unexpected(storage.error());
-            auto result = (*storage)->remove(input.id);
-            return result ? context.complete(Ack{}) : result;
-        }
-
-        RenderResult<void> readBuffer(const ReadBuffer::Request&,
-            Reply<ReadBuffer>& context) noexcept
-        {
-            auto& session = session_;
-            auto pending = context.defer();
-            if (!pending) return lux::cxx::unexpected(pending.error());
-            const auto& input = pending->request();
-            auto& registry = session.resources();
-            auto storage = registry.borrow<NativeBuffer>(input.id.storage);
-            if (!storage) return pending->fail(storage.error());
             struct Read final
             {
                 vk::DeviceSession& session;
@@ -110,23 +73,49 @@ namespace extension_test
 
                 RenderResult<void> ready() noexcept { return session.read(*session.borrow(buffer), 0, *output); }
             };
+        vk::GpuWorkSender<SetBuffer::Response> setBuffer(SetBuffer::Request&& input) noexcept
+        {
+            auto& session = session_;
+            auto& registry = session.resources();
+            auto storage = registry.borrow<NativeBuffer>(input.id.storage);
+            if (!storage) return vk::GpuWorkSender<SetBuffer::Response>{storage.error()};
+            auto upload = lux::render::upload(**storage, input);
+            if (!upload) return vk::GpuWorkSender<SetBuffer::Response>{upload.error()};
+            return {std::move(upload->first), std::move(upload->second), std::move(input.source)};
+        }
+
+        void removeBuffer(const RemoveBuffer::Request& input, RemoveBuffer::Response& response) noexcept
+        {
+            auto& session = session_;
+            auto& registry = session.resources();
+            auto storage = registry.borrow<NativeBuffer>(input.id.storage);
+            if (!storage) { response = lux::cxx::unexpected(storage.error()); return; }
+            auto result = (*storage)->remove(input.id);
+            if (!result) response = lux::cxx::unexpected(result.error());
+            else response = Ack{};
+        }
+
+        native_test::SubmissionSender<ReadBuffer::Response, Read> readBuffer(ReadBuffer::Request&& input) noexcept
+        {
+            auto& session = session_;
+            auto& registry = session.resources();
+            auto storage = registry.borrow<NativeBuffer>(input.id.storage);
+            if (!storage) return native_test::SubmissionSender<ReadBuffer::Response, Read>{storage.error()};
             auto output = std::make_shared<std::vector<std::byte>>(16);
             auto payload = RenderPayload::fromVector(output, 0, output->size());
-            if (!payload) return pending->fail(payload.error());
-            ReadBuffer::Response response{std::move(*payload)};
+            if (!payload) return native_test::SubmissionSender<ReadBuffer::Response, Read>{payload.error()};
+            ReadBuffer::Response response{ReadBuffer::ResponseValue{std::move(*payload)}};
             auto lease = registry.lease(input.id.storage);
-            if (!lease) return pending->fail(lease.error());
+            if (!lease) return native_test::SubmissionSender<ReadBuffer::Response, Read>{lease.error()};
             auto owner = std::make_unique<Read>(session, std::move(*lease), vk::PreparedStorageBinding{}, vk::BufferPermit{},
                 std::optional<vk::SubmissionTicket>{}, output);
             vk::NativeResourcePlan plan{"values", GraphBufferDesc{16}, EGraphOrigin::IMPORTED};
             auto prepared = (*storage)->prepare(plan, input, owner->source);
-            if (!prepared) return pending->fail(prepared.error());
+            if (!prepared) return native_test::SubmissionSender<ReadBuffer::Response, Read>{prepared.error()};
             auto buffer = session.createBuffer(16, VK_BUFFER_USAGE_TRANSFER_DST_BIT, vk::EMemoryAccess::READBACK);
-            if (!buffer) return pending->fail(buffer.error());
+            if (!buffer) return native_test::SubmissionSender<ReadBuffer::Response, Read>{buffer.error()};
             owner->buffer = std::move(*buffer);
-            return pending->completeWhen(native_test::SubmissionSender<ReadBuffer::Response, Read>{
-                std::move(response), std::move(owner)
-            });
+            return {std::move(response), std::move(owner)};
         }
 
         using Bindings = std::tuple<CommandMethod<SetBuffer, &BufferCommands::setBuffer>,

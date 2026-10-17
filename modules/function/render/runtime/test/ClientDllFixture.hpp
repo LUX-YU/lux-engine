@@ -36,7 +36,7 @@ namespace client_dll_test
     {
         static constexpr std::string_view name{"test.client.dll.batch"};
         using Request = Batch;
-        using Response = Batch;
+        using Response = lux::render::RenderResult<Batch>;
     };
 
     struct WrongRequest final
@@ -51,6 +51,6 @@ namespace client_dll_test
     {
         static constexpr std::string_view name = Command::name;
         using Request = WrongRequest;
-        using Response = Batch;
+        using Response = lux::render::RenderResult<Batch>;
     };
 }

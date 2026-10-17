@@ -19,19 +19,18 @@ int main()
     if (!directory_id) return 2;
     ipc::IpcMessage message;
     message.emplace<ListCommands::Request>();
-    message.setMetadata(RequestHeader{RequestId{1}, *directory_id});
-    if (!client->trySend(message)) return 3;
+    if (!client->trySend(commandTag(*directory_id), 1, message)) return 3;
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool((*server)->run()); });
     bool discovered = false;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (std::chrono::steady_clock::now() < deadline)
     {
-        if (client->tryReceive(message) == ipc::EIpcReceive::RECEIVED)
+        std::uint64_t correlation = 0;
+        if (client->tryReceive(correlation, message) == ipc::EIpcReceive::RECEIVED)
         {
-            const auto header = message.metadata<ReplyHeader>();
-            if (header.request != RequestId{1} || header.outcome != ECommandOutcome::SUCCESS) std::abort();
-            for (const auto& entry : message.get<CommandList>().commands)
+            if (correlation != 1 || !message.get<ListCommands::Response>()) std::abort();
+            for (const auto& entry : message.get<ListCommands::Response>()->commands)
                 if (entry.name == CreateScene::name && !entry.id.isNull()) discovered = true;
             break;
         }

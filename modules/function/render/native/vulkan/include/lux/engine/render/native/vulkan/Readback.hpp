@@ -52,25 +52,31 @@ namespace lux::render::vulkan
             void (*submitted)(void*) noexcept = nullptr, std::uint32_t resource = kGraphInvalidIndex) noexcept
             : context_(&context), observer_(observer), submitted_(submitted), resource_(resource) {}
 
+        explicit ReadbackSender(RenderError error) noexcept : initial_error_(error) {}
+
         template <class Receiver> class Operation final
         {
             struct OnStop final
             {
                 Operation* operation;
-                void operator()() const noexcept { operation->readback_.cancel(); }
+                void operator()() const noexcept { operation->readback_->cancel(); }
             };
 
         public:
             using operation_state_concept = stdexec::operation_state_t;
-            Operation(ExecutionContext& context, void* observer, void (*submitted)(void*) noexcept,
-                std::uint32_t resource, Receiver receiver) noexcept
-                : receiver_(std::move(receiver)), readback_(context, this, finish, observer, submitted, resource) {}
+            Operation(ReadbackSender input, Receiver receiver) noexcept
+                : receiver_(std::move(receiver)), initial_error_(input.initial_error_)
+            {
+                if (input.context_) readback_.emplace(*input.context_, this, finish,
+                    input.observer_, input.submitted_, input.resource_);
+            }
             Operation(const Operation&) = delete;
             Operation(Operation&&) = delete;
             void start() noexcept
             {
+                if (!readback_) { stdexec::set_error(std::move(receiver_), initial_error_); return; }
                 stop_.emplace(stdexec::get_stop_token(stdexec::get_env(receiver_)), OnStop{this});
-                readback_.start();
+                readback_->start();
                 // A synchronous error may publish the terminal event; no access after start.
             }
 
@@ -84,17 +90,19 @@ namespace lux::render::vulkan
                 else stdexec::set_error(std::move(receiver), result.error());
             }
             Receiver receiver_;
-            ReadbackOperation readback_;
+            RenderError initial_error_;
+            std::optional<ReadbackOperation> readback_;
             std::optional<stdexec::inplace_stop_callback<OnStop>> stop_;
         };
 
         template <class Receiver> [[nodiscard]] Operation<std::decay_t<Receiver>> connect(Receiver&& receiver) &&
-        { return {*context_, observer_, submitted_, resource_, std::forward<Receiver>(receiver)}; }
+        { return {std::move(*this), std::forward<Receiver>(receiver)}; }
 
     private:
-        ExecutionContext* context_;
-        void* observer_;
-        void (*submitted_)(void*) noexcept;
-        std::uint32_t resource_;
+        ExecutionContext* context_ = nullptr;
+        void* observer_ = nullptr;
+        void (*submitted_)(void*) noexcept = nullptr;
+        std::uint32_t resource_ = kGraphInvalidIndex;
+        RenderError initial_error_;
     };
 }

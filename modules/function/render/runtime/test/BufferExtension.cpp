@@ -12,8 +12,8 @@ using namespace std::chrono_literals;
 
 static void pixels(const lux::platform::ipc::IpcMessage& completion, unsigned expected)
 {
-    CHECK(completion.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-    const auto bytes = completion.get<Readback::Response>().pixels.bytes().view();
+    CHECK(bool(completion.get<Readback::Response>()));
+    const auto bytes = completion.get<Readback::Response>()->pixels.bytes().view();
     CHECK(bytes.size() == 1024);
     for (auto byte : bytes) CHECK(std::to_integer<unsigned>(byte) == expected);
 }
@@ -27,7 +27,7 @@ static void publishedPixels(runtime_test::Peer& client, CommandId read,
     while (Clock::now() < deadline)
     {
         const auto completion = call<Readback>(client, read, {group, {}});
-        const auto bytes = completion.get<Readback::Response>().pixels.bytes().view();
+        const auto bytes = completion.get<Readback::Response>()->pixels.bytes().view();
         CHECK(bytes.size() == 1024);
         if (std::ranges::all_of(bytes, [&](auto byte) { return std::to_integer<unsigned>(byte) == expected; })) return;
         for (auto byte : bytes) CHECK(std::to_integer<unsigned>(byte) == previous);
@@ -84,11 +84,11 @@ int main()
     auto source = make_source(0.5f);
     const auto buffer = decoded<BufferBinding>(call<SetBuffer>(*upload, create_buffer, SetBuffer::Request{{buffer_storage, {}}, source[0]}));
     std::optional late_read{call<ReadBuffer>(*upload, read_buffer, buffer)};
-    CHECK(late_read->get<ReadBuffer::Response>().pixels.bytes().view().size() == 16);
+    CHECK(late_read->get<ReadBuffer::Response>()->pixels.bytes().view().size() == 16);
     for (unsigned i = 0; i < 4; ++i)
     {
         float value = 0;
-        std::memcpy(&value, late_read->get<ReadBuffer::Response>().pixels.bytes().view().data() + i * 4, 4);
+        std::memcpy(&value, late_read->get<ReadBuffer::Response>()->pixels.bytes().view().data() + i * 4, 4);
         CHECK(value == 0.5f);
     }
     FeatureUse selected{take(feature_test::find(*main, feature_type.name())), "combined",
@@ -112,8 +112,8 @@ int main()
             const auto output = decoded<TargetCreated>(call<CreateTarget>(*main, create_target, CreateTargetRequest{target})).target;
             groups[2 * s + v] = {scene, view, output, effect};
             auto linked = call<Attach>(*main, attach, groups[2 * s + v]);
-            CHECK(linked.get<Attach::Response>().storages.size() == 2);
-            for (const auto& binding : linked.get<Attach::Response>().storages)
+            CHECK(linked.get<Attach::Response>()->storages.size() == 2);
+            for (const auto& binding : linked.get<Attach::Response>()->storages)
             {
                 if (binding.resource_key == "shared:texture") CHECK(binding.storage == texture_storage);
                 else
@@ -145,8 +145,8 @@ int main()
     call<Attach>(*main, attach, groups[0]);
     pixels(call<Readback>(*main, read, {groups[0], {}}), 32);
     call<RemoveBuffer>(*upload, remove_buffer, buffer);
-    CHECK(wait(*upload, take(runtime_test::send<ReadBuffer>(*upload, read_buffer, buffer))).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
-    CHECK(wait(*upload, take(runtime_test::send<SetBuffer>(*upload, create_buffer, SetBuffer::Request{buffer.id, source[0]}))).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    CHECK(wait(*upload, take(runtime_test::send<ReadBuffer>(*upload, read_buffer, buffer))).get<ReadBuffer::Response>().has_value() == false);
+    CHECK(wait(*upload, take(runtime_test::send<SetBuffer>(*upload, create_buffer, SetBuffer::Request{buffer.id, source[0]}))).get<SetBuffer::Response>().has_value() == false);
     const auto recreated = decoded<BufferBinding>(call<SetBuffer>(*upload, create_buffer, SetBuffer::Request{{buffer_storage, {}}, source[0]}));
     CHECK(recreated.id.local.index == buffer.id.local.index && recreated.id.local.gen != buffer.id.local.gen);
     pixels(call<Readback>(*main, read, {groups[0], {}}), 32);
@@ -169,7 +169,7 @@ int main()
     CHECK(BufferCommands::constructed == 1 && BufferCommands::destroyed == 1);
     upload.reset();
     main.reset();
-    CHECK(late_read->get<ReadBuffer::Response>().pixels.bytes().view().size() == 16); // returned CPU result survives every Native/Server owner
+    CHECK(late_read->get<ReadBuffer::Response>()->pixels.bytes().view().size() == 16); // returned CPU result survives every Native/Server owner
     late_read.reset();
     image_source = {};
     asset.reset();

@@ -2,7 +2,7 @@
 
 namespace lux::render
 {
-    RenderResult<void> RenderServer::Impl::tick() noexcept
+    RenderResult<void> RenderServer::Impl::advanceRendering() noexcept
     {
         for (std::size_t e = 0; e < effects.size(); ++e)
         {
@@ -11,70 +11,99 @@ namespace lux::render
             {
                 auto& group = effect.groups[(effect.next_group + g) % effect.groups.size()];
                 auto result = group.context->execute();
-                if (!result) return cxx::unexpected(result.error());
-                if (*result == EExecutionOutcome::EXECUTED) ++submissions;
+                if (!result)
+                {
+                    return cxx::unexpected(result.error());
+                }
+                if (*result == EExecutionOutcome::EXECUTED)
+                {
+                    ++submissions;
+                }
             }
             effect.next_group = effect.groups.empty() ? 0 : (effect.next_group + 1) % effect.groups.size();
         }
         next_effect = effects.empty() ? 0 : (next_effect + 1) % effects.size();
         auto collected = device->collect();
 #ifdef LUX_RUNTIME_TEST_SEAM
-        if (runtime_detail::test::observeGpuCompletion()) device->dispatchCompletions();
+        if (runtime_detail::test::observeGpuCompletion())
+        {
+            device->dispatchCompletions();
+        }
 #else
         device->dispatchCompletions();
 #endif
         return collected;
     }
 
-    RenderResult<void> RenderServer::Impl::queryExecutionProgress(RenderRequest& request) noexcept
+    void RenderServer::Impl::queryExecutionProgress(
+        const QueryExecutionProgress::Request& _request,
+        QueryExecutionProgress::Response& output_response
+    ) noexcept
     {
-        const auto& input = request.get<AttachmentRequest>();
+        const auto& input = _request;
         const auto* effect = effects.find(input.effect);
-        if (!effect) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        const auto found = std::ranges::find_if(effect->groups, [&](const auto& group) {
-            return group.scene == input.scene && group.view == input.view && group.target == input.target;
-        });
-        if (found == effect->groups.end()) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        return request.reply(found->context->progress());
-    }
-
-    RenderResult<void> RenderServer::Impl::queryRenderStats(RenderRequest& request) noexcept
-    {
-        return request.reply(
-            RenderStatsSnapshot{ticks.load(), commands.load(), compiled_graphs.load(), submissions.load()}
-        );
-    }
-
-    RenderResult<void> RenderServer::Impl::stopCommand(RenderRequest& request) noexcept
-    {
-        stop_requested.store(true);
-        return request.reply();
-    }
-
-    void RenderServer::Impl::dispatch(ipc::ReceivedRequest received) noexcept
-    {
-        const auto frame = received.message().metadata<RequestHeader>();
-        if (frame.request.isNull())
+        if (!effect)
         {
-            received.reset(); // Caller violated correlation precondition; no fictitious terminal.
-            ++commands;
+            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
             return;
         }
-        const auto* entry = command_table.find(frame.command);
-        RenderRequest request(std::move(received), responder, frame.request, entry ? &entry->cold->binding : nullptr);
-        RenderResult<void> result;
-        if (!entry)
-            result = cxx::unexpected(RenderError{kRuntimeIdentity});
+        const auto found = std::ranges::find_if(
+            effect->groups,
+            [&](const auto& group)
+            { return group.scene == input.scene && group.view == input.view && group.target == input.target; }
+        );
+        if (found == effect->groups.end())
+        {
+            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            return;
+        }
+        output_response = found->context->progress();
+    }
+
+    void RenderServer::Impl::queryRenderStats(
+        const QueryRenderStats::Request& _request,
+        QueryRenderStats::Response& output_response
+    ) noexcept
+    {
+        output_response =
+            RenderStatsSnapshot{ticks.load(), commands.load(), compiled_graphs.load(), submissions.load()};
+    }
+
+    void RenderServer::Impl::stopCommand(const Stop::Request& _request, Stop::Response& output_response) noexcept
+    {
+        stop_requested.store(true);
+        output_response = Ack{};
+    }
+
+    void RenderServer::Impl::dispatchRequest(ipc::ReceivedRequest received) noexcept
+    {
+        const ResponseRoute route{received.requesterId(), RequestId{received.correlation()}};
+        const auto* entry = command_registry_.findCommand(commandIdFromTag(received.tag()));
+        if (!entry || route.request_id.isNull())
+        {
+            response_outbox_.emplaceResponse<RenderError>(route, RenderError{kProtocolContract});
+        }
+        else if (received.message().typeHash() != entry->cold->binding.descriptor()->request.type.hash())
+        {
+            response_outbox_.emplaceResponse<RenderError>(route, RenderError{kProtocolContract});
+        }
         else if (!entry->active.invoke)
-            result = cxx::unexpected(RenderError{kRuntimeUnsupported});
+        {
+            entry->cold->binding.makeError(response_outbox_.prepare(route), RenderError{kRuntimeUnsupported});
+        }
         else
         {
-            CommandCall call{*this, request};
-            auto invocation = request.invocation(&call, command_completion_functions);
+            CommandDispatchContext context{
+                received.message(),
+                route,
+                response_outbox_,
+                pending_operations_,
+                completion_events,
+                completion_publishers
+            };
             const auto active = entry->active;
-            result = active.invoke(active.object, invocation);
+            active.invoke(active.object, context);
         }
-        settle(std::move(request), result);
         ++commands;
     }
 
@@ -83,39 +112,67 @@ namespace lux::render
         stop_requested.store(true);
         // Snapshot identities because stop callbacks may complete synchronously.
         std::vector<CompletionId> pending;
-        pending.reserve(deferred.size());
-        for (const auto& slot : deferred) pending.push_back(slot.id);
+        pending.reserve(pending_operations_.size());
+        for (const auto& slot : pending_operations_)
+        {
+            pending.push_back(slot.id);
+        }
         for (const auto id : pending)
-            if (auto* slot = deferred.find(id)) slot->stop.request_stop();
+        {
+            if (auto* slot = pending_operations_.find(id))
+            {
+                slot->stop.request_stop();
+            }
+        }
+        response_outbox_.flushTo(responder, config.request_work_budget);
         // Only shutdown waits. CPU/source owners remain in the same slots; cancellation prevents
         // their eventual CPU event from submitting another GPU chunk.
         if (device)
         {
             auto drained = device->drain();
-            if (!drained && !device->deviceLost()) std::terminate();
+            if (!drained && !device->deviceLost())
+            {
+                std::terminate();
+            }
         }
-        while (!deferred.empty())
+        while (!pending_operations_.empty())
         {
             drainCompletions();
+            response_outbox_.flushTo(responder, config.request_work_budget);
             if (device)
             {
                 auto collected = device->collect();
                 device->dispatchCompletions();
-                if (!collected && !device->deviceLost()) std::terminate();
+                if (!collected && !device->deviceLost())
+                {
+                    std::terminate();
+                }
             }
-            if (!deferred.empty()) std::this_thread::yield();
+            if (!pending_operations_.empty())
+            {
+                std::this_thread::yield();
+            }
         }
         while (completion_publishers.load(std::memory_order_acquire) != 0)
+        {
             std::this_thread::yield();
-        retryReplies();
-        undelivered.clear(); // Connection closes after safe operations; caller owns any unknown outcomes.
+        }
+        response_outbox_.flushTo(responder, SIZE_MAX);
+        response_outbox_.clear(); // Connection closes after safe operations; caller owns any unknown outcomes.
         responder.reset();
         for (auto& effect : effects)
+        {
             while (!effect.groups.empty())
-                if (!withdraw(effect, effect.groups.size() - 1)) std::terminate();
+            {
+                if (!detachExecutionGroup(effect, effect.groups.size() - 1))
+                {
+                    std::terminate();
+                }
+            }
+        }
         effects.clear();
         scenes.clear();
-        handlers.clear(); // All operations ended; professional Handler borrows still have a live Device.
+        command_registry_.clear(); // All operations ended; professional Handler borrows still have a live Device.
         device.reset();
         instance.reset();
         running.store(false);
@@ -124,7 +181,10 @@ namespace lux::render
     RenderResult<void> RenderServer::Impl::run() noexcept
     {
         auto& s = *this;
-        if (s.started.exchange(true)) return cxx::unexpected(RenderError{kRuntimeState});
+        if (s.started.exchange(true))
+        {
+            return cxx::unexpected(RenderError{kRuntimeState});
+        }
         if (s.stop_requested.load())
         {
             s.shutdown();
@@ -132,26 +192,47 @@ namespace lux::render
         }
         s.running.store(true);
         RenderResult<void> result;
+        auto& notifications = ipc::IpcCore::instance();
         while (!s.stop_requested.load())
         {
+            // Snapshot precedes every readiness check. A publication in the check/wait gap
+            // changes the epoch, so WaitOnAddress/futex cannot sleep through that publication.
+            const auto observed = notifications.workEpoch();
+            const auto submitted_before = s.submissions.load();
+            bool progressed = s.drainCompletions() != 0;
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM
             test::beforeDispatch();
 #endif
-            for (std::uint32_t i = 0; i < s.config.requests_per_tick && !s.stop_requested.load(); ++i)
+            for (std::uint32_t i = 0; i < s.config.request_work_budget && !s.stop_requested.load(); ++i)
             {
                 ipc::ReceivedRequest request;
-                if (s.responder.tryReceive(request) == ipc::EIpcReceive::RECEIVED) s.dispatch(std::move(request));
+                if (s.responder.tryReceive(request) == ipc::EIpcReceive::RECEIVED)
+                {
+                    s.dispatchRequest(std::move(request));
+                    progressed = true;
+                }
             }
-            if (s.stop_requested.load()) break;
-            s.drainCompletions();
-            s.retryReplies();
-            if (auto rendered = s.tick(); !rendered)
+            if (s.stop_requested.load())
+            {
+                break;
+            }
+            progressed |= s.response_outbox_.flushTo(s.responder, s.config.request_work_budget) != 0;
+            if (auto rendered = s.advanceRendering(); !rendered)
             {
                 result = cxx::unexpected(rendered.error());
                 break;
             }
+            progressed |= s.drainCompletions() != 0;
+            progressed |= s.response_outbox_.flushTo(s.responder, s.config.request_work_budget) != 0;
+            progressed |= s.submissions.load() != submitted_before;
             ++s.ticks;
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            if (!progressed && !s.stop_requested.load())
+            {
+                // GPU fences have no CPU notification, and IPC receive inspects a bounded
+                // portion of the Link roster. Request a bounded revisit deadline (subject to OS scheduling).
+                // Active work never waits; request/CPU/stop notifications interrupt idle waits.
+                notifications.waitUntil(observed, std::chrono::steady_clock::now() + std::chrono::milliseconds(1));
+            }
         }
         s.shutdown();
         return result;

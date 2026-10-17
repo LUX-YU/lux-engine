@@ -14,6 +14,7 @@ lux::platform::ipc::IpcMessage call(runtime_test::Peer& peer, lux::render::Comma
 
 template <class T> T decoded(lux::platform::ipc::IpcMessage message)
 {
-    if (message.metadata<lux::render::ReplyHeader>().outcome != lux::render::ECommandOutcome::SUCCESS) std::abort();
-    return std::move(message.get<T>());
+    auto& response = message.get<lux::render::RenderResult<T>>();
+    if (!response) std::abort();
+    return std::move(*response);
 }

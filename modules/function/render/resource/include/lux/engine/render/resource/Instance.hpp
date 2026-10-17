@@ -60,28 +60,28 @@ namespace lux::render
     {
         static constexpr std::string_view name = "lux.render.CreateInstance";
         using Request = InstanceCreate;
-        using Response = InstancePublished;
+        using Response = RenderResult<InstancePublished>;
     };
 
     struct UpdateTransforms final
     {
         static constexpr std::string_view name = "lux.render.UpdateTransforms";
         using Request = TransformBatch;
-        using Response = TransformApplied;
+        using Response = RenderResult<TransformApplied>;
     };
 
     struct QueryInstance final
     {
         static constexpr std::string_view name = "lux.render.QueryInstance";
         using Request = InstanceId;
-        using Response = InstanceInformation;
+        using Response = RenderResult<InstanceInformation>;
     };
 
     struct ReleaseInstance final
     {
         static constexpr std::string_view name = "lux.render.ReleaseInstance";
         using Request = InstancePublished;
-        using Response = Ack;
+        using Response = RenderResult<Ack>;
     };
 
 

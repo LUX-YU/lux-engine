@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/protocol/CommandHandler.hpp>
+#include <lux/engine/render/runtime/CommandBinding.hpp>
 #include <lux/engine/render/runtime/Error.hpp>
 #include <lux/engine/render/features/Registration.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
@@ -8,7 +8,7 @@
 #include <lux/engine/render/data/ConfigValue.hpp>
 #include <optional>
 
-namespace lux::render::runtime_detail { struct ServerBootstrap; }
+namespace lux::render::runtime_detail { struct ServerBootstrap; class CommandRegistry; }
 
 namespace lux::render
 {
@@ -18,7 +18,7 @@ namespace lux::render
     {
         std::string channel_name;
         bool validation = false;
-        std::uint32_t requests_per_tick = 8;
+        std::uint32_t request_work_budget = 8;
         std::size_t max_config_bytes = 1024 * 1024;
         std::size_t retirement_capacity = 0; // Optional explicit record budget; zero grows on cold publication.
         // Scheduler availability does not imply a persistent staging allocation.
@@ -74,7 +74,7 @@ namespace lux::render
             auto owner = makeHandler<H>(key, std::forward<Args>(args)...);
             auto& handler = *static_cast<H*>(owner->object.get());
             return [&]<typename... B>(std::tuple<B...>*) noexcept {
-                const std::array calls{B::bind(handler)...};
+                const std::array calls{CommandBinding::bind<typename B::Command, B::method>(handler)...};
                 return installHandler(std::move(owner), calls);
             }(static_cast<typename H::Bindings*>(nullptr));
         }
@@ -84,6 +84,7 @@ namespace lux::render
         [[nodiscard]] RenderServerStats stats() const noexcept;
     private:
         friend struct runtime_detail::ServerBootstrap;
+        friend class runtime_detail::CommandRegistry;
 
         struct HandlerEntry final
         {
@@ -101,7 +102,7 @@ namespace lux::render
             ConfigValue config;
             HandlerEntry* handler = nullptr;
             std::unique_ptr<HandlerEntry> owner;
-            std::vector<CommandHandler> calls;
+            std::vector<CommandBinding> calls;
             std::vector<CommandId> commands;
         };
 
@@ -127,16 +128,16 @@ namespace lux::render
         [[nodiscard]] RenderResult<CommandId> findCommand(const CommandDescriptor&) const noexcept;
         [[nodiscard]] HandlerEntry* handlerEntry(HandlerId) noexcept;
         [[nodiscard]] RenderResult<std::vector<CommandId>> prepareHandler(const HandlerEntry&,
-            std::span<const CommandHandler>) const noexcept;
-        HandlerId publishHandler(std::unique_ptr<HandlerEntry>, std::span<const CommandHandler>,
+            std::span<const CommandBinding>) const noexcept;
+        HandlerId publishHandler(std::unique_ptr<HandlerEntry>, std::span<const CommandBinding>,
             std::vector<CommandId>) noexcept;
         [[nodiscard]] RenderResult<StorageTypeId> prepareStorage(const StorageInstall&, bool ensure) const noexcept;
         [[nodiscard]] RenderResult<StorageTypeId> installStorage(StorageInstall) noexcept;
         [[nodiscard]] RenderResult<HandlerId> installHandler(std::unique_ptr<HandlerEntry>,
-            std::span<const CommandHandler>) noexcept;
+            std::span<const CommandBinding>) noexcept;
         [[nodiscard]] RenderResult<FeatureId> installFeature(feature_detail::Implementation,
             HandlerEntry*, std::unique_ptr<HandlerEntry>,
-            std::span<const CommandHandler>,
+            std::span<const CommandBinding>,
             std::vector<StorageInstall> dependencies = {}) noexcept;
         struct Impl;
         explicit RenderServer(std::unique_ptr<Impl> state) noexcept;

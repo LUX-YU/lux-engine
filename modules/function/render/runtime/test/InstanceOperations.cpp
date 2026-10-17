@@ -2,12 +2,12 @@
 #include "Discovery.hpp"
 #include "ServerFixture.hpp"
 #include "TypedTest.hpp"
-#include <lux/engine/render/native/vulkan/material/MaterialCommands.hpp>
+#include <lux/engine/render/native/vulkan/material/MaterialCommandHandler.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/resource/Material.hpp>
 #include <fstream>
-#include <lux/engine/render/native/vulkan/mesh/MeshCommands.hpp>
-#include <lux/engine/render/native/vulkan/instance/InstanceCommands.hpp>
+#include <lux/engine/render/native/vulkan/mesh/MeshCommandHandler.hpp>
+#include <lux/engine/render/native/vulkan/instance/InstanceCommandHandler.hpp>
 
 using namespace foundation_test;
 using namespace std::chrono_literals;
@@ -55,8 +55,8 @@ int main(int argc, char** argv)
     {
         auto result = call<SetMaterial>(*client, material_set, {{material_storage, {}}, 0, cooked,
             cooked.borrow<MaterialProgram>()->defaults});
-        CHECK(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-        material = result.get<SetMaterial::Response>().material;
+        CHECK(result.get<SetMaterial::Response>().has_value());
+        material = result.get<SetMaterial::Response>()->material;
     }
     auto owner = std::make_shared<std::vector<std::byte>>(60);
     const std::array<unsigned, 3> indices{0, 1, 2};
@@ -66,15 +66,15 @@ int main(int argc, char** argv)
         auto result = call<SetMesh>(*client, mesh_set, {{mesh_storage, {}}, 0,
             {16, 3, 48, 4, 3, {{0, 0, lux::rdesc::ETextureFormat::RGBA32_SFLOAT}}, {{0, 3, 0}}},
             take(RenderPayload::fromVector(owner, 0, owner->size()))});
-        CHECK(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-        mesh = result.get<SetMesh::Response>().mesh;
+        CHECK(result.get<SetMesh::Response>().has_value());
+        mesh = result.get<SetMesh::Response>()->mesh;
     }
     std::vector<InstancePublished> instances;
     for (unsigned i = 0; i < 100; ++i)
     {
         auto result = call<CreateInstance>(*client, create, {instance_storage, {mesh, material}});
-        CHECK(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-        instances.push_back(result.get<CreateInstance::Response>());
+        CHECK(result.get<CreateInstance::Response>().has_value());
+        instances.push_back(result.get<CreateInstance::Response>().value());
     }
     TransformBatch input{instance_storage, 53};
     input.updates.reserve(257);
@@ -84,27 +84,27 @@ int main(int argc, char** argv)
     input.updates.back().expected_revision = 0;
     {
         auto failed = call<UpdateTransforms>(*client, update, input);
-        CHECK(failed.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+        CHECK(!failed.get<UpdateTransforms::Response>());
     }
-    CHECK(call<QueryInstance>(*client, query, instances.front().instance).get<QueryInstance::Response>().published.revision == 1);
+    CHECK(call<QueryInstance>(*client, query, instances.front().instance).get<QueryInstance::Response>()->published.revision == 1);
     input.updates.back().expected_revision = 1;
     input.updates.push_back(input.updates.front());
     input.updates.back().transform[12] = .5f;
     {
         auto result = call<UpdateTransforms>(*client, update, input);
-        CHECK(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-        CHECK(result.get<UpdateTransforms::Response>().sequence == 53 && result.get<UpdateTransforms::Response>().changed == 100);
+        CHECK(result.get<UpdateTransforms::Response>().has_value());
+        CHECK(result.get<UpdateTransforms::Response>()->sequence == 53 && result.get<UpdateTransforms::Response>()->changed == 100);
     }
-    CHECK(call<QueryInstance>(*client, query, instances.front().instance).get<QueryInstance::Response>().description.transform[12] == .5f);
+    CHECK(call<QueryInstance>(*client, query, instances.front().instance).get<QueryInstance::Response>()->description.transform[12] == .5f);
     input.sequence = 54;
     // A stale revision n does not overwrite or acknowledge n+1.
-    CHECK(call<UpdateTransforms>(*client, update, input).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
-    CHECK(call<QueryInstance>(*client, query, instances.front().instance).get<QueryInstance::Response>().published.revision == 2);
+    CHECK(call<UpdateTransforms>(*client, update, input).get<UpdateTransforms::Response>().has_value() == false);
+    CHECK(call<QueryInstance>(*client, query, instances.front().instance).get<QueryInstance::Response>()->published.revision == 2);
     for (auto id : instances)
     {
         id.revision = 2;
-        CHECK(call<ReleaseInstance>(*client, release, id).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-        CHECK(call<QueryInstance>(*client, query, id.instance).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+        CHECK(call<ReleaseInstance>(*client, release, id).get<ReleaseInstance::Response>().has_value());
+        CHECK(call<QueryInstance>(*client, query, id.instance).get<QueryInstance::Response>().has_value() == false);
     }
     server->stop(); thread.join();
     CHECK(run_ok && server->stats().validation_errors == 0);

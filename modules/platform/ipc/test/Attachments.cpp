@@ -118,11 +118,11 @@ int main()
     auto input = message(destroyed, pointer);
     auto moved = std::move(input);
     check(input.empty() && assetRequest(moved).source.data() == pointer);
-    check(bool(requester.trySend(moved)) && moved.empty());
+    check(bool(requester.trySend(0, 0, moved)) && moved.empty());
     const std::byte* second_pointer = nullptr;
     auto second = message(destroyed, second_pointer);
     testing::failSegmentAllocations(1);
-    check(!requester.trySend(second));
+    check(!requester.trySend(0, 0, second));
     check(assetRequest(second).source.data() == second_pointer && destroyed == 0);
     auto work = std::make_shared<ReceivedRequest>(receive(responder));
     // Author-format G2 resolution remains a test-only consumer of the same real source owner.
@@ -137,18 +137,20 @@ int main()
     }
     IpcMessage reply;
     reply.emplace<std::uint64_t>(19);
-    check(bool(responder.tryReply(*work, reply)));
+    check(bool(responder.trySendResponse(work->requesterId(), work->correlation(), reply)));
+    work->reset();
+    std::uint64_t correlation = 0;
     IpcMessage received;
-    check(requester.tryReceive(received) == EIpcReceive::RECEIVED);
+    check(requester.tryReceive(correlation, received) == EIpcReceive::RECEIVED);
     check(received.get<std::uint64_t>() == 19);
     check(destroyed == 1); // server finished using the only input owner
-    check(bool(requester.trySend(second)));
+    check(bool(requester.trySend(0, 0, second)));
     {
         auto abandoned = receive(responder);
         abandoned.reset();
     }
     IpcMessage aborted;
-    check(requester.tryReceive(aborted) == EIpcReceive::EMPTY);
+    check(requester.tryReceive(correlation, aborted) == EIpcReceive::EMPTY);
     requester.reset();
     responder.reset();
     check(destroyed == 2);
@@ -159,11 +161,11 @@ int main()
     auto closing = take(core.createRequester("attachments.close", {1, 1}));
     auto server = take(core.createResponder("attachments.close"));
     auto pending = message(destroyed, pointer);
-    check(bool(closing.trySend(pending)));
+    check(bool(closing.trySend(0, 0, pending)));
     auto deferred = receive(server);
     closing.reset();
     auto output = message(destroyed, second_pointer);
-    check(!server.tryReply(deferred, output));
+    check(!server.trySendResponse(deferred.requesterId(), deferred.correlation(), output));
     check(assetRequest(output).source.data() == second_pointer && destroyed == 2);
     deferred.reset();
     server.reset();

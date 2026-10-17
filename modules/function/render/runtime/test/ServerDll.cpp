@@ -84,17 +84,16 @@ static void lateReply(EReplyCase mode)
         ipc::IpcMessage input;
         input.emplace<std::uint64_t>(0);
         const RequestId request{3};
-        input.setMetadata(RequestHeader{request, CommandId{UINT32_MAX - 1, 1}});
-        check(bool(peer.trySend(input)), "raw request publication failed");
+        check(bool(peer.trySend(commandTag(CommandId{UINT32_MAX - 1, 1}), request.value, input)), "raw request publication failed");
         const auto deadline = std::chrono::steady_clock::now() + 15s;
+        std::uint64_t correlation = 0;
         while (std::chrono::steady_clock::now() < deadline)
         {
-            if (peer.tryReceive(error) == ipc::EIpcReceive::RECEIVED) break;
+            if (peer.tryReceive(correlation, error) == ipc::EIpcReceive::RECEIVED) break;
             std::this_thread::sleep_for(1ms);
         }
-        const auto metadata = error.metadata<ReplyHeader>();
-        check(metadata.request == request && metadata.outcome == ECommandOutcome::FAILED &&
-            error.get<RenderError>().type == kRuntimeIdentity, "invalid raw identity did not produce its real error");
+        check(correlation == request.value &&
+            error.get<RenderError>().type == kProtocolContract, "invalid raw identity did not produce its real error");
         peer.reset();
     }
     else
@@ -104,7 +103,7 @@ static void lateReply(EReplyCase mode)
         {
             const auto sent = take(runtime_test::send<ListCommands>(*client, catalog, {}));
             listing = runtime_test::wait(*client, sent);
-            check(listing.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS, "directory failed");
+            check(bool(listing.get<ListCommands::Response>()), "directory failed");
         }
         else
         {
@@ -112,7 +111,7 @@ static void lateReply(EReplyCase mode)
             const auto binding = take(runtime_test::find<CreateScene>(*client));
             const auto sent = take(runtime_test::send<CreateScene>(*client, binding, {}));
             success = runtime_test::wait(*client, sent);
-            check(!success.get<CreateScene::Response>().scene.isNull(), "CreateScene produced no identity");
+            check(!success.get<CreateScene::Response>()->scene.isNull(), "CreateScene produced no identity");
         }
         client.reset();
     }
@@ -123,11 +122,11 @@ static void lateReply(EReplyCase mode)
     destroy(server);
     cpu.reset(); // The real scheduler's accepted callback tails finish while the host still pins the module.
     check(GetModuleHandleW(L"render_server_dll_plugin.dll") != nullptr, "host unloaded the live result provider");
-    if (!success.empty()) check(!success.get<CreateScene::Response>().scene.isNull(), "late success changed");
+    if (!success.empty()) check(!success.get<CreateScene::Response>()->scene.isNull(), "late success changed");
     if (mode == EReplyCase::DIRECTORY)
-        check(!listing.get<CommandList>().commands.empty(), "late directory lost owned names");
+        check(!listing.get<ListCommands::Response>()->commands.empty(), "late directory lost owned names");
     if (mode == EReplyCase::FAILURE_REPLY)
-        check(error.get<RenderError>().type == kRuntimeIdentity, "late error changed");
+        check(error.get<RenderError>().type == kProtocolContract, "late error changed");
     if (mode == EReplyCase::EXTRACTED_READBACK)
     {
         const auto bytes = extracted.bytes().view();

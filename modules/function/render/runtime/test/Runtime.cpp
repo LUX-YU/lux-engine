@@ -9,6 +9,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <source_location>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#endif
 
 using namespace lux::render;
 using namespace std::chrono_literals;
@@ -66,37 +72,56 @@ int main()
     std::thread thread([&] { run_ok = bool(server->run()); });
     auto first = wait(*a, ready_a);
     auto second = wait(*b, ready_b);
-    check(first.header.outcome == ECommandOutcome::SUCCESS && second.header.outcome == ECommandOutcome::SUCCESS);
+    check(first.header.outcome == ETestOutcome::SUCCESS && second.header.outcome == ETestOutcome::SUCCESS);
     TestCompletion moved = std::move(second);
     check(!second.active() && moved.active());
     const auto request_before = moved.header.request;
     check(!b->tryReceive(moved) && moved.header.request == request_before); // active output and its owner cannot be overwritten
     moved = {};
+    // No live View yet: the owner must wait, while a later request still wakes it.
+    const auto idle_begin = server->stats().ticks;
+#ifdef _WIN32
+    const auto owner_cpu_time = [&]() noexcept
+    {
+        FILETIME created, exited, kernel, user;
+        check(GetThreadTimes(thread.native_handle(), &created, &exited, &kernel, &user) != 0);
+        return ((std::uint64_t{kernel.dwHighDateTime} << 32) | kernel.dwLowDateTime) +
+            ((std::uint64_t{user.dwHighDateTime} << 32) | user.dwLowDateTime);
+    };
+    const auto cpu_begin = owner_cpu_time();
+#endif
+    std::this_thread::sleep_for(200ms);
+#ifdef _WIN32
+    std::printf("event loop idle owner CPU/200ms=%llu ns\n", (owner_cpu_time() - cpu_begin) * 100);
+#endif
+    const auto idle_rounds = server->stats().ticks - idle_begin;
+    check(idle_rounds < 2000); // Busy polling exceeds this by orders of magnitude.
+    std::printf("event loop idle rounds/200ms=%llu\n", idle_rounds);
     TestCommand command;
     command.operation = ETestCommand::CREATE_SCENE;
     auto scene = call(*a, command);
-    check(scene.header.outcome == ECommandOutcome::SUCCESS);
+    check(scene.header.outcome == ETestOutcome::SUCCESS);
     command.scene = scene.scene;
     command.operation = ETestCommand::CREATE_VIEW;
     auto view = call(*a, command);
-    check(view.header.outcome == ECommandOutcome::SUCCESS);
+    check(view.header.outcome == ETestOutcome::SUCCESS);
     command.operation = ETestCommand::REMOVE_VIEW;
     command.view = view.view;
-    check(call(*a, command).header.outcome == ECommandOutcome::SUCCESS);
-    check(call(*a, command).header.outcome == ECommandOutcome::FAILED);
+    check(call(*a, command).header.outcome == ETestOutcome::SUCCESS);
+    check(call(*a, command).header.outcome == ETestOutcome::FAILED);
     command.operation = ETestCommand::CREATE_VIEW;
     auto recreated = call(*a, command);
     check(recreated.view.index == view.view.index && recreated.view.gen != view.view.gen);
     command.operation = ETestCommand::REMOVE_VIEW;
-    check(call(*a, command).header.outcome == ECommandOutcome::FAILED);
+    check(call(*a, command).header.outcome == ETestOutcome::FAILED);
     command.operation = ETestCommand::CREATE_EFFECT;
     native_fixture::Config config;
     command.description = native_fixture::target(config);
     command.features.push_back({std::string(native_fixture::type.name()), "main", take(ConfigValue::make(config))});
     auto effect = call(*b, command);
-    check(effect.header.outcome == ECommandOutcome::SUCCESS && server->stats().compiled_graphs == 1);
+    check(effect.header.outcome == ETestOutcome::SUCCESS && server->stats().compiled_graphs == 1);
     command.features[0].config = take(ConfigValue::make(std::uint64_t{17}));
-    check(call(*b, command).header.outcome == ECommandOutcome::FAILED);
+    check(call(*b, command).header.outcome == ETestOutcome::FAILED);
     check(server->stats().compiled_graphs == 1);
     command.features.clear();
     command.operation = ETestCommand::CREATE_SCENE;
@@ -109,18 +134,18 @@ int main()
     while (std::chrono::steady_clock::now() < until)
     {
         auto created = call(*b, command);
-        check(created.header.outcome == ECommandOutcome::SUCCESS);
+        check(created.header.outcome == ETestOutcome::SUCCESS);
         auto remove = command;
         remove.operation = ETestCommand::REMOVE_SCENE;
         remove.scene = created.scene;
-        check(call(*b, remove).header.outcome == ECommandOutcome::SUCCESS);
+        check(call(*b, remove).header.outcome == ETestOutcome::SUCCESS);
         ++progress;
     }
     check(progress > 10 && server->stats().ticks > before + 10);
-    for (auto id : paused) check(wait(*a, id).header.outcome == ECommandOutcome::SUCCESS);
-    check(wait(*a, beyond_old_limit).header.outcome == ECommandOutcome::SUCCESS);
+    for (auto id : paused) check(wait(*a, id).header.outcome == ETestOutcome::SUCCESS);
+    check(wait(*a, beyond_old_limit).header.outcome == ETestOutcome::SUCCESS);
     command.operation = ETestCommand::STOP;
-    check(call(*b, command).header.outcome == ECommandOutcome::SUCCESS);
+    check(call(*b, command).header.outcome == ETestOutcome::SUCCESS);
     thread.join();
     check(run_ok && server->stats().validation_errors == 0);
     std::printf("M3 control: progress=%llu ticks=%llu graphs=1 validation_errors=%llu warnings=%llu\n",

@@ -40,7 +40,6 @@ namespace lux::render
 
     struct Ack final {};
 
-    enum class ECommandOutcome : std::uint8_t { SUCCESS, FAILED, CANCELLED, OUTCOME_UNKNOWN };
 
     struct CommandValueType final
     {
@@ -81,17 +80,11 @@ namespace lux::render
         return kCommandDescriptor<C>;
     }
 
-    struct RequestHeader final
-    {
-        RequestId request;
-        CommandId command;
-    };
+    [[nodiscard]] constexpr std::uint64_t commandTag(CommandId id) noexcept
+    { return (static_cast<std::uint64_t>(id.gen) << 32) | id.index; }
 
-    struct ReplyHeader final
-    {
-        RequestId request;
-        ECommandOutcome outcome = ECommandOutcome::OUTCOME_UNKNOWN;
-    };
+    [[nodiscard]] constexpr CommandId commandIdFromTag(std::uint64_t tag) noexcept
+    { return {static_cast<std::uint32_t>(tag), static_cast<std::uint32_t>(tag >> 32)}; }
 
     inline constexpr auto kProtocolContract = error::errorId("lux.render.protocol.contract");
 

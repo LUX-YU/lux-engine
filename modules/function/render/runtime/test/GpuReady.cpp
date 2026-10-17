@@ -2,7 +2,6 @@
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
-#include "ProtocolAudit.hpp"
 #include "SubmissionSender.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
@@ -11,6 +10,7 @@
 #include "TypedTest.hpp"
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include "Deferred.hpp"
+#include "CommandDispatchContext.hpp"
 #include "Allocation.hpp"
 #include <atomic>
 #include <chrono>
@@ -58,17 +58,17 @@ struct UploadProbe final
 {
     static constexpr std::string_view name = "test.g10.gpuReady";
     struct Request final { RenderPayload source; std::uint32_t sample = 0, mode = 0; };
-    using Response = ProbeResponse;
+    using Response = RenderResult<ProbeResponse>;
 };
 struct CpuResult final
 {
     static constexpr std::string_view name = "test.g10.cpuResult";
     using Request = EmptyRequest;
-    struct Response final { std::uint32_t reserved = 0; };
+    struct ResponseValue final { std::uint32_t reserved = 0; };
+        using Response = RenderResult<ResponseValue>;
 };
-struct Sample final { std::atomic<long long> inbound{0}, submit{0}, fence{0}, published{0}, consumed{0}; };
+struct Sample final { std::atomic<long long> inbound{0}, submit{0}, fence{0}, publication_begin{0}, published{0}, consumed{0}; };
 static std::array<Sample, 1200> samples;
-static std::array<std::atomic<unsigned>, 100000> publication_samples;
 static std::atomic<bool> hold_observation{false}, hold_fences{false}, fail_submit{false};
 static std::atomic<bool> hold_next_accepted_fence{false};
 static std::atomic<unsigned> accepted{0}, finished{0}, owners_destroyed{0}, source_destroyed{0}, waits{0};
@@ -84,13 +84,17 @@ static std::latch* compile_resume = nullptr;
 namespace lux::render::runtime_detail::test
 {
     bool observeGpuCompletion() noexcept { return !hold_observation.load(); }
-    void replyPublication(ReplyHeader header, std::string_view command) noexcept
+    void* beforeResponsePublication(std::uint64_t correlation, const platform::ipc::IpcMessage& message) noexcept
     {
-        if (command != UploadProbe::name || header.outcome != ECommandOutcome::SUCCESS) return;
-        CHECK(header.request.value < publication_samples.size());
-        const auto sample = publication_samples[header.request.value].load();
-        if (sample) samples[sample - 1].published = now();
+        if (message.typeHash() != lux::cxx::type_hash<UploadProbe::Response>() || !message.get<UploadProbe::Response>()) return nullptr;
+        const auto index = message.get<UploadProbe::Response>()->sample;
+        CHECK(index < samples.size());
+        auto& sample = samples[index];
+        sample.publication_begin = now();
+        return &sample;
     }
+    void afterResponsePublication(void* value) noexcept
+    { if (value) static_cast<Sample*>(value)->published = now(); }
 
 }
 namespace lux::render::vulkan::test
@@ -120,15 +124,16 @@ struct ProbeOwner final
     vulkan::BufferPermit staging, destination;
     std::optional<vulkan::SubmissionTicket> ticket;
     std::shared_ptr<std::vector<std::byte>> output;
-    std::span<const std::byte> source; // original ReceivedRequest is retained by the one Server pending slot
+    RenderPayload source_owner;
+    std::span<const std::byte> source; // owned by this actual Native operation
     std::uint32_t sample;
     unsigned mode;
     vulkan::SubmissionQueue& queue() noexcept;
     RenderResult<vulkan::SubmissionTicket> submit() noexcept;
     RenderResult<void> ready() noexcept;
     ProbeOwner(vulkan::DeviceSession& device, std::shared_ptr<std::vector<std::byte>> data,
-        std::span<const std::byte> bytes, std::uint32_t index, unsigned operation_mode) noexcept
-        : session(device), output(std::move(data)), source(bytes), sample(index), mode(operation_mode)
+        RenderPayload bytes, std::uint32_t index, unsigned operation_mode) noexcept
+        : session(device), output(std::move(data)), source_owner(std::move(bytes)), source(source_owner.bytes().view()), sample(index), mode(operation_mode)
     {
         ++owners_created;
     }
@@ -201,38 +206,26 @@ RenderResult<vulkan::SubmissionTicket> ProbeOwner::submit() noexcept
     return *submitted;
 }
 
-static RenderResult<void> upload(vulkan::DeviceSession& session, const UploadProbe::Request& input,
-    Reply<UploadProbe>& context) noexcept
+static native_test::SubmissionSender<UploadProbe::Response, ProbeOwner>
+upload(vulkan::DeviceSession& session, UploadProbe::Request&& input) noexcept
 {
-    if (input.sample >= samples.size() || input.mode > 5) return lux::cxx::unexpected(RenderError{kInvalidEncoding});
+    if (input.sample >= samples.size() || input.mode > 5) return native_test::SubmissionSender<UploadProbe::Response, ProbeOwner>{RenderError{kInvalidEncoding}};
     samples[input.sample].inbound = now();
     const auto source_bytes = input.source.bytes().view().size();
-    if (!source_bytes) return lux::cxx::unexpected(RenderError{kInvalidEncoding});
+    if (!source_bytes) return native_test::SubmissionSender<UploadProbe::Response, ProbeOwner>{RenderError{kInvalidEncoding}};
     auto output = input.mode == 5 ? std::shared_ptr<std::vector<std::byte>>(
         new std::vector<std::byte>(source_bytes), [](auto* value) noexcept {
             delete value;
             ++failed_result_destroyed;
         }) : std::make_shared<std::vector<std::byte>>(source_bytes);
     auto output_pin = RenderPayload::fromVector(output, 0, output->size());
-    if (!output_pin) return lux::cxx::unexpected(output_pin.error());
+    if (!output_pin) return native_test::SubmissionSender<UploadProbe::Response, ProbeOwner>{output_pin.error()};
     ProbeResponse response{std::move(*output_pin), input.sample};
-    auto pending = context.defer();
-    if (!pending) return lux::cxx::unexpected(pending.error());
-    CHECK(!context.active() && !context.defer());
-    const auto& stable = pending->request();
-    if (stable.mode == 1)
-    {
-        // v12 has no generic GPU category. The original capability is invalid after transfer;
-        // the real producer below still cannot publish until its accepted Ticket has completed.
-        auto rejected = context.complete(ProbeResponse{});
-        CHECK(!rejected && rejected.error().type == kProtocolContract);
-        return pending->fail(rejected.error());
-    }
-    const auto source = stable.source.bytes().view();
+    const auto source = input.source.bytes().view();
     observed_source.store(source.data());
-    auto owner = std::make_unique<ProbeOwner>(session, output, source, stable.sample, stable.mode);
+    auto owner = std::make_unique<ProbeOwner>(session, output, std::move(input.source), input.sample, input.mode);
     auto& queue = owner->queue();
-    if (stable.mode == 4)
+    if (input.mode == 4)
     {
         CHECK(hold_fences.load());
         for (unsigned i = 0; i < queue.capacity(); ++i)
@@ -243,16 +236,14 @@ static RenderResult<void> upload(vulkan::DeviceSession& session, const UploadPro
         }
     }
     auto staging = session.createBuffer(source.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, vulkan::EMemoryAccess::UPLOAD);
-    if (!staging) return pending->fail(staging.error());
+    if (!staging) return native_test::SubmissionSender<UploadProbe::Response, ProbeOwner>{staging.error()};
     owner->staging = std::move(*staging);
     auto destination = session.createBuffer(source.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, vulkan::EMemoryAccess::READBACK);
-    if (!destination) return pending->fail(destination.error());
+    if (!destination) return native_test::SubmissionSender<UploadProbe::Response, ProbeOwner>{destination.error()};
     owner->destination = std::move(*destination);
     if (auto written = session.write(*session.borrow(owner->staging), 0, source); !written)
-        return pending->fail(written.error());
-    return pending->completeWhen(native_test::SubmissionSender<ProbeResponse, ProbeOwner>{
-        std::move(response), std::move(owner)
-    });
+        return native_test::SubmissionSender<UploadProbe::Response, ProbeOwner>{written.error()};
+    return {std::move(response), std::move(owner)};
 }
 static const CommandDescriptor probe = commandDescriptor<UploadProbe>();
 static const CommandDescriptor cpu = commandDescriptor<CpuResult>();
@@ -264,10 +255,10 @@ struct ProbeCommands final
     static constexpr std::string_view name = "test.gpu.probe.commands";
     vulkan::DeviceSession& device;
     explicit ProbeCommands(vulkan::DeviceSession& value) noexcept : device(value) {}
-    RenderResult<void> uploadRequest(const UploadProbe::Request& input, Reply<UploadProbe>& reply) noexcept
-    { return upload(device, input, reply); }
-    RenderResult<void> cpuResult(const CpuResult::Request&, Reply<CpuResult>& reply) noexcept
-    { return reply.complete(CpuResult::Response{}); }
+    native_test::SubmissionSender<UploadProbe::Response, ProbeOwner> uploadRequest(UploadProbe::Request&& input) noexcept
+    { return upload(device, std::move(input)); }
+    void cpuResult(const CpuResult::Request&, CpuResult::Response& reply) noexcept
+    { reply.emplace(); }
     using Bindings = std::tuple<CommandMethod<UploadProbe, &ProbeCommands::uploadRequest>,
         CommandMethod<CpuResult, &ProbeCommands::cpuResult>>;
 };
@@ -314,8 +305,6 @@ int main(int argc, char** argv)
     std::array payload_a{take(RenderPayload::fromVector(source_a, 17, 64))};
     std::array payload_b{take(RenderPayload::fromVector(source_b, 17, 64))};
     const auto send = [&](runtime_test::Peer& client, const auto& bound, const auto& payload, unsigned sample, unsigned mode = 0) {
-        CHECK(client.next < publication_samples.size());
-        publication_samples[client.next] = sample + 1;
         return take(runtime_test::send<UploadProbe>(client, bound, {payload[0], sample, mode}));
     };
     std::fprintf(stderr, "stage initial\n");
@@ -326,26 +315,23 @@ int main(int argc, char** argv)
     const auto before = server->stats().ticks;
     until([&] { return server->stats().ticks > before + 10; });
     lux::platform::ipc::IpcMessage none;
-    CHECK(a->requester.tryReceive(none) == lux::platform::ipc::EIpcReceive::EMPTY && b->requester.tryReceive(none) == lux::platform::ipc::EIpcReceive::EMPTY);
+    std::uint64_t correlation = 0;
+    CHECK(a->requester.tryReceive(correlation, none) == lux::platform::ipc::EIpcReceive::EMPTY && b->requester.tryReceive(correlation, none) == lux::platform::ipc::EIpcReceive::EMPTY);
     CHECK(finished == 0 && native_buffers == 4 && owners_destroyed == 0);
     // Runtime no longer has a two-Pending quota. Native Queue capacity is tested separately below.
     CHECK(observed_source == source_b->data() + 17);
     // CPU RESULT_AVAILABLE proceeds while GPU completion observation is held.
-    CHECK(call<CpuResult>(*b, {}).get<CpuResult::Response>().reserved == 0);
+    CHECK(call<CpuResult>(*b, {}).get<CpuResult::Response>()->reserved == 0);
     hold_observation.store(false);
     auto result_a = wait(*a, id_a), result_b = wait(*b, id_b);
-    CHECK(result_a.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS && result_b.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-    CHECK(result_a.get<ProbeResponse>().pixels.bytes().view()[0] == std::byte{37} && result_b.get<ProbeResponse>().pixels.bytes().view()[0] == std::byte{73});
+    CHECK(result_a.get<UploadProbe::Response>().has_value() && result_b.get<UploadProbe::Response>().has_value());
+    CHECK(result_a.get<UploadProbe::Response>()->pixels.bytes().view()[0] == std::byte{37} && result_b.get<UploadProbe::Response>()->pixels.bytes().view()[0] == std::byte{73});
     result_a = {}; result_b = {};
     until([] { return owners_destroyed == 2; });
     CHECK(native_buffers == 0);
-    auto premature = wait(*a, send(*a, bound_a, payload_a, 3, 1));
-    CHECK(premature.get<RenderError>().type == kProtocolContract && premature.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
-    premature = {};
-
     const auto accepted_before_invalid = accepted.load();
     // Empty owned input is still rejected before any Native allocation or submission.
-    CHECK(wait(*a, take(runtime_test::send<UploadProbe>(*a, bound_a, UploadProbe::Request{{}, 9, 0}))).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    CHECK(wait(*a, take(runtime_test::send<UploadProbe>(*a, bound_a, UploadProbe::Request{{}, 9, 0}))).get<UploadProbe::Response>().has_value() == false);
     CHECK(accepted == accepted_before_invalid);
     // Wrong C++ object/ABI is outside the same-build contract. A stale Command generation is a
     // real routing failure and is rejected before any typed borrow, Native allocation or submission.
@@ -359,13 +345,11 @@ int main(int argc, char** argv)
         ++stale.gen;
         ipc::IpcMessage message;
         message.emplace<UploadProbe::Request>();
-        message.setMetadata(RequestHeader{request_id, stale});
-        CHECK(raw.trySend(message));
+        CHECK(raw.trySend(commandTag(stale), request_id.value, message));
         ipc::IpcMessage reply;
-        until([&] { return raw.tryReceive(reply) != ipc::EIpcReceive::EMPTY; });
-        const auto response = reply.metadata<ReplyHeader>();
-        CHECK(response.request == request_id && response.outcome == ECommandOutcome::FAILED);
-        CHECK(reply.get<RenderError>().type == kRuntimeIdentity && accepted == accepted_before_invalid);
+        until([&] { return raw.tryReceive(correlation, reply) != ipc::EIpcReceive::EMPTY; });
+        CHECK(correlation == request_id.value);
+        CHECK(reply.get<RenderError>().type == kProtocolContract && accepted == accepted_before_invalid);
     }
 
     std::fprintf(stderr, "stage prior failure\n");
@@ -374,20 +358,20 @@ int main(int argc, char** argv)
     const auto kept = send(*a, bound_a, payload_a, 4);
     until([] { return accepted == 3; });
     auto failed = wait(*b, send(*b, bound_b, payload_b, 5, 2));
-    CHECK(failed.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED && failed.get<RenderError>().type == vulkan::kNativeFailure);
+    CHECK(!failed.get<UploadProbe::Response>() && failed.get<UploadProbe::Response>().error().type == vulkan::kNativeFailure);
     CHECK(accepted == 3 && native_buffers == 2);
     auto stale_ticket = wait(*b, send(*b, bound_b, payload_b, 6, 3));
-    CHECK(stale_ticket.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED && stale_ticket.get<RenderError>().type == kProtocolContract);
+    CHECK(!stale_ticket.get<UploadProbe::Response>() && stale_ticket.get<UploadProbe::Response>().error().type == kProtocolContract);
     hold_observation.store(false);
-    CHECK(wait(*a, kept).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    CHECK(wait(*a, kept).get<UploadProbe::Response>().has_value());
     failed = {}; stale_ticket = {};
 
     // A rejected business publication after real GPU completion releases its unsent result
     // before the failure is visible. Source data is held by the caller explicitly for retry.
     const auto accepted_before_publication_failure = accepted.load();
     auto publication_failure = wait(*a, send(*a, bound_a, payload_a, 11, 5));
-    CHECK(publication_failure.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
-    CHECK(publication_failure.get<RenderError>().type == kStorageContract);
+    CHECK(!publication_failure.get<UploadProbe::Response>());
+    CHECK(publication_failure.get<UploadProbe::Response>().error().type == kStorageContract);
     CHECK(accepted == accepted_before_publication_failure + 1);
     CHECK(samples[11].submit != 0 && samples[11].fence >= samples[11].submit);
     CHECK(failed_result_destroyed == 1 && native_buffers == 0);
@@ -405,7 +389,7 @@ int main(int argc, char** argv)
         auto stale = effect_request;
         ++stale.features.front().feature.gen;
         auto rejected = wait(*a, take(runtime_test::send<CreateEffect>(*a, binding, std::move(stale))));
-        CHECK(rejected.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED && rejected.get<RenderError>().type == kRuntimeIdentity);
+        CHECK(!rejected.get<UploadProbe::Response>() && rejected.get<UploadProbe::Response>().error().type == kRuntimeIdentity);
         CHECK(server->stats().compiled_graphs == 1);
     }
     std::array<AttachmentRequest, 4> groups;
@@ -424,7 +408,7 @@ int main(int argc, char** argv)
     }
     {
         auto readback = call<Readback>(*a, {groups[0], {}});
-        CHECK(readback.get<Readback::Response>().pixels.bytes().view()[(16 * 32 + 16) * 4] == std::byte{255});
+        CHECK(readback.get<Readback::Response>()->pixels.bytes().view()[(16 * 32 + 16) * 4] == std::byte{255});
     }
 
     // A shared Graphics queue may legitimately reject before submit while the four Views progress.
@@ -436,9 +420,9 @@ int main(int argc, char** argv)
         until([&] {
             if (samples[sample].submit != 0) return true;
             lux::platform::ipc::IpcMessage result;
-            if (b->requester.tryReceive(result) != lux::platform::ipc::EIpcReceive::RECEIVED) return false;
-            CHECK(result.metadata<ReplyHeader>().request == id && result.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
-            CHECK(result.get<RenderError>().type == vulkan::kCapacity && samples[sample].submit == 0);
+            if (b->requester.tryReceive(correlation, result) != lux::platform::ipc::EIpcReceive::RECEIVED) return false;
+            CHECK(correlation == id.value && !result.get<UploadProbe::Response>());
+            CHECK(result.get<UploadProbe::Response>().error().type == vulkan::kCapacity && samples[sample].submit == 0);
             std::fprintf(stderr, "accepted-work pre-submit refusal sample=%u inbound=%lld submit=%lld\n",
                 sample, samples[sample].inbound.load(), samples[sample].submit.load());
             ++late_admission_backpressure;
@@ -452,8 +436,8 @@ int main(int argc, char** argv)
     // terminate after this valid failure Reply. Consume the refusal and keep the source available.
     hold_fences.store(true);
     auto refused_held = wait(*b, send(*b, bound_b, payload_b, 7, 4));
-    CHECK(refused_held.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
-    CHECK(refused_held.get<RenderError>().type == vulkan::kCapacity && samples[7].submit == 0);
+    CHECK(!refused_held.get<UploadProbe::Response>());
+    CHECK(refused_held.get<UploadProbe::Response>().error().type == vulkan::kCapacity && samples[7].submit == 0);
     CHECK(payload_b[0].bytes().view().data() == source_b->data() + 17);
     hold_fences.store(false);
     std::fprintf(stderr, "held request: controlled pre-submit capacity Reply consumed, source preserved\n");
@@ -462,9 +446,9 @@ int main(int argc, char** argv)
     const auto rendering_before = server->stats().submissions;
     const auto continued = Clock::now() + 100ms;
     while (Clock::now() < continued) std::this_thread::sleep_for(1ms);
-    CHECK(server->stats().submissions > rendering_before + 8 && b->requester.tryReceive(none) == lux::platform::ipc::EIpcReceive::EMPTY);
+    CHECK(server->stats().submissions > rendering_before + 8 && b->requester.tryReceive(correlation, none) == lux::platform::ipc::EIpcReceive::EMPTY);
     hold_observation.store(false);
-    CHECK(wait(*b, held).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    CHECK(wait(*b, held).get<UploadProbe::Response>().has_value());
 
     // The existing Native queue has three slots, shared with Views. Saturation is explicit backpressure.
     hold_fences.store(true);
@@ -472,7 +456,7 @@ int main(int argc, char** argv)
     until([&] { return server->stats().ticks > ticks_before_full + 8; });
     const auto accepted_before_full = accepted.load();
     auto queue_full = wait(*b, send(*b, bound_b, payload_b, 13, transfer_mode ? 4 : 0));
-    CHECK(queue_full.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED && queue_full.get<RenderError>().type == vulkan::kCapacity);
+    CHECK(!queue_full.get<UploadProbe::Response>() && queue_full.get<UploadProbe::Response>().error().type == vulkan::kCapacity);
     CHECK(accepted == accepted_before_full && samples[13].submit == 0);
     queue_full = {};
     hold_fences.store(false);
@@ -490,17 +474,17 @@ int main(int argc, char** argv)
     while (Clock::now() < end)
     {
         auto result = wait(*b, send(*b, bound_b, payload_b, 8));
-        if (result.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED && result.get<RenderError>().type == vulkan::kCapacity)
+        if (!result.get<UploadProbe::Response>() && result.get<UploadProbe::Response>().error().type == vulkan::kCapacity)
             ++progress_backpressure;
         else
         {
-            CHECK(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+            CHECK(result.get<UploadProbe::Response>().has_value());
             ++progress;
         }
     }
     CHECK(progress > 0 && server->stats().submissions > progress_before + 40);
-    for (auto id : paused) CHECK(wait(*a, id).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-    CHECK(wait(*a, additional).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    for (auto id : paused) CHECK(wait(*a, id).get<CpuResult::Response>().has_value());
+    CHECK(wait(*a, additional).get<CpuResult::Response>().has_value());
 
     std::fprintf(stderr, "stage dual compile\n");
     // Two accepted compile jobs really enter concurrently while rendering continues.
@@ -517,9 +501,9 @@ int main(int argc, char** argv)
     for (auto& id : completed_compiles)
     {
         lux::platform::ipc::IpcMessage completion;
-        until([&] { return a->requester.tryReceive(completion) == lux::platform::ipc::EIpcReceive::RECEIVED; });
-        CHECK(completion.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-        id = completion.metadata<ReplyHeader>().request;
+        until([&] { return a->requester.tryReceive(correlation, completion) == lux::platform::ipc::EIpcReceive::RECEIVED; });
+        CHECK(completion.get<CreateEffect::Response>().has_value());
+        id = RequestId{correlation};
     }
     CHECK(completed_compiles[0] != completed_compiles[1]);
     CHECK((completed_compiles[0] == compile_a || completed_compiles[0] == compile_b) &&
@@ -538,7 +522,7 @@ int main(int argc, char** argv)
         render_allocation::window.store(true);
         const auto retry_deadline = Clock::now() + 10s;
         auto result = wait(*b, send(*b, bound_b, payload_b, i));
-        while (result.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED && result.get<RenderError>().type == vulkan::kCapacity)
+        while (!result.get<UploadProbe::Response>() && result.get<UploadProbe::Response>().error().type == vulkan::kCapacity)
         {
             CHECK(samples[i].submit == 0 && samples[i].fence == 0 && backpressure_count < backpressure.size());
             backpressure[backpressure_count++] = {i, samples[i].inbound.load(), now()};
@@ -548,19 +532,19 @@ int main(int argc, char** argv)
             result = wait(*b, send(*b, bound_b, payload_b, i));
         }
         samples[i].consumed = now();
-        if (result.metadata<ReplyHeader>().outcome != ECommandOutcome::SUCCESS)
+        if (result.get<UploadProbe::Response>().has_value() == false)
             std::fprintf(stderr, "sample=%u outcome=%u error=%llu capacity=%llu native_busy=%llu native_failure=%llu wire=%llu inbound=%lld submit=%lld fence=%lld\n",
-                i, unsigned(result.metadata<ReplyHeader>().outcome), result.get<RenderError>().type, kRuntimeCapacity,
+                i, unsigned(result.get<UploadProbe::Response>().has_value()), result.get<UploadProbe::Response>().error().type, kRuntimeCapacity,
                 vulkan::kBusy, vulkan::kNativeFailure, kInvalidEncoding, samples[i].inbound.load(),
                 samples[i].submit.load(), samples[i].fence.load());
-        CHECK(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS && result.get<ProbeResponse>().pixels.bytes().view()[63] == std::byte{73});
+        CHECK(result.get<UploadProbe::Response>().has_value() && result.get<UploadProbe::Response>()->pixels.bytes().view()[63] == std::byte{73});
         result = {};
         render_allocation::window.store(false);
         engine_new[i - 20] = render_allocation::calls.load();
     }
     const auto late_deadline = Clock::now() + 10s;
     auto late_reply = wait(*a, send(*a, bound_a, payload_a, 1020));
-    while (late_reply.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED && late_reply.get<RenderError>().type == vulkan::kCapacity)
+    while (!late_reply.get<UploadProbe::Response>() && late_reply.get<UploadProbe::Response>().error().type == vulkan::kCapacity)
     {
         // This scenario tests a published reply outliving its Server. A legitimate pre-submit refusal
         // is not that scenario: consume it and obtain accepted work without weakening the final oracle.
@@ -570,11 +554,11 @@ int main(int argc, char** argv)
         std::this_thread::sleep_for(1ms);
         late_reply = wait(*a, send(*a, bound_a, payload_a, 1020));
     }
-    if (late_reply.metadata<ReplyHeader>().outcome != ECommandOutcome::SUCCESS)
+    if (late_reply.get<UploadProbe::Response>().has_value() == false)
         std::fprintf(stderr, "late reply outcome=%u error=%llu capacity=%llu submit=%lld fence=%lld\n",
-            unsigned(late_reply.metadata<ReplyHeader>().outcome), late_reply.get<RenderError>().type, vulkan::kCapacity,
+            unsigned(late_reply.get<UploadProbe::Response>().has_value()), late_reply.get<UploadProbe::Response>().error().type, vulkan::kCapacity,
             samples[1020].submit.load(), samples[1020].fence.load());
-    CHECK(late_reply.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    CHECK(late_reply.get<UploadProbe::Response>().has_value());
     std::fprintf(stderr, "stage abandon\n");
     // The caller may ignore a result, but that does not cancel accepted Native work.
     hold_observation.store(true);
@@ -582,7 +566,7 @@ int main(int argc, char** argv)
     CHECK(samples[1021].fence == 0);
     hold_observation.store(false);
     auto ignored_result = wait(*b, ignored);
-    CHECK(ignored_result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    CHECK(ignored_result.get<UploadProbe::Response>().has_value());
     ignored_result.reset();
 
     std::fprintf(stderr, "stage stop\n");
@@ -615,12 +599,12 @@ int main(int argc, char** argv)
     CHECK(run_ok && server->stats().validation_errors == 0 && source_destroyed == 1 && native_buffers == 0);
     CHECK(waits > waits_before_stop);
     std::ofstream csv(sample_prefix + "runtime-gpu-ready.csv");
-    csv << "sample,inbound_ns,submitted_ns,fence_observed_ns,reply_publication_start_ns,consumed_ns,engine_new_calls\n";
+    csv << "sample,inbound_ns,submitted_ns,fence_observed_ns,reply_publication_begin_ns,reply_publication_end_ns,consumed_ns,engine_new_calls\n";
     for (unsigned i = 20; i < 1020; ++i)
     {
         const auto& x = samples[i];
-        CHECK(x.inbound <= x.submit && x.submit <= x.fence && x.fence <= x.published && x.published <= x.consumed);
-        csv << i << ',' << x.inbound << ',' << x.submit << ',' << x.fence << ',' << x.published << ',' << x.consumed << ',' << engine_new[i - 20] << '\n';
+        CHECK(x.inbound <= x.submit && x.submit <= x.fence && x.fence <= x.publication_begin && x.publication_begin <= x.published && x.publication_begin <= x.consumed);
+        csv << i << ',' << x.inbound << ',' << x.submit << ',' << x.fence << ',' << x.publication_begin << ',' << x.published << ',' << x.consumed << ',' << engine_new[i - 20] << '\n';
     }
     std::ofstream refused_csv(sample_prefix + "runtime-gpu-backpressure.csv");
     refused_csv << "sample,inbound_ns,consumed_ns,error\n";
@@ -630,12 +614,12 @@ int main(int argc, char** argv)
     std::printf("GPU queue backpressure: progress=%u measurement=%zu (all refusals retained; no GPU submit)\n",
         progress_backpressure, backpressure_count);
     server.reset(); a.reset(); source_a.reset(); payload_a = {};
-    CHECK(source_destroyed == 2 && late_reply.get<ProbeResponse>().pixels.bytes().view()[63] == std::byte{37});
+    CHECK(source_destroyed == 2 && late_reply.get<UploadProbe::Response>()->pixels.bytes().view()[63] == std::byte{37});
     late_reply = {};
     CHECK(source_destroyed == 2 && owners_created == owners_destroyed && native_created == native_destroyed);
-    std::printf("sizes IpcMessage=%zu RenderRequest=%zu DeferredCompletion=%zu SubmissionNode=%zu Context=%zu Permit=%zu; Native buffers created/destroyed=%u/%u\n",
-        sizeof(lux::platform::ipc::IpcMessage), sizeof(RenderRequest),
-        sizeof(runtime_detail::DeferredCompletion), sizeof(vulkan::SubmissionCallback), sizeof(CommandInvocation),
+    std::printf("sizes IpcMessage=%zu ResponseRoute=%zu PendingOperation=%zu SubmissionNode=%zu Context=%zu Permit=%zu; Native buffers created/destroyed=%u/%u\n",
+        sizeof(lux::platform::ipc::IpcMessage), sizeof(runtime_detail::ResponseRoute),
+        sizeof(runtime_detail::PendingOperation), sizeof(vulkan::SubmissionCallback), sizeof(runtime_detail::CommandDispatchContext),
         sizeof(vulkan::BufferPermit), native_created.load(), native_destroyed.load());
     // An open Client must receive UNKNOWN, never a guaranteed cancellation, for accepted uncommitted GPU work.
     hold_fences.store(false);
@@ -660,7 +644,7 @@ int main(int argc, char** argv)
     CHECK(closing_ok && closing_server->stats().validation_errors == 0);
     closing_server.reset();
     auto unknown = wait(*closing_client, closing_id);
-    CHECK(unknown.metadata<ReplyHeader>().outcome == ECommandOutcome::OUTCOME_UNKNOWN && samples[1023].fence == 0);
+    CHECK(unknown.get<UploadProbe::Response>().error().type == kOutcomeUnknown && samples[1023].fence == 0);
     closing_source.reset(); closing_payload = {}; closing_client.reset();
     CHECK(source_destroyed == 3);
     unknown = {};

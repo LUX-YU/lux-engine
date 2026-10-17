@@ -10,14 +10,14 @@ struct InstalledQuery final
 {
     static constexpr std::string_view name = "installed.Query";
     struct Request final { std::uint64_t key = 0; };
-    using Response = lux::render::Ack;
+    using Response = lux::render::RenderResult<lux::render::Ack>;
 };
 
 int main()
 {
-    lux::render::RequestHeader request;
-    lux::render::ReplyHeader reply;
-    return !request.request.isNull() || reply.outcome != lux::render::ECommandOutcome::OUTCOME_UNKNOWN ||
+    const lux::render::RequestId request{};
+    const lux::render::CommandId command{7, 3};
+    return !request.isNull() || lux::render::commandIdFromTag(lux::render::commandTag(command)) != command ||
         lux::render::renderProtocolErrorDescriptors().empty() ||
         !lux::render::validateCommand(lux::render::commandDescriptor<InstalledQuery>());
 }

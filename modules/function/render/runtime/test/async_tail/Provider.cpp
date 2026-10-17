@@ -1,6 +1,6 @@
 #include "../FeatureFixture.hpp"
 #include "Fixture.hpp"
-#include <lux/engine/render/protocol/AsyncCommand.hpp>
+#include <lux/engine/render/runtime/CommandBinding.hpp>
 
 namespace async_tail_test
 {
@@ -13,7 +13,7 @@ namespace async_tail_test
     public:
         using sender_concept = stdexec::sender_t;
         using completion_signatures = stdexec::completion_signatures<
-            stdexec::set_value_t(std::uint32_t),
+            stdexec::set_value_t(Command::Response),
             stdexec::set_error_t(RenderError),
             stdexec::set_stopped_t()
         >;
@@ -43,7 +43,7 @@ namespace async_tail_test
                     auto receiver = std::move(operation->receiver_);
                     switch (terminal)
                     {
-                    case ETerminal::VALUE: stdexec::set_value(std::move(receiver), value); break;
+                    case ETerminal::VALUE: stdexec::set_value(std::move(receiver), Command::Response{value}); break;
                     case ETerminal::FAILURE: stdexec::set_error(std::move(receiver), error); break;
                     case ETerminal::STOPPED: stdexec::set_stopped(std::move(receiver)); break;
                     }
@@ -112,11 +112,11 @@ namespace async_tail_test
         std::uint32_t value_;
     };
 
-    static RenderResult<void> invoke(Host& host, const Command::Request& value, Reply<Command>& context) noexcept
+    static TailSender invoke(Host& host, Command::Request&& value) noexcept
     {
         // The Host joins its worker before unloading this callback code.
         auto source = host.cpu.schedule([](void*) noexcept {}, nullptr);
-        return context.completeWhen(TailSender{std::move(source), *host.gate, value});
+        return TailSender{std::move(source), *host.gate, value};
     }
 }
 
@@ -127,8 +127,8 @@ namespace async_tail_test
         static constexpr std::string_view name = "test.async.tail.commands";
         Host& host;
         explicit TailCommands(Host& value) noexcept : host(value) {}
-        lux::render::RenderResult<void> run(const Command::Request& input, lux::render::Reply<Command>& reply) noexcept
-        { return invoke(host, input, reply); }
+        TailSender run(Command::Request&& input) noexcept
+        { return invoke(host, std::move(input)); }
         using Bindings = std::tuple<lux::render::CommandMethod<Command, &TailCommands::run>>;
     };
 }

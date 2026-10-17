@@ -19,7 +19,7 @@ namespace async_tail_test
     {
         static constexpr std::string_view name = "test.async.dll_callback_tail";
         using Request = std::uint32_t;
-        using Response = std::uint32_t;
+        using Response = lux::render::RenderResult<std::uint32_t>;
     };
 
     // EXE-owned gates stay valid after the operation state and Server are gone.

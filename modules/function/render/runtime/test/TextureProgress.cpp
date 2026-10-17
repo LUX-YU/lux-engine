@@ -1,8 +1,7 @@
-#include <lux/engine/render/protocol/AsyncCommand.hpp>
+#include <lux/engine/render/runtime/CommandBinding.hpp>
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
-#include "ProtocolAudit.hpp"
 #include "ServerFixture.hpp"
 #include "TypedTest.hpp"
 #include "TextureFixture.hpp"
@@ -26,7 +25,7 @@ struct TextureProbe final
 {
     static constexpr std::string_view name = "test.textureProgress";
     struct Request final { RenderPayload source; std::uint32_t dimension; };
-    using Response = Ack;
+    using Response = RenderResult<Ack>;
 };
 static std::atomic<unsigned> sources{0}, pins{0}, completed{0}, submitted{0}, fail_at{0};
 static std::atomic<bool> hold{false};
@@ -64,13 +63,8 @@ static const std::array texture_operations{operation};
 static const FeatureDescriptor definition{FeatureName("test.texture.progress"), {}};
 static const FeatureGraphOps definition_graph{[](const void*, std::string_view, ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 
-static RenderResult<void> invoke(DeviceSession& session, const TextureProbe::Request&, Reply<TextureProbe>& context) noexcept
+static GpuWorkSender<TextureProbe::Response> invoke(DeviceSession& session, TextureProbe::Request&& value) noexcept
 {
-    auto pending = context.defer();
-    if (!pending) return lux::cxx::unexpected(pending.error());
-    CHECK(!context.complete(Ack{})); // the transferred completion right cannot publish a second result
-    CHECK(!context.defer());
-    const auto& value = pending->request();
     const auto source = value.source.bytes().view();
     observed.store(source.data());
     const ImageDescription description{{value.dimension, value.dimension}, VK_FORMAT_R8G8B8A8_UNORM,
@@ -78,11 +72,11 @@ static RenderResult<void> invoke(DeviceSession& session, const TextureProbe::Req
     const ImageTransferRegion region{0, std::uint64_t(value.dimension) * 4, 1, 4,
         {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {}, {value.dimension, value.dimension, 1}};
     auto transfer = session.uploadImage(description, source, std::span(&region, 1));
-    if (!transfer) return pending->fail(transfer.error());
+    if (!transfer) return GpuWorkSender<TextureProbe::Response>{transfer.error()};
     auto pin = std::make_unique<Pin>();
     auto work = GpuWork::pending<ready>(session, *transfer, pin);
-    if (!work) return pending->fail(work.error());
-    return pending->completeWhen(GpuWorkSender<Ack>{Ack{}, std::move(*work)});
+    if (!work) return GpuWorkSender<TextureProbe::Response>{work.error()};
+    return {Ack{}, std::move(*work), std::move(value.source)};
 }
 
 struct ProbeCommands final
@@ -90,8 +84,8 @@ struct ProbeCommands final
     static constexpr std::string_view name = "test.texture.progress.commands";
     DeviceSession& device;
     explicit ProbeCommands(DeviceSession& value) noexcept : device(value) {}
-    RenderResult<void> uploadRequest(const TextureProbe::Request& input, Reply<TextureProbe>& reply) noexcept
-    { return invoke(device, input, reply); }
+    GpuWorkSender<TextureProbe::Response> uploadRequest(TextureProbe::Request&& input) noexcept
+    { return invoke(device, std::move(input)); }
     using Bindings = std::tuple<CommandMethod<TextureProbe, &ProbeCommands::uploadRequest>>;
 };
 
@@ -156,7 +150,7 @@ static void shutdownAndLoss()
         render.join();
         CHECK(run_ok != lost && pins == 0 && sources == 0);
         auto reply = wait(*client, id);
-        CHECK(reply.metadata<ReplyHeader>().outcome == ECommandOutcome::OUTCOME_UNKNOWN);
+        CHECK(reply.get<TextureProbe::Response>().error().type == kOutcomeUnknown);
         reply = {};
         CHECK(sources == 0 && server->stats().validation_errors == 0);
         fail_at = 0;
@@ -224,11 +218,11 @@ static void productionShutdownAndLoss()
         render.join();
         CHECK(run_ok != lost && sources == 0);
         auto reply = wait(*client, id);
-        CHECK(reply.metadata<ReplyHeader>().outcome == ECommandOutcome::OUTCOME_UNKNOWN);
+        CHECK(reply.get<SetTexture::Response>().error().type == kOutcomeUnknown);
         CHECK(sources == 0 && server->stats().validation_errors == 0);
         // Error Reply owns only its RenderError; it never implicitly returns the accepted source.
         server.reset();
-        CHECK(reply.metadata<ReplyHeader>().outcome == ECommandOutcome::OUTCOME_UNKNOWN);
+        CHECK(reply.get<SetTexture::Response>().error().type == kOutcomeUnknown);
         fail_at = 0;
         submit_error = VK_ERROR_OUT_OF_HOST_MEMORY;
     }
@@ -266,7 +260,7 @@ int main()
             auto id = take(runtime_test::send<TextureProbe>(*client, bound, TextureProbe::Request{payload[0], dimension}));
             source.reset(); payload = {};
             auto reply = wait(*client, id);
-            CHECK(reply.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+            CHECK(reply.get<TextureProbe::Response>().has_value());
             until([] { return sources == 0 && pins == 0; });
             CHECK(observed == address);
             reply = {};
@@ -279,12 +273,12 @@ int main()
         std::array payload{take(RenderPayload::fromVector(source, 0, source->size()))};
         fail_at = submitted + 2;
         auto id = take(runtime_test::send<TextureProbe>(*client, bound, TextureProbe::Request{payload[0], 2048}));
-        CHECK(wait(*client, id).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+        CHECK(wait(*client, id).get<TextureProbe::Response>().has_value() == false);
         CHECK(pins == 0);
         fail_at = 0;
         host.reject(true);
         id = take(runtime_test::send<TextureProbe>(*client, bound, TextureProbe::Request{payload[0], 2048}));
-        CHECK(wait(*client, id).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+        CHECK(wait(*client, id).get<TextureProbe::Response>().has_value() == false);
         host.reject(false);
         CHECK(pins == 0);
         source.reset(); payload = {};

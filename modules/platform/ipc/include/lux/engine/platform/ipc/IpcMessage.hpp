@@ -1,6 +1,7 @@
 #pragma once
 
-#include <array>
+#include <cassert>
+#include <lux/cxx/compile_time/type_info.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -24,7 +25,6 @@ namespace lux::platform::ipc
     class alignas(16) LUX_PLATFORM_IPC_PUBLIC IpcMessage final
     {
     public:
-        static constexpr std::size_t metadata_capacity = 40;
         static constexpr std::size_t typed_inline_capacity = 80;
 
         IpcMessage() noexcept = default;
@@ -61,6 +61,7 @@ namespace lux::platform::ipc
         template <typename T>
         [[nodiscard]] T& get() noexcept
         {
+            assert(typeHash() == cxx::type_hash<T>());
             if constexpr (stores_inline<T>) return *std::launder(reinterpret_cast<T*>(object_));
             else return *static_cast<T*>(*std::launder(reinterpret_cast<void**>(object_)));
         }
@@ -68,37 +69,31 @@ namespace lux::platform::ipc
         template <typename T>
         [[nodiscard]] const T& get() const noexcept
         {
+            assert(typeHash() == cxx::type_hash<T>());
             if constexpr (stores_inline<T>) return *std::launder(reinterpret_cast<const T*>(object_));
             else return *static_cast<const T*>(*std::launder(reinterpret_cast<void* const*>(object_)));
         }
 
-        template <typename M>
-        requires (std::is_trivially_copyable_v<M> && sizeof(M) <= metadata_capacity)
-        void setMetadata(const M& metadata) noexcept { std::memcpy(metadata_.data(), &metadata, sizeof(M)); }
-
-        template <typename M>
-        requires (std::is_trivially_copyable_v<M> && std::is_default_constructible_v<M> &&
-            sizeof(M) <= metadata_capacity)
-        [[nodiscard]] M metadata() const noexcept
+        [[nodiscard]] std::uint64_t typeHash() const noexcept
         {
-            M result{};
-            std::memcpy(&result, metadata_.data(), sizeof(M));
-            return result;
+            return operations_ ? operations_->type_hash : 0;
         }
 
         void reset() noexcept;
 
     private:
-        struct TypeOps final
+        struct MessageTypeOps final
         {
+            std::uint64_t type_hash;
             void (*move)(void*, void*) noexcept;
             void (*destroy)(void*) noexcept;
         };
 
         template <typename T>
-        [[nodiscard]] static const TypeOps& operations() noexcept
+        [[nodiscard]] static const MessageTypeOps& operations() noexcept
         {
-            static constexpr TypeOps value{
+            static constexpr MessageTypeOps value{
+                cxx::type_hash<T>(),
                 [](void* target, void* source) noexcept {
                     if constexpr (stores_inline<T>)
                     {
@@ -126,8 +121,7 @@ namespace lux::platform::ipc
             return value;
         }
 
-        std::array<std::byte, metadata_capacity> metadata_{};
-        const TypeOps* operations_ = nullptr;
+        const MessageTypeOps* operations_ = nullptr;
         alignas(16) std::byte object_[typed_inline_capacity];
     };
 }

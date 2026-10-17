@@ -1,9 +1,8 @@
 #include "ServerFixture.hpp"
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
-#include "ProtocolAudit.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <lux/engine/render/protocol/AsyncCommand.hpp>
+#include <lux/engine/render/runtime/CommandBinding.hpp>
 #include "Deferred.hpp"
 #include "ServerImpl.hpp"
 #include "../../resource/test/CpuFixture.hpp"
@@ -175,46 +174,35 @@ namespace
     {
         static constexpr std::string_view name = "test.async.cost";
         struct Request final { unsigned index; };
-        struct Response final { unsigned index; std::uint64_t result; };
+        struct ResponseValue final { unsigned index; std::uint64_t result; };
+        using Response = RenderResult<ResponseValue>;
     };
 
-    RenderResult<void> invoke(State&, const CpuOperation::Request& input, Reply<CpuOperation>& context) noexcept
+    auto invoke(State&, CpuOperation::Request&& input) noexcept
     {
         auto* batch = state->active.load(std::memory_order_acquire);
         check(batch && input.index < batch->count);
         auto& record = batch->records[input.index];
         record.handler_begin = now();
-        registering = &record;
-        RenderResult<void> result;
-        if (batch->mode == EMode::SYNCHRONOUS)
-        {
-            work(&record);
-            record.register_begin = now();
-            result = context.completeWhen(stdexec::just(CpuOperation::Response{record.index, record.result}));
-        }
-        else
-        {
-            auto sender = stdexec::then(state->cpu.schedule(work, &record), [&record]() noexcept {
-                return CpuOperation::Response{record.index, record.result};
-            });
-            record.register_begin = now();
-            result = context.completeWhen(std::move(sender));
-        }
         record.register_end = now();
+        CpuSender source = batch->mode == EMode::SYNCHRONOUS ? CpuSender{stdexec::just()} :
+            state->cpu.schedule(work, &record);
+        if (batch->mode == EMode::SYNCHRONOUS) work(&record);
         record.handler_end = now();
-        registering = nullptr;
-        return result;
+        return stdexec::then(std::move(source), [&record]() noexcept -> CpuOperation::Response {
+            return CpuOperation::ResponseValue{record.index, record.result};
+        });
     }
 
-    lux::platform::ipc::IpcMessage receive(runtime_test::Peer& client) noexcept
+    lux::platform::ipc::IpcMessage receive(runtime_test::Peer& client, RequestId& id) noexcept
     {
         lux::platform::ipc::IpcMessage result;
         until([&] {
-            const auto status = client.requester.tryReceive(result);
+            const auto status = client.requester.tryReceive(id.value, result);
             check(status != lux::platform::ipc::EIpcReceive::CLOSED);
             return status == lux::platform::ipc::EIpcReceive::RECEIVED;
         });
-        check(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+        check(bool(result.get<CpuOperation::Response>()));
         return result;
     }
 
@@ -311,22 +299,14 @@ namespace lux::render::runtime_detail::test
 
     void completionRegistered(CompletionId id, RequestId request) noexcept
     {
-        static bool observed = false; // RenderThread only.
-        if (!observed || !registering || id.index >= state->slots.size())
-        {
-            const auto* batch = state->active.load(std::memory_order_acquire);
-            std::fprintf(stdout, "async-cost register: record=%p index=%u generation=%u mode=%s N=%u round=%u\n",
-                static_cast<void*>(registering), id.index, id.gen, batch ? name(batch->mode) : "none",
-                batch ? batch->count : 0, batch ? batch->iteration : 0);
-            std::fflush(stdout);
-            observed = true;
-        }
-        check(registering && id.index < state->slots.size());
-        registering->registered = now();
-        registering->completion = id;
-        registering->request = request;
-        state->slots[id.index] = registering;
-        ++registering->batch->registered;
+        auto* batch = state->active.load(std::memory_order_acquire);
+        check(batch && batch->registered < batch->count && id.index < state->slots.size());
+        auto& record = batch->records[batch->registered++];
+        check(record.request == request);
+        record.register_begin = now();
+        record.registered = now();
+        record.completion = id;
+        state->slots[id.index] = &record;
     }
 
     void* completionPostBegin(CompletionId id) noexcept
@@ -406,8 +386,9 @@ struct CpuCommands final
     static constexpr std::string_view name = "test.cpu.cost.commands";
     State& state;
     explicit CpuCommands(State& value) noexcept : state(value) {}
-    RenderResult<void> run(const CpuOperation::Request& input, Reply<CpuOperation>& reply) noexcept
-    { return invoke(state, input, reply); }
+    decltype(invoke(std::declval<State&>(), std::declval<CpuOperation::Request&&>()))
+    run(CpuOperation::Request&& input) noexcept
+    { return invoke(state, std::move(input)); }
     using Bindings = std::tuple<CommandMethod<CpuOperation, &CpuCommands::run>>;
 };
 
@@ -415,7 +396,7 @@ int main()
 {
     std::printf("Route layout: call=%zu/%zu entry=%zu/%zu metadata=%zu request=%zu\n",
         sizeof(HandlerCall), alignof(HandlerCall), sizeof(runtime_detail::CommandEntry),
-        alignof(runtime_detail::CommandEntry), sizeof(runtime_detail::CommandMetadata), sizeof(RenderRequest));
+        alignof(runtime_detail::CommandEntry), sizeof(runtime_detail::CommandMetadata), sizeof(runtime_detail::PendingOperation));
     auto control = std::make_unique<State>();
     state = control.get();
     lux::render::test::CpuFixture host(2, 128);
@@ -424,7 +405,7 @@ int main()
     const FeatureDescriptor feature{FeatureName("test.async.cost.feature"), {}};
     const FeatureGraphOps feature_graph{[](const void*, std::string_view, ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
     RenderServerConfig config{"runtime.async.cost", true};
-    config.requests_per_tick = 128;
+    config.request_work_budget = 128;
     auto server = take(createTestServer(host, config));
     check(bool(server->registerFeature<CpuOperation>(feature_test::Provider<CpuCommands>{{&feature, &feature_graph, nullptr}}, "", *state)));
     const auto catalog = take(server->commandId<ListCommands>());
@@ -461,12 +442,13 @@ int main()
                 std::array<bool, 128> seen{};
                 for (unsigned i = 0; i < count; ++i)
                 {
-                    auto response = receive(*client);
-                    const auto index = response.get<CpuOperation::Response>().index;
+                    RequestId received;
+                    auto response = receive(*client, received);
+                    const auto index = response.get<CpuOperation::Response>()->index;
                     check(index < count && !seen[index]);
                     auto& record = batch.records[index];
                     record.consumed = now();
-                    check(response.metadata<ReplyHeader>().request == record.request && response.get<CpuOperation::Response>().result == calculate(index));
+                    check(received == record.request && response.get<CpuOperation::Response>()->result == calculate(index));
                     seen[index] = true;
                 }
                 until([&] { return batch.finished.load(std::memory_order_acquire) &&

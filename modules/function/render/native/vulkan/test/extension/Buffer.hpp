@@ -28,19 +28,20 @@ namespace extension_test
     {
         static constexpr std::string_view name = "test.extension.SetBuffer";
         struct Request final { BufferId id; RenderPayload source; };
-        using Response = BufferBinding;
+        using Response = RenderResult<BufferBinding>;
     };
     struct RemoveBuffer final
     {
         static constexpr std::string_view name = "test.extension.RemoveBuffer";
         using Request = BufferBinding;
-        using Response = Ack;
+        using Response = RenderResult<Ack>;
     };
     struct ReadBuffer final
     {
         static constexpr std::string_view name = "test.extension.ReadBuffer";
         using Request = BufferBinding;
-        struct Response final { RenderPayload pixels; };
+        struct ResponseValue final { RenderPayload pixels; };
+        using Response = RenderResult<ResponseValue>;
     };
     struct TestBufferStorage final
     {

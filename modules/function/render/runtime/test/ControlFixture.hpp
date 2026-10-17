@@ -27,10 +27,12 @@ struct TestCommand final
     std::array<float, 4> color{1, 0, 0, 1};
     std::vector<FeaturePreset> features;
 };
+enum class ETestOutcome { SUCCESS, FAILED, CANCELLED, OUTCOME_UNKNOWN };
+struct TestReplySummary final { RequestId request; ETestOutcome outcome = ETestOutcome::FAILED; };
 struct TestCompletion final
 {
     ipc::IpcMessage owner;
-    ReplyHeader header;
+    TestReplySummary header;
     RenderError error;
     SceneId scene;
     ViewId view;
@@ -41,8 +43,8 @@ struct TestCompletion final
     bool active() const noexcept { return !owner.empty(); }
     std::span<const std::byte> bytes() const noexcept
     {
-        return command == ETestCommand::READBACK && header.outcome == ECommandOutcome::SUCCESS ?
-            owner.get<ReadbackResult>().pixels.bytes().view() : std::span<const std::byte>{};
+        return command == ETestCommand::READBACK && header.outcome == ETestOutcome::SUCCESS ?
+            owner.get<Readback::Response>()->pixels.bytes().view() : std::span<const std::byte>{};
     }
 };
 class TestClient final
@@ -83,18 +85,18 @@ public:
                 const RequestId id{next_++};
                 ipc::IpcMessage message;
                 message.emplace<ListFeatures::Request>();
-                message.setMetadata(RequestHeader{id, found->id});
-                if (!peer_.trySend(message)) return lux::cxx::unexpected(RenderError{kRuntimeState});
+                if (!peer_.trySend(commandTag(found->id), id.value, message)) return lux::cxx::unexpected(RenderError{kRuntimeState});
                 const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
                 for (;;)
                 {
                     if (std::chrono::steady_clock::now() >= deadline) std::abort();
-                    const auto status = peer_.tryReceive(message);
+                    std::uint64_t correlation = 0;
+                    const auto status = peer_.tryReceive(correlation, message);
                     if (status == ipc::EIpcReceive::CLOSED) std::abort();
                     if (status != ipc::EIpcReceive::RECEIVED) { std::this_thread::yield(); continue; }
-                    const auto header = message.metadata<ReplyHeader>();
-                    if (header.request != id || header.outcome != ECommandOutcome::SUCCESS) std::abort();
-                    features_ = std::move(message.get<FeatureList>());
+                    auto& response = message.get<ListFeatures::Response>();
+                    if (correlation != id.value || !response) std::abort();
+                    features_ = std::move(*response);
                     break;
                 }
             }
@@ -113,30 +115,56 @@ public:
     RenderResult<ERenderReceive> tryReceive(TestCompletion& output)
     {
         if (output.active()) return lux::cxx::unexpected(RenderError{kRuntimeState});
-        const auto status = peer_.tryReceive(output.owner);
+        std::uint64_t correlation = 0;
+        const auto status = peer_.tryReceive(correlation, output.owner);
         if (status != ipc::EIpcReceive::RECEIVED) return status;
-        output.header = output.owner.metadata<ReplyHeader>();
+        output.header.request = RequestId{correlation};
         const auto found = std::ranges::find(pending_, output.header.request, &Pending::id);
         if (found == pending_.end()) std::abort();
         output.command = found->command;
         pending_.erase(found);
-        if (output.header.outcome != ECommandOutcome::SUCCESS)
+        if (output.owner.typeHash() == lux::cxx::type_hash<RenderError>())
         {
             output.error = output.owner.get<RenderError>();
             return status;
         }
+        const auto read = [&]<class T>() -> const T* {
+            const auto& result = output.owner.get<RenderResult<T>>();
+            if (!result)
+            {
+                output.error = result.error();
+                output.header.outcome = result.error().type == kCommandCancelled ? ETestOutcome::CANCELLED :
+                    result.error().type == kOutcomeUnknown ? ETestOutcome::OUTCOME_UNKNOWN : ETestOutcome::FAILED;
+                return nullptr;
+            }
+            output.header.outcome = ETestOutcome::SUCCESS;
+            return &*result;
+        };
         switch (output.command)
         {
-        case ETestCommand::CATALOG: commands_ = output.owner.get<CommandList>(); break;
-        case ETestCommand::CREATE_SCENE: output.scene = output.owner.get<SceneCreated>().scene; break;
-        case ETestCommand::CREATE_VIEW: output.view = output.owner.get<ViewCreated>().view; break;
+        case ETestCommand::CATALOG:
+            if (const auto* result = read.operator()<CommandList>()) commands_ = *result;
+            break;
+        case ETestCommand::CREATE_SCENE:
+            if (const auto* result = read.operator()<SceneCreated>()) output.scene = result->scene;
+            break;
+        case ETestCommand::CREATE_VIEW:
+            if (const auto* result = read.operator()<ViewCreated>()) output.view = result->view;
+            break;
         case ETestCommand::CREATE_TARGET:
         case ETestCommand::RESIZE_TARGET:
-            output.target = output.owner.get<TargetCreated>().target;
-            output.target_epoch = output.owner.get<TargetCreated>().epoch;
+            if (const auto* result = read.operator()<TargetCreated>())
+            {
+                output.target = result->target;
+                output.target_epoch = result->epoch;
+            }
             break;
-        case ETestCommand::CREATE_EFFECT: output.effect = output.owner.get<EffectCreated>().effect; break;
-        default: break;
+        case ETestCommand::CREATE_EFFECT:
+            if (const auto* result = read.operator()<EffectCreated>()) output.effect = result->effect;
+            break;
+        case ETestCommand::READBACK: (void)read.operator()<ReadbackResult>(); break;
+        case ETestCommand::ATTACH: (void)read.operator()<AttachmentCreated>(); break;
+        default: (void)read.operator()<Ack>(); break;
         }
         return status;
     }
@@ -154,8 +182,7 @@ private:
         const RequestId request{next_++};
         ipc::IpcMessage message;
         message.emplace<typename C::Request>(std::move(input));
-        message.setMetadata(RequestHeader{request, id});
-        if (!peer_.trySend(message)) return lux::cxx::unexpected(RenderError{kRuntimeState});
+        if (!peer_.trySend(commandTag(id), request.value, message)) return lux::cxx::unexpected(RenderError{kRuntimeState});
         pending_.push_back({request, operation});
         return request;
     }

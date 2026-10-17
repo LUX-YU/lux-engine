@@ -1,10 +1,10 @@
 #include "../TextureFixture.hpp"
-#include <lux/engine/render/native/vulkan/material/MaterialCommands.hpp>
+#include <lux/engine/render/native/vulkan/material/MaterialCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/material/MaterialStorage.hpp>
 #include <fstream>
 #include <lux/engine/render/native/vulkan/mesh/MeshStorage.hpp>
 #include <lux/engine/render/native/vulkan/instance/InstanceStorage.hpp>
-#include <lux/engine/render/native/vulkan/instance/InstanceCommands.hpp>
+#include <lux/engine/render/native/vulkan/instance/InstanceCommandHandler.hpp>
 
 int main(int argc, char** argv)
 {

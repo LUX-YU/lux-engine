@@ -2,7 +2,7 @@
 #include "Discovery.hpp"
 #include "ServerFixture.hpp"
 #include "TypedTest.hpp"
-#include <lux/engine/render/native/vulkan/material/MaterialCommands.hpp>
+#include <lux/engine/render/native/vulkan/material/MaterialCommandHandler.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/resource/Material.hpp>
 #include <fstream>
@@ -50,10 +50,10 @@ int main(int argc, char** argv)
     MaterialWrite input{{storage, {}}, 7, cooked, cooked.borrow<MaterialProgram>()->defaults};
     {
         auto failed = call<SetMaterial>(*a, set_a, input);
-        CHECK(failed.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+        CHECK(failed.get<SetMaterial::Response>().has_value() == false);
     }
     auto other = input;
-    CHECK(call<SetMaterial>(*b, set_b, std::move(other)).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    CHECK(call<SetMaterial>(*b, set_b, std::move(other)).get<SetMaterial::Response>().has_value() == false);
     input.expected_revision = 0;
     other = input;
     const auto id_a = take(runtime_test::send<SetMaterial>(*a, set_a, input));
@@ -63,9 +63,9 @@ int main(int argc, char** argv)
     {
         auto result_a = wait(*a, id_a);
         auto result_b = wait(*b, id_b);
-        CHECK(result_a.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-        CHECK(result_b.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-        material_a = result_a.get<SetMaterial::Response>(); material_b = result_b.get<SetMaterial::Response>();
+        CHECK(result_a.get<SetMaterial::Response>().has_value());
+        CHECK(result_b.get<SetMaterial::Response>().has_value());
+        material_a = result_a.get<SetMaterial::Response>().value(); material_b = result_b.get<SetMaterial::Response>().value();
         CHECK(material_a.material != material_b.material);
     }
     a.reset();
@@ -73,18 +73,18 @@ int main(int argc, char** argv)
     input.expected_revision = material_a.revision;
     input.parameters[0] = {.75f, .75f, .75f, 1};
     std::optional replaced{call<SetMaterial>(*b, set_b, input)};
-    CHECK(replaced->metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS && replaced->get<MaterialPublished>().revision == 2);
+    CHECK(replaced->get<SetMaterial::Response>().has_value() && replaced->get<RenderResult<MaterialPublished>>().value().revision == 2);
     {
         // A Query explicitly returns the real immutable program Owner.
         auto pending = material_a.material;
         auto result = call<QueryMaterial>(*b, query, pending);
-        CHECK(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-        CHECK(result.get<QueryMaterial::Response>().parameters[0][0] == .75f);
-        CHECK(result.get<QueryMaterial::Response>().program.borrow<MaterialProgram>()->fragment.words.data() == original_words);
+        CHECK(result.get<QueryMaterial::Response>().has_value());
+        CHECK(result.get<QueryMaterial::Response>()->parameters[0][0] == .75f);
+        CHECK(result.get<QueryMaterial::Response>()->program.borrow<MaterialProgram>()->fragment.words.data() == original_words);
     }
-    CHECK(call<ReleaseMaterial>(*b, release, material_a).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
-    CHECK(call<ReleaseMaterial>(*b, release, replaced->get<MaterialPublished>()).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
-    CHECK(call<ReleaseMaterial>(*b, release, material_b).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    CHECK(call<ReleaseMaterial>(*b, release, material_a).get<ReleaseMaterial::Response>().has_value() == false);
+    CHECK(call<ReleaseMaterial>(*b, release, replaced->get<RenderResult<MaterialPublished>>().value()).get<ReleaseMaterial::Response>().has_value());
+    CHECK(call<ReleaseMaterial>(*b, release, material_b).get<ReleaseMaterial::Response>().has_value());
     server->stop(); thread.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
     server.reset(); b.reset(); cooked = {};

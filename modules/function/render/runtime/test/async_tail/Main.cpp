@@ -78,10 +78,10 @@ static void exercise(const char* library, ETerminal terminal)
         }
         else if (terminal == ETerminal::FAILURE)
         {
-            check(reply.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED &&
-                reply.get<RenderError>() == RenderError{kProtocolContract, {73}}, "error terminal changed");
+            check(!reply.get<Command::Response>() &&
+                reply.get<Command::Response>().error() == RenderError{kProtocolContract, {73}}, "error terminal changed");
         }
-        else check(reply.metadata<ReplyHeader>().outcome == ECommandOutcome::CANCELLED, "stopped terminal changed");
+        else check(!reply.get<Command::Response>() && reply.get<Command::Response>().error().type == kCommandCancelled, "stopped terminal changed");
         check(gate.published.try_acquire_for(15s), "provider did not enter its callback tail");
         // Reply storage ends before Server shutdown; the Host still owns the loaded module.
     }

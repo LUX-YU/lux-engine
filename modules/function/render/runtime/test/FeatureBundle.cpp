@@ -2,7 +2,7 @@
 #include "Discovery.hpp"
 #include "../../native/vulkan/test/Support.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <lux/engine/render/native/vulkan/mesh/MeshCommands.hpp>
+#include <lux/engine/render/native/vulkan/mesh/MeshCommandHandler.hpp>
 #include <lux/engine/render/resource/Mesh.hpp>
 
 using namespace foundation_test;
@@ -25,24 +25,24 @@ struct WrongTexture final
 struct TrackedHandler final
 {
     static constexpr std::string_view name = "test.bundle.texture";
-    vulkan::TextureCommands actual;
+    vulkan::TextureCommandHandler actual;
     explicit TrackedHandler(DeviceSession& session) noexcept : actual(session) { ++constructed; }
     ~TrackedHandler() noexcept { ++destroyed; }
-    RenderResult<void> query(const QueryTexture::Request& input, Reply<QueryTexture>& reply) noexcept
-    { return actual.query(input, reply); }
+    void query(const QueryTexture::Request& input, QueryTexture::Response& reply) noexcept
+    { actual.queryTexture(input, reply); }
     using Bindings = std::tuple<CommandMethod<QueryTexture, &TrackedHandler::query>>;
 };
 struct WrongQuery final
 {
     static constexpr std::string_view name = QueryTexture::name;
     using Request = unsigned;
-    using Response = Ack;
+    using Response = RenderResult<Ack>;
 };
 struct WrongHandler final
 {
     static constexpr std::string_view name = "test.bundle.wrong";
     explicit WrongHandler(DeviceSession&) noexcept {}
-    RenderResult<void> query(const unsigned&, Reply<WrongQuery>& reply) noexcept { return reply.complete(Ack{}); }
+    void query(const unsigned&, WrongQuery::Response& reply) noexcept { reply = Ack{}; }
     using Bindings = std::tuple<CommandMethod<WrongQuery, &WrongHandler::query>>;
 };
 

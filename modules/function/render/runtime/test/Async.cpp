@@ -1,9 +1,8 @@
 #include "ServerFixture.hpp"
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
-#include "ProtocolAudit.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <lux/engine/render/protocol/AsyncCommand.hpp>
+#include <lux/engine/render/runtime/CommandBinding.hpp>
 #include "Deferred.hpp"
 
 #include <array>
@@ -80,14 +79,7 @@ struct Async final
 {
     static constexpr std::string_view name = "test.async.finite";
     using Request = Input;
-    using Response = Output;
-};
-
-struct TransferredAsync final
-{
-    static constexpr std::string_view name = "test.async.transferredReply";
-    using Request = Input;
-    using Response = Output;
+    using Response = RenderResult<Output>;
 };
 
 struct State final
@@ -98,7 +90,7 @@ struct State final
         void (*finish)(void*) noexcept = nullptr;
     };
     std::array<Gate, 129> gates;
-    std::atomic<unsigned> started{0}, destroyed{0}, premature_destroy{0}, transferred_rejected{0};
+    std::atomic<unsigned> started{0}, destroyed{0}, premature_destroy{0};
     std::atomic<unsigned> stop_notifications{0}, committed{0};
     std::atomic<bool> synchronous_start{false};
 
@@ -117,11 +109,12 @@ struct State final
 struct GateSender final
 {
     using sender_concept = stdexec::sender_t;
-    using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(Output), stdexec::set_stopped_t()>;
+    using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(Async::Response), stdexec::set_error_t(CommandFailure), stdexec::set_stopped_t()>;
     State* state;
     std::uint32_t index;
     Output result;
     bool synchronous;
+    unsigned mode = 0;
 
     template <class Receiver> struct Operation final
     {
@@ -136,6 +129,7 @@ struct GateSender final
         Receiver receiver;
         Output result;
         bool synchronous;
+        unsigned mode;
         // Deliberately unregister only in the operation destructor, after terminal notification.
         std::optional<stdexec::inplace_stop_callback<OnStop>> stop_callback;
 
@@ -150,10 +144,17 @@ struct GateSender final
             auto& self = *static_cast<Operation*>(value);
             auto receiver = std::move(self.receiver);
             auto output = std::move(self.result);
-            if (stdexec::get_stop_token(stdexec::get_env(receiver)).stop_requested())
+            if (self.mode == 2 || self.mode == 9 || stdexec::get_stop_token(stdexec::get_env(receiver)).stop_requested())
                 stdexec::set_stopped(std::move(receiver));
+            else if (self.mode == 1)
+                stdexec::set_error(std::move(receiver), CommandFailure{RenderError{kRuntimeUnsupported}, false});
+            else if (self.mode == 7)
+            {
+                ++self.state->committed;
+                stdexec::set_error(std::move(receiver), CommandFailure{RenderError{kRuntimeState}, true});
+            }
             else
-                stdexec::set_value(std::move(receiver), std::move(output));
+                stdexec::set_value(std::move(receiver), Async::Response{std::move(output)});
         }
 
         void start() noexcept
@@ -177,67 +178,20 @@ struct GateSender final
 
     template <class Receiver> auto connect(Receiver receiver) && noexcept
     {
-        return Operation<Receiver>{state, index, std::move(receiver), std::move(result), synchronous, {}};
+        return Operation<Receiver>{state, index, std::move(receiver), std::move(result), synchronous, mode, {}};
     }
 };
 
-static RenderResult<void> invoke(State& state, const Async::Request& input, Reply<Async>& context) noexcept
-{
-    const auto mode = input.mode;
-    const auto index = input.slot;
-    Output result{input.value, input.owner};
-    if (mode == 0) return context.completeWhen(stdexec::just(std::move(result)));
-    if (mode == 1) return context.completeWhen(stdexec::just_error(RenderError{kRuntimeUnsupported}));
-    if (mode == 2) return context.completeWhen(stdexec::just_stopped());
-    if (mode == 5)
-    {
-        auto completed = context.complete(result);
-        check(bool(completed));
-        auto duplicate = context.completeWhen(stdexec::just(Output{}));
-        check(!duplicate && duplicate.error().type == kProtocolContract);
-        return completed;
-    }
-    if (mode == 6 || mode == 7 || mode == 9)
-    {
-        const auto old_address = reinterpret_cast<std::uintptr_t>(&input);
-        auto pending = context.defer();
-        if (!pending) return cxx::unexpected(pending.error());
-        check(!context.active());
-        const auto& stable = pending->request();
-        check(reinterpret_cast<std::uintptr_t>(&stable) != old_address);
-        check(stable.value == result.value && stable.owner == result.owner);
-        if (mode == 7)
-        {
-            ++state.committed;
-            return {}; // No terminal evidence after a side effect: destruction must not promise cancellation.
-        }
-        if (mode == 9) return pending->cancel();
-        return pending->completeWhen(GateSender{&state, stable.slot, {stable.value, stable.owner}, false});
-    }
-    if (mode == 8)
-    {
-        auto pending = context.defer();
-        check(bool(pending) && !context.active());
-        return pending->complete(result);
-    }
-    auto submitted = context.completeWhen(GateSender{&state, index, std::move(result), mode == 4});
-    if (submitted)
-    {
-        check(!context.active());
-        auto duplicate = context.completeWhen(stdexec::just(Output{}));
-        check(!duplicate && duplicate.error().type == kProtocolContract);
-    }
-    return submitted;
-}
-
-static lux::platform::ipc::IpcMessage wait(runtime_test::Peer& client)
+static lux::platform::ipc::IpcMessage wait(runtime_test::Peer& client, RequestId* received = nullptr)
 {
     lux::platform::ipc::IpcMessage completion;
+    std::uint64_t correlation = 0;
     until([&] {
-        const auto status = client.requester.tryReceive(completion);
+        const auto status = client.requester.tryReceive(correlation, completion);
         check(status != lux::platform::ipc::EIpcReceive::CLOSED);
         return status == lux::platform::ipc::EIpcReceive::RECEIVED;
     });
+    if (received) *received = RequestId{correlation};
     return completion;
 }
 
@@ -249,7 +203,7 @@ static RequestId submit(runtime_test::Peer& client, CommandId binding, Input inp
 static void eventIdentities()
 {
     using namespace runtime_detail;
-    DeferredSlots slots;
+    PendingSlots slots;
     CompletionQueue queue;
     check(queue.tryPop() == nullptr);
     const auto old = slots.emplace();
@@ -277,26 +231,31 @@ struct AsyncCommands final
     static constexpr std::string_view name = "test.async.commands";
     State& state;
     explicit AsyncCommands(State& value) noexcept : state(value) {}
-    RenderResult<void> run(const Async::Request& input, Reply<Async>& reply) noexcept
-    { return invoke(state, input, reply); }
-    RenderResult<void> transferred(const TransferredAsync::Request&, Reply<TransferredAsync>& reply) noexcept
+    GateSender run(Async::Request&& input) noexcept
     {
-        auto pending = reply.defer();
-        check(bool(pending));
-        auto rejected = reply.completeWhen(stdexec::just(Output{}));
-        check(!rejected && rejected.error().type == kProtocolContract && !reply.active());
-        ++state.transferred_rejected;
-        return pending->fail(rejected.error());
+        const auto mode = input.mode;
+        return {&state, input.slot, {input.value, std::move(input.owner)}, mode != 3 && mode != 6, mode};
     }
-    using Bindings = std::tuple<CommandMethod<Async, &AsyncCommands::run>,
-        CommandMethod<TransferredAsync, &AsyncCommands::transferred>>;
+    using Bindings = std::tuple<CommandMethod<Async, &AsyncCommands::run>>;
 };
+
+struct InvalidAsyncHandler final
+{
+    GateSender missingNoexcept(Async::Request&&);
+    GateSender wrongRequest(const Async::Request&) noexcept;
+    decltype(stdexec::just(1u)) wrongResponse(Async::Request&&) noexcept;
+};
+static_assert(AsyncCommandHandlerFor<Async, AsyncCommands, &AsyncCommands::run>);
+static_assert(!SyncCommandHandlerFor<Async, AsyncCommands, &AsyncCommands::run>);
+static_assert(!AsyncCommandHandlerFor<Async, InvalidAsyncHandler, &InvalidAsyncHandler::missingNoexcept>);
+static_assert(!AsyncCommandHandlerFor<Async, InvalidAsyncHandler, &InvalidAsyncHandler::wrongRequest>);
+static_assert(!AsyncCommandHandlerFor<Async, InvalidAsyncHandler, &InvalidAsyncHandler::wrongResponse>);
 
 int main()
 {
     eventIdentities();
     State state, alternate;
-    static const std::array descriptors{commandDescriptor<Async>(), commandDescriptor<TransferredAsync>()};
+    static const std::array descriptors{commandDescriptor<Async>()};
     const FeatureDescriptor definition{FeatureName("test.async.feature"), {}};
     const FeatureGraphOps definition_graph{[](const void*, std::string_view, ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
     auto server = take(createTestServer({"runtime.async", true}));
@@ -319,42 +278,43 @@ int main()
     check(first_a == first_b);
     until([&] { return state.started.load() == 2; });
     state.finish(1);
-    check(wait(*b).get<Output>().value == 47);
+    check(wait(*b).get<Async::Response>()->value == 47);
     lux::platform::ipc::IpcMessage absent;
-    check(a->requester.tryReceive(absent) == lux::platform::ipc::EIpcReceive::EMPTY);
+    std::uint64_t absent_id = 0;
+    check(a->requester.tryReceive(absent_id, absent) == lux::platform::ipc::EIpcReceive::EMPTY);
     // Switch while A's accepted request still belongs to the original Handler. B coordinates
     // through the Select response; its next dispatch uses the new object with the same CommandId.
     auto selection = take(runtime_test::find<SelectCommandBinding>(*b));
     CommandSelection change{bound_b, second_handler};
     (void)take(runtime_test::send<SelectCommandBinding>(*b, selection, change));
-    check(wait(*b).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    check(bool(wait(*b).get<SelectCommandBinding::Response>()));
     (void)submit(*b, bound_b, {3, 2, 59, {}});
     until([&] { return alternate.started.load() == 1; });
     check(state.started.load() == 2 && state.gates[0].operation.load() != nullptr);
     alternate.finish(2);
-    check(wait(*b).get<Output>().value == 59);
-    check(a->requester.tryReceive(absent) == lux::platform::ipc::EIpcReceive::EMPTY);
+    check(wait(*b).get<Async::Response>()->value == 59);
+    check(a->requester.tryReceive(absent_id, absent) == lux::platform::ipc::EIpcReceive::EMPTY);
     state.finish(0);
-    check(wait(*a).get<Output>().value == 31);
+    check(wait(*a).get<Async::Response>()->value == 31);
     change.handler = first_handler;
     (void)take(runtime_test::send<SelectCommandBinding>(*b, selection, change));
-    check(wait(*b).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    check(bool(wait(*b).get<SelectCommandBinding::Response>()));
     until([&] { return alternate.destroyed.load() == 1; });
 
-    // 0 pending, synchronous value/error/stopped, including a sender whose start has a visible tail.
+    // Synchronous Sender value/error/stopped, including a start with a visible tail.
     for (std::uint32_t mode : {0u, 1u, 2u, 4u, 5u, 8u})
     {
         const auto id = submit(*a, bound_a, {mode, 0, 73, {}});
-        auto result = wait(*a);
-        check(result.metadata<ReplyHeader>().request == id);
-        if (mode == 1) check(result.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED &&
-            result.get<RenderError>().type == kRuntimeUnsupported);
-        else if (mode == 2) check(result.metadata<ReplyHeader>().outcome == ECommandOutcome::CANCELLED);
-        else check(std::move(result).get<Output>().value == 73);
+        RequestId received;
+        auto result = wait(*a, &received);
+        check(received == id);
+        if (mode == 1) check(!result.get<Async::Response>() && result.get<Async::Response>().error().type == kRuntimeUnsupported);
+        else if (mode == 2) check(!result.get<Async::Response>() && result.get<Async::Response>().error().type == kCommandCancelled);
+        else check(std::move(result).get<Async::Response>()->value == 73);
     }
     check(state.premature_destroy.load() == 0);
 
-    // Explicit promotion moves an inline Request once, then only the stable borrow is used.
+    // The concrete Sender owns the moved source; no request wrapper retains another copy.
     // Only the explicit Output owns its source after success. Cancellation/unknown do not return an input.
     for (const auto mode : {6u, 7u, 9u})
     {
@@ -365,18 +325,13 @@ int main()
         if (mode == 6) state.finish(0);
         {
             auto result = wait(*a);
-            if (mode == 6) check(result.get<Output>().value == 913 && result.get<Output>().owner.get() == backing);
+            if (mode == 6) check(result.get<Async::Response>()->value == 913 && result.get<Async::Response>()->owner.get() == backing);
             else if (mode == 7)
-                check(result.metadata<ReplyHeader>().outcome == ECommandOutcome::OUTCOME_UNKNOWN && state.committed.load() == 1);
-            else check(result.metadata<ReplyHeader>().outcome == ECommandOutcome::CANCELLED);
+                check(!result.get<Async::Response>() && result.get<Async::Response>().error().type == kOutcomeUnknown && state.committed.load() == 1);
+            else check(!result.get<Async::Response>() && result.get<Async::Response>().error().type == kCommandCancelled);
         }
         until([&] { return destroyed.load() == 1; });
     }
-    auto transferred = take(runtime_test::find<TransferredAsync>(*a));
-    Input invalid;
-    (void)take(runtime_test::send<TransferredAsync>(*a, transferred, invalid));
-    check(wait(*a).get<RenderError>().type == kProtocolContract && state.transferred_rejected.load() == 1);
-
     unsigned total = state.started.load();
     for (const unsigned count : {1u, 16u, 129u})
     {
@@ -403,12 +358,13 @@ int main()
             {
                 auto& client = link ? *b : *a;
                 lux::platform::ipc::IpcMessage completion;
-                auto status = client.requester.tryReceive(completion);
+                std::uint64_t correlation = 0;
+                auto status = client.requester.tryReceive(correlation, completion);
                 if (status != lux::platform::ipc::EIpcReceive::RECEIVED) continue;
                 auto result = std::move(completion);
-                const auto index = result.get<Output>().value - 1000;
+                const auto index = result.get<Async::Response>()->value - 1000;
                 check(index < count && index % 2 == link && !seen[index]);
-                check(result.metadata<ReplyHeader>().request == ids[index] && result.get<Output>().owner);
+                check(correlation == ids[index].value && result.get<Async::Response>()->owner);
                 seen[index] = true;
                 ++consumed;
             }

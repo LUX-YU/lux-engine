@@ -9,6 +9,6 @@ int main()
     if (!requester) return 1;
     lux::platform::ipc::IpcMessage message;
     message.emplace<unsigned>(17u);
-    if (requester->trySend(message)) return 2;
+    if (requester->trySend(0, 1, message)) return 2;
     return message.get<unsigned>() == 17 ? 0 : 3;
 }

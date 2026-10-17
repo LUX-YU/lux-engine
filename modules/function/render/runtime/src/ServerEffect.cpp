@@ -1,6 +1,10 @@
 #include "ServerImpl.hpp"
 #include <lux/engine/render/data/Camera.hpp>
 
+#ifdef LUX_RUNTIME_EFFECT_TEST_SEAM
+namespace lux::render::runtime_cpu_test { void effectAdopted() noexcept; }
+#endif
+
 namespace lux::render
 {
     static RenderResult<RenderEffect> compileEffect(
@@ -103,107 +107,179 @@ namespace lux::render
         return RenderEffect{std::make_shared<const vulkan::CompiledGraph>(std::move(*compiled)), std::move(arguments)};
     }
 
-    struct RenderServer::Impl::CompileState final
+    struct RenderServer::Impl::CreateEffectSender final
     {
-        struct Receiver final
+        using sender_concept = stdexec::sender_t;
+        using completion_signatures = stdexec::completion_signatures<
+            stdexec::set_value_t(CreateEffect::Response),
+            stdexec::set_error_t(RenderError),
+            stdexec::set_stopped_t()>;
+        Impl* owner;
+        CreateEffect::Request request;
+        std::vector<const FeatureEntry*> features;
+        RenderError initial_error;
+
+        template <class Receiver> class Operation final
         {
-            using receiver_concept = stdexec::receiver_t;
-            DeferredCompletion* slot;
-            struct Env final
+            struct CpuReceiver final
             {
-                stdexec::inplace_stop_token token;
-                stdexec::inplace_stop_token query(stdexec::get_stop_token_t) const noexcept { return token; }
+                using receiver_concept = stdexec::receiver_t;
+                Operation* operation;
+
+                stdexec::env_of_t<Receiver> get_env() const noexcept
+                {
+                    return stdexec::get_env(operation->receiver_);
+                }
+
+                void set_value() && noexcept
+                {
+                    operation->completionPost()(operation, adopt, {});
+                }
+
+                void set_error(RenderError error) && noexcept
+                {
+                    operation->completionPost()(operation, adopt, cxx::unexpected(error));
+                }
+
+                void set_stopped() && noexcept
+                {
+                    operation->completionPost()(operation, adopt, cxx::unexpected(RenderError{kCommandCancelled}));
+                }
             };
-            Env get_env() const noexcept { return {slot->stop.get_token()}; }
-            void set_value() && noexcept { slot->post()(nullptr, nullptr, {}); }
-            void set_error(RenderError error) && noexcept { slot->post()(nullptr, nullptr, cxx::unexpected(error)); }
-            void set_stopped() && noexcept
+
+        public:
+            using operation_state_concept = stdexec::operation_state_t;
+
+            Operation(CreateEffectSender input, Receiver receiver) noexcept
+                : owner_(input.owner), device_(*input.owner->device), request_(std::move(input.request)),
+                  features_(std::move(input.features)), max_config_bytes_(input.owner->config.max_config_bytes),
+                  initial_error_(input.initial_error), receiver_(std::move(receiver)),
+                  cpu_operation_(stdexec::connect(
+                      input.owner->cpu.schedule(
+                          [](void* value) noexcept
+                          {
+                              auto& self = *static_cast<Operation*>(value);
+                              self.candidate_ =
+                                  compileEffect(self.device_, self.request_, self.features_, self.max_config_bytes_);
+                          },
+                          this
+                      ),
+                      CpuReceiver{this}
+                  ))
             {
-                slot->post()(nullptr, nullptr, cxx::unexpected(RenderError{kRuntimeState}));
             }
+
+            Operation(const Operation&) = delete;
+            Operation(Operation&&) = delete;
+
+            void start() noexcept
+            {
+                if (initial_error_.type != error::ErrorId{})
+                {
+                    stdexec::set_error(std::move(receiver_), initial_error_);
+                    return;
+                }
+                stdexec::start(cpu_operation_);
+            }
+
+        private:
+            CompletionPost completionPost() const noexcept
+            {
+                return execution::getCompletionPost(stdexec::get_env(receiver_));
+            }
+
+            static void adopt(void* value, RenderResult<void> completed) noexcept
+            {
+                auto& self = *static_cast<Operation*>(value);
+                // Only CompletionQueue's owner consumes this continuation. The Worker never touches Impl.
+                if (stdexec::get_stop_token(stdexec::get_env(self.receiver_)).stop_requested())
+                {
+                    stdexec::set_stopped(std::move(self.receiver_));
+                    return;
+                }
+                if (!completed)
+                {
+                    stdexec::set_error(std::move(self.receiver_), completed.error());
+                    return;
+                }
+                if (!self.candidate_)
+                {
+                    stdexec::set_error(std::move(self.receiver_), self.candidate_.error());
+                    return;
+                }
+#ifdef LUX_RUNTIME_EFFECT_TEST_SEAM
+                runtime_cpu_test::effectAdopted();
+#endif
+                const auto effect = self.owner_->effects.emplace(std::move(*self.candidate_));
+                ++self.owner_->compiled_graphs;
+                stdexec::set_value(std::move(self.receiver_), CreateEffect::Response{EffectCreated{effect}});
+            }
+
+            Impl* owner_;
+            vulkan::DeviceSession& device_;
+            CreateEffect::Request request_;
+            std::vector<const FeatureEntry*> features_;
+            std::size_t max_config_bytes_;
+            RenderError initial_error_;
+            RenderResult<RenderEffect> candidate_ = cxx::unexpected(RenderError{kRuntimeState});
+            Receiver receiver_;
+            stdexec::connect_result_t<CpuSender, CpuReceiver> cpu_operation_;
         };
 
-        vulkan::DeviceSession& device;
-        const CreateEffectRequest& request;
-        std::vector<const FeatureEntry*> features;
-        std::size_t max_config_bytes;
-        DeferredCompletion* slot;
-        RenderResult<RenderEffect> candidate = cxx::unexpected(RenderError{kRuntimeState});
-        stdexec::connect_result_t<CpuSender, Receiver> operation;
-
-        CompileState(vulkan::DeviceSession& native, CpuSchedule& cpu, DeferredCompletion& pending,
-            std::vector<const FeatureEntry*> selected, std::size_t config_bytes)
-            : device(native), request(pending.request->get<CreateEffectRequest>()), features(std::move(selected)),
-              max_config_bytes(config_bytes), slot(&pending),
-              operation(stdexec::connect(
-                  cpu.schedule(
-                      [](void* value) noexcept
-                      {
-                          auto& state = *static_cast<CompileState*>(value);
-                          state.candidate = compileEffect(
-                              state.device, state.request, state.features, state.max_config_bytes
-                          );
-                      },
-                      this
-                  ),
-                  Receiver{&pending}
-              ))
+        template <class Receiver> Operation<std::decay_t<Receiver>> connect(Receiver&& receiver) && noexcept
         {
-        }
-
-        static RenderResult<void> adopt(void* value, void* owner, RenderRequest& request) noexcept
-        {
-            auto& state = *static_cast<CompileState*>(value);
-            auto& server = *static_cast<Impl*>(owner);
-            if (server.stop_requested.load()) return request.cancel();
-            if (!state.slot->continuation_result) return request.fail(state.slot->continuation_result.error());
-            if (!state.candidate) return request.fail(state.candidate.error());
-            const auto effect = server.effects.emplace(std::move(*state.candidate));
-            auto result = request.reply(EffectCreated{effect});
-            if (result)
-                ++server.compiled_graphs;
-            else
-                server.effects.erase(effect);
-            return result;
+            return {std::move(*this), std::forward<Receiver>(receiver)};
         }
     };
 
-    RenderResult<void> RenderServer::Impl::createEffect(RenderRequest& request) noexcept
+    RenderServer::Impl::CreateEffectSender RenderServer::Impl::createEffect(CreateEffect::Request&& input) noexcept
     {
-        const auto& input = request.get<CreateEffectRequest>();
-        if (input.features.empty())
-            return cxx::unexpected(RenderError{kFeatureContract});
-        std::vector<const FeatureEntry*> selected;
-        selected.reserve(input.features.size());
-        for (const auto& selection : input.features)
+        CreateEffectSender sender{this, std::move(input)};
+        if (sender.request.features.empty())
+        {
+            sender.initial_error = {kFeatureContract};
+        }
+        sender.features.reserve(sender.request.features.size());
+        for (const auto& selection : sender.request.features)
         {
             const auto* found = features.find(selection.feature);
-            if (!found) return cxx::unexpected(RenderError{kRuntimeIdentity});
-            selected.push_back(found);
+            if (!found)
+            {
+                sender.initial_error = {kRuntimeIdentity};
+                break;
+            }
+            sender.features.push_back(found);
         }
-        // Resolve the directory once on its owner thread. Stable entries outlive the accepted compile;
-        // neither the worker nor its operation state borrows the mutable Impl or its directory.
-        auto* slot = reserveCompletion();
-        if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        slot->request.emplace(std::move(request));
-        auto& completion = slot->operation;
-        completion.destroy = [](void* state) noexcept { delete static_cast<CompileState*>(state); };
-        completion.adopt = CompileState::adopt;
-        completion.operation = new CompileState(
-            *device, cpu, *slot, std::move(selected), config.max_config_bytes
-        );
-        stdexec::start(static_cast<CompileState*>(completion.operation)->operation);
-        return {};
+        return sender;
     }
 
-    RenderResult<void> RenderServer::Impl::removeEffect(RenderRequest& request) noexcept
+    void RenderServer::Impl::installAsyncBuiltins() noexcept
     {
-        const auto* input = &request.get<EffectRequest>();
+        addBuiltin<CreateEffect, &Impl::createEffect>();
+        installReadbackCommand();
+    }
+
+    void RenderServer::Impl::removeEffect(
+        const RemoveEffect::Request& _request,
+        RemoveEffect::Response& output_response
+    ) noexcept
+    {
+        const auto* input = &_request;
         auto* effect = effects.find(input->effect);
-        if (!effect) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        if (!effect)
+        {
+            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            return;
+        }
         while (!effect->groups.empty())
-            if (auto result = withdraw(*effect, effect->groups.size() - 1); !result) return result;
+        {
+            if (auto result = detachExecutionGroup(*effect, effect->groups.size() - 1); !result)
+            {
+                output_response = cxx::unexpected(result.error());
+                return;
+            }
+        }
         effects.erase(input->effect);
-        return request.reply();
+        output_response = Ack{};
     }
 } // namespace lux::render

@@ -90,7 +90,7 @@ int main()
     auto ready = wait(*main, take(main->submit({})));
     ready = {};
     auto ready_upload = wait(*upload, take(upload->submit({})));
-    check(ready_upload.header.outcome == ECommandOutcome::SUCCESS);
+    check(ready_upload.header.outcome == ETestOutcome::SUCCESS);
     ready_upload = {};
     std::atomic<unsigned> destroyed{0};
     auto source = std::shared_ptr<const std::vector<std::byte>>(
@@ -101,15 +101,15 @@ int main()
         AssetConfig{take(RenderPayload::fromVector(source, 257, 64))}
     ))});
     // The 1 MiB source is genuinely owned; IPC imposes no artificial byte budget.
-    check(wait(*main, take(main->submit(command))).header.outcome == ECommandOutcome::SUCCESS);
+    check(wait(*main, take(main->submit(command))).header.outcome == ETestOutcome::SUCCESS);
     check(command.features.back().config.borrow<AssetConfig>()->asset.bytes().data() == pointer);
     auto id = take(upload->submit(command));
     auto reply = wait(*upload, id);
-    check(reply.header.outcome == ECommandOutcome::SUCCESS && observed.load() == pointer);
+    check(reply.header.outcome == ETestOutcome::SUCCESS && observed.load() == pointer);
     // Holding a completed result does not retain the original input or consume request credits.
     id = take(upload->submit(command));
     auto next_reply = wait(*upload, id);
-    check(next_reply.header.outcome == ECommandOutcome::SUCCESS);
+    check(next_reply.header.outcome == ETestOutcome::SUCCESS);
     reply = {};
     next_reply = {};
 
@@ -134,12 +134,12 @@ int main()
     auto fresh = take(TestClient::create("runtime.life", take(replacement->commandId<ListCommands>())));
     std::thread restart([&] { check(bool(replacement->run())); });
     auto current = wait(*fresh, take(fresh->submit({})));
-    check(current.header.outcome == ECommandOutcome::SUCCESS);
+    check(current.header.outcome == ETestOutcome::SUCCESS);
     TestCompletion closed;
     check(take(main->tryReceive(closed)) == ERenderReceive::CLOSED);
     TestCommand fresh_request;
     fresh_request.operation = ETestCommand::CREATE_SCENE;
-    check(wait(*fresh, take(fresh->submit(fresh_request))).header.outcome == ECommandOutcome::SUCCESS);
+    check(wait(*fresh, take(fresh->submit(fresh_request))).header.outcome == ETestOutcome::SUCCESS);
     replacement->stop();
     restart.join();
     std::printf("M3 lifetime: real source ownership, pointer identity, close during callback, old Link stays closed\n");

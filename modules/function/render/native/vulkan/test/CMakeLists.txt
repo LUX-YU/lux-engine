@@ -48,7 +48,7 @@ target_include_directories(render_native_instrumented
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../pinclude" "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude" "${LUX_VMA_INCLUDE_DIR}"
 )
 
-target_link_libraries(render_native_instrumented PUBLIC render_features render_protocol_handlers Vulkan::Vulkan
+target_link_libraries(render_native_instrumented PUBLIC render_features render_protocol Vulkan::Vulkan
     PRIVATE lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared lux::engine::platform::gapi
 )
 
@@ -80,7 +80,7 @@ set_tests_properties(render.native.buffer_transfer PROPERTIES TIMEOUT 60)
 
 foreach(header Error DeviceSession DescriptorArray CompiledGraph ExecutionContext StorageBinding device/Device device/DeviceOptions memory/Memory
     Readback transfer/Submission transfer/Transfer transfer/GpuWork
-    texture/TextureStorage texture/TextureCommands mesh/MeshStorage mesh/MeshCommands material/MaterialStorage material/MaterialCommands instance/InstanceStorage instance/InstanceCommands retirement/Retirement
+    texture/TextureStorage texture/TextureCommandHandler mesh/MeshStorage mesh/MeshCommandHandler material/MaterialStorage material/MaterialCommandHandler instance/InstanceStorage instance/InstanceCommandHandler retirement/Retirement
 )
     string(REPLACE "/" "_" target "${header}")
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp"

@@ -46,7 +46,7 @@ namespace lux::render
         static constexpr std::string_view name = "lux.render.SetTexture";
         // Success certifies Copy, required Acquire and publication; the generic protocol has no GPU category.
         using Request = TextureWrite;
-        using Response = TexturePublished;
+        using Response = RenderResult<TexturePublished>;
     };
 
     struct TextureRegionWrite final
@@ -62,21 +62,21 @@ namespace lux::render
         static constexpr std::string_view name = "lux.render.SetTextureRegion";
         // Success certifies Copy, required Acquire and publication; the generic protocol has no GPU category.
         using Request = TextureRegionWrite;
-        using Response = TexturePublished;
+        using Response = RenderResult<TexturePublished>;
     };
 
     struct ReleaseTexture final
     {
         static constexpr std::string_view name = "lux.render.ReleaseTexture";
         using Request = TexturePublished;
-        using Response = Ack;
+        using Response = RenderResult<Ack>;
     };
 
     struct QueryTexture final
     {
         static constexpr std::string_view name = "lux.render.QueryTexture";
         using Request = TextureId;
-        using Response = TexturePublished;
+        using Response = RenderResult<TexturePublished>;
     };
 
 

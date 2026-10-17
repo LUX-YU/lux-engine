@@ -1,47 +1,73 @@
-#include <lux/engine/render/protocol/AsyncCommand.hpp>
-#include <lux/engine/render/native/vulkan/material/MaterialCommands.hpp>
+#include <lux/engine/render/native/vulkan/material/MaterialCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/material/MaterialStorage.hpp>
 
 namespace lux::render::vulkan
 {
-    RenderResult<void> MaterialCommands::set(const SetMaterial::Request&, Reply<SetMaterial>& reply) noexcept
-    {
-        auto pending = reply.defer();
-        if (!pending) return cxx::unexpected(pending.error());
-        auto storage = device_.resources().borrow<MaterialStorage>(pending->request().material.storage);
-        if (!storage) return pending->fail(storage.error());
-        auto candidate = render::upload(**storage, pending->request());
-        if (!candidate) return pending->fail(candidate.error());
-        return pending->completeWhen(GpuWorkSender<MaterialPublished>{
-            std::move(candidate->first), std::move(candidate->second)
-        });
-    }
-
-    RenderResult<void> MaterialCommands::query(const QueryMaterial::Request& input, Reply<QueryMaterial>& reply) noexcept
-    {
-        auto storage = device_.resources().tryGet<render::MaterialStorage>(input.storage);
-        if (!storage) return cxx::unexpected(storage.error());
-        auto result = storage->query(input);
-        if (!result) return cxx::unexpected(result.error());
-        return reply.complete(std::move(*result));
-    }
-
-    RenderResult<void> MaterialCommands::release(const ReleaseMaterial::Request& input, Reply<ReleaseMaterial>& reply) noexcept
+    GpuWorkSender<SetMaterial::Response> MaterialCommandHandler::setMaterial(SetMaterial::Request&& input) noexcept
     {
         auto storage = device_.resources().borrow<MaterialStorage>(input.material.storage);
-        if (!storage) return cxx::unexpected(storage.error());
-        if (auto result = (*storage)->release(input.material, input.revision); !result) return result;
-        return reply.complete(Ack{});
+        if (!storage)
+        {
+            return GpuWorkSender<SetMaterial::Response>{storage.error()};
+        }
+        auto candidate = render::upload(**storage, input);
+        if (!candidate)
+        {
+            return GpuWorkSender<SetMaterial::Response>{candidate.error()};
+        }
+        return {std::move(candidate->first), std::move(candidate->second)};
     }
 
-}
+    void MaterialCommandHandler::queryMaterial(
+        const QueryMaterial::Request& input,
+        QueryMaterial::Response& response
+    ) noexcept
+    {
+        auto storage = device_.resources().tryGet<render::MaterialStorage>(input.storage);
+        if (!storage)
+        {
+            response = cxx::unexpected(storage.error());
+            return;
+        }
+        auto result = storage->query(input);
+        if (!result)
+        {
+            response = cxx::unexpected(result.error());
+            return;
+        }
+        response = std::move(*result);
+    }
+
+    void MaterialCommandHandler::releaseMaterial(
+        const ReleaseMaterial::Request& input,
+        ReleaseMaterial::Response& response
+    ) noexcept
+    {
+        auto storage = device_.resources().borrow<MaterialStorage>(input.material.storage);
+        if (!storage)
+        {
+            response = cxx::unexpected(storage.error());
+            return;
+        }
+        if (auto result = (*storage)->release(input.material, input.revision); !result)
+        {
+            response = cxx::unexpected(result.error());
+            return;
+        }
+        response = Ack{};
+    }
+
+} // namespace lux::render::vulkan
 
 namespace lux::render
 {
-    StorageFactory StorageProvider<render::MaterialStorage>::factory() noexcept { return vulkan::materialStorageFactory(); }
+    StorageFactory StorageProvider<render::MaterialStorage>::factory() noexcept
+    {
+        return vulkan::materialStorageFactory();
+    }
 
     StorageCppType StorageProvider<render::MaterialStorage>::implementationType() noexcept
     {
         return storageCppType<Storage>();
     }
-}
+} // namespace lux::render

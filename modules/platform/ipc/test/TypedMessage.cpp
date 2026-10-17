@@ -30,11 +30,6 @@ namespace
         return std::move(*result);
     }
 
-    struct Metadata final
-    {
-        std::uint64_t request = 0;
-        friend bool operator==(const Metadata&, const Metadata&) = default;
-    };
 
     struct alignas(64) Aligned final
     {
@@ -58,7 +53,7 @@ namespace
         ThrowingMove(const ThrowingMove&) = delete;
     };
 
-    static_assert(sizeof(IpcMessage) == 128 && alignof(IpcMessage) == 16);
+    static_assert(sizeof(IpcMessage) == 96 && alignof(IpcMessage) == 16);
     static_assert(IpcMessage::stores_inline<Batch>);
     static_assert(!IpcMessage::stores_inline<Aligned>);
     static_assert(!IpcMessage::stores_inline<Immovable> && !IpcMessage::stores_inline<ThrowingMove>);
@@ -79,12 +74,11 @@ namespace
         IpcMessage message;
         ipc_allocation::start();
         message.emplace<Batch>(std::move(input));
-        message.setMetadata(Metadata{17});
         IpcMessage moved(std::move(message));
         message = std::move(moved);
         const auto allocations = ipc_allocation::stop();
         check(allocations == direct_allocations, "SBO moves allocate beyond equivalent vector moves");
-        check(moved.empty() && message.metadata<Metadata>() == Metadata{17}, "move or metadata damaged");
+        check(moved.empty() && message.typeHash() == lux::cxx::type_hash<Batch>(), "move or type hash damaged");
         check(message.get<Batch>().values.data() == data && message.get<Batch>().values.capacity() == capacity,
             "vector backing or capacity changed");
         check(message.get<Batch>().values[2] == 9 && message.get<Batch>().scene == 7, "object changed");
@@ -136,13 +130,16 @@ namespace
         check(message.get<Batch>().values[2] == 9, "DLL object value");
         auto server = take(IpcCore::instance().createResponder("typed.dll"));
         auto client = take(IpcCore::instance().createRequester("typed.dll"));
-        check(bool(client.trySend(message)), "DLL input send");
+        check(bool(client.trySend(0, 17, message)), "DLL input send");
         ReceivedRequest work;
         check(server.tryReceive(work) == EIpcReceive::RECEIVED, "DLL input receive");
         large(&message);
         auto* large_pointer = &message.get<LargeOriginProbe>();
-        check(bool(server.tryReply(work, message)), "DLL reply");
-        check(client.tryReceive(message) == EIpcReceive::RECEIVED, "DLL reply receive");
+        check(bool(server.trySendResponse(work.requesterId(), work.correlation(), message)), "DLL reply");
+        std::uint64_t correlation = 0;
+        check(client.tryReceive(correlation, message) == EIpcReceive::RECEIVED, "DLL reply receive");
+        work.reset();
+        check(correlation == 17, "DLL correlation");
         client.reset();
         server.reset();
         check(&message.get<LargeOriginProbe>() == large_pointer, "external DLL result copied");
@@ -178,13 +175,13 @@ namespace
                 // Explicit business Response = Batch. IPC itself never returns the input object.
                 IpcMessage input;
                 input.emplace<Batch>(Batch{scene, {i, scene * iterations + i}});
-                input.setMetadata(Metadata{i + 1});
-                check(bool(role.trySend(input)), "two-client send");
+                check(bool(role.trySend(0, i + 1, input)), "two-client send");
                 IpcMessage output;
                 const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-                while (role.tryReceive(output) != EIpcReceive::RECEIVED)
+                std::uint64_t correlation = 0;
+                while (role.tryReceive(correlation, output) != EIpcReceive::RECEIVED)
                     check(std::chrono::steady_clock::now() < deadline, "two-client receive timeout");
-                check(output.metadata<Metadata>().request == i + 1, "same numeric ID crossed links");
+                check(correlation == i + 1, "same numeric ID crossed links");
                 check(output.get<Batch>().scene == scene && output.get<Batch>().values[1] == scene * iterations + i,
                     "business response returned to another client");
             }
@@ -199,8 +196,7 @@ namespace
             const auto& value = work.message().get<Batch>();
             IpcMessage result;
             result.emplace<Batch>(Batch{value.scene, {value.values[0], value.values[1]}});
-            result.setMetadata(work.message().metadata<Metadata>());
-            check(bool(server.tryReply(work, result)), "one outstanding reply fits");
+            check(bool(server.trySendResponse(work.requesterId(), work.correlation(), result)), "one outstanding reply fits");
             ++i;
         }
         first.join();

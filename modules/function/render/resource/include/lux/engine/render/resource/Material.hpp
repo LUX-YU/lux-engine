@@ -58,21 +58,21 @@ namespace lux::render
     {
         static constexpr std::string_view name = "lux.render.SetMaterial";
         using Request = MaterialWrite;
-        using Response = MaterialPublished;
+        using Response = RenderResult<MaterialPublished>;
     };
 
     struct QueryMaterial final
     {
         static constexpr std::string_view name = "lux.render.QueryMaterial";
         using Request = MaterialId;
-        using Response = MaterialInformation;
+        using Response = RenderResult<MaterialInformation>;
     };
 
     struct ReleaseMaterial final
     {
         static constexpr std::string_view name = "lux.render.ReleaseMaterial";
         using Request = MaterialPublished;
-        using Response = Ack;
+        using Response = RenderResult<Ack>;
     };
 
     template <> struct ConfigValueTraits<MaterialProgram> final

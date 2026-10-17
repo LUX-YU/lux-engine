@@ -28,6 +28,8 @@ if(LUX_RENDER_CLIENT_ONLY)
     return()
 endif()
 
+find_package(stdexec CONFIG REQUIRED)
+
 set(LUX_RUNTIME_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderServer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ServerRegistration.cpp
@@ -35,7 +37,7 @@ set(LUX_RUNTIME_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ServerEffect.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ServerCompletion.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ServerLoop.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Request.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/CommandDispatch.cpp
 )
 
 add_component(
@@ -54,16 +56,22 @@ component_include_directories(render_runtime
 
 component_add_internal_dependencies(render_runtime
     lux::engine::render::render_commands lux::engine::render::render_features
-    lux::engine::render::render_native_vulkan_extensions lux::engine::render::render_protocol_async
+    lux::engine::render::render_native_vulkan_extensions
+)
+
+target_link_libraries(render_runtime PUBLIC
+    STDEXEC::stdexec lux::engine::platform::platform_ipc lux::engine::core::core_execution
 )
 
 target_link_libraries(render_runtime PRIVATE
-    lux::engine::platform::platform_ipc lux::engine::platform::platform_process
-    lux::engine::core::core_execution
+    lux::engine::platform::platform_process
 )
 
 component_add_transitive_commands(render_runtime
-    [=[find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_process
+    [=[find_package(stdexec CONFIG REQUIRED)]=]
+    [=[find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution
+        HINTS "${CMAKE_CURRENT_LIST_DIR}/../../lux-engine-core-execution")]=]
+    [=[find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_process platform_ipc
         HINTS "${CMAKE_CURRENT_LIST_DIR}/../../lux-engine-platform")]=]
 )
 

@@ -1,47 +1,67 @@
-#include <lux/engine/render/protocol/AsyncCommand.hpp>
-#include <lux/engine/render/native/vulkan/mesh/MeshCommands.hpp>
+#include <lux/engine/render/native/vulkan/mesh/MeshCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshStorage.hpp>
 
 namespace lux::render::vulkan
 {
-    RenderResult<void> MeshCommands::set(const SetMesh::Request&, Reply<SetMesh>& reply) noexcept
-    {
-        auto pending = reply.defer();
-        if (!pending) return cxx::unexpected(pending.error());
-        auto storage = device_.resources().borrow<MeshStorage>(pending->request().mesh.storage);
-        if (!storage) return pending->fail(storage.error());
-        auto candidate = render::upload(**storage, pending->request());
-        if (!candidate) return pending->fail(candidate.error());
-        return pending->completeWhen(GpuWorkSender<MeshPublished>{
-            std::move(candidate->first), std::move(candidate->second)
-        });
-    }
-
-    RenderResult<void> MeshCommands::query(const QueryMesh::Request& input, Reply<QueryMesh>& reply) noexcept
-    {
-        auto storage = device_.resources().tryGet<render::MeshStorage>(input.storage);
-        if (!storage) return cxx::unexpected(storage.error());
-        auto result = storage->query(input);
-        if (!result) return cxx::unexpected(result.error());
-        return reply.complete(std::move(*result));
-    }
-
-    RenderResult<void> MeshCommands::release(const ReleaseMesh::Request& input, Reply<ReleaseMesh>& reply) noexcept
+    GpuWorkSender<SetMesh::Response> MeshCommandHandler::setMesh(SetMesh::Request&& input) noexcept
     {
         auto storage = device_.resources().borrow<MeshStorage>(input.mesh.storage);
-        if (!storage) return cxx::unexpected(storage.error());
-        if (auto result = (*storage)->release(input.mesh, input.revision); !result) return result;
-        return reply.complete(Ack{});
+        if (!storage)
+        {
+            return GpuWorkSender<SetMesh::Response>{storage.error()};
+        }
+        auto candidate = render::upload(**storage, input);
+        if (!candidate)
+        {
+            return GpuWorkSender<SetMesh::Response>{candidate.error()};
+        }
+        return {std::move(candidate->first), std::move(candidate->second), std::move(input.source)};
     }
 
-}
+    void MeshCommandHandler::queryMesh(const QueryMesh::Request& input, QueryMesh::Response& response) noexcept
+    {
+        auto storage = device_.resources().tryGet<render::MeshStorage>(input.storage);
+        if (!storage)
+        {
+            response = cxx::unexpected(storage.error());
+            return;
+        }
+        auto result = storage->query(input);
+        if (!result)
+        {
+            response = cxx::unexpected(result.error());
+            return;
+        }
+        response = std::move(*result);
+    }
+
+    void MeshCommandHandler::releaseMesh(const ReleaseMesh::Request& input, ReleaseMesh::Response& response) noexcept
+    {
+        auto storage = device_.resources().borrow<MeshStorage>(input.mesh.storage);
+        if (!storage)
+        {
+            response = cxx::unexpected(storage.error());
+            return;
+        }
+        if (auto result = (*storage)->release(input.mesh, input.revision); !result)
+        {
+            response = cxx::unexpected(result.error());
+            return;
+        }
+        response = Ack{};
+    }
+
+} // namespace lux::render::vulkan
 
 namespace lux::render
 {
-    StorageFactory StorageProvider<render::MeshStorage>::factory() noexcept { return vulkan::meshStorageFactory(); }
+    StorageFactory StorageProvider<render::MeshStorage>::factory() noexcept
+    {
+        return vulkan::meshStorageFactory();
+    }
 
     StorageCppType StorageProvider<render::MeshStorage>::implementationType() noexcept
     {
         return storageCppType<Storage>();
     }
-}
+} // namespace lux::render

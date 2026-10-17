@@ -1,6 +1,8 @@
 add_executable(render_runtime_test Runtime.cpp)
 
-add_executable(render_typed_client_test TypedClient.cpp)
+add_executable(render_typed_client_test TypedClient.cpp ../../native/vulkan/test/Allocation.cpp ${LUX_RUNTIME_SOURCES})
+target_compile_definitions(render_typed_client_test PRIVATE LUX_RUNTIME_RESPONSE_COST_SEAM)
+target_include_directories(render_typed_client_test PRIVATE ../pinclude ../../native/vulkan/test)
 target_include_directories(render_typed_client_test PRIVATE ../../../../platform/ipc/pinclude)
 
 target_link_libraries(render_typed_client_test PRIVATE render_runtime)
@@ -93,7 +95,7 @@ add_test(NAME render.runtime.lifetime COMMAND render_runtime_lifetime_test)
 set_tests_properties(render.runtime.lifetime PROPERTIES TIMEOUT 90)
 
 add_executable(render_runtime_offscreen_test Offscreen.cpp ../../native/vulkan/test/Allocation.cpp ${LUX_RUNTIME_SOURCES})
-target_compile_definitions(render_runtime_offscreen_test PRIVATE LUX_RUNTIME_CPU_TEST_SEAM)
+target_compile_definitions(render_runtime_offscreen_test PRIVATE LUX_RUNTIME_CPU_TEST_SEAM LUX_RUNTIME_EFFECT_TEST_SEAM)
 target_include_directories(render_runtime_offscreen_test PRIVATE ../pinclude ../../native/vulkan/sinclude)
 target_include_directories(render_runtime_offscreen_test PRIVATE ../../native/vulkan/test)
 target_link_libraries(render_runtime_offscreen_test PRIVATE render_runtime)
@@ -132,15 +134,15 @@ file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/VulkanServer.cpp" CONTENT
 add_library(render_runtime_header_VulkanServer OBJECT "${CMAKE_CURRENT_BINARY_DIR}/VulkanServer.cpp")
 target_link_libraries(render_runtime_header_VulkanServer PRIVATE render_runtime)
 
-foreach(header RenderServer Commands Error)
+foreach(header RenderServer CommandBinding Commands Error)
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" CONTENT
         "#include <lux/engine/render/runtime/${header}.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\nstatic_assert(__cplusplus >= 202002L);\n"
     )
     add_library(render_runtime_header_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")
-    if(header STREQUAL "RenderServer")
+    if(header STREQUAL "RenderServer" OR header STREQUAL "CommandBinding")
         # Server declaration stays neutral; only VulkanServer exposes the selected Native installation.
         target_link_libraries(render_runtime_header_${header} PRIVATE
-            render_commands render_features render_resource render_protocol_handlers
+            render_runtime
         )
     else()
         target_link_libraries(render_runtime_header_${header} PRIVATE render_commands render_features)
@@ -168,7 +170,7 @@ add_executable(render_runtime_gpu_ready_test GpuReady.cpp ${LUX_RUNTIME_SOURCES}
     ../../native/vulkan/test/Allocation.cpp
 )
 
-target_compile_definitions(render_runtime_gpu_ready_test PRIVATE LUX_RUNTIME_TEST_SEAM)
+target_compile_definitions(render_runtime_gpu_ready_test PRIVATE LUX_RUNTIME_TEST_SEAM LUX_RUNTIME_RESPONSE_COST_SEAM)
 
 target_include_directories(render_runtime_gpu_ready_test PRIVATE ../pinclude ../../native/vulkan/test ../../native/vulkan/sinclude)
 
@@ -257,7 +259,7 @@ target_include_directories(render_runtime_async_test PRIVATE ../pinclude ../../n
 target_compile_definitions(render_runtime_async_test PRIVATE LUX_RUNTIME_ASYNC_TEST_SEAM)
 
 target_link_libraries(render_runtime_async_test PRIVATE render_commands render_features render_native_vulkan
-    lux::engine::platform::platform_ipc render_protocol_async lux::engine::platform::platform_process
+    lux::engine::platform::platform_ipc render_runtime lux::engine::platform::platform_process
 )
 
 set_target_properties(render_runtime_async_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
@@ -278,7 +280,7 @@ endforeach()
 foreach(target render_runtime_shutdown_test render_runtime_gpu_ready_test
     render_texture_progress_test render_texture_rendering_test
 )
-    target_link_libraries(${target} PRIVATE render_protocol_async)
+    target_link_libraries(${target} PRIVATE render_runtime)
 endforeach()
 
 add_subdirectory(async_tail)
@@ -291,7 +293,7 @@ target_compile_definitions(render_runtime_async_cost_test PRIVATE LUX_RUNTIME_AS
 
 target_link_libraries(render_runtime_async_cost_test PRIVATE
     render_commands render_features render_native_vulkan lux::engine::platform::platform_ipc
-    render_protocol_async lux::engine::core::core_execution lux::engine::platform::platform_process
+    render_runtime lux::engine::core::core_execution lux::engine::platform::platform_process
 )
 
 set_target_properties(render_runtime_async_cost_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")

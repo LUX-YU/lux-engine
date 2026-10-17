@@ -1,146 +1,244 @@
-#include <lux/engine/render/data/Encoding.hpp>
 #include "ServerImpl.hpp"
+#include <lux/engine/render/data/Encoding.hpp>
 
 namespace lux::render
 {
-    RenderResult<StorageSet*> RenderServer::Impl::storageOwner(const VStorageOwner& address) noexcept
+    RenderResult<StorageSet*> RenderServer::Impl::findStorageSet(const VStorageOwner& address) noexcept
     {
-        return std::visit([&](const auto& owner) -> RenderResult<StorageSet*> {
-            using T = std::decay_t<decltype(owner)>;
-            if constexpr (std::same_as<T, GlobalStorageOwner>) return &device->globalStorages();
-            else if constexpr (std::same_as<T, SceneId>)
+        return std::visit(
+            [&](const auto& owner) -> RenderResult<StorageSet*>
             {
-                auto* scene = scenes.find(owner);
-                if (!scene) return cxx::unexpected(RenderError{kRuntimeIdentity});
-                return &scene->storages;
-            }
-            else
-            {
-                auto* scene = scenes.find(owner.scene);
-                auto* view = scene ? scene->views.find(owner.view) : nullptr;
-                if (!view) return cxx::unexpected(RenderError{kRuntimeIdentity});
-                if constexpr (std::same_as<T, ViewRequest>) return &view->storages;
+                using T = std::decay_t<decltype(owner)>;
+                if constexpr (std::same_as<T, GlobalStorageOwner>)
+                {
+                    return &device->globalStorages();
+                }
+                else if constexpr (std::same_as<T, SceneId>)
+                {
+                    auto* scene = scenes.find(owner);
+                    if (!scene)
+                    {
+                        return cxx::unexpected(RenderError{kRuntimeIdentity});
+                    }
+                    return &scene->storages;
+                }
                 else
                 {
-                    auto* effect = effects.find(owner.effect);
-                    if (effect)
-                        for (const auto& group : effect->groups)
-                            if (group.scene == owner.scene && group.view == owner.view && group.target == owner.target)
-                                return &group.context->attachmentStorages();
-                    return cxx::unexpected(RenderError{kRuntimeIdentity});
+                    auto* scene = scenes.find(owner.scene);
+                    auto* view = scene ? scene->views.find(owner.view) : nullptr;
+                    if (!view)
+                    {
+                        return cxx::unexpected(RenderError{kRuntimeIdentity});
+                    }
+                    if constexpr (std::same_as<T, ViewRequest>)
+                    {
+                        return &view->storages;
+                    }
+                    else
+                    {
+                        auto* effect = effects.find(owner.effect);
+                        if (effect)
+                        {
+                            for (const auto& group : effect->groups)
+                            {
+                                if (group.scene == owner.scene && group.view == owner.view &&
+                                    group.target == owner.target)
+                                {
+                                    return &group.context->attachmentStorages();
+                                }
+                            }
+                        }
+                        return cxx::unexpected(RenderError{kRuntimeIdentity});
+                    }
                 }
-            }
-        }, address);
+            },
+            address
+        );
     }
 
-    RenderResult<void> RenderServer::Impl::findStorage(RenderRequest& request) noexcept
+    void RenderServer::Impl::findStorage(
+        const FindStorage::Request& _request,
+        FindStorage::Response& output_response
+    ) noexcept
     {
-        const auto& input = request.get<StorageLocation>();
-        auto owner = storageOwner(input.owner);
-        if (!owner) return cxx::unexpected(owner.error());
-        if (!device->resources().factory(input.type)) return cxx::unexpected(RenderError{kStorageFactory});
+        const auto& input = _request;
+        auto owner = findStorageSet(input.owner);
+        if (!owner)
+        {
+            output_response = cxx::unexpected(owner.error());
+            return;
+        }
+        if (!device->resources().factory(input.type))
+        {
+            output_response = cxx::unexpected(RenderError{kStorageFactory});
+            return;
+        }
         const auto id = (*owner)->find(input.type, input.key);
-        if (id.isNull()) return cxx::unexpected(RenderError{kStorageIdentity});
-        return request.reply(id);
+        if (id.isNull())
+        {
+            output_response = cxx::unexpected(RenderError{kStorageIdentity});
+            return;
+        }
+        output_response = id;
     }
 
-    RenderResult<void> RenderServer::Impl::prepareStorage(RenderRequest& request) noexcept
+    void RenderServer::Impl::prepareStorage(
+        const PrepareStorage::Request& _request,
+        PrepareStorage::Response& output_response
+    ) noexcept
     {
-        const auto& input = request.get<PrepareStorageRequest>();
-        auto owner = storageOwner(input.location.owner);
-        if (!owner) return cxx::unexpected(owner.error());
+        const auto& input = _request;
+        auto owner = findStorageSet(input.location.owner);
+        if (!owner)
+        {
+            output_response = cxx::unexpected(owner.error());
+            return;
+        }
         auto id = (*owner)->prepare(input.location.type, input.location.key, input.config);
-        if (!id) return cxx::unexpected(id.error());
-        return request.reply(*id);
+        if (!id)
+        {
+            output_response = cxx::unexpected(id.error());
+            return;
+        }
+        output_response = *id;
     }
 
-    RenderResult<void> RenderServer::Impl::releasePreparedStorage(RenderRequest& request) noexcept
+    void RenderServer::Impl::releasePreparedStorage(
+        const ReleasePreparedStorage::Request& _request,
+        ReleasePreparedStorage::Response& output_response
+    ) noexcept
     {
-        const auto id = request.get<StorageId>();
+        const auto id = _request;
         auto* owner = device->resources().owner(id);
-        if (!owner) return cxx::unexpected(RenderError{kStorageIdentity});
-        if (auto result = owner->releasePrepared(id); !result) return result;
-        return request.reply();
+        if (!owner)
+        {
+            output_response = cxx::unexpected(RenderError{kStorageIdentity});
+            return;
+        }
+        if (auto result = owner->releasePrepared(id); !result)
+        {
+            output_response = cxx::unexpected(result.error());
+            return;
+        }
+        output_response = Ack{};
     }
 
-    RenderResult<void> RenderServer::Impl::withdraw(RenderEffect& effect, std::size_t index) noexcept
+    RenderResult<void> RenderServer::Impl::detachExecutionGroup(RenderEffect& effect, std::size_t index) noexcept
     {
         auto* context = effect.groups[index].context;
-        if (auto result = device->release(context); !result) return result;
+        if (auto result = device->release(context); !result)
+        {
+            return result;
+        }
         effect.groups.erase(effect.groups.begin() + index);
         return {};
     }
 
-    RenderResult<void> RenderServer::Impl::attach(RenderRequest& request) noexcept
+    void RenderServer::Impl::attachEffect(const Attach::Request& _request, Attach::Response& output_response) noexcept
     {
-        const auto* decoded = &request.get<AttachmentRequest>();
+        const auto* decoded = &_request;
         const auto [scene_id, view_id, target_id, effect_id] = *decoded;
         auto* scene = scenes.find(scene_id);
         auto* view = scene ? scene->views.find(view_id) : nullptr;
         const auto* target = targets.find(target_id);
         auto* effect = effects.find(effect_id);
         const bool invalid = !view || !target || !effect;
-        if (invalid) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        if (invalid)
+        {
+            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            return;
+        }
         for (const auto& existing : effects)
+        {
             for (const auto& group : existing.groups)
-                if (group.target == target_id) return cxx::unexpected(RenderError{kRuntimeState});
-        auto prepared = device->prepare(effect->code, target->description, &scene->storages, &view->storages, effect->arguments);
-        if (!prepared) return cxx::unexpected(prepared.error());
+            {
+                if (group.target == target_id)
+                {
+                    output_response = cxx::unexpected(RenderError{kRuntimeState});
+                    return;
+                }
+            }
+        }
+        auto prepared =
+            device->prepare(effect->code, target->description, &scene->storages, &view->storages, effect->arguments);
+        if (!prepared)
+        {
+            output_response = cxx::unexpected(prepared.error());
+            return;
+        }
         if (!(*prepared)->contextParameters().empty())
         {
             if (auto values = (*prepared)->setContextParameters(cameraParameters(view->camera)); !values)
             {
-                if (!device->release(*prepared)) std::terminate(); // unsubmitted candidate
-                return cxx::unexpected(values.error());
+                if (!device->release(*prepared))
+                {
+                    std::terminate(); // unsubmitted candidate
+                }
+                {
+                    output_response = cxx::unexpected(values.error());
+                    return;
+                }
             }
         }
         (*prepared)->setViewport(view->camera.viewport);
-        AttachmentCreated response;
-        (*prepared)->forEachStorage([&](std::string_view key, StorageId id) noexcept {
-            response.storages.push_back({std::string(key), id});
-        });
-        ipc::IpcMessage output;
-        auto response_ready = request.prepareResponse(&response, output);
-        if (!response_ready)
-        {
-            if (!device->release(*prepared)) std::terminate(); // unsubmitted candidate
-            return cxx::unexpected(response_ready.error());
-        }
+        output_response.emplace();
+        (*prepared)->forEachStorage([&](std::string_view key, StorageId id) noexcept
+                                    { output_response->storages.push_back({std::string(key), id}); });
         effect->groups.push_back({scene_id, view_id, target_id, *prepared});
         scoped_buffers_created.store(device->resources().creations());
-        return request.publishPrepared(output);
+        return;
     }
 
-    RenderResult<void> RenderServer::Impl::resize(TargetId id, Target& target, const TargetDesc& description) noexcept
+    RenderResult<void> RenderServer::Impl::resizeTargetResources(
+        TargetId id,
+        Target& target,
+        const TargetDesc& description
+    ) noexcept
     {
         ExecutionGroup* group = nullptr;
         std::shared_ptr<const vulkan::CompiledGraph> code;
         std::span<const StorageArgument> arguments;
         for (auto& effect : effects)
+        {
             for (auto& candidate : effect.groups)
+            {
                 if (candidate.target == id)
                 {
                     group = &candidate;
                     code = effect.code;
                     arguments = effect.arguments;
                 }
+            }
+        }
         if (group)
         {
             // One Target writer, proven on attach. Resize builds one candidate without recompilation.
             auto candidate = device->prepare(
-                std::move(code), description, &scenes.find(group->scene)->storages,
-                &scenes.find(group->scene)->views.find(group->view)->storages, arguments
+                std::move(code),
+                description,
+                &scenes.find(group->scene)->storages,
+                &scenes.find(group->scene)->views.find(group->view)->storages,
+                arguments
             );
-            if (!candidate) return cxx::unexpected(candidate.error());
+            if (!candidate)
+            {
+                return cxx::unexpected(candidate.error());
+            }
             if (auto values = (*candidate)->setContextParameters(group->context->contextParameters()); !values)
             {
-                if (!device->release(*candidate)) std::terminate(); // unsubmitted candidate
+                if (!device->release(*candidate))
+                {
+                    std::terminate(); // unsubmitted candidate
+                }
                 return cxx::unexpected(values.error());
             }
             (*candidate)->setViewport(group->context->viewport());
             if (auto result = device->release(group->context); !result)
             {
-                if (!device->release(*candidate)) std::terminate(); // never submitted
+                if (!device->release(*candidate))
+                {
+                    std::terminate(); // never submitted
+                }
                 return result;
             }
             group->context = *candidate;
@@ -151,101 +249,217 @@ namespace lux::render
         return {};
     }
 
-    RenderResult<void> RenderServer::Impl::createScene(RenderRequest& request) noexcept
+    void RenderServer::Impl::createScene(
+        const CreateScene::Request& _request,
+        CreateScene::Response& output_response
+    ) noexcept
     {
-        return request.reply(SceneCreated{scenes.emplace(device->resources())});
+        output_response = SceneCreated{scenes.emplace(device->resources())};
     }
 
-    RenderResult<void> RenderServer::Impl::removeScene(RenderRequest& request) noexcept
+    void RenderServer::Impl::removeScene(
+        const RemoveScene::Request& _request,
+        RemoveScene::Response& output_response
+    ) noexcept
     {
-        const auto* input = &request.get<SceneRequest>();
+        const auto* input = &_request;
         const auto scene_id = input->scene;
-        if (!scenes.find(scene_id)) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        if (!scenes.find(scene_id))
+        {
+            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            return;
+        }
         for (auto& effect : effects)
+        {
             for (std::size_t i = effect.groups.size(); i-- > 0;)
+            {
                 if (effect.groups[i].scene == scene_id)
-                    if (auto result = withdraw(effect, i); !result) return result;
+                {
+                    if (auto result = detachExecutionGroup(effect, i); !result)
+                    {
+                        output_response = cxx::unexpected(result.error());
+                        return;
+                    }
+                }
+            }
+        }
         scenes.erase(scene_id);
-        return request.reply();
+        output_response = Ack{};
     }
 
-    RenderResult<void> RenderServer::Impl::createView(RenderRequest& request) noexcept
+    void RenderServer::Impl::createView(
+        const CreateView::Request& _request,
+        CreateView::Response& output_response
+    ) noexcept
     {
-        const auto* input = &request.get<CreateViewRequest>();
+        const auto* input = &_request;
         auto* scene = scenes.find(input->scene);
-        if (!scene) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        if (auto valid = input->camera.validate(); !valid) return valid;
-        return request.reply(ViewCreated{scene->views.emplace(device->resources(), input->camera)});
+        if (!scene)
+        {
+            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            return;
+        }
+        if (auto valid = input->camera.validate(); !valid)
+        {
+            output_response = cxx::unexpected(valid.error());
+            return;
+        }
+        output_response = ViewCreated{scene->views.emplace(device->resources(), input->camera)};
     }
 
-    RenderResult<void> RenderServer::Impl::updateCamera(RenderRequest& request) noexcept
+    void RenderServer::Impl::updateCamera(
+        const UpdateCamera::Request& _request,
+        UpdateCamera::Response& output_response
+    ) noexcept
     {
-        const auto& input = request.get<UpdateCameraRequest>();
+        const auto& input = _request;
         auto* scene = scenes.find(input.scene);
         auto* view = scene ? scene->views.find(input.view) : nullptr;
-        if (!view) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        if (auto valid = input.camera.validate(); !valid) return valid;
-        if (view->camera == input.camera) return request.reply();
+        if (!view)
+        {
+            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            return;
+        }
+        if (auto valid = input.camera.validate(); !valid)
+        {
+            output_response = cxx::unexpected(valid.error());
+            return;
+        }
+        if (view->camera == input.camera)
+        {
+            output_response = Ack{};
+            return;
+        }
         // Attach proved the complete Camera parameter ABI. This owner-thread update allocates nothing.
         for (auto& effect : effects)
+        {
             for (const auto& group : effect.groups)
             {
-                if (group.scene != input.scene || group.view != input.view) continue;
+                if (group.scene != input.scene || group.view != input.view)
+                {
+                    continue;
+                }
                 if (!group.context->contextParameters().empty() &&
-                    !group.context->setContextParameters(cameraParameters(input.camera))) std::terminate();
+                    !group.context->setContextParameters(cameraParameters(input.camera)))
+                {
+                    std::terminate();
+                }
                 group.context->setViewport(input.camera.viewport);
             }
+        }
         view->camera = input.camera;
-        return request.reply();
+        output_response = Ack{};
     }
 
-    RenderResult<void> RenderServer::Impl::removeView(RenderRequest& request) noexcept
+    void RenderServer::Impl::removeView(
+        const RemoveView::Request& _request,
+        RemoveView::Response& output_response
+    ) noexcept
     {
-        const auto* input = &request.get<ViewRequest>();
+        const auto* input = &_request;
         auto* scene = scenes.find(input->scene);
-        if (!scene || !scene->views.find(input->view)) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        if (!scene || !scene->views.find(input->view))
+        {
+            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            return;
+        }
         for (auto& effect : effects)
+        {
             for (std::size_t i = effect.groups.size(); i-- > 0;)
+            {
                 if (effect.groups[i].scene == input->scene && effect.groups[i].view == input->view)
-                    if (auto result = withdraw(effect, i); !result) return result;
+                {
+                    if (auto result = detachExecutionGroup(effect, i); !result)
+                    {
+                        output_response = cxx::unexpected(result.error());
+                        return;
+                    }
+                }
+            }
+        }
         scene->views.erase(input->view);
-        return request.reply();
+        output_response = Ack{};
     }
 
-    RenderResult<void> RenderServer::Impl::createTarget(RenderRequest& request) noexcept
+    void RenderServer::Impl::createTarget(
+        const CreateTarget::Request& _request,
+        CreateTarget::Response& output_response
+    ) noexcept
     {
-        const auto* input = &request.get<CreateTargetRequest>();
-        if (auto valid = input->description.validate(); !valid) return valid;
-        if (input->description.kind != ETargetKind::OFFSCREEN) return cxx::unexpected(RenderError{kRuntimeUnsupported});
-        return request.reply(TargetCreated{targets.emplace(Target{input->description}), 1});
+        const auto* input = &_request;
+        if (auto valid = input->description.validate(); !valid)
+        {
+            output_response = cxx::unexpected(valid.error());
+            return;
+        }
+        if (input->description.kind != ETargetKind::OFFSCREEN)
+        {
+            output_response = cxx::unexpected(RenderError{kRuntimeUnsupported});
+            return;
+        }
+        output_response = TargetCreated{targets.emplace(Target{input->description}), 1};
     }
 
-    RenderResult<void> RenderServer::Impl::resizeTarget(RenderRequest& request) noexcept
+    void RenderServer::Impl::resizeTarget(
+        const ResizeTarget::Request& _request,
+        ResizeTarget::Response& output_response
+    ) noexcept
     {
-        const auto* input = &request.get<ResizeTargetRequest>();
-        if (auto valid = input->description.validate(); !valid) return valid;
-        if (input->description.kind != ETargetKind::OFFSCREEN) return cxx::unexpected(RenderError{kRuntimeUnsupported});
+        const auto* input = &_request;
+        if (auto valid = input->description.validate(); !valid)
+        {
+            output_response = cxx::unexpected(valid.error());
+            return;
+        }
+        if (input->description.kind != ETargetKind::OFFSCREEN)
+        {
+            output_response = cxx::unexpected(RenderError{kRuntimeUnsupported});
+            return;
+        }
         auto* target = targets.find(input->target);
-        if (!target) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        if (target->epoch == UINT64_MAX) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        if (auto changed = resize(input->target, *target, input->description); !changed) return changed;
-        return request.reply(TargetCreated{input->target, target->epoch});
+        if (!target)
+        {
+            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            return;
+        }
+        if (target->epoch == UINT64_MAX)
+        {
+            output_response = cxx::unexpected(RenderError{kRuntimeCapacity});
+            return;
+        }
+        if (auto changed = resizeTargetResources(input->target, *target, input->description); !changed)
+        {
+            output_response = cxx::unexpected(changed.error());
+            return;
+        }
+        output_response = TargetCreated{input->target, target->epoch};
     }
 
-    RenderResult<void> RenderServer::Impl::detach(RenderRequest& request) noexcept
+    void RenderServer::Impl::detachEffect(const Detach::Request& _request, Detach::Response& output_response) noexcept
     {
-        const auto* input = &request.get<AttachmentRequest>();
+        const auto* input = &_request;
         auto* effect = effects.find(input->effect);
-        if (!effect) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        if (!effect)
+        {
+            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            return;
+        }
         for (std::size_t i = 0; i < effect->groups.size(); ++i)
         {
             const auto& group = effect->groups[i];
             if (group.scene == input->scene && group.view == input->view && group.target == input->target)
             {
-                if (auto result = withdraw(*effect, i); !result) return result;
-                return request.reply();
+                if (auto result = detachExecutionGroup(*effect, i); !result)
+                {
+                    output_response = cxx::unexpected(result.error());
+                    return;
+                }
+                {
+                    output_response = Ack{};
+                    return;
+                }
             }
         }
-        return cxx::unexpected(RenderError{kRuntimeIdentity});
+        output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
     }
 } // namespace lux::render

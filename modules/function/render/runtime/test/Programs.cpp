@@ -3,7 +3,7 @@
 #include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "TextureSceneFixture.hpp"
-#include <lux/engine/render/native/vulkan/texture/TextureCommands.hpp>
+#include <lux/engine/render/native/vulkan/texture/TextureCommandHandler.hpp>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -122,33 +122,33 @@ int main()
     command.features.push_back({"test.zzz.parameters", "parameters", take(ConfigValue::make(TextureBinding{}))});
     command.features.push_back({"test.dead.no.program", "dead", {}});
     // Input order differs from canonical assembly order; provenance is the input index, not a name guess.
-    check(call(*client, command).header.outcome == ECommandOutcome::SUCCESS);
+    check(call(*client, command).header.outcome == ETestOutcome::SUCCESS);
     check(parameter_calls == 1); // Zero Pass still contributes typed parameters, with no DataSchema.
     const std::array expected{kFeatureOwnership, kFeatureDuplicate, kFeatureContract};
     for (unsigned i = 1; i <= 3; ++i)
     {
         mode = i;
         auto failed = call(*client, command);
-        check(failed.header.outcome == ECommandOutcome::FAILED && failed.error.type == expected[i - 1]);
+        check(failed.header.outcome == ETestOutcome::FAILED && failed.error.type == expected[i - 1]);
         check(server->stats().compiled_graphs == 1);
     }
     mode = 0;
-    check(call(*client, command).header.outcome == ECommandOutcome::SUCCESS);
+    check(call(*client, command).header.outcome == ETestOutcome::SUCCESS);
     check(server->stats().compiled_graphs == 2);
     mode = 5;
     auto conflict = call(*client, command);
-    check(conflict.header.outcome == ECommandOutcome::FAILED && conflict.error.type == kStorageMismatch);
+    check(conflict.header.outcome == ETestOutcome::FAILED && conflict.error.type == kStorageMismatch);
     check(server->stats().compiled_graphs == 2);
     mode = 6;
     auto zero_pass_conflict = call(*client, command);
-    check(zero_pass_conflict.header.outcome == ECommandOutcome::FAILED &&
+    check(zero_pass_conflict.header.outcome == ETestOutcome::FAILED &&
         zero_pass_conflict.error.type == kStorageMismatch && server->stats().compiled_graphs == 2);
     mode = 7;
     auto unknown_argument = call(*client, command);
-    check(unknown_argument.header.outcome == ECommandOutcome::FAILED &&
+    check(unknown_argument.header.outcome == ETestOutcome::FAILED &&
         unknown_argument.error.type == kStorageContract && server->stats().compiled_graphs == 2);
     mode = 8;
-    check(call(*client, command).header.outcome == ECommandOutcome::SUCCESS);
+    check(call(*client, command).header.outcome == ETestOutcome::SUCCESS);
     check(server->stats().compiled_graphs == 3);
     mode = 4;
     take(client->submit(command));
@@ -175,7 +175,7 @@ int main()
     missing_command.description = texture_fixture::target({});
     missing_command.features.push_back(command.features.front());
     auto missing_reply = call(*no_program, missing_command);
-    check(missing_reply.header.outcome == ECommandOutcome::FAILED &&
+    check(missing_reply.header.outcome == ETestOutcome::FAILED &&
         missing_reply.error.type == kFeatureContract && missing->stats().compiled_graphs == 0);
     missing->stop();
     missing_worker.join();

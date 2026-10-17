@@ -2,6 +2,19 @@
 
 namespace lux::render
 {
+    RenderResult<CommandId> RenderServer::findCommand(const CommandDescriptor& descriptor) const noexcept
+    {
+        for (const auto& entry : impl_->command_table)
+        {
+            const auto& stored = *entry.cold->binding.descriptor();
+            if (stored.name.name() != descriptor.name.name()) continue;
+            if (auto compatible = compatibleCommands(stored, descriptor); !compatible)
+                return cxx::unexpected(compatible.error());
+            return entry.cold->id;
+        }
+        return cxx::unexpected(RenderError{kRuntimeUnsupported});
+    }
+
     namespace
     {
         bool sameOps(const ipc::IpcTypeOps& left, const ipc::IpcTypeOps& right) noexcept

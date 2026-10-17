@@ -148,10 +148,15 @@ int main()
 {
     Counts counts, rejected, late_counts;
     auto server = take(RenderServer::create({"runtime.handlers", true}));
+    const auto directory_id = take(server->commandId<ListCommands>());
+    check(!directory_id.isNull());
+    check(!server->commandId<First>());
     auto first = take(server->emplaceHandler<Handler>("A", {}, counts, 100));
     auto duplicate = take(server->emplaceHandler<Handler>("A", {}, counts, 999));
     auto second = take(server->emplaceHandler<Handler>("B", {}, counts, 200));
     check(first == duplicate && first != second && counts.created == 2 && counts.destroyed == 0);
+    const auto first_command_id = take(server->commandId<First>());
+    check(server->commandId<Mismatch>().error().type == kProtocolContract);
     auto invalid = server->emplaceHandler<InvalidHandler>("bad", {}, rejected);
     check(!invalid && invalid.error().type == kProtocolContract);
     check(rejected.created == 1 && rejected.destroyed == 1);
@@ -165,11 +170,13 @@ int main()
     check(!a->bind<First>()); // Hello exposes controls, never the business directory.
     check(bool(runtime_test::refresh(*a)));
     const auto controls = take(a->bind<ListCommands>());
+    check(controls.command() == directory_id);
     auto protected_control = call<SelectCommandBinding>(*a, {controls.command(), {}});
     check(protected_control.header().outcome == ECommandOutcome::FAILED &&
         protected_control.header().error.type == kRuntimeUnsupported);
     check(!call<ListCommands>(*a).response().commands.empty());
     const auto bound = take(a->bind<First>());
+    check(bound.command() == first_command_id);
     const auto bindings = call<ListCommandBindings>(*a, bound.command());
     check(bindings.response().selected == first && bindings.response().handlers.size() == 2);
     check(call<First>(*a, 7).response() == 107);

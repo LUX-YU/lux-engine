@@ -52,6 +52,13 @@ namespace lux::render
         ~RenderServer() noexcept;
         RenderServer(const RenderServer&) = delete;
         RenderServer& operator=(const RenderServer&) = delete;
+        // Cold owner-thread query, before run() or at an owner safe point. No new identity is allocated.
+        template <RenderCommand C>
+        [[nodiscard]] RenderResult<CommandId> commandId() const noexcept
+        {
+            return findCommand(commandDescriptor<C>());
+        }
+
         // Provider pins its Native factory code. source_code_pin additionally covers the calling
         // module's template thunks/configuration; omitted means the factory module or process lifetime.
         template <class T, class Provider = vulkan::StorageProvider<T>>
@@ -250,6 +257,7 @@ namespace lux::render
         }
 
         [[nodiscard]] RenderResult<HandlerId> findHandler(CommandValueType, std::string_view) const noexcept;
+        [[nodiscard]] RenderResult<CommandId> findCommand(const CommandDescriptor&) const noexcept;
         [[nodiscard]] HandlerEntry* handlerEntry(HandlerId) noexcept;
         [[nodiscard]] vulkan::DeviceSession& nativeDevice() noexcept;
         [[nodiscard]] RenderResult<std::vector<CommandId>> prepareHandler(const HandlerEntry&,

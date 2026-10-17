@@ -13,6 +13,7 @@ namespace lux::render
     public:
         CommandRegistration() noexcept = default;
         CommandRegistration(CommandHandler handler) noexcept : CommandHandler(handler) {}
+        [[nodiscard]] bool valid() const noexcept { return descriptor() && (call().invoke || bind_native_); }
         [[nodiscard]] bool gpuCompletion() const noexcept { return gpu_completion_; }
         void bindNative(void* owner) noexcept
         {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/core/execution/WorkSchedule.hpp>
 #include <stdexec/execution.hpp>
 #include <exception>
 #include <memory>
@@ -8,6 +9,14 @@
 
 namespace lux::render
 {
+    // Some accepted side effects cannot be certified as rolled back. This is a generic terminal fact,
+    // not a CPU/GPU operation category.
+    struct CommandFailure final
+    {
+        RenderError error;
+        bool outcome_unknown = false;
+    };
+
     // A callback borrow of the one Runtime pending slot. Completion transfers the result before returning;
     // the sender must not read its operation state after set_value/error/stopped. The execution host
     // must also keep the sender provider's code alive until its terminal callback has returned.
@@ -18,6 +27,9 @@ namespace lux::render
         void* owner;
         void (*finish)(void*, ECommandOutcome, RenderError, void*) noexcept;
         stdexec::inplace_stop_token stop_token;
+        execution::CompletionPost<RenderError> post;
+        const std::shared_ptr<const void>* implementation_pin;
+        const std::shared_ptr<const void>* provider_pin;
     };
 
     // One static table per actual finite sender. It never owns a request or allocates an identity.
@@ -40,12 +52,16 @@ namespace lux::render
 
                 struct Env final
                 {
-                    stdexec::inplace_stop_token token;
+                    CommandAsyncReceiver target;
                     [[nodiscard]] stdexec::inplace_stop_token query(stdexec::get_stop_token_t) const noexcept
-                    { return token; }
+                    { return target.stop_token; }
+                    [[nodiscard]] execution::CompletionPost<RenderError>
+                    query(execution::GetCompletionPost) const noexcept { return target.post; }
+                    [[nodiscard]] auto query(execution::GetWorkCodePins) const noexcept
+                    { return std::pair{*target.implementation_pin, *target.provider_pin}; }
                 };
 
-                [[nodiscard]] Env get_env() const noexcept { return {target.stop_token}; }
+                [[nodiscard]] Env get_env() const noexcept { return {target}; }
 
                 void set_value(typename C::Response response) && noexcept
                 {
@@ -61,6 +77,12 @@ namespace lux::render
                 void set_error(RenderError error) && noexcept
                 {
                     target.finish(target.owner, ECommandOutcome::FAILED, error, nullptr);
+                }
+
+                void set_error(CommandFailure failure) && noexcept
+                {
+                    target.finish(target.owner, failure.outcome_unknown ? ECommandOutcome::OUTCOME_UNKNOWN :
+                        ECommandOutcome::FAILED, failure.error, nullptr);
                 }
 
                 void set_error(std::exception_ptr) && noexcept { std::terminate(); }

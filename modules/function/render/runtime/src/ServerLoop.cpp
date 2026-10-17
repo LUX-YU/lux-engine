@@ -81,7 +81,8 @@ namespace lux::render
             descriptor,
             funded ? transport : nullptr,
             failure_type,
-            entry ? cold->code_pin : config.implementation_code_pin
+            entry ? cold->code_pin : config.implementation_code_pin,
+            entry ? *cold->active_code_pin : config.implementation_code_pin
         );
         RenderResult<void> result;
         if (!valid_identity)

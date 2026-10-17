@@ -244,7 +244,9 @@ namespace lux::render
             auto& slot = *static_cast<DeferredCompletion*>(value);
             auto& completion = std::get<CpuCompletion>(slot.condition);
             completion.destroy = operations.destroy;
-            completion.operation = operations.connect(sender, {&slot, completeCpu, slot.stop.get_token()});
+            auto& server = *static_cast<Impl*>(slot.server);
+            completion.operation = operations.connect(sender, {&slot, completeCpu, slot.stop.get_token(),
+                slot.post(), &server.config.implementation_code_pin, &slot.request->codePin()});
             // Owner-thread start cannot reenter event draining. The Receiver only publishes.
             operations.start(completion.operation);
             return {};
@@ -287,12 +289,7 @@ namespace lux::render
             if (cpu->adopt)
                 result = cpu->adopt(cpu->operation, this, *slot->request);
             else if (cpu->outcome == ECommandOutcome::OUTCOME_UNKNOWN)
-                result = slot->request->unknown();
-            else if (stop_requested.load())
-            {
-                cpu->reply.reset();
-                result = slot->request->cancel();
-            }
+                result = slot->request->unknown(cpu->error);
             else if (cpu->outcome == ECommandOutcome::SUCCESS)
                 result = slot->request->publishPrepared(cpu->reply, cpu->reply_charge);
             else if (cpu->outcome == ECommandOutcome::CANCELLED)

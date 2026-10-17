@@ -78,7 +78,7 @@ namespace lux::render
     struct SetTexture final
     {
         static constexpr std::string_view name = "lux.render.SetTexture";
-        static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
+        // Success certifies Copy, required Acquire and publication; the generic protocol has no GPU category.
         using Request = TextureWrite;
         using Response = TexturePublished;
     };
@@ -94,7 +94,7 @@ namespace lux::render
     struct SetTextureRegion final
     {
         static constexpr std::string_view name = "lux.render.SetTextureRegion";
-        static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
+        // Success certifies Copy, required Acquire and publication; the generic protocol has no GPU category.
         using Request = TextureRegionWrite;
         using Response = TexturePublished;
     };

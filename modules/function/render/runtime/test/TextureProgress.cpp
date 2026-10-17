@@ -3,6 +3,8 @@
 #include <lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp>
 #include "ServerFixture.hpp"
 #include "TypedTest.hpp"
+#include "TextureFixture.hpp"
+#include <lux/engine/render/resource/Texture.hpp>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include "Support.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
@@ -171,6 +173,81 @@ static void shutdownAndLoss()
     }
 }
 
+static void productionShutdownAndLoss()
+{
+    struct Pause final
+    {
+        std::latch entered{1}, resume{1};
+        std::atomic<unsigned> preparations{0};
+
+        static void before(void* pointer) noexcept
+        {
+            auto& self = *static_cast<Pause*>(pointer);
+            if (++self.preparations == 2)
+            {
+                self.entered.count_down();
+                self.resume.wait();
+            }
+        }
+    };
+
+    for (bool lost : {false, true})
+    {
+        CpuFixture worker;
+        Pause host;
+        worker.setBeforeWork(&host, Pause::before);
+        RenderServerConfig config{"runtime.texture.production.stop", true};
+        config.device.multiple_queues = true;
+        config.device.texture_descriptors = true;
+        config.uploads = TransferOptions{1024 * 1024, 1, 32 * 1024 * 1024};
+        auto server = take(RenderServer::create(withCpu(worker, config)));
+        CHECK(server->registerStorage<lux::render::TextureStorage>({16, 32 * 1024 * 1024}));
+        std::atomic<bool> run_finished{false};
+        bool run_ok = false;
+        std::thread render([&] { run_ok = bool(server->run()); run_finished = true; });
+        auto client = take(RenderClient::create(config.channel_name));
+        CHECK(wait(*client, take(client->hello())).header.outcome == ECommandOutcome::SUCCESS);
+        auto bound = take(client->bind<SetTexture>());
+        auto source = asset(2048);
+        const auto* address = source->data();
+        const auto capacity = source->capacity();
+        SetTexture::Request input{{}, 0, information(2048, 1, false),
+            take(RenderPayload::fromVector(source, 0, source->size()))};
+        const auto before = submitted.load();
+        if (lost)
+        {
+            submit_error = VK_ERROR_DEVICE_LOST;
+            fail_at = before + 2;
+        }
+        const auto id = take(submitValue(*client, bound, input));
+        source.reset();
+        input.source = {};
+        host.entered.wait();
+        // The production Texture handler has accepted a real first chunk. The CPU host holds
+        // preparation of a later chunk; neither stop nor a failed later submit may free that source.
+        CHECK(submitted > before && sources == 1 && !run_finished);
+        if (!lost) server->stop();
+        host.resume.count_down();
+        until([&] { return run_finished.load(); });
+        render.join();
+        CHECK(run_ok != lost && sources == 1);
+        auto reply = wait(*client, id);
+        CHECK(reply.header.outcome == ECommandOutcome::OUTCOME_UNKNOWN);
+        {
+            auto returned = take(std::move(reply).take(bound));
+            CHECK(returned.request().source.bytes().view().data() == address);
+            CHECK(returned.request().source.retainedBytes() >= capacity);
+            CHECK(client->retainedBytes() != 0 && server->stats().validation_errors == 0);
+            server.reset();
+            // The returned request remains independently owned after Device/Responder teardown.
+            CHECK(sources == 1 && returned.request().source.bytes().view().data() == address);
+        }
+        CHECK(sources == 0 && client->retainedBytes() == 0);
+        fail_at = 0;
+        submit_error = VK_ERROR_OUT_OF_HOST_MEMORY;
+    }
+}
+
 int main()
 {
     std::ofstream csv("texture-progress.csv");
@@ -244,4 +321,5 @@ int main()
             completed.load(), server->stats().validation_warnings);
     }
     shutdownAndLoss();
+    productionShutdownAndLoss();
 }

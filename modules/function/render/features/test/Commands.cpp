@@ -25,8 +25,8 @@ int main()
     CHECK(validateCommand(commandDescriptor<SetTextureRegion>()));
     CHECK(validateCommand(commandDescriptor<ReleaseTexture>()));
     CHECK(validateCommand(commandDescriptor<QueryTexture>()));
-    CHECK(commandDescriptor<SetTexture>().completion == ECompletionContract::RESOURCE_GPU_READY);
-    CHECK(commandDescriptor<SetTextureRegion>().completion == ECompletionContract::RESOURCE_GPU_READY);
+    CHECK(commandDescriptor<SetTexture>().request.type == lux::cxx::typeToken<TextureWrite>());
+    CHECK(commandDescriptor<SetTextureRegion>().request.type == lux::cxx::typeToken<TextureRegionWrite>());
     CHECK(commandDescriptor<ReleaseTexture>().completion == ECompletionContract::STATE_COMMITTED);
     CHECK(commandDescriptor<ReleaseTexture>().response.type == lux::cxx::typeToken<Ack>());
     CHECK(commandDescriptor<QueryTexture>().completion == ECompletionContract::RESULT_AVAILABLE);

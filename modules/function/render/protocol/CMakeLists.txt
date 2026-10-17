@@ -35,9 +35,12 @@ if(NOT LUX_RENDER_CLIENT_ONLY)
 
     component_add_internal_dependencies(render_protocol_async lux::engine::render::render_protocol)
 
-    target_link_libraries(render_protocol_async INTERFACE STDEXEC::stdexec)
+    target_link_libraries(render_protocol_async INTERFACE STDEXEC::stdexec lux::engine::core::core_execution)
 
-    component_add_transitive_commands(render_protocol_async "find_package(stdexec CONFIG REQUIRED)")
+    component_add_transitive_commands(render_protocol_async
+        "find_package(stdexec CONFIG REQUIRED)"
+        "find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)"
+    )
 endif()
 
 if(BUILD_TESTING)

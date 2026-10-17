@@ -30,6 +30,22 @@ namespace lux::execution
         [[nodiscard]] explicit operator bool() const noexcept { return publish != nullptr; }
     };
 
+    // Finite operations borrow the existing owner's bounded continuation landing place.
+    // Queries forward through Sender adapters; they allocate neither a scheduler nor a queue.
+    struct GetCompletionPost final : stdexec::forwarding_query_t
+    {
+        template <class Env> [[nodiscard]] auto operator()(const Env& env) const noexcept
+        { return env.query(*this); }
+    };
+    inline constexpr GetCompletionPost getCompletionPost{};
+
+    struct GetWorkCodePins final : stdexec::forwarding_query_t
+    {
+        template <class Env> [[nodiscard]] auto operator()(const Env& env) const noexcept
+        { return env.query(*this); }
+    };
+    inline constexpr GetWorkCodePins getWorkCodePins{};
+
     namespace cpu_detail
     {
         using Work = void (*)(void*) noexcept;

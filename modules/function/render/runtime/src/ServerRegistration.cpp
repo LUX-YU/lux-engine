@@ -45,6 +45,7 @@ namespace lux::render
         if (found == supported.end()) return cxx::unexpected(RenderError{kRuntimeIdentity});
         entry->cold->selected = found->id;
         entry->active = found->call;
+        entry->cold->active_code_pin = &(*handlers.find(found->id))->code_pin;
         return request.reply();
     }
 
@@ -63,6 +64,7 @@ namespace lux::render
         auto* cold = metadata.get();
         const auto id = command_table.emplace(CommandEntry{binding.call(), std::move(metadata)});
         cold->id = id;
+        cold->active_code_pin = &cold->code_pin;
         return id;
     }
 
@@ -154,7 +156,11 @@ namespace lux::render
             if (first) commands[i] = state.addCommand(calls[i], transports[i], nullptr, handler->code_pin);
             auto& entry = *state.command_table.find(commands[i]);
             entry.cold->supported.push_back({id, calls[i].call()});
-            if (first) entry.cold->selected = id;
+            if (first)
+            {
+                entry.cold->selected = id;
+                entry.cold->active_code_pin = &handler->code_pin;
+            }
             // Existing active remains unchanged, including a deliberately unbound command.
         }
         return id;

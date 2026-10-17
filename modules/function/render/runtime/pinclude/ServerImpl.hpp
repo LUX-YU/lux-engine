@@ -72,6 +72,7 @@ namespace lux::render
             bool available = true;
             std::vector<SupportedHandler> supported;
             HandlerId selected;
+            const std::shared_ptr<const void>* active_code_pin = nullptr;
         };
 
         struct CommandEntry final

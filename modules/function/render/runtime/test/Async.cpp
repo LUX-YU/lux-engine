@@ -134,7 +134,7 @@ struct State final
 struct GateSender final
 {
     using sender_concept = stdexec::sender_t;
-    using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(Output)>;
+    using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(Output), stdexec::set_stopped_t()>;
     State* state;
     std::uint32_t index;
     Output result;
@@ -167,7 +167,10 @@ struct GateSender final
             auto& self = *static_cast<Operation*>(value);
             auto receiver = std::move(self.receiver);
             auto output = std::move(self.result);
-            stdexec::set_value(std::move(receiver), std::move(output));
+            if (stdexec::get_stop_token(stdexec::get_env(receiver)).stop_requested())
+                stdexec::set_stopped(std::move(receiver));
+            else
+                stdexec::set_value(std::move(receiver), std::move(output));
         }
 
         void start() noexcept

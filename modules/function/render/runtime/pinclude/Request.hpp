@@ -14,7 +14,8 @@ namespace lux::render
             SessionIdentity session, RequestId request, std::size_t capacity,
             const CommandDescriptor* descriptor, const runtime_detail::CommandTransport* transport,
             const platform::ipc::IpcBoundType<runtime_detail::ValueEnvelope<RenderError>>& failure_type,
-            const std::shared_ptr<const void>& code_pin) noexcept;
+            const std::shared_ptr<const void>& response_code_pin,
+            const std::shared_ptr<const void>& operation_code_pin) noexcept;
         RenderRequest(RenderRequest&&) noexcept = default;
         RenderRequest& operator=(RenderRequest&& other) noexcept
         {
@@ -29,7 +30,7 @@ namespace lux::render
 
         [[nodiscard]] bool active() const noexcept { return input_.active(); }
         [[nodiscard]] RequestId id() const noexcept { return request_; }
-        [[nodiscard]] const std::shared_ptr<const void>& codePin() const noexcept { return *code_pin_; }
+        [[nodiscard]] const std::shared_ptr<const void>& codePin() const noexcept { return *operation_code_pin_; }
         [[nodiscard]] std::size_t replyCapacity() const noexcept { return reply_capacity_; }
         [[nodiscard]] bool gpuReady() const noexcept
         {
@@ -48,7 +49,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> complete(void* response) noexcept;
         [[nodiscard]] RenderResult<void> fail(RenderError error) noexcept;
         [[nodiscard]] RenderResult<void> cancel() noexcept;
-        [[nodiscard]] RenderResult<void> unknown() noexcept;
+        [[nodiscard]] RenderResult<void> unknown(RenderError error = {}) noexcept;
         [[nodiscard]] RenderResult<std::size_t> prepareResponse(void*, platform::ipc::IpcMessage&) noexcept;
         [[nodiscard]] RenderResult<void> publishPrepared(platform::ipc::IpcMessage&, std::size_t charge) noexcept;
         [[nodiscard]] CommandInvocation
@@ -61,6 +62,7 @@ namespace lux::render
         // Borrowed from stable Command metadata (or the bootstrap Impl). All source requests end
         // before that owner; each packaged reply takes its own pin for late foreign destruction.
         const std::shared_ptr<const void>* code_pin_;
+        const std::shared_ptr<const void>* operation_code_pin_;
         platform::ipc::ReceivedRequest input_;
         std::unique_ptr<platform::ipc::IpcMessage> unreplied_;
         platform::ipc::IpcResponder* responder_;

@@ -331,12 +331,13 @@
     ],
     "evidence": [
       "N3-REPLY-CHECKPOINT.md",
-      "N2-HANDLERS-CHECKPOINT.md"
+      "N2-HANDLERS-CHECKPOINT.md",
+      "N3-NATIVE-UPLOAD-CHECKPOINT.md (partial prerequisite; independent verification pending)"
     ]
   },
   "N3.2": {
     "title": "Native upload and readback operations",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -361,7 +362,9 @@
       "T-GPU-05",
       "T-GPU-06"
     ],
-    "evidence": []
+    "evidence": [
+      "N3-NATIVE-UPLOAD-CHECKPOINT.md (partial prerequisite; independent verification pending)"
+    ]
   },
   "N3.3": {
     "title": "Narrow compile input",
@@ -394,7 +397,7 @@
   },
   "N3.4": {
     "title": "Completion cancellation and shutdown",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -419,7 +422,9 @@
       "T-GPU-05",
       "T-GPU-06"
     ],
-    "evidence": []
+    "evidence": [
+      "N3-NATIVE-UPLOAD-CHECKPOINT.md (partial prerequisite; independent verification pending)"
+    ]
   },
   "N4.1": {
     "title": "Typed factory qualification",

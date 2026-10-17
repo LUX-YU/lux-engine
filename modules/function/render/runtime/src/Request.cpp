@@ -9,8 +9,8 @@ namespace lux::render
     RenderRequest::RenderRequest(ipc::ReceivedRequest input, ipc::IpcResponder& responder,
         SessionIdentity session, RequestId request, std::size_t capacity, const CommandDescriptor* descriptor,
         const CommandTransport* transport, const ipc::IpcBoundType<ValueEnvelope<RenderError>>& failure_type,
-        const std::shared_ptr<const void>& code_pin) noexcept
-        : code_pin_(&code_pin), input_(std::move(input)), responder_(&responder), session_(session),
+        const std::shared_ptr<const void>& code_pin, const std::shared_ptr<const void>& operation_code_pin) noexcept
+        : code_pin_(&code_pin), operation_code_pin_(&operation_code_pin), input_(std::move(input)), responder_(&responder), session_(session),
           request_(request), reply_capacity_(capacity), descriptor_(descriptor), transport_(transport),
           failure_type_(&failure_type) {}
 
@@ -66,9 +66,9 @@ namespace lux::render
         return publishError(ECommandOutcome::CANCELLED, {});
     }
 
-    RenderResult<void> RenderRequest::unknown() noexcept
+    RenderResult<void> RenderRequest::unknown(RenderError error) noexcept
     {
-        return publishError(ECommandOutcome::OUTCOME_UNKNOWN, {});
+        return publishError(ECommandOutcome::OUTCOME_UNKNOWN, error);
     }
 
     RenderResult<void> RenderRequest::publish(ipc::IpcMessage& message, ECommandOutcome outcome) noexcept

@@ -239,10 +239,12 @@ namespace lux::render
                 RenderResult<void> (*)(State&, const typename C::Request&, Reply<C>&) noexcept>
         [[nodiscard]] static CommandHandler bind(State* state) noexcept
         {
-            return {&commandDescriptor<C>(), [](void* owner, CommandInvocation& invocation) noexcept {
+            auto result = CommandHandler{&commandDescriptor<C>(), [](void* owner, CommandInvocation& invocation) noexcept {
                 Reply<C> context(invocation);
                 return Function(*static_cast<State*>(owner), context.request(), context);
             }, state};
+            if (!state) result.call_.invoke = nullptr;
+            return result;
         }
 
         template <RenderCommand C, auto Method, class Handler>
@@ -250,12 +252,14 @@ namespace lux::render
                 void (Handler::*)(const typename C::Request&, Reply<C>) noexcept>
         [[nodiscard]] static CommandHandler bind(Handler* handler) noexcept
         {
-            return {&commandDescriptor<C>(), [](void* object, CommandInvocation& invocation) noexcept {
+            auto result = CommandHandler{&commandDescriptor<C>(), [](void* object, CommandInvocation& invocation) noexcept {
                 Reply<C> reply(invocation);
                 const auto& request = reply.request();
                 (static_cast<Handler*>(object)->*Method)(request, std::move(reply));
                 return RenderResult<void>{};
             }, handler};
+            if (!handler) result.call_.invoke = nullptr;
+            return result;
         }
 
     private:

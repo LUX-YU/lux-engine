@@ -389,7 +389,8 @@ int main(int argc, char** argv)
         auto stale = effect_request;
         ++stale.features.front().feature.gen;
         auto rejected = wait(*a, take(runtime_test::send<CreateEffect>(*a, binding, std::move(stale))));
-        CHECK(!rejected.get<UploadProbe::Response>() && rejected.get<UploadProbe::Response>().error().type == kRuntimeIdentity);
+        CHECK(!rejected.get<CreateEffect::Response>() &&
+            rejected.get<CreateEffect::Response>().error().type == kRuntimeIdentity);
         CHECK(server->stats().compiled_graphs == 1);
     }
     std::array<AttachmentRequest, 4> groups;

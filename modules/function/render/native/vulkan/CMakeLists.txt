@@ -69,10 +69,53 @@ component_include_directories(render_native_vulkan_extensions
 )
 
 component_add_internal_dependencies(render_native_vulkan_extensions
-    lux::engine::render::render_native_vulkan lux::engine::render::render_features
+    lux::engine::render::render_native_vulkan
 )
 
 target_compile_features(render_native_vulkan_extensions PUBLIC cxx_std_20)
+
+# Actual Native Feature providers; Storage extensions themselves do not depend on Feature assembly.
+if(NOT Vulkan_GLSLANG_VALIDATOR_EXECUTABLE)
+    message(FATAL_ERROR "Native Mesh Feature shaders require glslangValidator")
+endif()
+
+set(mesh_shader_headers)
+foreach(shader BasicMesh DepthOnly)
+    set(defines)
+    if(shader STREQUAL "DepthOnly")
+        set(defines -DDEPTH_ONLY=1)
+    endif()
+    set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}Vertex.hpp")
+    add_custom_command(
+        OUTPUT "${header}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+        COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -S vert
+            ${defines} --vn k${shader}Vertex "${CMAKE_CURRENT_SOURCE_DIR}/shaders/Mesh.vert" -o "${header}"
+        DEPENDS shaders/Mesh.vert
+        VERBATIM
+    )
+    list(APPEND mesh_shader_headers "${header}")
+endforeach()
+
+add_component(
+    STATIC
+    COMPONENT_NAME render_native_vulkan_features
+    NAMESPACE lux::engine::render
+    OUTPUT_NAME lux_engine_render_native_vulkan_features
+    SOURCE_FILES src/features/MeshFeature.cpp ${mesh_shader_headers}
+)
+
+component_include_directories(render_native_vulkan_features
+    BUILD_TIME_EXPORT "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+    INSTALL_TIME include
+)
+
+component_add_internal_dependencies(render_native_vulkan_features
+    lux::engine::render::render_native_vulkan_extensions lux::engine::render::render_features
+)
+
+target_compile_features(render_native_vulkan_features PUBLIC cxx_std_20)
 
 if(BUILD_TESTING)
     add_subdirectory(test)

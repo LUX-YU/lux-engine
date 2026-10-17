@@ -468,3 +468,25 @@ add_test(NAME render.native.instance_draw COMMAND render_instance_draw_test
 )
 
 set_tests_properties(render.native.instance_draw PROPERTIES TIMEOUT 90)
+
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/features_MeshFeature.cpp"
+    CONTENT "#include <lux/engine/render/native/vulkan/features/MeshFeature.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
+)
+
+add_library(render_native_header_features_MeshFeature OBJECT
+    "${CMAKE_CURRENT_BINARY_DIR}/headers/features_MeshFeature.cpp"
+)
+
+target_link_libraries(render_native_header_features_MeshFeature PRIVATE render_native_vulkan_features)
+
+add_executable(render_mesh_features_test MeshFeatures.cpp)
+
+target_link_libraries(render_mesh_features_test PRIVATE render_native_vulkan_features lux::engine::core::core_execution)
+
+set_target_properties(render_mesh_features_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_dependencies(render_mesh_features_test render_material_assets)
+
+add_test(NAME render.native.mesh_features COMMAND render_mesh_features_test "${render_asset_dir}/Unlit.frag.spv")
+
+set_tests_properties(render.native.mesh_features PROPERTIES TIMEOUT 90)

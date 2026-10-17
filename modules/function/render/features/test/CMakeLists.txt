@@ -17,7 +17,7 @@ add_executable(render_features_cost Cost.cpp)
 
 target_link_libraries(render_features_cost PRIVATE render_features)
 
-foreach(header Feature Assembly Resources Registration)
+foreach(header Feature Assembly Resources Registration MeshFeature)
     string(CONCAT probe
         "#include <lux/engine/render/features/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
         "#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native header leaked into Feature\n#endif\n"
@@ -64,3 +64,11 @@ add_test(
         "-DCXX_FLAGS=${CMAKE_CXX_FLAGS}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/../../core/test/Installed.cmake"
 )
+
+add_executable(render_mesh_feature_contract_test MeshFeature.cpp)
+
+target_link_libraries(render_mesh_feature_contract_test PRIVATE render_features)
+
+add_test(NAME render.features.mesh_contract COMMAND render_mesh_feature_contract_test)
+
+set_tests_properties(render.features.mesh_contract PROPERTIES TIMEOUT 30)

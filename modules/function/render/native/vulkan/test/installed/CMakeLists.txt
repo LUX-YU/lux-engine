@@ -24,17 +24,23 @@ add_test(NAME installed.native.direct_graph COMMAND direct_graph_consumer)
 
 
 find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_native_vulkan render_native_vulkan_extensions)
+if(TARGET lux::engine::render::render_features)
+    message(FATAL_ERROR "Storage extensions must not import Feature assembly")
+endif()
+
+find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_native_vulkan_features)
 find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)
 
 add_executable(native_consumer Main.cpp)
 
-target_link_libraries(native_consumer PRIVATE lux::engine::render::render_native_vulkan lux::engine::render::render_features)
+target_link_libraries(native_consumer PRIVATE lux::engine::render::render_native_vulkan_features)
 
 add_test(NAME installed.native.compiler COMMAND native_consumer)
 
 add_executable(texture_consumer Texture.cpp)
 
 target_link_libraries(texture_consumer PRIVATE lux::engine::render::render_native_vulkan_extensions
+    lux::engine::render::render_features
     lux::engine::core::core_execution
 )
 

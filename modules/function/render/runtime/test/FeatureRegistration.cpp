@@ -113,7 +113,7 @@ int main()
         check(bool(server->registerFeature<First>({&first, &graph, nullptr, initial})));
         auto candidate = commandDescriptor<First>();
         if (fault == 1) ++candidate.version.minor;
-        if (fault == 2) candidate.completion = ECompletionContract::RESOURCE_GPU_READY;
+        if (fault == 2) candidate.request.alignment *= 2;
         if (fault == 3) candidate.response = candidate.request;
         if (fault >= 4) candidate = commandDescriptor<Second>();
         if (fault == 5) candidate.version = {};

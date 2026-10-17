@@ -35,7 +35,6 @@ namespace lux::render
 
     RenderResult<void> RenderRequest::complete(void* response) noexcept
     {
-        if (gpuReady()) return cxx::unexpected(RenderError{kProtocolContract});
         ipc::IpcMessage output;
         auto bytes = prepareResponse(response, output);
         if (!bytes) return cxx::unexpected(bytes.error());
@@ -74,6 +73,9 @@ namespace lux::render
     RenderResult<void> RenderRequest::publish(ipc::IpcMessage& message, ECommandOutcome outcome) noexcept
     {
         message.setMetadata(ReplyMetadata{session_, request_, outcome});
+#ifdef LUX_RUNTIME_TEST_SEAM
+        test::replyPublication(message);
+#endif
         if (!responder_->tryReply(input_, message))
         {
             unreplied_ = std::make_unique<ipc::IpcMessage>(std::move(message));
@@ -83,9 +85,9 @@ namespace lux::render
     }
 
     CommandInvocation RenderRequest::invocation(
-        void* call_state, const CommandCompletionFns& functions, void* extension
+        void* call_state, const CommandCompletionFns& functions
     ) noexcept
     {
-        return {transport_->request_value(input_.message()), call_state, &functions, extension};
+        return {transport_->request_value(input_.message()), call_state, &functions};
     }
 }

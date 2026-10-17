@@ -85,16 +85,14 @@ namespace lux::render
     struct RenderServer::Impl final
     {
         // One handler-call borrow; every table and deferred request remains owned by this Impl.
-        struct GpuAdmission final
+        struct CommandCall final
         {
             Impl& server;
             RenderRequest& request;
-            bool reserved = false;
         };
 
         static const CommandCompletionFns command_completion_functions;
         static const CommandCompletionFns deferred_completion_functions;
-        static const vulkan::GpuCompletionFns gpu_completion_functions;
 
         [[nodiscard]] RenderResult<FeatureId> registerFeature(
             FeatureRegistration feature, std::span<const CommandTransport> transports
@@ -142,7 +140,7 @@ namespace lux::render
                 +[](Impl& owner, const typename C::Request&, Reply<C>& context) noexcept
             {
                 auto& invocation = protocol_detail::ReplyAccess::invocation(context);
-                return (owner.*Method)(static_cast<GpuAdmission*>(invocation.completion_owner)->request);
+                return (owner.*Method)(static_cast<CommandCall*>(invocation.completion_owner)->request);
             };
             addCommand(bindCommand<C, handler>(*this), commandTransport<C>(), nullptr, config.implementation_code_pin);
         }
@@ -159,8 +157,6 @@ namespace lux::render
         ) const noexcept;
 
         void settle(RenderRequest request, RenderResult<void> result) noexcept;
-
-        void cancelReadbacks(vulkan::ExecutionContext* context) noexcept;
 
         RenderResult<void> withdraw(RenderEffect& effect, std::size_t index) noexcept;
 
@@ -184,11 +180,6 @@ namespace lux::render
 
         RenderResult<void> readback(RenderRequest& request) noexcept;
 
-        void armReadback(DeferredCompletion& slot) noexcept;
-
-        static void finishReadback(void* value, RenderResult<void> completed) noexcept;
-
-        static void finishGpu(void* value, RenderResult<void> completed) noexcept;
 
         RenderResult<void> tick() noexcept;
 
@@ -213,7 +204,7 @@ namespace lux::render
 
         DeferredCompletion* reserveCompletion(bool for_compile = false) noexcept;
 
-        static void completeCpu(void* value, ECommandOutcome outcome, RenderError error, void* response) noexcept;
+        static void completeOperation(void* value, ECommandOutcome outcome, RenderError error, void* response) noexcept;
 
         RenderResult<CommandInvocation*> deferCommand(RenderRequest& request, std::size_t reply_bytes) noexcept;
 

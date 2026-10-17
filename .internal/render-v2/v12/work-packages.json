@@ -332,7 +332,8 @@
     "evidence": [
       "N3-REPLY-CHECKPOINT.md",
       "N2-HANDLERS-CHECKPOINT.md",
-      "N3-NATIVE-UPLOAD-CHECKPOINT.md (partial prerequisite; independent verification pending)"
+      "N3-NATIVE-UPLOAD-CHECKPOINT.md (partial prerequisite; independent verification pending)",
+      "N3-GENERIC-COMPLETION-CHECKPOINT.md (exact-I independent verification pending)"
     ]
   },
   "N3.2": {
@@ -363,7 +364,8 @@
       "T-GPU-06"
     ],
     "evidence": [
-      "N3-NATIVE-UPLOAD-CHECKPOINT.md (partial prerequisite; independent verification pending)"
+      "N3-NATIVE-UPLOAD-CHECKPOINT.md (partial prerequisite; independent verification pending)",
+      "N3-GENERIC-COMPLETION-CHECKPOINT.md (exact-I independent verification pending)"
     ]
   },
   "N3.3": {
@@ -423,7 +425,8 @@
       "T-GPU-06"
     ],
     "evidence": [
-      "N3-NATIVE-UPLOAD-CHECKPOINT.md (partial prerequisite; independent verification pending)"
+      "N3-NATIVE-UPLOAD-CHECKPOINT.md (partial prerequisite; independent verification pending)",
+      "N3-GENERIC-COMPLETION-CHECKPOINT.md (exact-I independent verification pending)"
     ]
   },
   "N4.1": {

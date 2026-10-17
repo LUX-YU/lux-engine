@@ -6,7 +6,7 @@
 
 namespace lux::render
 {
-    namespace registration_detail { struct NativeBinding; struct CommandRegistrationAudit; }
+    namespace registration_detail { struct NativeBinding; }
 
     class CommandRegistration final : public CommandHandler
     {
@@ -14,7 +14,6 @@ namespace lux::render
         CommandRegistration() noexcept = default;
         CommandRegistration(CommandHandler handler) noexcept : CommandHandler(handler) {}
         [[nodiscard]] bool valid() const noexcept { return descriptor() && (call().invoke || bind_native_); }
-        [[nodiscard]] bool gpuCompletion() const noexcept { return gpu_completion_; }
         void bindNative(void* owner) noexcept
         {
             if (bind_native_) static_cast<CommandHandler&>(*this) = bind_native_(owner);
@@ -22,9 +21,7 @@ namespace lux::render
 
     private:
         friend struct registration_detail::NativeBinding;
-        friend struct registration_detail::CommandRegistrationAudit;
         CommandHandler (*bind_native_)(void*) noexcept = nullptr;
-        bool gpu_completion_ = false;
     };
 
     // Cold declaration-to-implementation binding. The factory remains the only

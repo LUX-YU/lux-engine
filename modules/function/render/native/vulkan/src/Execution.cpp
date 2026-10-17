@@ -14,6 +14,7 @@ namespace lux::render::vulkan
 
     ExecutionContext::~ExecutionContext() noexcept
     {
+        cancelReadbacks();
         for (auto& binding : bindings_)
         {
             if (binding.view) LUX_DESTROY("image_view", vkDestroyImageView(device(), binding.view, nullptr));
@@ -167,6 +168,8 @@ namespace lux::render::vulkan
         {
             if (auto result = retirement().retire(*ticket, std::move(*found)); !result) return result;
         }
+        // Retirement admission must succeed before detaching the logical readback uses.
+        context->cancelReadbacks();
         contexts_.erase(found);
         return {};
     }

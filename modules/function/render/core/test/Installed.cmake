@@ -18,7 +18,9 @@ run_checked("${CMAKE_COMMAND}" --install "${BUILD_DIR}" --config "${CONFIG}" --p
 
 file(RENAME "${prefix}" "${relocated}")
 
-foreach(obsolete features/Texture.hpp features/Program.hpp data/Wire.hpp)
+foreach(obsolete features/Texture.hpp features/Program.hpp data/Wire.hpp
+    native/vulkan/transfer/GpuCompletion.hpp native/vulkan/CommandCompletion.hpp
+)
     if(EXISTS "${relocated}/include/lux/engine/render/${obsolete}")
         message(FATAL_ERROR "Obsolete public header installed: ${obsolete}")
     endif()

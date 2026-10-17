@@ -3,9 +3,6 @@
 #include "Request.hpp"
 #include <lux/engine/render/protocol/AsyncCommand.hpp>
 #include <lux/engine/render/resource/AsyncWork.hpp>
-#include <lux/engine/render/native/vulkan/CommandCompletion.hpp>
-#include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
-#include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/cxx/concurrent/BlockingQueue.hpp>
 #include <atomic>
@@ -48,25 +45,7 @@ namespace lux::render::runtime_detail
     struct DeferredCompletion;
     using DeferredSlots = cxx::StableSlotMap<DeferredCompletion, CompletionTag>;
 
-    struct GpuCompletion final
-    {
-        vulkan::SubmissionQueue* queue = nullptr;
-        std::uint64_t submitted_before_reserve = 0;
-        vulkan::SubmissionCallback callback;
-        vulkan::GpuWork work;
-        platform::ipc::IpcMessage reply;
-        std::size_t reply_charge = 0;
-        RenderRequest* reserved_request = nullptr;
-    };
-
-    struct ReadbackCompletion final
-    {
-        // Null after topology cancellation: the old Context may retire before this callback dispatches.
-        vulkan::ExecutionContext* context = nullptr;
-        vulkan::SubmissionCallback callback;
-    };
-
-    struct CpuCompletion final
+    struct OperationCompletion final
     {
         void (*destroy)(void*) noexcept = nullptr;
         void* operation = nullptr;
@@ -74,16 +53,13 @@ namespace lux::render::runtime_detail
         std::size_t reply_charge = 0;
         ECommandOutcome outcome = ECommandOutcome::OUTCOME_UNKNOWN;
         RenderError error{};
-        bool compiling = false;
         RenderResult<void> (*adopt)(void*, void*, RenderRequest&) noexcept = nullptr;
 
-        CpuCompletion() noexcept = default;
-        CpuCompletion(const CpuCompletion&) = delete;
-        CpuCompletion& operator=(const CpuCompletion&) = delete;
-        ~CpuCompletion() noexcept { if (operation) destroy(operation); }
+        OperationCompletion() noexcept = default;
+        OperationCompletion(const OperationCompletion&) = delete;
+        OperationCompletion& operator=(const OperationCompletion&) = delete;
+        ~OperationCompletion() noexcept { if (operation) destroy(operation); }
     };
-
-    using VCompletionCondition = std::variant<std::monostate, ReadbackCompletion, GpuCompletion, CpuCompletion>;
 
     // The only pending request owner. Its fixed-address slot reserves one CPU event landing place.
     struct DeferredCompletion final
@@ -92,7 +68,8 @@ namespace lux::render::runtime_detail
         CommandInvocation invocation{};
         stdexec::inplace_stop_source stop;
         // Sender operations may retain a stop_callback until destruction; its source outlives them.
-        VCompletionCondition condition;
+        OperationCompletion operation;
+        std::size_t* quota_use = nullptr;
         CompletionQueue* events = nullptr;
         std::atomic<std::size_t>* publishers = nullptr;
         void* server = nullptr;
@@ -103,6 +80,7 @@ namespace lux::render::runtime_detail
         RenderResult<void> cpu_result;
 
         DeferredCompletion() noexcept = default;
+        ~DeferredCompletion() noexcept { if (quota_use) --*quota_use; }
         [[nodiscard]] CompletionPost post() noexcept
         {
             return {this, [](void* owner, void* next, CpuResume callback, RenderResult<void> result) noexcept {
@@ -139,6 +117,5 @@ namespace lux::render::runtime_detail
 namespace lux::render::runtime_detail::test
 {
     bool observeGpuCompletion() noexcept;
-    void gpuReplyPublicationStarted() noexcept;
 }
 #endif

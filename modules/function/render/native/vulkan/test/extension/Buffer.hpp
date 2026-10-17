@@ -27,7 +27,6 @@ namespace extension_test
     struct SetBuffer final
     {
         static constexpr std::string_view name = "test.extension.SetBuffer";
-        static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
         struct Request final { BufferId id; RenderPayload source; };
         using Response = BufferBinding;
     };
@@ -40,7 +39,6 @@ namespace extension_test
     struct ReadBuffer final
     {
         static constexpr std::string_view name = "test.extension.ReadBuffer";
-        static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
         using Request = BufferBinding;
         struct Response final { RenderPayload pixels; };
     };

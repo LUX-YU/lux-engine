@@ -2,26 +2,26 @@
 
 #include "../../native/vulkan/test/extension/NativeBuffer.hpp"
 #include "../../native/vulkan/test/extension/Feature.hpp"
-#include <lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp>
+#include "../../native/vulkan/test/SubmissionSender.hpp"
 #include <lux/engine/render/features/Registration.hpp>
 #include <lux/engine/render/native/vulkan/Registration.hpp>
 
 namespace extension_test
 {
-    inline RenderResult<void> setBuffer(vk::DeviceSession& session, const SetBuffer::Request& input,
+    inline RenderResult<void> setBuffer(vk::DeviceSession& session, const SetBuffer::Request&,
         Reply<SetBuffer>& context) noexcept
     {
-        BufferBinding response;
-        auto reservation = vk::GpuCompletionReservation::reserve(context, session.queue(), response);
-        if (!reservation) return lux::cxx::unexpected(reservation.error());
+        auto pending = context.defer();
+        if (!pending) return lux::cxx::unexpected(pending.error());
         auto& registry = session.resources();
         auto instance = registry.getOrCreate(registry.root(), "values", TestBufferStorage::description, nullptr);
-        if (!instance) return lux::cxx::unexpected(instance.error());
+        if (!instance) return pending->fail(instance.error());
         auto& storage = *static_cast<NativeBuffer*>(registry.native(*instance));
-        auto upload = lux::render::upload(storage, input);
-        if (!upload) return lux::cxx::unexpected(upload.error());
-        if (auto ready = reservation->setReply(&upload->first); !ready) return ready;
-        return reservation->commitWork(upload->second);
+        auto upload = lux::render::upload(storage, pending->request());
+        if (!upload) return pending->fail(upload.error());
+        return pending->completeWhen(vk::GpuWorkSender<BufferBinding>{
+            std::move(upload->first), std::move(upload->second)
+        });
     }
 
     inline RenderResult<void> removeBuffer(vk::DeviceSession& session, const RemoveBuffer::Request& input,
@@ -34,12 +34,15 @@ namespace extension_test
         return result ? context.complete(Ack{}) : result;
     }
 
-    inline RenderResult<void> readBuffer(vk::DeviceSession& session, const ReadBuffer::Request& input,
+    inline RenderResult<void> readBuffer(vk::DeviceSession& session, const ReadBuffer::Request&,
         Reply<ReadBuffer>& context) noexcept
     {
+        auto pending = context.defer(sizeof(ReadBuffer::Response) + 16);
+        if (!pending) return lux::cxx::unexpected(pending.error());
+        const auto& input = pending->request();
         auto& registry = session.resources();
         auto id = registry.find(registry.root(), "values", TestBufferStorage::description);
-        if (!id) return lux::cxx::unexpected(id.error());
+        if (!id) return pending->fail(id.error());
         struct Read final
         {
             vk::DeviceSession& session;
@@ -48,6 +51,7 @@ namespace extension_test
             vk::BufferPermit buffer;
             std::optional<vk::SubmissionTicket> ticket;
             std::shared_ptr<std::vector<std::byte>> output;
+
             ~Read() noexcept
             {
                 if (buffer)
@@ -58,53 +62,60 @@ namespace extension_test
                 source.reference.reset();
                 session.resources().release(storage);
             }
+
+            vk::SubmissionQueue& queue() noexcept { return session.queue(); }
+
+            RenderResult<vk::SubmissionTicket> submit() noexcept
+            {
+                auto commands = queue().begin();
+                if (!commands) return lux::cxx::unexpected(commands.error());
+                VkBufferMemoryBarrier2 before{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+                before.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+                before.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+                before.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+                before.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+                before.srcQueueFamilyIndex = before.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                before.buffer = source.buffer->native();
+                before.size = VK_WHOLE_SIZE;
+                VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+                dependency.bufferMemoryBarrierCount = 1;
+                dependency.pBufferMemoryBarriers = &before;
+                vkCmdPipelineBarrier2(commands->native(), &dependency);
+                const VkBufferCopy region{0, 0, 16};
+                vkCmdCopyBuffer(commands->native(), source.buffer->native(), session.borrow(buffer)->native(), 1, &region);
+                before.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+                before.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+                before.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+                before.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+                before.buffer = session.borrow(buffer)->native();
+                vkCmdPipelineBarrier2(commands->native(), &dependency);
+                auto submitted = std::move(*commands).submit();
+                if (!submitted) return lux::cxx::unexpected(submitted.error());
+                ticket = *submitted;
+                source.last_use->merge(*submitted);
+                return *submitted;
+            }
+
+            RenderResult<void> ready() noexcept { return session.read(*session.borrow(buffer), 0, *output); }
         };
         auto output = std::make_shared<std::vector<std::byte>>(16);
         auto payload = RenderPayload::fromVector(output, 0, output->size());
-        if (!payload) return lux::cxx::unexpected(payload.error());
+        if (!payload) return pending->fail(payload.error());
         ReadBuffer::Response response{std::move(*payload)};
-        auto reservation = vk::GpuCompletionReservation::reserve(context, session.queue(), response);
-        if (!reservation) return lux::cxx::unexpected(reservation.error());
         registry.retain(*id);
         auto owner = std::make_unique<Read>(session, *id, vk::PreparedStorageBinding{}, vk::BufferPermit{},
             std::optional<vk::SubmissionTicket>{}, output);
         vk::NativeResourcePlan plan{"values", GraphBufferDesc{16}, EGraphOrigin::IMPORTED};
         auto argument = encodeData(input, {}, {8, 0});
-        if (!argument) return lux::cxx::unexpected(argument.error());
+        if (!argument) return pending->fail(argument.error());
         auto prepared = static_cast<NativeBuffer*>(registry.native(*id))->prepare(plan, argument->view(), owner->source);
-        if (!prepared) return prepared;
+        if (!prepared) return pending->fail(prepared.error());
         auto buffer = session.createBuffer(16, VK_BUFFER_USAGE_TRANSFER_DST_BIT, vk::EMemoryAccess::READBACK);
-        if (!buffer) return lux::cxx::unexpected(buffer.error());
+        if (!buffer) return pending->fail(buffer.error());
         owner->buffer = std::move(*buffer);
-        auto commands = session.queue().begin();
-        if (!commands) return lux::cxx::unexpected(commands.error());
-        VkBufferMemoryBarrier2 before{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
-        before.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        before.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
-        before.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
-        before.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
-        before.srcQueueFamilyIndex = before.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        before.buffer = owner->source.buffer->native();
-        before.size = VK_WHOLE_SIZE;
-        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-        dependency.bufferMemoryBarrierCount = 1;
-        dependency.pBufferMemoryBarriers = &before;
-        vkCmdPipelineBarrier2(commands->native(), &dependency);
-        const VkBufferCopy region{0, 0, 16};
-        vkCmdCopyBuffer(commands->native(), owner->source.buffer->native(), session.borrow(owner->buffer)->native(), 1, &region);
-        before.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
-        before.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-        before.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
-        before.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
-        before.buffer = session.borrow(owner->buffer)->native();
-        vkCmdPipelineBarrier2(commands->native(), &dependency);
-        auto ticket = std::move(*commands).submit();
-        if (!ticket) return lux::cxx::unexpected(ticket.error());
-        owner->ticket = *ticket;
-        owner->source.last_use->merge(*ticket);
-        return reservation->commit<[](Read& value, vk::DeviceSession& session) noexcept {
-            return session.read(*session.borrow(value.buffer), 0, *value.output);
-        }>(*ticket, owner);
+        return pending->completeWhen(native_test::SubmissionSender<ReadBuffer::Response, Read>{
+            std::move(response), std::move(owner)
+        });
     }
 
 }

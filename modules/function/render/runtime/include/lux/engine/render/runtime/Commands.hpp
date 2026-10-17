@@ -252,7 +252,6 @@ namespace lux::render
     struct Readback final
     {
         static constexpr std::string_view name{"render.readback"};
-        static constexpr auto completion = ECompletionContract::RESULT_AVAILABLE;
         using Request = AttachmentRequest;
         using Response = ReadbackResult;
     };
@@ -267,7 +266,6 @@ namespace lux::render
     struct QueryRenderStats final
     {
         static constexpr std::string_view name{"render.stats.query"};
-        static constexpr auto completion = ECompletionContract::RESULT_AVAILABLE;
         using Request = EmptyRequest;
         using Response = RenderStatsSnapshot;
     };

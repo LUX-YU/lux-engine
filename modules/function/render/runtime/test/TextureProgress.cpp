@@ -1,6 +1,5 @@
 #include <lux/engine/render/native/vulkan/Registration.hpp>
 #include "ErasedRegistrationFixture.hpp"
-#include <lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp>
 #include "ServerFixture.hpp"
 #include "TypedTest.hpp"
 #include "TextureFixture.hpp"
@@ -20,7 +19,6 @@ using Clock = std::chrono::steady_clock;
 struct TextureProbe final
 {
     static constexpr std::string_view name = "test.textureProgress";
-    static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
     struct Request final { RenderPayload source; std::uint32_t dimension; };
     using Response = Ack;
 };
@@ -73,12 +71,13 @@ static const std::array texture_operations{operation};
 static const FeatureDescriptor definition{FeatureName("test.texture.progress"), {1, 0}, nullptr};
 static const FeatureGraphOps definition_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 
-static RenderResult<void> invoke(DeviceSession& session, const TextureProbe::Request& value, Reply<TextureProbe>& context) noexcept
+static RenderResult<void> invoke(DeviceSession& session, const TextureProbe::Request&, Reply<TextureProbe>& context) noexcept
 {
-    CHECK(!context.complete(Ack{})); // ordinary reply cannot manufacture GPU readiness
-    Ack response;
-    auto reservation = GpuCompletionReservation::reserve(context, session.queue(), response);
-    if (!reservation) return lux::cxx::unexpected(reservation.error());
+    auto pending = context.defer();
+    if (!pending) return lux::cxx::unexpected(pending.error());
+    CHECK(!context.complete(Ack{})); // the transferred completion right cannot publish a second result
+    CHECK(!context.defer());
+    const auto& value = pending->request();
     const auto source = value.source.bytes().view();
     observed.store(source.data());
     const ImageDescription description{{value.dimension, value.dimension}, VK_FORMAT_R8G8B8A8_UNORM,
@@ -86,11 +85,11 @@ static RenderResult<void> invoke(DeviceSession& session, const TextureProbe::Req
     const ImageTransferRegion region{0, std::uint64_t(value.dimension) * 4, 1, 4,
         {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {}, {value.dimension, value.dimension, 1}};
     auto transfer = session.uploadImage(description, source, std::span(&region, 1));
-    if (!transfer) return lux::cxx::unexpected(transfer.error());
+    if (!transfer) return pending->fail(transfer.error());
     auto pin = std::make_unique<Pin>();
     auto work = GpuWork::pending<ready>(session, *transfer, pin);
-    if (!work) return lux::cxx::unexpected(work.error());
-    return reservation->commitWork(*work);
+    if (!work) return pending->fail(work.error());
+    return pending->completeWhen(GpuWorkSender<Ack>{Ack{}, std::move(*work)});
 }
 
 template <class Predicate> static void until(Predicate predicate)
@@ -124,11 +123,11 @@ static void shutdownAndLoss()
     struct Pause final
     {
         std::latch entered{1}, resume{1};
-        std::atomic<bool> first{true};
+        std::atomic<unsigned> preparations{0};
         static void before(void* pointer) noexcept
         {
             auto& self = *static_cast<Pause*>(pointer);
-            if (self.first.exchange(false))
+            if (++self.preparations == 2)
             {
                 self.entered.count_down();
                 self.resume.wait();

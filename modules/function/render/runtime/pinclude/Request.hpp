@@ -4,6 +4,25 @@
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include "TypedProtocol.hpp"
 
+#ifdef LUX_RUNTIME_TEST_SEAM
+namespace lux::render::runtime_detail::test
+{
+    void replyPublication(const platform::ipc::IpcMessage& message) noexcept;
+}
+#endif
+
+namespace lux::render::protocol_detail
+{
+    // Private Runtime control handlers use their actual request owner; external handlers only get Reply<C>.
+    struct ReplyAccess final
+    {
+        template <RenderCommand C> static Reply<C> make(CommandInvocation& invocation) noexcept
+        { return Reply<C>{invocation}; }
+        template <RenderCommand C> static CommandInvocation& invocation(Reply<C>& reply) noexcept
+        { return *reply.invocation_; }
+    };
+}
+
 namespace lux::render
 {
     // The sole source-qualified terminal owner. Public handlers only borrow Reply<C>.
@@ -32,11 +51,6 @@ namespace lux::render
         [[nodiscard]] RequestId id() const noexcept { return request_; }
         [[nodiscard]] const std::shared_ptr<const void>& codePin() const noexcept { return *operation_code_pin_; }
         [[nodiscard]] std::size_t replyCapacity() const noexcept { return reply_capacity_; }
-        [[nodiscard]] bool gpuReady() const noexcept
-        {
-            return descriptor_ && descriptor_->completion == ECompletionContract::RESOURCE_GPU_READY;
-        }
-
         template <class T>
         [[nodiscard]] const T& get() const noexcept
         {
@@ -53,7 +67,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<std::size_t> prepareResponse(void*, platform::ipc::IpcMessage&) noexcept;
         [[nodiscard]] RenderResult<void> publishPrepared(platform::ipc::IpcMessage&, std::size_t charge) noexcept;
         [[nodiscard]] CommandInvocation
-        invocation(void* call_state, const CommandCompletionFns& functions, void* extension = nullptr) noexcept;
+        invocation(void* call_state, const CommandCompletionFns& functions) noexcept;
 
     private:
         [[nodiscard]] RenderResult<void> publishError(ECommandOutcome, RenderError) noexcept;

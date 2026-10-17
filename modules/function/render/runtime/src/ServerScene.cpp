@@ -5,7 +5,6 @@ namespace lux::render
     RenderResult<void> RenderServer::Impl::withdraw(RenderEffect& effect, std::size_t index) noexcept
     {
         auto* context = effect.groups[index].context;
-        cancelReadbacks(context);
         if (auto result = device->release(context); !result) return result;
         effect.groups.erase(effect.groups.begin() + index);
         return {};
@@ -56,7 +55,6 @@ namespace lux::render
             );
             if (!candidate) return cxx::unexpected(candidate.error());
             (*candidate)->setColor(group->context->color());
-            cancelReadbacks(group->context);
             if (auto result = device->release(group->context); !result)
             {
                 if (!device->release(*candidate)) std::terminate(); // never submitted

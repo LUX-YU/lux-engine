@@ -22,7 +22,6 @@ struct Signal final
 {
     static constexpr std::string_view name = "test.Signal";
     static constexpr cxx::SchemaVersion version{3, 7};
-    static constexpr auto completion = ECompletionContract::RESULT_AVAILABLE;
     using Request = Ack;
     using Response = Ack;
 };
@@ -51,7 +50,7 @@ concept HasBudget = requires(const T& value) { CommandValueTraits<T>::retainedBy
 static_assert(RenderCommand<Query> && RenderCommand<Signal>);
 static_assert(!RenderCommand<MissingResponse> && !RenderCommand<InvalidCommand>);
 static_assert(HasBudget<Query::Request> && !HasBudget<Query::Response>);
-static_assert(sizeof(CommandInvocation) == 4 * sizeof(void*));
+static_assert(sizeof(CommandInvocation) == 3 * sizeof(void*)); // No Native completion extension.
 static_assert(sizeof(Reply<Query>) == sizeof(void*));
 static_assert(!std::is_copy_constructible_v<Reply<Query>>);
 
@@ -66,7 +65,7 @@ static int descriptor()
     CHECK(reference.response.alignment == alignof(Query::Response));
     const auto& signal = commandDescriptor<Signal>();
     CHECK(signal.version == cxx::SchemaVersion(3, 7));
-    CHECK(signal.completion == ECompletionContract::RESULT_AVAILABLE);
+    CHECK(signal.response.type == cxx::typeToken<Signal::Response>());
     CHECK(compatibleCommands(reference, reference));
     CHECK(CommandName::fromVerified(reference.name.name(), reference.name.hash()) == reference.name);
     const CommandName other_name("test.Other");
@@ -108,7 +107,7 @@ static int descriptor()
         if (fault == 4) changed.response.type = cxx::typeToken<Ack>();
         if (fault == 5) changed.request.type = cxx::TypeToken(changed.request.type.hash(), "same-hash-other-name");
         if (fault == 6) changed.request.type = cxx::TypeToken(0, changed.request.type.name());
-        if (fault == 7) changed.completion = ECompletionContract::RESOURCE_GPU_READY;
+        if (fault == 7) changed.response.type = cxx::TypeToken(changed.response.type.hash(), "other-response");
         if (fault == 8) ++changed.response.size;
         if (fault == 9) changed.response.alignment *= 2;
         auto mismatch = compatibleCommands(reference, changed);
@@ -123,7 +122,7 @@ static int descriptor()
         if (fault == 3) changed.request.size = 0;
         if (fault == 4) changed.response.alignment = 0;
         if (fault == 5) changed.response.alignment = 3;
-        if (fault == 6) changed.completion = static_cast<ECompletionContract>(255);
+        if (fault == 6) changed.response.type = {};
         CHECK(!validateCommand(changed));
     }
     CHECK(*CommandValueTraits<Query::Request>::retainedBytes({}) == sizeof(Query::Request));
@@ -146,7 +145,7 @@ static_assert(!std::is_copy_constructible_v<Reply<Query>> && std::is_nothrow_mov
 struct Completion final
 {
     bool pending = true;
-    bool gpu_ready = false;
+    bool reject_success = false;
     unsigned calls = 0;
     ECommandOutcome outcome = ECommandOutcome::OUTCOME_UNKNOWN;
     RenderError error{};
@@ -155,7 +154,7 @@ struct Completion final
     static RenderResult<void> finish(void* value, ECommandOutcome outcome, RenderError error, void* response) noexcept
     {
         auto& self = *static_cast<Completion*>(value);
-        if (!self.pending || (self.gpu_ready && outcome == ECommandOutcome::SUCCESS))
+        if (!self.pending || (self.reject_success && outcome == ECommandOutcome::SUCCESS))
             return cxx::unexpected(RenderError{kProtocolContract});
         if (response) self.response = std::move(*static_cast<Query::Response*>(response));
         self.outcome = outcome;
@@ -186,7 +185,7 @@ static int context()
     CHECK(completion.calls == 1);
 
     completion = {};
-    completion.gpu_ready = true;
+    completion.reject_success = true;
     auto rejected = protocol_detail::ReplyAudit::make<Query>(invocation);
     CHECK(!rejected.complete(duplicate) && rejected.active() && duplicate.data() == retained);
     CHECK(rejected.fail(RenderError{kProtocolContract, {17}}));

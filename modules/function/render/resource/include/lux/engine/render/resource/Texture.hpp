@@ -109,7 +109,6 @@ namespace lux::render
     struct QueryTexture final
     {
         static constexpr std::string_view name = "lux.render.QueryTexture";
-        static constexpr auto completion = ECompletionContract::RESULT_AVAILABLE;
         using Request = TextureId;
         using Response = TexturePublished;
     };

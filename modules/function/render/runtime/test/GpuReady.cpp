@@ -1,6 +1,6 @@
 #include <lux/engine/render/native/vulkan/Registration.hpp>
 #include "ErasedRegistrationFixture.hpp"
-#include <lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp>
+#include "SubmissionSender.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include "ServerFixture.hpp"
@@ -20,7 +20,6 @@
 #include <source_location>
 
 using namespace lux::render;
-using vulkan::GpuCompletionReservation;
 using namespace std::chrono_literals;
 using Clock = std::chrono::steady_clock;
 static void check(bool value, int line)
@@ -51,22 +50,32 @@ template <class F> static void until(F predicate, std::source_location at = std:
     }
 }
 
+struct ProbeResponse final { RenderPayload pixels; std::uint32_t sample = 0; };
+
 struct UploadProbe final
 {
     static constexpr std::string_view name = "test.g10.gpuReady";
-    static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
     struct Request final { RenderPayload source; std::uint32_t sample = 0, mode = 0; };
-    using Response = ReadbackResult;
+    using Response = ProbeResponse;
 };
 struct CpuResult final
 {
     static constexpr std::string_view name = "test.g10.cpuResult";
-    static constexpr auto completion = ECompletionContract::RESULT_AVAILABLE;
     using Request = EmptyRequest;
     struct Response final { std::uint32_t reserved = 0; };
 };
 namespace lux::render
 {
+    template <> struct CommandValueTraits<ProbeResponse>
+    {
+        static RenderResult<std::size_t> retainedBytes(const ProbeResponse& value) noexcept
+        {
+            const auto bytes = cxx::checkedAdd(sizeof(value), value.pixels.retainedBytes());
+            if (!bytes) return cxx::unexpected(RenderError{kEncodingLimit});
+            return *bytes;
+        }
+    };
+
     template <> struct CommandValueTraits<UploadProbe::Request>
     {
         static RenderResult<std::size_t> retainedBytes(const UploadProbe::Request& value) noexcept
@@ -80,7 +89,6 @@ namespace lux::render
 
 struct Sample final { std::atomic<long long> inbound{0}, submit{0}, fence{0}, published{0}, consumed{0}; };
 static std::array<Sample, 1200> samples;
-static thread_local std::size_t publishing_sample = 0;
 static std::atomic<bool> hold_observation{false}, hold_fences{false}, fail_submit{false};
 static std::atomic<bool> hold_next_accepted_fence{false};
 static std::atomic<unsigned> accepted{0}, finished{0}, owners_destroyed{0}, source_destroyed{0}, waits{0};
@@ -96,7 +104,11 @@ static std::latch* compile_resume = nullptr;
 namespace lux::render::runtime_detail::test
 {
     bool observeGpuCompletion() noexcept { return !hold_observation.load(); }
-    void gpuReplyPublicationStarted() noexcept { samples[publishing_sample].published = now(); }
+    void replyPublication(const platform::ipc::IpcMessage& message) noexcept
+    {
+        if (message.holds(platform::ipc::IpcMessage::type<ValueEnvelope<ProbeResponse>>()))
+            samples[message.get<ValueEnvelope<ProbeResponse>>().value.sample].published = now();
+    }
 }
 namespace lux::render::vulkan::test
 {
@@ -127,10 +139,13 @@ struct ProbeOwner final
     std::shared_ptr<std::vector<std::byte>> output;
     std::span<const std::byte> source; // original ReceivedRequest is retained by the one Server pending slot
     std::uint32_t sample;
-    bool fail_publication;
+    unsigned mode;
+    vulkan::SubmissionQueue& queue() noexcept;
+    RenderResult<vulkan::SubmissionTicket> submit() noexcept;
+    RenderResult<void> ready() noexcept;
     ProbeOwner(vulkan::DeviceSession& device, std::shared_ptr<std::vector<std::byte>> data,
-        std::span<const std::byte> bytes, std::uint32_t index, bool fail) noexcept
-        : session(device), output(std::move(data)), source(bytes), sample(index), fail_publication(fail)
+        std::span<const std::byte> bytes, std::uint32_t index, unsigned operation_mode) noexcept
+        : session(device), output(std::move(data)), source(bytes), sample(index), mode(operation_mode)
     {
         ++owners_created;
     }
@@ -145,37 +160,99 @@ struct ProbeOwner final
         ++owners_destroyed;
     }
 };
-static RenderResult<void> ready(ProbeOwner& owner, vulkan::DeviceSession& session) noexcept
+vulkan::SubmissionQueue& ProbeOwner::queue() noexcept
 {
-    samples[owner.sample].fence = now();
-    publishing_sample = owner.sample;
-    auto read = session.read(*session.borrow(owner.destination), 0, *owner.output);
+    return session.queue(transfer_mode ? vulkan::EQueueRole::TRANSFER : vulkan::EQueueRole::GRAPHICS);
+}
+
+RenderResult<void> ProbeOwner::ready() noexcept
+{
+    samples[sample].fence = now();
+    auto read = session.read(*session.borrow(destination), 0, *output);
     if (!read) return read;
-    if (!std::ranges::equal(*owner.output, owner.source)) return lux::cxx::unexpected(RenderError{kInvalidEncoding});
-    if (owner.fail_publication) return lux::cxx::unexpected(RenderError{kStorageContract});
-    ++finished; // The test business commit: real copied bytes have been certified, not just a CPU-ready flag.
+    if (!std::ranges::equal(*output, source)) return lux::cxx::unexpected(RenderError{kInvalidEncoding});
+    if (mode == 5) return lux::cxx::unexpected(RenderError{kStorageContract});
+    ++finished;
     return {};
 }
-static RenderResult<void> upload(vulkan::DeviceSession& session, const UploadProbe::Request& input, Reply<UploadProbe>& context) noexcept
+
+RenderResult<vulkan::SubmissionTicket> ProbeOwner::submit() noexcept
+{
+    auto& native_queue = queue();
+    if (mode == 3)
+    {
+        CHECK(native_queue.lastSubmitted());
+        return *native_queue.lastSubmitted(); // Sender must reject old evidence without publishing Success.
+    }
+    auto batch = native_queue.begin();
+    if (!batch) return lux::cxx::unexpected(batch.error());
+    const VkBufferCopy copy{0, 0, source.size()};
+    vkCmdCopyBuffer(batch->native(), session.borrow(staging)->native(),
+        session.borrow(destination)->native(), 1, &copy);
+    VkBufferMemoryBarrier2 host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+    host.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+    host.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    host.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+    host.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+    host.srcQueueFamilyIndex = host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    host.buffer = session.borrow(destination)->native();
+    host.size = VK_WHOLE_SIZE;
+    VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    dependency.bufferMemoryBarrierCount = 1;
+    dependency.pBufferMemoryBarriers = &host;
+    vkCmdPipelineBarrier2(batch->native(), &dependency);
+    const auto previous = native_queue.lastSubmitted();
+    if (mode == 2) fail_submit.store(true);
+    auto submitted = std::move(*batch).submit();
+    if (!submitted)
+    {
+        CHECK(!previous || native_queue.lastSubmitted()->serial() == previous->serial());
+        return lux::cxx::unexpected(submitted.error());
+    }
+    if (hold_next_accepted_fence.exchange(false)) hold_fences.store(true);
+    ticket = *submitted;
+    auto early_release = session.releaseCompleted(destination, *submitted);
+    CHECK(!early_release && early_release.error().type == vulkan::kBusy && destination);
+    samples[sample].submit = now();
+    ++accepted;
+    return *submitted;
+}
+
+static RenderResult<void> upload(vulkan::DeviceSession& session, const UploadProbe::Request& input,
+    Reply<UploadProbe>& context) noexcept
 {
     if (input.sample >= samples.size() || input.mode > 5) return lux::cxx::unexpected(RenderError{kInvalidEncoding});
     samples[input.sample].inbound = now();
-    if (input.mode == 1) return context.complete(ReadbackResult{}); // mandatory premature SUCCESS negative
-    const auto source = input.source.bytes().view();
-    if (source.empty()) return lux::cxx::unexpected(RenderError{kInvalidEncoding});
-    observed_source.store(source.data());
+    const auto source_bytes = input.source.bytes().view().size();
+    if (!source_bytes) return lux::cxx::unexpected(RenderError{kInvalidEncoding});
     auto output = input.mode == 5 ? std::shared_ptr<std::vector<std::byte>>(
-        new std::vector<std::byte>(source.size()), [](auto* value) noexcept {
+        new std::vector<std::byte>(source_bytes), [](auto* value) noexcept {
             delete value;
             ++failed_result_destroyed;
-        }) : std::make_shared<std::vector<std::byte>>(source.size());
+        }) : std::make_shared<std::vector<std::byte>>(source_bytes);
     auto output_pin = RenderPayload::fromVector(output, 0, output->size());
     if (!output_pin) return lux::cxx::unexpected(output_pin.error());
-    ReadbackResult response{std::move(*output_pin)};
-    auto& queue = session.queue(transfer_mode ? vulkan::EQueueRole::TRANSFER : vulkan::EQueueRole::GRAPHICS);
-    if (input.mode == 4)
+    ProbeResponse response{std::move(*output_pin), input.sample};
+    auto charge = CommandValueTraits<ProbeResponse>::retainedBytes(response);
+    if (!charge) return lux::cxx::unexpected(charge.error());
+    auto pending = context.defer(*charge);
+    if (!pending) return lux::cxx::unexpected(pending.error());
+    CHECK(!context.active() && !context.defer());
+    const auto& stable = pending->request();
+    if (stable.mode == 1)
     {
-        // Views fill Graphics only. Explicit real submissions fill the distinct Transfer owner.
+        // v12 has no generic GPU category. The original capability is invalid after transfer;
+        // the real producer below still cannot publish until its accepted Ticket has completed.
+        auto rejected = context.complete(ProbeResponse{});
+        CHECK(!rejected && rejected.error().type == kProtocolContract);
+        return pending->fail(rejected.error());
+    }
+    const auto source = stable.source.bytes().view();
+    observed_source.store(source.data());
+    auto owner = std::make_unique<ProbeOwner>(session, output, source, stable.sample, stable.mode);
+    auto& queue = owner->queue();
+    if (stable.mode == 4)
+    {
         CHECK(hold_fences.load());
         for (unsigned i = 0; i < queue.capacity(); ++i)
         {
@@ -184,59 +261,17 @@ static RenderResult<void> upload(vulkan::DeviceSession& session, const UploadPro
             CHECK(std::move(*empty).submit());
         }
     }
-    auto reservation = GpuCompletionReservation::reserve(context, queue, response);
-    if (!reservation) return lux::cxx::unexpected(reservation.error());
-    CHECK(context.active());
-    CHECK(!GpuCompletionReservation::reserve(context, queue, response)); // cannot issue two rights for one invocation
-    auto owner = std::make_unique<ProbeOwner>(session, output, source, input.sample, input.mode == 5);
     auto staging = session.createBuffer(source.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, vulkan::EMemoryAccess::UPLOAD);
-    if (!staging) return lux::cxx::unexpected(staging.error());
+    if (!staging) return pending->fail(staging.error());
     owner->staging = std::move(*staging);
     auto destination = session.createBuffer(source.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, vulkan::EMemoryAccess::READBACK);
-    if (!destination) return lux::cxx::unexpected(destination.error());
+    if (!destination) return pending->fail(destination.error());
     owner->destination = std::move(*destination);
-    if (auto written = session.write(*session.borrow(owner->staging), 0, source); !written) return written;
-    if (input.mode == 3)
-    {
-        CHECK(queue.lastSubmitted());
-        auto rejected = reservation->commit<ready>(*queue.lastSubmitted(), owner);
-        CHECK(!rejected && rejected.error().type == kProtocolContract && owner && context.active());
-        return rejected; // a previous successful Ticket cannot certify this reservation
-    }
-    auto batch = queue.begin();
-    if (!batch) return lux::cxx::unexpected(batch.error());
-    const VkBufferCopy copy{0, 0, source.size()};
-    vkCmdCopyBuffer(batch->native(), session.borrow(owner->staging)->native(),
-        session.borrow(owner->destination)->native(), 1, &copy);
-    VkBufferMemoryBarrier2 host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
-    host.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
-    host.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-    host.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
-    host.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
-    host.srcQueueFamilyIndex = host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    host.buffer = session.borrow(owner->destination)->native();
-    host.size = VK_WHOLE_SIZE;
-    VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-    dependency.bufferMemoryBarrierCount = 1; dependency.pBufferMemoryBarriers = &host;
-    vkCmdPipelineBarrier2(batch->native(), &dependency);
-    const auto previous = queue.lastSubmitted();
-    if (input.mode == 2) fail_submit.store(true);
-    auto submitted = std::move(*batch).submit();
-    if (!submitted)
-    {
-        CHECK(!previous || queue.lastSubmitted()->serial() == previous->serial());
-        return lux::cxx::unexpected(submitted.error());
-    }
-    if (hold_next_accepted_fence.exchange(false)) hold_fences.store(true);
-    owner->ticket = *submitted;
-    auto early_release = session.releaseCompleted(owner->destination, *submitted);
-    CHECK(!early_release && early_release.error().type == vulkan::kBusy && owner->destination);
-    samples[input.sample].submit = now();
-    ++accepted;
-    auto committed = reservation->commit<ready>(*submitted, owner);
-    CHECK(committed && !owner && !context.active());
-    CHECK(!reservation->commit<ready>(*submitted, owner));
-    return committed;
+    if (auto written = session.write(*session.borrow(owner->staging), 0, source); !written)
+        return pending->fail(written.error());
+    return pending->completeWhen(native_test::SubmissionSender<ProbeResponse, ProbeOwner>{
+        std::move(response), std::move(owner)
+    });
 }
 static const CommandDescriptor probe = commandDescriptor<UploadProbe>();
 static const CommandDescriptor cpu = commandDescriptor<CpuResult>();
@@ -340,7 +375,7 @@ int main(int argc, char** argv)
     // Empty owned input is still rejected before any Native allocation or submission.
     CHECK(wait(*a, take(submitValue(*a, bound_a, UploadProbe::Request{{}, 9, 0}, 256))).header.outcome == ECommandOutcome::FAILED);
     // Admit the failure envelope but not this result's complete 64-byte owned backing.
-    constexpr auto small_reply_capacity = sizeof(ReadbackResult) + 32;
+    constexpr auto small_reply_capacity = sizeof(ProbeResponse) + 32;
     static_assert(small_reply_capacity >= sizeof(RenderError));
     auto small_reply = wait(*a, take(submitValue(*a, bound_a,
         UploadProbe::Request{payload_a[0], 10, 0}, small_reply_capacity)));
@@ -613,9 +648,9 @@ int main(int argc, char** argv)
     CHECK(source_destroyed == 1 && take(std::move(late_reply).take(bound_a)).response().pixels.bytes().view()[63] == std::byte{37});
     late_reply = {};
     CHECK(source_destroyed == 2 && owners_created == owners_destroyed && native_created == native_destroyed);
-    std::printf("sizes IpcMessage=%zu IpcReply=%zu RenderRequest=%zu DeferredCompletion=%zu Reservation=%zu Context=%zu Permit=%zu; Native buffers created/destroyed=%u/%u\n",
+    std::printf("sizes IpcMessage=%zu IpcReply=%zu RenderRequest=%zu DeferredCompletion=%zu SubmissionNode=%zu Context=%zu Permit=%zu; Native buffers created/destroyed=%u/%u\n",
         sizeof(lux::platform::ipc::IpcMessage), sizeof(lux::platform::ipc::IpcReply), sizeof(RenderRequest),
-        sizeof(runtime_detail::DeferredCompletion), sizeof(GpuCompletionReservation), sizeof(CommandInvocation),
+        sizeof(runtime_detail::DeferredCompletion), sizeof(vulkan::SubmissionCallback), sizeof(CommandInvocation),
         sizeof(vulkan::BufferPermit), native_created.load(), native_destroyed.load());
     // An open Client must receive UNKNOWN, never a guaranteed cancellation, for accepted uncommitted GPU work.
     hold_fences.store(false);

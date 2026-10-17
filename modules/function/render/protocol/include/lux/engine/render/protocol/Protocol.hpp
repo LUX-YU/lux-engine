@@ -27,7 +27,6 @@ namespace lux::render
 
     struct Ack final {};
 
-    enum class ECompletionContract : std::uint8_t { STATE_COMMITTED, RESOURCE_GPU_READY, RESULT_AVAILABLE };
     enum class ECommandOutcome : std::uint8_t { SUCCESS, FAILED, CANCELLED, OUTCOME_UNKNOWN };
 
     struct CommandValueType final
@@ -46,7 +45,6 @@ namespace lux::render
         cxx::SchemaVersion version;
         CommandValueType request;
         CommandValueType response;
-        ECompletionContract completion = ECompletionContract::STATE_COMMITTED;
     };
 
     template <typename C>
@@ -62,14 +60,11 @@ namespace lux::render
     template <RenderCommand C>
     inline constexpr CommandDescriptor kCommandDescriptor = [] {
         cxx::SchemaVersion version{1, 0};
-        ECompletionContract completion = ECompletionContract::STATE_COMMITTED;
         if constexpr (requires { C::version; }) version = C::version;
-        if constexpr (requires { C::completion; }) completion = C::completion;
         return CommandDescriptor{
             CommandName(C::name), version,
             {cxx::typeToken<typename C::Request>(), sizeof(typename C::Request), alignof(typename C::Request)},
-            {cxx::typeToken<typename C::Response>(), sizeof(typename C::Response), alignof(typename C::Response)},
-            completion
+            {cxx::typeToken<typename C::Response>(), sizeof(typename C::Response), alignof(typename C::Response)}
         };
     }();
 
@@ -127,7 +122,6 @@ namespace lux::render
         const void* request_value;
         void* completion_owner;
         const CommandCompletionFns* completion;
-        void* completion_extension = nullptr;
     };
 
     template <RenderCommand C>

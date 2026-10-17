@@ -94,7 +94,7 @@ static void canonicalPlugin()
     detail::HelloResponse hello;
     const auto& descriptor = *transport->descriptor;
     hello.capabilities.push_back({pin, std::string(descriptor.name.name()), {0, 1}, descriptor.version,
-        descriptor.request, descriptor.response, descriptor.completion, transport->request, transport->response});
+        descriptor.request, descriptor.response, transport->request, transport->response});
     publish(responder, hello_input, *hello_transport, &hello, session, pin);
     auto greeting = consume(*client);
     check(greeting.header.request == hello_id && greeting.header.outcome == ECommandOutcome::SUCCESS,
@@ -175,7 +175,7 @@ static void clientImplementation()
     const auto& descriptor = *local_transport.descriptor;
     detail::HelloResponse hello;
     hello.capabilities.push_back({{}, std::string(descriptor.name.name()), {0, 1}, descriptor.version,
-        descriptor.request, descriptor.response, descriptor.completion,
+        descriptor.request, descriptor.response,
         local_transport.request, local_transport.response});
     publish(responder, hello_input, detail::commandTransport<detail::Hello>(), &hello, session, {});
     auto greeting = consume(*client);

@@ -15,7 +15,6 @@ namespace lux::render::registration_detail
             result.bind_native_ = [](void* owner) noexcept {
                 return bindCommand<C, Function>(*static_cast<vulkan::DeviceSession*>(owner));
             };
-            result.gpu_completion_ = commandDescriptor<C>().completion == ECompletionContract::RESOURCE_GPU_READY;
             return result;
         }
     };

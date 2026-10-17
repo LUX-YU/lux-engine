@@ -81,7 +81,7 @@ template <class C> static detail::Capability capability(CommandId id)
     const auto& descriptor = commandDescriptor<C>();
     const auto transport = detail::commandTransport<C>();
     return {{}, std::string(descriptor.name.name()), id, descriptor.version,
-        descriptor.request, descriptor.response, descriptor.completion, transport.request, transport.response};
+        descriptor.request, descriptor.response, transport.request, transport.response};
 }
 
 static ipc::ReceivedRequest receive(ipc::IpcResponder& responder)

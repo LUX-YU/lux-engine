@@ -27,9 +27,9 @@ int main()
     CHECK(validateCommand(commandDescriptor<QueryTexture>()));
     CHECK(commandDescriptor<SetTexture>().request.type == lux::cxx::typeToken<TextureWrite>());
     CHECK(commandDescriptor<SetTextureRegion>().request.type == lux::cxx::typeToken<TextureRegionWrite>());
-    CHECK(commandDescriptor<ReleaseTexture>().completion == ECompletionContract::STATE_COMMITTED);
     CHECK(commandDescriptor<ReleaseTexture>().response.type == lux::cxx::typeToken<Ack>());
-    CHECK(commandDescriptor<QueryTexture>().completion == ECompletionContract::RESULT_AVAILABLE);
+    CHECK(commandDescriptor<ReleaseTexture>().request.type == lux::cxx::typeToken<TexturePublished>());
+    CHECK(commandDescriptor<QueryTexture>().response.type == lux::cxx::typeToken<QueryTexture::Response>());
 
     int destroyed = 0;
     auto source = std::shared_ptr<std::vector<std::byte>>(

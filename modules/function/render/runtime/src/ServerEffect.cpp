@@ -172,14 +172,12 @@ namespace lux::render
         auto* slot = reserveCompletion(true);
         if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
         slot->request.emplace(std::move(request));
-        auto& cpu = slot->condition.emplace<CpuCompletion>();
+        auto& cpu = slot->operation;
         cpu.destroy = [](void* state) noexcept { delete static_cast<CompileState*>(state); };
-        cpu.compiling = true;
         cpu.adopt = CompileState::adopt;
         cpu.operation = new CompileState(
             *device, config.cpu, *slot, std::move(selected), config.max_config_bytes, config.implementation_code_pin
         );
-        ++compiling;
         stdexec::start(static_cast<CompileState*>(cpu.operation)->operation);
         return {};
     }

@@ -59,17 +59,15 @@ struct InvalidReply final
     using Request = Exposure;
     using Response = OversizedResult;
 };
-struct UnqualifiedGpu final
+struct UnqualifiedType final
 {
-    static constexpr std::string_view name = "test.unqualifiedGpu";
-    static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
+    static constexpr std::string_view name = "test.unqualifiedType";
     using Request = Exposure;
     using Response = Exposure;
 };
-struct PrematureGpu final
+struct TransferredReply final
 {
-    static constexpr std::string_view name = "test.prematureGpu";
-    static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
+    static constexpr std::string_view name = "test.transferredReply";
     using Request = Exposure;
     using Response = Exposure;
 };
@@ -208,26 +206,30 @@ int main()
         })
     };
     check(bool(server->registerFeature<CollidingA, CollidingB>({&collision_feature, &collision_feature_graph, nullptr, collision_handlers})));
-    const std::array gpu_commands{commandDescriptor<UnqualifiedGpu>()};
-    const FeatureDescriptor gpu_feature{FeatureName("test.unqualified.gpu"), {1, 0}, nullptr};
-    const FeatureGraphOps gpu_feature_graph{feature_graph.describe, nullptr};
-    const std::array gpu_handlers{CommandRegistration{bindCommand<UnqualifiedGpu, +[](FeatureState&, const UnqualifiedGpu::Request&,
-        Reply<UnqualifiedGpu>&) noexcept -> RenderResult<void> { return {}; }>(state)}};
-    auto rejected = server->registerFeature<UnqualifiedGpu>({&gpu_feature, &gpu_feature_graph, nullptr, gpu_handlers});
+    const std::array unqualified_commands{commandDescriptor<UnqualifiedType>()};
+    const FeatureDescriptor unqualified_feature{FeatureName("test.unqualified.type"), {1, 0}, nullptr};
+    const FeatureGraphOps unqualified_graph{feature_graph.describe, nullptr};
+    auto wrong_type = commandDescriptor<UnqualifiedType>();
+    wrong_type.response.type = cxx::typeToken<std::uint64_t>();
+    const std::array unqualified_handlers{test_registration::erased(&wrong_type,
+        [](void*, CommandInvocation&) noexcept -> RenderResult<void> { return {}; })};
+    auto rejected = server->registerFeature<UnqualifiedType>({&unqualified_feature, &unqualified_graph, nullptr, unqualified_handlers});
     check(!rejected && rejected.error().type == kProtocolContract);
-    const std::array premature_commands{commandDescriptor<PrematureGpu>()};
-    const FeatureDescriptor premature_feature{FeatureName("test.premature.gpu"), {1, 0}, nullptr};
+    const std::array premature_commands{commandDescriptor<TransferredReply>()};
+    const FeatureDescriptor premature_feature{FeatureName("test.transferred.reply"), {1, 0}, nullptr};
     const FeatureGraphOps premature_feature_graph{feature_graph.describe, nullptr};
     const std::array premature_handlers{
-        test_registration::erased(&commandDescriptor<PrematureGpu>(), [](void* owner, CommandInvocation& invocation) noexcept {
-            auto context = protocol_detail::ReplyAudit::make<PrematureGpu>(invocation);
+        test_registration::erased(&commandDescriptor<TransferredReply>(), [](void* owner, CommandInvocation& invocation) noexcept {
+            auto context = protocol_detail::ReplyAudit::make<TransferredReply>(invocation);
+            auto pending = context.defer();
+            check(bool(pending));
             auto reply = context.complete(Exposure{9});
-            check(!reply && reply.error().type == kProtocolContract && context.active());
+            check(!reply && reply.error().type == kProtocolContract && !context.active());
             ++static_cast<FeatureState*>(owner)->premature_rejected;
-            return reply;
-        }, &state, test_registration::EOwner::PROVIDED, true)
+            return pending->fail(reply.error());
+        }, &state)
     };
-    check(bool(server->registerFeature<PrematureGpu>({&premature_feature, &premature_feature_graph, nullptr, premature_handlers})));
+    check(bool(server->registerFeature<TransferredReply>({&premature_feature, &premature_feature_graph, nullptr, premature_handlers})));
     auto a = take(RenderClient::create("runtime.open"));
     auto b = take(RenderClient::create("runtime.open"));
     const auto hello_a = take(a->hello()), hello_b = take(b->hello());
@@ -237,7 +239,7 @@ int main()
     check(wait(*a, hello_a).header.outcome == ECommandOutcome::SUCCESS);
     check(wait(*b, hello_b).header.outcome == ECommandOutcome::SUCCESS);
     check(!server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, &feature_graph, nullptr, handlers}));
-    check(!a->bind<UnqualifiedGpu>());
+    check(!a->bind<UnqualifiedType>());
     auto bound_a = take(a->bind<SetExposure>());
     auto bound_b = take(b->bind<SetExposure>());
     check(!a->bind<WrongRequest>() && !a->bind<WrongResponse>() && !a->bind<WrongVersion>());
@@ -272,7 +274,7 @@ int main()
     auto failed = wait(*a, submit(*a, bad, Exposure{}));
     check(failed.header.outcome == ECommandOutcome::FAILED && failed.header.error.type == kRuntimeCapacity);
     failed = {};
-    auto premature = take(a->bind<PrematureGpu>());
+    auto premature = take(a->bind<TransferredReply>());
     failed = wait(*a, submit(*a, premature, Exposure{}));
     check(failed.header.outcome == ECommandOutcome::FAILED && failed.header.error.type == kProtocolContract);
     check(state.premature_rejected == 1);

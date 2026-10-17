@@ -107,11 +107,8 @@ namespace lux::render
             result = cxx::unexpected(RenderError{kRuntimeUnsupported});
         else
         {
-            GpuAdmission admission{*this, request};
-            vulkan::GpuCompletionAccess access{&gpu_completion_functions, &admission};
-            auto invocation = request.invocation(
-                &admission, command_completion_functions, cold->binding.gpuCompletion() ? &access : nullptr
-            );
+            CommandCall call{*this, request};
+            auto invocation = request.invocation(&call, command_completion_functions);
             const auto active = entry->active;
             result = active.invoke(active.object, invocation);
         }
@@ -133,12 +130,6 @@ namespace lux::render
             auto* slot = deferred.find(pending[i]);
             if (!slot) continue;
             slot->stop.request_stop();
-            if (auto* readback = std::get_if<ReadbackCompletion>(&slot->condition))
-            {
-                if (readback->context) std::exchange(readback->context, nullptr)->releaseReadback();
-            }
-            else if (auto* gpu = std::get_if<GpuCompletion>(&slot->condition))
-                gpu->work.cancel();
             // No slot access after cancel: its terminal callback may have destroyed it.
         }
         // Only shutdown waits. CPU/source owners remain in the same slots; cancellation prevents
@@ -212,7 +203,6 @@ namespace lux::render
                  descriptor.version,
                  descriptor.request,
                  descriptor.response,
-                 descriptor.completion,
                  entry.transport.request,
                  entry.transport.response}
             );

@@ -36,13 +36,12 @@ namespace lux::render::runtime_detail
         cxx::SchemaVersion version{1, 0};
         CommandValueType request;
         CommandValueType response;
-        ECompletionContract completion = ECompletionContract::STATE_COMMITTED;
         const platform::ipc::IpcTypeOps* request_ops = nullptr;
         const platform::ipc::IpcTypeOps* response_ops = nullptr;
 
         [[nodiscard]] CommandDescriptor descriptor() const noexcept
         {
-            return {CommandName{name}, version, request, response, completion};
+            return {CommandName{name}, version, request, response};
         }
     };
 

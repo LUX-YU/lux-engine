@@ -80,10 +80,9 @@ struct Async final
     using Response = Output;
 };
 
-struct InvalidGpuAsync final
+struct TransferredAsync final
 {
-    static constexpr std::string_view name = "test.async.notGpuEvidence";
-    static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
+    static constexpr std::string_view name = "test.async.transferredReply";
     using Request = Input;
     using Response = Output;
 };
@@ -115,7 +114,7 @@ struct State final
         void (*finish)(void*) noexcept = nullptr;
     };
     std::array<Gate, 129> gates;
-    std::atomic<unsigned> started{0}, destroyed{0}, premature_destroy{0}, gpu_rejected{0};
+    std::atomic<unsigned> started{0}, destroyed{0}, premature_destroy{0}, transferred_rejected{0};
     std::atomic<unsigned> stop_notifications{0}, committed{0};
     std::atomic<bool> synchronous_start{false};
 
@@ -288,21 +287,23 @@ int main()
 {
     eventIdentities();
     State state;
-    static const std::array descriptors{commandDescriptor<Async>(), commandDescriptor<InvalidGpuAsync>()};
+    static const std::array descriptors{commandDescriptor<Async>(), commandDescriptor<TransferredAsync>()};
     const FeatureDescriptor definition{FeatureName("test.async.feature"), {1, 0}, nullptr};
     const FeatureGraphOps definition_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
     const std::array handlers{
         CommandRegistration{bindCommand<Async, invoke>(state)},
-        test_registration::erased(&commandDescriptor<InvalidGpuAsync>(), [](void* user, CommandInvocation& invocation) noexcept {
-            auto context = protocol_detail::ReplyAudit::make<InvalidGpuAsync>(invocation);
+        test_registration::erased(&commandDescriptor<TransferredAsync>(), [](void* user, CommandInvocation& invocation) noexcept {
+            auto context = protocol_detail::ReplyAudit::make<TransferredAsync>(invocation);
+            auto pending = context.defer();
+            check(bool(pending));
             auto rejected = context.completeWhen(stdexec::just(Output{}));
-            check(!rejected && rejected.error().type == kProtocolContract && context.active());
-            ++static_cast<State*>(user)->gpu_rejected;
-            return rejected;
-        }, &state, test_registration::EOwner::PROVIDED, true)
+            check(!rejected && rejected.error().type == kProtocolContract && !context.active());
+            ++static_cast<State*>(user)->transferred_rejected;
+            return pending->fail(rejected.error());
+        }, &state)
     };
     auto server = take(RenderServer::create({"runtime.async", true}));
-    check(bool(server->registerFeature<Async, InvalidGpuAsync>({&definition, &definition_graph, nullptr, handlers, {}})));
+    check(bool(server->registerFeature<Async, TransferredAsync>({&definition, &definition_graph, nullptr, handlers, {}})));
     RenderResult<void> run;
     std::atomic<bool> run_returned{false};
     std::thread render([&] { run = server->run(); run_returned.store(true, std::memory_order_release); });
@@ -362,10 +363,10 @@ int main()
         until([&] { return destroyed.load() == 1; });
         check(a->retainedBytes() == budget_before);
     }
-    auto gpu = take(a->bind<InvalidGpuAsync>());
+    auto transferred = take(a->bind<TransferredAsync>());
     Input invalid;
-    (void)take(a->submit(gpu, invalid, 256));
-    check(wait(*a).header.error.type == kProtocolContract && state.gpu_rejected.load() == 1);
+    (void)take(a->submit(transferred, invalid, 256));
+    check(wait(*a).header.error.type == kProtocolContract && state.transferred_rejected.load() == 1);
 
     unsigned total = state.started.load();
     for (const unsigned count : {1u, 16u, 128u})

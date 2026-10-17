@@ -24,8 +24,6 @@ namespace lux::render::vulkan
             transfer_ = std::move(other.transfer_);
             owner_ = std::move(other.owner_);
             ready_ = std::exchange(other.ready_, nullptr);
-            accepted_ready_ = std::exchange(other.accepted_ready_, nullptr);
-            accepted_ = std::exchange(other.accepted_, std::nullopt);
             return *this;
         }
         GpuWork(const GpuWork&) = delete;
@@ -48,15 +46,12 @@ namespace lux::render::vulkan
             return result;
         }
 
-        [[nodiscard]] static GpuWork accepted(DeviceSession& session, SubmissionTicket ticket,
-            void* owner, void (*destroy)(void*) noexcept,
-            RenderResult<void> (*ready)(void*, DeviceSession&) noexcept) noexcept;
         [[nodiscard]] bool unstartedIn(const DeviceSession& session) const noexcept
         {
             return owner_ && transfer_ && session_ == &session && transfer_->unstartedIn(session);
         }
         [[nodiscard]] bool submitted() const noexcept
-        { return transfer_ ? !transfer_->requirements().empty() : accepted_.has_value(); }
+        { return !transfer_->requirements().empty(); }
         [[nodiscard]] bool deviceLost() const noexcept { return session_->deviceLost(); }
         [[nodiscard]] RenderResult<void> prepareCompletion() noexcept;
         void start(CompletionPost post, void* owner, Transfer::TerminalFn terminal,
@@ -70,8 +65,6 @@ namespace lux::render::vulkan
             owner_.reset();
             transfer_.reset();
             ready_ = nullptr;
-            accepted_ready_ = nullptr;
-            accepted_.reset();
         }
 
     private:
@@ -79,8 +72,6 @@ namespace lux::render::vulkan
         std::unique_ptr<Transfer> transfer_;
         std::unique_ptr<void, void (*)(void*) noexcept> owner_{nullptr, [](void*) noexcept {}};
         RenderResult<void> (*ready_)(void*, Transfer&, DeviceSession&) noexcept = nullptr;
-        RenderResult<void> (*accepted_ready_)(void*, DeviceSession&) noexcept = nullptr;
-        std::optional<SubmissionTicket> accepted_;
     };
     // Finite Native adapter around the existing Transfer. It owns no request, queue or Device.
     // The caller reserves Reply capacity and reborrows its stable input before creating this work.

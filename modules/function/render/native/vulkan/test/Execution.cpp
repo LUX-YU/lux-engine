@@ -2,6 +2,7 @@
 #include "SceneFixture.hpp"
 #include "BufferStorageFixture.hpp"
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
+#include <lux/engine/render/native/vulkan/Readback.hpp>
 #include <algorithm>
 #include "Allocation.hpp"
 #include <chrono>
@@ -20,6 +21,95 @@ static void pixel(std::span<const std::byte> bytes, unsigned width, unsigned x, 
         const auto actual = std::to_integer<int>(bytes[(y * width + x) * 4 + i]);
         CHECK(std::abs(actual - int(expected[i])) <= 1);
     }
+}
+
+static void readbackOperations(DeviceSession& session, const std::shared_ptr<CompiledGraph>& code,
+    const TargetDesc& target)
+{
+    struct Result final
+    {
+        unsigned count = 0;
+        ReadbackOperation::Result value = cxx::unexpected(RenderError{kBusy});
+        static void complete(void* owner, ReadbackOperation::Result value) noexcept
+        {
+            auto& result = *static_cast<Result*>(owner);
+            ++result.count;
+            result.value = std::move(value);
+        }
+    };
+    unsigned submitted = 0;
+    const auto observed = [](void* value) noexcept { ++*static_cast<unsigned*>(value); };
+    auto* context = take(session.prepare(code, target, {}));
+    {
+        Result first, second;
+        ReadbackOperation a{*context, &first, Result::complete, &submitted, observed};
+        ReadbackOperation b{*context, &second, Result::complete, &submitted, observed};
+        a.start();
+        b.start();
+        CHECK(submitted == 1 && first.count == 0 && second.count == 0);
+        CHECK(!take(context->execute()));
+        CHECK(take(session.queue().wait(*context->lastUse(), UINT64_MAX)));
+        CHECK(first.count == 0 && second.count == 0); // Native completion observation does not dispatch.
+        session.dispatchCompletions();
+        CHECK(first.count == 1 && second.count == 1 && first.value && second.value);
+        CHECK(*first.value == *second.value && first.value->size() == target.width * target.height * 4);
+        CHECK(session.queue().callbackReservations() == 0);
+    }
+    {
+        Result first, second;
+        ReadbackOperation a{*context, &first, Result::complete, nullptr, nullptr};
+        ReadbackOperation b{*context, &second, Result::complete, nullptr, nullptr};
+        a.start();
+        b.start();
+        CHECK(session.release(context)); // The completed Context is actually destroyed before callbacks.
+        CHECK(first.count == 0 && second.count == 0 && session.queue().callbackReservations() == 2);
+        session.dispatchCompletions();
+        CHECK(first.count == 1 && second.count == 1 && !first.value && !second.value);
+        CHECK(first.value.error().type == kWorkStopped && second.value.error().type == kWorkStopped);
+    }
+    context = take(session.prepare(code, target, {}));
+    {
+        auto occupied = std::make_unique<SubmissionCallback[]>(session.queue().callbackCapacity());
+        for (std::size_t i = 0; i < session.queue().callbackCapacity(); ++i)
+            CHECK(session.queue().reserve(occupied[i]));
+        Result result;
+        ReadbackOperation failed{*context, &result, Result::complete, &submitted, observed};
+        failed.start();
+        CHECK(result.count == 1 && !result.value && result.value.error().type == kCapacity);
+        CHECK(!context->lastUse() && submitted == 1); // Reservation failure publishes no GPU work.
+    }
+    {
+        Result result;
+        ReadbackOperation stopped{*context, &result, Result::complete, &submitted, observed};
+        stopped.cancel();
+        stopped.start();
+        CHECK(result.count == 1 && !result.value && result.value.error().type == kWorkStopped);
+        CHECK(!context->lastUse() && session.queue().callbackReservations() == 0);
+    }
+    CHECK(session.release(context));
+    // A refused Detach must preserve the active Readback. Fill retirement with real Native allocations,
+    // then submit this Context without advancing the CPU-observed completion frontier.
+    context = take(session.prepare(code, target, {}));
+    {
+        Result result;
+        ReadbackOperation pending{*context, &result, Result::complete, nullptr, nullptr};
+        pending.start();
+        const auto ticket = *context->lastUse();
+        for (std::size_t i = session.retirement().pending(); i < session.retirement().capacity(); ++i)
+        {
+            auto buffer = take(session.createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
+            CHECK(session.retirement().retire(ticket, buffer));
+        }
+        auto refused = session.release(context);
+        CHECK(!refused && refused.error().type == kCapacity && result.count == 0);
+        CHECK(take(session.queue().wait(ticket, UINT64_MAX)));
+        session.dispatchCompletions();
+        CHECK(result.count == 1 && result.value); // Failed admission did not cancel or detach the use.
+        CHECK(session.release(context));
+        CHECK(session.retirement().collect());
+        CHECK(session.retirement().pending() == 0);
+    }
+    std::puts("Native Readback: shared output, explicit callback dispatch, Context detach, capacity and pre-start stop");
 }
 
 int main()
@@ -136,6 +226,7 @@ int main()
     auto transfer = take(native_fixture::assemble(config));
     auto transfer_code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (transfer).definition, (transfer).analysis, (transfer).external_bindings,
         native_fixture::programs(config), native_fixture::target(config))));
+    readbackOperations(*session, transfer_code, native_fixture::target(config));
     auto* clear = take(session->prepare(transfer_code, native_fixture::target(config), {}));
     for (unsigned frame = 0; frame < 4; ++frame)
     {

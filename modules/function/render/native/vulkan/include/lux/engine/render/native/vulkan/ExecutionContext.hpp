@@ -6,6 +6,8 @@
 
 namespace lux::render::vulkan
 {
+    class ReadbackOperation;
+
     class ExecutionContext final
     {
     public:
@@ -27,13 +29,13 @@ namespace lux::render::vulkan
         {
             return bindings_[resource].buffer ? bindings_[resource].buffer->native() : VK_NULL_HANDLE;
         }
-        // Server pauses re-execution while a deferred readback consumes this result.
-        void retainReadback() noexcept { ++readers_; }
-        void releaseReadback() noexcept { --readers_; }
 
     private:
         friend struct NativeMemoryAudit;
         friend class DeviceSession;
+        friend class ReadbackOperation;
+        void cancelReadbacks() noexcept;
+        ReadbackOperation* readbacks_ = nullptr;
         struct Binding final
         {
             BufferAllocation* owned_buffer = nullptr;

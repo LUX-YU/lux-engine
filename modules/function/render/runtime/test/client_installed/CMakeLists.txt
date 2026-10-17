@@ -68,7 +68,7 @@ foreach(header
     lux/engine/render/resource/Upload.hpp
     lux/engine/render/runtime/Commands.hpp
     lux/engine/render/runtime/CommandValue.hpp
-    lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp
+    lux/engine/render/native/vulkan/Readback.hpp
 )
     if(NOT EXISTS "${installed_prefix}/include/${header}")
         message(FATAL_ERROR "Missing current public contract: ${header}")
@@ -78,6 +78,7 @@ endforeach()
 foreach(header
     lux/engine/render/runtime/Operations.hpp
     lux/engine/render/runtime/vulkan/GpuCompletion.hpp
+    lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp
     lux/engine/render/native/vulkan/transfer/TextureUpload.hpp
     lux/engine/render/native/vulkan/CommandCompletion.hpp
     lux/engine/platform/ipc/detail/MessageAccess.hpp

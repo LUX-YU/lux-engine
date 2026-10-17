@@ -79,9 +79,6 @@ namespace lux::render
             if (!handler.valid()) return cxx::unexpected(RenderError{kFeatureContract});
             if (auto valid = validateCommand(*handler.descriptor()); !valid) return valid;
             if (auto valid = compatibleCommands(*handler.descriptor(), *transports[i].descriptor); !valid) return valid;
-            if ((handler.descriptor()->completion == ECompletionContract::RESOURCE_GPU_READY) !=
-                handler.gpuCompletion())
-                return cxx::unexpected(RenderError{kProtocolContract});
             for (const auto& old : command_table)
                 if (old.cold->binding.descriptor()->name.name() == handler.descriptor()->name.name())
                     return cxx::unexpected(RenderError{kFeatureDuplicate});
@@ -127,9 +124,6 @@ namespace lux::render
                 return cxx::unexpected(valid.error());
             if (auto valid = compatibleCommands(*call.descriptor(), *transports[i].descriptor); !valid)
                 return cxx::unexpected(valid.error());
-            // The old Native bridge is removed at the joint N2/N3 gate, not bypassed by this installer.
-            if (call.descriptor()->completion == ECompletionContract::RESOURCE_GPU_READY)
-                return cxx::unexpected(RenderError{kProtocolContract});
             for (std::size_t j = 0; j < i; ++j)
                 if (calls[j].descriptor()->name.name() == call.descriptor()->name.name())
                     return cxx::unexpected(RenderError{kFeatureDuplicate});

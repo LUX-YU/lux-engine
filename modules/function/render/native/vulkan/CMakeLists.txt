@@ -10,7 +10,7 @@ find_path(LUX_VMA_INCLUDE_DIR vk_mem_alloc.h
 set(LUX_NATIVE_SOURCES
     src/Error.cpp src/DeviceSession.cpp src/device/Device.cpp src/device/Vma.cpp
     src/memory/Memory.cpp src/transfer/Submission.cpp src/retirement/Retirement.cpp
-    src/Compile.cpp src/Shader.cpp src/Execution.cpp
+    src/Compile.cpp src/Shader.cpp src/Execution.cpp src/Readback.cpp
     src/transfer/Transfer.cpp src/transfer/GpuWork.cpp
 )
 
@@ -48,7 +48,7 @@ install(FILES cmake/ShaderTools.cmake DESTINATION share/lux-engine-render/render
 target_compile_features(render_native_vulkan PUBLIC cxx_std_20)
 
 set(LUX_NATIVE_EXTENSION_SOURCES
-    src/transfer/GpuCompletion.cpp src/texture/TextureStorage.cpp src/texture/Commands.cpp
+    src/texture/TextureStorage.cpp src/texture/Commands.cpp
 )
 
 add_component(

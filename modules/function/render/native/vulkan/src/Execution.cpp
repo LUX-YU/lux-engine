@@ -410,7 +410,24 @@ namespace lux::render::vulkan
                 if (!pass.parameters.empty())
                     vkCmdPushConstants(command, code_->layout(), code_->descriptor_plan_->parameter_stages, 0,
                         std::uint32_t(pass.parameters.size()), pass.parameters.data());
-                LUX_RECORD("cmd_draw", vkCmdDraw(command, recipe.vertex_count, 1, 0, 0));
+                for (const auto& source : recipe.vertices)
+                {
+                    const auto buffer = bindings_[source.resource].buffer->native();
+                    vkCmdBindVertexBuffers(command, source.binding, 1, &buffer, &source.offset);
+                }
+                if (recipe.draw != EDrawRecipe::VERTICES)
+                    vkCmdBindIndexBuffer(command, bindings_[recipe.index_resource].buffer->native(),
+                        recipe.index_offset, recipe.index_type);
+                if (recipe.draw == EDrawRecipe::VERTICES)
+                    LUX_RECORD("cmd_draw", vkCmdDraw(command, recipe.count, recipe.instances,
+                        recipe.first, recipe.first_instance));
+                else if (recipe.draw == EDrawRecipe::INDEXED)
+                    LUX_RECORD("cmd_draw", vkCmdDrawIndexed(command, recipe.count, recipe.instances,
+                        recipe.first, recipe.vertex_offset, recipe.first_instance));
+                else
+                    LUX_RECORD("cmd_draw", vkCmdDrawIndexedIndirect(command,
+                        bindings_[recipe.indirect_resource].buffer->native(), recipe.indirect_offset,
+                        recipe.count, recipe.indirect_stride));
                 if (recipe.end_rendering) LUX_RECORD("cmd_end", vkCmdEndRendering(command));
                 break;
             }

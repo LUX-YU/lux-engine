@@ -5,6 +5,14 @@
 
 namespace lux::render::vulkan
 {
+    struct VertexFormat final
+    {
+        VkFormat native = VK_FORMAT_UNDEFINED;
+        rdesc::EDataScalar scalar = rdesc::EDataScalar::FLOAT;
+        std::uint32_t components = 0;
+        [[nodiscard]] std::uint32_t bytes() const noexcept { return components * 4; }
+    };
+    [[nodiscard]] VertexFormat vertexFormat(rdesc::ETextureFormat) noexcept;
     [[nodiscard]] RenderResult<VkDescriptorSetLayout> createDescriptorLayout(
         const VulkanDevice&, std::span<const ShaderBinding>, std::uint32_t runtime_count, const char* fault_label
     ) noexcept;
@@ -12,6 +20,6 @@ namespace lux::render::vulkan
         const VulkanDevice& device, VkPipelineLayout layout, const SpirvArtifact& shader
     ) noexcept;
     [[nodiscard]] RenderResult<VkPipeline> compileGraphics(
-        const VulkanDevice& device, VkPipelineLayout layout, const SpirvArtifact& shader
+        const VulkanDevice& device, VkPipelineLayout layout, const SpirvArtifact& shader, const GraphicsState& graphics
     ) noexcept;
 }

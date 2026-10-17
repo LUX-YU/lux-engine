@@ -277,7 +277,7 @@ add_test(NAME render.native.lglsl_parameters COMMAND render_parameters_test
 
 set_tests_properties(render.native.lglsl_parameters PROPERTIES TIMEOUT 60)
 
-foreach(asset Compute.comp ComputeUpdate.comp Compute.frag)
+foreach(asset Compute.comp ComputeUpdate.comp Compute.frag Geometry.comp Geometry.vert Geometry.frag)
     add_custom_command(
         OUTPUT "${render_asset_dir}/${asset}.spv"
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${render_asset_dir}"
@@ -301,3 +301,17 @@ add_test(NAME render.native.compute COMMAND render_compute_test
 )
 
 set_tests_properties(render.native.compute PROPERTIES TIMEOUT 60)
+
+add_executable(render_geometry_test Geometry.cpp Allocation.cpp
+    "${render_asset_dir}/Geometry.comp.spv" "${render_asset_dir}/Geometry.vert.spv"
+    "${render_asset_dir}/Geometry.frag.spv"
+)
+
+target_link_libraries(render_geometry_test PRIVATE render_native_vulkan)
+
+add_test(NAME render.native.geometry COMMAND render_geometry_test
+    "${render_asset_dir}/Geometry.comp.spv" "${render_asset_dir}/Geometry.vert.spv"
+    "${render_asset_dir}/Geometry.frag.spv"
+)
+
+set_tests_properties(render.native.geometry PROPERTIES TIMEOUT 60)

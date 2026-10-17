@@ -12,8 +12,38 @@
 
 namespace lux::render::vulkan
 {
+    VertexFormat vertexFormat(rdesc::ETextureFormat format) noexcept
+    {
+        using F = rdesc::ETextureFormat;
+        using S = rdesc::EDataScalar;
+        switch (format)
+        {
+        case F::R32_SFLOAT: return {VK_FORMAT_R32_SFLOAT, S::FLOAT, 1};
+        case F::RG32_SFLOAT: return {VK_FORMAT_R32G32_SFLOAT, S::FLOAT, 2};
+        case F::RGB32_SFLOAT: return {VK_FORMAT_R32G32B32_SFLOAT, S::FLOAT, 3};
+        case F::RGBA32_SFLOAT: return {VK_FORMAT_R32G32B32A32_SFLOAT, S::FLOAT, 4};
+        case F::R32_UINT: return {VK_FORMAT_R32_UINT, S::UINT, 1};
+        case F::RG32_UINT: return {VK_FORMAT_R32G32_UINT, S::UINT, 2};
+        case F::RGB32_UINT: return {VK_FORMAT_R32G32B32_UINT, S::UINT, 3};
+        case F::RGBA32_UINT: return {VK_FORMAT_R32G32B32A32_UINT, S::UINT, 4};
+        case F::R32_SINT: return {VK_FORMAT_R32_SINT, S::SINT, 1};
+        case F::RG32_SINT: return {VK_FORMAT_R32G32_SINT, S::SINT, 2};
+        case F::RGB32_SINT: return {VK_FORMAT_R32G32B32_SINT, S::SINT, 3};
+        case F::RGBA32_SINT: return {VK_FORMAT_R32G32B32A32_SINT, S::SINT, 4};
+        default: return {};
+        }
+    }
+
     namespace
     {
+        struct StageField final
+        {
+            unsigned location, components;
+            spvc_basetype scalar;
+            bool flat;
+            bool operator==(const StageField&) const noexcept = default;
+        };
+        struct StageIo final { std::vector<StageField> inputs, outputs; };
         bool check(spvc_result result) noexcept
         {
             if (result == SPVC_ERROR_OUT_OF_MEMORY) std::terminate();
@@ -129,7 +159,7 @@ namespace lux::render::vulkan
 
         bool validateStage(
             const SpirvStage& input, SpvExecutionModel stage, const ShaderInterface& interface,
-            const VkPhysicalDeviceLimits& limits
+            const VkPhysicalDeviceLimits& limits, const GraphicsState* graphics = nullptr, StageIo* io = nullptr
         ) noexcept
         {
             const bool invalid_entry = input.entry.empty() || input.entry.find('\0') != std::string::npos;
@@ -260,6 +290,47 @@ namespace lux::render::vulkan
                         }
                     }
                 }
+                else if (stage == SpvExecutionModelVertex && kind == SPVC_RESOURCE_TYPE_STAGE_INPUT)
+                {
+                    if (!graphics || count != graphics->vertex_attributes.size()) return false;
+                    for (std::size_t item = 0; item < count; ++item)
+                    {
+                        const auto location = spvc_compiler_get_decoration(
+                            compiler, list[item].id, SpvDecorationLocation
+                        );
+                        const auto found = std::ranges::find(
+                            graphics->vertex_attributes, location, &VertexAttribute::location
+                        );
+                        if (found == graphics->vertex_attributes.end()) return false;
+                        const auto format = vertexFormat(found->format);
+                        const auto type = spvc_compiler_get_type_handle(compiler, list[item].type_id);
+                        const auto scalar = format.scalar == rdesc::EDataScalar::FLOAT ? SPVC_BASETYPE_FP32 :
+                            format.scalar == rdesc::EDataScalar::UINT ? SPVC_BASETYPE_UINT32 : SPVC_BASETYPE_INT32;
+                        const bool mismatch = spvc_type_get_basetype(type) != scalar ||
+                            spvc_type_get_vector_size(type) != format.components || spvc_type_get_columns(type) != 1 ||
+                            spvc_type_get_num_array_dimensions(type) != 0;
+                        if (mismatch) return false;
+                    }
+                }
+                else if ((stage == SpvExecutionModelVertex && kind == SPVC_RESOURCE_TYPE_STAGE_OUTPUT) ||
+                    (stage == SpvExecutionModelFragment && kind == SPVC_RESOURCE_TYPE_STAGE_INPUT))
+                {
+                    if (!io) return false;
+                    auto& fields = kind == SPVC_RESOURCE_TYPE_STAGE_INPUT ? io->inputs : io->outputs;
+                    for (std::size_t item = 0; item < count; ++item)
+                    {
+                        const auto type = spvc_compiler_get_type_handle(compiler, list[item].type_id);
+                        const auto scalar = spvc_type_get_basetype(type);
+                        const bool numeric = scalar == SPVC_BASETYPE_FP32 || scalar == SPVC_BASETYPE_UINT32 ||
+                            scalar == SPVC_BASETYPE_INT32;
+                        const bool invalid = !numeric || spvc_type_get_columns(type) != 1 ||
+                            spvc_type_get_num_array_dimensions(type) != 0;
+                        if (invalid) return false;
+                        fields.push_back({spvc_compiler_get_decoration(compiler, list[item].id, SpvDecorationLocation),
+                            spvc_type_get_vector_size(type), scalar,
+                            bool(spvc_compiler_has_decoration(compiler, list[item].id, SpvDecorationFlat))});
+                    }
+                }
                 else if (stage == SpvExecutionModelFragment && kind == SPVC_RESOURCE_TYPE_STAGE_OUTPUT)
                 {
                     if (count != 1) return false;
@@ -346,7 +417,7 @@ namespace lux::render::vulkan
     }
 
     RenderResult<VkPipeline> compileGraphics(
-        const VulkanDevice& device, VkPipelineLayout layout, const SpirvArtifact& shader
+        const VulkanDevice& device, VkPipelineLayout layout, const SpirvArtifact& shader, const GraphicsState& graphics
     ) noexcept
     {
         const bool needs_arrays = std::ranges::any_of(shader.interface.bindings, [](const auto& value) {
@@ -366,10 +437,51 @@ namespace lux::render::vulkan
         const bool missing_stage = !vertex_stage || !fragment_stage;
         if (missing_stage) return cxx::unexpected(RenderError{kInvalidArgument});
         const auto& limits = device.properties().limits;
-        const bool is_invalid_shader = !validateStage(*vertex_stage, SpvExecutionModelVertex, shader.interface, limits) ||
-            !validateStage(*fragment_stage, SpvExecutionModelFragment, shader.interface, limits);
-        if (is_invalid_shader)
-            return cxx::unexpected(RenderError{kInvalidArgument});
+        StageIo vertex_io, fragment_io;
+        const bool valid_vertex = validateStage(*vertex_stage, SpvExecutionModelVertex, shader.interface,
+            limits, &graphics, &vertex_io);
+        const bool valid_fragment = validateStage(*fragment_stage, SpvExecutionModelFragment, shader.interface,
+            limits, &graphics, &fragment_io);
+        if (!valid_vertex || !valid_fragment) return cxx::unexpected(RenderError{kInvalidArgument});
+        for (const auto& input : fragment_io.inputs)
+            if (std::ranges::find(vertex_io.outputs, input) == vertex_io.outputs.end())
+                return cxx::unexpected(RenderError{kInvalidArgument});
+        if (graphics.vertex_bindings.size() > limits.maxVertexInputBindings ||
+            graphics.vertex_attributes.size() > limits.maxVertexInputAttributes)
+            return cxx::unexpected(RenderError{kUnsupported});
+        std::vector<VkVertexInputBindingDescription> vertex_bindings;
+        std::vector<VkVertexInputAttributeDescription> vertex_attributes;
+        for (const auto& binding : graphics.vertex_bindings)
+        {
+            const bool invalid = !binding.stride || binding.stride > limits.maxVertexInputBindingStride ||
+                binding.binding >= limits.maxVertexInputBindings || binding.rate > EVertexRate::INSTANCE ||
+                std::ranges::any_of(vertex_bindings, [&](const auto& other) {
+                    return other.binding == binding.binding;
+                });
+            if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
+            vertex_bindings.push_back({binding.binding, binding.stride,
+                binding.rate == EVertexRate::VERTEX ? VK_VERTEX_INPUT_RATE_VERTEX : VK_VERTEX_INPUT_RATE_INSTANCE});
+        }
+        for (const auto& field : graphics.vertex_attributes)
+        {
+            const auto format = vertexFormat(field.format);
+            const auto binding = std::ranges::find(
+                vertex_bindings, field.binding, &VkVertexInputBindingDescription::binding
+            );
+            const bool invalid = !format.components || field.location >= limits.maxVertexInputAttributes ||
+                field.offset > limits.maxVertexInputAttributeOffset || binding == vertex_bindings.end() ||
+                std::ranges::any_of(vertex_attributes, [&](const auto& other) {
+                    return other.location == field.location;
+                });
+            if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
+            if (std::uint64_t(field.offset) + format.bytes() > binding->stride)
+                return cxx::unexpected(RenderError{kInvalidArgument});
+            VkFormatProperties properties{};
+            vkGetPhysicalDeviceFormatProperties(device.physical(), format.native, &properties);
+            if (!(properties.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT))
+                return cxx::unexpected(RenderError{kUnsupported});
+            vertex_attributes.push_back({field.location, field.binding, format.native, field.offset});
+        }
         struct Modules final
         {
             VkDevice device;
@@ -395,9 +507,11 @@ namespace lux::render::vulkan
             stages[i].module = modules.handles[i];
             stages[i].pName = code[i]->entry.c_str();
         }
-        // Same dynamic-rendering recipe as the audited R4 Graphics.cpp subset: no vertex buffers,
-        // one RGBA8 attachment, no depth/blend, dynamic viewport/scissor, triangle list.
         VkPipelineVertexInputStateCreateInfo vertex{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+        vertex.vertexBindingDescriptionCount = std::uint32_t(vertex_bindings.size());
+        vertex.pVertexBindingDescriptions = vertex_bindings.data();
+        vertex.vertexAttributeDescriptionCount = std::uint32_t(vertex_attributes.size());
+        vertex.pVertexAttributeDescriptions = vertex_attributes.data();
         VkPipelineInputAssemblyStateCreateInfo input{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
         input.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};

@@ -36,6 +36,14 @@ namespace lux::render::vulkan
         VkBufferMemoryBarrier2 native;
     };
 
+    struct CompiledVertexBuffer final
+    {
+        std::uint32_t binding, resource;
+        VkDeviceSize offset;
+    };
+
+    enum class EDrawRecipe : std::uint8_t { VERTICES, INDEXED, INDEXED_INDIRECT };
+
     // One compiled pass recipe, not an author graph. Native handles belong to CompiledGraph.
     struct CompiledPass final
     {
@@ -47,7 +55,13 @@ namespace lux::render::vulkan
         VkPipeline pipeline{};
         VkAttachmentLoadOp load = VK_ATTACHMENT_LOAD_OP_CLEAR;
         std::array<float, 4> clear_color{};
-        std::uint32_t vertex_count = 0;
+        EDrawRecipe draw = EDrawRecipe::VERTICES;
+        std::vector<CompiledVertexBuffer> vertices;
+        std::uint32_t index_resource = kGraphInvalidIndex, indirect_resource = kGraphInvalidIndex;
+        VkIndexType index_type = VK_INDEX_TYPE_UINT32;
+        VkDeviceSize index_offset = 0, indirect_offset = 0;
+        std::uint32_t count = 0, instances = 1, first = 0, first_instance = 0, indirect_stride = 0;
+        std::int32_t vertex_offset = 0;
         std::array<std::uint32_t, 3> dispatch{};
         bool begin_rendering = true;
         bool end_rendering = true;
@@ -91,7 +105,13 @@ namespace lux::render::vulkan
         StorageGroups<std::uint32_t> storage_groups_;
         std::vector<CompiledPass> passes_;
         std::vector<BufferBarrier> host_barriers_;
-        std::vector<SpirvArtifact> shader_identities_;
+        struct PipelineIdentity final
+        {
+            SpirvArtifact shader;
+            GraphicsState graphics;
+            bool operator==(const PipelineIdentity&) const noexcept = default;
+        };
+        std::vector<PipelineIdentity> shader_identities_;
         std::vector<VkPipeline> pipelines_; // unique physical owners; Pass recipes only borrow handles
         std::vector<VkDescriptorSetLayout> descriptor_layouts_;
         std::uint32_t output_ = kGraphInvalidIndex;

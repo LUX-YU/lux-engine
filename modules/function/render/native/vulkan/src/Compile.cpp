@@ -56,6 +56,12 @@ namespace lux::render::vulkan
                     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
             case EGraphUse::TRANSFER_SOURCE:
                 return {VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL};
+            case EGraphUse::VERTEX:
+                return {VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT};
+            case EGraphUse::INDEX:
+                return {VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT, VK_ACCESS_2_INDEX_READ_BIT};
+            case EGraphUse::INDIRECT:
+                return {VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT, VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT};
             case EGraphUse::STORAGE_WRITE:
                 return {VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT};
             case EGraphUse::STORAGE_READ_WRITE:
@@ -70,6 +76,124 @@ namespace lux::render::vulkan
                 return {VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL};
             }
+        }
+
+        RenderResult<void> lowerDraw(
+            const PassProgram& program, const GraphPass& pass, std::span<const NativeResourcePlan> resources,
+            const VulkanDevice& device, CompiledPass& result
+        ) noexcept
+        {
+            const auto find = [&](std::string_view key, EGraphUse role) -> RenderResult<std::uint32_t> {
+                const auto found = std::ranges::find(resources, key, &NativeResourcePlan::key);
+                if (found == resources.end() || !std::holds_alternative<GraphBufferDesc>(found->description))
+                    return cxx::unexpected(RenderError{kStorageContract});
+                const auto index = std::uint32_t(found - resources.begin());
+                const bool declared = std::ranges::any_of(pass.uses, [&](const auto& use) {
+                    return use.version.resource.index == index && use.usage == role;
+                });
+                if (!declared) return cxx::unexpected(RenderError{kStorageContract});
+                return index;
+            };
+            if (program.vertex_buffers.size() != program.graphics.vertex_bindings.size())
+                return cxx::unexpected(RenderError{kStorageContract});
+            for (const auto& source : program.vertex_buffers)
+            {
+                const auto binding = std::ranges::find(program.graphics.vertex_bindings,
+                    source.binding, &VertexBinding::binding);
+                const bool duplicate = std::ranges::any_of(result.vertices,
+                    [&](const auto& other) { return other.binding == source.binding; });
+                if (binding == program.graphics.vertex_bindings.end() || duplicate || !binding->stride)
+                    return cxx::unexpected(RenderError{kStorageContract});
+                auto resource = find(source.resource_key, EGraphUse::VERTEX);
+                if (!resource) return cxx::unexpected(resource.error());
+                const auto size = std::get<GraphBufferDesc>(resources[*resource].description).size;
+                if (source.offset >= size || source.offset % 4) return cxx::unexpected(RenderError{kInvalidArgument});
+                result.vertices.push_back({source.binding, *resource, source.offset});
+            }
+            const auto index = [&](std::string_view key, std::uint64_t offset, EIndexType type) -> RenderResult<void> {
+                if (type > EIndexType::UINT32) return cxx::unexpected(RenderError{kInvalidArgument});
+                auto resource = find(key, EGraphUse::INDEX);
+                if (!resource) return cxx::unexpected(resource.error());
+                const auto bytes = type == EIndexType::UINT16 ? 2u : 4u;
+                const auto size = std::get<GraphBufferDesc>(resources[*resource].description).size;
+                if (offset >= size || offset % bytes || size - offset < bytes)
+                    return cxx::unexpected(RenderError{kInvalidArgument});
+                result.index_resource = *resource;
+                result.index_offset = offset;
+                result.index_type = type == EIndexType::UINT16 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
+                return {};
+            };
+            if (const auto* draw = std::get_if<DrawVertices>(&program.draw))
+            {
+                result.count = draw->count;
+                result.instances = draw->instances;
+                result.first = draw->first;
+                result.first_instance = draw->first_instance;
+            }
+            else if (const auto* draw = std::get_if<DrawIndexed>(&program.draw))
+            {
+                auto ready = index(draw->index_resource, draw->offset, draw->type);
+                if (!ready) return ready;
+                const auto size = std::get<GraphBufferDesc>(resources[result.index_resource].description).size;
+                const auto element = draw->type == EIndexType::UINT16 ? 2u : 4u;
+                if (std::uint64_t(draw->first) + draw->count > (size - draw->offset) / element)
+                    return cxx::unexpected(RenderError{kInvalidArgument});
+                result.draw = EDrawRecipe::INDEXED;
+                result.count = draw->count;
+                result.instances = draw->instances;
+                result.first = draw->first;
+                result.first_instance = draw->first_instance;
+                result.vertex_offset = draw->vertex_offset;
+            }
+            else
+            {
+                const auto& indirect = std::get<DrawIndexedIndirect>(program.draw);
+                auto ready = index(indirect.index_resource, indirect.index_offset, indirect.type);
+                if (!ready) return ready;
+                auto resource = find(indirect.commands_resource, EGraphUse::INDIRECT);
+                if (!resource) return cxx::unexpected(resource.error());
+                const auto size = std::get<GraphBufferDesc>(resources[*resource].description).size;
+                const bool invalid = !indirect.count || indirect.commands_offset % 4 || indirect.stride % 4 ||
+                    indirect.stride < sizeof(VkDrawIndexedIndirectCommand) || indirect.commands_offset > size;
+                if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
+                const auto remaining = size - indirect.commands_offset;
+                if (remaining < sizeof(VkDrawIndexedIndirectCommand) ||
+                    indirect.count - 1 > (remaining - sizeof(VkDrawIndexedIndirectCommand)) / indirect.stride)
+                    return cxx::unexpected(RenderError{kInvalidArgument});
+                // This Device currently enables single indirect indirect. Multiple commands require the
+                // actual multiDrawIndirect feature, not merely a larger author-provided count.
+                if (indirect.count > 1 || indirect.count > device.properties().limits.maxDrawIndirectCount)
+                    return cxx::unexpected(RenderError{kUnsupported});
+                result.draw = EDrawRecipe::INDEXED_INDIRECT;
+                result.indirect_resource = *resource;
+                result.indirect_offset = indirect.commands_offset;
+                result.indirect_stride = indirect.stride;
+                result.count = indirect.count;
+            }
+            if (!result.count || !result.instances) return cxx::unexpected(RenderError{kInvalidArgument});
+            // Exact direct-vertex bounds; indexed values are trusted GPU/validated asset data, not read back here.
+            for (const auto& source : result.vertices)
+            {
+                const auto& layout = *std::ranges::find(program.graphics.vertex_bindings,
+                    source.binding, &VertexBinding::binding);
+                const auto full_size = std::get<GraphBufferDesc>(resources[source.resource].description).size;
+                const auto size = full_size - source.offset;
+                for (const auto& attribute : program.graphics.vertex_attributes)
+                {
+                    if (attribute.binding != source.binding) continue;
+                    const auto bytes = vertexFormat(attribute.format).bytes();
+                    if (!bytes || attribute.offset > size || bytes > size - attribute.offset)
+                        return cxx::unexpected(RenderError{kInvalidArgument});
+                    std::uint64_t last = 0;
+                    if (result.draw == EDrawRecipe::VERTICES && layout.rate == EVertexRate::VERTEX)
+                        last = std::uint64_t(result.first) + result.count - 1;
+                    else if (result.draw != EDrawRecipe::INDEXED_INDIRECT && layout.rate == EVertexRate::INSTANCE)
+                        last = std::uint64_t(result.first_instance) + result.instances - 1;
+                    if (last > (size - attribute.offset - bytes) / layout.stride)
+                        return cxx::unexpected(RenderError{kInvalidArgument});
+                }
+            }
+            return {};
         }
 
         bool fullRange(const GraphResourceUse& use, const NativeResourcePlan& resource) noexcept
@@ -199,7 +323,6 @@ namespace lux::render::vulkan
             CompiledPass compiled{};
             compiled.layout_program = id.index;
             compiled.clear_color = binding->clear_color;
-            compiled.vertex_count = binding->vertex_count;
             compiled.dispatch = binding->dispatch;
             const bool compute = pass.kind == EGraphPassKind::COMPUTE;
             if (compute)
@@ -294,6 +417,9 @@ namespace lux::render::vulkan
                     barrier.size = VK_WHOLE_SIZE;
                     compiled.buffers.push_back({index, barrier});
                     resource.buffer_usage |= storage_use ? VK_BUFFER_USAGE_STORAGE_BUFFER_BIT :
+                        use.usage == EGraphUse::VERTEX ? VK_BUFFER_USAGE_VERTEX_BUFFER_BIT :
+                        use.usage == EGraphUse::INDEX ? VK_BUFFER_USAGE_INDEX_BUFFER_BIT :
+                        use.usage == EGraphUse::INDIRECT ? VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT :
                         use.usage == EGraphUse::TRANSFER_SOURCE ?
                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT : VK_BUFFER_USAGE_TRANSFER_DST_BIT;
                 }
@@ -309,9 +435,14 @@ namespace lux::render::vulkan
                 result.resources_[compiled.destination].description);
             if (pass.kind == EGraphPassKind::GRAPHICS || compute)
             {
-                if (!compute && (!writes_image || binding->vertex_count == 0))
+                if (!compute && !writes_image)
                     return cxx::unexpected(RenderError{kStorageContract});
                 compiled.recipe = compute ? ERecipe::DISPATCH : ERecipe::DRAW;
+                if (!compute)
+                {
+                    auto lowered = lowerDraw(*binding, pass, result.resources_, device, compiled);
+                    if (!lowered) return cxx::unexpected(lowered.error());
+                }
                 if (!result.layout_)
                 {
                     const VkPushConstantRange range{
@@ -330,18 +461,22 @@ namespace lux::render::vulkan
                 // stage bytes + ABI; draw count and clear color are not Pipeline identity.
                 auto shader = relocateShader(binding->shader, layout_plan.programs[id.index].bindings);
                 if (!shader) return cxx::unexpected(shader.error());
-                const auto same = std::find(result.shader_identities_.begin(), result.shader_identities_.end(),
-                    *shader);
+                CompiledGraph::PipelineIdentity identity{
+                    std::move(*shader), compute ? GraphicsState{} : binding->graphics
+                };
+                std::ranges::sort(identity.graphics.vertex_bindings, {}, &VertexBinding::binding);
+                std::ranges::sort(identity.graphics.vertex_attributes, {}, &VertexAttribute::location);
+                const auto same = std::ranges::find(result.shader_identities_, identity);
                 if (same != result.shader_identities_.end())
                     compiled.pipeline = result.pipelines_[same - result.shader_identities_.begin()];
                 else
                 {
-                    auto pipeline = compute ? compileCompute(device, result.layout_, *shader) :
-                        compileGraphics(device, result.layout_, *shader);
+                    auto pipeline = compute ? compileCompute(device, result.layout_, identity.shader) :
+                        compileGraphics(device, result.layout_, identity.shader, identity.graphics);
                     if (!pipeline) return cxx::unexpected(pipeline.error());
                     compiled.pipeline = *pipeline;
                     result.pipelines_.push_back(*pipeline);
-                    result.shader_identities_.push_back(std::move(*shader));
+                    result.shader_identities_.push_back(std::move(identity));
                 }
             }
             else if (compiled.source == kGraphInvalidIndex)

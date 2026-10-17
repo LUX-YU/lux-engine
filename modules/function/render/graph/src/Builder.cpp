@@ -114,7 +114,11 @@ namespace lux::render
             const bool invalid_storage = is_storage && (image || pass.kind == EGraphPassKind::TRANSFER ||
                 (use.usage == EGraphUse::STORAGE_WRITE && use.access != EGraphAccess::WRITE) ||
                 (use.usage == EGraphUse::STORAGE_READ_WRITE && use.access != EGraphAccess::READ_WRITE));
-            const bool is_invalid_usage = use.usage > EGraphUse::STORAGE_READ_WRITE || invalid_storage ||
+            const bool geometry = use.usage == EGraphUse::VERTEX || use.usage == EGraphUse::INDEX ||
+                use.usage == EGraphUse::INDIRECT;
+            const bool invalid_geometry = geometry &&
+                (image || pass.kind != EGraphPassKind::GRAPHICS || use.access != EGraphAccess::READ);
+            const bool is_invalid_usage = use.usage > EGraphUse::INDIRECT || invalid_storage || invalid_geometry ||
                 (use.usage == EGraphUse::STORAGE_READ && (image || use.access != EGraphAccess::READ)) ||
                 is_invalid_color || is_invalid_source || is_invalid_destination || is_invalid_sample;
             if (is_invalid_usage) return cxx::unexpected(graphError(kGraphInvalidDescriptor, id, resource_id));

@@ -62,6 +62,7 @@ int main()
             PassProgram program{"output"};
             if (graphics)
             {
+                parameter_fixture::configure(program, "color");
                 program.shader.stages = {
                     {lux::rdesc::EShaderType::VERTEX, "main", {native_fixture::vert.begin(), native_fixture::vert.end()}},
                     {lux::rdesc::EShaderType::FRAGMENT, "main", {native_fixture::frag.begin(), native_fixture::frag.end()}}

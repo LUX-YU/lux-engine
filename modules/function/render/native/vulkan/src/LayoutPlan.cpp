@@ -30,6 +30,48 @@ namespace lux::render::vulkan
             auto& output = plan.programs[id.index];
             if (source->shader.interface.bindings.size() > UINT32_MAX)
                 return cxx::unexpected(RenderError{kCapacity});
+            const auto& parameters = source->shader.interface.parameters;
+            const auto stages = source->shader.interface.parameter_stages;
+            const bool invalid_parameters = source->parameter_values.size() != parameters.size ||
+                (parameters.size == 0) != (stages == 0) || (stages & ~7u) || parameters.size % 4 ||
+                parameters.size > device.properties().limits.maxPushConstantsSize || parameters.runtime_records;
+            if (invalid_parameters) return cxx::unexpected(RenderError{kStorageContract});
+            plan.parameter_bytes = std::max(plan.parameter_bytes, parameters.size);
+            if (stages & 1) plan.parameter_stages |= VK_SHADER_STAGE_VERTEX_BIT;
+            if (stages & 2) plan.parameter_stages |= VK_SHADER_STAGE_FRAGMENT_BIT;
+            if (stages & 4) plan.parameter_stages |= VK_SHADER_STAGE_COMPUTE_BIT;
+            output.initial_parameters = source->parameter_values;
+            if (source->context_parameters.size)
+            {
+                if (plan.context_parameters.size && plan.context_parameters != source->context_parameters)
+                    return cxx::unexpected(RenderError{kStorageMismatch});
+                plan.context_parameters = source->context_parameters;
+            }
+            for (const auto& mapping : source->parameters)
+            {
+                const auto field = std::ranges::find(parameters.fields, mapping.shader_field, &ShaderMember::path);
+                if (field == parameters.fields.end() || mapping.source_field.empty())
+                    return cxx::unexpected(RenderError{kStorageContract});
+                std::uint32_t index = kGraphInvalidIndex;
+                if (mapping.source == EParameterSource::STORAGE)
+                {
+                    const auto resource = std::ranges::find(graph.resources(), mapping.resource_key, &GraphResource::key);
+                    if (resource == graph.resources().end()) return cxx::unexpected(RenderError{kStorageContract});
+                    index = std::uint32_t(resource - graph.resources().begin());
+                    const bool declared = std::ranges::any_of(pass.uses, [&](const auto& use) {
+                        return use.version.resource.index == index && use.access == EGraphAccess::READ;
+                    });
+                    if (!declared) return cxx::unexpected(RenderError{kStorageContract});
+                }
+                else if (mapping.source != EParameterSource::CONTEXT || !mapping.resource_key.empty() ||
+                    !source->context_parameters.size)
+                    return cxx::unexpected(RenderError{kStorageContract});
+                const bool duplicate = std::ranges::any_of(output.parameters, [&](const auto& use) {
+                    return use.destination.path == field->path;
+                });
+                if (duplicate) return cxx::unexpected(RenderError{kStorageContract});
+                output.parameters.push_back({index, mapping.source_field, *field});
+            }
             output.bindings = source->shader.interface.bindings;
             if (source->resources.size() != output.bindings.size())
                 return cxx::unexpected(RenderError{kStorageContract});

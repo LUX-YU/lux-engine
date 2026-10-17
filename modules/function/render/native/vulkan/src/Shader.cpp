@@ -180,18 +180,15 @@ namespace lux::render::vulkan
                 const spvc_reflected_resource* list{};
                 if (!check(spvc_resources_get_resource_list_for_type(resources,
                     static_cast<spvc_resource_type>(kind), &list, &count))) return false;
-                if (stage == SpvExecutionModelFragment && kind == SPVC_RESOURCE_TYPE_PUSH_CONSTANT)
+                if (kind == SPVC_RESOURCE_TYPE_PUSH_CONSTANT)
                 {
-                    if (count != 1) return false;
-                    const auto structure = spvc_compiler_get_type_handle(compiler, list[0].base_type_id);
-                    if (spvc_type_get_num_member_types(structure) != 1) return false;
-                    const auto member = spvc_compiler_get_type_handle(compiler,
-                        spvc_type_get_member_type(structure, 0));
-                    std::size_t size = 0;
-                    if (!check(spvc_compiler_get_declared_struct_size(compiler, structure, &size))) return false;
-                    const bool is_abi_mismatch = size != 16 || !float4(member) ||
-                        spvc_compiler_get_member_decoration(compiler, list[0].base_type_id, 0, SpvDecorationOffset) != 0;
-                    if (is_abi_mismatch) return false;
+                    const bool declared = (interface.parameter_stages & stage_bit) != 0;
+                    if (count != unsigned(declared)) return false;
+                    if (declared)
+                    {
+                        const auto structure = spvc_compiler_get_type_handle(compiler, list[0].base_type_id);
+                        if (!validateBlock(compiler, structure, interface.parameters)) return false;
+                    }
                 }
                 else if (kind == SPVC_RESOURCE_TYPE_SAMPLED_IMAGE || kind == SPVC_RESOURCE_TYPE_STORAGE_BUFFER)
                 {
@@ -289,7 +286,7 @@ namespace lux::render::vulkan
         const bool needs_arrays = std::ranges::any_of(shader.interface.bindings, [](const auto& value) {
             return value.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY && value.count == 0;
         });
-        const bool is_unsupported = shader.interface.push_bytes != 16 || !device.dynamicRendering() ||
+        const bool is_unsupported = !device.dynamicRendering() ||
             (needs_arrays && !device.textureDescriptors());
         if (is_unsupported) return cxx::unexpected(RenderError{kUnsupported});
         if (shader.stages.size() != 2) return cxx::unexpected(RenderError{kInvalidArgument});

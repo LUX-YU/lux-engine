@@ -14,10 +14,20 @@ namespace lux::render::vulkan
         EDescriptorKind kind;
     };
 
+    struct ParameterUse final
+    {
+        std::uint32_t resource;
+        std::string source_field;
+        ShaderMember destination;
+    };
+
     struct ProgramLayout final
     {
         std::vector<ShaderBinding> bindings;
         std::vector<DescriptorUse> uses;
+        std::vector<std::byte> initial_parameters;
+        std::vector<ParameterUse> parameters;
+
     };
 
     // The sole cold physical placement decision. Shader relocation, native layouts and Context writes
@@ -29,6 +39,10 @@ namespace lux::render::vulkan
         std::vector<ProgramLayout> programs; // Original GraphPassId indices; pruned entries stay empty.
         std::uint32_t shared_set = kGraphInvalidIndex;
         std::uint32_t private_set = kGraphInvalidIndex;
+        ShaderBlock context_parameters;
+        std::uint32_t parameter_bytes = 0;
+        VkShaderStageFlags parameter_stages = 0;
+
     };
 
     [[nodiscard]] const ShaderBinding& sampledImageTableBinding() noexcept;

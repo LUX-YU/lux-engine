@@ -88,6 +88,14 @@ namespace lux::render
                 if (group.target == target_id) return cxx::unexpected(RenderError{kRuntimeState});
         auto prepared = device->prepare(effect->code, target->description, &scene->storages, &view->storages, effect->arguments);
         if (!prepared) return cxx::unexpected(prepared.error());
+        if (!(*prepared)->contextParameters().empty())
+        {
+            if (auto values = (*prepared)->setContextParameters(std::as_bytes(std::span(view->color))); !values)
+            {
+                if (!device->release(*prepared)) std::terminate(); // unsubmitted candidate
+                return cxx::unexpected(values.error());
+            }
+        }
         AttachmentCreated response;
         (*prepared)->forEachStorage([&](std::string_view key, StorageId id) noexcept {
             response.storages.push_back({std::string(key), id});
@@ -99,7 +107,6 @@ namespace lux::render
             if (!device->release(*prepared)) std::terminate(); // unsubmitted candidate
             return cxx::unexpected(charge.error());
         }
-        (*prepared)->setColor(view->color);
         effect->groups.push_back({scene_id, view_id, target_id, *prepared});
         scoped_buffers_created.store(device->resources().creations());
         return request.publishPrepared(output, *charge);
@@ -126,7 +133,11 @@ namespace lux::render
                 &scenes.find(group->scene)->views.find(group->view)->storages, arguments
             );
             if (!candidate) return cxx::unexpected(candidate.error());
-            (*candidate)->setColor(group->context->color());
+            if (auto values = (*candidate)->setContextParameters(group->context->contextParameters()); !values)
+            {
+                if (!device->release(*candidate)) std::terminate(); // unsubmitted candidate
+                return cxx::unexpected(values.error());
+            }
             if (auto result = device->release(group->context); !result)
             {
                 if (!device->release(*candidate)) std::terminate(); // never submitted

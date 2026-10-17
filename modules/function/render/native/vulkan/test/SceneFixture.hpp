@@ -3,6 +3,7 @@
 #include <lux/engine/render/data/Encoding.hpp>
 
 #include "shaders/Triangle.hpp"
+#include "ParameterFixture.hpp"
 #include <lux/engine/render/features/Assembly.hpp>
 #include <lux/engine/render/graph/Program.hpp>
 #include <atomic>
@@ -87,6 +88,7 @@ namespace native_fixture
         PassProgram color{featureKey(type, instance, "color")};
         if (config.graphics)
         {
+            parameter_fixture::configure(color, "color");
             color.shader.stages = {
                 {lux::rdesc::EShaderType::VERTEX, "main", {vert.begin(), vert.end()}},
                 {lux::rdesc::EShaderType::FRAGMENT, "main", {frag.begin(), frag.end()}}

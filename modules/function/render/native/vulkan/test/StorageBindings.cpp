@@ -168,6 +168,7 @@ int main()
             auto distinct = packed;
             distinct[0].pass_key = "draw";
             distinct[1].pass_key = "read";
+            distinct[0].parameters[0].resource_key = "image";
             distinct[0].resources = {{"other", "b"}, {"textures", "image"}, {"data", "a"}};
             const std::array arguments{
                 StorageArgument{"image", take(ConfigValue::make(TextureBinding{texture}))},

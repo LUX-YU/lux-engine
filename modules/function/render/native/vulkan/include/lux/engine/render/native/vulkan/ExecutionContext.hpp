@@ -18,8 +18,11 @@ namespace lux::render::vulkan
         [[nodiscard]] const CompiledGraph& code() const noexcept { return *code_; }
         [[nodiscard]] const TargetDesc& target() const noexcept { return target_; }
         [[nodiscard]] std::optional<SubmissionTicket> lastUse() const noexcept { return last_use_; }
-        void setColor(std::array<float, 4> color) noexcept { color_ = color; } // validated cold View state
-        [[nodiscard]] std::array<float, 4> color() const noexcept { return color_; }
+        [[nodiscard]] RenderResult<void> setContextParameters(std::span<const std::byte> bytes) noexcept;
+        [[nodiscard]] std::span<const std::byte> contextParameters() const noexcept { return context_values_; }
+        [[nodiscard]] RenderResult<void> setParameters(GraphPassId pass, std::span<const std::byte> bytes) noexcept;
+        [[nodiscard]] std::span<const std::byte> parameters(GraphPassId pass) const noexcept;
+
         [[nodiscard]] RenderResult<bool> execute() noexcept;
         [[nodiscard]] RenderResult<bool> completed() noexcept;
         [[nodiscard]] RenderResult<std::vector<std::byte>> readback(std::uint32_t resource = kGraphInvalidIndex) noexcept;
@@ -62,7 +65,13 @@ namespace lux::render::vulkan
             std::vector<VkBufferMemoryBarrier2> buffers;
             std::vector<VkDescriptorSet> descriptors;
             std::array<VkDescriptorSet, 2> private_descriptors{};
-            const std::array<float, 4>* parameters = nullptr;
+            std::vector<std::byte> parameters;
+            struct ParameterCopy final
+            {
+                const std::span<const std::byte>* source;
+                std::uint32_t source_offset, destination_offset, bytes;
+            };
+            std::vector<ParameterCopy> parameter_copies;
         };
         ExecutionContext(DeviceSession& owner, SubmissionQueue& queue, std::shared_ptr<const CompiledGraph> code, TargetDesc target) noexcept;
         DeviceSession* owner_;
@@ -81,6 +90,9 @@ namespace lux::render::vulkan
         std::vector<StorageUse> leases_;
 
         std::vector<Pass> passes_;
+        std::vector<std::byte> context_values_;
+        std::span<const std::byte> context_view_; // Stable range after prepare, used by compiled parameter copies.
+
         std::shared_ptr<DescriptorArray> shared_descriptors_;
         VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
         unsigned descriptor_bank_ = 0;
@@ -89,6 +101,6 @@ namespace lux::render::vulkan
         std::optional<SubmissionTicket> last_use_;
         std::uint32_t readback_ = kGraphInvalidIndex;
         std::uint32_t readers_ = 0;
-        std::array<float, 4> color_{1, 0, 0, 1};
+
     };
 }

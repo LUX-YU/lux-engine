@@ -3,6 +3,7 @@
 #include <lux/engine/render/features/Registration.hpp>
 
 #include "Buffer.hpp"
+#include "../ParameterFixture.hpp"
 #include "Shader.hpp"
 #include "../shaders/Texture.hpp"
 #include <lux/engine/render/features/Assembly.hpp>
@@ -73,10 +74,11 @@ namespace extension_test
             {lux::rdesc::EShaderType::VERTEX, "main", {texture_fixture::vert.begin(), texture_fixture::vert.end()}},
             {lux::rdesc::EShaderType::FRAGMENT, "main", {fragment.begin(), fragment.end()}}
         };
-        draw.shader.interface = {
-            {{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, {}, "textures"},
-                {1, 0, EDescriptorKind::STORAGE_BUFFER, 1, colorBlock(), "data"}}, 16
+        draw.shader.interface.bindings = {
+            {0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, {}, "textures"},
+            {1, 0, EDescriptorKind::STORAGE_BUFFER, 1, colorBlock(), "data"}
         };
+        parameter_fixture::configure(draw, "control", "shared:texture");
         draw.resources = {{"textures", "shared:texture"}, {"data", "shared:values"}};
         result.arguments.push_back({"shared:texture", *ConfigValue::make(TextureBinding{config->texture})});
         result.arguments.push_back({"shared:values", *ConfigValue::make(BufferBinding{config->buffer})});

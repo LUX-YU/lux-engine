@@ -168,13 +168,16 @@ namespace lux::render::vulkan
         TextureStorage::Backing* backing;
         PreparedStorageBinding* binding;
         std::uint32_t lod;
+        std::array<float, 4> parameters{};
+
 
         void update(TextureStorage::Backing& value) noexcept
         {
             if (backing) storage->releaseLease(*backing);
             backing = &value;
             ++backing->leases_;
-            binding->parameters = {float(value.descriptorIndex()), float(value.info().color_space), float(lod), 0};
+            parameters = {float(value.descriptorIndex()), float(value.info().color_space), float(lod), 0};
+            binding->parameters = std::as_bytes(std::span(parameters));
             binding->last_use = &value.last_use_;
             binding->publishUpdate();
         }
@@ -205,7 +208,13 @@ namespace lux::render::vulkan
         auto use = std::make_unique<Use>(this, argument.texture, nullptr, &binding, argument.lod);
         use->update(backing);
         binding.descriptors = physical_->descriptors->descriptors();
-        binding.provides_parameters = true;
+        static const ShaderBlock parameters = [] {
+            static constexpr rdesc::DataGpuField fields[]{
+                {"control", rdesc::EDataScalar::FLOAT, 0, 4, 1, 0, 0}
+            };
+            return ShaderBlock::from({rdesc::EDataLayout::STD430, 16, 16, fields, {}, {}, 0});
+        }();
+        binding.parameter_layout = &parameters;
         uses_.push_back(use.get());
         binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};
         return {};

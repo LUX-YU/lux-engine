@@ -92,6 +92,8 @@ int main()
                     assembly.analysis, assembly.external_bindings, named, native_fixture::target(config))));
                 StorageSet scene(session->resources()), view(session->resources());
                 auto* named_context = take(session->prepare(named_code, native_fixture::target(config), &scene, &view));
+                const std::array<float, 4> color{1, 0, 0, 1};
+                CHECK(named_context->setContextParameters(std::as_bytes(std::span(color))));
                 CHECK(take(named_context->execute()));
                 CHECK(take(session->queue().wait(*named_context->lastUse(), UINT64_MAX)));
                 auto pixels = take(named_context->readback());

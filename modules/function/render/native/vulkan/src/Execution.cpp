@@ -3,6 +3,7 @@
 #include "LayoutPlan.hpp"
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <algorithm>
+#include <cstring>
 
 namespace lux::render::vulkan
 {
@@ -12,6 +13,8 @@ namespace lux::render::vulkan
           bindings_(code_->resources().size()), storages_(owner.resources())
     {
         leases_.reserve(bindings_.size());
+        context_values_.resize(code_->descriptor_plan_->context_parameters.size);
+        context_view_ = context_values_;
     }
 
     ExecutionContext::~ExecutionContext() noexcept
@@ -136,7 +139,7 @@ namespace lux::render::vulkan
         for (const auto& recipe : context->code_->passes())
         {
             ExecutionContext::Pass pass{&recipe};
-            pass.parameters = &context->color_;
+            pass.parameters = context->code_->descriptor_plan_->programs[recipe.layout_program].initial_parameters;
             for (const auto& barrier : recipe.images)
             {
                 auto native = barrier.native;
@@ -219,17 +222,33 @@ namespace lux::render::vulkan
                     pass.private_descriptors.data()));
                 if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
             }
-            // Until the typed parameter plan lands, reject ambiguity instead of silently taking the last float4.
-            const PreparedStorageBinding* parameters = nullptr;
-            for (const auto& use : layout.programs[pass.recipe->layout_program].uses)
-                for (const auto& lease : leases_)
-                    if (lease.resource == use.resource && lease.binding.provides_parameters)
-                    {
-                        if (parameters && parameters != &lease.binding)
-                            return cxx::unexpected(RenderError{kStorageContract});
-                        parameters = &lease.binding;
-                    }
-            if (parameters) pass.parameters = &parameters->parameters;
+            for (const auto& mapping : layout.programs[pass.recipe->layout_program].parameters)
+            {
+                const ShaderBlock* source_layout = &layout.context_parameters;
+                const auto* source_bytes = &context_view_;
+                if (mapping.resource != kGraphInvalidIndex)
+                {
+                    const auto source = std::ranges::find(leases_, mapping.resource, &StorageUse::resource);
+                    if (source == leases_.end() || !source->binding.parameter_layout)
+                        return cxx::unexpected(RenderError{kStorageContract});
+                    source_layout = source->binding.parameter_layout;
+                    source_bytes = &source->binding.parameters;
+                }
+                const auto& fields = source_layout->fields;
+                const auto field = std::ranges::find(fields, mapping.source_field, &ShaderMember::path);
+                if (field == fields.end()) return cxx::unexpected(RenderError{kStorageContract});
+                const auto& destination = mapping.destination;
+                const bool mismatch = field->scalar != destination.scalar || field->rows != destination.rows ||
+                    field->columns != destination.columns || field->matrix_stride != destination.matrix_stride ||
+                    field->array_stride != destination.array_stride;
+                const auto size = std::uint64_t(field->rows) * 4 +
+                    (field->columns ? std::uint64_t(field->columns - 1) * field->matrix_stride : 0);
+                const bool invalid_range = !size || size > UINT32_MAX ||
+                    std::uint64_t(field->offset) + size > source_bytes->size() ||
+                    std::uint64_t(destination.offset) + size > pass.parameters.size();
+                if (mismatch || invalid_range) return cxx::unexpected(RenderError{kStorageContract});
+                pass.parameter_copies.push_back({source_bytes, field->offset, destination.offset, std::uint32_t(size)});
+            }
         }
         rebind();
         return {};
@@ -243,6 +262,9 @@ namespace lux::render::vulkan
         for (const auto& lease : leases_) bindings_[lease.resource].buffer = lease.binding.buffer;
         for (auto& pass : passes_)
         {
+            for (const auto& copy : pass.parameter_copies)
+                std::memcpy(pass.parameters.data() + copy.destination_offset,
+                    copy.source->data() + copy.source_offset, copy.bytes);
             for (std::size_t i = 0; i < pass.buffers.size(); ++i)
                 pass.buffers[i].buffer = bindings_[pass.recipe->buffers[i].resource].buffer->native();
             if (pass.recipe->recipe != ERecipe::DRAW || !descriptor_pool_) continue;
@@ -264,6 +286,41 @@ namespace lux::render::vulkan
         }
         for (std::size_t i = 0; i < host_barriers_.size(); ++i)
             host_barriers_[i].buffer = bindings_[code_->hostBarriers()[i].resource].buffer->native();
+    }
+
+    RenderResult<void> ExecutionContext::setContextParameters(std::span<const std::byte> bytes) noexcept
+    {
+        if (bytes.size() != context_values_.size()) return cxx::unexpected(RenderError{kInvalidArgument});
+        std::ranges::copy(bytes, context_values_.begin());
+        for (auto& pass : passes_)
+            for (const auto& copy : pass.parameter_copies)
+                std::memcpy(pass.parameters.data() + copy.destination_offset,
+                    copy.source->data() + copy.source_offset, copy.bytes);
+        return {};
+    }
+
+    RenderResult<void> ExecutionContext::setParameters(GraphPassId id, std::span<const std::byte> bytes) noexcept
+    {
+        const auto pass = std::ranges::find_if(passes_, [&](const auto& value) {
+            return value.recipe->layout_program == id.index;
+        });
+        if (pass == passes_.end() || bytes.size() != pass->parameters.size())
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        std::ranges::copy(bytes, pass->parameters.begin());
+        // Updating CPU parameter bytes is safe while old recorded push commands execute. Storage fields
+        // remain authoritative; this boundary only replaces the pass's own initial/dynamic values.
+        for (const auto& copy : pass->parameter_copies)
+            std::memcpy(pass->parameters.data() + copy.destination_offset,
+                copy.source->data() + copy.source_offset, copy.bytes);
+        return {};
+    }
+
+    std::span<const std::byte> ExecutionContext::parameters(GraphPassId id) const noexcept
+    {
+        const auto pass = std::ranges::find_if(passes_, [&](const auto& value) {
+            return value.recipe->layout_program == id.index;
+        });
+        return pass == passes_.end() ? std::span<const std::byte>{} : pass->parameters;
     }
 
     RenderResult<void> DeviceSession::release(ExecutionContext* context) noexcept
@@ -348,7 +405,9 @@ namespace lux::render::vulkan
                 if (!pass.descriptors.empty())
                     LUX_RECORD("cmd_descriptor", vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                         code_->layout(), 0, std::uint32_t(pass.descriptors.size()), pass.descriptors.data(), 0, nullptr));
-                vkCmdPushConstants(command, code_->layout(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, pass.parameters->data());
+                if (!pass.parameters.empty())
+                    vkCmdPushConstants(command, code_->layout(), code_->descriptor_plan_->parameter_stages, 0,
+                        std::uint32_t(pass.parameters.size()), pass.parameters.data());
                 LUX_RECORD("cmd_draw", vkCmdDraw(command, recipe.vertex_count, 1, 0, 0));
                 if (recipe.end_rendering) LUX_RECORD("cmd_end", vkCmdEndRendering(command));
                 break;

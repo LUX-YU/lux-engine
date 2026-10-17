@@ -25,6 +25,7 @@ namespace extension_test
     struct BufferBinding final
     {
         BufferId id;
+        std::array<float, 4> gain{1, 1, 1, 1};
         bool operator==(const BufferBinding&) const noexcept = default;
     };
     struct SetBuffer final

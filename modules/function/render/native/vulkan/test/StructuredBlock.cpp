@@ -1,4 +1,5 @@
 #include "TextureFixture.hpp"
+#include "ParameterFixture.hpp"
 #include "extension/NativeBuffer.hpp"
 #include "extension/Structured.hpp"
 #include "extension/StructuredRecords.hpp"
@@ -91,6 +92,7 @@ int main()
         {2, 9, EDescriptorKind::STORAGE_BUFFER, 1, block(), "data"}
     };
     draw.resources = {{"textures", "texture"}, {"data", "data"}};
+    parameter_fixture::configure(draw, "control", "texture");
     std::array programs{draw, PassProgram{"read"}};
     const std::array arguments{
         StorageArgument{"texture", take(ConfigValue::make(TextureBinding{texture}))},

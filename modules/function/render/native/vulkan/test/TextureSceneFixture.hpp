@@ -3,6 +3,7 @@
 #include <lux/engine/render/data/Encoding.hpp>
 
 #include "shaders/Texture.hpp"
+#include "ParameterFixture.hpp"
 #include <lux/engine/render/features/Assembly.hpp>
 #include <lux/engine/render/graph/Program.hpp>
 #include <lux/engine/render/resource/Texture.hpp>
@@ -77,7 +78,8 @@ namespace texture_fixture
             {lux::rdesc::EShaderType::FRAGMENT, "main", {frag.begin(), frag.end()}}
         };
         draw.resources = {{"textures", "shared:texture"}};
-        draw.shader.interface = {{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, {}, "textures"}}, 16};
+        draw.shader.interface.bindings = {{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, {}, "textures"}};
+        parameter_fixture::configure(draw, "control", "shared:texture");
         std::vector<PassProgram> result;
         result.push_back(std::move(draw));
         result.push_back({featureKey(type, instance, "readback")});

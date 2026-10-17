@@ -144,8 +144,14 @@ int main()
     std::vector<VkBuffer> original_scopes(code->resources().size());
     for (std::uint32_t i = 0; i < original_scopes.size(); ++i)
         if (code->resources()[i].storage) original_scopes[i] = a->nativeBuffer(i);
-    a->setColor({1, 0, 0, 1});
-    b->setColor({0, 1, 0, 1});
+    {
+        const std::array<float, 4> values{1, 0, 0, 1};
+        CHECK(a->setContextParameters(std::as_bytes(std::span(values))));
+    }
+    {
+        const std::array<float, 4> values{0, 1, 0, 1};
+        CHECK(b->setContextParameters(std::as_bytes(std::span(values))));
+    }
     CHECK(take(a->execute()));
     CHECK(take(b->execute()));
     CHECK(take(session->queue().wait(*b->lastUse(), UINT64_MAX)));
@@ -197,7 +203,10 @@ int main()
     for (std::uint32_t i = 0; i < code->resources().size(); ++i)
         if (const auto& storage = code->resources()[i].storage; storage)
             CHECK((b->nativeBuffer(i) == larger->nativeBuffer(i)) == (std::ranges::find(code->storageGroups().attachment, i) == code->storageGroups().attachment.end()));
-    larger->setColor({0, 0, 1, 1});
+    {
+        const std::array<float, 4> values{0, 0, 1, 1};
+        CHECK(larger->setContextParameters(std::as_bytes(std::span(values))));
+    }
     CHECK(take(larger->execute()));
     CHECK(take(session->queue().wait(*larger->lastUse(), UINT64_MAX)));
     auto blue = take(larger->readback());
@@ -210,6 +219,8 @@ int main()
     CHECK(session->resources().size() == 0);
     const auto creations = session->resources().creations();
     auto* reattached = take(session->prepare(code, native_fixture::target(config), &scene, &view_a));
+    const std::array<float, 4> restored_color{1, 0, 0, 1};
+    CHECK(reattached->setContextParameters(std::as_bytes(std::span(restored_color))));
     CHECK(session->resources().creations() == creations + 4);
     CHECK(take(reattached->execute()));
     CHECK(take(session->queue().wait(*reattached->lastUse(), UINT64_MAX)));

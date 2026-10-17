@@ -25,7 +25,8 @@ namespace lux::render
     struct ShaderInterface final
     {
         std::vector<ShaderBinding> bindings;
-        std::uint32_t push_bytes = 16;
+        ShaderBlock parameters;
+        std::uint32_t parameter_stages = 0;
         bool operator==(const ShaderInterface&) const noexcept = default;
     };
 }

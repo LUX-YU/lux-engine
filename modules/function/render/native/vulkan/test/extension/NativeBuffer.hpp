@@ -51,6 +51,7 @@ namespace extension_test
             BufferId id;
             Backing* backing = nullptr;
             vk::PreparedStorageBinding& binding;
+            std::array<float, 4> gain{};
             void update(Backing& value) noexcept
             {
                 if (backing) storage.releaseReference(*backing);
@@ -186,7 +187,15 @@ namespace extension_test
             if (argument.id.storage != id_) return lux::cxx::unexpected(RenderError{kStorageIdentity});
             auto* entry = entries_.find(argument.id.local);
             if (!entry || !entry->current) return lux::cxx::unexpected(RenderError{kStorageIdentity});
-            auto use = std::make_unique<Use>(*this, argument.id, nullptr, binding);
+            auto use = std::make_unique<Use>(*this, argument.id, nullptr, binding, argument.gain);
+            static const ShaderBlock layout = [] {
+                static constexpr lux::rdesc::DataGpuField fields[]{
+                    {"gain", lux::rdesc::EDataScalar::FLOAT, 0, 4, 1, 0, 0}
+                };
+                return ShaderBlock::from({lux::rdesc::EDataLayout::STD430, 16, 16, fields, {}, {}, 0});
+            }();
+            binding.parameters = std::as_bytes(std::span(use->gain));
+            binding.parameter_layout = &layout;
             use->update(*entry->current);
             uses_.push_back(use.get());
             binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};

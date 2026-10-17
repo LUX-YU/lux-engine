@@ -225,7 +225,20 @@ namespace lux::render::vulkan
                 }
                 if (resource.origin == EGraphOrigin::IMPORTED && std::holds_alternative<GraphImageDesc>(resource.description))
                     return cxx::unexpected(RenderError{kUnsupported});
-                const auto current = accessFor(use);
+                auto current = accessFor(use);
+                if (use.usage == EGraphUse::STORAGE_READ)
+                {
+                    current.stage = VK_PIPELINE_STAGE_2_NONE;
+                    const auto& program = layout_plan.programs[id.index];
+                    for (std::size_t field = 0; field < program.uses.size(); ++field)
+                    {
+                        if (program.uses[field].resource != index) continue;
+                        const auto stages = program.bindings[field].stages;
+                        if (stages & 1) current.stage |= VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+                        if (stages & 2) current.stage |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                        if (stages & 4) current.stage |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+                    }
+                }
                 const auto source = previous[index];
                 if (std::holds_alternative<GraphImageDesc>(resource.description))
                 {
@@ -279,9 +292,11 @@ namespace lux::render::vulkan
                 compiled.recipe = ERecipe::DRAW;
                 if (!result.layout_)
                 {
-                    const VkPushConstantRange range{VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16};
+                    const VkPushConstantRange range{
+                        layout_plan.parameter_stages, 0, layout_plan.parameter_bytes
+                    };
                     VkPipelineLayoutCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-                    info.pushConstantRangeCount = 1;
+                    info.pushConstantRangeCount = unsigned(layout_plan.parameter_bytes != 0);
                     info.pPushConstantRanges = &range;
                     info.setLayoutCount = std::uint32_t(result.descriptor_layouts_.size());
                     info.pSetLayouts = result.descriptor_layouts_.data();
@@ -289,7 +304,7 @@ namespace lux::render::vulkan
                         nullptr, &result.layout_));
                     if (created != VK_SUCCESS) return cxx::unexpected(nativeError(created));
                 }
-                // This graph has one fixed RGBA8/push-color layout and raster state. Compare complete
+                // The Graph owns one compatible physical descriptor/parameter layout. Compare complete
                 // stage bytes + ABI; draw count and clear color are not Pipeline identity.
                 auto shader = relocateShader(binding->shader, layout_plan.programs[id.index].bindings);
                 if (!shader) return cxx::unexpected(shader.error());

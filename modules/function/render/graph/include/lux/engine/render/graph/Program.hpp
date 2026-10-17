@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/data/Shader.hpp>
 #include <array>
+#include <cstddef>
 #include <string>
 
 namespace lux::render
@@ -10,6 +11,16 @@ namespace lux::render
     {
         std::string shader_name;
         std::string resource_key;
+    };
+
+    enum class EParameterSource : std::uint8_t { STORAGE, CONTEXT };
+
+    struct ProgramParameterBinding final
+    {
+        std::string shader_field;
+        std::string resource_key;
+        std::string source_field;
+        EParameterSource source = EParameterSource::STORAGE;
     };
 
     // Cold compiler input, one binding per live Pass. It is the only Shader binding authority.
@@ -21,6 +32,9 @@ namespace lux::render
         std::array<float, 4> clear_color{0, 0, 0, 1};
         std::uint32_t vertex_count = 3;
         std::vector<ProgramResourceBinding> resources;
+        std::vector<std::byte> parameter_values; // Complete initial Shader ABI bytes, owned by the compiled result.
+        ShaderBlock context_parameters; // Declared frame input ABI, shared by this Graph's Context.
+        std::vector<ProgramParameterBinding> parameters; // Named Storage/Context fields override initial bytes.
     };
 
 }

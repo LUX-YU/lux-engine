@@ -201,3 +201,15 @@ set_target_properties(render_structured_block_test PROPERTIES
 add_test(NAME render.native.structured_block COMMAND render_structured_block_test)
 
 set_tests_properties(render.native.structured_block PROPERTIES TIMEOUT 60)
+
+add_executable(render_parameters_test Parameters.cpp Allocation.cpp)
+
+target_link_libraries(render_parameters_test PRIVATE render_native_vulkan_extensions render_features)
+
+set_target_properties(render_parameters_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin"
+)
+
+add_test(NAME render.native.parameters COMMAND render_parameters_test)
+
+set_tests_properties(render.native.parameters PROPERTIES TIMEOUT 60)

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <array>
+#include <lux/engine/render/data/ShaderBlock.hpp>
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 
@@ -15,8 +15,9 @@ namespace lux::render::vulkan
     {
         BufferAllocation* buffer = nullptr;
         VkDescriptorSet descriptors = VK_NULL_HANDLE;
-        std::array<float, 4> parameters{};
-        bool provides_parameters = false;
+        std::span<const std::byte> parameters;
+        const ShaderBlock* parameter_layout = nullptr; // Stable professional value layout, not physical placement.
+
         SubmissionRequirements* last_use = nullptr;
         void* update_context = nullptr;
         void (*updated)(void*) noexcept = nullptr; // Owner publication only; not a per-frame callback

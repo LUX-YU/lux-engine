@@ -69,6 +69,8 @@ namespace
         std::vector<PassProgram> result;
         result.push_back({featureKey(type, "main", "a"), shader, {0.125f, 0.25f, 0.5f, 1}});
         result.push_back({featureKey(type, "main", "b"), shader, {0, 1, 0, 1}});
+        parameter_fixture::configure(result[0], "color");
+        parameter_fixture::configure(result[1], "color");
         if (different)
             result.back().shader.stages[1].words.assign(native_fixture::swizzle.begin(), native_fixture::swizzle.end());
         result.push_back({featureKey(type, "main", "copy")});
@@ -124,7 +126,10 @@ int main()
                 auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (input).definition, (input).analysis, (input).external_bindings, programs(different),
                     native_fixture::target({}))));
                 auto* context = take(session->prepare(code, native_fixture::target({}), {}));
-                context->setColor({1, 0, 0, 1});
+                {
+                    const std::array<float, 4> values{1, 0, 0, 1};
+                    CHECK(context->setContextParameters(std::as_bytes(std::span(values))));
+                }
                 CHECK(take(context->execute()));
                 CHECK(take(session->queue().wait(*context->lastUse(), UINT64_MAX)));
                 auto bytes = take(context->readback());

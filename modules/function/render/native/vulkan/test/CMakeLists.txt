@@ -344,3 +344,43 @@ add_test(NAME render.native.mesh_storage COMMAND render_mesh_storage_test
 )
 
 set_tests_properties(render.native.mesh_storage PROPERTIES TIMEOUT 90)
+
+add_executable(render_material_asset_tool
+    assets/material/EmitMaterial.cpp
+    "${render_source_root}/engine/toolchain/material/src/ShaderEmitter.cpp"
+)
+
+target_include_directories(render_material_asset_tool PRIVATE
+    "${render_source_root}/engine/toolchain/material/pinclude"
+)
+
+target_link_libraries(render_material_asset_tool PRIVATE lux::engine::function::material_graph)
+
+set_target_properties(render_material_asset_tool PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin"
+)
+
+add_custom_command(
+    OUTPUT "${render_asset_dir}/Unlit.frag.spv"
+    BYPRODUCTS "${render_asset_dir}/Unlit.frag"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${render_asset_dir}"
+    COMMAND render_material_asset_tool "${render_asset_dir}/Unlit.frag"
+    COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -S frag
+        "-I${CMAKE_CURRENT_SOURCE_DIR}/assets/material"
+        "${render_asset_dir}/Unlit.frag" -o "${render_asset_dir}/Unlit.frag.spv"
+    DEPENDS render_material_asset_tool assets/material/material_types.glsl
+        assets/material/texture_sampling.glsl assets/material/transition_dither.glsl
+    VERBATIM
+)
+
+add_custom_command(
+    OUTPUT "${render_asset_dir}/material-manifest.txt"
+    COMMAND "${CMAKE_COMMAND}" "-DCOMPILER=${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}"
+        "-DROOT=${render_source_root}" "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/assets/material"
+        "-DGENERATED=${render_asset_dir}" "-DOUTPUT=${render_asset_dir}/material-manifest.txt"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/assets/material/Manifest.cmake"
+    DEPENDS "${render_asset_dir}/Unlit.frag.spv" assets/material/Manifest.cmake assets/material/provenance.json
+    VERBATIM
+)
+
+add_custom_target(render_material_assets ALL DEPENDS "${render_asset_dir}/material-manifest.txt")

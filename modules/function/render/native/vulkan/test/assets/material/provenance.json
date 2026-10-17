@@ -1,0 +1,17 @@
+[
+  {
+    "source": "render_legacy/modules/function/render/features/assets/shaders/material_types.glsl",
+    "destination": "modules/function/render/native/vulkan/test/assets/material/material_types.glsl",
+    "sha256": "1fedde9f1e0869c3655467433744b95588153ea3bea4799762a5fc2822b0c4b8"
+  },
+  {
+    "source": "render_legacy/modules/function/render/features/assets/shaders/texture_sampling.glsl",
+    "destination": "modules/function/render/native/vulkan/test/assets/material/texture_sampling.glsl",
+    "sha256": "60a40b2b4abcb7af730078074c0c3def9cd7f1726bec373d8462c9ea972fa1c1"
+  },
+  {
+    "source": "render_legacy/modules/function/render/features/assets/shaders/transition_dither.glsl",
+    "destination": "modules/function/render/native/vulkan/test/assets/material/transition_dither.glsl",
+    "sha256": "50786f3b1fe7f66aa32a6e0e19f9072bf20dd32514e738507b1e947225077f1d"
+  }
+]

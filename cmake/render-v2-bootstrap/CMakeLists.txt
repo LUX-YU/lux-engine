@@ -69,6 +69,38 @@ if(BUILD_TESTING)
 
 endif()
 
+# Existing authoring/lowering algorithms are only build-time asset dependencies.
+if(BUILD_TESTING)
+    include("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description/cmake/ShaderMetadata.cmake")
+    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/object" core-object)
+    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/identity" resource-identity)
+    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/graph" function-graph)
+    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/material" material-graph)
+
+    foreach(target object object_ownership_plugin object_ownership_test object_tree_test object_queue_test
+        object_target_test graph graph_edit_test material_graph material_registered_graph_test
+        material_authoring_schema_test material_builtin_nodes_test material_math_registration_test
+        material_lowering_test material_node_identity_test material_shader_ir_test material_node_catalog_test
+        material_node_plugin material_node_plugin_test
+    )
+        set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+    endforeach()
+
+    lux_engine_install_components(
+        PROJECT_NAME lux-engine-function
+        VERSION ${PROJECT_VERSION}
+        NAMESPACE lux::engine::function
+        COMPONENTS graph material_graph
+    )
+
+    lux_engine_install_components(
+        PROJECT_NAME lux-engine-resource
+        VERSION ${PROJECT_VERSION}
+        NAMESPACE lux::engine::resource
+        COMPONENTS identity
+    )
+endif()
+
 # The user removed the old V2 source and its tests. Historical F4/F5/F6 scripts
 # remain read-only references; only implemented rebuild stages enter this build.
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render" render)
@@ -84,9 +116,14 @@ lux_engine_install_components(
     COMPONENTS ${platform_components}
 )
 
+set(core_components async_port error)
+if(BUILD_TESTING)
+    list(APPEND core_components object)
+endif()
+
 lux_engine_install_components(
     PROJECT_NAME lux-engine-core
     VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::core
-    COMPONENTS async_port error
+    COMPONENTS ${core_components}
 )

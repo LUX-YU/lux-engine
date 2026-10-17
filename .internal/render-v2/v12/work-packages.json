@@ -933,7 +933,7 @@
   },
   "N6.3": {
     "title": "Instance batches and camera",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/features/",
@@ -950,7 +950,9 @@
       "T-CMD-08",
       "T-OWNER-14"
     ],
-    "evidence": []
+    "evidence": [
+      "N6-INSTANCE-IMPLEMENTATION.md"
+    ]
   },
   "N6.4": {
     "title": "Basic mesh and depth features",

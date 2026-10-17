@@ -73,3 +73,17 @@ foreach(target lux::engine::core::core_execution lux::engine::core::error)
 endforeach()
 
 add_test(NAME installed.native.material COMMAND material_consumer "${RENDER_TEST_ASSET_DIR}/Unlit.frag.spv")
+
+add_executable(instance_consumer Instance.cpp)
+
+target_link_libraries(instance_consumer PRIVATE lux::engine::render::render_native_vulkan_extensions
+    lux::engine::core::core_execution
+)
+
+foreach(target lux::engine::core::core_execution lux::engine::core::error)
+    add_custom_command(TARGET instance_consumer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${target}>" "$<TARGET_FILE_DIR:instance_consumer>"
+    )
+endforeach()
+
+add_test(NAME installed.native.instance COMMAND instance_consumer "${RENDER_TEST_ASSET_DIR}/Unlit.frag.spv")

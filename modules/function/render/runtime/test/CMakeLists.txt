@@ -346,3 +346,17 @@ add_test(NAME render.runtime.material_operations COMMAND render_material_operati
 )
 
 set_tests_properties(render.runtime.material_operations PROPERTIES TIMEOUT 90)
+
+add_executable(render_instance_operations_test InstanceOperations.cpp)
+
+target_link_libraries(render_instance_operations_test PRIVATE render_runtime render_native_vulkan_extensions)
+
+set_target_properties(render_instance_operations_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_dependencies(render_instance_operations_test render_material_assets)
+
+add_test(NAME render.runtime.instance_operations COMMAND render_instance_operations_test
+    "${CMAKE_BINARY_DIR}/render/native/vulkan/test/assets/Unlit.frag.spv"
+)
+
+set_tests_properties(render.runtime.instance_operations PROPERTIES TIMEOUT 90)

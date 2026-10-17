@@ -80,7 +80,7 @@ set_tests_properties(render.native.buffer_transfer PROPERTIES TIMEOUT 60)
 
 foreach(header Error DeviceSession DescriptorArray CompiledGraph ExecutionContext StorageBinding device/Device device/DeviceOptions memory/Memory
     Readback transfer/Submission transfer/Transfer transfer/GpuWork
-    texture/TextureStorage texture/TextureCommands mesh/MeshStorage mesh/MeshCommands material/MaterialStorage material/MaterialCommands retirement/Retirement
+    texture/TextureStorage texture/TextureCommands mesh/MeshStorage mesh/MeshCommands material/MaterialStorage material/MaterialCommands instance/InstanceStorage instance/InstanceCommands retirement/Retirement
 )
     string(REPLACE "/" "_" target "${header}")
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp"
@@ -432,3 +432,15 @@ add_test(NAME render.native.material_textures COMMAND render_material_storage_te
 )
 
 set_tests_properties(render.native.material_textures PROPERTIES TIMEOUT 90)
+
+add_executable(render_instance_storage_test InstanceStorage.cpp)
+
+target_link_libraries(render_instance_storage_test PRIVATE render_native_instrumented lux::engine::core::core_execution)
+
+set_target_properties(render_instance_storage_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_dependencies(render_instance_storage_test render_material_assets)
+
+add_test(NAME render.native.instance_storage COMMAND render_instance_storage_test "${render_asset_dir}/Unlit.frag.spv")
+
+set_tests_properties(render.native.instance_storage PROPERTIES TIMEOUT 120)

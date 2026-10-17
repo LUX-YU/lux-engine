@@ -50,6 +50,7 @@ target_compile_features(render_native_vulkan PUBLIC cxx_std_20)
 set(LUX_NATIVE_EXTENSION_SOURCES
     src/texture/TextureStorage.cpp src/texture/Commands.cpp
     src/material/MaterialStorage.cpp src/material/Commands.cpp
+    src/instance/InstanceStorage.cpp src/instance/Commands.cpp
     src/mesh/MeshStorage.cpp src/mesh/Commands.cpp
 )
 

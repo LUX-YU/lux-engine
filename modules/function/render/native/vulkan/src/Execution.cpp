@@ -283,7 +283,8 @@ namespace lux::render::vulkan
             {
                 if (use.kind != EDescriptorKind::STORAGE_BUFFER) continue;
                 const auto* buffer = bindings_[use.resource].buffer;
-                const VkDescriptorBufferInfo info{buffer->native(), 0, buffer->size()};
+                const auto range = std::get<GraphBufferDesc>(code_->resources()[use.resource].description).size;
+                const VkDescriptorBufferInfo info{buffer->native(), 0, range};
                 VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
                 write.dstSet = descriptors;
                 write.dstBinding = use.binding;
@@ -494,7 +495,8 @@ namespace lux::render::vulkan
             case ERecipe::COPY_BUFFER:
             {
                 const auto* source = bindings_[recipe.source].buffer;
-                const VkBufferCopy region{0, 0, source->size()};
+                const VkBufferCopy region{0, 0, std::get<GraphBufferDesc>(
+                    code_->resources()[recipe.source].description).size};
                 vkCmdCopyBuffer(command, source->native(), destination.buffer->native(), 1, &region);
                 break;
             }

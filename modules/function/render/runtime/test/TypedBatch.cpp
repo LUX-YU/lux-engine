@@ -1,3 +1,4 @@
+#include "CameraFixture.hpp"
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/render/runtime/RenderClient.hpp>
@@ -224,7 +225,7 @@ static TypedRenderCompletion<C> call(RenderClient& client, const BoundCommand<C>
 static RenderResult<ProgramContribution> programs(const void* wire, std::string_view instance) noexcept
 {
     const auto* config = static_cast<const native_fixture::Config*>(wire);
-    return ProgramContribution{native_fixture::programs(*config, instance), {}};
+    return ProgramContribution{camera_fixture::programs(*config, instance), {}};
 }
 
 struct BatchCommands final
@@ -389,7 +390,7 @@ int main()
     for (unsigned i = 0; i < attached.size(); ++i)
     {
         const auto scene = scenes[i / 2];
-        const auto view = call(*a, create_view, {scene, colors[i]}).response().view;
+        const auto view = call(*a, create_view, {scene, camera_fixture::oracle(colors[i])}).response().view;
         const auto target = call(*a, create_target, {target_description}).response();
         CHECK(target.epoch == 1);
         attached[i] = {scene, view, target.target, effect};

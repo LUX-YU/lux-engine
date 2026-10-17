@@ -1,3 +1,4 @@
+#include "CameraFixture.hpp"
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
@@ -296,7 +297,7 @@ static RenderResult<ProgramContribution> programs(const void* wire, std::string_
 {
     if (block_compile.load()) { compile_entered->count_down(); compile_resume->wait(); }
     const auto* config = static_cast<const native_fixture::Config*>(wire);
-    return ProgramContribution{native_fixture::programs(*config, name), {}};
+    return ProgramContribution{camera_fixture::programs(*config, name), {}};
 }
 static RenderCompletion wait(RenderClient& client, RequestId id)
 {
@@ -458,7 +459,7 @@ int main(int argc, char** argv)
         for (unsigned v = 0; v < 2; ++v)
         {
             const auto view = decoded<ViewCreated>(call<CreateView>(*a,
-                {scene, {1, 0, 0, 1}})).view;
+                {scene, camera_fixture::oracle({1, 0, 0, 1})})).view;
             const auto target = decoded<TargetCreated>(call<CreateTarget>(*a,
                 {native_fixture::target(graph_config)})).target;
             groups[s * 2 + v] = {scene, view, target, effect};

@@ -8,6 +8,7 @@
 #include <vector>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/core/Camera.hpp>
 #include <lux/engine/render/data/Payload.hpp>
 #include <lux/engine/render/data/ConfigValue.hpp>
 #include <lux/engine/render/protocol/Protocol.hpp>
@@ -26,7 +27,8 @@ namespace lux::render
 
     struct EmptyRequest final {};
     struct SceneRequest final { SceneId scene{}; };
-    struct CreateViewRequest final { SceneId scene{}; std::array<float, 4> color{}; };
+    struct CreateViewRequest final { SceneId scene{}; CameraState camera{}; };
+    struct UpdateCameraRequest final { SceneId scene{}; ViewId view{}; CameraState camera{}; };
     struct ViewRequest final { SceneId scene{}; ViewId view{}; };
     struct CreateTargetRequest final { TargetDesc description{}; };
     struct ResizeTargetRequest final { TargetId target{}; TargetDesc description{}; };
@@ -295,6 +297,13 @@ namespace lux::render
         static constexpr std::string_view name{"render.view.create"};
         using Request = CreateViewRequest;
         using Response = ViewCreated;
+    };
+
+    struct UpdateCamera final
+    {
+        static constexpr std::string_view name{"render.view.camera"};
+        using Request = UpdateCameraRequest;
+        using Response = Ack;
     };
 
     struct RemoveView final

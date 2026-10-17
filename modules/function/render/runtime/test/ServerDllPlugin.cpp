@@ -1,3 +1,4 @@
+#include "CameraFixture.hpp"
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/render/runtime/RenderClient.hpp>
@@ -14,7 +15,7 @@ using namespace std::chrono_literals;
 static RenderResult<ProgramContribution> programs(const void* wire, std::string_view instance) noexcept
 {
     const auto* config = static_cast<const native_fixture::Config*>(wire);
-    return ProgramContribution{native_fixture::programs(*config, instance), {}};
+    return ProgramContribution{camera_fixture::programs(*config, instance), {}};
 }
 
 extern "C" __declspec(dllexport) RenderServer*
@@ -69,7 +70,7 @@ extern "C" __declspec(dllexport) bool serverDllReadback(const char* name, Render
     if (!runtime_test::refresh(**client)) return false;
     auto scene = call<CreateScene>(**client, {});
     if (!scene) return false;
-    auto view = call<CreateView>(**client, {scene->response().scene, {1, 0, 0, 1}});
+    auto view = call<CreateView>(**client, {scene->response().scene, camera_fixture::oracle({1, 0, 0, 1})});
     const native_fixture::Config config{32, 32, 0, 0};
     auto target = call<CreateTarget>(**client, {native_fixture::target(config)});
     auto owned_config = ConfigValue::make(config);

@@ -23,9 +23,9 @@ namespace lux::render
     {
         struct View final
         {
-            std::array<float, 4> color;
+            CameraState camera;
             StorageSet storages;
-            View(ResourceRegistry& registry, std::array<float, 4> value) noexcept : color(value), storages(registry) {}
+            View(ResourceRegistry& registry, CameraState value) noexcept : camera(value), storages(registry) {}
         };
         struct Scene final
         {
@@ -185,6 +185,7 @@ namespace lux::render
         RenderResult<void> removeScene(RenderRequest& request) noexcept;
 
         RenderResult<void> createView(RenderRequest& request) noexcept;
+        RenderResult<void> updateCamera(RenderRequest& request) noexcept;
 
         RenderResult<void> removeView(RenderRequest& request) noexcept;
 

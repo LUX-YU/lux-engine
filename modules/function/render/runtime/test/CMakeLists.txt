@@ -360,3 +360,13 @@ add_test(NAME render.runtime.instance_operations COMMAND render_instance_operati
 )
 
 set_tests_properties(render.runtime.instance_operations PROPERTIES TIMEOUT 90)
+
+add_executable(render_camera_test Camera.cpp)
+
+target_link_libraries(render_camera_test PRIVATE render_runtime render_native_vulkan_extensions)
+
+set_target_properties(render_camera_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.camera COMMAND render_camera_test)
+
+set_tests_properties(render.runtime.camera PROPERTIES TIMEOUT 60)

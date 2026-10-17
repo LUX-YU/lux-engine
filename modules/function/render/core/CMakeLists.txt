@@ -5,7 +5,7 @@ add_component(
     COMPONENT_NAME render_core
     NAMESPACE lux::engine::render
     OUTPUT_NAME lux_engine_render_core
-    SOURCE_FILES src/Target.cpp
+    SOURCE_FILES src/Target.cpp src/Camera.cpp
 )
 
 get_filename_component(LUX_RENDER_ERROR_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../../core/error/include" ABSOLUTE)

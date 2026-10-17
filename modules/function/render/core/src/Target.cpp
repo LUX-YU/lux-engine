@@ -49,6 +49,10 @@ namespace lux::render
             {
                 "lux.render.core.invalid_target_kind", "Unknown target kind",
                 error::ERecovery::PERMANENT, {error::EArgument::UNSIGNED}
+            },
+            {
+                "lux.render.core.invalid_camera", "Camera matrices must be finite and viewport ranges valid",
+                error::ERecovery::PERMANENT, {}
             }
         };
         return descriptors;

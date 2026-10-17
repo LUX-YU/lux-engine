@@ -938,7 +938,10 @@
       "modules/function/render/resource/",
       "modules/function/render/features/",
       "modules/function/render/native/vulkan/",
-      "modules/function/render/examples/basic_mesh/"
+      "modules/function/render/examples/basic_mesh/",
+      "modules/function/render/core/",
+      "modules/function/render/data/",
+      "modules/function/render/runtime/"
     ],
     "test_requirements": [
       "T-RENDER-01",
@@ -951,7 +954,8 @@
       "T-OWNER-14"
     ],
     "evidence": [
-      "N6-INSTANCE-IMPLEMENTATION.md"
+      "N6-INSTANCE-IMPLEMENTATION.md",
+      "N6-CAMERA-IMPLEMENTATION.md"
     ]
   },
   "N6.4": {

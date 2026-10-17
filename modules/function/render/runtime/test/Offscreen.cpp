@@ -1,3 +1,4 @@
+#include "CameraFixture.hpp"
 #include "FeatureFixture.hpp"
 #include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -48,7 +49,7 @@ static RenderResult<ProgramContribution> programs(const void* wire, std::string_
         program_resume->wait();
     }
     const auto* config = static_cast<const native_fixture::Config*>(wire);
-    return ProgramContribution{native_fixture::programs(*config, name), {}};
+    return ProgramContribution{camera_fixture::programs(*config, name), {}};
 }
 
 static TestCompletion wait(TestClient& client, RequestId id)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/core/Camera.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 
@@ -23,6 +24,9 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> setParameters(GraphPassId pass, std::span<const std::byte> bytes) noexcept;
         [[nodiscard]] std::span<const std::byte> parameters(GraphPassId pass) const noexcept;
 
+        // Owner-thread caller has validated the viewport at its request boundary.
+        void setViewport(const CameraViewport& viewport) noexcept { viewport_ = viewport; }
+        [[nodiscard]] const CameraViewport& viewport() const noexcept { return viewport_; }
         [[nodiscard]] RenderResult<bool> execute() noexcept;
         [[nodiscard]] RenderResult<bool> completed() noexcept;
         [[nodiscard]] RenderResult<std::vector<std::byte>> readback(std::uint32_t resource = kGraphInvalidIndex) noexcept;
@@ -79,6 +83,7 @@ namespace lux::render::vulkan
         RetirementReservation retirement_;
         std::shared_ptr<const CompiledGraph> code_;
         TargetDesc target_;
+        CameraViewport viewport_;
         std::vector<Binding> bindings_;
         struct StorageUse final
         {

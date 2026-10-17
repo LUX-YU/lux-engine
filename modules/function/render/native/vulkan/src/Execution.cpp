@@ -412,7 +412,9 @@ namespace lux::render::vulkan
                     rendering.pColorAttachments = &attachment;
                     if (recipe.depth != kGraphInvalidIndex) rendering.pDepthAttachment = &depth;
                     LUX_RECORD("cmd_begin", vkCmdBeginRendering(command, &rendering));
-                    const VkViewport viewport{0, 0, float(extent.width), float(extent.height), 0, 1};
+                    const VkViewport viewport{viewport_.x * extent.width, viewport_.y * extent.height,
+                        viewport_.width * extent.width, viewport_.height * extent.height,
+                        viewport_.min_depth, viewport_.max_depth};
                     const VkRect2D scissor{{0, 0}, extent};
                     vkCmdSetViewport(command, 0, 1, &viewport);
                     vkCmdSetScissor(command, 0, 1, &scissor);

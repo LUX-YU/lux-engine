@@ -2,6 +2,7 @@
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #pragma once
+#include "CameraFixture.hpp"
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include "ServerFixture.hpp"
@@ -86,7 +87,7 @@ public:
         case ETestCommand::READY: return client_->hello();
         case ETestCommand::CREATE_SCENE: return send<CreateScene>({}, command);
         case ETestCommand::REMOVE_SCENE: return send<RemoveScene>({command.scene}, command);
-        case ETestCommand::CREATE_VIEW: return send<CreateView>({command.scene, command.color}, command);
+        case ETestCommand::CREATE_VIEW: return send<CreateView>({command.scene, camera_fixture::oracle(command.color)}, command);
         case ETestCommand::REMOVE_VIEW: return send<RemoveView>({command.scene, command.view}, command);
         case ETestCommand::CREATE_TARGET: return send<CreateTarget>({command.description}, command);
         case ETestCommand::RESIZE_TARGET: return send<ResizeTarget>({command.target, command.description}, command);

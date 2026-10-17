@@ -1,4 +1,5 @@
 #include "ServerImpl.hpp"
+#include <lux/engine/render/data/Camera.hpp>
 
 namespace lux::render
 {
@@ -50,7 +51,14 @@ namespace lux::render
                         return cxx::unexpected(RenderError{kFeatureDuplicate, {index, p, previous}});
             }
             for (auto& value : values->programs)
+            {
+                const bool live = std::ranges::any_of(assembly->analysis.execution_order, [&](auto id) {
+                    return assembly->definition.passes()[id.index].key == value.pass_key;
+                });
+                if (live && value.context_parameters.size && value.context_parameters != cameraParameterBlock())
+                    return cxx::unexpected(RenderError{kFeatureContract});
                 programs.push_back(std::move(value));
+            }
             for (auto& argument : values->arguments)
             {
                 const auto resource = std::ranges::find(assembly->definition.resources(),

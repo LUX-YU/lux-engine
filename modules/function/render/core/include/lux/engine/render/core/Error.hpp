@@ -16,6 +16,8 @@ namespace lux::render
     inline constexpr auto kInvalidTargetSamples = error::errorId("lux.render.core.invalid_target_samples");
     inline constexpr auto kInvalidTargetKind    = error::errorId("lux.render.core.invalid_target_kind");
 
+    inline constexpr auto kInvalidCamera = error::errorId("lux.render.core.invalid_camera");
+
     // Static descriptors for host registration. Core does not own a registry or log sink.
     [[nodiscard]] std::span<const error::ErrorDescriptor> renderCoreErrorDescriptors() noexcept;
 }

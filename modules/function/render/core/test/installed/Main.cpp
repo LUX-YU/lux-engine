@@ -1,5 +1,6 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/core/Camera.hpp>
 
 int main()
 {
@@ -14,6 +15,11 @@ int main()
     target.width = 0;
     const auto invalid = target.validate();
     if (invalid || invalid.error().type != kInvalidTargetExtent) return 4;
-    if (renderCoreErrorDescriptors().size() != 4) return 5;
+    if (renderCoreErrorDescriptors().size() != 5) return 5;
+    CameraState camera;
+    if (!camera.validate() || cameraParameters(camera).size() != 128) return 6;
+    camera.viewport.width = 0;
+    const auto bad_camera = camera.validate();
+    if (bad_camera || bad_camera.error().type != kInvalidCamera) return 7;
     return 0;
 }

@@ -90,12 +90,13 @@ namespace lux::render
         if (!prepared) return cxx::unexpected(prepared.error());
         if (!(*prepared)->contextParameters().empty())
         {
-            if (auto values = (*prepared)->setContextParameters(std::as_bytes(std::span(view->color))); !values)
+            if (auto values = (*prepared)->setContextParameters(cameraParameters(view->camera)); !values)
             {
                 if (!device->release(*prepared)) std::terminate(); // unsubmitted candidate
                 return cxx::unexpected(values.error());
             }
         }
+        (*prepared)->setViewport(view->camera.viewport);
         AttachmentCreated response;
         (*prepared)->forEachStorage([&](std::string_view key, StorageId id) noexcept {
             response.storages.push_back({std::string(key), id});
@@ -138,6 +139,7 @@ namespace lux::render
                 if (!device->release(*candidate)) std::terminate(); // unsubmitted candidate
                 return cxx::unexpected(values.error());
             }
+            (*candidate)->setViewport(group->context->viewport());
             if (auto result = device->release(group->context); !result)
             {
                 if (!device->release(*candidate)) std::terminate(); // never submitted
@@ -174,9 +176,29 @@ namespace lux::render
         const auto* input = &request.get<CreateViewRequest>();
         auto* scene = scenes.find(input->scene);
         if (!scene) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        if (!std::ranges::all_of(input->color, [](float x) { return std::isfinite(x); }))
-            return cxx::unexpected(RenderError{kInvalidEncoding});
-        return request.reply(ViewCreated{scene->views.emplace(device->resources(), input->color)});
+        if (auto valid = input->camera.validate(); !valid) return valid;
+        return request.reply(ViewCreated{scene->views.emplace(device->resources(), input->camera)});
+    }
+
+    RenderResult<void> RenderServer::Impl::updateCamera(RenderRequest& request) noexcept
+    {
+        const auto& input = request.get<UpdateCameraRequest>();
+        auto* scene = scenes.find(input.scene);
+        auto* view = scene ? scene->views.find(input.view) : nullptr;
+        if (!view) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        if (auto valid = input.camera.validate(); !valid) return valid;
+        if (view->camera == input.camera) return request.reply();
+        // Attach proved the complete Camera parameter ABI. This owner-thread update allocates nothing.
+        for (auto& effect : effects)
+            for (const auto& group : effect.groups)
+            {
+                if (group.scene != input.scene || group.view != input.view) continue;
+                if (!group.context->contextParameters().empty() &&
+                    !group.context->setContextParameters(cameraParameters(input.camera))) std::terminate();
+                group.context->setViewport(input.camera.viewport);
+            }
+        view->camera = input.camera;
+        return request.reply();
     }
 
     RenderResult<void> RenderServer::Impl::removeView(RenderRequest& request) noexcept

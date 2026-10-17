@@ -45,3 +45,17 @@ foreach(target lux::engine::core::core_execution lux::engine::core::error)
 endforeach()
 
 add_test(NAME installed.native.texture COMMAND texture_consumer)
+
+add_executable(mesh_consumer Mesh.cpp)
+
+target_link_libraries(mesh_consumer PRIVATE lux::engine::render::render_native_vulkan_extensions
+    lux::engine::core::core_execution
+)
+
+foreach(target lux::engine::core::core_execution lux::engine::core::error)
+    add_custom_command(TARGET mesh_consumer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${target}>" "$<TARGET_FILE_DIR:mesh_consumer>"
+    )
+endforeach()
+
+add_test(NAME installed.native.mesh COMMAND mesh_consumer)

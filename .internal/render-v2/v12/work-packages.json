@@ -711,7 +711,7 @@
   },
   "N5.1": {
     "title": "Typed arguments and actual owner placement",
-    "status": "IN_PROGRESS",
+    "status": "PASS",
     "production_paths": [
       "modules/function/render/features/",
       "modules/function/render/graph/",
@@ -732,13 +732,14 @@
     ],
     "evidence": [
       "N5-COLD-IMPLEMENTATION.md",
-      "N5-COLD-VERIFICATION.md"
+      "N5-COLD-VERIFICATION.md",
+      "N5-COMBINED-VERIFICATION.md"
     ],
-    "qualification": "Implemented checkpoints listed; combined exact-I independent N5 R/D/ASan qualification pending. No performance upgrade."
+    "qualification": "Exact fae3 I independent R/D/ASan114/114; scope and unsupported capabilities in combined report. Performance PARTIAL; final N7 required."
   },
   "N5.2": {
     "title": "Live graph and parameter plans",
-    "status": "IN_PROGRESS",
+    "status": "PASS",
     "production_paths": [
       "modules/function/render/features/",
       "modules/function/render/graph/",
@@ -759,13 +760,14 @@
     ],
     "evidence": [
       "N5-COLD-VERIFICATION.md",
-      "N5-PARAMETERS-VERIFICATION.md"
+      "N5-PARAMETERS-VERIFICATION.md",
+      "N5-COMBINED-VERIFICATION.md"
     ],
-    "qualification": "Implemented checkpoints listed; combined exact-I independent N5 R/D/ASan qualification pending. No performance upgrade."
+    "qualification": "Exact fae3 I independent R/D/ASan114/114; scope and unsupported capabilities in combined report. Performance PARTIAL; final N7 required."
   },
   "N5.3": {
     "title": "Single shader layout and relocation",
-    "status": "IN_PROGRESS",
+    "status": "PASS",
     "production_paths": [
       "modules/function/render/features/",
       "modules/function/render/graph/",
@@ -787,13 +789,14 @@
     "evidence": [
       "N5-LAYOUT-VERIFICATION.md",
       "N5-ASSETS-IMPLEMENTATION.md",
-      "N5-COMPUTE-VERIFICATION.md"
+      "N5-COMPUTE-VERIFICATION.md",
+      "N5-COMBINED-VERIFICATION.md"
     ],
-    "qualification": "Implemented checkpoints listed; combined exact-I independent N5 R/D/ASan qualification pending. No performance upgrade."
+    "qualification": "Exact fae3 I independent R/D/ASan114/114; scope and unsupported capabilities in combined report. Performance PARTIAL; final N7 required."
   },
   "N5.4": {
     "title": "Real shader ABI",
-    "status": "IN_PROGRESS",
+    "status": "PASS",
     "production_paths": [
       "modules/function/render/features/",
       "modules/function/render/graph/",
@@ -816,13 +819,14 @@
       "N5-STAGES-VERIFICATION.md",
       "N5-BLOCK-VERIFICATION.md",
       "N5-PARAMETERS-VERIFICATION.md",
-      "N5-DEPTH-IMPLEMENTATION.md"
+      "N5-DEPTH-IMPLEMENTATION.md",
+      "N5-COMBINED-VERIFICATION.md"
     ],
-    "qualification": "Implemented checkpoints listed; combined exact-I independent N5 R/D/ASan qualification pending. No performance upgrade."
+    "qualification": "Exact fae3 I independent R/D/ASan114/114; scope and unsupported capabilities in combined report. Performance PARTIAL; final N7 required."
   },
   "N5.5": {
     "title": "Indexed indirect depth and compute primitives",
-    "status": "IN_PROGRESS",
+    "status": "PASS",
     "production_paths": [
       "modules/function/render/features/",
       "modules/function/render/graph/",
@@ -844,13 +848,14 @@
     "evidence": [
       "N5-COMPUTE-VERIFICATION.md",
       "N5-GEOMETRY-IMPLEMENTATION.md",
-      "N5-DEPTH-IMPLEMENTATION.md"
+      "N5-DEPTH-IMPLEMENTATION.md",
+      "N5-COMBINED-VERIFICATION.md"
     ],
-    "qualification": "Implemented checkpoints listed; combined exact-I independent N5 R/D/ASan qualification pending. No performance upgrade."
+    "qualification": "Exact fae3 I independent R/D/ASan114/114; scope and unsupported capabilities in combined report. Performance PARTIAL; final N7 required."
   },
   "N5.6": {
     "title": "Complete rebinding and explicit readback",
-    "status": "IN_PROGRESS",
+    "status": "PASS",
     "production_paths": [
       "modules/function/render/features/",
       "modules/function/render/graph/",
@@ -873,13 +878,14 @@
       "N5-COLOR-VERIFICATION.md",
       "N5-LAYOUT-VERIFICATION.md",
       "N5-PARAMETERS-VERIFICATION.md",
-      "N5-DEPTH-IMPLEMENTATION.md"
+      "N5-DEPTH-IMPLEMENTATION.md",
+      "N5-COMBINED-VERIFICATION.md"
     ],
-    "qualification": "Implemented checkpoints listed; combined exact-I independent N5 R/D/ASan qualification pending. No performance upgrade."
+    "qualification": "Exact fae3 I independent R/D/ASan114/114; scope and unsupported capabilities in combined report. Performance PARTIAL; final N7 required."
   },
   "N6.1": {
     "title": "Mesh storage",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/features/",

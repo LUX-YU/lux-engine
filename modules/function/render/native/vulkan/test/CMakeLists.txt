@@ -79,14 +79,14 @@ set_tests_properties(render.native.buffer_transfer PROPERTIES TIMEOUT 60)
 
 foreach(header Error DeviceSession DescriptorArray CompiledGraph ExecutionContext StorageBinding device/Device device/DeviceOptions memory/Memory
     Readback transfer/Submission transfer/Transfer transfer/GpuWork
-    texture/TextureStorage texture/TextureCommands retirement/Retirement
+    texture/TextureStorage texture/TextureCommands mesh/MeshStorage mesh/MeshCommands retirement/Retirement
 )
     string(REPLACE "/" "_" target "${header}")
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp"
         CONTENT "#include <lux/engine/render/native/vulkan/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
     )
     add_library(render_native_header_${target} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp")
-    if(header MATCHES "^texture/")
+    if(header MATCHES "^(texture|mesh)/")
         target_link_libraries(render_native_header_${target} PRIVATE render_native_vulkan_extensions)
     else()
         target_link_libraries(render_native_header_${target} PRIVATE render_native_vulkan)
@@ -330,3 +330,17 @@ add_test(NAME render.native.depth COMMAND render_depth_test
 )
 
 set_tests_properties(render.native.depth PROPERTIES TIMEOUT 60)
+
+add_executable(render_mesh_storage_test MeshStorage.cpp Allocation.cpp
+    "${render_asset_dir}/Geometry.vert.spv" "${render_asset_dir}/Geometry.frag.spv"
+)
+
+target_link_libraries(render_mesh_storage_test PRIVATE render_native_instrumented)
+
+set_target_properties(render_mesh_storage_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.native.mesh_storage COMMAND render_mesh_storage_test
+    "${render_asset_dir}/Geometry.vert.spv" "${render_asset_dir}/Geometry.frag.spv"
+)
+
+set_tests_properties(render.native.mesh_storage PROPERTIES TIMEOUT 90)

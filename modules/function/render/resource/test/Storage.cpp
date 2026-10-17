@@ -67,7 +67,7 @@ int main()
     const Ops ops{[](const void* value) noexcept { return static_cast<const Value*>(value)->value; }};
     auto factory = resource_detail::StorageFactoryAudit::make(
         &original, &ops,
-        [](void*, const void* config) noexcept -> RenderResult<NativeStorage> {
+        [](void*, StorageId, const void* config) noexcept -> RenderResult<NativeStorage> {
             return NativeStorage{new Value{*static_cast<const unsigned*>(config)}, [](void* value) noexcept {
                 delete static_cast<Value*>(value);
             }};
@@ -81,7 +81,7 @@ int main()
     wrong_factory.description = nullptr;
     require(!validateStorageFactory(original, wrong_factory));
     const unsigned config = 73, other = 19;
-    auto instance = factory.create(nullptr, &config);
+    auto instance = factory.create(nullptr, StorageId{1, 1}, &config);
     require(bool(instance));
     require(ops.read(instance->get()) == config);
     require(factory.compatible_config(instance->get(), &config));

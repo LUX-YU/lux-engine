@@ -185,8 +185,8 @@ namespace lux::render::vulkan
         return {};
     }
 
-    TextureStorage::TextureStorage(DeviceSession& session, std::size_t capacity, std::uint64_t bytes) noexcept
-        : session_(session), capacity_(capacity), byte_limit_(bytes)
+    TextureStorage::TextureStorage(DeviceSession& session, StorageId id, std::size_t capacity, std::uint64_t bytes) noexcept
+        : session_(session), id_(id), capacity_(capacity), byte_limit_(bytes)
     {
         textures_.reserve(capacity);
         versions_.reserve(capacity);
@@ -221,14 +221,14 @@ namespace lux::render::vulkan
     }
 
     RenderResult<std::unique_ptr<TextureStorage>> TextureStorage::create(
-        DeviceSession& session, const TextureStorageConfig& config
+        DeviceSession& session, StorageId id, const TextureStorageConfig& config
     ) noexcept
     {
         const bool invalid = config.capacity < 16 || config.capacity > 4096 || config.capacity % 16 != 0 ||
             config.byte_limit == 0;
         if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
         if (!session.device().textureDescriptors()) return cxx::unexpected(RenderError{kUnsupported});
-        auto storage = std::unique_ptr<TextureStorage>(new TextureStorage(session, config.capacity, config.byte_limit));
+        auto storage = std::unique_ptr<TextureStorage>(new TextureStorage(session, id, config.capacity, config.byte_limit));
         if (auto result = storage->initialize(); !result) return cxx::unexpected(result.error());
         return storage;
     }
@@ -361,7 +361,7 @@ namespace lux::render::vulkan
         if (id.isNull()) id = textures_.emplace();
         record = textures_.find(id);
         record->updating = true;
-        const auto storage_id = session_.resources().identityOf(this);
+        const auto storage_id = id_;
         session_.resources().retain(storage_id);
         return std::make_unique<Candidate>(*this, &version, id, nullptr, storage_id);
     }

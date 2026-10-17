@@ -49,7 +49,7 @@ namespace buffer_fixture
                 return {};
             }
         };
-        static const auto create = +[](native::DeviceSession& session, const Config& value) noexcept
+        static const auto create = +[](native::DeviceSession& session, StorageId, const Config& value) noexcept
             -> RenderResult<std::unique_ptr<Native>> {
             auto candidate = std::make_unique<Native>(session, value);
             auto buffer = session.createBuffer(value.size,

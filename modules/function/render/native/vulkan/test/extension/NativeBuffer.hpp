@@ -41,7 +41,8 @@ namespace extension_test
             ~Use() noexcept { --backing->references; std::erase(storage.uses_, this); }
         };
     public:
-        NativeBuffer(vk::DeviceSession& session, TestBufferStorage::Config config) : session_(session), config_(config)
+        NativeBuffer(vk::DeviceSession& session, StorageId id, TestBufferStorage::Config config)
+            : session_(session), id_(id), config_(config)
         {
             entries_.reserve(config.capacity);
             backings_.reserve(config.capacity * 2);
@@ -146,7 +147,7 @@ namespace extension_test
             entries_.find(id)->updating = true;
             auto* value = backing.get();
             backings_.push_back(std::move(backing));
-            const auto storage_id = session_.resources().identityOf(this);
+            const auto storage_id = id_;
             session_.resources().retain(storage_id);
             auto candidate = std::make_unique<Candidate>(*this, id, value, storage_id);
             auto work = vk::GpuWork::pending<[](Candidate& value, vk::Transfer& upload, vk::DeviceSession&) noexcept {
@@ -208,6 +209,7 @@ namespace extension_test
             std::erase_if(backings_, [&](const auto& item) { return item.get() == value; });
         }
         vk::DeviceSession& session_;
+        StorageId id_;
         TestBufferStorage::Config config_;
         lux::cxx::SlotMap<Entry, BufferTag> entries_;
         std::vector<std::unique_ptr<Backing>> backings_;
@@ -227,9 +229,9 @@ namespace extension_test
                 return static_cast<NativeBuffer*>(object)->prepare(plan, argument, binding);
             }
         };
-        static const auto create = +[](vk::DeviceSession& session, const TestBufferStorage::Config& config) noexcept
+        static const auto create = +[](vk::DeviceSession& session, StorageId id, const TestBufferStorage::Config& config) noexcept
             -> RenderResult<std::unique_ptr<NativeBuffer>> {
-            auto result = std::make_unique<NativeBuffer>(session, config);
+            auto result = std::make_unique<NativeBuffer>(session, id, config);
             if (auto ready = result->initialize(); !ready) return lux::cxx::unexpected(ready.error());
             return result;
         };

@@ -142,7 +142,6 @@ namespace lux::render
             const ResourceDomain& domain, std::string_view key, const StorageDescriptor& type, bool ancestors = false
         ) const noexcept;
         [[nodiscard]] void* native(StorageId id) const noexcept;
-        [[nodiscard]] StorageId identityOf(const void* instance) const noexcept;
         void retain(StorageId id) noexcept;
         void release(StorageId id) noexcept;
         void rollback(StorageId id) noexcept;

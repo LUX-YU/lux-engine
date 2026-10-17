@@ -51,7 +51,7 @@ namespace lux::render::vulkan
                 static const StorageDescriptor description{StorageNameView("test.cost")};
                 static const unsigned ops = 0;
                 const auto factory = resource_detail::StorageFactoryAudit::make(&description, &ops,
-                    [](void*, const void*) noexcept -> RenderResult<NativeStorage> {
+                    [](void*, StorageId, const void*) noexcept -> RenderResult<NativeStorage> {
                         return NativeStorage{new std::byte{}, [](void* p) noexcept { delete static_cast<std::byte*>(p); }};
                     }, [](const void*, const void*) noexcept { return true; }, {}, nullptr, nullptr,
                     storageCppType<unsigned>(), storageCppType<unsigned>());

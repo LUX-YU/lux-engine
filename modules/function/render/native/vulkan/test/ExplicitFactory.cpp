@@ -13,7 +13,7 @@ struct Replacement final
 };
 
 static RenderResult<std::unique_ptr<Replacement>> createReplacement(
-    DeviceSession&, const TextureStorageConfig& config) noexcept
+    DeviceSession&, StorageId, const TextureStorageConfig& config) noexcept
 {
     ++created;
     return std::make_unique<Replacement>(config);

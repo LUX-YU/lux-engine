@@ -30,7 +30,7 @@ namespace lux::render
     {
         const StorageDescriptor* description;
         const void* ops;
-        RenderResult<NativeStorage> (*create)(void* device, const void* config) noexcept;
+        RenderResult<NativeStorage> (*create)(void* device, StorageId id, const void* config) noexcept;
         bool (*compatible_config)(const void* instance, const void* config) noexcept;
         std::shared_ptr<const void> code_pin;
         const void* binding_ops = nullptr; // API-specific immutable preparation functions; never a second owner
@@ -43,14 +43,14 @@ namespace lux::render
         friend struct resource_detail::StorageFactoryAudit;
         template <class Declaration, class Native, class Device, auto Create, auto Compatible>
             requires std::same_as<decltype(Create), RenderResult<std::unique_ptr<Native>> (*)(
-                Device&, const typename Declaration::Config&) noexcept> &&
+                Device&, StorageId, const typename Declaration::Config&) noexcept> &&
                 std::same_as<decltype(Compatible), bool (*)(const Native&, const typename Declaration::Config&) noexcept>
         friend StorageFactory makeStorageFactory(
             const typename Declaration::Ops&, const void*, void (*)(void*) noexcept, std::shared_ptr<const void>
         ) noexcept;
 
         StorageFactory(const StorageDescriptor* description, const void* ops,
-            RenderResult<NativeStorage> (*create)(void*, const void*) noexcept,
+            RenderResult<NativeStorage> (*create)(void*, StorageId, const void*) noexcept,
             bool (*compatible_config)(const void*, const void*) noexcept,
             std::shared_ptr<const void> code_pin, const void* binding_ops, void (*collect)(void*) noexcept,
             StorageCppType config_type, StorageCppType ops_type, StorageCppType native_type) noexcept
@@ -63,7 +63,7 @@ namespace lux::render
     // Create and compatible callbacks are typed before the only erasure boundary.
     template <class Declaration, class Native, class Device, auto Create, auto Compatible>
         requires std::same_as<decltype(Create), RenderResult<std::unique_ptr<Native>> (*)(
-            Device&, const typename Declaration::Config&) noexcept> &&
+            Device&, StorageId, const typename Declaration::Config&) noexcept> &&
             std::same_as<decltype(Compatible), bool (*)(const Native&, const typename Declaration::Config&) noexcept>
     [[nodiscard]] StorageFactory makeStorageFactory(
         const typename Declaration::Ops& ops, const void* binding_ops = nullptr,
@@ -71,8 +71,10 @@ namespace lux::render
     ) noexcept
     {
         return {&Declaration::description, &ops,
-            [](void* device, const void* config) noexcept -> RenderResult<NativeStorage> {
-                auto candidate = Create(*static_cast<Device*>(device), *static_cast<const typename Declaration::Config*>(config));
+            [](void* device, StorageId id, const void* config) noexcept -> RenderResult<NativeStorage> {
+                auto candidate = Create(
+                    *static_cast<Device*>(device), id, *static_cast<const typename Declaration::Config*>(config)
+                );
                 if (!candidate) return cxx::unexpected(candidate.error());
                 return NativeStorage{candidate->release(), [](void* value) noexcept { delete static_cast<Native*>(value); }};
             }, [](const void* instance, const void* config) noexcept {

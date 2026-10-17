@@ -104,7 +104,7 @@ namespace lux::render
     StorageId ResourceRegistry::local(DomainId domain, StorageTypeId type, std::string_view key) const noexcept
     {
         for (const auto& entry : entries_)
-            if (!entry.closing && entry.domain == domain && entry.type == type && entry.key == key) return entry.id;
+            if (entry.native && !entry.closing && entry.domain == domain && entry.type == type && entry.key == key) return entry.id;
         return {};
     }
 
@@ -156,11 +156,19 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kStorageMismatch});
             return id;
         }
-        auto candidate = installed.factory.create(native_, config);
-        if (!candidate) return cxx::unexpected(candidate.error());
-        if (!*candidate) return cxx::unexpected(RenderError{kStorageFactory});
-        id = entries_.emplace(Entry{{}, domain.id_, index, std::string(key), std::move(*candidate)});
+        // The sole instance index allocates the identity before construction. The reserved entry has
+        // no Native address and cannot be found by key until the Factory succeeds. Failure revokes it.
+        id = entries_.emplace(Entry{{}, domain.id_, index, std::string(key),
+            NativeStorage{nullptr, [](void*) noexcept {}}});
         entries_.find(id)->id = id;
+        auto candidate = installed.factory.create(native_, id, config);
+        if (!candidate || !*candidate)
+        {
+            const auto error = candidate ? RenderError{kStorageFactory} : candidate.error();
+            entries_.erase(id);
+            return cxx::unexpected(error);
+        }
+        entries_.find(id)->native = std::move(*candidate);
         ++creations_;
         return id;
     }
@@ -169,12 +177,6 @@ namespace lux::render
     {
         const auto* entry = entries_.find(id);
         return entry ? entry->native.get() : nullptr;
-    }
-
-    StorageId ResourceRegistry::identityOf(const void* instance) const noexcept
-    {
-        for (const auto& entry : entries_) if (entry.native.get() == instance) return entry.id;
-        std::terminate(); // invoked by a live factory-created instance, never an untrusted pointer
     }
 
     void ResourceRegistry::retain(StorageId id) noexcept

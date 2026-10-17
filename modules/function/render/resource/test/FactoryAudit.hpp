@@ -8,7 +8,7 @@ namespace lux::render::resource_detail
     struct StorageFactoryAudit final
     {
         static StorageFactory make(const StorageDescriptor* description, const void* ops,
-            RenderResult<NativeStorage> (*create)(void*, const void*) noexcept,
+            RenderResult<NativeStorage> (*create)(void*, StorageId, const void*) noexcept,
             bool (*compatible)(const void*, const void*) noexcept,
             std::shared_ptr<const void> pin, const void* bindings, void (*collect)(void*) noexcept,
             StorageCppType config_type, StorageCppType ops_type) noexcept

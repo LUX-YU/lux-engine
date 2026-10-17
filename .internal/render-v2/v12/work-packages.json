@@ -482,7 +482,7 @@
   },
   "N4.1": {
     "title": "Typed factory qualification",
-    "status": "IMPLEMENTED_PENDING_VERIFICATION",
+    "status": "PASS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -510,12 +510,13 @@
       "T-GPU-12"
     ],
     "evidence": [
-      "N4.1-IMPLEMENTATION.md"
+      "N4.1-IMPLEMENTATION.md",
+      "N4.1-VERIFICATION.md"
     ]
   },
   "N4.2": {
     "title": "StorageSet ownership and borrowed index",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -542,7 +543,9 @@
       "T-GPU-07",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N4.2-IDENTITY-IMPLEMENTATION.md"
+    ]
   },
   "N4.3": {
     "title": "Storage discovery and qualified handles",

@@ -14,6 +14,7 @@ namespace
         unsigned created = 0, destroyed = 0;
         ResourceRegistry* registry = nullptr;
         StorageId referenced;
+        StorageId last_identity;
     };
     struct Value final
     {
@@ -22,6 +23,7 @@ namespace
         unsigned value;
         ResourceRegistry* registry = nullptr;
         StorageId referenced;
+        StorageId identity;
     };
 
     struct TestStorage final
@@ -85,8 +87,13 @@ namespace
         };
         return resource_detail::StorageFactoryAudit::make(
             &TestStorage::description, &ops,
-            [](void* native, const void* config) noexcept -> RenderResult<NativeStorage> {
+            [](void* native, StorageId id, const void* config) noexcept -> RenderResult<NativeStorage> {
                 auto* counts = static_cast<Counts*>(native);
+                counts->last_identity = id;
+                require(!id.isNull());
+                if (counts->registry) require(counts->registry->native(id) == nullptr);
+                if (*static_cast<const unsigned*>(config) == 98)
+                    return NativeStorage{nullptr, [](void*) noexcept {}};
                 if (*static_cast<const unsigned*>(config) == 99)
                     return lux::cxx::unexpected(RenderError{kStorageCapacity});
                 ++counts->created;
@@ -94,7 +101,7 @@ namespace
                 auto* registry = initial == 88 ? counts->registry : nullptr;
                 if (registry) registry->retain(counts->referenced);
                 return NativeStorage{
-                    new Value{counts, initial, initial, registry, counts->referenced},
+                    new Value{counts, initial, initial, registry, counts->referenced, id},
                     [](void* instance) noexcept {
                         auto* value = static_cast<Value*>(instance);
                         ++value->counts->destroyed;
@@ -178,6 +185,7 @@ int main()
     ResourceDomain old_root;
     {
         ResourceRegistry registry(&counts, 0);
+        counts.registry = &registry;
         ResourceRegistry other(&counts, 0);
         const auto root = registry.root();
         old_root = root;
@@ -234,10 +242,17 @@ int main()
         require(local && separate && local->read() == 8 && separate->read() == 9);
         require(registry.findVisible<TestStorage>(*attachment, "shared")->read() == 8);
         require(!registry.getOrCreate<TestStorage>(*view, "failed", 99));
+        const auto failed_identity = counts.last_identity;
+        require(!registry.native(failed_identity));
+        require(!registry.getOrCreate<TestStorage>(*view, "empty", 98));
+        const auto empty_identity = counts.last_identity;
+        require(failed_identity != empty_identity && !registry.native(empty_identity));
         require(registry.size() == 3);
         auto private_value = registry.getOrCreate<TestStorage>(*attachment, "private", 3);
         require(bool(private_value));
         const auto id = registry.find(*attachment, "private", TestStorage::description).value();
+        require(id == counts.last_identity && id == static_cast<Value*>(registry.native(id))->identity);
+        require(id != empty_identity && !registry.native(failed_identity) && !registry.native(empty_identity));
         registry.retain(id);
         require(bool(registry.closeDomain(*scene)));
         require(!registry.valid(*scene) && !registry.valid(*view) && !registry.valid(*attachment));
@@ -258,6 +273,7 @@ int main()
     {
         // A professional indirect reference must be released outside the Registry's SlotMap mutation.
         ResourceRegistry registry(&counts, 0);
+        counts.registry = &registry;
         require(bool(registry.installFactory(factory())));
         require(bool(registry.getOrCreate<TestStorage>(registry.root(), "texture-like", 1)));
         counts.registry = &registry;

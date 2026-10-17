@@ -47,7 +47,7 @@ namespace lux::render::vulkan
 
     public:
         [[nodiscard]] static RenderResult<std::unique_ptr<TextureStorage>>
-        create(DeviceSession& session, const TextureStorageConfig& config) noexcept;
+        create(DeviceSession& session, StorageId id, const TextureStorageConfig& config) noexcept;
         [[nodiscard]] bool compatibleConfig(const TextureStorageConfig& config) const noexcept
         {
             return capacity_ == config.capacity && byte_limit_ == config.byte_limit;
@@ -82,13 +82,14 @@ namespace lux::render::vulkan
         RenderResult<void> prepare(const NativeResourcePlan&, std::span<const std::byte>, PreparedStorageBinding&) noexcept;
         std::vector<Use*> uses_; // non-owning subscriptions, changed only at Attach/publication/detach
         struct Record final { Backing* current = nullptr; bool updating = false; };
-        TextureStorage(DeviceSession& session, std::size_t capacity, std::uint64_t bytes) noexcept;
+        TextureStorage(DeviceSession& session, StorageId id, std::size_t capacity, std::uint64_t bytes) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         void rollback(Candidate&) noexcept;
         void publish(Candidate&, Transfer&) noexcept;
         void collect() noexcept;
         void destroy(Backing&) noexcept;
         DeviceSession& session_;
+        StorageId id_;
         cxx::SlotMap<Record, TextureTag> textures_;
         cxx::StableSlotMap<Backing, TextureDescriptorTag, cxx::NoAux, 16> versions_;
         VkDescriptorSetLayout layout_ = VK_NULL_HANDLE;

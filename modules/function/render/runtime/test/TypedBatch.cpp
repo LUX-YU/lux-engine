@@ -529,7 +529,7 @@ int main()
     auto readback = take(a->bind<Readback>());
     for (unsigned i = 0; i < attached.size(); ++i)
     {
-        auto pixels = call(*a, readback, attached[i], 8192);
+        auto pixels = call(*a, readback, {attached[i], {}}, 8192);
         const auto bytes = pixels.response().pixels.bytes().view();
         CHECK(bytes.size() == 32 * 32 * 4);
         for (unsigned channel = 0; channel < 4; ++channel)

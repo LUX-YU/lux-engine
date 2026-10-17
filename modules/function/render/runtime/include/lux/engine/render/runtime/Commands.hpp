@@ -34,6 +34,22 @@ namespace lux::render
     struct ResizeTargetRequest final { TargetId target{}; TargetDesc description{}; };
     struct EffectRequest final { EffectId effect{}; };
     struct AttachmentRequest final { SceneId scene{}; ViewId view{}; TargetId target{}; EffectId effect{}; };
+    struct ReadbackRequest final
+    {
+        AttachmentRequest attachment;
+        std::string output; // Empty selects the explicit Target copy; otherwise an exported buffer key.
+    };
+
+    template <> struct CommandValueTraits<ReadbackRequest> final
+    {
+        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const ReadbackRequest& value) noexcept
+        {
+            if (value.output.capacity() >= SIZE_MAX - sizeof(value))
+                return cxx::unexpected(RenderError{kProtocolContract});
+            return sizeof(value) + value.output.capacity() + 1;
+        }
+    };
+
     struct GlobalStorageOwner final {};
     using VStorageOwner = std::variant<GlobalStorageOwner, SceneId, ViewRequest, AttachmentRequest>;
     struct StorageLocation final
@@ -358,7 +374,7 @@ namespace lux::render
     struct Readback final
     {
         static constexpr std::string_view name{"render.readback"};
-        using Request = AttachmentRequest;
+        using Request = ReadbackRequest;
         using Response = ReadbackResult;
     };
 

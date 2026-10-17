@@ -50,7 +50,7 @@ static void publishedPixels(RenderClient& client, const BoundCommand<Readback>& 
     const auto deadline = Clock::now() + 5s;
     while (Clock::now() < deadline)
     {
-        const auto completion = call(client, read, group);
+        const auto completion = call(client, read, {group, {}});
         const auto bytes = completion.response().pixels.bytes().view();
         CHECK(bytes.size() == 1024);
         if (std::ranges::all_of(bytes, [&](auto byte) { return std::to_integer<unsigned>(byte) == expected; })) return;
@@ -152,7 +152,7 @@ int main()
         TestBufferStorage::description.type.name(), "private", groups[0]));
     CHECK(attachment_storage != buffer_storage);
     CHECK(take(runtime_test::coldCall<FindStorage>(*main, {groups[0], buffer_type, "private"})) == attachment_storage);
-    for (const auto& group : groups) pixels(call(*main, read, group), 64);
+    for (const auto& group : groups) pixels(call(*main, read, {group, {}}), 64);
     const auto before = server->stats().submissions;
     render_allocation::calls = 0;
     render_allocation::window = true;
@@ -167,14 +167,14 @@ int main()
     CHECK(!runtime_test::coldCall<ReleasePreparedStorage>(*main, attachment_storage));
     CHECK(!runtime_test::coldCall<FindStorage>(*main, {groups[0], buffer_type, "private"}));
     call(*main, attach, groups[0]);
-    pixels(call(*main, read, groups[0]), 32);
+    pixels(call(*main, read, {groups[0], {}}), 32);
     call(*upload, remove_buffer, buffer);
     CHECK(wait(*upload, take(submitValue(*upload, read_buffer, buffer, 128))).header.outcome == ECommandOutcome::FAILED);
     CHECK(wait(*upload, take(submitValue(*upload, create_buffer, SetBuffer::Request{buffer.id, source[0]}))).header.outcome == ECommandOutcome::FAILED);
     const auto recreated = decoded<BufferBinding>(call(*upload, create_buffer, SetBuffer::Request{{buffer_storage, {}}, source[0]}));
     CHECK(recreated.id.local.index == buffer.id.local.index && recreated.id.local.gen != buffer.id.local.gen);
-    pixels(call(*main, read, groups[0]), 32);
-    pixels(call(*main, read, groups[1]), 32);
+    pixels(call(*main, read, {groups[0], {}}), 32);
+    pixels(call(*main, read, {groups[1], {}}), 32);
     // A second real Feature consumes the SAME Root Texture independently of the Buffer Feature.
     texture_fixture::Config sample{texture.texture};
     FeatureUse image_selected{take(feature_test::find(*main, texture_fixture::type.name())), "image", take(ConfigValue::make(sample))};
@@ -183,7 +183,7 @@ int main()
     call(*main, detach, groups[3]);
     groups[3].effect = image_effect;
     call(*main, attach, groups[3]);
-    pixels(call(*main, read, groups[3]), 128);
+    pixels(call(*main, read, {groups[3], {}}), 128);
     const auto stats = server->stats();
     CHECK(stats.validation_errors == 0);
     server->stop();

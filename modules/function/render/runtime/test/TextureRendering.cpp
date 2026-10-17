@@ -143,7 +143,7 @@ int main(int argc, char** argv)
             call(*a, attach, attachments[2 * s + v]);
         }
     }
-    for (const auto& attachment : attachments) pixels(call(*a, read, attachment, 2048), 31);
+    for (const auto& attachment : attachments) pixels(call(*a, read, {attachment, {}}, 2048), 31);
     const auto before = server->stats();
     render_allocation::calls = 0;
     render_allocation::window = true;
@@ -170,7 +170,7 @@ int main(int argc, char** argv)
         CHECK(wait(*a, ca).header.outcome == ECommandOutcome::SUCCESS);
         CHECK(wait(*b, cb).header.outcome == ECommandOutcome::SUCCESS);
     }
-    for (const auto& attachment : attachments) pixels(call(*a, read, attachment, 2048), 64);
+    for (const auto& attachment : attachments) pixels(call(*a, read, {attachment, {}}, 2048), 64);
 
     std::array<RequestId, 64> paused;
     for (auto& id : paused) id = take(submitValue(*a, create_scene, EmptyRequest{}));
@@ -207,7 +207,7 @@ int main(int argc, char** argv)
     b.reset(); // creation Client and its transient Owner are independent of Global Texture.
     asset.reset(); payload = {}; input.source = {};
     CHECK(destroyed == 1);
-    for (const auto& attachment : attachments) pixels(call(*a, read, attachment, 2048), 64);
+    for (const auto& attachment : attachments) pixels(call(*a, read, {attachment, {}}, 2048), 64);
     const auto stats = server->stats();
     server->stop(); thread.join();
     std::ofstream frames(config.device.multiple_queues ? "texture-cadence-dedicated.csv" : "texture-cadence-alias.csv");

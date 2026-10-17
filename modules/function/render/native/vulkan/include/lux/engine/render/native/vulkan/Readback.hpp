@@ -14,7 +14,7 @@ namespace lux::render::vulkan
         using Result = RenderResult<std::vector<std::byte>>;
         using Complete = void (*)(void*, Result) noexcept;
         ReadbackOperation(ExecutionContext& context, void* owner, Complete complete,
-            void* observer, void (*submitted)(void*) noexcept) noexcept;
+            void* observer, void (*submitted)(void*) noexcept, std::uint32_t resource = kGraphInvalidIndex) noexcept;
         ~ReadbackOperation() noexcept;
         ReadbackOperation(const ReadbackOperation&) = delete;
         ReadbackOperation& operator=(const ReadbackOperation&) = delete;
@@ -37,6 +37,7 @@ namespace lux::render::vulkan
         Complete complete_;
         void* observer_;
         void (*submitted_)(void*) noexcept;
+        std::uint32_t resource_;
         bool linked_ = false;
     };
 
@@ -48,8 +49,8 @@ namespace lux::render::vulkan
             stdexec::set_value_t(std::vector<std::byte>), stdexec::set_error_t(RenderError), stdexec::set_stopped_t()
         >;
         explicit ReadbackSender(ExecutionContext& context, void* observer = nullptr,
-            void (*submitted)(void*) noexcept = nullptr) noexcept
-            : context_(&context), observer_(observer), submitted_(submitted) {}
+            void (*submitted)(void*) noexcept = nullptr, std::uint32_t resource = kGraphInvalidIndex) noexcept
+            : context_(&context), observer_(observer), submitted_(submitted), resource_(resource) {}
 
         template <class Receiver> class Operation final
         {
@@ -62,8 +63,8 @@ namespace lux::render::vulkan
         public:
             using operation_state_concept = stdexec::operation_state_t;
             Operation(ExecutionContext& context, void* observer, void (*submitted)(void*) noexcept,
-                Receiver receiver) noexcept
-                : receiver_(std::move(receiver)), readback_(context, this, finish, observer, submitted) {}
+                std::uint32_t resource, Receiver receiver) noexcept
+                : receiver_(std::move(receiver)), readback_(context, this, finish, observer, submitted, resource) {}
             Operation(const Operation&) = delete;
             Operation(Operation&&) = delete;
             void start() noexcept
@@ -88,11 +89,12 @@ namespace lux::render::vulkan
         };
 
         template <class Receiver> [[nodiscard]] Operation<std::decay_t<Receiver>> connect(Receiver&& receiver) &&
-        { return {*context_, observer_, submitted_, std::forward<Receiver>(receiver)}; }
+        { return {*context_, observer_, submitted_, resource_, std::forward<Receiver>(receiver)}; }
 
     private:
         ExecutionContext* context_;
         void* observer_;
         void (*submitted_)(void*) noexcept;
+        std::uint32_t resource_;
     };
 }

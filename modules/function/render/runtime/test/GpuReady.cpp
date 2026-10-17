@@ -467,7 +467,7 @@ int main(int argc, char** argv)
         }
     }
     {
-        auto readback = call<Readback>(*a, groups[0], 65536);
+        auto readback = call<Readback>(*a, {groups[0], {}}, 65536);
         CHECK(readback.response().pixels.bytes().view()[(16 * 32 + 16) * 4] == std::byte{255});
     }
 
@@ -646,7 +646,7 @@ int main(int argc, char** argv)
     CHECK(hold_fences.load());
     auto read = take(a->bind<Readback>());
     const auto command_before = server->stats().commands;
-    const auto read_id = take(submitValue(*a, read, groups[1], 65536));
+    const auto read_id = take(submitValue(*a, read, ReadbackRequest{groups[1], {}}, 65536));
     (void)read_id;
     until([&] { return server->stats().commands > command_before; });
     source_b.reset(); payload_b = {};

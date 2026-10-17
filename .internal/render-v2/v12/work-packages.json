@@ -885,7 +885,7 @@
   },
   "N6.1": {
     "title": "Mesh storage",
-    "status": "PASS",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/features/",
@@ -904,12 +904,13 @@
     ],
     "evidence": [
       "N6-MESH-IMPLEMENTATION.md",
-      "N6-MESH-VERIFICATION.md"
+      "N6-MESH-VERIFICATION.md",
+      "N6-SAMPLE-IMPLEMENTATION.md"
     ]
   },
   "N6.2": {
     "title": "Cooked material storage",
-    "status": "IN_PROGRESS",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/features/",
@@ -928,12 +929,13 @@
     ],
     "evidence": [
       "N6-MATERIAL-ASSETS-IMPLEMENTATION.md",
-      "N6-MATERIAL-IMPLEMENTATION.md"
+      "N6-MATERIAL-IMPLEMENTATION.md",
+      "N6-SAMPLE-IMPLEMENTATION.md"
     ]
   },
   "N6.3": {
     "title": "Instance batches and camera",
-    "status": "IN_PROGRESS",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/features/",
@@ -956,12 +958,13 @@
     "evidence": [
       "N6-INSTANCE-IMPLEMENTATION.md",
       "N6-CAMERA-IMPLEMENTATION.md",
-      "N6-GROUPS-IMPLEMENTATION.md"
+      "N6-GROUPS-IMPLEMENTATION.md",
+      "N6-SAMPLE-IMPLEMENTATION.md"
     ]
   },
   "N6.4": {
     "title": "Basic mesh and depth features",
-    "status": "IN_PROGRESS",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/features/",
@@ -980,12 +983,13 @@
     ],
     "evidence": [
       "N6-BUNDLE-IMPLEMENTATION.md",
-      "N6-FEATURES-IMPLEMENTATION.md"
+      "N6-FEATURES-IMPLEMENTATION.md",
+      "N6-SAMPLE-IMPLEMENTATION.md"
     ]
   },
   "N6.5": {
     "title": "Two-client two-view integration",
-    "status": "PLANNED",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/features/",
@@ -1002,7 +1006,9 @@
       "T-CMD-08",
       "T-OWNER-14"
     ],
-    "evidence": []
+    "evidence": [
+      "N6-SAMPLE-IMPLEMENTATION.md"
+    ]
   },
   "N7.1": {
     "title": "Equivalent-work cost attribution",

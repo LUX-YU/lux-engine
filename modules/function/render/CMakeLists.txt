@@ -33,6 +33,10 @@ add_subdirectory(native/vulkan)
 
 add_subdirectory(runtime)
 
+if(BUILD_TESTING)
+    add_subdirectory(examples/basic_mesh)
+endif()
+
 lux_engine_install_components(
     PROJECT_NAME lux-engine-render
     VERSION 0.0.1

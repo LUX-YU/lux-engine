@@ -16,7 +16,8 @@ namespace lux::render
 
     RenderResult<void> RenderServer::Impl::readback(RenderRequest& request) noexcept
     {
-        const auto& input = request.get<AttachmentRequest>();
+        const auto& read = request.get<ReadbackRequest>();
+        const auto& input = read.attachment;
         auto* effect = effects.find(input.effect);
         if (!effect) return cxx::unexpected(RenderError{kRuntimeIdentity});
         auto found = std::find_if(
@@ -25,7 +26,15 @@ namespace lux::render
             }
         );
         if (found == effect->groups.end()) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        const auto bytes = found->context->readbackBytes();
+        auto resource = kGraphInvalidIndex;
+        if (!read.output.empty())
+        {
+            const auto resources = found->context->code().resources();
+            const auto output = std::ranges::find(resources, read.output, &vulkan::NativeResourcePlan::key);
+            if (output == resources.end()) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            resource = static_cast<std::uint32_t>(output - resources.begin());
+        }
+        const auto bytes = found->context->readbackBytes(resource);
         if (!bytes) return cxx::unexpected(RenderError{vulkan::kUnsupported});
         const bool full = request.replyCapacity() < sizeof(ReadbackResult) ||
             bytes > request.replyCapacity() - sizeof(ReadbackResult);
@@ -36,7 +45,7 @@ namespace lux::render
         return pending.completeWhen(stdexec::then(
             vulkan::ReadbackSender{*found->context, &submissions, [](void* value) noexcept {
                 ++*static_cast<std::atomic<std::uint64_t>*>(value);
-            }},
+            }, resource},
             [pin = config.implementation_code_pin](std::vector<std::byte> bytes) noexcept {
                 auto owner = std::make_shared<const std::vector<std::byte>>(std::move(bytes));
                 auto payload = RenderPayload::fromVector(owner, 0, owner->size(), pin);

@@ -83,7 +83,7 @@ extern "C" __declspec(dllexport) bool serverDllReadback(const char* name, Render
     const AttachmentRequest attachment{scene->response().scene, view->response().view,
         target->response().target, effect->response().effect};
     if (!call<Attach>(**client, attachment)) return false;
-    auto result = call<Readback>(**client, attachment);
+    auto result = call<Readback>(**client, {attachment, {}});
     if (!result) return false;
     *output = result->response().pixels;
     // All completions, bound credentials and this Client die before control returns to the EXE.

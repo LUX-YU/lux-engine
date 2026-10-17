@@ -30,10 +30,12 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<bool> execute() noexcept;
         [[nodiscard]] RenderResult<bool> completed() noexcept;
         [[nodiscard]] RenderResult<std::vector<std::byte>> readback(std::uint32_t resource = kGraphInvalidIndex) noexcept;
-        // Zero means the graph has no explicit target readback output. Drawing does not require one.
-        [[nodiscard]] std::size_t readbackBytes() const noexcept
+        // Zero means no such explicit exported readback buffer. Drawing does not require one.
+        [[nodiscard]] std::size_t readbackBytes(std::uint32_t resource = kGraphInvalidIndex) const noexcept
         {
-            return readback_ == kGraphInvalidIndex ? 0 : bindings_[readback_].buffer->size();
+            if (resource == kGraphInvalidIndex) resource = readback_;
+            const bool is_readback = resource < bindings_.size() && code_->resources()[resource].readback;
+            return is_readback && bindings_[resource].buffer ? bindings_[resource].buffer->size() : 0;
         }
         [[nodiscard]] StorageSet& attachmentStorages() noexcept { return storages_; }
         template <class Visitor> void forEachStorage(Visitor&& visitor) const noexcept

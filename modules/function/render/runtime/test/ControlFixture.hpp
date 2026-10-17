@@ -97,7 +97,7 @@ public:
         case ETestCommand::DETACH:
             return send<Detach>({command.scene, command.view, command.target, command.effect}, command);
         case ETestCommand::READBACK:
-            return send<Readback>({command.scene, command.view, command.target, command.effect}, command);
+            return send<Readback>({{command.scene, command.view, command.target, command.effect}, {}}, command);
         case ETestCommand::STOP: return send<Stop>({}, command);
         case ETestCommand::CREATE_EFFECT:
         {

@@ -3,9 +3,9 @@
 namespace lux::render::vulkan
 {
     ReadbackOperation::ReadbackOperation(ExecutionContext& context, void* owner, Complete complete,
-        void* observer, void (*submitted)(void*) noexcept) noexcept
+        void* observer, void (*submitted)(void*) noexcept, std::uint32_t resource) noexcept
         : context_(&context), queue_(context.queue_), owner_(owner), complete_(complete),
-          observer_(observer), submitted_(submitted) {}
+          observer_(observer), submitted_(submitted), resource_(resource) {}
 
     ReadbackOperation::~ReadbackOperation() noexcept
     {
@@ -19,7 +19,7 @@ namespace lux::render::vulkan
             finish(cxx::unexpected(RenderError{kWorkStopped}));
             return;
         }
-        if (!context_->readbackBytes())
+        if (!context_->readbackBytes(resource_))
         {
             finish(cxx::unexpected(RenderError{kUnsupported}));
             return;
@@ -95,7 +95,7 @@ namespace lux::render::vulkan
             if (!ticket || ticket->serial() > self.queue_->completed())
                 self.arm(); // Queue capacity is not proof that this Context has a completed output.
             else
-                self.finish(self.context_->readback());
+                self.finish(self.context_->readback(self.resource_));
         }
     }
 

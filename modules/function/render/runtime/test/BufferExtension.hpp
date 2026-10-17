@@ -4,7 +4,7 @@
 #include "../../native/vulkan/test/extension/Feature.hpp"
 #include "../../native/vulkan/test/SubmissionSender.hpp"
 #include <lux/engine/render/features/Registration.hpp>
-#include <lux/engine/render/native/vulkan/Registration.hpp>
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 
 namespace extension_test
 {
@@ -12,7 +12,10 @@ namespace extension_test
     {
     public:
         static constexpr std::string_view name = "test.extension.BufferCommands";
-        explicit BufferCommands(vk::DeviceSession& session) noexcept : session_(session) {}
+        inline static unsigned constructed = 0;
+        inline static unsigned destroyed = 0;
+        explicit BufferCommands(vk::DeviceSession& session) noexcept : session_(session) { ++constructed; }
+        ~BufferCommands() noexcept { ++destroyed; }
 
         RenderResult<void> setBuffer(const SetBuffer::Request&,
             Reply<SetBuffer>& context) noexcept
@@ -148,10 +151,14 @@ namespace lux::render::vulkan
     };
 }
 
-namespace lux::render
+namespace lux::render::vulkan
 {
-    template <> inline FeatureRegistration nativeFeatureBinding<extension_test::TestBufferFeature>() noexcept
+    template <> struct FeatureProvider<extension_test::TestBufferFeature> final
     {
-        return {&extension_test::definition, &extension_test::definition_graph, extension_test::programs, {}};
-    }
+        using Handler = extension_test::BufferCommands;
+        feature_detail::Implementation definition() const noexcept
+        {
+            return {&extension_test::definition, &extension_test::definition_graph, extension_test::programs};
+        }
+    };
 }

@@ -52,8 +52,20 @@ namespace lux::render
         };
         struct FeatureEntry final
         {
+            // Stable table construction binds views only after their owned metadata exists.
+            std::shared_ptr<const void> code_pin;
             FeatureId id;
-            FeatureRegistration definition;
+            std::string name;
+            FeatureDescriptor descriptor;
+            FeatureGraphOps graph;
+            decltype(feature_detail::Implementation::programs) programs;
+
+            FeatureEntry(feature_detail::Implementation input, std::shared_ptr<const void> pin) noexcept
+                : code_pin(std::move(pin)), name(input.descriptor->type.name()), descriptor(*input.descriptor),
+                  graph(*input.graph), programs(input.programs)
+            {
+                descriptor.type = FeatureName(name);
+            }
         };
 
         struct SupportedHandler final
@@ -65,7 +77,7 @@ namespace lux::render
         struct CommandMetadata final
         {
             CommandId id;
-            CommandRegistration binding;
+            CommandHandler binding;
             CommandTransport transport;
             std::shared_ptr<const void> code_pin;
             std::vector<SupportedHandler> supported;
@@ -92,9 +104,6 @@ namespace lux::render
         static const CommandCompletionFns command_completion_functions;
         static const CommandCompletionFns deferred_completion_functions;
 
-        [[nodiscard]] RenderResult<FeatureId> registerFeature(
-            FeatureRegistration feature, std::span<const CommandTransport> transports
-        ) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] RenderResult<void> run() noexcept;
         void stop() noexcept { stop_requested.store(true); }
@@ -139,14 +148,10 @@ namespace lux::render
         }
 
         CommandId addCommand(
-            CommandRegistration binding,
+            CommandHandler binding,
             CommandTransport transport,
             std::shared_ptr<const void> pin = {}
         ) noexcept;
-
-        RenderResult<void> validateHandlers(
-            std::span<const CommandRegistration> handlers, std::span<const CommandTransport> transports
-        ) const noexcept;
 
         void settle(RenderRequest request, RenderResult<void> result) noexcept;
 

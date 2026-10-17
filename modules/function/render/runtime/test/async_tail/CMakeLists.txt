@@ -1,6 +1,6 @@
 add_library(render_async_tail_plugin SHARED Provider.cpp)
 
-target_link_libraries(render_async_tail_plugin PRIVATE render_features render_resource)
+target_link_libraries(render_async_tail_plugin PRIVATE render_runtime)
 
 set_target_properties(render_async_tail_plugin PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin"

@@ -1,4 +1,5 @@
-#include "ErasedRegistrationFixture.hpp"
+#include "FeatureFixture.hpp"
+#include "ProtocolAudit.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/protocol/AsyncCommand.hpp>
 #include "Deferred.hpp"
@@ -283,6 +284,26 @@ static void eventIdentities()
     check(slots.erase(fresh));
 }
 
+struct AsyncCommands final
+{
+    static constexpr std::string_view name = "test.async.commands";
+    State& state;
+    explicit AsyncCommands(State& value) noexcept : state(value) {}
+    RenderResult<void> run(const Async::Request& input, Reply<Async>& reply) noexcept
+    { return invoke(state, input, reply); }
+    RenderResult<void> transferred(const TransferredAsync::Request&, Reply<TransferredAsync>& reply) noexcept
+    {
+        auto pending = reply.defer();
+        check(bool(pending));
+        auto rejected = reply.completeWhen(stdexec::just(Output{}));
+        check(!rejected && rejected.error().type == kProtocolContract && !reply.active());
+        ++state.transferred_rejected;
+        return pending->fail(rejected.error());
+    }
+    using Bindings = std::tuple<CommandMethod<Async, &AsyncCommands::run>,
+        CommandMethod<TransferredAsync, &AsyncCommands::transferred>>;
+};
+
 int main()
 {
     eventIdentities();
@@ -290,20 +311,8 @@ int main()
     static const std::array descriptors{commandDescriptor<Async>(), commandDescriptor<TransferredAsync>()};
     const FeatureDescriptor definition{FeatureName("test.async.feature"), {1, 0}, nullptr};
     const FeatureGraphOps definition_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
-    const std::array handlers{
-        CommandRegistration{bindCommand<Async, invoke>(state)},
-        test_registration::erased(&commandDescriptor<TransferredAsync>(), [](void* user, CommandInvocation& invocation) noexcept {
-            auto context = protocol_detail::ReplyAudit::make<TransferredAsync>(invocation);
-            auto pending = context.defer();
-            check(bool(pending));
-            auto rejected = context.completeWhen(stdexec::just(Output{}));
-            check(!rejected && rejected.error().type == kProtocolContract && !context.active());
-            ++static_cast<State*>(user)->transferred_rejected;
-            return pending->fail(rejected.error());
-        }, &state)
-    };
     auto server = take(RenderServer::create({"runtime.async", true}));
-    check(bool(server->registerFeature<Async, TransferredAsync>({&definition, &definition_graph, nullptr, handlers, {}})));
+    check(bool(server->registerFeature<Async>(feature_test::Provider<AsyncCommands>{{&definition, &definition_graph, nullptr}}, "", {}, state)));
     RenderResult<void> run;
     std::atomic<bool> run_returned{false};
     std::thread render([&] { run = server->run(); run_returned.store(true, std::memory_order_release); });

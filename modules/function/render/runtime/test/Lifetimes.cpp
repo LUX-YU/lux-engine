@@ -1,3 +1,4 @@
+#include "FeatureFixture.hpp"
 #include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "SceneFixture.hpp"
@@ -98,8 +99,8 @@ static TestCommand effect(SessionIdentity identity)
 int main()
 {
     auto server = take(createTestServer({"runtime.life", true}));
-    check(bool(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs})));
-    check(bool(server->registerFeature({&asset_definition, &asset_definition_graph, assetPrograms})));
+    check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs})));
+    check(bool(feature_test::registerGraph(*server, {&asset_definition, &asset_definition_graph, assetPrograms})));
     auto main = take(TestClient::create("runtime.life", {1024 * 1024, 64}));
     auto upload = take(TestClient::create("runtime.life", {2 * 1024 * 1024, 64}));
     std::thread thread([&] { check(bool(server->run())); });

@@ -1,3 +1,4 @@
+#include "FeatureFixture.hpp"
 #include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "SceneFixture.hpp"
@@ -91,7 +92,7 @@ int main()
     options.compile_capacity = 1;
     auto server = take(RenderServer::create(withCpu(worker, options)));
     CHECK(server->registerStorage<buffer_fixture::Declaration>());
-    CHECK(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs}));
+    CHECK(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs}));
     auto client = take(TestClient::create("runtime.offscreen"));
     bool run_ok = false;
     std::thread thread([&] {

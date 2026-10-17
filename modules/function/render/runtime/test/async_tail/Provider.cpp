@@ -1,4 +1,4 @@
-#include "../ErasedRegistrationFixture.hpp"
+#include "../FeatureFixture.hpp"
 #include "Fixture.hpp"
 #include <lux/engine/render/protocol/AsyncCommand.hpp>
 
@@ -123,16 +123,28 @@ namespace async_tail_test
     }
 }
 
+namespace async_tail_test
+{
+    struct TailCommands final
+    {
+        static constexpr std::string_view name = "test.async.tail.commands";
+        Host& host;
+        explicit TailCommands(Host& value) noexcept : host(value) {}
+        lux::render::RenderResult<void> run(const Command::Request& input, lux::render::Reply<Command>& reply) noexcept
+        { return invoke(host, input, reply); }
+        using Bindings = std::tuple<lux::render::CommandMethod<Command, &TailCommands::run>>;
+    };
+}
+
 extern "C" __declspec(dllexport) void makeAsyncTailFeature(
-    async_tail_test::Host& host, const std::shared_ptr<const void>& pin, lux::render::FeatureRegistration& output
+    lux::render::RenderServer& server, async_tail_test::Host& host, const std::shared_ptr<const void>& pin,
+    lux::render::RenderResult<lux::render::FeatureId>& output
 ) noexcept
 {
     using namespace lux::render;
-    static const std::array commands{commandDescriptor<async_tail_test::Command>()};
     static const FeatureDescriptor definition{FeatureName("test.async.dll_callback_tail.feature"), {1, 0}, nullptr};
-    static const FeatureGraphOps definition_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> {
-            return {};
-        }, nullptr};
-    host.handlers[0] = bindCommand<async_tail_test::Command, async_tail_test::invoke>(host);
-    output = {&definition, &definition_graph, nullptr, host.handlers, pin};
+    static const FeatureGraphOps graph{[](const RetainableEncodedDataView*, std::string_view,
+        std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+    output = server.registerFeature<async_tail_test::Command>(
+        feature_test::Provider<async_tail_test::TailCommands>{{&definition, &graph, nullptr}}, "", pin, host);
 }

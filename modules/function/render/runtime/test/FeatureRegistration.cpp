@@ -1,4 +1,5 @@
-#include "ErasedRegistrationFixture.hpp"
+#include "FeatureFixture.hpp"
+#include "ProtocolAudit.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
@@ -25,6 +26,31 @@ static RenderResult<void> describe(const RetainableEncodedDataView*, std::string
     return {};
 }
 static RenderResult<void> handler(void*, CommandInvocation&) noexcept { return {}; }
+
+struct InstallFeature final
+{
+    static constexpr std::string_view name = "test.feature.install";
+    using Request = unsigned;
+    using Response = FeatureId;
+};
+
+struct DirectoryInstaller final
+{
+    static constexpr std::string_view name = "test.feature.installer";
+    RenderServer& server;
+    explicit DirectoryInstaller(RenderServer& value) noexcept : server(value) {}
+
+    RenderResult<void> install(const unsigned& number, Reply<InstallFeature>& reply) noexcept
+    {
+        const auto name = "test.feature." + std::to_string(number);
+        const FeatureDescriptor descriptor{FeatureName(name), {1, 0}, nullptr};
+        const FeatureGraphOps graph{describe, nullptr};
+        auto result = feature_test::registerGraph(server, {&descriptor, &graph, nullptr});
+        return result ? reply.complete(*result) : reply.fail(result.error());
+    }
+
+    using Bindings = std::tuple<CommandMethod<InstallFeature, &DirectoryInstaller::install>>;
+};
 
 static RenderCompletion receive(RenderClient& client, RequestId request)
 {
@@ -58,14 +84,17 @@ static void featureDirectory()
     auto created = RenderServer::create({"test.feature.directory", true});
     check(bool(created));
     auto server = std::move(*created);
+    check(bool(server->emplaceHandler<DirectoryInstaller>("", {}, *server)));
     for (std::size_t i = 0; i < count; ++i)
     {
         names.push_back("test.feature." + std::to_string(i));
         descriptions.push_back({FeatureName(names.back()), {1, 0}, nullptr});
-        auto registered = server->registerFeature({&descriptions.back(), &graph, nullptr});
+        auto registered = feature_test::registerGraph(*server, {&descriptions.back(), &graph, nullptr});
         check(bool(registered));
         ids.push_back(*registered);
     }
+    descriptions.clear();
+    names.clear();
     auto input = RenderClient::create("test.feature.directory");
     check(bool(input));
     auto client = std::move(*input);
@@ -84,8 +113,19 @@ static void featureDirectory()
     for (std::size_t i = 0; i < count; ++i)
     {
         const auto& value = completed->response().features[i];
-        check(value.id == ids[i] && value.name == names[i]);
+        check(value.id == ids[i] && value.name == "test.feature." + std::to_string(i));
     }
+    const auto installing = *client->bind<InstallFeature>();
+    unsigned number = count;
+    auto added = receive(*client, *client->submit(installing, number)).take(installing);
+    check(bool(added) && !added->response().isNull());
+    auto repeated = receive(*client, *client->submit(installing, number)).take(installing);
+    check(repeated && repeated->response() == added->response());
+    auto updated = receive(*client, *client->submit(*binding, request, 128 * 1024)).take(*binding);
+    check(updated && updated->response().features.size() == count + 1);
+    check(updated->response().features.front().id == ids.front());
+    check(updated->response().features.back().id == added->response());
+    check(updated->response().features.back().name == "test.feature.600");
     server->stop();
     owner.join();
     check(run_ok && server->stats().validation_errors == 0);
@@ -95,37 +135,57 @@ static void featureDirectory()
     check(completed->response().features.front().name == "test.feature.0");
 }
 
-int main()
+template <unsigned Fault> struct TestedHandler final
+{
+    static constexpr std::string_view name = "test.feature.registration.handler";
+    struct Binding final
+    {
+        using Command = std::conditional_t<(Fault >= 4), Second, First>;
+        static CommandHandler bind(TestedHandler& owner) noexcept
+        {
+            static const auto descriptor = [] {
+                auto result = commandDescriptor<Command>();
+                if constexpr (Fault == 1) result.name = CommandName("test.registration.wrong-name");
+                if constexpr (Fault == 2) result.request.alignment *= 2;
+                if constexpr (Fault == 3) result.response = result.request;
+                if constexpr (Fault == 5) result.name = {};
+                return result;
+            }();
+            return protocol_detail::CommandHandlerAudit::make(&descriptor, handler, &owner);
+        }
+    };
+    using Bindings = std::conditional_t<Fault == 6, std::tuple<Binding, Binding>, std::tuple<Binding>>;
+};
+
+template <unsigned Fault> static void registrationFault()
 {
     const FeatureDescriptor first{FeatureName("test.registration.a"), {1, 0}, nullptr};
     const FeatureDescriptor second{FeatureName("test.registration.b"), {1, 0}, nullptr};
     const FeatureGraphOps graph{describe, nullptr};
-    // Assembly is independent of Commands; repeated instances remain legal.
+    auto created = RenderServer::create({"test.feature.registration", false});
+    check(bool(created));
+    auto server = std::move(*created);
+    auto installed = server->registerFeature<First>(
+        feature_test::Provider<TestedHandler<0>>{{&first, &graph, nullptr}});
+    check(bool(installed));
+    auto repeated = server->registerFeature<First>(
+        feature_test::Provider<TestedHandler<0>>{{&first, &graph, nullptr}});
+    check(repeated && *repeated == *installed);
+    auto candidate = server->registerFeature<First>(
+        feature_test::Provider<TestedHandler<Fault>>{{&second, &graph, nullptr}});
+    if constexpr (Fault == 0 || Fault == 4) check(bool(candidate));
+    else check(!candidate);
+    // Reusing the same Handler across two Features is now valid; duplicate member entries are not.
+    server->stop();
+    check(!feature_test::registerGraph(*server, {&first, &graph, nullptr}));
+}
+
+int main()
+{
+    const FeatureDescriptor first{FeatureName("test.registration.a"), {1, 0}, nullptr};
+    const FeatureGraphOps graph{describe, nullptr};
     const FeatureInstanceView instances[]{{&first, &graph, nullptr, "one"}, {&first, &graph, nullptr, "two"}};
     check(bool(assembleFeatures(instances, {})));
-    for (unsigned fault = 0; fault < 7; ++fault)
-    {
-        auto created = RenderServer::create({"test.feature.registration", false});
-        check(bool(created));
-        auto server = std::move(*created);
-        auto original = commandDescriptor<First>();
-        const std::array initial{test_registration::erased(&original, handler)};
-        check(bool(server->registerFeature<First>({&first, &graph, nullptr, initial})));
-        auto candidate = commandDescriptor<First>();
-        if (fault == 1) candidate.name = CommandName("test.registration.wrong-name");
-        if (fault == 2) candidate.request.alignment *= 2;
-        if (fault == 3) candidate.response = candidate.request;
-        if (fault >= 4) candidate = commandDescriptor<Second>();
-        if (fault == 5) candidate.name = {};
-        const std::array next{test_registration::erased(&candidate, handler)};
-        if (fault < 4) check(!server->registerFeature<First>({&second, &graph, nullptr, next}));
-        else if (fault == 4) check(bool(server->registerFeature<Second>({&second, &graph, nullptr, next})));
-        else if (fault == 5) check(!server->registerFeature<Second>({&second, &graph, nullptr, next}));
-        else
-        {
-            const std::array repeated{next[0], next[0]};
-            check(!server->registerFeature<Second, Second>({&second, &graph, nullptr, repeated}));
-        }
-    }
+    []<std::size_t... I>(std::index_sequence<I...>) { (registrationFault<I>(), ...); }(std::make_index_sequence<7>{});
     featureDirectory();
 }

@@ -65,13 +65,13 @@ static void exercise(const char* library, ETerminal terminal)
 
     auto cpu = std::make_unique<lux::render::test::CpuFixture>(1, 16);
     Gate gate{terminal};
-    Host host{cpu->cpu(), pin, &gate, {}};
+    Host host{cpu->cpu(), pin, &gate};
     RenderServerConfig config{"runtime.async.dll_callback_tail", true};
     config.cpu = cpu->cpu();
     auto server = take(RenderServer::create(std::move(config)));
-    FeatureRegistration registration{};
-    make(host, pin, registration);
-    check(bool(server->registerFeature<Command>(std::move(registration))), "Feature registration failed");
+    RenderResult<FeatureId> installed = lux::cxx::unexpected(RenderError{kRuntimeState});
+    make(*server, host, pin, installed);
+    check(bool(installed), "Feature registration failed");
     std::atomic<bool> finished{false};
     bool run_ok = false;
     std::thread render([&] {

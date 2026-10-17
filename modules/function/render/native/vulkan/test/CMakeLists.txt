@@ -79,14 +79,14 @@ set_tests_properties(render.native.buffer_transfer PROPERTIES TIMEOUT 60)
 
 foreach(header Error DeviceSession CompiledGraph ExecutionContext StorageBinding device/Device device/DeviceOptions memory/Memory
     Readback transfer/Submission transfer/Transfer transfer/GpuWork
-    texture/TextureStorage texture/TextureCommands Registration retirement/Retirement
+    texture/TextureStorage texture/TextureCommands retirement/Retirement
 )
     string(REPLACE "/" "_" target "${header}")
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp"
         CONTENT "#include <lux/engine/render/native/vulkan/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
     )
     add_library(render_native_header_${target} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp")
-    if(header MATCHES "^(texture/|Registration$)")
+    if(header MATCHES "^texture/")
         target_link_libraries(render_native_header_${target} PRIVATE render_native_vulkan_extensions)
     else()
         target_link_libraries(render_native_header_${target} PRIVATE render_native_vulkan)

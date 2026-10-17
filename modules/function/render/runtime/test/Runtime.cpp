@@ -1,3 +1,4 @@
+#include "FeatureFixture.hpp"
 #include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "SceneFixture.hpp"
@@ -54,7 +55,7 @@ static RenderResult<ProgramContribution> programs(const RetainableEncodedDataVie
 int main()
 {
     auto server = take(createTestServer({"runtime.control", true}));
-    check(bool(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs})));
+    check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs})));
     auto a = take(TestClient::create("runtime.control"));
     auto b = take(TestClient::create("runtime.control"));
     auto ready_a = take(a->submit({}));

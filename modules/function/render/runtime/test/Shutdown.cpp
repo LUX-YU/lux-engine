@@ -1,3 +1,4 @@
+#include "FeatureFixture.hpp"
 #include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/native/vulkan/Error.hpp>
@@ -70,7 +71,7 @@ static void exercise(bool close_requester)
     hold.store(true);
     waited.store(false);
     auto server = take(createTestServer({close_requester ? "runtime.close.gpu" : "runtime.stop.gpu", true}));
-    check(bool(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs})));
+    check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs})));
     auto client = take(TestClient::create(close_requester ? "runtime.close.gpu" : "runtime.stop.gpu"));
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool(server->run()); });
@@ -122,7 +123,7 @@ static void retirementAtomicity()
     RenderServerConfig options{"runtime.retirement.atomic", true};
     options.retirement_capacity = 1;
     auto server = take(createTestServer(options));
-    check(bool(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs})));
+    check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs})));
     auto client = take(TestClient::create(options.channel_name));
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool(server->run()); });

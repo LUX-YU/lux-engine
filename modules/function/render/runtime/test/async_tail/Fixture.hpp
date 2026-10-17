@@ -1,4 +1,3 @@
-#include "../ErasedRegistrationFixture.hpp"
 #pragma once
 
 #include <lux/engine/render/features/Registration.hpp>
@@ -9,6 +8,8 @@
 #include <cstdint>
 #include <memory>
 #include <semaphore>
+
+namespace lux::render { class RenderServer; }
 
 namespace async_tail_test
 {
@@ -36,12 +37,12 @@ namespace async_tail_test
         lux::render::CpuSchedule cpu;
         std::weak_ptr<const void> module;
         Gate* gate;
-        std::array<lux::render::CommandRegistration, 1> handlers;
     };
 
     // The export has a stable symbol name; its parameters still require the
     // same C++ toolchain/ABI on both sides, as do the real Feature contracts.
     using MakeFeature = void (*)(
-        Host&, const std::shared_ptr<const void>&, lux::render::FeatureRegistration&
+        lux::render::RenderServer&, Host&, const std::shared_ptr<const void>&,
+        lux::render::RenderResult<lux::render::FeatureId>&
     ) noexcept;
 }

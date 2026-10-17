@@ -1,3 +1,4 @@
+#include "FeatureFixture.hpp"
 #include "BufferExtension.hpp"
 #include "TypedTest.hpp"
 #include "ServerFixture.hpp"
@@ -52,8 +53,10 @@ int main()
     CHECK(server->registerStorage<lux::render::TextureStorage>());
     const auto buffer_type = take(server->registerStorage<TestBufferStorage>());
     CHECK(take(server->registerStorage<TestBufferStorage>()) == buffer_type);
-    CHECK(server->registerFeature<TestBufferFeature>());
-    CHECK(server->registerFeature({&texture_fixture::definition, &texture_fixture::definition_graph,
+    const auto buffer_feature = take(server->registerFeature<TestBufferFeature>());
+    CHECK(take(server->registerFeature<TestBufferFeature>()) == buffer_feature);
+    CHECK(BufferCommands::constructed == 1 && BufferCommands::destroyed == 0);
+    CHECK(feature_test::registerGraph(*server, {&texture_fixture::definition, &texture_fixture::definition_graph,
         [](const RetainableEncodedDataView* wire, std::string_view name) noexcept -> RenderResult<ProgramContribution> {
             auto config = decodeData<texture_fixture::Config>(*wire, texture_fixture::limits);
             if (!config) return lux::cxx::unexpected(config.error());
@@ -151,6 +154,7 @@ int main()
     thread.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
     server.reset();
+    CHECK(BufferCommands::constructed == 1 && BufferCommands::destroyed == 1);
     upload.reset();
     main.reset();
     CHECK(late_read->response().pixels.bytes().view().size() == 16); // returned CPU result survives every Native/Server owner

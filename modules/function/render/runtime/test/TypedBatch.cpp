@@ -1,6 +1,7 @@
+#include "FeatureFixture.hpp"
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
-#include "ErasedRegistrationFixture.hpp"
+#include "ProtocolAudit.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "ServerFixture.hpp"
 #include "SceneFixture.hpp"
@@ -226,15 +227,26 @@ static RenderResult<ProgramContribution> programs(const RetainableEncodedDataVie
     return ProgramContribution{native_fixture::programs(*config, instance), {}};
 }
 
+struct BatchCommands final
+{
+    static constexpr std::string_view name = "test.batch.commands";
+    batch_fixture::State& state;
+    explicit BatchCommands(batch_fixture::State& value) noexcept : state(value) {}
+    RenderResult<void> set(const batch_fixture::SetValues::Request& input, Reply<batch_fixture::SetValues>& reply) noexcept
+    { return batch_fixture::set(state, input, reply); }
+    RenderResult<void> read(const batch_fixture::ReadValue::Request& input, Reply<batch_fixture::ReadValue>& reply) noexcept
+    { return batch_fixture::read(state, input, reply); }
+    using Bindings = std::tuple<CommandMethod<batch_fixture::SetValues, &BatchCommands::set>,
+        CommandMethod<batch_fixture::ReadValue, &BatchCommands::read>>;
+};
+
 static std::unique_ptr<RenderServer> create(batch_fixture::State& state, CpuFixture& host)
 {
-    static std::array<CommandRegistration, 2> handlers;
-    handlers = {CommandRegistration{bindCommand<batch_fixture::SetValues, batch_fixture::set>(state)},
-        CommandRegistration{bindCommand<batch_fixture::ReadValue, batch_fixture::read>(state)}};
     auto server = take(RenderServer::create(withCpu(host, {"runtime.typed.batch", true})));
-    CHECK(server->registerFeature<batch_fixture::SetValues, batch_fixture::ReadValue>(
-        {&batch_fixture::definition, &batch_fixture::definition_graph, nullptr, handlers}));
-    CHECK(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs}));
+    CHECK(server->registerFeature<batch_fixture::SetValues>(
+        feature_test::Provider<BatchCommands>{{&batch_fixture::definition, &batch_fixture::definition_graph, nullptr}},
+        "", {}, state));
+    CHECK(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs}));
     return server;
 }
 

@@ -1,3 +1,4 @@
+#include "FeatureFixture.hpp"
 #include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "SceneFixture.hpp"
@@ -63,8 +64,8 @@ int main()
             return pass ? RenderResult<void>{} : lux::cxx::unexpected(pass.error());
         }};
     auto server = take(createTestServer({"runtime.program.ownership", true}));
-    check(bool(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, ownPrograms})));
-    check(bool(server->registerFeature({&foreign, &foreign_graph, foreignPrograms})));
+    check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, ownPrograms})));
+    check(bool(feature_test::registerGraph(*server, {&foreign, &foreign_graph, foreignPrograms})));
     auto client = take(TestClient::create("runtime.program.ownership"));
     bool run_ok = false;
     std::thread worker([&] { run_ok = bool(server->run()); });
@@ -108,7 +109,7 @@ int main()
     worker.join();
     check(run_ok && server->stats().validation_errors == 0);
     auto missing = take(createTestServer({"runtime.no.program", true}));
-    check(bool(missing->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, nullptr})));
+    check(bool(feature_test::registerGraph(*missing, {&native_fixture::definition, &native_fixture::definition_graph, nullptr})));
     auto no_program = take(TestClient::create("runtime.no.program"));
     bool missing_run_ok = false;
     std::thread missing_worker([&] { missing_run_ok = bool(missing->run()); });

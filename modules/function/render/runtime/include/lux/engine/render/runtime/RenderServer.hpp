@@ -4,10 +4,13 @@
 #include <lux/engine/render/features/Registration.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/resource/AsyncWork.hpp>
-#include <lux/engine/render/resource/Registration.hpp>
+#include <lux/engine/render/resource/Factory.hpp>
+#include <lux/engine/render/data/ConfigValue.hpp>
 #include <optional>
 #include <lux/engine/render/native/vulkan/device/DeviceOptions.hpp>
 #include <lux/engine/render/native/vulkan/texture/TextureCommands.hpp>
+
+namespace lux::render::vulkan { template <class T> struct FeatureProvider; }
 
 namespace lux::render
 {
@@ -49,13 +52,6 @@ namespace lux::render
         ~RenderServer() noexcept;
         RenderServer(const RenderServer&) = delete;
         RenderServer& operator=(const RenderServer&) = delete;
-        template <RenderCommand... C>
-        [[nodiscard]] RenderResult<FeatureId> registerFeature(FeatureRegistration feature) noexcept
-        {
-            const std::array<runtime_detail::CommandTransport, sizeof...(C)> transports{runtime_detail::commandTransport<C>()...};
-            return registerFeatureImpl(std::move(feature), transports);
-        }
-
         // Provider pins its Native factory code. source_code_pin additionally covers the calling
         // module's template thunks/configuration; omitted means the factory module or process lifetime.
         template <class T, class Provider = vulkan::StorageProvider<T>>
@@ -105,12 +101,40 @@ namespace lux::render
             }
         }
 
-        template <class T>
-        [[nodiscard]] RenderResult<FeatureId> registerFeature() noexcept
+        template <class T, class Provider = vulkan::FeatureProvider<T>, class... Args>
+        [[nodiscard]] RenderResult<FeatureId> registerFeature(
+            Provider provider = {}, std::string_view handler_key = {}, std::shared_ptr<const void> code_pin = {},
+            Args&&... args
+        ) noexcept
         {
-            return [&]<typename... C>(std::tuple<C...>*) noexcept {
-                return registerFeature<C...>(nativeFeatureBinding<T>());
-            }(static_cast<typename T::Commands*>(nullptr));
+            using H = typename Provider::Handler;
+            const auto definition = provider.definition();
+            if constexpr (std::is_void_v<H>)
+            {
+                return installFeature(definition, std::move(code_pin), nullptr, {}, {}, {});
+            }
+            else
+            {
+                const CommandValueType type{cxx::typeToken<H>(), sizeof(H), alignof(H)};
+                auto existing = findHandler(type, handler_key);
+                if (!existing) return cxx::unexpected(existing.error());
+                std::unique_ptr<HandlerEntry> owner;
+                auto* entry = existing->isNull() ? nullptr : handlerEntry(*existing);
+                if (!entry)
+                {
+                    if constexpr (sizeof...(Args) == 0 && std::is_nothrow_constructible_v<H, vulkan::DeviceSession&>)
+                        owner = makeHandler<H>(handler_key, code_pin, nativeDevice());
+                    else
+                        owner = makeHandler<H>(handler_key, code_pin, std::forward<Args>(args)...);
+                    entry = owner.get();
+                }
+                auto& handler = *static_cast<H*>(entry->object.get());
+                return [&]<typename... B>(std::tuple<B...>*) noexcept {
+                    const std::array calls{B::bind(handler)...};
+                    const std::array transports{runtime_detail::commandTransport<typename B::Command>()...};
+                    return installFeature(definition, std::move(code_pin), entry, std::move(owner), calls, transports);
+                }(static_cast<typename H::Bindings*>(nullptr));
+            }
         }
 
         // Cold provider installation. The caller is the Server owner; no concurrent directory mutation.
@@ -177,8 +201,9 @@ namespace lux::render
             std::span<const CommandHandler>, std::span<const runtime_detail::CommandTransport>) noexcept;
         [[nodiscard]] RenderResult<HandlerId> installHandler(std::unique_ptr<HandlerEntry>,
             std::span<const CommandHandler>, std::span<const runtime_detail::CommandTransport>) noexcept;
-        [[nodiscard]] RenderResult<FeatureId> registerFeatureImpl(FeatureRegistration,
-            std::span<const runtime_detail::CommandTransport>) noexcept;
+        [[nodiscard]] RenderResult<FeatureId> installFeature(feature_detail::Implementation,
+            std::shared_ptr<const void>, HandlerEntry*, std::unique_ptr<HandlerEntry>,
+            std::span<const CommandHandler>, std::span<const runtime_detail::CommandTransport>) noexcept;
         struct Impl;
         explicit RenderServer(std::unique_ptr<Impl> state) noexcept;
         std::unique_ptr<Impl> impl_;

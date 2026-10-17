@@ -250,7 +250,8 @@
       "N2-HANDLERS-CHECKPOINT.md",
       "N2-HANDLERS-VERIFICATION.md",
       "N2-DIRECTORY-VERIFICATION.md",
-      "N2-TYPED-STORAGE-CHECKPOINT.md"
+      "N2-TYPED-STORAGE-CHECKPOINT.md",
+      "N2-TYPED-FEATURE-CHECKPOINT.md"
     ]
   },
   "N2.4": {
@@ -286,7 +287,8 @@
     ],
     "evidence": [
       "N2-STORAGE-INSTALL-CHECKPOINT.md",
-      "N2-TYPED-STORAGE-CHECKPOINT.md"
+      "N2-TYPED-STORAGE-CHECKPOINT.md",
+      "N2-TYPED-FEATURE-CHECKPOINT.md"
     ]
   },
   "N2.5": {
@@ -421,7 +423,8 @@
     ],
     "evidence": [
       "n2-identity-verification.md",
-      "N3-GENERIC-COMPLETION-VERIFICATION.md"
+      "N3-GENERIC-COMPLETION-VERIFICATION.md",
+      "N2-TYPED-FEATURE-CHECKPOINT.md"
     ]
   },
   "N3.4": {

@@ -77,6 +77,8 @@ foreach(header
 endforeach()
 
 foreach(header
+    lux/engine/render/resource/Registration.hpp
+    lux/engine/render/native/vulkan/Registration.hpp
     lux/engine/render/runtime/Operations.hpp
     lux/engine/render/runtime/vulkan/GpuCompletion.hpp
     lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp

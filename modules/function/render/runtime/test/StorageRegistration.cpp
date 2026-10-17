@@ -1,4 +1,5 @@
-#include <lux/engine/render/resource/Registration.hpp>
+#include <lux/engine/render/resource/Factory.hpp>
+#include <lux/engine/render/data/ConfigValue.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>

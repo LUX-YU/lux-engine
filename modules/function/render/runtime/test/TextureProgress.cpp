@@ -1,5 +1,6 @@
-#include <lux/engine/render/native/vulkan/Registration.hpp>
-#include "ErasedRegistrationFixture.hpp"
+#include "FeatureFixture.hpp"
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include "ProtocolAudit.hpp"
 #include "ServerFixture.hpp"
 #include "TypedTest.hpp"
 #include "TextureFixture.hpp"
@@ -92,6 +93,16 @@ static RenderResult<void> invoke(DeviceSession& session, const TextureProbe::Req
     return pending->completeWhen(GpuWorkSender<Ack>{Ack{}, std::move(*work)});
 }
 
+struct ProbeCommands final
+{
+    static constexpr std::string_view name = "test.texture.progress.commands";
+    DeviceSession& device;
+    explicit ProbeCommands(DeviceSession& value) noexcept : device(value) {}
+    RenderResult<void> uploadRequest(const TextureProbe::Request& input, Reply<TextureProbe>& reply) noexcept
+    { return invoke(device, input, reply); }
+    using Bindings = std::tuple<CommandMethod<TextureProbe, &ProbeCommands::uploadRequest>>;
+};
+
 template <class Predicate> static void until(Predicate predicate)
 {
     const auto end = Clock::now() + 15s;
@@ -143,8 +154,7 @@ static void shutdownAndLoss()
         config.device.multiple_queues = true;
         config.uploads = TransferOptions{1024 * 1024, 1, 32 * 1024 * 1024};
         auto server = take(RenderServer::create(withCpu(worker, config)));
-        const std::array handlers{nativeCommand<TextureProbe, invoke>()};
-        CHECK(server->registerFeature<TextureProbe>({&definition, &definition_graph, nullptr, handlers}));
+        CHECK(server->registerFeature<TextureProbe>(feature_test::Provider<ProbeCommands>{{&definition, &definition_graph, nullptr}}));
         std::atomic<bool> run_finished{false};
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); run_finished = true; });
@@ -260,8 +270,7 @@ int main()
         config.completion_capacity = 1;
         config.uploads = TransferOptions{1024 * 1024, 1, 128 * 1024 * 1024};
         auto server = take(RenderServer::create(withCpu(host, config)));
-        const std::array handlers{nativeCommand<TextureProbe, invoke>()};
-        CHECK(server->registerFeature<TextureProbe>({&definition, &definition_graph, nullptr, handlers}));
+        CHECK(server->registerFeature<TextureProbe>(feature_test::Provider<ProbeCommands>{{&definition, &definition_graph, nullptr}}));
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); });
         auto client = take(RenderClient::create(config.channel_name, {128 * 1024 * 1024}));

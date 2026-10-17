@@ -1,7 +1,8 @@
+#include "FeatureFixture.hpp"
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
-#include "ErasedRegistrationFixture.hpp"
+#include "ProtocolAudit.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "Allocation.hpp"
 #include "ClientAllocation.hpp"
@@ -170,65 +171,105 @@ static RequestId submit(RenderClient& client, const BoundCommand<C>& binding, ty
     return take(client.submit(binding, request, reply_capacity));
 }
 
+struct ExposureCommands final
+{
+    static constexpr std::string_view name = "test.exposure.commands";
+    FeatureState& state;
+    explicit ExposureCommands(FeatureState& value) noexcept : state(value) {}
+    RenderResult<void> set(const SetExposure::Request& input, Reply<SetExposure>& reply) noexcept
+    { return setExposure(state, input, reply); }
+    RenderResult<void> accept(const AcceptCustomData::Request& input, Reply<AcceptCustomData>& reply) noexcept
+    { return acceptData(state, input, reply); }
+    RenderResult<void> invalid(const InvalidReply::Request&, Reply<InvalidReply>& reply) noexcept
+    {
+        OversizedResult result{std::vector<std::byte>(4096)};
+        const auto* owner = result.bytes.data();
+        auto status = reply.complete(result);
+        check(!status && status.error().type == kRuntimeCapacity && result.bytes.data() == owner);
+        return status;
+    }
+    using Bindings = std::tuple<CommandMethod<SetExposure, &ExposureCommands::set>,
+        CommandMethod<AcceptCustomData, &ExposureCommands::accept>,
+        CommandMethod<InvalidReply, &ExposureCommands::invalid>>;
+};
+
+template <class C> concept CanBindExposure = requires(ExposureCommands& object) {
+    bindCommand<C, &ExposureCommands::set>(object);
+};
+static_assert(!CanBindExposure<WrongRequest> && !CanBindExposure<WrongResponse>);
+
+struct CollisionCommands final
+{
+    static constexpr std::string_view name = "test.collision.commands";
+    RenderResult<void> a(const CollidingA::Request& input, Reply<CollidingA>& reply) noexcept
+    { return reply.complete(Exposure{input.value + 1000}); }
+    RenderResult<void> b(const CollidingB::Request& input, Reply<CollidingB>& reply) noexcept
+    { return reply.complete(Exposure{input.value + 2000}); }
+    using Bindings = std::tuple<CommandMethod<CollidingA, &CollisionCommands::a>,
+        CommandMethod<CollidingB, &CollisionCommands::b>>;
+};
+
+struct TransferredCommands final
+{
+    static constexpr std::string_view name = "test.transferred.commands";
+    FeatureState& state;
+    explicit TransferredCommands(FeatureState& value) noexcept : state(value) {}
+    RenderResult<void> run(const TransferredReply::Request&, Reply<TransferredReply>& reply) noexcept
+    {
+        auto pending = reply.defer();
+        check(bool(pending));
+        auto rejected = reply.complete(Exposure{9});
+        check(!rejected && rejected.error().type == kProtocolContract && !reply.active());
+        ++state.premature_rejected;
+        return pending->fail(rejected.error());
+    }
+    using Bindings = std::tuple<CommandMethod<TransferredReply, &TransferredCommands::run>>;
+};
+
+struct CorruptCommands final
+{
+    static constexpr std::string_view name = "test.corrupt.commands";
+    struct Binding final
+    {
+        using Command = UnqualifiedType;
+        static CommandHandler bind(CorruptCommands& object) noexcept
+        {
+            static const auto wrong = [] {
+                auto value = commandDescriptor<Command>();
+                value.response.type = cxx::typeToken<std::uint64_t>();
+                return value;
+            }();
+            return protocol_detail::CommandHandlerAudit::make(&wrong,
+                [](void*, CommandInvocation&) noexcept -> RenderResult<void> { return {}; }, &object);
+        }
+    };
+    using Bindings = std::tuple<Binding>;
+};
+
 int main()
 {
     FeatureState state;
-    const std::array handlers{
-        CommandRegistration{bindCommand<SetExposure, setExposure>(state)},
-        CommandRegistration{bindCommand<AcceptCustomData, acceptData>(state)},
-        test_registration::erased(&commandDescriptor<InvalidReply>(), [](void*, CommandInvocation& invocation) noexcept {
-            auto context = protocol_detail::ReplyAudit::make<InvalidReply>(invocation);
-            OversizedResult result{std::vector<std::byte>(4096)};
-            const auto* owner = result.bytes.data();
-            auto status = context.complete(result);
-            check(!status && status.error().type == kRuntimeCapacity && result.bytes.data() == owner);
-            return status;
-        })
-    };
     auto server = take(RenderServer::create({"runtime.open", true}));
-    // A type-erased handler cannot be paired with an unrelated typed transport table.
-    check(!server->registerFeature<WrongRequest, AcceptCustomData, InvalidReply>({&feature, &feature_graph, nullptr, handlers}));
-    check(!server->registerFeature<WrongResponse, AcceptCustomData, InvalidReply>({&feature, &feature_graph, nullptr, handlers}));
-    check(bool(server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, &feature_graph, nullptr, handlers})));
-    check(!server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, &feature_graph, nullptr, handlers}));
-    const std::array collision_commands{commandDescriptor<CollidingA>(), commandDescriptor<CollidingB>()};
+    const auto installed = server->registerFeature<SetExposure>(
+        feature_test::Provider<ExposureCommands>{{&feature, &feature_graph, nullptr}}, "", {}, state);
+    check(bool(installed));
+    const auto repeated = server->registerFeature<SetExposure>(
+        feature_test::Provider<ExposureCommands>{{&feature, &feature_graph, nullptr}}, "", {}, state);
+    check(repeated && *repeated == *installed);
     const FeatureDescriptor collision_feature{FeatureName("test.real.hash.collision"), {1, 0}, nullptr};
     const FeatureGraphOps collision_feature_graph{feature_graph.describe, nullptr};
-    const std::array collision_handlers{
-        test_registration::erased(&commandDescriptor<CollidingA>(), [](void*, CommandInvocation& invocation) noexcept {
-            auto context = protocol_detail::ReplyAudit::make<CollidingA>(invocation);
-            return context.complete(Exposure{context.request().value + 1000});
-        }),
-        test_registration::erased(&commandDescriptor<CollidingB>(), [](void*, CommandInvocation& invocation) noexcept {
-            auto context = protocol_detail::ReplyAudit::make<CollidingB>(invocation);
-            return context.complete(Exposure{context.request().value + 2000});
-        })
-    };
-    check(bool(server->registerFeature<CollidingA, CollidingB>({&collision_feature, &collision_feature_graph, nullptr, collision_handlers})));
-    const std::array unqualified_commands{commandDescriptor<UnqualifiedType>()};
+    check(bool(server->registerFeature<CollidingA>(
+        feature_test::Provider<CollisionCommands>{{&collision_feature, &collision_feature_graph, nullptr}})));
     const FeatureDescriptor unqualified_feature{FeatureName("test.unqualified.type"), {1, 0}, nullptr};
     const FeatureGraphOps unqualified_graph{feature_graph.describe, nullptr};
-    auto wrong_type = commandDescriptor<UnqualifiedType>();
-    wrong_type.response.type = cxx::typeToken<std::uint64_t>();
-    const std::array unqualified_handlers{test_registration::erased(&wrong_type,
-        [](void*, CommandInvocation&) noexcept -> RenderResult<void> { return {}; })};
-    auto rejected = server->registerFeature<UnqualifiedType>({&unqualified_feature, &unqualified_graph, nullptr, unqualified_handlers});
+    auto rejected = server->registerFeature<UnqualifiedType>(
+        feature_test::Provider<CorruptCommands>{{&unqualified_feature, &unqualified_graph, nullptr}});
     check(!rejected && rejected.error().type == kProtocolContract);
-    const std::array premature_commands{commandDescriptor<TransferredReply>()};
     const FeatureDescriptor premature_feature{FeatureName("test.transferred.reply"), {1, 0}, nullptr};
     const FeatureGraphOps premature_feature_graph{feature_graph.describe, nullptr};
-    const std::array premature_handlers{
-        test_registration::erased(&commandDescriptor<TransferredReply>(), [](void* owner, CommandInvocation& invocation) noexcept {
-            auto context = protocol_detail::ReplyAudit::make<TransferredReply>(invocation);
-            auto pending = context.defer();
-            check(bool(pending));
-            auto reply = context.complete(Exposure{9});
-            check(!reply && reply.error().type == kProtocolContract && !context.active());
-            ++static_cast<FeatureState*>(owner)->premature_rejected;
-            return pending->fail(reply.error());
-        }, &state)
-    };
-    check(bool(server->registerFeature<TransferredReply>({&premature_feature, &premature_feature_graph, nullptr, premature_handlers})));
+    check(bool(server->registerFeature<TransferredReply>(
+        feature_test::Provider<TransferredCommands>{{&premature_feature, &premature_feature_graph, nullptr}},
+        "", {}, state)));
     auto a = take(RenderClient::create("runtime.open"));
     auto b = take(RenderClient::create("runtime.open"));
     const auto hello_a = take(a->hello()), hello_b = take(b->hello());
@@ -237,7 +278,7 @@ int main()
     std::thread worker([&] { render_allocation::participate = true; run_ok = bool(server->run()); });
     check(wait(*a, hello_a).header.outcome == ECommandOutcome::SUCCESS);
     check(wait(*b, hello_b).header.outcome == ECommandOutcome::SUCCESS);
-    check(!server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, &feature_graph, nullptr, handlers}));
+    // Dynamic installation is Owner-thread-only; this Client thread does not mutate the running directory.
     check(!a->bind<UnqualifiedType>());
     auto bound_a = take(a->bind<SetExposure>());
     auto bound_b = take(b->bind<SetExposure>());

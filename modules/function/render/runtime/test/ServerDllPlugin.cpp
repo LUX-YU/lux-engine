@@ -1,3 +1,4 @@
+#include "FeatureFixture.hpp"
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -23,7 +24,7 @@ serverDllCreate(const char* name, const std::shared_ptr<const void>* implementat
     config.implementation_code_pin = *implementation_pin;
     config.cpu = *cpu;
     auto server = RenderServer::create(std::move(config));
-    if (server && *cpu && !(*server)->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs, {}, *implementation_pin}))
+    if (server && *cpu && !feature_test::registerGraph(**server, {&native_fixture::definition, &native_fixture::definition_graph, programs}, *implementation_pin))
         return nullptr;
     return server ? server->release() : nullptr;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/resource/Registration.hpp>
+#include <lux/engine/render/resource/Factory.hpp>
+#include <lux/engine/render/data/ConfigValue.hpp>
 #include <lux/engine/render/data/Encoding.hpp>
 
 #include <lux/engine/render/protocol/Protocol.hpp>

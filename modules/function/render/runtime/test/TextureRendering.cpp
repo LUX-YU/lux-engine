@@ -1,3 +1,4 @@
+#include "FeatureFixture.hpp"
 #include "ServerFixture.hpp"
 #include "TypedTest.hpp"
 #include "TextureFixture.hpp"
@@ -99,7 +100,7 @@ int main(int argc, char** argv)
     config.device.texture_descriptors = true;
     auto server = take(RenderServer::create(withCpu(compiler, config)));
     CHECK(server->registerStorage<lux::render::TextureStorage>());
-    CHECK(server->registerFeature({&texture_fixture::definition, &texture_fixture::definition_graph, programs}));
+    CHECK(feature_test::registerGraph(*server, {&texture_fixture::definition, &texture_fixture::definition_graph, programs}));
     bool run_ok = false;
     std::thread thread([&] { render_allocation::participate = true; run_ok = bool(server->run()); });
     auto a = take(RenderClient::create(config.channel_name));

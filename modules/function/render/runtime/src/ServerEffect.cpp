@@ -4,7 +4,7 @@ namespace lux::render
 {
     static RenderResult<RenderEffect> compileEffect(
         vulkan::DeviceSession& device, const CreateEffectRequest& request,
-        std::span<const FeatureRegistration* const> registrations, std::size_t max_config_bytes
+        std::span<const FeatureEntry* const> registrations, std::size_t max_config_bytes
     ) noexcept
     {
         const auto* input = &request;
@@ -22,7 +22,7 @@ namespace lux::render
         {
             const auto& selection = input->features[i];
             const auto* registration = registrations[i];
-            const auto& definition = *registration->descriptor;
+            const auto& definition = registration->descriptor;
             const RetainableEncodedDataView* wire = nullptr;
             if (definition.config_schema)
             {
@@ -32,7 +32,7 @@ namespace lux::render
             }
             else if (selection.config_schema || !selection.config.bytes().empty())
                 return cxx::unexpected(RenderError{kFeatureContract});
-            selected.push_back({&definition, registration->graph, wire, selection.instance});
+            selected.push_back({&definition, &registration->graph, wire, selection.instance});
         }
         auto assembly = assembleFeatures(selected, {max_config_bytes, SIZE_MAX});
         if (!assembly) return cxx::unexpected(assembly.error());
@@ -104,14 +104,14 @@ namespace lux::render
 
         vulkan::DeviceSession& device;
         const CreateEffectRequest& request;
-        std::vector<const FeatureRegistration*> features;
+        std::vector<const FeatureEntry*> features;
         std::size_t max_config_bytes;
         DeferredCompletion* slot;
         RenderResult<RenderEffect> candidate = cxx::unexpected(RenderError{kRuntimeState});
         stdexec::connect_result_t<CpuSender, Receiver> operation;
 
         CompileState(vulkan::DeviceSession& native, CpuSchedule& cpu, DeferredCompletion& pending,
-            std::vector<const FeatureRegistration*> selected, std::size_t config_bytes,
+            std::vector<const FeatureEntry*> selected, std::size_t config_bytes,
             const std::shared_ptr<const void>& implementation_pin)
             : device(native), request(pending.request->get<CreateEffectRequest>()), features(std::move(selected)),
               max_config_bytes(config_bytes), slot(&pending),
@@ -156,16 +156,16 @@ namespace lux::render
         const auto& input = request.get<CreateEffectRequest>();
         if (input.features.empty() || input.features.size() > max_features)
             return cxx::unexpected(RenderError{kFeatureContract});
-        std::vector<const FeatureRegistration*> selected;
+        std::vector<const FeatureEntry*> selected;
         selected.reserve(input.features.size());
         for (const auto& selection : input.features)
         {
             const auto found = std::find_if(features.begin(), features.end(), [&](const auto& entry) {
-                return entry.definition.descriptor->type.name() == selection.type;
+                return entry.descriptor.type.name() == selection.type;
             });
-            if (found == features.end() || found->definition.descriptor->version != selection.version)
+            if (found == features.end() || found->descriptor.version != selection.version)
                 return cxx::unexpected(RenderError{kFeatureContract});
-            selected.push_back(&found->definition);
+            selected.push_back(&*found);
         }
         // Resolve the directory once on its owner thread. Stable entries outlive the accepted compile;
         // neither the worker nor its operation state borrows the mutable Impl or its directory.

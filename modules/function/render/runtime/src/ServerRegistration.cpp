@@ -7,7 +7,7 @@ namespace lux::render
         FeatureList result;
         result.features.reserve(features.size());
         for (const auto& entry : features)
-            result.features.push_back({entry.id, std::string(entry.definition.descriptor->type.name())});
+            result.features.push_back({entry.id, std::string(entry.descriptor.type.name())});
         return request.reply(std::move(result));
     }
 
@@ -77,12 +77,11 @@ namespace lux::render
     }
 
     CommandId RenderServer::Impl::addCommand(
-        CommandRegistration binding,
+        CommandHandler binding,
         CommandTransport transport,
         std::shared_ptr<const void> pin
     ) noexcept
     {
-        binding.bindNative(device.get());
         // Full registration comparison proved equivalence; retain the template's static contract.
         auto metadata = std::make_unique<CommandMetadata>(
             CommandMetadata{{}, binding, transport, std::move(pin)}
@@ -92,27 +91,6 @@ namespace lux::render
         cold->id = id;
         cold->active_code_pin = &cold->code_pin;
         return id;
-    }
-
-    RenderResult<void> RenderServer::Impl::validateHandlers(
-        std::span<const CommandRegistration> handlers, std::span<const CommandTransport> transports
-    ) const noexcept
-    {
-        if (handlers.size() != transports.size()) return cxx::unexpected(RenderError{kFeatureContract});
-        for (std::size_t i = 0; i < handlers.size(); ++i)
-        {
-            const auto& handler = handlers[i];
-            if (!handler.valid()) return cxx::unexpected(RenderError{kFeatureContract});
-            if (auto valid = validateCommand(*handler.descriptor()); !valid) return valid;
-            if (auto valid = compatibleCommands(*handler.descriptor(), *transports[i].descriptor); !valid) return valid;
-            for (const auto& old : command_table)
-                if (old.cold->binding.descriptor()->name.name() == handler.descriptor()->name.name())
-                    return cxx::unexpected(RenderError{kFeatureDuplicate});
-            for (std::size_t previous = 0; previous < i; ++previous)
-                if (handlers[previous].descriptor()->name.name() == handler.descriptor()->name.name())
-                    return cxx::unexpected(RenderError{kFeatureDuplicate});
-        }
-        return {};
     }
 
     RenderResult<HandlerId> RenderServer::findHandler(CommandValueType type, std::string_view key) const noexcept
@@ -258,32 +236,50 @@ namespace lux::render
         return id;
     }
 
-    RenderResult<FeatureId> RenderServer::Impl::registerFeature(
-        FeatureRegistration feature, std::span<const CommandTransport> transports
+    RenderResult<FeatureId> RenderServer::installFeature(
+        feature_detail::Implementation definition, std::shared_ptr<const void> code_pin,
+        HandlerEntry* handler, std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls,
+        std::span<const CommandTransport> transports
     ) noexcept
     {
-        auto& s = *this;
-        const bool invalid = s.started.load() || !feature.descriptor || !feature.graph ||
-                             (feature.graph && !feature.graph->describe) ||
-                             (feature.descriptor && feature.descriptor->type.name().empty());
-        if (invalid) return cxx::unexpected(RenderError{kRuntimeState});
-        for (const auto& current : s.features)
-            if (current.definition.descriptor->type.name() == feature.descriptor->type.name())
-                return cxx::unexpected(RenderError{kFeatureDuplicate});
-        if (auto valid = s.validateHandlers(feature.handlers, transports); !valid)
-            return cxx::unexpected(valid.error());
-        for (std::size_t i = 0; i < feature.handlers.size(); ++i)
-            s.addCommand(feature.handlers[i], transports[i], feature.code_pin);
-        const auto id = s.features.emplace(FeatureEntry{{}, std::move(feature)});
-        s.features.find(id)->id = id;
+        auto& state = *impl_;
+        const bool is_invalid_definition = !definition.descriptor || !definition.graph ||
+            (definition.descriptor && definition.descriptor->type.name().empty()) ||
+            (definition.graph && !definition.graph->describe);
+        if (state.stop_requested.load()) return cxx::unexpected(RenderError{kRuntimeState});
+        if (is_invalid_definition) return cxx::unexpected(RenderError{kFeatureContract});
+        std::vector<CommandId> commands;
+        if (handler)
+        {
+            auto prepared = prepareHandler(*handler, calls, transports);
+            if (!prepared) return cxx::unexpected(prepared.error());
+            commands = std::move(*prepared);
+        }
+        FeatureId id;
+        for (const auto& entry : state.features)
+        {
+            if (entry.descriptor.type.name() != definition.descriptor->type.name()) continue;
+            const bool is_different_definition = entry.descriptor.version != definition.descriptor->version ||
+                entry.graph.describe != definition.graph->describe || entry.graph.build != definition.graph->build ||
+                entry.programs != definition.programs;
+            if (is_different_definition) return cxx::unexpected(RenderError{kFeatureDuplicate});
+            const auto* before = entry.descriptor.config_schema;
+            const auto* after = definition.descriptor->config_schema;
+            if (bool(before) != bool(after)) return cxx::unexpected(RenderError{kDataSchemaMismatch});
+            if (before)
+                if (auto valid = compatibleDataSchemas(*before, *after); !valid)
+                    return cxx::unexpected(valid.error());
+            id = entry.id;
+            break;
+        }
+        // All recoverable checks are complete. Stable Feature entries survive later directory growth.
+        if (id.isNull())
+        {
+            id = state.features.emplace(definition, std::move(code_pin));
+            state.features.find(id)->id = id;
+        }
+        if (owner) publishHandler(std::move(owner), calls, transports, std::move(commands));
         return id;
-    }
-
-    RenderResult<FeatureId> RenderServer::registerFeatureImpl(
-        FeatureRegistration feature, std::span<const CommandTransport> transports
-    ) noexcept
-    {
-        return impl_->registerFeature(std::move(feature), transports);
     }
 
 } // namespace lux::render

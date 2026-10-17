@@ -1,4 +1,5 @@
-#include "ErasedRegistrationFixture.hpp"
+#include "FeatureFixture.hpp"
+#include "ProtocolAudit.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/protocol/AsyncCommand.hpp>
 #include "Deferred.hpp"
@@ -398,6 +399,16 @@ namespace lux::render::runtime_detail::test
     }
 }
 
+struct CpuCommands final
+{
+    static constexpr std::string_view name = "test.cpu.cost.commands";
+    State& state;
+    explicit CpuCommands(State& value) noexcept : state(value) {}
+    RenderResult<void> run(const CpuOperation::Request& input, Reply<CpuOperation>& reply) noexcept
+    { return invoke(state, input, reply); }
+    using Bindings = std::tuple<CommandMethod<CpuOperation, &CpuCommands::run>>;
+};
+
 int main()
 {
     std::printf("Route layout: call=%zu/%zu entry=%zu/%zu metadata=%zu request=%zu\n",
@@ -410,12 +421,11 @@ int main()
     static const std::array descriptors{commandDescriptor<CpuOperation>()};
     const FeatureDescriptor feature{FeatureName("test.async.cost.feature"), {1, 0}, nullptr};
     const FeatureGraphOps feature_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
-    const std::array handlers{CommandRegistration{bindCommand<CpuOperation, invoke>(*state)}};
     RenderServerConfig config{"runtime.async.cost", true};
     config.requests_per_tick = 128;
     config.cpu = state->cpu;
     auto server = take(RenderServer::create(config));
-    check(bool(server->registerFeature<CpuOperation>({&feature, &feature_graph, nullptr, handlers})));
+    check(bool(server->registerFeature<CpuOperation>(feature_test::Provider<CpuCommands>{{&feature, &feature_graph, nullptr}}, "", {}, *state)));
     RenderResult<void> run;
     std::thread render([&] { run = server->run(); });
     auto client = take(RenderClient::create(config.channel_name, {1024 * 1024, 256}));

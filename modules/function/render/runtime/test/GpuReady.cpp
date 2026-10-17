@@ -1,5 +1,6 @@
-#include <lux/engine/render/native/vulkan/Registration.hpp>
-#include "ErasedRegistrationFixture.hpp"
+#include "FeatureFixture.hpp"
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include "ProtocolAudit.hpp"
 #include "SubmissionSender.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
@@ -278,11 +279,17 @@ static const CommandDescriptor cpu = commandDescriptor<CpuResult>();
 static const std::array operations_list{probe, cpu};
 static const FeatureDescriptor feature{FeatureName("test.g10.feature"), {1, 0}, nullptr};
 static const FeatureGraphOps feature_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
-static const std::array handlers{
-    vulkan::nativeCommand<UploadProbe, upload>(),
-    test_registration::erased(&cpu, [](void*, CommandInvocation& invocation) noexcept {
-        return protocol_detail::ReplyAudit::make<CpuResult>(invocation).complete(CpuResult::Response{});
-    })
+struct ProbeCommands final
+{
+    static constexpr std::string_view name = "test.gpu.probe.commands";
+    vulkan::DeviceSession& device;
+    explicit ProbeCommands(vulkan::DeviceSession& value) noexcept : device(value) {}
+    RenderResult<void> uploadRequest(const UploadProbe::Request& input, Reply<UploadProbe>& reply) noexcept
+    { return upload(device, input, reply); }
+    RenderResult<void> cpuResult(const CpuResult::Request&, Reply<CpuResult>& reply) noexcept
+    { return reply.complete(CpuResult::Response{}); }
+    using Bindings = std::tuple<CommandMethod<UploadProbe, &ProbeCommands::uploadRequest>,
+        CommandMethod<CpuResult, &ProbeCommands::cpuResult>>;
 };
 static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view name) noexcept
 {
@@ -327,8 +334,8 @@ int main(int argc, char** argv)
     config.device.multiple_queues = transfer_mode;
     config.device.prefer_dedicated_queues = dedicated;
     auto server = take(RenderServer::create(withCpu(workers, config)));
-    CHECK((server->registerFeature<UploadProbe, CpuResult>({&feature, &feature_graph, nullptr, handlers})));
-    CHECK(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs}));
+    CHECK((server->registerFeature<UploadProbe>(feature_test::Provider<ProbeCommands>{{&feature, &feature_graph, nullptr}})));
+    CHECK(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs}));
     auto a = take(RenderClient::create(config.channel_name));
     auto b = take(RenderClient::create(config.channel_name));
     bool run_ok = false;
@@ -659,7 +666,7 @@ int main(int argc, char** argv)
     closing_config.device.multiple_queues = transfer_mode;
     closing_config.device.prefer_dedicated_queues = dedicated;
     auto closing_server = take(RenderServer::create(withCpu(workers, closing_config)));
-    CHECK((closing_server->registerFeature<UploadProbe, CpuResult>({&feature, &feature_graph, nullptr, handlers})));
+    CHECK((closing_server->registerFeature<UploadProbe>(feature_test::Provider<ProbeCommands>{{&feature, &feature_graph, nullptr}})));
     auto closing_client = take(RenderClient::create(closing_config.channel_name));
     bool closing_ok = false;
     std::thread closing_thread([&] { closing_ok = bool(closing_server->run()); });

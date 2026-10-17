@@ -36,3 +36,22 @@ Implementation attempts and raw samples are retained in `evidence/I2`; initial f
 (incorrect SlotKey bool conversion) and three obsolete-contract assertions were corrected in source.
 All 12 IPC tests passed before the final move-counter instrumentation cleanup. Independent exact-SHA
 verification follows this implementation commit; do not infer full Runtime qualification from IPC tests.
+
+## I2 independent checkpoint / I3 implementation
+
+I2 `65be2c1749ebb2d4f61d0c441c227c5efafeee19`: no-hardlinks exact clone `i2-source`, tracked snapshot,
+Release and ASan all builds, second no-work, 12/12 IPC tests in each, relocated consumers included.
+Evidence `evidence/I2`; ASan error=0. Whole Runtime deliberately not qualified at this intermediate boundary.
+
+I3 replaces the private per-Link queue storage, retaining Channel/name lifecycle and source routing.
+Initial segment size is not queue capacity; request/reply grow independently, with recoverable allocation
+failure before message move. Consumer release gates producer reuse; immutable ownership chain frees all
+segments only at cold Link destruction. No shared business queue, per-message reference count or lock.
+
+Targeted tests now inject allocation failure instead of expecting a fixed-ring admission limit.
+They retain exact source/result/backing assertions and explicit retry. Backlog257 with initial size4,
+20 repeated cycles: 130 live segments (both directions), zero further EXE/DLL allocations. A controlled
+consumer pause before recycle rejects producer growth under injected OOM, then permits reuse without
+allocation after release. FIFO test streams one million requests/replies. All12 source IPC tests passed.
+Independent I3 Release/Debug/ASan, repeated concurrent stress and comparable I2/I3 cost runs follow commit.
+This is an IPC gate only; full Render API consumers remain the next authorized I4 migration.

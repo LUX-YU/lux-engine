@@ -2,9 +2,7 @@
 
 #include <exception>
 #include <cstring>
-#include <limits>
 #include <string>
-#include <lux/cxx/concurrent/LockFreeQueue.hpp>
 #ifdef LUX_IPC_TESTING
 #include "TestHooks.hpp"
 #include "Allocation.hpp"
@@ -23,6 +21,7 @@ namespace lux::platform::ipc
 
 #ifdef LUX_IPC_TESTING
         std::atomic<std::size_t> link_count{0}, ring_count{0}, allocations{0};
+        std::atomic<std::size_t> segment_count{0}, segment_reuses{0}, segment_allocation_failures{0};
         std::atomic<testing::Hook> test_hook{nullptr};
         void point(testing::EPoint value) noexcept
         {
@@ -36,17 +35,169 @@ namespace lux::platform::ipc
         }
     }
 
+    namespace
+    {
+        // Internal storage of one SPSC direction, uniquely owned by Link. No node is freed while roles live.
+        class MessageQueue final
+        {
+            struct alignas(64) Segment final
+            {
+                alignas(64) std::atomic<std::size_t> read{0};
+                alignas(64) std::atomic<std::size_t> write{0};
+                std::atomic<Segment*> next{nullptr};
+                Segment* owned_next = nullptr;
+                Segment* recycled_next = nullptr;
+            };
+
+        public:
+            explicit MessageQueue(std::size_t capacity) noexcept : capacity_(capacity)
+            {
+                tail_ = head_ = allocate();
+            }
+
+            ~MessageQueue() noexcept
+            {
+                while (owned_)
+                {
+                    auto* segment = owned_;
+                    owned_ = segment->owned_next;
+                    const auto end = segment->write.load(std::memory_order_relaxed);
+                    for (auto read = segment->read.load(std::memory_order_relaxed); read != end; ++read)
+                        std::destroy_at(std::launder(slot(segment, read)));
+                    std::destroy_at(segment);
+                    ::operator delete(segment, std::align_val_t{alignof(Segment)});
+#ifdef LUX_IPC_TESTING
+                    --segment_count;
+#endif
+                }
+            }
+
+            MessageQueue(const MessageQueue&) = delete;
+            MessageQueue& operator=(const MessageQueue&) = delete;
+            [[nodiscard]] static bool validCapacity(std::size_t value) noexcept
+            {
+                const bool is_representable = value != 0 && value <= (SIZE_MAX - sizeof(Segment)) / sizeof(IpcMessage);
+                return is_representable && (value & (value - 1)) == 0;
+            }
+
+            [[nodiscard]] bool valid() const noexcept { return tail_ != nullptr; }
+
+            [[nodiscard]] bool tryPush(IpcMessage& input) noexcept
+            {
+                const auto write = tail_->write.load(std::memory_order_relaxed);
+                const auto read = tail_->read.load(std::memory_order_acquire);
+                if (write - read < capacity_)
+                {
+                    std::construct_at(slot(tail_, write), std::move(input));
+                    tail_->write.store(write + 1, std::memory_order_release);
+                    return true;
+                }
+                auto* next = acquireSegment();
+                if (!next) return false;
+                std::construct_at(slot(next, 0), std::move(input));
+                next->write.store(1, std::memory_order_relaxed);
+                tail_->next.store(next, std::memory_order_release);
+                tail_ = next;
+                return true;
+            }
+
+            [[nodiscard]] bool tryPop(IpcMessage& output) noexcept
+            {
+                for (;;)
+                {
+                    const auto read = head_->read.load(std::memory_order_relaxed);
+                    const auto write = head_->write.load(std::memory_order_acquire);
+                    if (read != write)
+                    {
+                        auto* value = std::launder(slot(head_, read));
+                        output = std::move(*value);
+                        std::destroy_at(value);
+                        head_->read.store(read + 1, std::memory_order_release);
+                        return true;
+                    }
+                    auto* next = head_->next.load(std::memory_order_acquire);
+                    if (!next) return false;
+                    // Reading next may observe publication after the first write observation.
+                    // All values of the old segment precede next's release publication.
+                    if (head_->write.load(std::memory_order_acquire) != read) continue;
+                    auto* exited = head_;
+                    head_ = next;
+#ifdef LUX_IPC_TESTING
+                    point(testing::EPoint::SEGMENT_RECYCLE);
+#endif
+                    auto* recycled = recycled_.load(std::memory_order_relaxed);
+                    do { exited->recycled_next = recycled; }
+                    while (!recycled_.compare_exchange_weak(recycled, exited,
+                        std::memory_order_release, std::memory_order_relaxed));
+                    // No access to exited after release: producer may immediately reuse it.
+                }
+            }
+
+        private:
+            [[nodiscard]] IpcMessage* slot(Segment* segment, std::size_t position) const noexcept
+            {
+                auto* storage = reinterpret_cast<std::byte*>(segment) + sizeof(Segment);
+                return reinterpret_cast<IpcMessage*>(storage + (position & (capacity_ - 1)) * sizeof(IpcMessage));
+            }
+
+            [[nodiscard]] Segment* allocate() noexcept
+            {
+#ifdef LUX_IPC_TESTING
+                auto remaining = segment_allocation_failures.load(std::memory_order_relaxed);
+                while (remaining)
+                {
+                    if (segment_allocation_failures.compare_exchange_weak(remaining, remaining - 1)) return nullptr;
+                }
+#endif
+                if (capacity_ > (SIZE_MAX - sizeof(Segment)) / sizeof(IpcMessage)) return nullptr;
+                void* storage = ::operator new(sizeof(Segment) + capacity_ * sizeof(IpcMessage),
+                    std::align_val_t{alignof(Segment)}, std::nothrow);
+                if (!storage) return nullptr;
+                auto* segment = std::construct_at(static_cast<Segment*>(storage));
+                segment->owned_next = owned_;
+                owned_ = segment;
+#ifdef LUX_IPC_TESTING
+                ++segment_count;
+                ++allocations;
+#endif
+                return segment;
+            }
+
+            [[nodiscard]] Segment* acquireSegment() noexcept
+            {
+                if (!available_) available_ = recycled_.exchange(nullptr, std::memory_order_acquire);
+                if (!available_) return allocate();
+                auto* segment = available_;
+                available_ = segment->recycled_next;
+                segment->next.store(nullptr, std::memory_order_relaxed);
+                segment->read.store(0, std::memory_order_relaxed);
+                segment->write.store(0, std::memory_order_relaxed);
+#ifdef LUX_IPC_TESTING
+                ++segment_reuses;
+#endif
+                return segment;
+            }
+
+            const std::size_t capacity_;
+            Segment* owned_ = nullptr; // producer-only immutable ownership chain
+            alignas(64) Segment* tail_ = nullptr;
+            Segment* available_ = nullptr; // producer-only recycling batch
+            alignas(64) Segment* head_ = nullptr; // consumer only
+            std::atomic<Segment*> recycled_{nullptr};
+        };
+    }
+
     namespace detail
     {
         struct Link final
         {
             explicit Link(IpcQueueConfig config) noexcept
-                : requests(config.request_capacity), replies(config.reply_capacity)
+                : requests(config.request_segment_size), replies(config.reply_segment_size)
             {
 #ifdef LUX_IPC_TESTING
                 ++link_count;
                 ++ring_count;
-                allocations.fetch_add(3); // Link and two queue storage allocations.
+                ++allocations; // Link; queues account for their real segment allocations separately.
 #endif
             }
 
@@ -57,8 +208,8 @@ namespace lux::platform::ipc
                 --ring_count;
 #endif
             }
-            cxx::SpscLockFreeRingQueue<IpcMessage> requests;
-            cxx::SpscLockFreeRingQueue<IpcMessage> replies;
+            MessageQueue requests;
+            MessageQueue replies;
             std::atomic<bool> open{true};
             Link* owned_next = nullptr; // immutable after publication, Channel's unique ownership list
             Link* next = nullptr; // pending then responder-only circular view, never owns storage
@@ -197,11 +348,6 @@ namespace lux::platform::ipc
             }
         }
 
-        bool validCapacity(std::size_t value) noexcept
-        {
-            return value != 0 && value <= (std::numeric_limits<std::uint32_t>::max)() / 2 &&
-                (value & (value - 1)) == 0;
-        }
     }
 
     IpcMessage::~IpcMessage() noexcept { reset(); }
@@ -269,12 +415,18 @@ namespace lux::platform::ipc
     Result<IpcRequester> IpcCore::createRequester(std::string_view name, IpcQueueConfig config) noexcept
     {
         const bool is_invalid_name = name.empty() || name.find('\0') != std::string_view::npos;
-        const bool is_invalid_capacity = !validCapacity(config.request_capacity) ||
-            !validCapacity(config.reply_capacity);
+        const bool is_invalid_capacity = !MessageQueue::validCapacity(config.request_segment_size) ||
+            !MessageQueue::validCapacity(config.reply_segment_size);
         if (is_invalid_name || is_invalid_capacity) return cxx::unexpected(EIpcError::INVALID_ARGUMENT);
         IpcRequester result;
         result.channel_ = acquire(findName(name));
         result.link_ = new detail::Link(config);
+        if (!result.link_->requests.valid() || !result.link_->replies.valid())
+        {
+            delete std::exchange(result.link_, nullptr);
+            releaseChannel(std::exchange(result.channel_, nullptr));
+            return cxx::unexpected(EIpcError::WOULD_BLOCK);
+        }
         auto* owned = result.channel_->owned.load();
         do { result.link_->owned_next = owned; }
         while (!result.channel_->owned.compare_exchange_weak(owned, result.link_));
@@ -344,8 +496,8 @@ namespace lux::platform::ipc
         const auto state = channel_->state.load();
         if (state == EState::WAITING) return cxx::unexpected(EIpcError::NOT_READY);
         if (state == EState::CLOSED) return cxx::unexpected(EIpcError::CLOSED);
-        const auto result = link_->requests.tryPush(std::move(message));
-        if (result == cxx::EQueuePushResult::ACCEPTED) return {};
+        const auto result = link_->requests.tryPush(message);
+        if (result) return {};
         return cxx::unexpected(EIpcError::WOULD_BLOCK);
     }
 
@@ -354,12 +506,12 @@ namespace lux::platform::ipc
         if (!channel_) return EIpcReceive::CLOSED;
         auto result = link_->replies.tryPop(output);
 #ifdef LUX_IPC_TESTING
-        if (result != cxx::EQueuePopResult::VALUE) point(testing::EPoint::REPLY_EMPTY);
+        if (!result) point(testing::EPoint::REPLY_EMPTY);
 #endif
         const bool is_closed = channel_->state.load() == EState::CLOSED;
         // Recheck after CLOSED: a final publication may follow the first empty observation.
-        if (result != cxx::EQueuePopResult::VALUE && is_closed) result = link_->replies.tryPop(output);
-        if (result == cxx::EQueuePopResult::VALUE)
+        if (!result && is_closed) result = link_->replies.tryPop(output);
+        if (result)
         {
             return EIpcReceive::RECEIVED;
         }
@@ -431,7 +583,7 @@ namespace lux::platform::ipc
 #ifdef LUX_IPC_TESTING
             point(testing::EPoint::RING_READ);
 #endif
-            if (link->requests.tryPop(output.message_) == cxx::EQueuePopResult::VALUE)
+            if (link->requests.tryPop(output.message_))
             {
                 ++channel_->borrowed_requests;
                 output.channel_ = channel_;
@@ -452,8 +604,8 @@ namespace lux::platform::ipc
 #ifdef LUX_IPC_TESTING
         point(testing::EPoint::REPLY_PUBLISH);
 #endif
-        const auto result = link->replies.tryPush(std::move(reply));
-        if (result != cxx::EQueuePushResult::ACCEPTED) return cxx::unexpected(EIpcError::WOULD_BLOCK);
+        const auto result = link->replies.tryPush(reply);
+        if (!result) return cxx::unexpected(EIpcError::WOULD_BLOCK);
 #ifdef LUX_IPC_TESTING
         point(testing::EPoint::REPLY_PUBLISHED);
 #endif
@@ -509,7 +661,13 @@ namespace lux::platform::ipc
 
     testing::Counts testing::counts() noexcept
     {
-        return {channel_count.load(), link_count.load(), ring_count.load(), allocations.load()};
+        return {channel_count.load(), link_count.load(), ring_count.load(), allocations.load(),
+            segment_count.load(), segment_reuses.load()};
+    }
+
+    void testing::failSegmentAllocations(std::size_t count) noexcept
+    {
+        segment_allocation_failures.store(count);
     }
 
     void testing::setHook(Hook hook) noexcept { test_hook.store(hook); }

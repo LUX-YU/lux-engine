@@ -1,4 +1,4 @@
-find_package(lux-cxx CONFIG REQUIRED COMPONENTS compile_time concurrent)
+find_package(lux-cxx CONFIG REQUIRED COMPONENTS compile_time)
 
 generate_visibility_header(
     ENABLE_MACRO_NAME LUX_PLATFORM_IPC_LIBRARY
@@ -21,7 +21,7 @@ component_include_directories(
 )
 
 target_compile_definitions(platform_ipc PRIVATE LUX_PLATFORM_IPC_LIBRARY)
-target_link_libraries(platform_ipc PUBLIC lux::cxx::compile_time PRIVATE lux::cxx::concurrent)
+target_link_libraries(platform_ipc PUBLIC lux::cxx::compile_time)
 target_compile_features(platform_ipc PUBLIC cxx_std_20)
 
 component_add_transitive_commands(platform_ipc "find_package(lux-cxx CONFIG REQUIRED COMPONENTS compile_time)")

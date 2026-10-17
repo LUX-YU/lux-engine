@@ -88,3 +88,23 @@ arguments/replies or the accepted server-private request; they do not recover it
 These are changes inside existing owners or explicitly authorized queue records. If source implementation
 requires another lasting owner/type/state machine, section 11 requires a concrete design-change report and
 stop before production adaptation. This document grants no exception to that stop rule.
+
+## I3 queue linearization and reclamation proof
+
+Each Link uniquely owns its two internal queues; each queue owns an immutable allocation chain of Segments.
+No Segment is freed until the existing Channel/role/source lifetime excludes producer and consumer access.
+Within a Segment: producer constructs slot then release-stores write; consumer acquire-loads write, moves and
+destroys slot, then release-stores read. Producer acquire-loads read before reusing a ring slot.
+
+Only the producer publishes next. On a full tail it first obtains an exited Segment or fallibly allocates one,
+constructs the first value, then release-publishes next. Allocation failure precedes any input move. Consumer
+may advance only after empty observation and acquire-loading next; it never returns to the exited Segment.
+Consumer's last access release-publishes that segment onto a recycling chain. Producer acquire-exchanges that
+chain and exclusively resets/reuses its nodes. There is one recycler and one exchanger; while recycler is
+paused in CAS, no other recycler can recreate its observed head (no ABA). The ownership chain is independent
+of the reusable queue/recycle links and is only traversed after both roles are excluded.
+
+ResultReady remains in ReceivedRequest plus actual IpcMessage on growth failure; retry only publishes it.
+A concurrent requester reset keeps all Link storage alive through the responder. Reply accepted before close
+may finish publication after reset (existing overlap contract); a close observed before reply rejects without
+moving either owner. No new route, credits, source owner, lock, worker or business queue is introduced.

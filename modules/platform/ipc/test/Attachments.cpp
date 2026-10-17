@@ -1,3 +1,4 @@
+#include "TestHooks.hpp"
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/data/Encoding.hpp>
 #include <array>
@@ -120,6 +121,7 @@ int main()
     check(bool(requester.trySend(moved)) && moved.empty());
     const std::byte* second_pointer = nullptr;
     auto second = message(destroyed, second_pointer);
+    testing::failSegmentAllocations(1);
     check(!requester.trySend(second));
     check(assetRequest(second).source.data() == second_pointer && destroyed == 0);
     auto work = std::make_shared<ReceivedRequest>(receive(responder));

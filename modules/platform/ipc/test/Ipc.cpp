@@ -140,7 +140,7 @@ namespace
     void empty()
     {
         auto counts = testing::counts();
-        check(counts.channels == 0 && counts.links == 0 && counts.rings == 0, "all physical storage reclaimed");
+        check(counts.channels == 0 && counts.links == 0 && counts.rings == 0 && counts.segments == 0, "all physical storage reclaimed");
     }
 
 #ifdef _WIN32
@@ -278,8 +278,9 @@ namespace
             auto* failed_address = failed_owner->bytes.data();
             IpcMessage failed;
             failed.emplace<std::unique_ptr<Owner>>(std::move(failed_owner));
+            testing::failSegmentAllocations(1);
             check(client.trySend(failed).error() == EIpcError::WOULD_BLOCK &&
-                ownedBytes(failed).data() == failed_address && failed_destroyed == 0, "full owned send unchanged");
+                ownedBytes(failed).data() == failed_address && failed_destroyed == 0, "failed segment allocation preserves owned send");
             failed.reset();
             check(failed_destroyed == 1, "failed send still has one caller owner");
             if (order == 0) client.reset(); else server.reset();
@@ -356,8 +357,9 @@ namespace
             const auto* address = owner->bytes.data();
             IpcMessage result_two;
             result_two.emplace<std::unique_ptr<Owner>>(std::move(owner));
+            testing::failSegmentAllocations(1);
             const auto full = limited.tryReply(two, result_two);
-            check(!full && full.error() == EIpcError::WOULD_BLOCK, "reply publication can fail without credits");
+            check(!full && full.error() == EIpcError::WOULD_BLOCK, "reply segment growth failure retains completed work");
             check(two.active() && valueOf(two.message()) == 2 && destroyed == 0 &&
                 ownedBytes(result_two).data() == address, "failure retains source and completed result");
             check(valueOf(receivedReply(requester)) == 11, "first result unchanged");
@@ -376,8 +378,9 @@ namespace
             auto queue = must(core.createRequester("messages", {1, 4}));
             auto one = makeValue(1), two = makeValue(2);
             must(queue.trySend(one));
+            testing::failSegmentAllocations(1);
             check(queue.trySend(two).error() == EIpcError::WOULD_BLOCK && valueOf(two) == 2,
-                "request ring fullness rolls back credit");
+                "request growth failure leaves input intact");
             auto first = receive(server);
             first.reset();
             IpcMessage no_reply;
@@ -392,7 +395,8 @@ namespace
             must(client->trySend(first));
             must(client->trySend(second));
             auto full = makeValue(43);
-            check(client->trySend(full).error() == EIpcError::WOULD_BLOCK && valueOf(full) == 43, "credit preserves input");
+            testing::failSegmentAllocations(1);
+            check(client->trySend(full).error() == EIpcError::WOULD_BLOCK && valueOf(full) == 43, "growth failure preserves input");
         }
         std::vector<ReceivedRequest> deferred;
         for (int i = 0; i < 4; ++i) deferred.push_back(receive(server));
@@ -607,6 +611,82 @@ namespace
         empty();
     }
 
+    void segments()
+    {
+        auto& core = IpcCore::instance();
+        testing::failSegmentAllocations(1);
+        auto failed = core.createRequester("segments.initial", {1, 1});
+        check(!failed && failed.error() == EIpcError::WOULD_BLOCK, "initial segment failure rolls back role");
+        empty();
+        check(!core.createRequester("segments.overflow", {SIZE_MAX, 1}), "segment-size overflow rejected");
+        {
+            auto server = must(core.createResponder("segments.reuse"));
+            auto client = must(core.createRequester("segments.reuse", {4, 4}));
+            const auto cycle = [&] {
+                for (std::uint64_t i = 0; i < 257; ++i)
+                {
+                    auto input = makeValue(i);
+                    must(client.trySend(input));
+                }
+                for (std::uint64_t i = 0; i < 257; ++i)
+                {
+                    auto work = receive(server);
+                    check(valueOf(work.message()) == i, "FIFO across request segments");
+                    auto result = makeValue(i + 1);
+                    must(server.tryReply(work, result));
+                }
+                for (std::uint64_t i = 0; i < 257; ++i)
+                    check(valueOf(receivedReply(client)) == i + 1, "FIFO across reply segments");
+            };
+            cycle(); cycle();
+            const auto before = testing::counts();
+            ipc_allocation::start();
+            testing::startAllocations();
+            for (int i = 0; i < 20; ++i) cycle();
+            const auto exe = ipc_allocation::stop(), dll = testing::stopAllocations();
+            const auto after = testing::counts();
+            check(after.allocations == before.allocations && after.segments == before.segments,
+                "repeated peak backlog must reuse segments");
+            check(after.segment_reuses > before.segment_reuses && exe == 0 && dll == 0,
+                "steady segment reuse must allocate nothing in EXE or DLL");
+            std::printf("backlog=257 initial_segment=4 live_segments=%zu repeated_cycles=20 new_allocations=%zu\n",
+                after.segments, after.allocations - before.allocations);
+            client.reset(); server.reset();
+            empty();
+        }
+        {
+            auto server = must(core.createResponder("segments.overlap"));
+            auto client = must(core.createRequester("segments.overlap", {1, 1}));
+            auto zero = makeValue(0), one = makeValue(1), two = makeValue(2);
+            must(client.trySend(zero)); must(client.trySend(one));
+            receive(server).reset();
+            ReceivedRequest second;
+            arm(testing::EPoint::SEGMENT_RECYCLE);
+            std::jthread consumer([&] {
+                check(server.tryReceive(second) == EIpcReceive::RECEIVED, "cross-segment receive");
+            });
+            while (!hook_entered.load()) std::this_thread::yield();
+            testing::failSegmentAllocations(1);
+            const auto rejected = client.trySend(two);
+            check(!rejected && rejected.error() == EIpcError::WOULD_BLOCK && valueOf(two) == 2,
+                "producer cannot reuse segment still held by consumer");
+            hook_release = true;
+            consumer.join();
+            testing::setHook(nullptr);
+            check(valueOf(second.message()) == 1, "consumer value intact across failed growth");
+            testing::failSegmentAllocations(1);
+            const auto before = testing::counts().allocations;
+            must(client.trySend(two)); // safe recycling does not call the injected-failing allocator
+            testing::failSegmentAllocations(0);
+            check(testing::counts().allocations == before && two.empty(), "recycled segment avoids allocation");
+            second.reset();
+            auto third = receive(server);
+            check(valueOf(third.message()) == 2, "recycled FIFO value intact");
+            third.reset(); client.reset(); server.reset();
+            empty();
+        }
+    }
+
     void closeout()
     {
         auto& core = IpcCore::instance();
@@ -730,7 +810,7 @@ namespace
         auto& core = IpcCore::instance();
         auto server = must(core.createResponder("fifo"));
         auto client = must(core.createRequester("fifo", {8, 8}));
-        constexpr std::uint64_t total = 100000;
+        constexpr std::uint64_t total = 1000000;
         std::jthread consumer([&] {
             std::uint64_t expected = 0;
             while (expected != total)
@@ -1152,7 +1232,7 @@ int main(int argc, char** argv)
     check(argc == 2, "test case required");
     const std::string_view test = argv[1];
     if (test == "lifecycle") lifecycle();
-    else if (test == "messages") { messages(); r2Contracts(); }
+    else if (test == "messages") { messages(); r2Contracts(); segments(); }
     else if (test == "directory") directory();
     else if (test == "grace") grace();
     else if (test == "closeout") closeout();

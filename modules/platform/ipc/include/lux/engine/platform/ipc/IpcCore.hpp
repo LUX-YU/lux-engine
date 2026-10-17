@@ -12,8 +12,9 @@ namespace lux::platform::ipc
 
     struct IpcQueueConfig final
     {
-        std::size_t request_capacity = 64;
-        std::size_t reply_capacity = 64;
+        // Initial segment sizes, not total queued-message limits.
+        std::size_t request_segment_size = 64;
+        std::size_t reply_segment_size = 64;
     };
 
     class LUX_PLATFORM_IPC_PUBLIC ReceivedRequest final

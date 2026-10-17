@@ -118,7 +118,7 @@ namespace lux::render
 namespace extension_test
 {
     inline const StorageDescriptor TestBufferStorage::description{
-        StorageNameView("test.extension.BufferStorage"), {1, 0}, scopeMask(EResourceScope::GLOBAL), nullptr,
+        StorageNameView("test.extension.BufferStorage"),
         0, 0, bindings, &DataSchema<BufferBinding>::schema
     };
 }

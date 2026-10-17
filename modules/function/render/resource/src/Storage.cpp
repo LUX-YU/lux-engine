@@ -19,12 +19,11 @@ namespace lux::render
 
     RenderResult<void> validateStorage(const StorageDescriptor& descriptor) noexcept
     {
-        const bool invalid_identity = !descriptor.type.isValid() || descriptor.abi.major == 0;
-        const bool invalid_scopes = descriptor.scopes == 0 || (descriptor.scopes & ~15u) != 0;
+        const bool invalid_identity = !descriptor.type.isValid();
         const auto capabilities = descriptor.required_capabilities | descriptor.optional_capabilities;
         const bool invalid_capabilities = (capabilities & ~3u) != 0 ||
             (descriptor.required_capabilities & descriptor.optional_capabilities) != 0;
-        if (invalid_identity || invalid_scopes || invalid_capabilities)
+        if (invalid_identity || invalid_capabilities)
             return cxx::unexpected(RenderError{kStorageContract});
         for (std::size_t i = 0; i < descriptor.bindings.size(); ++i)
         {
@@ -36,25 +35,19 @@ namespace lux::render
                 if (descriptor.bindings[j].set == binding.set && descriptor.bindings[j].binding == binding.binding)
                     return cxx::unexpected(RenderError{kStorageContract});
         }
-        if (descriptor.config)
-            if (auto valid = validateDataSchema(*descriptor.config); !valid) return valid;
         if (descriptor.binding_schema) return validateDataSchema(*descriptor.binding_schema);
         return {};
     }
 
     RenderResult<void> compatibleStorage(const StorageDescriptor& expected, const StorageDescriptor& actual) noexcept
     {
-        const bool identity_mismatch = expected.type != actual.type || expected.abi != actual.abi;
-        const bool policy_mismatch = expected.scopes != actual.scopes ||
-            expected.required_capabilities != actual.required_capabilities ||
+        const bool identity_mismatch = expected.type != actual.type;
+        const bool policy_mismatch = expected.required_capabilities != actual.required_capabilities ||
             expected.optional_capabilities != actual.optional_capabilities;
-        const bool config_presence_mismatch = bool(expected.config) != bool(actual.config);
         const bool binding_mismatch = !std::ranges::equal(expected.bindings, actual.bindings) ||
             bool(expected.binding_schema) != bool(actual.binding_schema);
-        if (identity_mismatch || policy_mismatch || config_presence_mismatch || binding_mismatch)
+        if (identity_mismatch || policy_mismatch || binding_mismatch)
             return cxx::unexpected(RenderError{kStorageMismatch});
-        if (expected.config)
-            if (auto valid = compatibleDataSchemas(*expected.config, *actual.config); !valid) return valid;
         if (expected.binding_schema) return compatibleDataSchemas(*expected.binding_schema, *actual.binding_schema);
         return {};
     }

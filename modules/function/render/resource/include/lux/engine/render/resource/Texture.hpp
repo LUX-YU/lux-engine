@@ -132,15 +132,9 @@ namespace lux::render
     {
     public:
         using Config = TextureStorageConfig;
-        static inline constexpr DataField config_fields[]{
-            {"capacity", cxx::EScalarKind::U32}, {"byte_limit", cxx::EScalarKind::U64}
-        };
-        static inline constexpr DataSchemaDescriptor config_schema{
-            DataTypeIdView("lux.render.TextureStorage.Config"), {1, 0}, {1, 0}, config_fields, 12, 4
-        };
         static inline constexpr ShaderBinding bindings[]{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}};
         static inline constexpr StorageDescriptor description{
-            kTextureStorageType, {1, 0}, scopeMask(EResourceScope::GLOBAL), &config_schema,
+            kTextureStorageType,
             static_cast<std::uint32_t>(EStorageCapability::SAMPLED_IMAGE_ARRAY),
             static_cast<std::uint32_t>(EStorageCapability::BLOCK_COMPRESSION_BC), bindings, &DataSchema<TextureBinding>::schema
         };

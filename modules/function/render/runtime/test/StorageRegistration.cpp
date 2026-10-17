@@ -42,7 +42,7 @@ namespace lux::render::vulkan
             {
                 static const auto wrong = [] {
                     auto result = render::TextureStorage::description;
-                    ++result.abi.minor;
+                    result.required_capabilities = 0;
                     return result;
                 }();
                 value.description = &wrong;

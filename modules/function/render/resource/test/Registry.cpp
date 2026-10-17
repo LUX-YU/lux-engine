@@ -1,6 +1,7 @@
 #include "FactoryAudit.hpp"
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <cstdlib>
+#include <cstdio>
 
 using namespace lux::render;
 
@@ -27,7 +28,7 @@ namespace
     {
         using Config = unsigned;
         static inline constexpr StorageDescriptor description{
-            StorageNameView("test.ScopedStorage"), {1, 0}, 15
+            StorageNameView("test.ScopedStorage")
         };
         struct Ops final
         {
@@ -66,6 +67,15 @@ namespace
         };
     };
     static_assert(sizeof(WrongOpsStorage::Ops) == sizeof(TestStorage::Ops));
+
+    struct WrongConfigStorage final
+    {
+        struct Config final { unsigned value; };
+        using Ops = TestStorage::Ops;
+        using Access = TestStorage::Access;
+        static inline constexpr auto description = TestStorage::description;
+    };
+    static_assert(sizeof(WrongConfigStorage::Config) == sizeof(TestStorage::Config));
 
     StorageFactory factory() noexcept
     {
@@ -194,6 +204,22 @@ int main()
         require(counts.created == 0);
         require(!registry.installFactory(factory(), 8u));
         require(*static_cast<const unsigned*>(registry.configuration(TestStorage::description.type)) == 7u);
+        // Wrong Ops on a NEW key must reject before Native create, not merely fail Access afterwards.
+        const auto before_wrong_ops = counts.created;
+        const auto before_wrong_destroy = counts.destroyed;
+        const auto before_wrong_size = registry.size();
+        require(!registry.getOrCreate<WrongOpsStorage>(root, "wrong-ops-explicit", 7u));
+        std::fprintf(stderr, "wrong Ops new key: create delta=%u destroy delta=%u instance delta=%zu\n",
+            counts.created - before_wrong_ops, counts.destroyed - before_wrong_destroy, registry.size() - before_wrong_size);
+        require(counts.created == before_wrong_ops && counts.destroyed == before_wrong_destroy &&
+            registry.size() == before_wrong_size);
+        require(!registry.getOrCreate<WrongOpsStorage>(root, "wrong-ops-default"));
+        require(counts.created == before_wrong_ops && counts.destroyed == before_wrong_destroy &&
+            registry.size() == before_wrong_size);
+        require(!registry.getOrCreate<WrongConfigStorage>(root, "wrong-config-default"));
+        require(!registry.getOrCreate<WrongConfigStorage>(root, "wrong-config-explicit", {7}));
+        require(counts.created == before_wrong_ops && counts.destroyed == before_wrong_destroy &&
+            registry.size() == before_wrong_size);
         auto global = registry.getOrCreate<TestStorage>(root, "shared");
         auto repeated = registry.getOrCreate<TestStorage>(root, "shared", 7);
         require(global && repeated && counts.created == 1);

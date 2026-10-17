@@ -329,7 +329,7 @@ static int claims()
             required[0] = provided[0];
             required[0].participation = EResourceClaim::REQUIRE;
             if (fault == 4) required[0].storage->scope = EResourceScope::SCENE;
-            if (fault == 5) ++required[0].storage->abi.minor;
+            if (fault == 5) required[0].storage->key = "different-instance";
             if (fault == 6) required[0].storage->type = StorageName("test.OtherStorage");
             if (fault == 7) required[0].storage.reset();
             if (fault == 8) required[0].initial_ranges = {GraphBufferRange{0, 128}};
@@ -349,7 +349,7 @@ static int claims()
     required[0].description = provided[0].description;
     CHECK(!run());
     reset();
-    provided[0].storage = StorageRequirement{StorageName("bad"), {1, 0}, EResourceScope::GLOBAL};
+    provided[0].storage = StorageRequirement{StorageName("bad"), EResourceScope::GLOBAL};
     CHECK(!run()); // Persistent storage cannot be transient.
     for (unsigned fault = 0; fault < 3; ++fault)
     {

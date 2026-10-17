@@ -140,7 +140,7 @@ namespace lux::render
                     const bool is_invalid_claim = c.key.empty() || c.participation > EResourceClaim::OPTIONAL ||
                         c.origin > EGraphOrigin::HISTORY_CURRENT;
                     const bool is_invalid_storage = c.storage && (!c.storage->type.isValid() ||
-                        c.storage->abi.major == 0 || c.storage->scope > EResourceScope::ATTACHMENT ||
+                        c.storage->scope > EResourceScope::ATTACHMENT ||
                         c.origin == EGraphOrigin::TRANSIENT);
                     if (is_invalid_claim || is_invalid_storage)
                         return cxx::unexpected(failure(kFeatureContract, i, j));

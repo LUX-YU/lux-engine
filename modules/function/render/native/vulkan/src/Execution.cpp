@@ -56,7 +56,7 @@ namespace lux::render::vulkan
             if (plan.storage)
             {
                 const auto* factory = resources_->factory(plan.storage->type.view());
-                // Compiler already proved the frozen Factory/ABI/binding contract.
+                // Compiler already proved the installed typed Factory and binding contract.
                 auto domain = plan.storage->scope == EResourceScope::GLOBAL ?
                     RenderResult<ResourceDomain>{resources_->root()} :
                     resources_->ancestor(context->domain_, plan.storage->scope);

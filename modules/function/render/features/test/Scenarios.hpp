@@ -34,7 +34,7 @@ namespace fixture
     inline ResourceClaim material(EResourceClaim participation)
     {
         return {"material", participation, GraphBufferDesc{256}, EGraphOrigin::IMPORTED, {{}},
-            StorageRequirement{StorageName("test.MaterialStorage"), {1, 0}, EResourceScope::GLOBAL}};
+            StorageRequirement{StorageName("test.MaterialStorage"), EResourceScope::GLOBAL}};
     }
 
     inline ResourceClaim history(std::string key, EResourceClaim participation, bool previous)
@@ -42,7 +42,7 @@ namespace fixture
         auto c = image(std::move(key), participation);
         c.origin = previous ? EGraphOrigin::HISTORY_PREVIOUS : EGraphOrigin::HISTORY_CURRENT;
         if (previous) c.initial_ranges.push_back({});
-        c.storage = StorageRequirement{StorageName("test.HzbStorage"), {1, 0}, EResourceScope::VIEW};
+        c.storage = StorageRequirement{StorageName("test.HzbStorage"), EResourceScope::VIEW};
         return c;
     }
 

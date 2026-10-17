@@ -38,7 +38,7 @@ namespace texture_fixture
         out.push_back({"texture", EResourceClaim::PROVIDE,
             GraphImageDesc{c->width, c->height, c->mips, 1, c->format}, EGraphOrigin::IMPORTED,
             {GraphImageRange{1, 0, c->mips, 0, 1}},
-            StorageRequirement{StorageName(kTextureStorageType.name()), {1, 0}, EResourceScope::GLOBAL, "default"}});
+            StorageRequirement{StorageName(kTextureStorageType.name()), EResourceScope::GLOBAL, "default"}});
         const auto t = target(*c);
         out.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{t.width, t.height}});
         return {};

@@ -117,8 +117,6 @@ namespace lux::render::vulkan
             if (!factory || !factory->binding_ops ||
                 !static_cast<const StorageBindingOps*>(factory->binding_ops)->prepare)
                 return cxx::unexpected(RenderError{kStorageFactory});
-            if (factory->description->abi != binding.storage.abi)
-                return cxx::unexpected(RenderError{kStorageMismatch});
             resource.storage = binding.storage;
         }
         for (const auto& output : graph.outputs())

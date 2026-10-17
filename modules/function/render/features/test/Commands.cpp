@@ -55,6 +55,7 @@ int main()
     CHECK(encoded);
     auto decoded = decodeData<TextureBinding>({DataSchema<TextureBinding>::describe(), *encoded, {}}, {12, 0});
     CHECK(decoded && decoded->texture == binding.texture && decoded->lod == binding.lod);
-    CHECK(validateDataSchema(TextureStorage::config_schema));
+    auto config = ConfigValue::make(TextureStorage::Config{});
+    CHECK(config && config->type() == lux::cxx::typeToken<TextureStorage::Config>());
     return 0;
 }

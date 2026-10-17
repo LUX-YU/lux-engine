@@ -12,11 +12,6 @@ namespace lux::render
 
     enum class EResourceScope : std::uint8_t { GLOBAL, SCENE, VIEW, ATTACHMENT };
 
-    [[nodiscard]] constexpr std::uint8_t scopeMask(EResourceScope scope) noexcept
-    {
-        return std::uint8_t{1} << static_cast<unsigned>(scope);
-    }
-
     enum class EStorageCapability : std::uint32_t
     {
         NONE = 0,
@@ -27,20 +22,16 @@ namespace lux::render
     struct StorageRequirement final
     {
         StorageName type;
-        cxx::SchemaVersion abi;
         EResourceScope scope = EResourceScope::GLOBAL;
         std::string key; // empty uses the Graph semantic key; otherwise names the scoped Storage instance
         bool operator==(const StorageRequirement&) const noexcept = default;
     };
 
     // Static metadata. A descriptor is not an instance, a resource budget or a GPU owner.
-    // Configuration uses the existing DataSchema encoded-format contract, never a C++ object representation.
+    // Config/Ops qualification belongs to the typed Factory, not a manual version or encoded config schema.
     struct StorageDescriptor final
     {
         StorageNameView type;
-        cxx::SchemaVersion abi;
-        std::uint8_t scopes = scopeMask(EResourceScope::GLOBAL);
-        const DataSchemaDescriptor* config = nullptr;
         std::uint32_t required_capabilities = 0;
         std::uint32_t optional_capabilities = 0;
         std::span<const ShaderBinding> bindings;

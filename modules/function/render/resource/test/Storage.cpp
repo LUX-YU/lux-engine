@@ -19,19 +19,20 @@ namespace
 
 int main()
 {
-    constexpr StorageDescriptor original{StorageNameView("test.Storage"), {1, 0}};
+    constexpr StorageDescriptor original{StorageNameView("test.Storage")};
     require(bool(validateStorage(original)));
     require(bool(compatibleStorage(original, original)));
     auto changed = original;
     changed.type = StorageNameView("test.Other");
     require(!compatibleStorage(original, changed));
     changed = original;
-    changed.abi.minor = 1;
-    require(!compatibleStorage(original, changed));
+    changed.type = {};
+    require(!validateStorage(changed));
     changed = original;
-    changed.scopes = scopeMask(EResourceScope::SCENE);
-    require(!compatibleStorage(original, changed));
-    changed.scopes = 0;
+    std::array binding{ShaderBinding{0, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16}};
+    changed.bindings = binding;
+    require(bool(validateStorage(changed)) && !compatibleStorage(original, changed));
+    binding[0].kind = static_cast<EDescriptorKind>(255);
     require(!validateStorage(changed));
     changed = original;
     changed.required_capabilities = 1;

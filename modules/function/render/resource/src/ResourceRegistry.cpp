@@ -129,7 +129,8 @@ namespace lux::render
     }
 
     RenderResult<StorageId> ResourceRegistry::getOrCreateImpl(
-        const ResourceDomain& domain, std::string_view key, const StorageDescriptor& type, const void* config, StorageCppType actual
+        const ResourceDomain& domain, std::string_view key, const StorageDescriptor& type, const void* config,
+        StorageCppType actual, StorageCppType required_ops
     ) noexcept
     {
         if (!valid(domain)) return cxx::unexpected(RenderError{kStorageDomain});
@@ -139,11 +140,13 @@ namespace lux::render
         const auto& installed = *types_.find(index);
         if (auto compatible = compatibleStorage(*installed.factory.description, type); !compatible)
             return cxx::unexpected(compatible.error());
-        const auto scope = domains_.find(domain.id_)->scope;
-        if ((type.scopes & scopeMask(scope)) == 0) return cxx::unexpected(RenderError{kStorageDomain});
         if ((type.required_capabilities & ~capabilities_) != 0)
             return cxx::unexpected(RenderError{kStorageCapability});
-        if (config && installed.factory.config_type != actual) return cxx::unexpected(RenderError{kStorageMismatch});
+        // Typed callers qualify their Config and Ops before any new-key Native creation. Untyped
+        // prepared Native consumers use the already-proven installed Ops and pass no requested Ops.
+        const bool is_wrong_config = actual.size != 0 && installed.factory.config_type != actual;
+        const bool is_wrong_ops = required_ops.size != 0 && installed.factory.ops_type != required_ops;
+        if (is_wrong_config || is_wrong_ops) return cxx::unexpected(RenderError{kStorageMismatch});
         if (!config) config = installed.configuration.data();
         if (!config) return cxx::unexpected(RenderError{kStorageContract});
         auto id = local(domain.id_, index, key);

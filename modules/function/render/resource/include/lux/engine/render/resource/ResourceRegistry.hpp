@@ -75,11 +75,10 @@ namespace lux::render
         [[nodiscard]] RenderResult<typename T::Access>
         getOrCreate(const ResourceDomain& domain, std::string_view key, const typename T::Config& config) noexcept
         {
-            auto id = getOrCreate(domain, key, T::description, &config);
+            auto id = getOrCreateImpl(domain, key, T::description, &config,
+                storageCppType<typename T::Config>(), storageCppType<typename T::Ops>());
             if (!id) return cxx::unexpected(id.error());
             const auto& entry = *entries_.find(*id);
-            if (types_.find(entry.type)->factory.ops_type != storageCppType<typename T::Ops>())
-                return cxx::unexpected(RenderError{kStorageMismatch});
             return typename T::Access(entry.native.get(), *static_cast<const typename T::Ops*>(
                 types_.find(entry.type)->factory.ops), true);
         }
@@ -88,11 +87,10 @@ namespace lux::render
         [[nodiscard]] RenderResult<typename T::Access>
         getOrCreate(const ResourceDomain& domain, std::string_view key) noexcept
         {
-            auto id = getOrCreate(domain, key, T::description, nullptr);
+            auto id = getOrCreateImpl(domain, key, T::description, nullptr,
+                storageCppType<typename T::Config>(), storageCppType<typename T::Ops>());
             if (!id) return cxx::unexpected(id.error());
             const auto& entry = *entries_.find(*id);
-            if (types_.find(entry.type)->factory.ops_type != storageCppType<typename T::Ops>())
-                return cxx::unexpected(RenderError{kStorageMismatch});
             return typename T::Access(entry.native.get(), *static_cast<const typename T::Ops*>(
                 types_.find(entry.type)->factory.ops), true);
         }
@@ -154,7 +152,8 @@ namespace lux::render
 
     private:
         [[nodiscard]] RenderResult<StorageId> getOrCreateImpl(
-            const ResourceDomain&, std::string_view, const StorageDescriptor&, const void*, StorageCppType
+            const ResourceDomain&, std::string_view, const StorageDescriptor&, const void*, StorageCppType,
+            StorageCppType required_ops = {}
         ) noexcept;
 
         struct Domain final { DomainId id; DomainId parent; EResourceScope scope; bool closing = false; };

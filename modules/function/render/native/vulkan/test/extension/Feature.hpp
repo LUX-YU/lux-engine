@@ -24,10 +24,10 @@ namespace extension_test
     {
         out.push_back({"texture", EResourceClaim::PROVIDE, GraphImageDesc{16, 16}, EGraphOrigin::IMPORTED,
             {GraphImageRange{1, 0, 1, 0, 1}},
-            StorageRequirement{StorageName(kTextureStorageType.name()), {1, 0}, EResourceScope::GLOBAL, "default"}});
+            StorageRequirement{StorageName(kTextureStorageType.name()), EResourceScope::GLOBAL, "default"}});
         out.push_back({"values", EResourceClaim::PROVIDE, GraphBufferDesc{16}, EGraphOrigin::IMPORTED,
             {GraphBufferRange{0, 16}},
-            StorageRequirement{StorageName(TestBufferStorage::description.type.name()), {1, 0},
+            StorageRequirement{StorageName(TestBufferStorage::description.type.name()),
                 EResourceScope::GLOBAL, "values"}});
         out.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{16, 16}});
         return {};

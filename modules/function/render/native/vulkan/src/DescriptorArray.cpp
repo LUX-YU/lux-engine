@@ -1,6 +1,7 @@
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include "Shader.hpp"
+#include "LayoutPlan.hpp"
 #include "Native.hpp"
 #include <algorithm>
 
@@ -19,19 +20,16 @@ namespace lux::render::vulkan
         return maximum;
     }
 
-    RenderResult<std::shared_ptr<DescriptorArray>> DeviceSession::sampledImageArray(ShaderBinding binding) noexcept
+    RenderResult<std::shared_ptr<DescriptorArray>> DeviceSession::sampledImageArray() noexcept
     {
-        const bool is_invalid = binding.kind != EDescriptorKind::SAMPLED_IMAGE_ARRAY || binding.count != 0;
-        if (is_invalid) return cxx::unexpected(RenderError{kStorageContract});
-        // Cold allocation lookup only; expired allocations are not retained as a permanent resource cache.
-        std::erase_if(descriptor_arrays_, [](const auto& value) { return value.expired(); });
-        for (const auto& weak : descriptor_arrays_)
-            if (auto existing = weak.lock(); existing && existing->binding_ == binding) return existing;
+        const auto& binding = sampledImageTableBinding();
+        // Exactly one complete device table shape; its last actual user controls reclamation.
+        if (auto existing = sampled_images_.lock()) return existing;
         auto capacity = sampledImageCapacity();
         if (!capacity) return cxx::unexpected(capacity.error());
         auto result = std::shared_ptr<DescriptorArray>(new DescriptorArray(device_, binding, *capacity));
         if (auto ready = result->initialize(); !ready) return cxx::unexpected(ready.error());
-        descriptor_arrays_.push_back(result);
+        sampled_images_ = result;
         return result;
     }
 
@@ -74,6 +72,19 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kCapacity});
         }
         return slot;
+    }
+
+    void DescriptorArray::write(Slot slot, VkImageView image, VkSampler sampler) noexcept
+    {
+        const VkDescriptorImageInfo info{sampler, image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        write.dstSet = descriptors_;
+        write.dstBinding = binding_.binding;
+        write.dstArrayElement = slot.index;
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write.pImageInfo = &info;
+        vkUpdateDescriptorSets(device_.native(), 1, &write, 0, nullptr);
     }
 
     RenderResult<void> DescriptorArray::release(Slot slot) noexcept

@@ -763,7 +763,7 @@
   },
   "N5.3": {
     "title": "Single shader layout and relocation",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/features/",
       "modules/function/render/graph/",
@@ -782,7 +782,11 @@
       "T-GPU-11",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N5-LAYOUT-FREEZE.md",
+      "N5-LAYOUT-IMPLEMENTATION.md"
+    ],
+    "qualification": "Native single layout/private packing/controlled relocation checkpoint; lglsl asset path and expanded parameter ABI still in progress."
   },
   "N5.4": {
     "title": "Real shader ABI",
@@ -856,9 +860,10 @@
     ],
     "evidence": [
       "N5-COLOR-IMPLEMENTATION.md",
-      "N5-COLOR-VERIFICATION.md"
+      "N5-COLOR-VERIFICATION.md",
+      "N5-LAYOUT-IMPLEMENTATION.md"
     ],
-    "qualification": "Color-only no-copy/no-readback-buffer subset passed independent ASan107; full prepared-resource rebinding pending."
+    "qualification": "Color-only checkpoint independently verified; Owner-safe-point Texture/Buffer descriptor and barrier rebinding implemented in current checkpoint, pending independent ASan. General parameter sources remain."
   },
   "N6.1": {
     "title": "Mesh storage",

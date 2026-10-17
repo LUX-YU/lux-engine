@@ -20,6 +20,8 @@ namespace lux::render::vulkan
         DescriptorArray& operator=(const DescriptorArray&) = delete;
         [[nodiscard]] RenderResult<Slot> acquire() noexcept;
         [[nodiscard]] RenderResult<void> release(Slot slot) noexcept;
+        // Caller owns a live, unpublished slot; physical placement belongs to this Native table.
+        void write(Slot slot, VkImageView image, VkSampler sampler) noexcept;
         [[nodiscard]] VkDescriptorSetLayout layout() const noexcept { return layout_; }
         [[nodiscard]] VkDescriptorSet descriptors() const noexcept { return descriptors_; }
         [[nodiscard]] std::uint32_t capacity() const noexcept { return capacity_; }

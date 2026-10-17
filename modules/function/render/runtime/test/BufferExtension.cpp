@@ -42,6 +42,23 @@ static void pixels(const TypedRenderCompletion<Readback>& completion, unsigned e
     for (auto byte : bytes) CHECK(std::to_integer<unsigned>(byte) == expected);
 }
 
+static void publishedPixels(RenderClient& client, const BoundCommand<Readback>& read,
+    const AttachmentRequest& group, unsigned previous, unsigned expected)
+{
+    // Readback returns an already submitted frame, not an implicit render-after-update transaction.
+    // A frame accepted before publication may still return the old value; future frames must converge.
+    const auto deadline = Clock::now() + 5s;
+    while (Clock::now() < deadline)
+    {
+        const auto completion = call(client, read, group);
+        const auto bytes = completion.response().pixels.bytes().view();
+        CHECK(bytes.size() == 1024);
+        if (std::ranges::all_of(bytes, [&](auto byte) { return std::to_integer<unsigned>(byte) == expected; })) return;
+        for (auto byte : bytes) CHECK(std::to_integer<unsigned>(byte) == previous);
+    }
+    CHECK(false);
+}
+
 int main()
 {
     using namespace extension_test;
@@ -144,8 +161,8 @@ int main()
     CHECK(render_allocation::calls == 0 && server->stats().submissions > before + 20);
     source = make_source(0.25f);
     CHECK(decoded<BufferBinding>(call(*upload, create_buffer, SetBuffer::Request{buffer.id, source[0]})).id == buffer.id);
-    // Future users keep their original valid backing until the explicit detach/attach boundary.
-    pixels(call(*main, read, groups[0]), 64);
+    // Owner-safe-point publication updates every existing Context without detach/recompile.
+    for (const auto& group : groups) publishedPixels(*main, read, group, 64, 32);
     call(*main, detach, groups[0]);
     CHECK(!runtime_test::coldCall<ReleasePreparedStorage>(*main, attachment_storage));
     CHECK(!runtime_test::coldCall<FindStorage>(*main, {groups[0], buffer_type, "private"}));
@@ -157,7 +174,7 @@ int main()
     const auto recreated = decoded<BufferBinding>(call(*upload, create_buffer, SetBuffer::Request{{buffer_storage, {}}, source[0]}));
     CHECK(recreated.id.local.index == buffer.id.local.index && recreated.id.local.gen != buffer.id.local.gen);
     pixels(call(*main, read, groups[0]), 32);
-    pixels(call(*main, read, groups[1]), 64);
+    pixels(call(*main, read, groups[1]), 32);
     // A second real Feature consumes the SAME Root Texture independently of the Buffer Feature.
     texture_fixture::Config sample{texture.texture};
     FeatureUse image_selected{take(feature_test::find(*main, texture_fixture::type.name())), "image", take(ConfigValue::make(sample))};

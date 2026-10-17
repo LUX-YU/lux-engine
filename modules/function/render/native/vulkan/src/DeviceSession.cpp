@@ -24,8 +24,8 @@ namespace lux::render::vulkan
         globals_.clear();
         uploads_.reset();
         for (auto& retirement : retirement_owners_) retirement.reset();
-        for (const auto& array : descriptor_arrays_) if (!array.expired()) std::terminate();
-        descriptor_arrays_.clear();
+        if (!sampled_images_.expired()) std::terminate();
+        sampled_images_.reset();
         while (!buffers_.empty()) destroyFinished(&*buffers_.begin());
         // Destroy aliases before allocations, including aliases not explicitly released by the caller.
         for (;;)

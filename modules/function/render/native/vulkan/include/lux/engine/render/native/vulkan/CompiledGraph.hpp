@@ -7,6 +7,8 @@
 
 namespace lux::render::vulkan
 {
+    struct LayoutPlan;
+
     struct NativeResourcePlan final
     {
         std::string key;
@@ -49,7 +51,7 @@ namespace lux::render::vulkan
         bool begin_rendering = true;
         bool end_rendering = true;
         bool bind_pipeline = true;
-        std::vector<std::uint32_t> descriptor_resources; // ordered by descriptor set
+        std::uint32_t layout_program = kGraphInvalidIndex; // cold LayoutPlan entry, not a second graph
     };
 
     // The Effect owns this move-only immutable result; execution contexts borrow/pin that one result.
@@ -73,11 +75,14 @@ namespace lux::render::vulkan
         [[nodiscard]] bool compatible(const TargetDesc& target) const noexcept;
 
     private:
+        friend class ExecutionContext;
+        friend class DeviceSession;
         friend RenderResult<CompiledGraph> compileGraph(
             const DeviceSession&, const RenderGraphDefinition&, const GraphAnalysis&,
             const GraphStorageBindings&, std::span<const PassProgram>, const TargetDesc&
         ) noexcept;
-        CompiledGraph(VkDevice device, TargetDesc target) noexcept : device_(device), target_(target) {}
+        CompiledGraph(VkDevice device, TargetDesc target) noexcept;
+        std::unique_ptr<LayoutPlan> descriptor_plan_;
         VkDevice device_;
         TargetDesc target_;
         VkPipelineLayout layout_{};

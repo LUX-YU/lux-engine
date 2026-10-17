@@ -66,8 +66,10 @@ namespace extension_test
             {lux::rdesc::EShaderType::FRAGMENT, "main", {fragment.begin(), fragment.end()}}
         };
         draw.shader.interface = {
-            {{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}, {1, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16}}, 16
+            {{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, 0, "textures"},
+                {1, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16, "data"}}, 16
         };
+        draw.resources = {{"textures", "shared:texture"}, {"data", "shared:values"}};
         result.arguments.push_back({"shared:texture", *ConfigValue::make(TextureBinding{config->texture})});
         result.arguments.push_back({"shared:values", *ConfigValue::make(BufferBinding{config->buffer})});
         result.programs.push_back(std::move(draw));

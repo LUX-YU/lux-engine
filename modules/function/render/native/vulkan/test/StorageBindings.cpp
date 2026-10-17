@@ -3,15 +3,33 @@
 #include "extension/NativeBuffer.hpp"
 #include "extension/Feature.hpp"
 #include "extension/WrongBlock.hpp"
+#include "extension/Packed.hpp"
 #include "Allocation.hpp"
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 
+namespace lux::render::vulkan
+{
+    struct NativeMemoryAudit final
+    {
+        static void repeatedRebind(ExecutionContext& context) noexcept
+        {
+            const auto submitted = context.submitted_bank_;
+            context.rebind();
+            CHECK(context.descriptor_bank_ != submitted);
+            context.rebind();
+            CHECK(context.descriptor_bank_ != submitted); // repeated updates reuse the safe bank, never toggle into pending
+        }
+    };
+}
+
 static bool hold_completion = false;
+static std::string_view fail_operation;
 static unsigned destroyed_buffers = 0;
 namespace lux::render::vulkan::test
 {
     VkResult before(const char* operation) noexcept
     {
+        if (fail_operation == operation) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         if (hold_completion && std::string_view(operation) == "fence_status") return VK_NOT_READY;
         return VK_SUCCESS;
     }
@@ -87,8 +105,99 @@ int main()
     auto conflicting_argument = session->prepare(code, extension_test::target, nullptr, nullptr, wrong_arguments);
     CHECK(!conflicting_argument && conflicting_argument.error().type == kStorageMismatch);
     CHECK(session->resources().size() == native_before);
+    for (const auto label : {"context_descriptor_pool", "context_descriptor_set"})
+    {
+        fail_operation = label;
+        const auto rejected = session->prepare(code, extension_test::target, nullptr, nullptr, arguments);
+        CHECK(!rejected && rejected.error().type == kNativeFailure);
+        fail_operation = {};
+        CHECK(buffer.backingCount() == 1 && session->resources().size() == native_before);
+    }
     auto* context = take(session->prepare(code, extension_test::target, nullptr, nullptr, arguments));
     execute(*context, *session, 64);
+    {
+        auto packed = programs;
+        packed[0].shader.stages[1].words.assign(extension_test::packed_fragment.begin(), extension_test::packed_fragment.end());
+        packed[0].shader.interface.bindings = {
+            {2, 5, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, 0, "textures"},
+            {3, 7, EDescriptorKind::STORAGE_BUFFER, 1, 16, "data"},
+            {6, 11, EDescriptorKind::STORAGE_BUFFER, 1, 16, "other"}
+        };
+        packed[0].resources = {{"textures", "shared:texture"}, {"data", "shared:values"}, {"other", "shared:values"}};
+        auto packed_code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly.definition,
+            assembly.analysis, assembly.external_bindings, packed, extension_test::target)));
+        auto* packed_context = take(session->prepare(packed_code, extension_test::target, nullptr, nullptr, arguments));
+        execute(*packed_context, *session, 32); // same Buffer, two independently packed bindings, real relocation
+        CHECK(session->release(packed_context));
+        {
+            const std::array<float, 4> values{0.25f, 0.25f, 0.25f, 0.25f};
+            const auto bytes = std::as_bytes(std::span(values));
+            auto owner = std::make_shared<const std::vector<std::byte>>(bytes.begin(), bytes.end());
+            auto other = take(lux::render::upload(buffer,
+                extension_test::SetBuffer::Request{{instance_id, {}}, payload(owner)}));
+            const auto other_id = other.first.id;
+            complete(other.second, worker, *session);
+            other.second.reset();
+            RenderGraphBuilder builder;
+            const auto image = take(builder.declareResource({"image", GraphImageDesc{16, 16}, EGraphOrigin::IMPORTED,
+                {GraphImageRange{1, 0, 1, 0, 1}}}));
+            const auto a = take(builder.declareResource({"a", GraphBufferDesc{16}, EGraphOrigin::IMPORTED,
+                {GraphBufferRange{0, 16}}}));
+            const auto b = take(builder.declareResource({"b", GraphBufferDesc{16}, EGraphOrigin::IMPORTED,
+                {GraphBufferRange{0, 16}}}));
+            const auto color = take(builder.declareResource({"color", GraphImageDesc{16, 16}}));
+            const auto pixels = take(builder.declareResource({"pixels", GraphBufferDesc{1024}}));
+            take(builder.addPass({"draw", EGraphPassKind::GRAPHICS,
+                {{{image, 0}, {}, EGraphAccess::READ, 0, {}, EGraphUse::SAMPLED},
+                 {{a, 0}, {}, EGraphAccess::READ, 0, {}, EGraphUse::STORAGE_READ},
+                 {{b, 0}, {}, EGraphAccess::READ, 0, {}, EGraphUse::STORAGE_READ},
+                 {{color, 1}, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::COLOR_ATTACHMENT}}}));
+            take(builder.addPass({"read", EGraphPassKind::TRANSFER,
+                {{{color, 1}, {}, EGraphAccess::READ, 0, {}, EGraphUse::TRANSFER_SOURCE},
+                 {{pixels, 1}, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::TRANSFER_DESTINATION}}}));
+            CHECK(builder.exportOutput({{color, 1}, {}, extension_test::target}));
+            CHECK(builder.exportOutput({{pixels, 1}}));
+            auto graph = take(std::move(builder).finish());
+            auto analysis = take(analyze(graph));
+            GraphStorageBindings storage;
+            storage.global = {
+                {image, {StorageName(kTextureStorageType.name()), "default"}},
+                {a, {StorageName(TestBufferStorage::description.type.name()), "values"}},
+                {b, {StorageName(TestBufferStorage::description.type.name()), "values"}}
+            };
+            auto distinct = packed;
+            distinct[0].pass_key = "draw";
+            distinct[1].pass_key = "read";
+            distinct[0].resources = {{"other", "b"}, {"textures", "image"}, {"data", "a"}};
+            const std::array arguments{
+                StorageArgument{"image", take(ConfigValue::make(TextureBinding{texture}))},
+                StorageArgument{"a", take(ConfigValue::make(extension_test::BufferBinding{id}))},
+                StorageArgument{"b", take(ConfigValue::make(extension_test::BufferBinding{other_id}))}
+            };
+            auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, graph, analysis, storage,
+                distinct, extension_test::target)));
+            auto* context = take(session->prepare(code, extension_test::target, nullptr, nullptr, arguments));
+            execute(*context, *session, 16); // distinct buffers: 128 * 0.5 * 0.25, no private set per resource
+            CHECK(session->release(context));
+            CHECK(buffer.remove(other_id));
+        }
+        for (unsigned fault = 0; fault < 6; ++fault)
+        {
+            auto bad = packed;
+            if (fault == 0) bad[0].resources[1].resource_key = "missing";
+            if (fault == 1) bad[0].resources[1].shader_name = "missing";
+            if (fault == 2) bad[0].shader.interface.bindings[1].name = "missing";
+            if (fault == 3) bad[0].shader.interface.bindings[1].stages = 1;
+            if (fault == 4) bad[0].shader.interface.bindings[1].kind = static_cast<EDescriptorKind>(255);
+            if (fault == 5)
+            {
+                bad[0].shader.interface.bindings[2].binding = 7;
+                bad[0].shader.interface.bindings[2].set = 3;
+            }
+            CHECK(!compileGraph(*session, assembly.definition, assembly.analysis, assembly.external_bindings,
+                bad, extension_test::target));
+        }
+    }
     // Reflection mismatches are rejected, including type, layout, set and array extent.
     for (unsigned fault = 0; fault < 4; ++fault)
     {
@@ -109,14 +218,14 @@ int main()
     upload = take(lux::render::upload(buffer, extension_test::SetBuffer::Request{id, payload(quarter_owner)}));
     complete(upload.second, worker, *session);
     upload.second.reset();
-    CHECK(buffer.backingCount() == 2);
+    CHECK(buffer.backingCount() == 1); // Prepared users rebind at publication; completed old backing retires.
     auto* replacement = take(session->prepare(code, extension_test::target, nullptr, nullptr, arguments));
     CHECK(&replacement->code() == &context->code()); // same immutable code, distinct prepared asset bindings
-    execute(*context, *session, 64);
+    execute(*context, *session, 32);
     execute(*replacement, *session, 32);
     CHECK(buffer.remove(id));
     CHECK(!session->prepare(code, extension_test::target, nullptr, nullptr, arguments));
-    execute(*context, *session, 64);
+    execute(*context, *session, 32);
     execute(*replacement, *session, 32);
     render_allocation::participate = true;
     render_allocation::calls = 0;
@@ -133,6 +242,8 @@ int main()
     CHECK(take(context->execute()));
     CHECK(take(replacement->execute()));
     const auto ticket = *replacement->lastUse();
+    NativeMemoryAudit::repeatedRebind(*context);
+    NativeMemoryAudit::repeatedRebind(*replacement);
     const auto destroyed_before = destroyed_buffers;
     render_allocation::calls = 0;
     render_allocation::window = true;
@@ -150,7 +261,7 @@ int main()
     hold_completion = false;
     CHECK(take(session->queue().wait(ticket, UINT64_MAX)));
     CHECK(session->collect());
-    CHECK(destroyed_buffers == destroyed_before + 4); // two professional versions + two Context readback buffers
+    CHECK(destroyed_buffers == destroyed_before + 3); // current professional version + two Context readback buffers
     // Minimal indirect Material-like owner: a stored Texture reference survives both its creator
     // and its preload. It is the sole future user, and keeps the backing through a REAL copy ticket.
     auto& registry = session->resources();

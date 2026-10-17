@@ -45,6 +45,8 @@ namespace lux::render::vulkan
         friend class ReadbackOperation;
         void cancelReadbacks() noexcept;
         void withdraw() noexcept;
+        [[nodiscard]] RenderResult<void> prepareDescriptors() noexcept;
+        void rebind() noexcept;
         ReadbackOperation* readbacks_ = nullptr;
         struct Binding final
         {
@@ -59,6 +61,7 @@ namespace lux::render::vulkan
             std::vector<VkImageMemoryBarrier2> images;
             std::vector<VkBufferMemoryBarrier2> buffers;
             std::vector<VkDescriptorSet> descriptors;
+            std::array<VkDescriptorSet, 2> private_descriptors{};
             const std::array<float, 4>* parameters = nullptr;
         };
         ExecutionContext(DeviceSession& owner, SubmissionQueue& queue, std::shared_ptr<const CompiledGraph> code, TargetDesc target) noexcept;
@@ -78,6 +81,10 @@ namespace lux::render::vulkan
         std::vector<StorageUse> leases_;
 
         std::vector<Pass> passes_;
+        std::shared_ptr<DescriptorArray> shared_descriptors_;
+        VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
+        unsigned descriptor_bank_ = 0;
+        unsigned submitted_bank_ = 0;
         std::vector<VkBufferMemoryBarrier2> host_barriers_;
         std::optional<SubmissionTicket> last_use_;
         std::uint32_t readback_ = kGraphInvalidIndex;

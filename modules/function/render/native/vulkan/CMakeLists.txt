@@ -10,7 +10,7 @@ find_path(LUX_VMA_INCLUDE_DIR vk_mem_alloc.h
 set(LUX_NATIVE_SOURCES
     src/Error.cpp src/DeviceSession.cpp src/DescriptorArray.cpp src/device/Device.cpp src/device/Vma.cpp
     src/memory/Memory.cpp src/transfer/Submission.cpp src/retirement/Retirement.cpp
-    src/Compile.cpp src/Shader.cpp src/Execution.cpp src/Readback.cpp
+    src/Compile.cpp src/LayoutPlan.cpp src/Shader.cpp src/Execution.cpp src/Readback.cpp
     src/transfer/Transfer.cpp src/transfer/GpuWork.cpp
 )
 

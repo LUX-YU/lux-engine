@@ -3,7 +3,6 @@
 #include <lux/engine/render/data/ConfigValue.hpp>
 #include <lux/cxx/core/Schema.hpp>
 #include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/data/ShaderInterface.hpp>
 
 namespace lux::render
 {
@@ -42,7 +41,6 @@ namespace lux::render
         StorageNameView type;
         std::uint32_t required_capabilities = 0;
         std::uint32_t optional_capabilities = 0;
-        std::span<const ShaderBinding> bindings;
         ConfigValue::Type binding_type;
     };
 

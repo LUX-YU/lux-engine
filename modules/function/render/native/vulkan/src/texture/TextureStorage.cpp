@@ -176,6 +176,7 @@ namespace lux::render::vulkan
             ++backing->leases_;
             binding->parameters = {float(value.descriptorIndex()), float(value.info().color_space), float(lod), 0};
             binding->last_use = &value.last_use_;
+            binding->publishUpdate();
         }
 
         ~Use() noexcept
@@ -229,9 +230,8 @@ namespace lux::render::vulkan
             [](void* storage, const NativeResourcePlan& plan, const void* argument,
                 PreparedStorageBinding& binding) noexcept {
                 return static_cast<TextureStorage*>(storage)->prepare(plan, *static_cast<const TextureBinding*>(argument), binding);
-            }, [](const DeviceSession& session, const void*) noexcept {
-            return session.sampledImageCapacity();
-        }};
+            }
+        };
         static const auto compatible = +[](const vulkan::TextureStorage& value, const TextureStorageConfig& config) noexcept {
             return value.compatibleConfig(config);
         };
@@ -252,7 +252,7 @@ namespace lux::render::vulkan
 
     RenderResult<void> TextureStorage::initialize() noexcept
     {
-        auto table = session_.sampledImageArray(lux::render::TextureStorage::description.bindings.front());
+        auto table = session_.sampledImageArray();
         if (!table) return cxx::unexpected(table.error());
         physical_->descriptors = std::move(*table);
         return {};
@@ -377,15 +377,7 @@ namespace lux::render::vulkan
         result = LUX_NATIVE("texture_sampler", vkCreateSampler(device, &sampler, nullptr, &version.sampler_));
         if (result != VK_SUCCESS) { destroy(version); return cxx::unexpected(nativeError(result)); }
         // This unused descriptor is not reachable by any Context until publish after final Graphics completion.
-        VkDescriptorImageInfo image{version.sampler_, version.view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-        VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        write.dstSet = physical_->descriptors->descriptors();
-        write.dstBinding = 0;
-        write.dstArrayElement = descriptor->index;
-        write.descriptorCount = 1;
-        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        write.pImageInfo = &image;
-        vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+        physical_->descriptors->write(*descriptor, version.view_, version.sampler_);
         if (id.isNull()) id = TextureId{id_, textures_.emplace()};
         record = textures_.find(id.local);
         record->updating = true;

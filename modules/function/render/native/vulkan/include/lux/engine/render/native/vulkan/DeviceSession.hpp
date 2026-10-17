@@ -50,7 +50,7 @@ namespace lux::render::vulkan
         }
 
         [[nodiscard]] RenderResult<std::uint32_t> sampledImageCapacity() const noexcept;
-        [[nodiscard]] RenderResult<std::shared_ptr<DescriptorArray>> sampledImageArray(ShaderBinding binding) noexcept;
+        [[nodiscard]] RenderResult<std::shared_ptr<DescriptorArray>> sampledImageArray() noexcept;
         [[nodiscard]] const VulkanDevice& device() const noexcept { return device_; }
         // Boundary lookup compares stable owner identity before inspecting the ticket's queue.
         [[nodiscard]] SubmissionQueue* queueFor(SubmissionTicket ticket) noexcept;
@@ -122,6 +122,6 @@ namespace lux::render::vulkan
         std::unique_ptr<UploadState> uploads_;
         ResourceRegistry resources_;
         StorageSet globals_;
-        std::vector<std::weak_ptr<DescriptorArray>> descriptor_arrays_;
+        std::weak_ptr<DescriptorArray> sampled_images_;
     };
 }

@@ -52,7 +52,6 @@ namespace extension_test
             std::uint32_t capacity = 8;
             bool operator==(const Config&) const noexcept = default;
         };
-        static inline constexpr ShaderBinding bindings[]{{1, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16}};
         static const StorageDescriptor description;
         struct Ops final { bool (*exists)(const void*, BufferId) noexcept; };
         class Access final
@@ -98,6 +97,6 @@ namespace extension_test
 {
     inline const StorageDescriptor TestBufferStorage::description{
         StorageNameView("test.extension.BufferStorage"),
-        0, 0, bindings, ConfigValue::typeOf<BufferBinding>()
+        0, 0, ConfigValue::typeOf<BufferBinding>()
     };
 }

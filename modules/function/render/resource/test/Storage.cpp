@@ -35,12 +35,6 @@ int main()
     changed.type = {};
     require(!validateStorage(changed));
     changed = original;
-    std::array binding{ShaderBinding{0, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16}};
-    changed.bindings = binding;
-    require(bool(validateStorage(changed)) && !compatibleStorage(original, changed));
-    binding[0].kind = static_cast<EDescriptorKind>(255);
-    require(!validateStorage(changed));
-    changed = original;
     changed.required_capabilities = 1;
     require(bool(validateStorage(changed)));
     require(!compatibleStorage(original, changed));

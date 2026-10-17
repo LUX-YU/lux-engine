@@ -76,7 +76,8 @@ namespace texture_fixture
             {lux::rdesc::EShaderType::VERTEX, "main", {vert.begin(), vert.end()}},
             {lux::rdesc::EShaderType::FRAGMENT, "main", {frag.begin(), frag.end()}}
         };
-        draw.shader.interface = {{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}}, 16};
+        draw.resources = {{"textures", "shared:texture"}};
+        draw.shader.interface = {{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, 0, "textures"}}, 16};
         std::vector<PassProgram> result;
         result.push_back(std::move(draw));
         result.push_back({featureKey(type, instance, "readback")});

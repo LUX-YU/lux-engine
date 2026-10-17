@@ -30,6 +30,7 @@ namespace lux::render::vulkan
         {
             const bool invalid_entry = input.entry.empty() || input.entry.find('\0') != std::string::npos;
             if (invalid_entry) return false;
+            const auto stage_bit = stage == SpvExecutionModelVertex ? 1u : 2u;
             const auto words = std::span(input.words);
             // Use the existing SPIR-V tools, not another shader parser or handwritten instruction decoder.
             const auto validation = spvContextCreate(SPV_ENV_VULKAN_1_3);
@@ -91,20 +92,20 @@ namespace lux::render::vulkan
                         spvc_compiler_get_member_decoration(compiler, list[0].base_type_id, 0, SpvDecorationOffset) != 0;
                     if (is_abi_mismatch) return false;
                 }
-                else if (stage == SpvExecutionModelFragment &&
-                    (kind == SPVC_RESOURCE_TYPE_SAMPLED_IMAGE || kind == SPVC_RESOURCE_TYPE_STORAGE_BUFFER))
+                else if (kind == SPVC_RESOURCE_TYPE_SAMPLED_IMAGE || kind == SPVC_RESOURCE_TYPE_STORAGE_BUFFER)
                 {
                     const auto expected_kind = kind == SPVC_RESOURCE_TYPE_SAMPLED_IMAGE ?
                         EDescriptorKind::SAMPLED_IMAGE_ARRAY : EDescriptorKind::STORAGE_BUFFER;
                     const auto expected_count = std::ranges::count_if(interface.bindings,
-                        [&](const auto& value) { return value.kind == expected_kind; });
+                        [&](const auto& value) { return value.kind == expected_kind && (value.stages & stage_bit); });
                     if (count != expected_count) return false;
                     for (std::size_t i = 0; i < count; ++i)
                     {
                         const auto set = spvc_compiler_get_decoration(compiler, list[i].id, SpvDecorationDescriptorSet);
                         const auto binding = spvc_compiler_get_decoration(compiler, list[i].id, SpvDecorationBinding);
                         const auto expected = std::ranges::find_if(interface.bindings, [&](const auto& value) {
-                            return value.set == set && value.binding == binding && value.kind == expected_kind;
+                            return value.set == set && value.binding == binding && value.kind == expected_kind &&
+                                (value.stages & stage_bit) && value.name == spvc_compiler_get_name(compiler, list[i].id);
                         });
                         if (expected == interface.bindings.end()) return false;
                         const auto type = spvc_compiler_get_type_handle(compiler, list[i].type_id);
@@ -166,7 +167,10 @@ namespace lux::render::vulkan
             if (!count) return cxx::unexpected(RenderError{kStorageContract});
             const auto type = binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY ?
                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            bindings.push_back({binding.binding, type, count, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr});
+            const VkShaderStageFlags stages = ((binding.stages & 1u) ? VK_SHADER_STAGE_VERTEX_BIT : 0u) |
+                ((binding.stages & 2u) ? VK_SHADER_STAGE_FRAGMENT_BIT : 0u) |
+                ((binding.stages & 4u) ? VK_SHADER_STAGE_COMPUTE_BIT : 0u);
+            bindings.push_back({binding.binding, type, count, stages, nullptr});
             flags.push_back(runtime_array ? VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
                 VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT : 0);
             update_after_bind |= runtime_array;

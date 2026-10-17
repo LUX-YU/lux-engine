@@ -18,6 +18,9 @@ namespace lux::render::vulkan
         std::array<float, 4> parameters{};
         bool provides_parameters = false;
         SubmissionRequirements* last_use = nullptr;
+        void* update_context = nullptr;
+        void (*updated)(void*) noexcept = nullptr; // Owner publication only; not a per-frame callback
+        void publishUpdate() noexcept { if (updated) updated(update_context); }
         std::unique_ptr<void, void (*)(void*) noexcept> reference{nullptr, [](void*) noexcept {}};
     };
 
@@ -25,6 +28,5 @@ namespace lux::render::vulkan
     {
         RenderResult<void> (*prepare)(void*, const NativeResourcePlan&, const void*,
             PreparedStorageBinding&) noexcept;
-        RenderResult<std::uint32_t> (*descriptor_count)(const DeviceSession&, const void* configuration) noexcept = nullptr;
     };
 }

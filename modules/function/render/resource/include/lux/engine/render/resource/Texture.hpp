@@ -101,11 +101,10 @@ namespace lux::render
     {
     public:
         using Config = TextureStorageConfig;
-        static inline constexpr ShaderBinding bindings[]{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}};
         static inline constexpr StorageDescriptor description{
             kTextureStorageType,
             static_cast<std::uint32_t>(EStorageCapability::SAMPLED_IMAGE_ARRAY),
-            static_cast<std::uint32_t>(EStorageCapability::BLOCK_COMPRESSION_BC), bindings, ConfigValue::typeOf<TextureBinding>()
+            static_cast<std::uint32_t>(EStorageCapability::BLOCK_COMPRESSION_BC), ConfigValue::typeOf<TextureBinding>()
         };
         struct Ops final
         {

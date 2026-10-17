@@ -25,16 +25,6 @@ namespace lux::render
             (descriptor.required_capabilities & descriptor.optional_capabilities) != 0;
         if (invalid_identity || invalid_capabilities)
             return cxx::unexpected(RenderError{kStorageContract});
-        for (std::size_t i = 0; i < descriptor.bindings.size(); ++i)
-        {
-            const auto& binding = descriptor.bindings[i];
-            const bool invalid_binding = binding.kind > EDescriptorKind::STORAGE_BUFFER ||
-                (binding.kind == EDescriptorKind::STORAGE_BUFFER && binding.count != 1);
-            if (invalid_binding) return cxx::unexpected(RenderError{kStorageContract});
-            for (std::size_t j = 0; j < i; ++j)
-                if (descriptor.bindings[j].set == binding.set && descriptor.bindings[j].binding == binding.binding)
-                    return cxx::unexpected(RenderError{kStorageContract});
-        }
         return {};
     }
 
@@ -43,8 +33,7 @@ namespace lux::render
         const bool identity_mismatch = expected.type != actual.type;
         const bool policy_mismatch = expected.required_capabilities != actual.required_capabilities ||
             expected.optional_capabilities != actual.optional_capabilities;
-        const bool binding_mismatch = !std::ranges::equal(expected.bindings, actual.bindings) ||
-            expected.binding_type != actual.binding_type;
+        const bool binding_mismatch = expected.binding_type != actual.binding_type;
         if (identity_mismatch || policy_mismatch || binding_mismatch)
             return cxx::unexpected(RenderError{kStorageMismatch});
         return {};

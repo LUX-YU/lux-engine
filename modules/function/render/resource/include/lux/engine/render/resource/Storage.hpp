@@ -1,16 +1,11 @@
 #pragma once
 
 #include <lux/engine/render/data/Schema.hpp>
-#include <lux/cxx/container/SlotMap.hpp>
+#include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/data/ShaderInterface.hpp>
 
 namespace lux::render
 {
-    struct StorageTypeTag;
-    struct StorageTag;
-    using StorageTypeId = cxx::SlotKey<StorageTypeTag>;
-    using StorageId = cxx::SlotKey<StorageTag>;
-
     struct StorageNameTag;
     using StorageName = cxx::SchemaId<StorageNameTag>;
     using StorageNameView = cxx::SchemaIdView<StorageNameTag>;

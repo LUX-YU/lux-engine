@@ -68,8 +68,6 @@ namespace lux::render
             CommandRegistration binding;
             CommandTransport transport;
             std::shared_ptr<const void> code_pin;
-            const StorageDescriptor* storage = nullptr;
-            bool available = true;
             std::vector<SupportedHandler> supported;
             HandlerId selected;
             const std::shared_ptr<const void>* active_code_pin = nullptr;
@@ -97,7 +95,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<FeatureId> registerFeature(
             FeatureRegistration feature, std::span<const CommandTransport> transports
         ) noexcept;
-        [[nodiscard]] RenderResult<void> registerStorage(
+        [[nodiscard]] RenderResult<StorageTypeId> registerStorage(
             StorageRegistration storage, std::span<const CommandTransport> transports
         ) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
@@ -110,7 +108,6 @@ namespace lux::render
         ipc::IpcResponder responder;
         SessionIdentity identity;
         cxx::StableSlotMap<FeatureEntry, FeatureTag> features;
-        std::vector<StorageRegistration> storage_types;
         cxx::SlotMap<CommandEntry, CommandTag> command_table;
         cxx::SlotMap<std::unique_ptr<HandlerEntry>, HandlerTag> handlers;
         cxx::SlotMap<Scene, SceneTag> scenes;
@@ -141,13 +138,12 @@ namespace lux::render
                 auto& invocation = protocol_detail::ReplyAccess::invocation(context);
                 return (owner.*Method)(static_cast<CommandCall*>(invocation.completion_owner)->request);
             };
-            addCommand(bindCommand<C, handler>(*this), commandTransport<C>(), nullptr, config.implementation_code_pin);
+            addCommand(bindCommand<C, handler>(*this), commandTransport<C>(), config.implementation_code_pin);
         }
 
         CommandId addCommand(
             CommandRegistration binding,
             CommandTransport transport,
-            const StorageDescriptor* storage = nullptr,
             std::shared_ptr<const void> pin = {}
         ) noexcept;
 
@@ -220,6 +216,7 @@ namespace lux::render
         RenderResult<void> queryRenderStats(RenderRequest& request) noexcept;
 
         RenderResult<void> listFeatures(RenderRequest& request) noexcept;
+        RenderResult<void> listStorages(RenderRequest& request) noexcept;
         [[nodiscard]] CommandList commandDirectory() const noexcept;
 
         RenderResult<void> listCommands(RenderRequest& request) noexcept;

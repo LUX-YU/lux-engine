@@ -11,6 +11,16 @@ namespace lux::render
         return request.reply(std::move(result));
     }
 
+    RenderResult<void> RenderServer::Impl::listStorages(RenderRequest& request) noexcept
+    {
+        StorageList result;
+        device->resources().forEachType([&](StorageTypeId id, const StorageDescriptor& type,
+            std::uint32_t capabilities) noexcept {
+            result.storages.push_back({id, std::string(type.type.name()), capabilities});
+        });
+        return request.reply(std::move(result));
+    }
+
     CommandList RenderServer::Impl::commandDirectory() const noexcept
     {
         CommandList result;
@@ -18,7 +28,6 @@ namespace lux::render
         for (const auto& route : command_table)
         {
             const auto& entry = *route.cold;
-            if (!entry.available) continue;
             const auto& descriptor = *entry.binding.descriptor();
             result.commands.push_back({entry.code_pin, std::string(descriptor.name.name()), entry.id,
                 descriptor.request, descriptor.response, entry.transport.request, entry.transport.response,
@@ -70,24 +79,17 @@ namespace lux::render
     CommandId RenderServer::Impl::addCommand(
         CommandRegistration binding,
         CommandTransport transport,
-        const StorageDescriptor* storage,
         std::shared_ptr<const void> pin
     ) noexcept
     {
         binding.bindNative(device.get());
         // Full registration comparison proved equivalence; retain the template's static contract.
         auto metadata = std::make_unique<CommandMetadata>(
-            CommandMetadata{{}, binding, transport, std::move(pin), storage}
+            CommandMetadata{{}, binding, transport, std::move(pin)}
         );
         auto* cold = metadata.get();
         const auto id = command_table.emplace(CommandEntry{binding.call(), std::move(metadata)});
         cold->id = id;
-        if (storage)
-        {
-            const std::uint32_t capabilities = (device->device().textureDescriptors() ? 1u : 0u) |
-                (device->device().textureCompressionBc() ? 2u : 0u);
-            cold->available = (storage->required_capabilities & ~capabilities) == 0;
-        }
         cold->active_code_pin = &cold->code_pin;
         return id;
     }
@@ -171,7 +173,7 @@ namespace lux::render
         for (std::size_t i = 0; i < calls.size(); ++i)
         {
             const bool first = commands[i].isNull();
-            if (first) commands[i] = state.addCommand(calls[i], transports[i], nullptr, handler->code_pin);
+            if (first) commands[i] = state.addCommand(calls[i], transports[i], handler->code_pin);
             auto& entry = *state.command_table.find(commands[i]);
             entry.cold->supported.push_back({id, calls[i].call()});
             if (first)
@@ -199,7 +201,7 @@ namespace lux::render
         if (auto valid = s.validateHandlers(feature.handlers, transports); !valid)
             return cxx::unexpected(valid.error());
         for (std::size_t i = 0; i < feature.handlers.size(); ++i)
-            s.addCommand(feature.handlers[i], transports[i], nullptr, feature.code_pin);
+            s.addCommand(feature.handlers[i], transports[i], feature.code_pin);
         const auto id = s.features.emplace(FeatureEntry{{}, std::move(feature)});
         s.features.find(id)->id = id;
         return id;
@@ -212,36 +214,25 @@ namespace lux::render
         return impl_->registerFeature(std::move(feature), transports);
     }
 
-    RenderResult<void> RenderServer::Impl::registerStorage(
+    RenderResult<StorageTypeId> RenderServer::Impl::registerStorage(
         StorageRegistration storage, std::span<const CommandTransport> transports
     ) noexcept
     {
-        if (started.load() || !storage.description) return cxx::unexpected(RenderError{kRuntimeState});
-        if (auto valid = validateStorage(*storage.description); !valid) return valid;
-        const std::uint32_t capabilities =
-            (device->device().textureDescriptors() ? 1u : 0u) | (device->device().textureCompressionBc() ? 2u : 0u);
-        if ((storage.description->required_capabilities & ~capabilities) != 0)
-            return cxx::unexpected(RenderError{kStorageCapability});
-        if (auto valid = validateStorageFactory(*storage.description, storage.factory); !valid)
-            return valid;
-        const StorageCppType config_type{storage.configuration.type(),
-            storage.configuration.objectSize(), storage.configuration.objectAlignment()};
-        if (storage.configuration && config_type != storage.factory.config_type)
-            return cxx::unexpected(RenderError{kStorageMismatch});
-        for (const auto& existing : storage_types)
-        {
-            if (existing.description->type != storage.description->type) continue;
-            if (auto match = compatibleStorage(*existing.description, *storage.description); !match) return match;
-            return cxx::unexpected(RenderError{kFeatureDuplicate});
-        }
-        if (auto valid = validateHandlers(storage.handlers, transports); !valid) return valid;
+        if (stop_requested.load() || !storage.description) return cxx::unexpected(RenderError{kRuntimeState});
+        if (!storage.factory.description) return cxx::unexpected(RenderError{kStorageFactory});
+        if (auto valid = compatibleStorage(*storage.description, *storage.factory.description); !valid)
+            return cxx::unexpected(valid.error());
+        if (auto valid = validateHandlers(storage.handlers, transports); !valid)
+            return cxx::unexpected(valid.error());
+        // This is the last recoverable operation. Command publication below cannot fail for capacity.
+        auto installed = device->resources().installFactory(storage.factory, std::move(storage.configuration));
+        if (!installed) return cxx::unexpected(installed.error());
         for (std::size_t i = 0; i < storage.handlers.size(); ++i)
-            addCommand(storage.handlers[i], transports[i], storage.description, storage.factory.code_pin);
-        storage_types.push_back(std::move(storage));
-        return {};
+            addCommand(storage.handlers[i], transports[i], storage.factory.code_pin);
+        return *installed;
     }
 
-    RenderResult<void> RenderServer::registerStorageImpl(
+    RenderResult<StorageTypeId> RenderServer::registerStorageImpl(
         StorageRegistration storage, std::span<const CommandTransport> transports
     ) noexcept
     {

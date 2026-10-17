@@ -66,7 +66,8 @@ namespace buffer_fixture
 
     inline RenderResult<void> install(native::DeviceSession& session) noexcept
     {
-        if (auto result = session.resources().installFactory(factory()); !result) return result;
-        return session.resources().configureType(description, Config{});
+        auto result = session.resources().installFactory(factory(), Config{});
+        if (!result) return lux::cxx::unexpected(result.error());
+        return {};
     }
 }

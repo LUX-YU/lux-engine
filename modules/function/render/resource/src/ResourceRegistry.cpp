@@ -44,31 +44,24 @@ namespace lux::render
         return index.isNull() ? nullptr : types_.find(index)->configuration.data();
     }
 
-    RenderResult<void> ResourceRegistry::installFactory(StorageFactory factory) noexcept
-    {
-        if (frozen_ || !factory.description) return cxx::unexpected(RenderError{kStorageFactory});
-        if (auto valid = validateStorageFactory(*factory.description, factory); !valid) return valid;
-        if (!typeId(factory.description->type).isNull())
-            return cxx::unexpected(RenderError{kStorageFactory});
-        const auto id = types_.emplace(Type{{}, std::move(factory), {}});
-        types_.find(id)->id = id;
-        return {};
-    }
-
-    RenderResult<void> ResourceRegistry::configureType(
-        const StorageDescriptor& type, ConfigValue configuration
+    RenderResult<StorageTypeId> ResourceRegistry::installFactory(
+        StorageFactory factory, ConfigValue configuration
     ) noexcept
     {
-        const auto index = typeId(type.type);
-        if (frozen_ || index.isNull()) return cxx::unexpected(RenderError{kStorageFactory});
-        auto& installed = *types_.find(index);
-        if (auto compatible = compatibleStorage(*installed.factory.description, type); !compatible) return compatible;
+        if (!factory.description) return cxx::unexpected(RenderError{kStorageFactory});
+        if (auto valid = validateStorageFactory(*factory.description, factory); !valid)
+            return cxx::unexpected(valid.error());
+        const auto& type = *factory.description;
+        if ((type.required_capabilities & ~capabilities_) != 0)
+            return cxx::unexpected(RenderError{kStorageCapability});
         const StorageCppType actual{configuration.type(), configuration.objectSize(), configuration.objectAlignment()};
-        if (installed.factory.config_type != actual) return cxx::unexpected(RenderError{kStorageMismatch});
-        if (installed.configuration || (type.config && !configuration))
-            return cxx::unexpected(RenderError{kStorageContract});
-        installed.configuration = std::move(configuration);
-        return {};
+        if (configuration && factory.config_type != actual)
+            return cxx::unexpected(RenderError{kStorageMismatch});
+        if (!typeId(factory.description->type).isNull())
+            return cxx::unexpected(RenderError{kStorageFactory});
+        const auto id = types_.emplace(Type{{}, std::move(factory), std::move(configuration)});
+        types_.find(id)->id = id;
+        return id;
     }
 
     bool ResourceRegistry::valid(const ResourceDomain& domain) const noexcept
@@ -152,7 +145,7 @@ namespace lux::render
             return cxx::unexpected(RenderError{kStorageCapability});
         if (config && installed.factory.config_type != actual) return cxx::unexpected(RenderError{kStorageMismatch});
         if (!config) config = installed.configuration.data();
-        if (type.config && !config) return cxx::unexpected(RenderError{kStorageContract});
+        if (!config) return cxx::unexpected(RenderError{kStorageContract});
         auto id = local(domain.id_, index, key);
         if (!id.isNull())
         {

@@ -105,6 +105,38 @@ int main()
     static_assert(!std::is_same_v<StorageId, StorageTypeId>);
     static_assert(!std::is_constructible_v<StorageTypeId, StorageNameView>);
     {
+        Counts counts;
+        ResourceRegistry directory(&counts, 1u);
+        auto description = TestStorage::description;
+        description.required_capabilities = 2u;
+        auto candidate = factory();
+        candidate.description = &description;
+        auto unsupported = directory.installFactory(candidate, 7u);
+        require(!unsupported && unsupported.error().type == kStorageCapability);
+        require(directory.typeId(description.type).isNull() && counts.created == 0);
+        description.required_capabilities = 1u;
+        description.optional_capabilities = 2u;
+        auto installed = directory.installFactory(candidate, 7u);
+        require(bool(installed) && counts.created == 0);
+        unsigned visits = 0;
+        directory.forEachType([&](StorageTypeId id, const StorageDescriptor& type, std::uint32_t actual) noexcept {
+            require(id == *installed && type.type == description.type && actual == 1u);
+            ++visits;
+        });
+        require(visits == 1);
+        auto original = directory.getOrCreate(directory.root(), "original", description, nullptr);
+        require(bool(original));
+        auto other_description = TestStorage::description;
+        other_description.type = StorageNameView("test.late.storage");
+        auto other_factory = factory();
+        other_factory.description = &other_description;
+        require(bool(directory.installFactory(other_factory)));
+        // A C++ Config is required even when no encoded schema exists. Reject before typed create.
+        require(!directory.getOrCreate(directory.root(), "missing", other_description, nullptr));
+        require(counts.created == 1 && static_cast<Value*>(directory.native(*original))->value == 7u);
+        require(directory.configuration(description.type) != nullptr);
+    }
+    {
         constexpr std::size_t count = 600;
         std::vector<std::string> names;
         std::vector<StorageDescriptor> descriptions;
@@ -148,19 +180,20 @@ int main()
         require(scene && scene2 && view && attachment);
         require(registry.ancestor(*attachment, EResourceScope::GLOBAL).value() == root);
         require(registry.ancestor(*attachment, EResourceScope::SCENE).value() == *scene);
-        require(bool(registry.installFactory(factory())));
-        require(!registry.installFactory(factory()));
         // Same schema and same sizeof cannot authorize a different native C++ Config.
         struct WrongConfig { unsigned value; };
         static_assert(sizeof(WrongConfig) == sizeof(TestStorage::Config));
-        require(!registry.configureType(TestStorage::description, WrongConfig{7}));
-        require(bool(registry.configureType(TestStorage::description, 7u)));
+        require(!registry.installFactory(factory(), WrongConfig{7}));
+        require(registry.typeId(TestStorage::description.type).isNull());
+        require(registry.factory(TestStorage::description.type) == nullptr && counts.created == 0);
+        const auto installed = registry.installFactory(factory(), 7u);
+        require(bool(installed));
+        require(registry.typeId(TestStorage::description.type) == *installed);
         const WrongConfig wrong{7};
         require(!registry.getOrCreate(root, "wrong", TestStorage::description, &wrong));
         require(counts.created == 0);
-        require(!registry.configureType(TestStorage::description, 7u));
-        registry.freeze();
-        require(!registry.installFactory(factory()));
+        require(!registry.installFactory(factory(), 8u));
+        require(*static_cast<const unsigned*>(registry.configuration(TestStorage::description.type)) == 7u);
         auto global = registry.getOrCreate<TestStorage>(root, "shared");
         auto repeated = registry.getOrCreate<TestStorage>(root, "shared", 7);
         require(global && repeated && counts.created == 1);

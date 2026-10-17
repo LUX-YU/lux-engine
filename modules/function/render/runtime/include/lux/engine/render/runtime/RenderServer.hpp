@@ -56,18 +56,19 @@ namespace lux::render
         }
 
         template <RenderCommand... C>
-        [[nodiscard]] RenderResult<void> registerStorage(StorageRegistration storage) noexcept
+        [[nodiscard]] RenderResult<StorageTypeId> registerStorage(StorageRegistration storage) noexcept
         {
             const std::array<runtime_detail::CommandTransport, sizeof...(C)> transports{runtime_detail::commandTransport<C>()...};
             return registerStorageImpl(std::move(storage), transports);
         }
 
         template <class T>
-        [[nodiscard]] RenderResult<void> registerStorage(const typename T::Config& config = {}) noexcept
+        [[nodiscard]] RenderResult<StorageTypeId> registerStorage(const typename T::Config& config = {}) noexcept
         {
             auto registration = nativeStorageBinding<T>();
             if (!registration.description) return cxx::unexpected(RenderError{kStorageContract});
-            if (auto valid = compatibleStorage(T::description, *registration.description); !valid) return valid;
+            if (auto valid = compatibleStorage(T::description, *registration.description); !valid)
+                return cxx::unexpected(valid.error());
             auto configuration = ConfigValue::make(config, registration.factory.code_pin);
             if (!configuration) return cxx::unexpected(configuration.error());
             registration.configuration = std::move(*configuration);
@@ -132,7 +133,7 @@ namespace lux::render
             std::span<const CommandHandler>, std::span<const runtime_detail::CommandTransport>) noexcept;
         [[nodiscard]] RenderResult<FeatureId> registerFeatureImpl(FeatureRegistration,
             std::span<const runtime_detail::CommandTransport>) noexcept;
-        [[nodiscard]] RenderResult<void> registerStorageImpl(StorageRegistration,
+        [[nodiscard]] RenderResult<StorageTypeId> registerStorageImpl(StorageRegistration,
             std::span<const runtime_detail::CommandTransport>) noexcept;
         struct Impl;
         explicit RenderServer(std::unique_ptr<Impl> state) noexcept;

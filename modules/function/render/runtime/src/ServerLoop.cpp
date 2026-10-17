@@ -59,7 +59,7 @@ namespace lux::render
                 : transport && received.message().holds(*transport->request);
         const auto* descriptor =
             frame.command.isNull() ? &commandDescriptor<Hello>() : (entry ? cold->binding.descriptor() : nullptr);
-        const bool valid_identity = frame.command.isNull() || (entry && cold->available && frame.session == identity);
+        const bool valid_identity = frame.command.isNull() || (entry && frame.session == identity);
         const bool valid_capacity = frame.reply_capacity <= config.max_reply_bytes;
         bool funded = false;
         if (valid_identity && valid_type && valid_capacity)
@@ -172,23 +172,6 @@ namespace lux::render
             return {};
         }
         s.running.store(true);
-        auto& resources = s.device->resources();
-        for (const auto& type : s.storage_types)
-        {
-            if (auto installed = resources.installFactory(type.factory); !installed)
-            {
-                s.shutdown();
-                return cxx::unexpected(installed.error());
-            }
-            if (auto configured =
-                    resources.configureType(*type.description, type.configuration);
-                !configured)
-            {
-                s.shutdown();
-                return cxx::unexpected(configured.error());
-            }
-        }
-        resources.freeze();
         RenderResult<void> result;
         while (!s.stop_requested.load())
         {

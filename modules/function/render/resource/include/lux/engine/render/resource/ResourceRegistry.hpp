@@ -38,20 +38,28 @@ namespace lux::render
         ResourceRegistry(const ResourceRegistry&) = delete;
         ResourceRegistry& operator=(const ResourceRegistry&) = delete;
 
-        [[nodiscard]] RenderResult<void> installFactory(StorageFactory factory) noexcept;
-        [[nodiscard]] RenderResult<void>
-        configureType(const StorageDescriptor& type, ConfigValue configuration) noexcept;
+        // Owner-thread cold transaction; no instance creation or Native side effect.
+        [[nodiscard]] RenderResult<StorageTypeId>
+        installFactory(StorageFactory factory, ConfigValue configuration = {}) noexcept;
 
         template <class Config>
-        [[nodiscard]] RenderResult<void>
-        configureType(const StorageDescriptor& type, Config configuration) noexcept
+        [[nodiscard]] RenderResult<StorageTypeId>
+        installFactory(StorageFactory factory, Config configuration) noexcept
         {
-            auto value = ConfigValue::make(std::move(configuration));
+            auto value = ConfigValue::make(std::move(configuration), factory.code_pin);
             if (!value) return cxx::unexpected(value.error());
-            return configureType(type, std::move(*value));
+            return installFactory(std::move(factory), std::move(*value));
         }
-        void freeze() noexcept { frozen_ = true; }
-        [[nodiscard]] bool frozen() const noexcept { return frozen_; }
+        // Cold observation of the sole type directory; the visitor must not mutate it.
+        template <class Visitor>
+        void forEachType(Visitor&& visitor) const noexcept
+        {
+            for (const auto& entry : types_)
+            {
+                const auto& type = *entry.factory.description;
+                visitor(entry.id, type, capabilities_ & (type.required_capabilities | type.optional_capabilities));
+            }
+        }
         [[nodiscard]] StorageTypeId typeId(StorageNameView name) const noexcept;
         [[nodiscard]] const StorageFactory* factory(StorageTypeId type) const noexcept;
         [[nodiscard]] const StorageFactory* factory(StorageNameView type) const noexcept;
@@ -172,7 +180,6 @@ namespace lux::render
         DomainId root_;
         cxx::StableSlotMap<Type, StorageTypeTag> types_;
         cxx::SlotMap<Entry, StorageTag> entries_;
-        bool frozen_ = false;
         std::uint64_t creations_ = 0;
     };
 }

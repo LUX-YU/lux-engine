@@ -1,7 +1,7 @@
 {
   "N0.1": {
     "title": "Baseline and existing changes",
-    "status": "PLANNED",
+    "status": "PASS",
     "production_paths": [
       ".internal/render-v2/v12/"
     ],
@@ -10,11 +10,15 @@
       "T-BUILD-09",
       "T-PERF-01"
     ],
-    "evidence": []
+    "evidence": [
+      "N0-VERIFICATION.md",
+      "N0-SUPPLEMENT.md"
+    ],
+    "qualification": "Baseline/planning/mapping only; no production or performance qualification."
   },
   "N0.2": {
     "title": "Complete sources and consumers",
-    "status": "PLANNED",
+    "status": "PASS",
     "production_paths": [
       ".internal/render-v2/v12/"
     ],
@@ -23,11 +27,15 @@
       "T-BUILD-09",
       "T-PERF-01"
     ],
-    "evidence": []
+    "evidence": [
+      "N0-VERIFICATION.md",
+      "N0-SUPPLEMENT.md"
+    ],
+    "qualification": "Baseline/planning/mapping only; no production or performance qualification."
   },
   "N0.3": {
     "title": "Protection and evidence tools",
-    "status": "PLANNED",
+    "status": "PASS",
     "production_paths": [
       ".internal/render-v2/v12/"
     ],
@@ -36,7 +44,11 @@
       "T-BUILD-09",
       "T-PERF-01"
     ],
-    "evidence": []
+    "evidence": [
+      "N0-VERIFICATION.md",
+      "N0-SUPPLEMENT.md"
+    ],
+    "qualification": "Baseline/planning/mapping only; no production or performance qualification."
   },
   "N1.1": {
     "title": "Execution component migration",
@@ -132,7 +144,7 @@
   },
   "N2.1": {
     "title": "Native initialization and build selection",
-    "status": "IMPLEMENTATION_CHECKPOINT",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -162,12 +174,13 @@
       "T-FEATURE-07"
     ],
     "evidence": [
-      "N2.1-IMPLEMENTATION.md"
+      "N2.1-IMPLEMENTATION.md",
+      "N2.1-VERIFICATION.md"
     ]
   },
   "N2.2": {
     "title": "Typed identities and ConfigValue",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -196,7 +209,10 @@
       "T-FEATURE-06",
       "T-FEATURE-07"
     ],
-    "evidence": []
+    "evidence": [
+      "N2-CONFIG-VERIFICATION.md",
+      "n2-identity-verification.md"
+    ]
   },
   "N2.3": {
     "title": "Command and Handler ownership",
@@ -231,12 +247,14 @@
     ],
     "evidence": [
       "N3-REPLY-CHECKPOINT.md",
-      "N2-HANDLERS-CHECKPOINT.md"
+      "N2-HANDLERS-CHECKPOINT.md",
+      "N2-HANDLERS-VERIFICATION.md",
+      "N2-DIRECTORY-VERIFICATION.md"
     ]
   },
   "N2.4": {
     "title": "Atomic typed module installation",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -265,7 +283,9 @@
       "T-FEATURE-06",
       "T-FEATURE-07"
     ],
-    "evidence": []
+    "evidence": [
+      "N2-STORAGE-INSTALL-CHECKPOINT.md"
+    ]
   },
   "N2.5": {
     "title": "Client control and FeatureId",
@@ -299,7 +319,9 @@
       "T-FEATURE-07"
     ],
     "evidence": [
-      "N2-HANDLERS-CHECKPOINT.md"
+      "N2-HANDLERS-CHECKPOINT.md",
+      "N2-DIRECTORY-VERIFICATION.md",
+      "N2-STORAGE-INSTALL-CHECKPOINT.md"
     ]
   },
   "N3.1": {
@@ -370,7 +392,7 @@
   },
   "N3.3": {
     "title": "Narrow compile input",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -395,7 +417,10 @@
       "T-GPU-05",
       "T-GPU-06"
     ],
-    "evidence": []
+    "evidence": [
+      "n2-identity-verification.md",
+      "N3-GENERIC-COMPLETION-VERIFICATION.md"
+    ]
   },
   "N3.4": {
     "title": "Completion cancellation and shutdown",

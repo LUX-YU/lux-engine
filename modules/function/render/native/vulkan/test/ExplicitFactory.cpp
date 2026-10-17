@@ -39,10 +39,8 @@ int main()
     };
     auto factory = makeStorageFactory<Declaration, Replacement, DeviceSession, createReplacement, compatible>(
         ops);
-    CHECK(registry.installFactory(factory));
-    CHECK(!registry.installFactory(factory));
-    CHECK(registry.configureType(Declaration::description, TextureStorageConfig{}));
-    registry.freeze();
+    CHECK(registry.installFactory(factory, TextureStorageConfig{}));
+    CHECK(!registry.installFactory(factory, TextureStorageConfig{}));
     auto access = take(registry.getOrCreate<Declaration>(registry.root(), "explicit"));
     CHECK(created == 1 && take(access.query(TextureId{2, 3})).revision == 991);
     session.reset();

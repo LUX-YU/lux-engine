@@ -82,6 +82,40 @@ namespace lux::render
 
     struct FeatureList final { std::vector<FeatureInfo> features; };
 
+    struct StorageInfo final
+    {
+        StorageTypeId id;
+        std::string name;
+        std::uint32_t capabilities = 0;
+    };
+
+    struct StorageList final { std::vector<StorageInfo> storages; };
+
+    struct ListStorages final
+    {
+        static constexpr std::string_view name{"render.storages.list"};
+        using Request = EmptyRequest;
+        using Response = StorageList;
+    };
+
+    template <> struct CommandValueTraits<StorageList>
+    {
+        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const StorageList& value) noexcept
+        {
+            std::size_t bytes = sizeof(value);
+            if (value.storages.capacity() > (SIZE_MAX - bytes) / sizeof(StorageInfo))
+                return cxx::unexpected(RenderError{kProtocolContract});
+            bytes += value.storages.capacity() * sizeof(StorageInfo);
+            for (const auto& storage : value.storages)
+            {
+                if (storage.name.capacity() >= SIZE_MAX - bytes)
+                    return cxx::unexpected(RenderError{kProtocolContract});
+                bytes += storage.name.capacity() + 1;
+            }
+            return bytes;
+        }
+    };
+
     struct ListFeatures final
     {
         static constexpr std::string_view name{"render.features.list"};

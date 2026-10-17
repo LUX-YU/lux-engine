@@ -1,163 +1,48 @@
 # Editor Framework v2
 
-This migration replaces the Framework v1 Object/UI contract. It does not add authoring tools.
-The working record is `.internal/editor-redesign/framework-v2/`; raw evidence is external to the repository.
+Editor 按 app、window、context、project 和 ui 组织，产品入口与项目操作见
+[Editor 使用说明](../editor/README.md)。底层依赖方向为 Editor → Engine → modules；
+`editor_legacy` 只供历史参考，不进入当前构建、链接和安装。
 
-## Responsibility and migration order
+## 对象与 UI 所有权
 
-| Batch | Contract |
-|---|---|
-| V0 | Freeze legacy and verify historical evidence before moving it outside the source tree |
-| V1 | Qualify the existing generational sparse container for bounded, prepared identity allocation |
-| V2 | One DLL-provided ObjectRuntime; non-owning generational ObjectId registration |
-| V3 | Private UI backend Context; Root retains object-aware orchestration |
-| V4 | Non-owning parent links; Root uniquely owns all Panes and traverses content hierarchies |
-| V5 | Detached Pane factories and canonical type/name/title descriptions; no EditorUIRoot owner |
-| V6 | Immutable shared error descriptions and stable numeric errors, including active Scene failures |
-| V7 | No RTTI in first-party active targets; clean build, SDK and rendering qualification |
+Object DLL 提供进程共用的 ObjectRuntime，宿主在启动工作线程前建立其对象线程。
+ObjectId 是非拥有的生成式身份。LuxObject 的 parent 只表示结构，不决定 C++ 对象删除。
+跨线程交付使用现有 Object 通路，接收者失效与完成回收仍由该 Runtime 处理。
 
-Final implementation and verification scope are recorded in [the delivery record](editor-framework-v2-verification.md).
-Batch history belongs to the working record; historical results are not substituted for final qualification.
-Window, EngineContext and Root survive project switches. Panes die before project services. The existing SceneRuntime,
-Process and Renderer remain the sole owners of their respective execution and retirement protocols.
+ui::Root 唯一拥有顶层 Pane；Pane 只有一个内容根。Root 枚举时借用 Pane，不转移所有权。
+Element 使用 ObjectId 表示运行期 UI 身份。Root 内部只有一份 DockTree 模型；布局变更
+先验证、准备，再提交，失败不发布部分结构。
 
-## Reference source and evidence
+PaneHandle 由 Root 身份和局部生成式 PaneId 组成，不延长任何对象的寿命。
+移除、重新挂载、替换 Root 或地址复用后，旧 Handle 失效。resolvePane 只允许同步 Owner 线程借用。
+运行期 Handle 不是持久布局格式。
 
-`editor_legacy` is frozen reference source. The current build does not configure, install or link it. Reproducing its
-results requires its historical Git revision. New foundation interfaces are not kept compatible for frozen source.
+PaneChanged 和 ObjectRemoved 是不可复制的同步借用，不能通过排队延长有效期。
+UI 的结构变更经过自身 API；不能绕过这些规则直接使用通用基类变更结构。
+Root::update 采用排队结构变化；绘制和捕获通过明确的帧入口，维护更新不隐式绘制。
 
-Before removing `dev_log` from the current tree, all 15,754 files (666,062,601 bytes) were read, hashed, archived and
-verified by reading every archive entry. The archive is `historical-evidence-cf1bd7d64994.zip`, SHA256
-`0852b321d37180aa43863f3147a53cd1cedf89cf8b41b3d641311b8c89bf2cff`.
-Its manifest, original directory and separate user-patch backup are stored under the external delivery directory
-`../archives/lux-engine/EditorFramework-v2/`. Existing Git commits remain unchanged.
+## 项目装配与退出
 
-The ProjectBuilder user patch remains unapplied. The pre-existing Pane.hpp comment-only change is also protected
-separately. Historical PARTIAL/FAIL results, waived checks, native-input deferral, Linux/IME/sanitizer and historical
-performance limitations are not converted into new passes by this migration.
+宿主拥有 Window、EngineContext 和产品 Assembly，项目切换不重建这些基础设施。
+EditorComposition 构造声明，完整 EditorContext 发布后提供不可变目录和惰性唯一服务。
+Pane、项目服务和 Context 的实际关系及异步项目采用规则以
+[Editor 所有权合同](../editor/README.md#ownership-and-lifetime) 为准。
 
-## Qualification
+TaskScope 析构只请求取消。已接纳工作保有自己的输入、结果与任务组，不能借用会先销毁的 Context、
+Pane 或可变目录。项目关闭不等于线程 join；宿主最终退出必须停止准入、排空完成并 join 生产者。
+Object/UI 的同步回调以 noexcept 作为合同；普通堆 OOM 为 fatal。
 
-The generational container prerequisite is lux-cxx `cf14ab1de6b2b96b56531a4de8bfa02efb4d7ca1`.
-Clearing invalidates issued keys, exhausted generations leave reuse, and insertion preparation covers
-dense, sparse and recycling storage without issuing identities. The engine uses the same container for ObjectId.
+## 错误与扩展
 
-ObjectRuntime is supplied by the object DLL. The host establishes its thread before starting workers; independent
-framework lifetimes reuse that Runtime. The old tests for multiple object thread domains are replaced with
-wrong-thread access, worker delivery and singleton DLL identity checks. FULL, fixed batches, partial broadcasts,
-revoked receivers and owner-thread reclamation retain their original assertions.
+错误 DLL 拥有不可变描述。错误值只包含稳定 ID 和数值参数，不借用插件载荷。
+描述在装配期登记，失败点不注册字符串、不获取登记锁，也不为诊断创建新的资源 Owner。
+本地类型错误和领域诊断继续留在各自模块；第三方异常只在明确边界转换。
 
-Use a clean tracked implementation commit for final qualification. Build `all -j 4 -- -k 0`, then confirm the second
-build has no work. Run affected framework, Object/UI, services, Scene/Flow and render tests, PLAYER, fresh SDK consumers,
-public-header checks and actual GPU regressions. Preserve failure/reentrancy assertions when updating test APIs.
-Raw logs, command provenance and dependency SHAs stay in the external delivery directory. The repository retains
-contracts and repeatable tests, not a second evidence archive.
+Context 扩展只借用已有领域对象，见 [Context 扩展面](context-extensions.md)。
+Pane 之间通过实际项目/领域服务协作，不保存互相的业务指针，不增加全局 Element 目录或事件总线。
+SceneToolRegistrar 的选择语义须由实际工具消费者确定，不能把预留接口当作已完成的编辑工具系统。
 
-## Dispatch and error boundaries
-
-All active first-party targets compile without RTTI. `build.no_rtti` checks actual compiler commands and
-compiles a positive case followed by rejected `dynamic_cast` and `typeid` cases. This does not change third-party
-compiler settings or exception containment. Flow uses its narrow ScriptAbility capability, and the highlight backend
-dispatches through the existing render-feature interface; operation tags alone never justify a downcast.
-
-The error DLL owns process-wide immutable descriptions. Error values contain a stable name-derived ID and three
-numeric arguments, never an owning or borrowed plugin payload. Framework boundaries and Scene build/execution causes
-use these values. Local typed errors and complete domain diagnostics remain on their original owners. Render's local
-registry is translated while its description is available; a temporary render slot is not a stable ErrorId.
-
-Error descriptions are declared by their owning module and registered during assembly, before operations can fail.
-Registration conflicts are assembly errors. A failure constructs only a stable ErrorId and numeric arguments;
-it does not register descriptions, acquire the global registration lock or allocate diagnostic strings. Render
-descriptions acquire their stable identity when admitted to the existing Render registry. They are copied into the
-immutable error provider there, so formatting a previously produced Error remains valid after provider unload.
-
-Ordinary heap exhaustion is fatal. `noexcept` semantic APIs do not promise to recover from `new`, STL allocation or
-`bad_alloc`; their expected errors describe domain, capacity, validation and foreign-operation failures. No
-recoverable allocation error may be advertised without a real producer. Explicit bounded capacity, GPU allocation
-and foreign backend failures retain their distinct contracts. A callable/factory containment boundary must terminate
-on `bad_alloc` before converting other foreign exceptions; hot paths do not acquire new exception handlers.
-
-The installed consumer in `editor/tests/installed` uses installed public headers and libraries, including real Object
-and Error DLL probes. The DLL probes check shared Runtime/Registry identity, destructor-tail code lifetime and error
-formatting after plugin unload. Each listed public header is compiled independently under C++20 without RTTI.
-
-## Final convergence before tool migration
-
-The API convergence retains the v2 owners and execution algorithms. LuxObject has only detached construction;
-parent links and UI addElement both support guarded reparenting. Elements use ObjectId for ImGui identity. PaneId
-is private registration bookkeeping, not a caller-provided layout key. Root owns Panes but enumerates borrowed Pane&.
-It retains one DockTree model and validates/prepares/commits internally. Menus own their cold labels and command IDs.
-
-Root::update adopts queued changes itself. The maintenance overload cannot accidentally draw, and the drawing overload
-pins resources synchronously. Root implementation is split by concern behind one Impl with grouped state, not separate
-managers. Private EditorUiScene transport belongs to app; WindowInput belongs to UI implementation. The public Context
-component registers factories, while createPane is supplied and declared by UI. Freeze and mutable factory lookup are
-private. All error domains declare IDs before failure, with registration conflicts reported during assembly.
-
-SceneToolRegistrar remains provisional until the first real SceneSession/SceneToolSet. No Scene/Material/Flow tool,
-dynamic registration, new docking persistence or additional runtime is introduced by this convergence.
-
-## Final lifetime/API contract
-
-DockTree values retain opaque `PaneHandle` values, never Pane addresses. A handle identifies one
-registration in one Root (Root ObjectId plus local generational PaneId); it does not keep either alive.
-`paneHandle` captures that identity, and `resolvePane` permits only a synchronous owner-thread borrow.
-Removal, remount, Root replacement and address reuse leave old handles stale. Layout application resolves
-all handles before dereferencing any Pane and publishes nothing on failure. Runtime handles are not a
-persistent layout format.
-
-`PaneChanged` and `ObjectRemoved` are noncopyable synchronous borrows. Existing signal admission rejects
-QUEUED connections as `PAYLOAD_NOT_QUEUEABLE`; no new signal dispatch or lifetime protocol is introduced.
-UI-specific structural methods are public; generic LuxObject mutators are hidden on UI types and remain
-rejected through explicit base access. Maintenance uses `Root::update()`; frame capture uses the explicit
-frame overload. Installed headers do not grant test-only private access.
-
-Assembly, UI/service/tool factories, frame capture and Pane enumeration encode `noexcept` in their callback
-signatures. The original callback borrowing/owning split remains; semantic failures use expected, ordinary
-heap exhaustion is fatal. Descriptors supply canonical names once; numeric IDs are derived from those
-same declarations, and registration remains a cold assembly operation.
-
-The lifetime correction originally kept synchronous per-open Assembly. The PS0–PS2 project slice now stores
-an owning noexcept Assembly on LuxEngine and reuses it for asynchronous project transitions; see [Editor contracts](../editor/README.md).
-PaneDescription.name is a unique layout input and factory parameter, not yet a framework-owned persistent
-name binding. That binding belongs to a future Editor-side layout implementation, not generic Pane.
-SceneToolRegistrar remains **provisional and excluded from API freeze** until a real SceneSession/SceneToolSet
-vertical slice establishes its selection semantics. Vector registrars and their ownership are unchanged.
-
-Noexcept callable support for this correction uses lux-cxx `0a0e7419fc7229df6e372cd35a540249f92250ef`.
-
-## P0–P2 pacing, generic commands and observations
-
-The host has no software frame deadline. A visible ready output and a reusable UI frame slot are immediate work;
-otherwise exec waits for native events. Execution completions, Object messages, renderer progress and the existing
-Scene timer wake that same wait. Deferred UI structure/menu work posts a native wake when its fixed batch leaves
-another batch pending. Closing requested by a UI callback is checked again before waiting. Output failure is returned
-as an error, never confused with not-ready. There is still one SceneRuntime drive per iteration and one input sample.
-No frame hook list, thread pool, render transport or resource retirement algorithm is added.
-
-EditorConfig.enable_vsync is only forwarded through RendererConfig to the Vulkan swapchain policy. It does not
-specify a host sleep interval. Frames already captured retain their original resource pins during backpressure.
-The native window remains alive through the original RenderContext retirement drain.
-
-Root has no concrete TextEdit/NumericEdit friends. Controls use Element::menuActive() for synchronous menu targeting.
-Root routes the configured MenuItem shortcut to the focused hierarchy; product code supplies Undo/Redo bindings.
-Command execution remains deferred to the next structure-safe update and revalidates the target there. Unused
-MenuRequest OPEN/COMMAND/CLOSE dispatch and its public protocol are removed; no replacement global command bus
-is installed. A future application command slice must supply its real semantic owner.
-
-Root::statistics() reports its last update. LuxEngine::statistics() accumulates host phase durations/counters and
-includes the latest UI counts and SceneRuntime::instanceCount(). Durations use steady_clock; no sample history,
-observers or histogram are held in production. Counts are folded into existing traversals except the bounded draw-list
-command count. maintenance includes deferred changes, input routing and hidden owner maintenance; draw includes
-layout/ImGui rendering; capture includes DrawData copying and the immediate pin callback. Host total excludes native
-wait, which is recorded separately. A maintenance-only update resets draw counts/timings. Theme/style is applied once
-at Context construction, preserving configured scale; there is no public mutable theme or per-frame reapplication.
-
-Event is hierarchy-local interaction/command routing. Signal communicates semantic state changes from its actual
-owner. Sibling Panes cooperate through their SceneSession/project service, not by keeping business pointers to each
-other. PaneHandle remains a runtime UI identity, not dependency injection. Bulk frame data continues through the
-existing owned/shared render path. No global Element registry or speculative active-scene scheduler is introduced.
-
-P0–P2 stops before SceneSession/Outliner/Inspector/tool migration. A future real slice must exercise multiple
-simultaneously applicable tools before finalizing the provisional SceneToolRegistrar. Persistent name-to-handle
-binding and application command policy remain future Editor responsibilities, not additions to generic Root.
+公共头和独立安装消费者分别位于模块 include/ 与 editor/tests/installed/。
+库不借助 RTTI；模块内 pinclude/ 和项目级 sinclude/ 不是安装 API。
+[持续质量规则](editor-quality.md) 规定寿命、错误、发布、依赖和验证边界。

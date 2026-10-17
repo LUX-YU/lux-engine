@@ -33,7 +33,6 @@ module's CodeLease and the existing graph and resource contracts. No new library
 Tests exercise dynamic schemas, immutable definition lifetime, rejected batches, clone errors, move cleanup and
 an actual loaded DLL whose code outlives its catalog and is released after its last payload.
 
-This is the MA06 module extension surface. The existing built-in MaterialGraph/Node lowering and codec still
-require the planned MA08 integration through these same contracts. This document does not certify that integration,
-the Flow catalog, or MA06 as a whole as complete. Serialized graphs must ultimately carry canonical type/version,
-and GraphTopology remains the sole structural authority during that migration.
+Serialized graphs carry canonical type/version information. GraphTopology remains the sole structural
+authority; the catalog does not replace graph identity, editing, lowering or persistence. See the
+[Material module](../modules/function/material/README.md) for the integrated authoring surface.

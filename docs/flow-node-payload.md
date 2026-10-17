@@ -20,5 +20,5 @@
 
 这还不是完整的开放 Flow 图。FlowNodeCatalog 的 compile 接点必须接通真实的控制流、数据流和
 ScriptAbility 编译语义，不能公开私有 MLIR 类型、返回默认成功或包装旧 Node creator。
-现有 FlowGraph/FlowSource 和编译器尚未迁移到此载荷，后续按 MA06/MA08 完成，不能以载荷测试
-声称开放图或内置节点迁移已经通过。
+现有 FlowGraph/FlowSource 和编译器尚未迁移到此载荷，载荷接口本身不代表
+开放图或内置节点的完整编译能力。

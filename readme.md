@@ -7,8 +7,8 @@ C++20 engine libraries, offline asset tools, and a Vulkan editor.
 - `engine/process/`: asynchronous execution and loading.
 - `engine/scene/`: World/Simulation composition and optional scene systems.
 - `engine/toolchain/`: asset compilation, script generation, and packaging.
-- `editor/`: editing, authoring, activities, workbench and application layers; see the
-  [formal providers and product boundary](editor/README.md).
+- `editor/`: app, window, context, project and UI framework; see the
+  [ownership and product boundary](editor/README.md).
 - `examples/`: external consumers of the public SDK.
 - `cmake/`: build, dependency, and installation support.
 
@@ -56,8 +56,8 @@ helpers. Private `pinclude/` and project-only `sinclude/` headers are not SDK AP
 
 Design notes live with the module that owns the responsibility. They distinguish
 current implementation from intended interfaces; they are not acceptance reports.
-Construction state lives in `.internal/editor-redesign/`; frozen qualification records in `dev_log/`
-retain their own implementation SHA, failures and waivers. Build artifacts stay outside the repository.
+Historical plans, implementation notes and qualification records are available in Git history.
+Build artifacts and raw validation output stay outside the repository.
 
 | Module | Design notes |
 | --- | --- |
@@ -65,15 +65,12 @@ retain their own implementation SHA, failures and waivers. Build artifacts stay 
 | Spatial | [分区索引与运行时实体查询](engine/domain/spatial/README.md) |
 | Simulation | [世界演进、Main owner 与稳定点](engine/domain/simulation/README.md) |
 | ECS | [Entity、组件与相机数据](engine/domain/simulation/ecs/README.md) |
-| Plugins | [元信息目录、typed 导出与追加装配](editor/workbench/desktop/modules/README.md) |
+| Plugins | [元信息目录、typed 导出与追加装配](engine/project/plugins/README.md) |
 | Math | [射线生成与几何相交](modules/core/math/README.md) |
 | Process | [有限异步工作与结果采用](engine/process/README.md) |
 | Scene | [World／Simulation 装配与可选能力](engine/scene/README.md) |
-| Scene Render | [通用推进与 Feature 提取](engine/scene/builtin_systems/render/README.md) |
-| Render | [Feature、View 与 GPU 资源](modules/function/render/README.md) |
+| Render | [Feature、View 与 GPU 资源](docs/render-v2/README.md) |
 | Editor | [编辑器业务与模块边界](editor/README.md) |
-| Scene Editor | [作者源、身份与历史](editor/authoring/scene/README.md) |
-| Application | [装配、配置与关闭顺序](editor/application/README.md) |
 
 ## Tests
 
@@ -83,19 +80,11 @@ duplicate suites have been removed rather than hidden behind another switch.
 Installed SDK consumers in `cmake/installed-consumers` are separate release checks;
 ordinary iteration does not rebuild them automatically.
 
-## Editor declarations and startup
+## Editor and Render use
 
-The installed Editor uses extension ABI **V9** (`lux_editor_exports_v9`). Runtime/script exports retain
-their separate ABI. Actual modules declare fixed descriptors; immutable entries retain dynamic text,
-callbacks and defining code. The command registry validates names/collisions at registration or changed
-registration resolution; accepted handles and menu-local numeric indices drive ordinary dispatch.
+[Editor Framework](docs/editor-framework-v2.md) explains Object/UI ownership and project lifetime.
+[Editor usage](editor/README.md) documents the actual project-open and host-loop APIs.
 
-Application composes providers and lifecycle; project saving, source registration, recent projects,
-workspace publication and recovery policies live in their corresponding activities. Settings resolve
-permitted installation, project, user, user-project and explicit launch scopes. Appearance/window
-changes are marked for restart; shortcuts apply at a safe point. Window creation uses resolved content
-placement, monitor work areas and scale. CLI choices do not silently overwrite user settings.
-
-Inspector code generation uses the original lux-cxx MetaUnit and inja projections for author and Run
-controls. A host `lux_inspector_generator` and templates are installed; Python is only a qualification
-driver, not a second production emitter. See [the public usage and boundaries](docs/editor-ec3-capabilities.md).
+[Render V2](docs/render-v2/README.md) describes module ownership, direct IPC clients, the selected
+Vulkan Server bootstrap and the independent build entry. Its Runtime integration consumer exercises
+real offscreen geometry without adding Native dependencies to the Client translation unit.

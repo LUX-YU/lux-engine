@@ -16,4 +16,4 @@ FlowSource 环境验证直接调用这个无分配入口，不再为了验证而
 节点已有的 Pin/RefType、Graph 身份、编译和序列化职责保持不变。
 
 这只处理现有 ScriptAbility 扩展面的描述寿命。它不等于完整 FlowNodeCatalog/MaterialNodeCatalog，
-不改变 MA08 的 GraphTopology 唯一结构权威、开放 payload 和领域编译协议目标。
+不改变 GraphTopology 的唯一结构权威，也不代替领域编译协议。

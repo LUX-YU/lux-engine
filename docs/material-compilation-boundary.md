@@ -22,5 +22,5 @@ enumerator is removed; actual semantic failures, node identifiers and pin indice
 The installed `material-domain` consumer defaults to only `material_graph`; enabling
 `MATERIAL_DOMAIN_COMPILER` additionally verifies the real installed compiler.
 
-This boundary is preparation for module-owned node registrations. It does not itself implement or
-qualify MaterialNodeCatalog, FlowNodeCatalog, open payload compilation, or the MA08 graph-authority migration.
+Material authoring and node integration use these same contracts; see the
+[Material module](../modules/function/material/README.md) for its supported authoring and compilation APIs.

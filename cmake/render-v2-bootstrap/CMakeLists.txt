@@ -101,8 +101,6 @@ if(BUILD_TESTING)
     )
 endif()
 
-# The user removed the old V2 source and its tests. Historical F4/F5/F6 scripts
-# remain read-only references; only implemented rebuild stages enter this build.
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render" render)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/ipc" ipc)

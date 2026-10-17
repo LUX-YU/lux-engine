@@ -4,9 +4,9 @@
 后面附着它的成因——不写成因的规矩会在下一次"就这一次"里被绕过。
 前两节（项目簇背景、代码风格）是用户定的基线约定，随仓走。
 
-（早期设计材料曾按用户要求清理。后续阶段的唯一可变施工材料位于
-`.internal/editor-redesign/`，验收输出保存于源码树外，按各自 implementation SHA 核验。
-历史 dev_log 已经逐文件验证归档，Git 历史保持不变；不修改过去的判定，用户免验或未测不能标成通过。）
+架构与使用说明保存在 `docs/` 或对应模块的 README 中。阶段计划、施工记录、验收报告和
+历史证据索引从 Git 历史查询，不再在源码树内维护 `.internal` 状态账本或重复报告。
+构建产物和原始验证输出保存在源码树外；历史判定不因文档清理而改变，用户免验或未测不能标成通过。
 
 ---
 
@@ -316,6 +316,6 @@ layer 就不会重设——Android 切回前台后画面永远停在旧 surface 
 ## Editor 持续质量规范
 
 P10Q 及后续 Editor 修改遵守 [docs/editor-quality.md](docs/editor-quality.md) 的 QR01–QR22。
-该文件只定义持续规则；唯一可变施工材料仍为 `.internal/editor-redesign/`，不另建状态账本。
+该文件只定义持续规则；历史施工记录从 Git 查询，不另建状态账本或阶段报告。
 Framework v2 不沿用历史迁移阶段门禁；历史规则只在其原 Git 提交核验。
 新框架核验真实 source/include/link/install 闭包，不允许 legacy 或旧 SDK 残留补全依赖。

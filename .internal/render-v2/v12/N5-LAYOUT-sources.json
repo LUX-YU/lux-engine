@@ -1,7 +1,0 @@
-{
-  "source": "engine/toolchain/shader/src/SpirvRelocation.cpp",
-  "blob": "1ba27f2e79aa77685864b11c876f19a5a301494e",
-  "sha256": "c5836acb991e5010793471179624af7a60ebc010afcf8fd00db73631437199af",
-  "consumer": "modules/function/render/native/vulkan/src/LayoutPlan.cpp",
-  "reused": "controlled direct decoration relocation; collect before patch; reject ambiguous decoration forms; SPIRV-Tools validation"
-}

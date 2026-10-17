@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <lux/engine/render/runtime/CommandValue.hpp>
+#include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/render/data/Encoding.hpp>
 
 namespace lux::render::runtime_detail
@@ -28,29 +29,12 @@ namespace lux::render::runtime_detail
     static_assert(sizeof(RequestMetadata) == platform::ipc::IpcMessage::metadata_capacity);
     static_assert(sizeof(ReplyMetadata) <= platform::ipc::IpcMessage::metadata_capacity);
 
-    struct Capability final
-    {
-        std::shared_ptr<const void> code_pin;
-        std::string name;
-        CommandId id;
-        cxx::SchemaVersion version{1, 0};
-        CommandValueType request;
-        CommandValueType response;
-        const platform::ipc::IpcTypeOps* request_ops = nullptr;
-        const platform::ipc::IpcTypeOps* response_ops = nullptr;
-
-        [[nodiscard]] CommandDescriptor descriptor() const noexcept
-        {
-            return {CommandName{name}, version, request, response};
-        }
-    };
-
     struct HelloRequest final {};
     struct HelloResponse final
     {
         // Independent of the capability list: even an empty manifest can name a module-local error type.
         std::shared_ptr<const void> failure_code_pin;
-        std::vector<Capability> capabilities;
+        std::vector<CommandInfo> capabilities;
         const platform::ipc::IpcTypeOps* failure_ops = &platform::ipc::IpcMessage::type<ValueEnvelope<RenderError>>();
     };
     struct Hello final
@@ -70,9 +54,9 @@ namespace lux::render
         {
             std::size_t bytes = sizeof(value);
             const auto capacity = value.capabilities.capacity();
-            if (capacity > (SIZE_MAX - bytes) / sizeof(runtime_detail::Capability))
+            if (capacity > (SIZE_MAX - bytes) / sizeof(CommandInfo))
                 return cxx::unexpected(RenderError{kProtocolContract});
-            bytes += capacity * sizeof(runtime_detail::Capability);
+            bytes += capacity * sizeof(CommandInfo);
             for (const auto& capability : value.capabilities)
             {
                 // A string allocation also owns the terminating character.

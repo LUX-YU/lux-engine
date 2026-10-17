@@ -138,7 +138,7 @@ namespace lux::render
             auto& state = *static_cast<CompileState*>(value);
             auto& server = *static_cast<Impl*>(owner);
             if (server.stop_requested.load()) return request.cancel();
-            if (!state.slot->cpu_result) return request.fail(state.slot->cpu_result.error());
+            if (!state.slot->continuation_result) return request.fail(state.slot->continuation_result.error());
             if (!state.candidate) return request.fail(state.candidate.error());
             const auto effect = server.effects.emplace(std::move(*state.candidate));
             auto result = request.reply(EffectCreated{effect});

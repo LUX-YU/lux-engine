@@ -54,6 +54,21 @@ namespace lux::render
             bool abandoned = false;
         };
 
+        RenderResult<void> validateDirectory(std::span<const CommandInfo> entries) noexcept
+        {
+            for (std::size_t index = 0; index != entries.size(); ++index)
+            {
+                const auto& entry = entries[index];
+                const bool is_invalid = entry.id.isNull() || !entry.request_ops || !entry.response_ops ||
+                    !validateCommand(entry.descriptor());
+                if (is_invalid) return cxx::unexpected(RenderError{kProtocolContract});
+                for (std::size_t previous = 0; previous != index; ++previous)
+                    if (entries[previous].id == entry.id || entries[previous].name == entry.name)
+                        return cxx::unexpected(RenderError{kProtocolContract});
+            }
+            return {};
+        }
+
         bool addBytes(std::size_t& total, std::size_t amount) noexcept
         {
             if (amount > SIZE_MAX - total) return false;
@@ -67,7 +82,7 @@ namespace lux::render
         ipc::IpcRequester requester;
         cxx::SlotMap<Pending, RequestTag> requests;
         std::shared_ptr<BudgetState> budget;
-        std::vector<Capability> manifest;
+        std::vector<CommandInfo> manifest;
         std::optional<ipc::IpcBoundType<ValueEnvelope<RenderError>>> failure_type;
         SessionIdentity session{};
         std::size_t capacity;
@@ -148,6 +163,22 @@ namespace lux::render
                 capability.code_pin};
         }
         return cxx::unexpected(RenderError{kRuntimeUnsupported});
+    }
+
+    RenderResult<void> RenderClient::refreshCommands(const RenderCompletion& completion) noexcept
+    {
+        auto binding = bind<ListCommands>();
+        if (!binding) return cxx::unexpected(binding.error());
+        const bool is_wrong_source = completion.session != impl_->session ||
+            completion.command_ != binding->command();
+        if (is_wrong_source) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        const bool is_invalid_result = completion.header.outcome != ECommandOutcome::SUCCESS ||
+            completion.backing_.message.operations() != &binding->response_.operations();
+        if (is_invalid_result) return cxx::unexpected(RenderError{kProtocolContract});
+        const auto& list = completion.backing_.message.get<ValueEnvelope<CommandList>>().value;
+        if (auto valid = validateDirectory(list.commands); !valid) return valid;
+        impl_->manifest = list.commands;
+        return {};
     }
 
     RenderResult<std::pair<RequestId, BudgetLease>> RenderClient::reserve(
@@ -297,31 +328,12 @@ namespace lux::render
                         output.header = {metadata.request, ECommandOutcome::FAILED, {kProtocolContract}};
                         return ERenderReceive::RECEIVED;
                     }
-                    // One cold copy owns names and module pins; no Request/Response business data is copied.
-                    state.manifest = hello.capabilities;
-                    for (std::size_t index = 0; index != state.manifest.size(); ++index)
+                    if (auto valid = validateDirectory(hello.capabilities); !valid)
                     {
-                        const auto& capability = state.manifest[index];
-                        const bool is_invalid = capability.id.isNull() || !capability.request_ops ||
-                            !capability.response_ops || !validateCommand(capability.descriptor());
-                        bool is_duplicate = false;
-                        for (std::size_t previous = 0; previous != index; ++previous)
-                        {
-                            const auto& earlier = state.manifest[previous];
-                            if (earlier.id == capability.id || earlier.name == capability.name)
-                            {
-                                is_duplicate = true;
-                                break;
-                            }
-                        }
-                        if (is_invalid || is_duplicate)
-                        {
-                            state.manifest.clear();
-                            output.header.outcome = ECommandOutcome::FAILED;
-                            output.header.error = {kProtocolContract};
-                            return ERenderReceive::RECEIVED;
-                        }
+                        output.header = {metadata.request, ECommandOutcome::FAILED, valid.error()};
+                        return ERenderReceive::RECEIVED;
                     }
+                    state.manifest = hello.capabilities;
                     state.session = metadata.session;
                     state.failure_type = *failure_type;
                     state.bound = true;

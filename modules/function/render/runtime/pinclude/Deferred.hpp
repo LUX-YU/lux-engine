@@ -61,7 +61,7 @@ namespace lux::render::runtime_detail
         ~OperationCompletion() noexcept { if (operation) destroy(operation); }
     };
 
-    // The only pending request owner. Its fixed-address slot reserves one CPU event landing place.
+    // The only pending request owner. Its fixed-address slot reserves one completion event landing place.
     struct DeferredCompletion final
     {
         std::optional<RenderRequest> request;
@@ -77,7 +77,7 @@ namespace lux::render::runtime_detail
         CompletionId id;
         void* continuation = nullptr;
         CpuResume resume = nullptr;
-        RenderResult<void> cpu_result;
+        RenderResult<void> continuation_result;
 
         DeferredCompletion() noexcept = default;
         ~DeferredCompletion() noexcept { if (quota_use) --*quota_use; }
@@ -91,7 +91,7 @@ namespace lux::render::runtime_detail
                 publishers->fetch_add(1, std::memory_order_acq_rel);
                 slot.continuation = next;
                 slot.resume = callback;
-                slot.cpu_result = std::move(result);
+                slot.continuation_result = std::move(result);
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM
                 auto* cost_record = test::completionPostBegin(event.id);
                 const auto published = events->tryPush(event);

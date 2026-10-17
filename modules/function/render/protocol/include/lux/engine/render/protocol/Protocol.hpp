@@ -42,7 +42,6 @@ namespace lux::render
     struct CommandDescriptor final
     {
         CommandName name;
-        cxx::SchemaVersion version;
         CommandValueType request;
         CommandValueType response;
     };
@@ -58,15 +57,11 @@ namespace lux::render
         std::is_nothrow_destructible_v<typename C::Response>;
 
     template <RenderCommand C>
-    inline constexpr CommandDescriptor kCommandDescriptor = [] {
-        cxx::SchemaVersion version{1, 0};
-        if constexpr (requires { C::version; }) version = C::version;
-        return CommandDescriptor{
-            CommandName(C::name), version,
-            {cxx::typeToken<typename C::Request>(), sizeof(typename C::Request), alignof(typename C::Request)},
-            {cxx::typeToken<typename C::Response>(), sizeof(typename C::Response), alignof(typename C::Response)}
-        };
-    }();
+    inline constexpr CommandDescriptor kCommandDescriptor{
+        CommandName(C::name),
+        {cxx::typeToken<typename C::Request>(), sizeof(typename C::Request), alignof(typename C::Request)},
+        {cxx::typeToken<typename C::Response>(), sizeof(typename C::Response), alignof(typename C::Response)}
+    };
 
     template <RenderCommand C>
     [[nodiscard]] constexpr const CommandDescriptor& commandDescriptor() noexcept

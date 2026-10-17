@@ -83,10 +83,9 @@ struct WrongResponse final
     using Request = Exposure;
     using Response = std::uint64_t;
 };
-struct WrongVersion final
+struct EquivalentCommand final
 {
     static constexpr std::string_view name = SetExposure::name;
-    static constexpr cxx::SchemaVersion version{1, 1};
     using Request = Exposure;
     using Response = Exposure;
 };
@@ -242,7 +241,8 @@ int main()
     check(!a->bind<UnqualifiedType>());
     auto bound_a = take(a->bind<SetExposure>());
     auto bound_b = take(b->bind<SetExposure>());
-    check(!a->bind<WrongRequest>() && !a->bind<WrongResponse>() && !a->bind<WrongVersion>());
+    check(!a->bind<WrongRequest>() && !a->bind<WrongResponse>());
+    check(take(a->bind<EquivalentCommand>()).command() == bound_a.command());
     const auto id_a = submit(*a, bound_a, Exposure{3});
     const auto id_b = submit(*b, bound_b, Exposure{7});
     check(id_a == id_b);

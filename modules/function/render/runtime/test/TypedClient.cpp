@@ -76,11 +76,11 @@ template <class T> static T take(RenderResult<T> value)
     return std::move(*value);
 }
 
-template <class C> static detail::Capability capability(CommandId id)
+template <class C> static CommandInfo capability(CommandId id)
 {
     const auto& descriptor = commandDescriptor<C>();
     const auto transport = detail::commandTransport<C>();
-    return {{}, std::string(descriptor.name.name()), id, descriptor.version,
+    return {{}, std::string(descriptor.name.name()), id,
         descriptor.request, descriptor.response, transport.request, transport.response};
 }
 
@@ -173,6 +173,62 @@ static void rejectDuplicateManifest(bool duplicate_name)
     check(client->retainedBytes() == 0, "rejected manifest retained its source owner budget");
 }
 
+static void directoryRefresh()
+{
+    auto created = ipc::IpcCore::instance().createResponder("runtime.typed.directory");
+    check(bool(created), "directory responder");
+    auto responder = std::move(*created);
+    auto client = take(RenderClient::create("runtime.typed.directory"));
+    const SessionIdentity session{71, 73};
+    (void)take(client->hello());
+    auto greeting = receive(responder);
+    detail::HelloResponse hello;
+    hello.capabilities = {capability<ListCommands>({0, 1}), capability<Batch>({1, 1})};
+    reply<detail::Hello>(responder, greeting, hello, session);
+    check(consume(*client).header.outcome == ECommandOutcome::SUCCESS, "directory bootstrap");
+    const auto original = take(client->bind<Batch>());
+    const auto list = take(client->bind<ListCommands>());
+    for (unsigned fault = 0; fault != 7; ++fault)
+    {
+        ListCommands::Request request;
+        (void)take(client->submit(list, request, 4096));
+        auto received = receive(responder);
+        CommandList candidate{{capability<ListCommands>({0, 1}), capability<Batch>({1, 1}),
+            capability<OtherBatch>({2, 1})}};
+        if (fault == 0) candidate.commands.back().name = Batch::name;
+        if (fault == 1) candidate.commands.back().id = {1, 1};
+        if (fault == 2) candidate.commands.back().id = {};
+        if (fault == 3) candidate.commands.back().request_ops = nullptr;
+        if (fault == 4) candidate.commands.back().response.type = {};
+        if (fault == 5) candidate.commands.back().response.size = 0;
+        reply<ListCommands>(responder, received, candidate, session);
+        auto completion = consume(*client);
+        auto adopted = client->refreshCommands(completion);
+        if (fault < 6)
+        {
+            check(!adopted && adopted.error().type == kProtocolContract, "malformed directory accepted");
+            check(!client->bind<OtherBatch>() && take(client->bind<Batch>()).command() == original.command(),
+                "failed directory refresh replaced last-good discovery");
+        }
+        else
+            check(bool(adopted) && take(client->bind<OtherBatch>()).command() == CommandId{2, 1},
+                "valid dynamic directory rejected");
+        completion = {};
+        check(client->retainedBytes() == 0, "directory reply budget was not refunded");
+    }
+    BatchRequest request;
+    request.values = {17};
+    (void)take(client->submit(original, request, 512));
+    auto received = receive(responder);
+    BatchResponse response{{}, 29};
+    reply<Batch>(responder, received, response, session);
+    auto completion = consume(*client);
+    check(!client->refreshCommands(completion), "ordinary result accepted as a directory");
+    auto typed = take(std::move(completion).take(original));
+    check(typed.response().checksum == 29 && typed.request().values.front() == 17,
+        "refresh invalidated an existing canonical binding");
+}
+
 static void selectionAssignmentPinsConfig()
 {
     bool pin_alive = true;
@@ -208,7 +264,7 @@ static void stringBackingBudgets()
     described.capabilities.reserve(3);
     described.capabilities.push_back(capability<CreateEffect>({0, 1}));
     described.capabilities.front().name = std::string(257, 'n');
-    const auto expected_manifest = sizeof(described) + described.capabilities.capacity() * sizeof(detail::Capability) +
+    const auto expected_manifest = sizeof(described) + described.capabilities.capacity() * sizeof(CommandInfo) +
         described.capabilities.front().name.capacity() + 1;
     check(take(CommandValueTraits<detail::HelloResponse>::retainedBytes(described)) == expected_manifest,
         "HelloResponse budget omitted the capability name terminator");
@@ -284,6 +340,7 @@ int main()
     static_assert(!std::is_default_constructible_v<BoundCommand<Batch>>);
     rejectDuplicateManifest(true);
     rejectDuplicateManifest(false);
+    directoryRefresh();
     selectionAssignmentPinsConfig();
     stringBackingBudgets();
     auto responder_value = ipc::IpcCore::instance().createResponder("runtime.typed.client");

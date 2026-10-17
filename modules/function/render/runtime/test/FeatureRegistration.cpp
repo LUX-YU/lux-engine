@@ -112,11 +112,11 @@ int main()
         const std::array initial{test_registration::erased(&original, handler)};
         check(bool(server->registerFeature<First>({&first, &graph, nullptr, initial})));
         auto candidate = commandDescriptor<First>();
-        if (fault == 1) ++candidate.version.minor;
+        if (fault == 1) candidate.name = CommandName("test.registration.wrong-name");
         if (fault == 2) candidate.request.alignment *= 2;
         if (fault == 3) candidate.response = candidate.request;
         if (fault >= 4) candidate = commandDescriptor<Second>();
-        if (fault == 5) candidate.version = {};
+        if (fault == 5) candidate.name = {};
         const std::array next{test_registration::erased(&candidate, handler)};
         if (fault < 4) check(!server->registerFeature<First>({&second, &graph, nullptr, next}));
         else if (fault == 4) check(bool(server->registerFeature<Second>({&second, &graph, nullptr, next})));

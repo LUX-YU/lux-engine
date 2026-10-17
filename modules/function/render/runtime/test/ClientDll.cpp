@@ -93,7 +93,7 @@ static void canonicalPlugin()
         "cross-DLL Hello did not satisfy the cold type contract");
     detail::HelloResponse hello;
     const auto& descriptor = *transport->descriptor;
-    hello.capabilities.push_back({pin, std::string(descriptor.name.name()), {0, 1}, descriptor.version,
+    hello.capabilities.push_back({pin, std::string(descriptor.name.name()), {0, 1},
         descriptor.request, descriptor.response, transport->request, transport->response});
     publish(responder, hello_input, *hello_transport, &hello, session, pin);
     auto greeting = consume(*client);
@@ -174,7 +174,7 @@ static void clientImplementation()
     const auto local_transport = detail::commandTransport<LocalCommand>();
     const auto& descriptor = *local_transport.descriptor;
     detail::HelloResponse hello;
-    hello.capabilities.push_back({{}, std::string(descriptor.name.name()), {0, 1}, descriptor.version,
+    hello.capabilities.push_back({{}, std::string(descriptor.name.name()), {0, 1},
         descriptor.request, descriptor.response,
         local_transport.request, local_transport.response});
     publish(responder, hello_input, detail::commandTransport<detail::Hello>(), &hello, session, {});

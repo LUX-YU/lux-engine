@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -10,6 +11,8 @@
 #include <lux/engine/render/data/Schema.hpp>
 #include <lux/engine/render/protocol/Protocol.hpp>
 #include <lux/engine/render/runtime/visibility.h>
+
+namespace lux::platform::ipc { class IpcTypeOps; }
 
 namespace lux::render
 {
@@ -106,9 +109,18 @@ namespace lux::render
 
     struct CommandInfo final
     {
-        CommandId id;
+        // Cold directory values retain the provider of the canonical value operations.
+        std::shared_ptr<const void> code_pin;
         std::string name;
+        CommandId id;
+        CommandValueType request;
+        CommandValueType response;
+        const platform::ipc::IpcTypeOps* request_ops = nullptr;
+        const platform::ipc::IpcTypeOps* response_ops = nullptr;
         bool bound = false;
+
+        [[nodiscard]] CommandDescriptor descriptor() const noexcept
+        { return {CommandName{name}, request, response}; }
     };
     struct CommandList final { std::vector<CommandInfo> commands; };
     struct HandlerInfo final

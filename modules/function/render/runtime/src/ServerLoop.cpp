@@ -97,7 +97,8 @@ namespace lux::render
                 result = cxx::unexpected(RenderError{kRuntimeCapacity});
             else
             {
-                result = request.reply(manifest);
+                result = request.reply(HelloResponse{config.implementation_code_pin,
+                    commandDirectory().commands, &failure_type.operations()});
                 if (result) ++clients;
             }
         }
@@ -188,25 +189,6 @@ namespace lux::render
             }
         }
         resources.freeze();
-        const std::uint32_t capabilities =
-            (s.device->device().textureDescriptors() ? 1u : 0u) | (s.device->device().textureCompressionBc() ? 2u : 0u);
-        for (auto& route : s.command_table)
-        {
-            auto& entry = *route.cold;
-            entry.available = !entry.storage || (entry.storage->required_capabilities & ~capabilities) == 0;
-            if (!entry.available) continue;
-            const auto& descriptor = *entry.binding.descriptor();
-            s.manifest.capabilities.push_back(
-                {entry.code_pin,
-                 std::string(descriptor.name.name()),
-                 entry.id,
-                 descriptor.version,
-                 descriptor.request,
-                 descriptor.response,
-                 entry.transport.request,
-                 entry.transport.response}
-            );
-        }
         RenderResult<void> result;
         while (!s.stop_requested.load())
         {

@@ -21,7 +21,6 @@ struct Query final
 struct Signal final
 {
     static constexpr std::string_view name = "test.Signal";
-    static constexpr cxx::SchemaVersion version{3, 7};
     using Request = Ack;
     using Response = Ack;
 };
@@ -64,7 +63,7 @@ static int descriptor()
     CHECK(reference.request.size == sizeof(Query::Request));
     CHECK(reference.response.alignment == alignof(Query::Response));
     const auto& signal = commandDescriptor<Signal>();
-    CHECK(signal.version == cxx::SchemaVersion(3, 7));
+    CHECK(signal.name.name() == Signal::name);
     CHECK(signal.response.type == cxx::typeToken<Signal::Response>());
     CHECK(compatibleCommands(reference, reference));
     CHECK(CommandName::fromVerified(reference.name.name(), reference.name.hash()) == reference.name);
@@ -101,7 +100,7 @@ static int descriptor()
     {
         auto changed = reference;
         if (fault == 0) changed.name = CommandName("test.Other");
-        if (fault == 1) ++changed.version.minor;
+        if (fault == 1) changed.request.type = cxx::typeToken<std::uint64_t>();
         if (fault == 2) ++changed.request.size;
         if (fault == 3) changed.request.alignment *= 2;
         if (fault == 4) changed.response.type = cxx::typeToken<Ack>();
@@ -117,7 +116,7 @@ static int descriptor()
     {
         auto changed = reference;
         if (fault == 0) changed.name = {};
-        if (fault == 1) changed.version.major = 0;
+        if (fault == 1) changed.response.size = 1;
         if (fault == 2) changed.request.type = {};
         if (fault == 3) changed.request.size = 0;
         if (fault == 4) changed.response.alignment = 0;

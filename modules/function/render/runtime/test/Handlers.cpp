@@ -37,6 +37,13 @@ struct Second final : First { static constexpr std::string_view name = "test.own
 struct Third final : First { static constexpr std::string_view name = "test.owner.third"; };
 struct Fourth final : First { static constexpr std::string_view name = "test.owner.fourth"; };
 struct NewBeforeFailure final : First { static constexpr std::string_view name = "test.owner.rollback"; };
+struct Late final : First { static constexpr std::string_view name = "test.owner.late"; };
+struct InstallLate final
+{
+    static constexpr std::string_view name = "test.owner.install";
+    using Request = Ack;
+    using Response = HandlerId;
+};
 struct Mismatch final
 {
     static constexpr auto name = First::name;
@@ -85,6 +92,37 @@ private:
     Counts& counts_;
 };
 
+class LateHandler final
+{
+public:
+    static constexpr std::string_view name = "test.owner.late-handler";
+    explicit LateHandler(Counts& counts) noexcept : counts_(counts) { ++counts_.created; }
+    ~LateHandler() noexcept { ++counts_.destroyed; }
+    void first(const unsigned& input, Reply<First> reply) noexcept { check(bool(reply.complete(input + 300))); }
+    void late(const unsigned& input, Reply<Late> reply) noexcept { check(bool(reply.complete(input + 300))); }
+    using Bindings = std::tuple<CommandMethod<First, &LateHandler::first>, CommandMethod<Late, &LateHandler::late>>;
+private:
+    Counts& counts_;
+};
+
+class Installer final
+{
+public:
+    static constexpr std::string_view name = "test.owner.installer";
+    Installer(RenderServer& server, Counts& counts) noexcept : server_(server), counts_(counts) {}
+    void install(const Ack&, Reply<InstallLate> reply) noexcept
+    {
+        // Actual Owner-thread dispatch is the directory mutation safe point, not a concurrent caller.
+        auto installed = server_.emplaceHandler<LateHandler>("late", {}, counts_);
+        if (!installed) check(bool(reply.fail(installed.error())));
+        else check(bool(reply.complete(*installed)));
+    }
+    using Bindings = std::tuple<CommandMethod<InstallLate, &Installer::install>>;
+private:
+    RenderServer& server_;
+    Counts& counts_;
+};
+
 static RenderCompletion receive(RenderClient& client)
 {
     const auto deadline = std::chrono::steady_clock::now() + 10s;
@@ -107,7 +145,7 @@ template <class C> static TypedRenderCompletion<C> call(RenderClient& client, ty
 
 int main()
 {
-    Counts counts, rejected;
+    Counts counts, rejected, late_counts;
     auto server = take(RenderServer::create({"runtime.handlers", true}));
     auto first = take(server->emplaceHandler<Handler>("A", {}, counts, 100));
     auto duplicate = take(server->emplaceHandler<Handler>("A", {}, counts, 999));
@@ -116,15 +154,13 @@ int main()
     auto invalid = server->emplaceHandler<InvalidHandler>("bad", {}, rejected);
     check(!invalid && invalid.error().type == kProtocolContract);
     check(rejected.created == 1 && rejected.destroyed == 1);
+    (void)take(server->emplaceHandler<Installer>("installer", {}, *server, late_counts));
 
     RenderResult<void> run;
     std::thread thread([&] { run = server->run(); });
     auto a = take(RenderClient::create("runtime.handlers"));
-    auto b = take(RenderClient::create("runtime.handlers"));
     (void)take(a->hello());
-    (void)take(b->hello());
     check(receive(*a).header.outcome == ECommandOutcome::SUCCESS);
-    check(receive(*b).header.outcome == ECommandOutcome::SUCCESS);
     const auto bound = take(a->bind<First>());
     const auto bindings = call<ListCommandBindings>(*a, bound.command());
     check(bindings.response().selected == first && bindings.response().handlers.size() == 2);
@@ -141,8 +177,36 @@ int main()
     (void)take(a->submit(bound, input)); // FIFO selection takes effect at dispatch.
     check(take(receive(*a).take(select)).header().outcome == ECommandOutcome::SUCCESS);
     check(take(receive(*a).take(bound)).response() == 211);
+
+    check(call<SelectCommandBinding>(*a, {bound.command(), {}}).header().outcome == ECommandOutcome::SUCCESS);
+    auto unbound = call<First>(*a, 0);
+    check(unbound.header().outcome == ECommandOutcome::FAILED &&
+        unbound.header().error.type == kRuntimeUnsupported);
+    const auto late = call<InstallLate>(*a).response();
+    check(late_counts.created == 1 && call<InstallLate>(*a).response() == late && late_counts.created == 1);
+    check(!a->bind<Late>()); // Existing Client discovery changes only after explicit adoption.
+    unbound = call<First>(*a, 0);
+    check(unbound.header().outcome == ECommandOutcome::FAILED &&
+        unbound.header().error.type == kRuntimeUnsupported); // A new supporter does not steal an unbound command.
+    const auto list_binding = take(a->bind<ListCommands>());
+    ListCommands::Request empty;
+    (void)take(a->submit(list_binding, empty, 16384));
+    auto directory = receive(*a);
+    directory.session[0] ^= 1;
+    auto rejected_directory = a->refreshCommands(directory);
+    check(!rejected_directory && rejected_directory.error().type == kRuntimeIdentity && !a->bind<Late>());
+    directory.session[0] ^= 1;
+    check(bool(a->refreshCommands(directory)) && call<Late>(*a, 9).response() == 309);
+    check(call<ListCommandBindings>(*a, bound.command()).response().handlers.size() == 3);
+    check(call<SelectCommandBinding>(*a, {bound.command(), second}).header().outcome == ECommandOutcome::SUCCESS);
+
+    // A later Client bootstrap is built from the same live Command table, not the startup snapshot.
+    auto b = take(RenderClient::create("runtime.handlers"));
+    (void)take(b->hello());
+    check(receive(*b).header.outcome == ECommandOutcome::SUCCESS);
+    check(call<Late>(*b, 10).response() == 310);
     check(call<First>(*b, 12).response() == 212); // Other Client coordinates after the selection reply.
-    auto bad = call<SelectCommandBinding>(*a, {bound.command(), HandlerId{}});
+    auto bad = call<SelectCommandBinding>(*a, {bound.command(), HandlerId{first.index, first.gen + 1}});
     check(bad.header().outcome == ECommandOutcome::FAILED && bad.header().error.type == kRuntimeIdentity);
     check(call<First>(*a, 13).response() == 213);
     check(call<Second>(*a, 14).response() == 114); // Selection is per command, not per object.
@@ -157,7 +221,8 @@ int main()
     server->stop();
     thread.join();
     check(bool(run) && server->stats().validation_errors == 0 && counts.destroyed == 2);
+    check(late_counts.destroyed == 1);
     server.reset();
     check(counts.destroyed == 2 && bindings.response().handlers[0].instance == "A");
-    std::puts("Handler ownership: four members, two objects, idempotency, rollback, FIFO selection, exact destruction PASS");
+    std::puts("Handler ownership: exact destruction, rollback, FIFO selection, unbind, dynamic install/refresh and late Hello PASS");
 }

@@ -6,7 +6,7 @@ namespace lux::render
 {
     RenderResult<void> validateCommand(const CommandDescriptor& descriptor) noexcept
     {
-        const bool is_invalid_identity = !descriptor.name.isValid() || descriptor.version.major == 0;
+        const bool is_invalid_identity = !descriptor.name.isValid();
         const auto invalid_value = [](const CommandValueType& value) noexcept {
             return !value.type.isValid() || value.size == 0 || !std::has_single_bit(value.alignment) ||
                 value.size % value.alignment != 0;
@@ -19,7 +19,7 @@ namespace lux::render
 
     RenderResult<void> compatibleCommands(const CommandDescriptor& left, const CommandDescriptor& right) noexcept
     {
-        const bool is_mismatch = left.name != right.name || left.version != right.version ||
+        const bool is_mismatch = left.name != right.name ||
             left.request != right.request || left.response != right.response;
         if (is_mismatch) return cxx::unexpected(RenderError{kProtocolContract});
         return {};

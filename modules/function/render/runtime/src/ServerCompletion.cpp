@@ -162,7 +162,7 @@ namespace lux::render
             const auto resume = std::exchange(slot->resume, nullptr);
             if (resume)
             {
-                resume(slot->continuation, std::move(slot->cpu_result));
+                resume(slot->continuation, std::move(slot->continuation_result));
                 // A Native continuation may finish and erase this exact slot synchronously.
                 continue;
             }

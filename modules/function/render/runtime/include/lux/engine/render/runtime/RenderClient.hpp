@@ -134,6 +134,9 @@ namespace lux::render
         RenderClient(const RenderClient&) = delete;
         RenderClient& operator=(const RenderClient&) = delete;
         [[nodiscard]] RenderResult<RequestId> hello() noexcept;
+        // Explicitly adopt a successful ListCommands reply from this Server session. Existing
+        // BoundCommands retain their own canonical qualifications; this only updates cold discovery.
+        [[nodiscard]] RenderResult<void> refreshCommands(const RenderCompletion& completion) noexcept;
         [[nodiscard]] SessionIdentity session() const noexcept;
 
         template <RenderCommand C>

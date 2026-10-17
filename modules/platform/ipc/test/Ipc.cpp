@@ -1038,8 +1038,8 @@ namespace
         const auto& descriptor = commandDescriptor<AssetIncrement>();
         check(static_cast<bool>(validateCommand(descriptor)), "typed command contract");
         auto conflict = descriptor;
-        conflict.version.minor++;
-        check(!compatibleCommands(descriptor, conflict), "version rejected by pure protocol");
+        conflict.response.type = lux::cxx::typeToken<Ack>();
+        check(!compatibleCommands(descriptor, conflict), "response type rejected by pure protocol");
         conflict = descriptor;
         conflict.request.alignment *= 2;
         check(!compatibleCommands(descriptor, conflict), "layout rejected");

@@ -11,14 +11,25 @@ namespace lux::render
         return request.reply(std::move(result));
     }
 
-    RenderResult<void> RenderServer::Impl::listCommands(RenderRequest& request) noexcept
+    CommandList RenderServer::Impl::commandDirectory() const noexcept
     {
         CommandList result;
         result.commands.reserve(command_table.size());
-        for (const auto& entry : command_table)
-            result.commands.push_back({entry.cold->id, std::string(entry.cold->binding.descriptor()->name.name()),
-                entry.active.invoke != nullptr});
-        return request.reply(std::move(result));
+        for (const auto& route : command_table)
+        {
+            const auto& entry = *route.cold;
+            if (!entry.available) continue;
+            const auto& descriptor = *entry.binding.descriptor();
+            result.commands.push_back({entry.code_pin, std::string(descriptor.name.name()), entry.id,
+                descriptor.request, descriptor.response, entry.transport.request, entry.transport.response,
+                route.active.invoke != nullptr});
+        }
+        return result;
+    }
+
+    RenderResult<void> RenderServer::Impl::listCommands(RenderRequest& request) noexcept
+    {
+        return request.reply(commandDirectory());
     }
 
     RenderResult<void> RenderServer::Impl::listCommandBindings(RenderRequest& request) noexcept
@@ -40,6 +51,13 @@ namespace lux::render
         const auto& input = request.get<CommandSelection>();
         auto* entry = command_table.find(input.command);
         if (!entry) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        if (input.handler.isNull())
+        {
+            entry->cold->selected = {};
+            entry->active = {};
+            entry->cold->active_code_pin = &entry->cold->code_pin;
+            return request.reply();
+        }
         const auto& supported = entry->cold->supported;
         const auto found = std::ranges::find(supported, input.handler, &SupportedHandler::id);
         if (found == supported.end()) return cxx::unexpected(RenderError{kRuntimeIdentity});
@@ -64,6 +82,12 @@ namespace lux::render
         auto* cold = metadata.get();
         const auto id = command_table.emplace(CommandEntry{binding.call(), std::move(metadata)});
         cold->id = id;
+        if (storage)
+        {
+            const std::uint32_t capabilities = (device->device().textureDescriptors() ? 1u : 0u) |
+                (device->device().textureCompressionBc() ? 2u : 0u);
+            cold->available = (storage->required_capabilities & ~capabilities) == 0;
+        }
         cold->active_code_pin = &cold->code_pin;
         return id;
     }

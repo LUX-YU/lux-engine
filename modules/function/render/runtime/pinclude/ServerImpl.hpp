@@ -113,7 +113,6 @@ namespace lux::render
         std::vector<StorageRegistration> storage_types;
         cxx::SlotMap<CommandEntry, CommandTag> command_table;
         cxx::SlotMap<std::unique_ptr<HandlerEntry>, HandlerTag> handlers;
-        HelloResponse manifest;
         cxx::SlotMap<Scene, SceneTag> scenes;
         cxx::SlotMap<Target, TargetTag> targets;
         cxx::SlotMap<RenderEffect, EffectTag> effects;
@@ -221,6 +220,8 @@ namespace lux::render
         RenderResult<void> queryRenderStats(RenderRequest& request) noexcept;
 
         RenderResult<void> listFeatures(RenderRequest& request) noexcept;
+        [[nodiscard]] CommandList commandDirectory() const noexcept;
+
         RenderResult<void> listCommands(RenderRequest& request) noexcept;
         RenderResult<void> listCommandBindings(RenderRequest& request) noexcept;
         RenderResult<void> selectCommandBinding(RenderRequest& request) noexcept;

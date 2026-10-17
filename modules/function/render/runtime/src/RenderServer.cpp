@@ -12,8 +12,6 @@ namespace lux::render
           )),
           responder(std::move(input)), identity(session), completion_events(pending_capacity)
     {
-        manifest.failure_code_pin = config.implementation_code_pin;
-        manifest.failure_ops = &failure_type.operations();
         undelivered.reserve(128);
         // Separate admission budgets share one bounded owner and one event queue.
         deferred.reserve(pending_capacity);

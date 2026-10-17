@@ -1,4 +1,4 @@
-# Offscreen three-dimensional Client / Host example
+# Offscreen three-dimensional Client / Host integration test
 
 `Host.cpp` owns one Core ExecutionRuntime and RenderServer. It installs BasicMeshFeature and
 DepthOnlyFeature through their Native providers; those providers install the necessary Storage/Command

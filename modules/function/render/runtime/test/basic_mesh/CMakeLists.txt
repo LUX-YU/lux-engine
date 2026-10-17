@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    project(render-basic-mesh-example LANGUAGES CXX)
+    project(render-basic-mesh-integration-test LANGUAGES CXX)
     include(CTest)
     find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_runtime render_native_vulkan_features)
     find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)
@@ -58,7 +58,7 @@ if(BUILD_TESTING AND TARGET render_textured_material_asset)
             "-DDEPENDENCY_DIR=${lux-cxx_DIR}" "-DCONFIG=$<CONFIG>"
             "-DGENERATOR=${CMAKE_GENERATOR}" "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}"
             "-DMAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}" "-DCXX_FLAGS=${CMAKE_CXX_FLAGS}"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/../../core/test/Installed.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/../../../core/test/Installed.cmake"
     )
     set_tests_properties(render.sample.installed PROPERTIES TIMEOUT 120)
 endif()

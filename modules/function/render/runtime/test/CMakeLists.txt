@@ -393,3 +393,5 @@ set_target_properties(render_feature_bundle_test PROPERTIES RUNTIME_OUTPUT_DIREC
 add_test(NAME render.runtime.feature_bundle COMMAND render_feature_bundle_test)
 
 set_tests_properties(render.runtime.feature_bundle PROPERTIES TIMEOUT 60)
+
+add_subdirectory(basic_mesh)

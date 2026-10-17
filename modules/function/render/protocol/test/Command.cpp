@@ -1,4 +1,4 @@
-#include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/render/protocol/CommandHandler.hpp>
 
 #include <cstdio>
 #include <string>
@@ -43,12 +43,8 @@ struct InvalidCommand final
     using Response = Ack;
 };
 
-template <typename T>
-concept HasBudget = requires(const T& value) { CommandValueTraits<T>::retainedBytes(value); };
-
 static_assert(RenderCommand<Query> && RenderCommand<Signal>);
 static_assert(!RenderCommand<MissingResponse> && !RenderCommand<InvalidCommand>);
-static_assert(HasBudget<Query::Request> && !HasBudget<Query::Response>);
 static_assert(sizeof(CommandInvocation) == 3 * sizeof(void*)); // No Native completion extension.
 static_assert(sizeof(Reply<Query>) == sizeof(void*));
 static_assert(!std::is_copy_constructible_v<Reply<Query>>);
@@ -124,8 +120,6 @@ static int descriptor()
         if (fault == 6) changed.response.type = {};
         CHECK(!validateCommand(changed));
     }
-    CHECK(*CommandValueTraits<Query::Request>::retainedBytes({}) == sizeof(Query::Request));
-    CHECK(*CommandValueTraits<Ack>::retainedBytes({}) == sizeof(Ack));
     return 0;
 }
 

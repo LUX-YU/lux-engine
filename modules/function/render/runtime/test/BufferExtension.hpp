@@ -1,3 +1,4 @@
+#include <lux/engine/render/protocol/AsyncCommand.hpp>
 #pragma once
 
 #include "../../native/vulkan/test/extension/NativeBuffer.hpp"
@@ -48,7 +49,7 @@ namespace extension_test
             Reply<ReadBuffer>& context) noexcept
         {
             auto& session = session_;
-            auto pending = context.defer(sizeof(ReadBuffer::Response) + 16);
+            auto pending = context.defer();
             if (!pending) return lux::cxx::unexpected(pending.error());
             const auto& input = pending->request();
             auto& registry = session.resources();

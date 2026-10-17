@@ -4,7 +4,7 @@
 #include <lux/engine/render/protocol/AsyncCommand.hpp>
 #include <lux/engine/render/resource/AsyncWork.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/cxx/concurrent/BlockingQueue.hpp>
+#include <mutex>
 #include <atomic>
 
 #ifdef LUX_RUNTIME_ASYNC_TEST_SEAM
@@ -19,13 +19,27 @@ namespace lux::render::runtime_detail
     struct CompletionTag;
     using CompletionId = cxx::SlotKey<CompletionTag>;
 
-    struct CompletionEvent final
-    {
-        SessionIdentity session;
-        CompletionId id;
-    };
+    struct DeferredCompletion;
 
-    using CompletionQueue = cxx::BlockingRingQueue<CompletionEvent>;
+    // Existing completion channel: nodes are reserved in stable pending slots before work starts.
+    // Only ready nodes are linked. This short CPU notification lock never enters IPC SPSC publication.
+    class CompletionQueue final
+    {
+    public:
+        void push(DeferredCompletion&) noexcept;
+        [[nodiscard]] DeferredCompletion* tryPop() noexcept;
+        [[nodiscard]] std::size_t size() const noexcept
+        {
+            std::lock_guard lock(mutex_);
+            return size_;
+        }
+
+    private:
+        mutable std::mutex mutex_;
+        DeferredCompletion* head_ = nullptr;
+        DeferredCompletion* tail_ = nullptr;
+        std::size_t size_ = 0;
+    };
 
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM
     namespace test
@@ -50,7 +64,6 @@ namespace lux::render::runtime_detail
         void (*destroy)(void*) noexcept = nullptr;
         void* operation = nullptr;
         platform::ipc::IpcMessage reply;
-        std::size_t reply_charge = 0;
         ECommandOutcome outcome = ECommandOutcome::OUTCOME_UNKNOWN;
         RenderError error{};
         RenderResult<void> (*adopt)(void*, void*, RenderRequest&) noexcept = nullptr;
@@ -69,23 +82,21 @@ namespace lux::render::runtime_detail
         stdexec::inplace_stop_source stop;
         // Sender operations may retain a stop_callback until destruction; its source outlives them.
         OperationCompletion operation;
-        std::size_t* quota_use = nullptr;
         CompletionQueue* events = nullptr;
         std::atomic<std::size_t>* publishers = nullptr;
         void* server = nullptr;
-        SessionIdentity session{};
         CompletionId id;
+        DeferredCompletion* ready_next = nullptr;
         void* continuation = nullptr;
         CpuResume resume = nullptr;
         RenderResult<void> continuation_result;
 
         DeferredCompletion() noexcept = default;
-        ~DeferredCompletion() noexcept { if (quota_use) --*quota_use; }
         [[nodiscard]] CompletionPost post() noexcept
         {
             return {this, [](void* owner, void* next, CpuResume callback, RenderResult<void> result) noexcept {
                 auto& slot = *static_cast<DeferredCompletion*>(owner);
-                const CompletionEvent event{slot.session, slot.id};
+                const auto id = slot.id;
                 auto* events = slot.events;
                 auto* publishers = slot.publishers;
                 publishers->fetch_add(1, std::memory_order_acq_rel);
@@ -93,13 +104,11 @@ namespace lux::render::runtime_detail
                 slot.resume = callback;
                 slot.continuation_result = std::move(result);
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM
-                auto* cost_record = test::completionPostBegin(event.id);
-                const auto published = events->tryPush(event);
-                test::completionPostEnd(cost_record, published == cxx::EQueuePushResult::ACCEPTED);
-                if (published != cxx::EQueuePushResult::ACCEPTED) std::terminate();
+                auto* cost_record = test::completionPostBegin(id);
+                events->push(slot);
+                test::completionPostEnd(cost_record, true);
 #else
-                // One event per live slot; admission reserved matching queue capacity.
-                if (events->tryPush(event) != cxx::EQueuePushResult::ACCEPTED) std::terminate();
+                events->push(slot); // The stable slot is its own already-acquired notification landing place.
 #endif
                 // No access to slot after publication: the consumer may immediately destroy it.
 #ifdef LUX_RUNTIME_ASYNC_TEST_SEAM
@@ -110,6 +119,28 @@ namespace lux::render::runtime_detail
             }};
         }
     };
+
+    inline void CompletionQueue::push(DeferredCompletion& slot) noexcept
+    {
+        std::lock_guard lock(mutex_);
+        slot.ready_next = nullptr;
+        if (tail_) tail_->ready_next = &slot;
+        else head_ = &slot;
+        tail_ = &slot;
+        ++size_;
+    }
+
+    inline DeferredCompletion* CompletionQueue::tryPop() noexcept
+    {
+        std::lock_guard lock(mutex_);
+        auto* result = head_;
+        if (!result) return nullptr;
+        head_ = result->ready_next;
+        if (!head_) tail_ = nullptr;
+        result->ready_next = nullptr;
+        --size_;
+        return result;
+    }
 
 }
 

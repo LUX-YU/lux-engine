@@ -5,13 +5,21 @@ namespace lux::render
 {
     void RenderServer::Impl::settle(RenderRequest request, RenderResult<void> result) noexcept
     {
-        if (!request.active()) return;
-        auto replied = request.fail(result ? RenderError{kRuntimeState} : result.error());
-        if (!replied)
+        if (request.active())
         {
-            undelivered.push_back(std::move(request));
-            if (undelivered.size() >= undelivered.capacity()) stop_requested.store(true);
+            auto replied = request.fail(result ? RenderError{kRuntimeState} : result.error());
+            if (!replied) std::terminate(); // valid unresolved source; ordinary payload OOM is fatal
         }
+        if (request.awaitingDelivery()) undelivered.push_back(std::move(request));
+    }
+
+    void RenderServer::Impl::retryReplies() noexcept
+    {
+        const auto count = std::min<std::size_t>(undelivered.size(), config.requests_per_tick);
+        for (std::size_t i = 0; i < count; ++i) undelivered[i].retryDelivery();
+        std::erase_if(undelivered, [](const RenderRequest& request) { return !request.awaitingDelivery(); });
+        if (undelivered.size() > count)
+            std::rotate(undelivered.begin(), undelivered.begin() + count, undelivered.end());
     }
 
     RenderResult<void> RenderServer::Impl::readback(RenderRequest& request) noexcept
@@ -36,10 +44,7 @@ namespace lux::render
         }
         const auto bytes = found->context->readbackBytes(resource);
         if (!bytes) return cxx::unexpected(RenderError{vulkan::kUnsupported});
-        const bool full = request.replyCapacity() < sizeof(ReadbackResult) ||
-            bytes > request.replyCapacity() - sizeof(ReadbackResult);
-        if (full) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        auto invocation = deferCommand(request, sizeof(ReadbackResult) + bytes);
+        auto invocation = deferCommand(request);
         if (!invocation) return cxx::unexpected(invocation.error());
         auto pending = protocol_detail::ReplyAccess::make<Readback>(**invocation);
         return pending.completeWhen(stdexec::then(
@@ -55,24 +60,14 @@ namespace lux::render
         ));
     }
 
-    DeferredCompletion* RenderServer::Impl::reserveCompletion(bool for_compile) noexcept
+    DeferredCompletion* RenderServer::Impl::reserveCompletion() noexcept
     {
-        const bool full = for_compile ? compiling >= config.compile_capacity
-                                      : deferred.size() - compiling >= config.completion_capacity;
-        if (full) return nullptr;
-        auto id = deferred.tryEmplacePrepared();
-        if (!id) return nullptr;
-        auto& slot = *deferred.find(*id);
-        slot.id = *id;
-        slot.session = identity;
+        const auto id = deferred.emplace();
+        auto& slot = *deferred.find(id);
+        slot.id = id;
         slot.events = &completion_events;
         slot.publishers = &completion_publishers;
         slot.server = this;
-        if (for_compile)
-        {
-            slot.quota_use = &compiling;
-            ++compiling;
-        }
         return &slot;
     }
 
@@ -87,9 +82,7 @@ namespace lux::render
         if (outcome == ECommandOutcome::SUCCESS)
         {
             auto charge = slot.request->prepareResponse(response, cpu.reply);
-            if (charge)
-                cpu.reply_charge = *charge;
-            else
+            if (!charge)
             {
                 cpu.outcome = ECommandOutcome::FAILED;
                 cpu.error = charge.error();
@@ -99,11 +92,10 @@ namespace lux::render
     }
 
     RenderResult<CommandInvocation*> RenderServer::Impl::deferCommand(
-        RenderRequest& request, std::size_t reply_bytes
+        RenderRequest& request
     ) noexcept
     {
         if (!request.active()) return cxx::unexpected(RenderError{kRuntimeState});
-        if (reply_bytes > request.replyCapacity()) return cxx::unexpected(RenderError{kRuntimeCapacity});
         auto* slot = reserveCompletion();
         if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
         slot->request.emplace(std::move(request));
@@ -124,7 +116,6 @@ namespace lux::render
             {
                 auto charge = slot.request->prepareResponse(response, completion.reply);
                 if (!charge) return cxx::unexpected(charge.error());
-                completion.reply_charge = *charge;
             }
             completion.outcome = outcome;
             completion.error = error;
@@ -143,7 +134,7 @@ namespace lux::render
             completion.destroy = operations.destroy;
             auto& server = *static_cast<Impl*>(slot.server);
             completion.operation = operations.connect(sender, {&slot, completeOperation, slot.stop.get_token(),
-                slot.post(), &server.config.implementation_code_pin, &slot.request->codePin()});
+                slot.post(), &server.config.implementation_code_pin, &server.config.implementation_code_pin});
             // Owner-thread start cannot reenter event draining. The Receiver only publishes.
             operations.start(completion.operation);
             return {};
@@ -159,17 +150,15 @@ namespace lux::render
         auto* cost_drain = test::completionDrainBegin(completion_events);
         std::size_t cost_consumed = 0;
 #endif
-        CompletionEvent event;
-        for (std::size_t i = 0; i < budget && completion_events.tryPop(event) == cxx::EQueuePopResult::VALUE; ++i)
+        for (std::size_t i = 0; i < budget; ++i)
         {
+            auto* slot = completion_events.tryPop();
+            if (!slot) break;
+            const auto id = slot->id;
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM
             ++cost_consumed;
-            auto* cost_record = test::completionPopped(event.id);
+            auto* cost_record = test::completionPopped(id);
 #endif
-            // A copied event identity is checked once at its actual cross-thread boundary.
-            if (event.session != identity) continue;
-            auto* slot = deferred.find(event.id);
-            if (!slot) continue;
             const auto resume = std::exchange(slot->resume, nullptr);
             if (resume)
             {
@@ -187,7 +176,7 @@ namespace lux::render
             else if (cpu->outcome == ECommandOutcome::OUTCOME_UNKNOWN)
                 result = slot->request->unknown(cpu->error);
             else if (cpu->outcome == ECommandOutcome::SUCCESS)
-                result = slot->request->publishPrepared(cpu->reply, cpu->reply_charge);
+                result = slot->request->publishPrepared(cpu->reply);
             else if (cpu->outcome == ECommandOutcome::CANCELLED)
             {
                 cpu->reply.reset();
@@ -199,7 +188,7 @@ namespace lux::render
                 result = slot->request->fail(cpu->error);
             }
             settle(std::move(*slot->request), result);
-            deferred.erase(event.id);
+            deferred.erase(id);
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM
             test::completionAdoptEnd(cost_record);
 #endif
@@ -227,10 +216,10 @@ namespace lux::render
         },
         [](const void* owner) noexcept { return static_cast<const CommandCall*>(owner)->request.active(); },
         nullptr,
-        [](void* owner, std::size_t reply_bytes) noexcept -> RenderResult<CommandInvocation*>
+        [](void* owner) noexcept -> RenderResult<CommandInvocation*>
         {
             auto& admission = *static_cast<CommandCall*>(owner);
-            return admission.server.deferCommand(admission.request, reply_bytes);
+            return admission.server.deferCommand(admission.request);
         }
     };
 

@@ -17,13 +17,6 @@ namespace lux::render
 
     namespace
     {
-        bool sameOps(const ipc::IpcTypeOps& left, const ipc::IpcTypeOps& right) noexcept
-        {
-            return left.token() == right.token() && left.size() == right.size() &&
-                left.alignment() == right.alignment() && left.abi() == right.abi() &&
-                left.usesInlineStorage() == right.usesInlineStorage();
-        }
-
         bool sameFactory(const StorageFactory& left, const StorageFactory& right) noexcept
         {
             return left.native_type == right.native_type && left.config_type == right.config_type &&
@@ -31,9 +24,7 @@ namespace lux::render
                 left.binding_ops == right.binding_ops && left.compatible_config == right.compatible_config;
         }
 
-        RenderResult<void> compatibleSupport(std::span<const CommandHandler> left,
-            std::span<const CommandTransport> left_transport, std::span<const CommandHandler> right,
-            std::span<const CommandTransport> right_transport) noexcept
+        RenderResult<void> compatibleSupport(std::span<const CommandHandler> left, std::span<const CommandHandler> right) noexcept
         {
             for (std::size_t i = 0; i < left.size(); ++i)
                 for (std::size_t j = 0; j < right.size(); ++j)
@@ -41,9 +32,7 @@ namespace lux::render
                     if (left[i].descriptor()->name.name() != right[j].descriptor()->name.name()) continue;
                     if (auto valid = compatibleCommands(*left[i].descriptor(), *right[j].descriptor()); !valid)
                         return valid;
-                    const bool incompatible = !sameOps(*left_transport[i].request, *right_transport[j].request) ||
-                        !sameOps(*left_transport[i].response, *right_transport[j].response);
-                    if (incompatible) return cxx::unexpected(RenderError{kProtocolContract});
+
                 }
             return {};
         }
@@ -71,20 +60,16 @@ namespace lux::render
         return request.reply(std::move(result));
     }
 
-    CommandList RenderServer::Impl::commandDirectory(bool bootstrap) const noexcept
+    CommandList RenderServer::Impl::commandDirectory() const noexcept
     {
         CommandList result;
-        result.commands.reserve(bootstrap ? 5 : command_table.size());
+        result.commands.reserve(command_table.size());
         for (const auto& route : command_table)
         {
             const auto& entry = *route.cold;
             const auto& descriptor = *entry.binding.descriptor();
-            const auto name = descriptor.name.name();
-            const bool is_control = name == ListCommands::name || name == ListCommandBindings::name ||
-                name == SelectCommandBinding::name || name == ListFeatures::name || name == ListStorages::name;
-            if (bootstrap && !is_control) continue;
-            result.commands.push_back({entry.code_pin, std::string(descriptor.name.name()), entry.id,
-                descriptor.request, descriptor.response, entry.transport.request, entry.transport.response,
+            result.commands.push_back({std::string(descriptor.name.name()), entry.id,
+                descriptor.request, descriptor.response,
                 route.active.invoke != nullptr});
         }
         return result;
@@ -135,13 +120,12 @@ namespace lux::render
 
     CommandId RenderServer::Impl::addCommand(
         CommandHandler binding,
-        CommandTransport transport,
         std::shared_ptr<const void> pin
     ) noexcept
     {
         // Full registration comparison proved equivalence; retain the template's static contract.
         auto metadata = std::make_unique<CommandMetadata>(
-            CommandMetadata{{}, binding, transport, std::move(pin)}
+            CommandMetadata{{}, binding, std::move(pin)}
         );
         auto* cold = metadata.get();
         const auto id = command_table.emplace(CommandEntry{binding.call(), std::move(metadata)});
@@ -173,13 +157,12 @@ namespace lux::render
     }
 
     RenderResult<std::vector<CommandId>> RenderServer::prepareHandler(
-        const HandlerEntry& owner, std::span<const CommandHandler> calls,
-        std::span<const CommandTransport> transports
+        const HandlerEntry& owner, std::span<const CommandHandler> calls
     ) const noexcept
     {
         const auto& state = *impl_;
         const bool is_invalid_installation = !owner.object || owner.name.empty() || calls.empty() ||
-            calls.size() != transports.size() || state.stop_requested.load();
+            state.stop_requested.load();
         if (is_invalid_installation) return cxx::unexpected(RenderError{kFeatureContract});
         std::vector<CommandId> commands(calls.size());
         for (std::size_t i = 0; i < calls.size(); ++i)
@@ -189,8 +172,6 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kFeatureContract});
             if (auto valid = validateCommand(*call.descriptor()); !valid)
                 return cxx::unexpected(valid.error());
-            if (auto valid = compatibleCommands(*call.descriptor(), *transports[i].descriptor); !valid)
-                return cxx::unexpected(valid.error());
             for (std::size_t j = 0; j < i; ++j)
                 if (calls[j].descriptor()->name.name() == call.descriptor()->name.name())
                     return cxx::unexpected(RenderError{kFeatureDuplicate});
@@ -199,10 +180,6 @@ namespace lux::render
                 if (old.cold->binding.descriptor()->name.name() != call.descriptor()->name.name()) continue;
                 if (auto valid = compatibleCommands(*old.cold->binding.descriptor(), *call.descriptor()); !valid)
                     return cxx::unexpected(valid.error());
-                const auto& transport = old.cold->transport;
-                if (!sameOps(*transport.request, *transports[i].request) ||
-                    !sameOps(*transport.response, *transports[i].response))
-                    return cxx::unexpected(RenderError{kProtocolContract});
                 commands[i] = old.cold->id;
                 break;
             }
@@ -211,8 +188,7 @@ namespace lux::render
     }
 
     HandlerId RenderServer::publishHandler(
-        std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls,
-        std::span<const CommandTransport> transports, std::vector<CommandId> commands
+        std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls, std::vector<CommandId> commands
     ) noexcept
     {
         auto& state = *impl_;
@@ -231,7 +207,7 @@ namespace lux::render
                         break;
                     }
             const bool first = commands[i].isNull();
-            if (first) commands[i] = state.addCommand(calls[i], transports[i], handler->code_pin);
+            if (first) commands[i] = state.addCommand(calls[i], handler->code_pin);
             auto& entry = *state.command_table.find(commands[i]);
             entry.cold->supported.push_back({id, calls[i].call()});
             if (first)
@@ -245,13 +221,12 @@ namespace lux::render
     }
 
     RenderResult<HandlerId> RenderServer::installHandler(
-        std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls,
-        std::span<const CommandTransport> transports
+        std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls
     ) noexcept
     {
-        auto commands = prepareHandler(*owner, calls, transports);
+        auto commands = prepareHandler(*owner, calls);
         if (!commands) return cxx::unexpected(commands.error());
-        return publishHandler(std::move(owner), calls, transports, std::move(*commands));
+        return publishHandler(std::move(owner), calls, std::move(*commands));
     }
 
     RenderResult<StorageTypeId> RenderServer::prepareStorage(const StorageInstall& candidate, bool ensure) const noexcept
@@ -279,7 +254,7 @@ namespace lux::render
         if (impl_->stop_requested.load()) return cxx::unexpected(RenderError{kRuntimeState});
         if (candidate.handler)
         {
-            auto commands = prepareHandler(*candidate.handler, candidate.calls, candidate.transports);
+            auto commands = prepareHandler(*candidate.handler, candidate.calls);
             if (!commands) return cxx::unexpected(commands.error());
             candidate.commands = std::move(*commands);
         }
@@ -291,14 +266,13 @@ namespace lux::render
             if (!id) return cxx::unexpected(id.error());
         }
         if (candidate.owner)
-            publishHandler(std::move(candidate.owner), candidate.calls, candidate.transports, std::move(candidate.commands));
+            publishHandler(std::move(candidate.owner), candidate.calls, std::move(candidate.commands));
         return *id;
     }
 
     RenderResult<FeatureId> RenderServer::installFeature(
         feature_detail::Implementation definition, std::shared_ptr<const void> code_pin,
-        HandlerEntry* handler, std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls,
-        std::span<const CommandTransport> transports, std::vector<StorageInstall> dependencies
+        HandlerEntry* handler, std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls, std::vector<StorageInstall> dependencies
     ) noexcept
     {
         auto& state = *impl_;
@@ -310,7 +284,7 @@ namespace lux::render
         std::vector<CommandId> commands;
         if (handler)
         {
-            auto prepared = prepareHandler(*handler, calls, transports);
+            auto prepared = prepareHandler(*handler, calls);
             if (!prepared) return cxx::unexpected(prepared.error());
             commands = std::move(*prepared);
         }
@@ -347,21 +321,21 @@ namespace lux::render
             if (storage->isNull() && !duplicate)
                 factories.push_back({candidate.factory, candidate.config});
             if (!candidate.handler) continue;
-            auto prepared = prepareHandler(*candidate.handler, candidate.calls, candidate.transports);
+            auto prepared = prepareHandler(*candidate.handler, candidate.calls);
             if (!prepared) return cxx::unexpected(prepared.error());
             candidate.commands = std::move(*prepared);
-            if (auto valid = compatibleSupport(calls, transports, candidate.calls, candidate.transports); !valid)
+            if (auto valid = compatibleSupport(calls, candidate.calls); !valid)
                 return cxx::unexpected(valid.error());
             for (std::size_t j = 0; j < i; ++j)
-                if (auto valid = compatibleSupport(dependencies[j].calls, dependencies[j].transports,
-                    candidate.calls, candidate.transports); !valid) return cxx::unexpected(valid.error());
+                if (auto valid = compatibleSupport(dependencies[j].calls,
+                    candidate.calls); !valid) return cxx::unexpected(valid.error());
         }
         // Registry performs its capability/config checks for every factory before any publication.
         if (auto installed = state.device->resources().installFactories(factories); !installed)
             return cxx::unexpected(installed.error());
         for (auto& candidate : dependencies)
             if (candidate.owner)
-                publishHandler(std::move(candidate.owner), candidate.calls, candidate.transports,
+                publishHandler(std::move(candidate.owner), candidate.calls,
                     std::move(candidate.commands));
         // All recoverable checks are complete. Stable Feature entries survive later directory growth.
         if (id.isNull())
@@ -369,7 +343,7 @@ namespace lux::render
             id = state.features.emplace(definition, std::move(code_pin));
             state.features.find(id)->id = id;
         }
-        if (owner) publishHandler(std::move(owner), calls, transports, std::move(commands));
+        if (owner) publishHandler(std::move(owner), calls, std::move(commands));
         return id;
     }
 

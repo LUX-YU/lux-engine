@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/protocol/CommandHandler.hpp>
+
 #include <lux/engine/render/resource/Mesh.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 

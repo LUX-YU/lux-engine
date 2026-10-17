@@ -114,35 +114,23 @@ template <unsigned Mode> static void exercise()
             }
         }
         bool run_ok = false;
+        const auto directory_id = take(server->commandId<ListCommands>());
         std::thread thread([&] { run_ok = bool(server->run()); });
-        auto client = take(RenderClient::create(config.channel_name));
-        const auto hello = take(client->hello());
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        for (;;)
-        {
-            RenderCompletion completion;
-            if (take(client->tryReceive(completion)) == ERenderReceive::RECEIVED)
-            {
-                CHECK(completion.header.request == hello && completion.header.outcome == ECommandOutcome::SUCCESS);
-                break;
-            }
-            CHECK(std::chrono::steady_clock::now() < deadline);
-            std::this_thread::yield();
-        }
+        auto client = take(runtime_test::connect(config.channel_name, directory_id));
         CHECK(runtime_test::refresh(*client));
         auto storages = take(runtime_test::coldCall<ListStorages>(*client, {}));
         auto features = take(runtime_test::coldCall<ListFeatures>(*client, {}));
         if constexpr (Mode < 3)
         {
             CHECK(storages.storages.empty() && features.features.empty());
-            CHECK(!client->bind<QueryTexture>() && !client->bind<QueryMesh>());
+            CHECK(!runtime_test::find<QueryTexture>(*client) && !runtime_test::find<QueryMesh>(*client));
         }
         else
         {
             CHECK(storages.storages.size() == 2 && features.features.size() == 1);
-            CHECK(client->bind<QueryMesh>());
-            const auto query = take(client->bind<QueryTexture>());
-            auto choices = take(runtime_test::coldCall<ListCommandBindings>(*client, query.command()));
+            CHECK(runtime_test::find<QueryMesh>(*client));
+            const auto query = take(runtime_test::find<QueryTexture>(*client));
+            auto choices = take(runtime_test::coldCall<ListCommandBindings>(*client, query));
             CHECK(choices.handlers.size() == (Mode == 4 ? 2u : 1u));
             const auto selected = std::ranges::find(choices.handlers, choices.selected, &HandlerInfo::id);
             CHECK(selected != choices.handlers.end());

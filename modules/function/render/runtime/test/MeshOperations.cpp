@@ -11,29 +11,7 @@ using namespace foundation_test;
 using namespace std::chrono_literals;
 using Clock = std::chrono::steady_clock;
 
-static RenderCompletion wait(RenderClient& client, RequestId id)
-{
-    const auto deadline = Clock::now() + 15s;
-    while (Clock::now() < deadline)
-    {
-        RenderCompletion result;
-        if (take(client.tryReceive(result)) == ERenderReceive::RECEIVED)
-        {
-            CHECK(result.header.request == id);
-            return result;
-        }
-        std::this_thread::yield();
-    }
-    std::abort();
-}
 
-template <RenderCommand C> static TypedRenderCompletion<C> call(
-    RenderClient& client, const BoundCommand<C>& binding, typename C::Request input
-)
-{
-    auto result = wait(client, take(client.submit(binding, input, 4096)));
-    return take(std::move(result).take(binding));
-}
 
 int main()
 {
@@ -45,17 +23,16 @@ int main()
     const auto type = take(server->registerStorage<lux::render::MeshStorage>());
     CHECK(take(server->registerStorage<lux::render::MeshStorage>()) == type);
     bool run_ok = false;
+    const auto directory_id = take(server->commandId<ListCommands>());
     std::thread thread([&] { run_ok = bool(server->run()); });
-    auto a = take(RenderClient::create(config.channel_name));
-    auto b = take(RenderClient::create(config.channel_name));
-    CHECK(wait(*a, take(a->hello())).header.outcome == ECommandOutcome::SUCCESS);
-    CHECK(wait(*b, take(b->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    auto a = take(runtime_test::connect(config.channel_name, directory_id));
+    auto b = take(runtime_test::connect(config.channel_name, directory_id));
     CHECK(runtime_test::refresh(*a) && runtime_test::refresh(*b));
     const auto storage = take(runtime_test::prepareStorage(*a, kMeshStorageType.name(), "mesh"));
     CHECK(take(runtime_test::prepareStorage(*b, kMeshStorageType.name(), "mesh")) == storage);
-    const auto set_a = take(a->bind<SetMesh>()), set_b = take(b->bind<SetMesh>());
-    const auto query = take(b->bind<QueryMesh>());
-    const auto release = take(b->bind<ReleaseMesh>());
+    const auto set_a = take(runtime_test::find<SetMesh>(*a)), set_b = take(runtime_test::find<SetMesh>(*b));
+    const auto query = take(runtime_test::find<QueryMesh>(*b));
+    const auto release = take(runtime_test::find<ReleaseMesh>(*b));
     std::atomic<unsigned> destroyed{0};
     auto mutable_asset = new std::vector<std::byte>(60);
     const std::array<float, 12> vertices{-1, -1, 0, .25f, 3, -1, 0, .25f, -1, 3, 0, .25f};
@@ -72,55 +49,49 @@ int main()
     const auto* original_bytes = input.source.bytes().view().data();
     input.expected_revision = 7;
     {
-        auto failed = call(*a, set_a, std::move(input));
-        CHECK(failed.header().outcome == ECommandOutcome::FAILED);
-        CHECK(failed.request().description.attributes.data() == original_attributes);
-        CHECK(failed.request().description.attributes.capacity() == 31);
-        CHECK(failed.request().source.bytes().view().data() == original_bytes);
-        input = std::move(failed.request());
+        auto failed = call<SetMesh>(*a, set_a, input);
+        CHECK(failed.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
     }
-    CHECK(a->retainedBytes() == 0);
     input.expected_revision = 0;
     auto other = input;
     // Balance one failed request on B so equal numbers still exercise separate physical origins.
     other.expected_revision = 7;
-    CHECK(call(*b, set_b, std::move(other)).header().outcome == ECommandOutcome::FAILED);
+    CHECK(call<SetMesh>(*b, set_b, std::move(other)).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
     other = input;
-    const auto id_a = take(a->submit(set_a, input, 4096));
-    const auto id_b = take(b->submit(set_b, other, 4096));
+    const auto id_a = take(runtime_test::send<SetMesh>(*a, set_a, input));
+    const auto id_b = take(runtime_test::send<SetMesh>(*b, set_b, other));
     CHECK(id_a == id_b);
     MeshPublished mesh_a, mesh_b;
-    MeshDescription description;
+    MeshDescription description = input.description;
     {
-        auto result_a = take(wait(*a, id_a).take(set_a));
-        auto result_b = take(wait(*b, id_b).take(set_b));
-        CHECK(result_a.header().outcome == ECommandOutcome::SUCCESS);
-        CHECK(result_b.header().outcome == ECommandOutcome::SUCCESS);
-        mesh_a = result_a.response(); mesh_b = result_b.response();
+        auto result_a = wait(*a, id_a);
+        auto result_b = wait(*b, id_b);
+        CHECK(result_a.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+        CHECK(result_b.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+        mesh_a = result_a.get<SetMesh::Response>(); mesh_b = result_b.get<SetMesh::Response>();
         CHECK(mesh_a.mesh != mesh_b.mesh);
-        description = result_a.request().description;
-        input = std::move(result_a.request());
     }
-    CHECK(a->retainedBytes() == 0 && b->retainedBytes() == 0);
     a.reset();
     input.mesh = mesh_a.mesh;
     input.expected_revision = mesh_a.revision;
-    std::optional replaced{call(*b, set_b, std::move(input))};
-    CHECK(replaced->header().outcome == ECommandOutcome::SUCCESS && replaced->response().revision == 2);
-    auto information = call(*b, query, mesh_a.mesh);
-    CHECK(information.header().outcome == ECommandOutcome::SUCCESS);
-    CHECK(information.response().description == description && information.response().bytes == 60);
-    CHECK(call(*b, release, mesh_a).header().outcome == ECommandOutcome::FAILED);
-    CHECK(call(*b, release, replaced->response()).header().outcome == ECommandOutcome::SUCCESS);
-    CHECK(call(*b, query, mesh_a.mesh).header().outcome == ECommandOutcome::FAILED);
-    CHECK(call(*b, release, mesh_b).header().outcome == ECommandOutcome::SUCCESS);
+    std::optional replaced{call<SetMesh>(*b, set_b, input)};
+    CHECK(replaced->metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS && replaced->get<SetMesh::Response>().revision == 2);
+    auto information = call<QueryMesh>(*b, query, mesh_a.mesh);
+    CHECK(information.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    CHECK(information.get<QueryMesh::Response>().description == description && information.get<QueryMesh::Response>().bytes == 60);
+    CHECK(call<ReleaseMesh>(*b, release, mesh_a).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    CHECK(call<ReleaseMesh>(*b, release, replaced->get<SetMesh::Response>()).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    CHECK(call<QueryMesh>(*b, query, mesh_a.mesh).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    CHECK(call<ReleaseMesh>(*b, release, mesh_b).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
     server->stop(); thread.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
     server.reset(); b.reset(); asset.reset();
-    CHECK(destroyed == 0); // Returned Request remains the actual source Owner after Server/Client destruction.
-    CHECK(replaced->request().source.bytes().view().data() == original_bytes);
+    CHECK(destroyed == 0); // The application retained its input for retry.
     replaced.reset();
+    input.source = {};
+    CHECK(destroyed == 0); // The second application request still owns the same backing.
+    other.source = {};
     CHECK(destroyed == 1);
-    std::printf("Mesh typed Commands: two clients, failed vector recovery, full budget refund, real upload, "
+    std::printf("Mesh typed Commands: two clients, explicit retained-input retry, real upload, "
         "query/revision/release and source late destruction\n");
 }

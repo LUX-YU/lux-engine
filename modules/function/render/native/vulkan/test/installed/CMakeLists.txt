@@ -12,7 +12,7 @@ endif()
 enable_testing()
 
 find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_native_vulkan)
-foreach(forbidden render_features render_native_vulkan_extensions render_runtime render_client)
+foreach(forbidden render_features render_native_vulkan_extensions render_runtime render_commands)
     if(TARGET lux::engine::render::${forbidden})
         message(FATAL_ERROR "Base Native compiler pulled unrelated component ${forbidden}")
     endif()

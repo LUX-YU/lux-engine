@@ -53,69 +53,18 @@ namespace lux::render
 
     void RenderServer::Impl::dispatch(ipc::ReceivedRequest received) noexcept
     {
-        const auto frame = received.message().metadata<RequestMetadata>();
-        if (frame.request.isNull() || frame.reply_capacity < sizeof(RenderError))
+        const auto frame = received.message().metadata<RequestHeader>();
+        if (frame.request.isNull())
         {
-            received.reset(); // No correlatable/funded terminal: IPC returns the original ABORTED input.
+            received.reset(); // Caller violated correlation precondition; no fictitious terminal.
             ++commands;
             return;
         }
-        static const auto hello_transport = commandTransport<Hello>();
-        const auto* entry = frame.command.isNull() ? nullptr : command_table.find(frame.command);
-        const auto* cold = entry ? entry->cold.get() : nullptr;
-        const auto* transport = frame.command.isNull() ? &hello_transport : (entry ? &cold->transport : nullptr);
-        const auto* actual_type = received.message().operations();
-        const bool valid_type =
-            frame.command.isNull()
-                ? actual_type && bool(ipc::IpcMessage::bindType<ValueEnvelope<HelloRequest>>(*actual_type))
-                : transport && received.message().holds(*transport->request);
-        const auto* descriptor =
-            frame.command.isNull() ? &commandDescriptor<Hello>() : (entry ? cold->binding.descriptor() : nullptr);
-        const bool valid_identity = frame.command.isNull() || (entry && frame.session == identity);
-        const bool valid_capacity = frame.reply_capacity <= config.max_reply_bytes;
-        bool funded = false;
-        if (valid_identity && valid_type && valid_capacity)
-        {
-            auto& message = const_cast<ipc::IpcMessage&>(received.message());
-            const auto reply_overhead = std::max(
-                transport->response->size() - descriptor->response.size,
-                sizeof(ValueEnvelope<RenderError>) - sizeof(RenderError)
-            );
-            funded = transport->request_budget(message).bytes() >=
-                     transport->request->size() + frame.reply_capacity + reply_overhead;
-        }
-        RenderRequest request(
-            std::move(received),
-            responder,
-            identity,
-            frame.request,
-            frame.reply_capacity,
-            descriptor,
-            funded ? transport : nullptr,
-            failure_type,
-            entry ? cold->code_pin : config.implementation_code_pin,
-            entry ? *cold->active_code_pin : config.implementation_code_pin
-        );
+        const auto* entry = command_table.find(frame.command);
+        RenderRequest request(std::move(received), responder, frame.request, entry ? &entry->cold->binding : nullptr);
         RenderResult<void> result;
-        if (!valid_identity)
+        if (!entry)
             result = cxx::unexpected(RenderError{kRuntimeIdentity});
-        else if (!valid_type)
-            result = cxx::unexpected(RenderError{kProtocolContract});
-        else if (!valid_capacity || !funded)
-            result = cxx::unexpected(RenderError{kRuntimeCapacity});
-        else if (frame.command.isNull())
-        {
-            if (clients == 2)
-                result = cxx::unexpected(RenderError{kRuntimeCapacity});
-            else
-            {
-                result = request.reply(HelloResponse{config.implementation_code_pin,
-                    commandDirectory(true).commands, &failure_type.operations()});
-                if (result) ++clients;
-            }
-        }
-        else if (descriptor->response.size > frame.reply_capacity)
-            result = cxx::unexpected(RenderError{kRuntimeCapacity});
         else if (!entry->active.invoke)
             result = cxx::unexpected(RenderError{kRuntimeUnsupported});
         else
@@ -132,19 +81,12 @@ namespace lux::render
     void RenderServer::Impl::shutdown() noexcept
     {
         stop_requested.store(true);
-        // cancel may synchronously finish a Native operation. Snapshot only bounded generational
-        // identities, not iterators or owners, before any terminal callback can erase a slot.
-        std::array<CompletionId, 136> pending;
-        std::size_t pending_count = 0;
-        for (const auto& slot : deferred)
-            pending[pending_count++] = slot.id;
-        for (std::size_t i = 0; i < pending_count; ++i)
-        {
-            auto* slot = deferred.find(pending[i]);
-            if (!slot) continue;
-            slot->stop.request_stop();
-            // No slot access after cancel: its terminal callback may have destroyed it.
-        }
+        // Snapshot identities because stop callbacks may complete synchronously.
+        std::vector<CompletionId> pending;
+        pending.reserve(deferred.size());
+        for (const auto& slot : deferred) pending.push_back(slot.id);
+        for (const auto id : pending)
+            if (auto* slot = deferred.find(id)) slot->stop.request_stop();
         // Only shutdown waits. CPU/source owners remain in the same slots; cancellation prevents
         // their eventual CPU event from submitting another GPU chunk.
         if (device)
@@ -165,7 +107,8 @@ namespace lux::render
         }
         while (completion_publishers.load(std::memory_order_acquire) != 0)
             std::this_thread::yield();
-        undelivered.clear();
+        retryReplies();
+        undelivered.clear(); // Connection closes after safe operations; caller owns any unknown outcomes.
         responder.reset();
         for (auto& effect : effects)
             while (!effect.groups.empty())
@@ -201,6 +144,7 @@ namespace lux::render
             }
             if (s.stop_requested.load()) break;
             s.drainCompletions();
+            s.retryReplies();
             if (auto rendered = s.tick(); !rendered)
             {
                 result = cxx::unexpected(rendered.error());

@@ -5,7 +5,7 @@ add_component(
     COMPONENT_NAME render_resource
     NAMESPACE lux::engine::render
     OUTPUT_NAME lux_engine_render_resource
-    SOURCE_FILES src/Storage.cpp src/ResourceRegistry.cpp src/StorageSet.cpp src/Texture.cpp src/Mesh.cpp src/Material.cpp src/Instance.cpp
+    SOURCE_FILES src/Storage.cpp src/ResourceRegistry.cpp src/StorageSet.cpp src/Mesh.cpp src/Material.cpp
 )
 
 component_include_directories(

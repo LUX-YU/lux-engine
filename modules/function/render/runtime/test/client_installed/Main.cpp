@@ -1,70 +1,60 @@
 #include <lux/engine/render/runtime/Commands.hpp>
-#include <lux/engine/render/runtime/RenderClient.hpp>
+#include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <cstdio>
 #include <cstdlib>
-#include <type_traits>
+#include <vector>
 
 #if defined(VK_VERSION_1_0) || defined(_WINDOWS_)
-#error Native closure leaked into RenderClient
+#error Native closure leaked into the direct IPC Client
 #endif
 
 using namespace lux::render;
+namespace ipc = lux::platform::ipc;
 
-namespace
+#define CHECK(value) do { if (!(value)) { std::fprintf(stderr, "line %d: %s\n", __LINE__, #value); std::abort(); } } while(false)
+
+struct ExternalCommand final
 {
-    struct ExternalCommand final
-    {
-        static constexpr std::string_view name{"installed.client.external"};
-        struct Request final { std::uint32_t value = 0; };
-        struct Response final { std::uint64_t value = 0; };
-    };
-
-    static_assert(__cplusplus >= 202002L);
-    static_assert(RenderCommand<ExternalCommand>);
-    static_assert(!std::is_default_constructible_v<BoundCommand<ExternalCommand>>);
-    static_assert(!std::is_copy_constructible_v<TypedRenderCompletion<ExternalCommand>>);
-    static_assert(requires(RenderClient& client, const BoundCommand<ExternalCommand>& binding,
-        ExternalCommand::Request& request, RenderCompletion& completion) {
-        { client.submit(binding, request) } -> std::same_as<RenderResult<RequestId>>;
-        { std::move(completion).take(binding) } -> std::same_as<RenderResult<TypedRenderCompletion<ExternalCommand>>>;
-    });
-
-    void check(bool valid, int line) noexcept
-    {
-        if (valid) return;
-        std::fprintf(stderr, "Pure Client consumer failed at line %d\n", line);
-        std::_Exit(1);
-    }
-}
-
-#define CHECK(value) check(static_cast<bool>(value), __LINE__)
+    static constexpr std::string_view name = "installed.client.external";
+    using Request = std::vector<unsigned>;
+    using Response = unsigned;
+};
+static_assert(RenderCommand<ExternalCommand>);
+static_assert(sizeof(RequestId) == sizeof(std::uint64_t));
+static_assert(!std::is_copy_constructible_v<ipc::IpcMessage>);
 
 int main()
 {
-    const auto invalid = RenderClient::create("installed.client.invalid", {0, 64});
-    CHECK(!invalid && invalid.error().type == kRuntimeCapacity);
-    auto made = RenderClient::create("installed.client.only.absent");
-    CHECK(made);
-    auto client = std::move(*made);
-    CHECK(client->session() == SessionIdentity{});
-    CHECK(client->retainedBytes() == 0);
-
-    const auto external = client->bind<ExternalCommand>();
-    const auto builtin = client->bind<QueryRenderStats>();
-    CHECK(!external && external.error().type == kRuntimeState);
-    CHECK(!builtin && builtin.error().type == kRuntimeState);
-
-    // Genuine IPC NotReady must roll back the complete request reservation each time.
-    for (unsigned attempt = 0; attempt < 4; ++attempt)
+    auto peer = ipc::IpcCore::instance().createRequester("installed.direct.client");
+    CHECK(peer);
+    ipc::IpcMessage message;
+    auto& input = message.emplace<ExternalCommand::Request>(ExternalCommand::Request(4, 17));
+    input.reserve(63);
+    const auto* backing = input.data();
+    const auto capacity = input.capacity();
+    const RequestId request{1}; // Assigned and tracked by this application.
+    message.setMetadata(RequestHeader{request, CommandId{1, 1}});
+    for (unsigned i = 0; i < 4; ++i)
     {
-        const auto hello = client->hello();
-        CHECK(!hello && hello.error().type == kRuntimeState);
-        CHECK(client->retainedBytes() == 0);
-        RenderCompletion completion;
-        const auto received = client->tryReceive(completion);
-        CHECK(received && *received == ERenderReceive::EMPTY && !completion.active());
+        CHECK(!peer->trySend(message));
+        CHECK(message.get<ExternalCommand::Request>().data() == backing);
+        CHECK(message.get<ExternalCommand::Request>().capacity() == capacity);
     }
-    client.reset();
-    std::puts("Pure relocated Client: Vulkan disabled, typed API and real NotReady rollback PASS. "
-        "Successful Server request/reply is covered by the separate Runtime installed consumer.");
+    auto service = ipc::IpcCore::instance().createResponder("installed.direct.client");
+    CHECK(service && peer->trySend(message));
+    ipc::ReceivedRequest accepted;
+    CHECK(service->tryReceive(accepted) == ipc::EIpcReceive::RECEIVED);
+    CHECK(accepted.message().get<ExternalCommand::Request>().data() == backing);
+    const auto header = accepted.message().metadata<RequestHeader>();
+    ipc::IpcMessage result;
+    result.emplace<ExternalCommand::Response>(accepted.message().get<ExternalCommand::Request>()[0] + 1);
+    result.setMetadata(ReplyHeader{header.request, ECommandOutcome::SUCCESS});
+    CHECK(service->tryReply(accepted, result));
+    CHECK(peer->tryReceive(message) == ipc::EIpcReceive::RECEIVED);
+    CHECK(message.metadata<ReplyHeader>().request == request);
+    CHECK(message.get<ExternalCommand::Response>() == 18);
+    service->reset();
+    peer->reset();
+    CHECK(message.get<ExternalCommand::Response>() == 18); // Actual output outlives both roles.
+    std::puts("Direct IPC + neutral Command declarations: NotReady preserves vector, RequestId echoed, late result valid");
 }

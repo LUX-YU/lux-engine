@@ -16,15 +16,15 @@ endif()
 set(CMAKE_DISABLE_FIND_PACKAGE_Vulkan ON)
 set(CMAKE_DISABLE_FIND_PACKAGE_stdexec ON)
 
-find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_client)
+find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_commands)
+find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_ipc)
 
-get_target_property(client_links lux::engine::render::render_client INTERFACE_LINK_LIBRARIES)
+get_target_property(client_links lux::engine::render::render_commands INTERFACE_LINK_LIBRARIES)
 
 set(expected_client_links
     lux::engine::render::render_core
     lux::engine::render::render_data
     lux::engine::render::render_protocol
-    lux::engine::platform::platform_ipc
 )
 
 if(NOT "${client_links}" STREQUAL "${expected_client_links}")
@@ -67,7 +67,7 @@ foreach(header
     lux/engine/render/resource/AsyncWork.hpp
     lux/engine/render/resource/Upload.hpp
     lux/engine/render/runtime/Commands.hpp
-    lux/engine/render/runtime/CommandValue.hpp
+    lux/engine/render/runtime/Error.hpp
     lux/engine/render/native/vulkan/Readback.hpp
     lux/engine/render/native/vulkan/texture/TextureCommands.hpp
 )
@@ -77,6 +77,8 @@ foreach(header
 endforeach()
 
 foreach(header
+    lux/engine/render/runtime/CommandValue.hpp
+    lux/engine/render/runtime/RenderClient.hpp
     lux/engine/render/resource/Registration.hpp
     lux/engine/render/native/vulkan/Registration.hpp
     lux/engine/render/runtime/Operations.hpp
@@ -102,13 +104,11 @@ endforeach()
 
 add_executable(client_consumer Main.cpp)
 
-target_link_libraries(client_consumer PRIVATE lux::engine::render::render_client)
+target_link_libraries(client_consumer PRIVATE lux::engine::render::render_commands lux::engine::platform::platform_ipc)
 
 add_custom_command(TARGET client_consumer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:lux::engine::platform::platform_ipc>" "$<TARGET_FILE_DIR:client_consumer>"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:lux::engine::render::render_client>" "$<TARGET_FILE_DIR:client_consumer>"
 )
 
 add_test(NAME installed.client_without_vulkan COMMAND client_consumer)

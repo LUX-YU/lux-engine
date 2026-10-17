@@ -1,21 +1,22 @@
 #include "ClientDllFixture.hpp"
-#include "../pinclude/TypedProtocol.hpp"
-#include <lux/engine/render/runtime/RenderClient.hpp>
 
-extern "C" const lux::render::runtime_detail::CommandTransport* clientDllCommand() noexcept
+extern "C" const lux::render::CommandDescriptor* clientDllCommand() noexcept
 {
-    static const auto transport = lux::render::runtime_detail::commandTransport<client_dll_test::Command>();
-    return &transport;
+    return &lux::render::commandDescriptor<client_dll_test::Command>();
 }
 
-extern "C" const lux::render::runtime_detail::CommandTransport* clientDllHello() noexcept
+extern "C" lux::platform::ipc::IpcCore* clientDllCore() noexcept
 {
-    static const auto transport = lux::render::runtime_detail::commandTransport<lux::render::runtime_detail::Hello>();
-    return &transport;
+    return &lux::platform::ipc::IpcCore::instance();
 }
 
-extern "C" lux::render::RenderClient* clientDllCreate(const char* name) noexcept
+extern "C" void clientDllMessage(lux::platform::ipc::IpcMessage* output,
+    unsigned count, int* destroyed, const bool* host_loaded) noexcept
 {
-    auto client = lux::render::RenderClient::create(name);
-    return client ? client->release() : nullptr;
+    client_dll_test::Batch value;
+    value.identity = 37;
+    value.values.resize(count, 91);
+    value.destroyed = destroyed;
+    value.host_loaded = host_loaded;
+    output->emplace<client_dll_test::Batch>(std::move(value));
 }

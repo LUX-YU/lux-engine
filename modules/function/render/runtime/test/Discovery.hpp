@@ -1,80 +1,110 @@
 #pragma once
 
-#include <lux/engine/render/runtime/RenderClient.hpp>
+#include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
+#include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <thread>
 
 namespace runtime_test
 {
-    // Test-host cold setup, with no other outstanding requests. Production refresh is explicit too.
-    inline lux::render::RenderResult<void> refresh(lux::render::RenderClient& client) noexcept
+    using namespace lux::render;
+    namespace ipc = lux::platform::ipc;
+
+    // Test application state. Request numbering and the discovered catalog are outside the library.
+    struct Peer final
     {
-        using namespace lux::render;
-        auto binding = client.bind<ListCommands>();
-        if (!binding) return lux::cxx::unexpected(binding.error());
-        EmptyRequest input;
-        auto sent = client.submit(*binding, input, 128 * 1024);
-        if (!sent) return lux::cxx::unexpected(sent.error());
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        while (std::chrono::steady_clock::now() < deadline)
-        {
-            RenderCompletion completion;
-            auto received = client.tryReceive(completion);
-            if (!received) return lux::cxx::unexpected(received.error());
-            if (*received == ERenderReceive::CLOSED) return lux::cxx::unexpected(RenderError{kRuntimeState});
-            if (*received == ERenderReceive::RECEIVED)
-            {
-                if (completion.header.request != *sent) std::terminate();
-                return client.refreshCommands(completion);
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        return lux::cxx::unexpected(RenderError{kRuntimeState});
-    }
-    template <lux::render::RenderCommand C>
-    inline lux::render::RenderResult<typename C::Response> coldCall(
-        lux::render::RenderClient& client, typename C::Request input, std::size_t capacity = 128 * 1024
-    ) noexcept
+        ipc::IpcRequester requester;
+        CommandId list_commands;
+        CommandList commands;
+        std::uint64_t next = 1;
+    };
+
+    inline RenderResult<std::unique_ptr<Peer>> connect(std::string_view name, CommandId list_commands) noexcept
     {
-        using namespace lux::render;
-        auto binding = client.bind<C>();
-        if (!binding) return lux::cxx::unexpected(binding.error());
-        auto sent = client.submit(*binding, input, capacity);
-        if (!sent) return lux::cxx::unexpected(sent.error());
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        while (std::chrono::steady_clock::now() < deadline)
-        {
-            RenderCompletion completion;
-            auto received = client.tryReceive(completion);
-            if (!received) return lux::cxx::unexpected(received.error());
-            if (*received == ERenderReceive::CLOSED) return lux::cxx::unexpected(RenderError{kRuntimeState});
-            if (*received == ERenderReceive::RECEIVED)
-            {
-                if (completion.header.request != *sent) std::terminate();
-                if (completion.header.outcome != ECommandOutcome::SUCCESS)
-                    return lux::cxx::unexpected(completion.header.error);
-                auto result = std::move(completion).take(*binding);
-                if (!result) return lux::cxx::unexpected(result.error());
-                return std::move(result->response());
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        return lux::cxx::unexpected(RenderError{kRuntimeState});
+        auto peer = ipc::IpcCore::instance().createRequester(name);
+        if (!peer) return lux::cxx::unexpected(RenderError{kRuntimeState});
+        return std::make_unique<Peer>(Peer{std::move(*peer), list_commands});
     }
 
-    inline lux::render::RenderResult<lux::render::StorageId> prepareStorage(
-        lux::render::RenderClient& client, std::string_view type, std::string key,
-        lux::render::VStorageOwner owner = lux::render::GlobalStorageOwner{}
-    ) noexcept
+    template <RenderCommand C> RenderResult<CommandId> find(const Peer& peer) noexcept
     {
-        using namespace lux::render;
-        auto types = coldCall<ListStorages>(client, {});
-        if (!types) return lux::cxx::unexpected(types.error());
-        for (const auto& candidate : types->storages)
+        const auto found = std::ranges::find(peer.commands.commands, C::name, &CommandInfo::name);
+        if (found == peer.commands.commands.end()) return lux::cxx::unexpected(RenderError{kRuntimeIdentity});
+        const auto& wanted = commandDescriptor<C>();
+        if (found->request != wanted.request || found->response != wanted.response)
+            return lux::cxx::unexpected(RenderError{kProtocolContract});
+        return found->id;
+    }
+
+    template <RenderCommand C> RenderResult<RequestId> send(Peer& peer, CommandId command,
+        typename C::Request input) noexcept
+    {
+        const RequestId id{peer.next++};
+        ipc::IpcMessage message;
+        message.emplace<typename C::Request>(std::move(input));
+        message.setMetadata(RequestHeader{id, command});
+        if (!peer.requester.trySend(message)) return lux::cxx::unexpected(RenderError{kRuntimeState});
+        return id;
+    }
+
+    inline ipc::IpcMessage wait(Peer& peer, RequestId id) noexcept
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+        ipc::IpcMessage message;
+        for (;;)
+        {
+            const auto status = peer.requester.tryReceive(message);
+            if (status == ipc::EIpcReceive::CLOSED || std::chrono::steady_clock::now() >= deadline) std::abort();
+            if (status == ipc::EIpcReceive::RECEIVED)
+            {
+                if (message.metadata<ReplyHeader>().request != id) std::abort();
+                return message;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+
+    template <RenderCommand C> RenderResult<typename C::Response> result(ipc::IpcMessage message) noexcept
+    {
+        if (message.metadata<ReplyHeader>().outcome != ECommandOutcome::SUCCESS)
+            return lux::cxx::unexpected(message.get<RenderError>());
+        return std::move(message.get<typename C::Response>());
+    }
+
+    template <RenderCommand C> RenderResult<typename C::Response> coldCall(Peer& peer,
+        typename C::Request input) noexcept
+    {
+        auto command = find<C>(peer);
+        if (!command) return lux::cxx::unexpected(command.error());
+        auto sent = send<C>(peer, *command, std::move(input));
+        if (!sent) return lux::cxx::unexpected(sent.error());
+        auto message = wait(peer, *sent);
+        if (message.metadata<ReplyHeader>().outcome != ECommandOutcome::SUCCESS)
+            return lux::cxx::unexpected(message.get<RenderError>());
+        return std::move(message.get<typename C::Response>());
+    }
+
+    inline RenderResult<void> refresh(Peer& peer) noexcept
+    {
+        auto sent = send<ListCommands>(peer, peer.list_commands, {});
+        if (!sent) return lux::cxx::unexpected(sent.error());
+        auto message = wait(peer, *sent);
+        if (message.metadata<ReplyHeader>().outcome != ECommandOutcome::SUCCESS)
+            return lux::cxx::unexpected(message.get<RenderError>());
+        peer.commands = std::move(message.get<CommandList>());
+        return {};
+    }
+
+    inline RenderResult<StorageId> prepareStorage(Peer& peer, std::string_view type, std::string key,
+        VStorageOwner owner = GlobalStorageOwner{}) noexcept
+    {
+        auto directory = coldCall<ListStorages>(peer, {});
+        if (!directory) return lux::cxx::unexpected(directory.error());
+        for (const auto& candidate : directory->storages)
             if (candidate.name == type)
-                return coldCall<PrepareStorage>(client, {{std::move(owner), candidate.id, std::move(key)}, {}}, 128);
+                return coldCall<PrepareStorage>(peer, {{std::move(owner), candidate.id, std::move(key)}, {}});
         return lux::cxx::unexpected(RenderError{kRuntimeIdentity});
     }
-
 }

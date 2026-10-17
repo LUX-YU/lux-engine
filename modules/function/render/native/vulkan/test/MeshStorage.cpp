@@ -86,10 +86,6 @@ int main(int argc, char** argv)
             auto input = request(storage_id, stride, .25f);
             input.description.attributes.reserve(17);
             input.description.submeshes.reserve(19);
-            const auto expected_budget = sizeof(input) + input.source.retainedBytes() +
-                input.description.attributes.capacity() * sizeof(MeshAttribute) +
-                input.description.submeshes.capacity() * sizeof(MeshSubmesh);
-            CHECK(take(CommandValueTraits<MeshWrite>::retainedBytes(input)) == expected_budget);
             for (unsigned fault = 0; fault < 7; ++fault)
             {
                 auto bad = request(storage_id, stride, .25f);

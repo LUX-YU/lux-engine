@@ -2,7 +2,9 @@
 
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Transfer.hpp>
-#include <lux/engine/render/protocol/AsyncCommand.hpp>
+#include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/core/execution/WorkSchedule.hpp>
+#include <stdexec/execution.hpp>
 #include <optional>
 #include <utility>
 

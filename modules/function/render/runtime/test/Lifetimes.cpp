@@ -67,11 +67,10 @@ static TestCompletion wait(TestClient& client, RequestId id)
     std::abort();
 }
 
-static TestCommand effect(SessionIdentity identity)
+static TestCommand effect()
 {
     TestCommand result;
     result.operation = ETestCommand::CREATE_EFFECT;
-    result.session = identity;
     native_fixture::Config config;
     result.description = native_fixture::target(config);
     result.features.push_back({std::string(native_fixture::type.name()), "main", take(ConfigValue::make(config))});
@@ -85,42 +84,34 @@ int main()
     auto server = take(createTestServer(server_config));
     check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs})));
     check(bool(feature_test::registerGraph(*server, {&asset_definition, &asset_definition_graph, assetPrograms})));
-    auto main = take(TestClient::create("runtime.life", {1024 * 1024, 64}));
-    auto upload = take(TestClient::create("runtime.life", {2 * 1024 * 1024, 64}));
+    auto main = take(TestClient::create("runtime.life", take(server->commandId<ListCommands>())));
+    auto upload = take(TestClient::create("runtime.life", take(server->commandId<ListCommands>())));
     std::thread thread([&] { check(bool(server->run())); });
     auto ready = wait(*main, take(main->submit({})));
-    const auto identity = ready.session;
     ready = {};
     auto ready_upload = wait(*upload, take(upload->submit({})));
-    check(ready_upload.session == identity);
+    check(ready_upload.header.outcome == ECommandOutcome::SUCCESS);
     ready_upload = {};
     std::atomic<unsigned> destroyed{0};
     auto source = std::shared_ptr<const std::vector<std::byte>>(
         new std::vector<std::byte>(1024 * 1024, std::byte{67}), [&](auto* bytes) { delete bytes; ++destroyed; });
     const auto* pointer = source->data() + 257;
-    auto command = effect(identity);
+    auto command = effect();
     command.features.push_back({"test.asset", "pin", take(ConfigValue::make(
         AssetConfig{take(RenderPayload::fromVector(source, 257, 64))}
     ))});
-    check(!main->submit(command)); // 64 visible bytes charge the complete 1 MiB backing.
+    // The 1 MiB source is genuinely owned; IPC imposes no artificial byte budget.
+    check(wait(*main, take(main->submit(command))).header.outcome == ECommandOutcome::SUCCESS);
     check(command.features.back().config.borrow<AssetConfig>()->asset.bytes().data() == pointer);
     auto id = take(upload->submit(command));
     auto reply = wait(*upload, id);
     check(reply.header.outcome == ECommandOutcome::SUCCESS && observed.load() == pointer);
-    check(upload->retainedBytes() >= 1024 * 1024);
-    check(!upload->submit(command)); // held result retains the input lease
-    reply = {};
-    check(upload->retainedBytes() == 0);
+    // Holding a completed result does not retain the original input or consume request credits.
     id = take(upload->submit(command));
-    check(bool(upload->abandon(id)));
-    const auto deadline = std::chrono::steady_clock::now() + 10s;
-    while (upload->retainedBytes() && std::chrono::steady_clock::now() < deadline)
-    {
-        TestCompletion discarded;
-        check(take(upload->tryReceive(discarded)) == ERenderReceive::EMPTY);
-        std::this_thread::sleep_for(1ms);
-    }
-    check(upload->retainedBytes() == 0);
+    auto next_reply = wait(*upload, id);
+    check(next_reply.header.outcome == ECommandOutcome::SUCCESS);
+    reply = {};
+    next_reply = {};
 
     std::latch in_callback(1), continue_callback(1);
     entered = &in_callback;
@@ -140,15 +131,16 @@ int main()
     server.reset();
 
     auto replacement = take(createTestServer({"runtime.life", true}));
-    auto fresh = take(TestClient::create("runtime.life"));
+    auto fresh = take(TestClient::create("runtime.life", take(replacement->commandId<ListCommands>())));
     std::thread restart([&] { check(bool(replacement->run())); });
     auto current = wait(*fresh, take(fresh->submit({})));
-    check(current.session != identity);
-    TestCommand old;
-    old.operation = ETestCommand::CREATE_SCENE;
-    old.session = identity;
-    check(wait(*fresh, take(fresh->submit(old))).header.outcome == ECommandOutcome::FAILED);
+    check(current.header.outcome == ECommandOutcome::SUCCESS);
+    TestCompletion closed;
+    check(take(main->tryReceive(closed)) == ERenderReceive::CLOSED);
+    TestCommand fresh_request;
+    fresh_request.operation = ETestCommand::CREATE_SCENE;
+    check(wait(*fresh, take(fresh->submit(fresh_request))).header.outcome == ECommandOutcome::SUCCESS);
     replacement->stop();
     restart.join();
-    std::printf("M3 lifetime: full backing budget, pointer identity, abandon reclamation, close during callback, epoch OK\n");
+    std::printf("M3 lifetime: real source ownership, pointer identity, close during callback, old Link stays closed\n");
 }

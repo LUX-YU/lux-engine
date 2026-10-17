@@ -10,7 +10,8 @@ endif()
 add_library(render_basic_mesh_client OBJECT Client.cpp)
 
 target_link_libraries(render_basic_mesh_client PRIVATE
-    lux::engine::render::render_client lux::engine::render::render_features
+    lux::engine::render::render_commands lux::engine::render::render_features
+    lux::engine::platform::platform_ipc
 )
 
 target_compile_features(render_basic_mesh_client PRIVATE cxx_std_20)

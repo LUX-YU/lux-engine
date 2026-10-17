@@ -17,7 +17,7 @@ enable_testing()
 
 find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_graph)
 
-foreach(forbidden render_protocol render_client render_server platform_ipc)
+foreach(forbidden render_protocol render_commands render_server platform_ipc)
     if(TARGET lux::engine::render::${forbidden} OR TARGET lux::engine::platform::${forbidden})
         message(FATAL_ERROR "Graph consumer imported unrelated target ${forbidden}")
     endif()

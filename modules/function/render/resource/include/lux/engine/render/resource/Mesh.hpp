@@ -82,15 +82,9 @@ namespace lux::render
         using Response = Ack;
     };
 
-    template <> struct CommandValueTraits<MeshWrite> final
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const MeshWrite&) noexcept;
-    };
 
-    template <> struct CommandValueTraits<MeshInformation> final
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const MeshInformation&) noexcept;
-    };
+
+
 
     template <> struct ConfigValueTraits<MeshBinding> final
     {

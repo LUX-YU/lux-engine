@@ -50,15 +50,7 @@ namespace lux::render
         return add(sizeof(value), value.program.retainedBytes());
     }
 
-    RenderResult<std::size_t> CommandValueTraits<MaterialWrite>::retainedBytes(const MaterialWrite& value) noexcept
-    {
-        return add(sizeof(value), value.program.retainedBytes());
-    }
 
-    RenderResult<std::size_t> CommandValueTraits<MaterialInformation>::retainedBytes(
-        const MaterialInformation& value
-    ) noexcept
-    {
-        return add(sizeof(value), value.program.retainedBytes());
-    }
+
+
 }

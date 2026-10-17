@@ -13,9 +13,7 @@
 #include <lux/engine/render/data/Payload.hpp>
 #include <lux/engine/render/data/ConfigValue.hpp>
 #include <lux/engine/render/protocol/Protocol.hpp>
-#include <lux/engine/render/runtime/visibility.h>
-
-namespace lux::platform::ipc { class IpcTypeOps; }
+#include <lux/engine/render/runtime/Error.hpp>
 
 namespace lux::render
 {
@@ -41,15 +39,7 @@ namespace lux::render
         std::string output; // Empty selects the explicit Target copy; otherwise an exported buffer key.
     };
 
-    template <> struct CommandValueTraits<ReadbackRequest> final
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const ReadbackRequest& value) noexcept
-        {
-            if (value.output.capacity() >= SIZE_MAX - sizeof(value))
-                return cxx::unexpected(RenderError{kProtocolContract});
-            return sizeof(value) + value.output.capacity() + 1;
-        }
-    };
+
 
     struct GlobalStorageOwner final {};
     using VStorageOwner = std::variant<GlobalStorageOwner, SceneId, ViewRequest, AttachmentRequest>;
@@ -82,46 +72,11 @@ namespace lux::render
         using Response = Ack;
     };
 
-    template <> struct CommandValueTraits<StorageLocation>
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const StorageLocation& value) noexcept
-        {
-            if (value.key.capacity() >= SIZE_MAX - sizeof(value))
-                return cxx::unexpected(RenderError{kProtocolContract});
-            return sizeof(value) + value.key.capacity() + 1;
-        }
-    };
 
-    template <> struct CommandValueTraits<PrepareStorageRequest>
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const PrepareStorageRequest& value) noexcept
-        {
-            auto bytes = CommandValueTraits<StorageLocation>::retainedBytes(value.location);
-            if (!bytes) return cxx::unexpected(bytes.error());
-            if (*bytes > SIZE_MAX - sizeof(ConfigValue)) return cxx::unexpected(RenderError{kProtocolContract});
-            *bytes += sizeof(ConfigValue);
-            if (value.config.retainedBytes() > SIZE_MAX - *bytes)
-                return cxx::unexpected(RenderError{kProtocolContract});
-            return *bytes + value.config.retainedBytes();
-        }
-    };
 
-    template <> struct CommandValueTraits<AttachmentCreated>
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const AttachmentCreated& value) noexcept
-        {
-            if (value.storages.capacity() > (SIZE_MAX - sizeof(value)) / sizeof(StorageBindingInfo))
-                return cxx::unexpected(RenderError{kProtocolContract});
-            auto bytes = sizeof(value) + value.storages.capacity() * sizeof(StorageBindingInfo);
-            for (const auto& item : value.storages)
-            {
-                if (item.resource_key.capacity() >= SIZE_MAX - bytes)
-                    return cxx::unexpected(RenderError{kProtocolContract});
-                bytes += item.resource_key.capacity() + 1;
-            }
-            return bytes;
-        }
-    };
+
+
+
 
     struct SceneCreated final { SceneId scene{}; };
     struct ViewCreated final { ViewId view{}; };
@@ -165,23 +120,7 @@ namespace lux::render
         using Response = StorageList;
     };
 
-    template <> struct CommandValueTraits<StorageList>
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const StorageList& value) noexcept
-        {
-            std::size_t bytes = sizeof(value);
-            if (value.storages.capacity() > (SIZE_MAX - bytes) / sizeof(StorageInfo))
-                return cxx::unexpected(RenderError{kProtocolContract});
-            bytes += value.storages.capacity() * sizeof(StorageInfo);
-            for (const auto& storage : value.storages)
-            {
-                if (storage.name.capacity() >= SIZE_MAX - bytes)
-                    return cxx::unexpected(RenderError{kProtocolContract});
-                bytes += storage.name.capacity() + 1;
-            }
-            return bytes;
-        }
-    };
+
 
     struct ListFeatures final
     {
@@ -190,37 +129,15 @@ namespace lux::render
         using Response = FeatureList;
     };
 
-    template <> struct CommandValueTraits<FeatureList>
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const FeatureList& value) noexcept
-        {
-            std::size_t bytes = sizeof(value);
-            if (value.features.capacity() > (SIZE_MAX - bytes) / sizeof(FeatureInfo))
-                return cxx::unexpected(RenderError{kProtocolContract});
-            bytes += value.features.capacity() * sizeof(FeatureInfo);
-            for (const auto& feature : value.features)
-            {
-                if (feature.name.capacity() >= SIZE_MAX - bytes)
-                    return cxx::unexpected(RenderError{kProtocolContract});
-                bytes += feature.name.capacity() + 1;
-                if (feature.config_type.capacity() >= SIZE_MAX - bytes)
-                    return cxx::unexpected(RenderError{kProtocolContract});
-                bytes += feature.config_type.capacity() + 1;
-            }
-            return bytes;
-        }
-    };
+
 
     struct CommandInfo final
     {
         // Cold directory values retain the provider of the canonical value operations.
-        std::shared_ptr<const void> code_pin;
         std::string name;
         CommandId id;
         CommandValueType request;
         CommandValueType response;
-        const platform::ipc::IpcTypeOps* request_ops = nullptr;
-        const platform::ipc::IpcTypeOps* response_ops = nullptr;
         bool bound = false;
 
         [[nodiscard]] CommandDescriptor descriptor() const noexcept
@@ -257,43 +174,8 @@ namespace lux::render
         using Request = CommandSelection;
         using Response = Ack;
     };
-    template <> struct CommandValueTraits<CommandList>
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const CommandList& value) noexcept
-        {
-            std::size_t bytes = sizeof(value);
-            if (value.commands.capacity() > (SIZE_MAX - bytes) / sizeof(CommandInfo))
-                return cxx::unexpected(RenderError{kProtocolContract});
-            bytes += value.commands.capacity() * sizeof(CommandInfo);
-            for (const auto& command : value.commands)
-            {
-                if (command.name.capacity() >= SIZE_MAX - bytes)
-                    return cxx::unexpected(RenderError{kProtocolContract});
-                bytes += command.name.capacity() + 1;
-            }
-            return bytes;
-        }
-    };
-    template <> struct CommandValueTraits<CommandBindings>
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const CommandBindings& value) noexcept
-        {
-            std::size_t bytes = sizeof(value);
-            if (value.handlers.capacity() > (SIZE_MAX - bytes) / sizeof(HandlerInfo))
-                return cxx::unexpected(RenderError{kProtocolContract});
-            bytes += value.handlers.capacity() * sizeof(HandlerInfo);
-            for (const auto& handler : value.handlers)
-            {
-                if (handler.name.capacity() >= SIZE_MAX - bytes)
-                    return cxx::unexpected(RenderError{kProtocolContract});
-                bytes += handler.name.capacity() + 1;
-                if (handler.instance.capacity() >= SIZE_MAX - bytes)
-                    return cxx::unexpected(RenderError{kProtocolContract});
-                bytes += handler.instance.capacity() + 1;
-            }
-            return bytes;
-        }
-    };
+
+
 
     struct CreateScene final
     {
@@ -400,19 +282,7 @@ namespace lux::render
         using Response = RenderStatsSnapshot;
     };
 
-    template <> struct CommandValueTraits<CreateEffectRequest>
-    {
-        [[nodiscard]] static LUX_RENDER_CLIENT_PUBLIC RenderResult<std::size_t>
-        retainedBytes(const CreateEffectRequest& value) noexcept;
-    };
 
-    template <> struct CommandValueTraits<ReadbackResult>
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const ReadbackResult& value) noexcept
-        {
-            if (value.pixels.retainedBytes() > SIZE_MAX - sizeof(value))
-                return cxx::unexpected(RenderError{kProtocolContract});
-            return sizeof(value) + value.pixels.retainedBytes();
-        }
-    };
+
+
 }

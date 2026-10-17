@@ -79,15 +79,9 @@ namespace lux::render
         using Response = TexturePublished;
     };
 
-    template <> struct CommandValueTraits<SetTexture::Request> final
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const SetTexture::Request&) noexcept;
-    };
 
-    template <> struct CommandValueTraits<SetTextureRegion::Request> final
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const SetTextureRegion::Request&) noexcept;
-    };
+
+
 
     struct TextureStorageConfig final
     {

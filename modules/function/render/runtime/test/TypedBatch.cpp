@@ -1,14 +1,13 @@
 #include "CameraFixture.hpp"
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
-#include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include "ProtocolAudit.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "ServerFixture.hpp"
 #include "SceneFixture.hpp"
 #include "Allocation.hpp"
-#include "ClientAllocation.hpp"
+#include "TypedTest.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -95,6 +94,8 @@ namespace batch_fixture
     struct State final
     {
         std::array<SceneData, 2> scenes;
+        std::atomic<const Entry*> observed{};
+        std::atomic<std::size_t> observed_capacity{0};
         std::atomic<std::size_t> boundaries{0};
         std::atomic<std::size_t> checked_entries{0};
         std::atomic<std::size_t> applied_entries{0};
@@ -102,6 +103,8 @@ namespace batch_fixture
 
     static RenderResult<void> set(State& state, const SetValues::Request& request, Reply<SetValues>& context) noexcept
     {
+        state.observed = request.changes.data();
+        state.observed_capacity = request.changes.capacity();
         ++state.boundaries;
         const auto found = std::ranges::find(state.scenes, request.scene, &SceneData::scene);
         const bool invalid_scene = found == state.scenes.end();
@@ -140,37 +143,6 @@ namespace batch_fixture
     static const std::array commands{commandDescriptor<SetValues>(), commandDescriptor<ReadValue>()};
     static const FeatureDescriptor definition{FeatureName("test.batch.values"), {}};
     static const FeatureGraphOps definition_graph{[](const void*, std::string_view, ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
-}
-
-namespace lux::render
-{
-    template <> struct CommandValueTraits<batch_fixture::SetValues::Request>
-    {
-        static RenderResult<std::size_t> retainedBytes(const batch_fixture::SetValues::Request& value) noexcept
-        {
-            auto bytes = cxx::checkedMul<std::size_t>(value.changes.capacity(), sizeof(batch_fixture::Entry));
-            if (!bytes) return cxx::unexpected(RenderError{kProtocolContract});
-            auto total = cxx::checkedAdd(sizeof(value), *bytes);
-            if (!total) return cxx::unexpected(RenderError{kProtocolContract});
-            return *total;
-        }
-    };
-}
-
-static RenderCompletion wait(RenderClient& client, RequestId id)
-{
-    const auto deadline = Clock::now() + 10s;
-    while (Clock::now() < deadline)
-    {
-        RenderCompletion result;
-        const auto status = take(client.tryReceive(result));
-        if (status == ERenderReceive::RECEIVED) { CHECK(result.header.request == id); return result; }
-        CHECK(status != ERenderReceive::CLOSED);
-        std::this_thread::yield();
-    }
-    std::fputs("TypedBatch request wait timed out\n", stderr);
-    std::fflush(stderr);
-    std::_Exit(1);
 }
 
 // Measure the same concrete Request and the observed number of move constructors
@@ -213,13 +185,6 @@ static std::size_t directMoveAllocations(
     CHECK(source->changes.data() == original && source->changes.capacity() == original_capacity);
     CHECK(source->changes.size() == count && source->scene == scene && source->revision == 100);
     return allocations;
-}
-
-template <RenderCommand C>
-static TypedRenderCompletion<C> call(RenderClient& client, const BoundCommand<C>& binding,
-    typename C::Request request, std::size_t reply_capacity = 128)
-{
-    return take(std::move(wait(client, take(client.submit(binding, request, reply_capacity)))).take(binding));
 }
 
 static RenderResult<ProgramContribution> programs(const void* wire, std::string_view instance) noexcept
@@ -266,121 +231,98 @@ int main()
     CpuFixture host;
     auto state = std::make_unique<State>();
     auto server = create(*state, host);
-    auto a = take(RenderClient::create("runtime.typed.batch"));
-    auto b = take(RenderClient::create("runtime.typed.batch"));
-    const auto hello_a = take(a->hello()), hello_b = take(b->hello());
+    const auto catalog = take(server->commandId<ListCommands>());
+    auto a = take(runtime_test::connect("runtime.typed.batch", catalog));
+    auto b = take(runtime_test::connect("runtime.typed.batch", catalog));
     bool run_ok = false;
     std::thread worker([&] { render_allocation::participate = true; run_ok = bool(server->run()); });
-    CHECK(wait(*a, hello_a).header.outcome == ECommandOutcome::SUCCESS);
-    CHECK(wait(*b, hello_b).header.outcome == ECommandOutcome::SUCCESS);
     CHECK(runtime_test::refresh(*a) && runtime_test::refresh(*b));
-    auto create_scene = take(a->bind<CreateScene>());
-    const auto scene_a = call(*a, create_scene, {}).response().scene;
-    const auto scene_b = call(*a, create_scene, {}).response().scene;
+    auto create_scene = take(runtime_test::find<CreateScene>(*a));
+    const auto scene_a = call<CreateScene>(*a, create_scene, {}).get<CreateScene::Response>().scene;
+    const auto scene_b = call<CreateScene>(*a, create_scene, {}).get<CreateScene::Response>().scene;
     CHECK(scene_a != scene_b);
     bindScene(*state, scene_a);
     bindScene(*state, scene_b);
     // Align the two independent request histories, without sharing a RequestId allocator.
-    auto stats_b = take(b->bind<QueryRenderStats>());
-    (void)call(*b, stats_b, {});
-    (void)call(*b, stats_b, {});
-    auto bound_a = take(a->bind<SetValues>());
-    auto bound_b = take(b->bind<SetValues>());
-    auto read_a = take(a->bind<ReadValue>());
-    auto read_b = take(b->bind<ReadValue>());
+    auto stats_b = take(runtime_test::find<QueryRenderStats>(*b));
+    (void)call<QueryRenderStats>(*b, stats_b, {});
+    (void)call<QueryRenderStats>(*b, stats_b, {});
+    auto bound_a = take(runtime_test::find<SetValues>(*a));
+    auto bound_b = take(runtime_test::find<SetValues>(*b));
+    auto read_a = take(runtime_test::find<ReadValue>(*a));
+    auto read_b = take(runtime_test::find<ReadValue>(*b));
     SetValues::Request first{scene_a, 1, {{0, 3}}}, second{scene_b, 1, {{0, 7}}};
-    const auto id_a = take(a->submit(bound_a, first)), id_b = take(b->submit(bound_b, second));
+    const auto id_a = take(runtime_test::send<SetValues>(*a, bound_a, std::move(first))), id_b = take(runtime_test::send<SetValues>(*b, bound_b, std::move(second)));
     CHECK(id_a == id_b);
     {
-        auto reply_b = take(std::move(wait(*b, id_b)).take(bound_b));
-        auto reply_a = take(std::move(wait(*a, id_a)).take(bound_a));
-        CHECK(reply_a.response().applied == 1 && reply_b.response().applied == 1);
-        CHECK(reply_a.request().scene == scene_a && reply_b.request().scene == scene_b);
+        auto reply_b = wait(*b, id_b);
+        auto reply_a = wait(*a, id_a);
+        CHECK(reply_a.get<SetValues::Response>().applied == 1 && reply_b.get<SetValues::Response>().applied == 1);
     }
-    CHECK(call(*a, read_a, {scene_a, 0}).response().value == 3);
-    CHECK(call(*b, read_b, {scene_b, 0}).response().value == 7);
+    CHECK(call<ReadValue>(*a, read_a, {scene_a, 0}).get<ReadValue::Response>().value == 3);
+    CHECK(call<ReadValue>(*b, read_b, {scene_b, 0}).get<ReadValue::Response>().value == 7);
 
     SetValues::Request invalid{scene_a, 2, {{0, 99}, {static_cast<std::uint32_t>(slots), 1}}};
     invalid.changes.reserve(127);
-    const auto* failed_backing = invalid.changes.data();
-    const auto failed_capacity = invalid.changes.capacity();
     const auto applied_before = state->applied_entries.load();
-    CHECK(a->retainedBytes() == 0);
-    auto failed = wait(*a, take(a->submit(bound_a, invalid)));
-    CHECK(failed.header.outcome == ECommandOutcome::FAILED && failed.header.error.type == kProtocolContract);
-    {
-        const auto charged = a->retainedBytes();
-        CHECK(charged > failed_capacity * sizeof(Entry));
-        auto recovered = take(std::move(failed).take(bound_a));
-        CHECK(!failed.active() && recovered.header().outcome == ECommandOutcome::FAILED);
-        CHECK(recovered.header().error.type == kProtocolContract && recovered.tryResponse() == nullptr);
-        CHECK(recovered.request().changes.data() == failed_backing);
-        CHECK(recovered.request().changes.capacity() == failed_capacity);
-        CHECK(a->retainedBytes() == charged);
-        invalid = std::move(recovered.request());
-        CHECK(a->retainedBytes() == charged); // moving the value is not transport acknowledgement
-    }
-    CHECK(a->retainedBytes() == 0);
+    // The caller retains authority and constructs each submitted batch. There is no implicit
+    // original-request return on failure; retries are explicit application policy.
+    auto failed = call<SetValues>(*a, bound_a, {invalid.scene, invalid.revision, invalid.changes});
+    CHECK(failed.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    CHECK(failed.get<RenderError>().type == kProtocolContract);
     CHECK(state->applied_entries == applied_before);
-    CHECK(call(*a, read_a, {scene_a, 0}).response().value == 3);
-    // Correct the failed input in-place and retry through the same real Handler.
+    CHECK(call<ReadValue>(*a, read_a, {scene_a, 0}).get<ReadValue::Response>().value == 3);
     invalid.changes[1].slot = 1;
     invalid.changes[0].value = 3;
-    {
-        auto retried = take(std::move(wait(*a, take(a->submit(bound_a, invalid)))).take(bound_a));
-        CHECK(retried.header().outcome == ECommandOutcome::SUCCESS && retried.tryResponse());
-        CHECK(retried.response().applied == 2);
-        CHECK(retried.request().changes.data() == failed_backing);
-        CHECK(retried.request().changes.capacity() == failed_capacity);
-        invalid = std::move(retried.request());
-    }
-    CHECK(a->retainedBytes() == 0 && invalid.changes.data() == failed_backing);
+    auto retried = call<SetValues>(*a, bound_a, {invalid.scene, invalid.revision, invalid.changes});
+    CHECK(retried.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    CHECK(retried.get<SetValues::Response>().applied == 2);
     auto stale = scene_a;
     ++stale.gen;
     invalid = {stale, 2, {{0, 99}}};
-    failed = wait(*a, take(a->submit(bound_a, invalid)));
-    CHECK(failed.header.outcome == ECommandOutcome::FAILED && failed.header.error.type == kRuntimeIdentity);
+    failed = wait(*a, take(runtime_test::send<SetValues>(*a, bound_a, std::move(invalid))));
+    CHECK(failed.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED && failed.get<RenderError>().type == kRuntimeIdentity);
     failed = {};
     CHECK(state->applied_entries == applied_before + 2);
     SetValues::Request duplicates{scene_a, 3, {{0, 5}, {0, 9}, {0, 7}}};
-    CHECK(call(*a, bound_a, std::move(duplicates)).response().applied == 3);
-    CHECK(call(*a, read_a, {scene_a, 0}).response().value == 7);
+    CHECK(call<SetValues>(*a, bound_a, std::move(duplicates)).get<SetValues::Response>().applied == 3);
+    CHECK(call<ReadValue>(*a, read_a, {scene_a, 0}).get<ReadValue::Response>().value == 7);
     invalid = {scene_a, 4, {{0, std::numeric_limits<float>::quiet_NaN()}, {0, 42}}};
-    failed = wait(*a, take(a->submit(bound_a, invalid)));
-    CHECK(failed.header.outcome == ECommandOutcome::FAILED);
+    failed = wait(*a, take(runtime_test::send<SetValues>(*a, bound_a, std::move(invalid))));
+    CHECK(failed.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
     failed = {};
-    CHECK(call(*a, read_a, {scene_a, 0}).response().value == 7);
+    CHECK(call<ReadValue>(*a, read_a, {scene_a, 0}).get<ReadValue::Response>().value == 7);
 
     // Engine authority simulation: revision n's acknowledgement cannot clear n+1.
     struct Authority final { std::uint64_t revision = 20; float value = 20; bool dirty = true; } authority;
     SetValues::Request revision_n{scene_a, authority.revision, {{1, authority.value}}};
-    const auto revision_id = take(a->submit(bound_a, revision_n));
+    const auto revision_id = take(runtime_test::send<SetValues>(*a, bound_a, std::move(revision_n)));
     ++authority.revision;
     authority.value = 21;
     {
-        auto old = take(std::move(wait(*a, revision_id)).take(bound_a));
-        if (old.response().revision == authority.revision) authority.dirty = false;
-        CHECK(authority.dirty && old.response().revision == 20);
+        auto old = wait(*a, revision_id);
+        if (old.get<SetValues::Response>().revision == authority.revision) authority.dirty = false;
+        CHECK(authority.dirty && old.get<SetValues::Response>().revision == 20);
     }
     {
-        auto current = call(*a, bound_a, {scene_a, authority.revision, {{1, authority.value}}});
-        if (current.response().revision == authority.revision) authority.dirty = false;
+        auto current = call<SetValues>(*a, bound_a, {scene_a, authority.revision, {{1, authority.value}}});
+        if (current.get<SetValues::Response>().revision == authority.revision) authority.dirty = false;
     }
-    CHECK(!authority.dirty && call(*a, read_a, {scene_a, 1}).response().value == 21);
+    CHECK(!authority.dirty && call<ReadValue>(*a, read_a, {scene_a, 1}).get<ReadValue::Response>().value == 21);
 
     // Keep the existing CPU batch semantics separate from the concurrent GPU load:
     // SetValues does not claim to upload transforms or drive these View colors.
     // The same Server renders four actual Views throughout every measured batch.
     const native_fixture::Config gpu_config{32, 32, 1, 0};
     const auto target_description = native_fixture::target(gpu_config);
-    auto create_effect = take(a->bind<CreateEffect>());
+    auto create_effect = take(runtime_test::find<CreateEffect>(*a));
     CreateEffect::Request effect_request{target_description};
     effect_request.features.push_back({take(feature_test::find(*a, native_fixture::type.name())), "main",
         take(ConfigValue::make(gpu_config))});
-    const auto effect = call(*a, create_effect, std::move(effect_request)).response().effect;
-    auto create_view = take(a->bind<CreateView>());
-    auto create_target = take(a->bind<CreateTarget>());
-    auto attach = take(a->bind<Attach>());
+    const auto effect = call<CreateEffect>(*a, create_effect, std::move(effect_request)).get<CreateEffect::Response>().effect;
+    auto create_view = take(runtime_test::find<CreateView>(*a));
+    auto create_target = take(runtime_test::find<CreateTarget>(*a));
+    auto attach = take(runtime_test::find<Attach>(*a));
     const std::array scenes{scene_a, scene_b};
     const std::array<std::array<float, 4>, 4> colors{{{1, 0, 0, 1}, {0, 1, 0, 1},
         {0, 0, 1, 1}, {1, 1, 0, 1}}};
@@ -390,11 +332,11 @@ int main()
     for (unsigned i = 0; i < attached.size(); ++i)
     {
         const auto scene = scenes[i / 2];
-        const auto view = call(*a, create_view, {scene, camera_fixture::oracle(colors[i])}).response().view;
-        const auto target = call(*a, create_target, {target_description}).response();
+        const auto view = call<CreateView>(*a, create_view, {scene, camera_fixture::oracle(colors[i])}).get<CreateView::Response>().view;
+        const auto target = call<CreateTarget>(*a, create_target, {target_description}).get<CreateTarget::Response>();
         CHECK(target.epoch == 1);
         attached[i] = {scene, view, target.target, effect};
-        (void)call(*a, attach, attached[i]);
+        (void)call<Attach>(*a, attach, attached[i]);
     }
     const auto warm_begin = server->stats();
     const auto warm_deadline = Clock::now() + 10s;
@@ -415,7 +357,7 @@ int main()
         std::uint32_t seed;
         unsigned entries, scene, iteration;
         long long ns;
-        std::size_t exe_allocations, client_allocations, exe_bytes, client_bytes;
+        std::size_t exe_allocations, exe_bytes;
         std::size_t move_constructions, move_assignments, direct_allocations;
         long long transport_extra;
         std::uint64_t submissions_before, submissions_after, ticks_before, ticks_after;
@@ -425,19 +367,18 @@ int main()
     const std::array counts{1u, 100u, 1000u, 10000u};
     render_allocation::participate = true;
     for (unsigned iteration = 0; iteration < 5; ++iteration)
-        CHECK(call(*a, read_a, {scene_a, 0}).response().value == 7);
+        CHECK(call<ReadValue>(*a, read_a, {scene_a, 0}).get<ReadValue::Response>().value == 7);
     render_allocation::calls = 0;
     render_allocation::bytes = 0;
-    client_allocation::start();
+
     render_allocation::window = true;
     {
-        auto control = call(*a, read_a, {scene_a, 0});
-        CHECK(control.response().value == 7);
+        auto control = call<ReadValue>(*a, read_a, {scene_a, 0});
+        CHECK(control.get<ReadValue::Response>().value == 7);
     }
     render_allocation::window = false;
-    const auto control_client_allocations = client_allocation::stop();
     const auto control_allocations = render_allocation::calls.load();
-    CHECK(control_allocations == 0 && control_client_allocations.calls == 0);
+    CHECK(control_allocations == 0);
     // Prepare one deterministic Fisher-Yates permutation outside every measured
     // interval. RANDOM changes only destination locality, not count or values.
     std::array<std::uint32_t, slots> random_slots{};
@@ -467,14 +408,13 @@ int main()
                     const auto slot = pattern == EAccessPattern::LOCAL ? i : random_slots[i];
                     input.changes.push_back({slot, float(i + scene_number * 10000)});
                 }
-                const auto* original = input.changes.data();
-                const auto original_capacity = input.changes.capacity();
                 const auto last_entry = input.changes.back();
-                CHECK(*CommandValueTraits<SetValues::Request>::retainedBytes(input) ==
-                    sizeof(input) + original_capacity * sizeof(Entry));
                 const auto group_begin = server->stats();
                 for (unsigned iteration = 0; iteration < 25; ++iteration)
                 {
+                    SetValues::Request prepared{scene, 100, input.changes};
+                    const auto* original = prepared.changes.data();
+                    const auto original_capacity = prepared.changes.capacity();
                     const bool measured = iteration >= 5;
                     const auto progress_begin = server->stats();
                     if (measured)
@@ -483,38 +423,37 @@ int main()
                         SetValues::Request::move_assignments = 0;
                         render_allocation::calls = 0;
                         render_allocation::bytes = 0;
-                        client_allocation::start();
+
                         render_allocation::window = true;
                     }
                     const auto begin = Clock::now();
-                    const auto request = take(client.submit(binding, input));
-                    CHECK(input.changes.empty());
+                    const auto request = take(runtime_test::send<SetValues>(client, binding, std::move(prepared)));
+                    CHECK(prepared.changes.empty());
                     {
-                        auto result = take(std::move(wait(client, request)).take(binding));
-                        CHECK(result.response().applied == count && result.response().revision == 100);
-                        CHECK(result.request().changes.data() == original);
-                        input = std::move(result.request()); // recover the original vector for the next batch
+                        auto result = wait(client, request);
+                        CHECK(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+                        CHECK(result.get<SetValues::Response>().applied == count);
+                        CHECK(result.get<SetValues::Response>().revision == 100);
+                        CHECK(state->observed == original && state->observed_capacity == original_capacity);
                     }
                     const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
                     const auto progress_end = server->stats();
                     if (measured)
                     {
                         render_allocation::window = false;
-                        const auto client_allocations = client_allocation::stop();
                         const auto allocations = render_allocation::calls.load();
                         const auto allocation_bytes = render_allocation::bytes.load();
                         const auto constructions = SetValues::Request::move_constructions.load();
                         const auto assignments = SetValues::Request::move_assignments.load();
                         samples[sample_index++] = {
                             pattern, pattern == EAccessPattern::RANDOM ? random_seed : 0,
-                            count, scene_number, iteration - 5, ns, allocations, client_allocations.calls,
-                            allocation_bytes, client_allocations.bytes, constructions, assignments, 0, 0,
+                            count, scene_number, iteration - 5, ns, allocations,
+                            allocation_bytes, constructions, assignments, 0, 0,
                             progress_begin.submissions, progress_end.submissions, progress_begin.ticks, progress_end.ticks
                         };
                     }
-                    CHECK(input.changes.data() == original && input.changes.capacity() == original_capacity);
                 }
-                CHECK(call(client, scene_number ? read_b : read_a, {scene, last_entry.slot}).response().value ==
+                CHECK(call<ReadValue>(client, scene_number ? read_b : read_a, {scene, last_entry.slot}).get<ReadValue::Response>().value ==
                     last_entry.value);
                 const auto group_end = server->stats();
                 CHECK(group_end.submissions > group_begin.submissions && group_end.ticks > group_begin.ticks);
@@ -525,12 +464,11 @@ int main()
     }
     CHECK(sample_index == samples.size());
 
-    CHECK(a->retainedBytes() == 0 && b->retainedBytes() == 0);
-    auto readback = take(a->bind<Readback>());
+    auto readback = take(runtime_test::find<Readback>(*a));
     for (unsigned i = 0; i < attached.size(); ++i)
     {
-        auto pixels = call(*a, readback, {attached[i], {}}, 8192);
-        const auto bytes = pixels.response().pixels.bytes().view();
+        auto pixels = call<Readback>(*a, readback, {attached[i], {}});
+        const auto bytes = pixels.get<Readback::Response>().pixels.bytes().view();
         CHECK(bytes.size() == 32 * 32 * 4);
         for (unsigned channel = 0; channel < 4; ++channel)
         {
@@ -540,12 +478,11 @@ int main()
             CHECK(std::abs(std::to_integer<int>(bytes[channel]) - int(background[channel])) <= 1);
         }
     }
-    CHECK(a->retainedBytes() == 0 && server->stats().compiled_graphs == 1);
+    CHECK(server->stats().compiled_graphs == 1);
     CHECK(native_fixture::descriptions == descriptions && native_fixture::builds == builds);
     std::puts("Batch samples coupled to the same Server's two Scenes/four Offscreen Views, one shared Graph; "
         "four final pixel oracles PASS. Test CPU values do not represent GPU transforms.");
 
-    const auto previous_session = a->session();
     a.reset();
     b.reset();
     server->stop();
@@ -560,58 +497,50 @@ int main()
     {
         sample.direct_allocations = directMoveAllocations(scenes[sample.scene], sample.entries,
             sample.move_constructions, sample.move_assignments);
-        const auto total = sample.exe_allocations + sample.client_allocations;
+        const auto total = sample.exe_allocations;
         sample.transport_extra = static_cast<long long>(total) - static_cast<long long>(sample.direct_allocations);
         CHECK(sample.transport_extra == 0);
     }
     std::ofstream csv("runtime-typed-batch.csv");
-    csv << "pattern,seed,entries,scene,sample,full_roundtrip_reclaim_ns,engine_exe_new_calls,client_dll_new_calls,"
-        "engine_exe_plus_client_new_calls,engine_exe_new_bytes,client_dll_new_bytes,request_move_constructions,"
+    csv << "pattern,seed,entries,scene,sample,full_roundtrip_ns,engine_exe_new_calls,"
+        "engine_exe_new_bytes,request_move_constructions,"
         "request_move_assignments,direct_same_moves_exe_new_calls,transport_extra_new_calls,"
         "server_submissions_before,server_submissions_after,server_ticks_before,server_ticks_after\n";
     for (const auto& sample : samples)
         csv << (sample.pattern == EAccessPattern::LOCAL ? "LOCAL" : "RANDOM") << ',' << sample.seed << ','
             << sample.entries << ',' << sample.scene << ',' << sample.iteration << ',' << sample.ns << ','
-            << sample.exe_allocations << ',' << sample.client_allocations << ','
-            << sample.exe_allocations + sample.client_allocations << ',' << sample.exe_bytes << ','
-            << sample.client_bytes << ',' << sample.move_constructions << ',' << sample.move_assignments << ','
+            << sample.exe_allocations << ',' << sample.exe_bytes << ',' << sample.move_constructions << ',' << sample.move_assignments << ','
             << sample.direct_allocations << ',' << sample.transport_extra << ',' << sample.submissions_before << ','
             << sample.submissions_after << ',' << sample.ticks_before << ',' << sample.ticks_after << '\n';
     csv.close();
-    std::printf("SetValues Request=%zu envelope=%zu inline=%u entry=%zu boundary=%zu checked=%zu applied=%zu\n",
-        sizeof(SetValues::Request), sizeof(runtime_detail::ValueEnvelope<SetValues::Request>),
-        unsigned(lux::platform::ipc::IpcMessage::stores_inline<runtime_detail::ValueEnvelope<SetValues::Request>>),
+    std::printf("SetValues Request=%zu inline=%u entry=%zu boundary=%zu checked=%zu applied=%zu\n",
+        sizeof(SetValues::Request),
+        unsigned(lux::platform::ipc::IpcMessage::stores_inline<SetValues::Request>),
         sizeof(Entry), state->boundaries.load(), state->checked_entries.load(), state->applied_entries.load());
-    std::printf("Typed batch control EXE new=%zu Client DLL new=%zu; same-move EXE baseline measured after Server join; "
-        "EXE+Client transport extra new=0\n", control_allocations, control_client_allocations.calls);
+    std::printf("Typed batch control EXE new=%zu; same-move EXE baseline measured after Server join; "
+        "EXE transport extra new=0\n", control_allocations);
     std::printf("Typed batch samples: LOCAL=160 RANDOM=160 seed=%u; input/permutation preparation excluded\n",
         random_seed);
 
     state = std::make_unique<State>();
     server = create(*state, host);
-    auto replacement = take(RenderClient::create("runtime.typed.batch"));
-    const auto hello = take(replacement->hello());
+    auto replacement = take(runtime_test::connect("runtime.typed.batch", take(server->commandId<ListCommands>())));
     run_ok = false;
     worker = std::thread([&] { run_ok = bool(server->run()); });
-    CHECK(wait(*replacement, hello).header.outcome == ECommandOutcome::SUCCESS);
-    CHECK(replacement->session() != previous_session);
     CHECK(runtime_test::refresh(*replacement));
-    auto replacement_create = take(replacement->bind<CreateScene>());
-    const auto rebuilt_scene = call(*replacement, replacement_create, {}).response().scene;
+    auto replacement_create = take(runtime_test::find<CreateScene>(*replacement));
+    const auto rebuilt_scene = call<CreateScene>(*replacement, replacement_create, {}).get<CreateScene::Response>().scene;
     bindScene(*state, rebuilt_scene);
     SetValues::Request snapshot{rebuilt_scene, authority.revision, {{1, authority.value}}};
-    const auto* unchanged = snapshot.changes.data();
-    auto stale_binding = replacement->submit(bound_a, snapshot);
-    CHECK(!stale_binding && stale_binding.error().type == kRuntimeIdentity && snapshot.changes.data() == unchanged);
-    auto rebuilt_binding = take(replacement->bind<SetValues>());
-    auto rebuilt_read = take(replacement->bind<ReadValue>());
-    auto rebuilt = call(*replacement, rebuilt_binding, std::move(snapshot));
-    CHECK(rebuilt.response().revision == authority.revision);
-    CHECK(call(*replacement, rebuilt_read, {rebuilt_scene, 1}).response().value == authority.value);
+    auto rebuilt_binding = take(runtime_test::find<SetValues>(*replacement));
+    auto rebuilt_read = take(runtime_test::find<ReadValue>(*replacement));
+    auto rebuilt = call<SetValues>(*replacement, rebuilt_binding, std::move(snapshot));
+    CHECK(rebuilt.get<SetValues::Response>().revision == authority.revision);
+    CHECK(call<ReadValue>(*replacement, rebuilt_read, {rebuilt_scene, 1}).get<ReadValue::Response>().value == authority.value);
     server->stop();
     worker.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
     server.reset();
-    CHECK(rebuilt.request().changes.front().value == authority.value);
-    std::puts("Typed batches: two real SceneIds, vector owner reuse, all-or-none, last input wins, revision and epoch recovery");
+    CHECK(rebuilt.get<SetValues::Response>().revision == authority.revision);
+    std::puts("Typed batches: two real SceneIds, moved vector backing, all-or-none, last input wins, revision and Server restart snapshot");
 }

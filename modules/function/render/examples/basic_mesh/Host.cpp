@@ -1,4 +1,5 @@
 #include "Sample.hpp"
+#include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/native/vulkan/features/MeshFeature.hpp>
@@ -76,9 +77,10 @@ int main(int argc, char** argv)
     (void)require(server->registerFeature<DepthOnlyFeature>());
     (void)require(server->registerStorage<TextureStorage, AlternateProvider>({}, "B"));
 
+    const auto directory_id = require(server->commandId<lux::render::ListCommands>());
     bool ran = false;
     std::thread render([&] { ran = bool(server->run()); });
-    auto retained = mesh_sample::runClients(config.channel_name, argv[1]);
+    auto retained = mesh_sample::runClients(config.channel_name, directory_id, argv[1]);
     server->stop();
     render.join();
     const auto stats = server->stats();

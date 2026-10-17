@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/render/protocol/CommandHandler.hpp>
 #include <lux/engine/core/execution/WorkSchedule.hpp>
 #include <stdexec/execution.hpp>
 #include <exception>
@@ -9,14 +9,6 @@
 
 namespace lux::render
 {
-    // Some accepted side effects cannot be certified as rolled back. This is a generic terminal fact,
-    // not a CPU/GPU operation category.
-    struct CommandFailure final
-    {
-        RenderError error;
-        bool outcome_unknown = false;
-    };
-
     // A callback borrow of the one Runtime pending slot. Completion transfers the result before returning;
     // the sender must not read its operation state after set_value/error/stopped. The execution host
     // must also keep the sender provider's code alive until its terminal callback has returned.

@@ -56,8 +56,8 @@ int main()
 {
     auto server = take(createTestServer({"runtime.control", true}));
     check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs})));
-    auto a = take(TestClient::create("runtime.control"));
-    auto b = take(TestClient::create("runtime.control"));
+    auto a = take(TestClient::create("runtime.control", take(server->commandId<ListCommands>())));
+    auto b = take(TestClient::create("runtime.control", take(server->commandId<ListCommands>())));
     auto ready_a = take(a->submit({}));
     auto ready_b = take(b->submit({}));
     check(ready_a == ready_b);
@@ -65,16 +65,13 @@ int main()
     std::thread thread([&] { run_ok = bool(server->run()); });
     auto first = wait(*a, ready_a);
     auto second = wait(*b, ready_b);
-    check(first.header.outcome == ECommandOutcome::SUCCESS && first.session == second.session);
+    check(first.header.outcome == ECommandOutcome::SUCCESS && second.header.outcome == ECommandOutcome::SUCCESS);
     TestCompletion moved = std::move(second);
     check(!second.active() && moved.active());
     const auto request_before = moved.header.request;
-    const auto retained_before = b->retainedBytes();
-    check(!b->tryReceive(moved) && moved.header.request == request_before &&
-        b->retainedBytes() == retained_before); // active output and its owner cannot be overwritten
+    check(!b->tryReceive(moved) && moved.header.request == request_before); // active output and its owner cannot be overwritten
     moved = {};
     TestCommand command;
-    command.session = first.session;
     command.operation = ETestCommand::CREATE_SCENE;
     auto scene = call(*a, command);
     check(scene.header.outcome == ECommandOutcome::SUCCESS);
@@ -104,7 +101,7 @@ int main()
     command.operation = ETestCommand::CREATE_SCENE;
     std::array<RequestId, 64> paused;
     for (auto& id : paused) id = take(a->submit(command));
-    check(!a->submit(command));
+    const auto beyond_old_limit = take(a->submit(command));
     const auto before = server->stats().ticks;
     const auto until = std::chrono::steady_clock::now() + 1500ms;
     std::uint64_t progress = 0;
@@ -120,9 +117,7 @@ int main()
     }
     check(progress > 10 && server->stats().ticks > before + 10);
     for (auto id : paused) check(wait(*a, id).header.outcome == ECommandOutcome::SUCCESS);
-    auto stale = command;
-    ++stale.session[0];
-    check(call(*b, stale).header.outcome == ECommandOutcome::FAILED);
+    check(wait(*a, beyond_old_limit).header.outcome == ECommandOutcome::SUCCESS);
     command.operation = ETestCommand::STOP;
     check(call(*b, command).header.outcome == ECommandOutcome::SUCCESS);
     thread.join();
@@ -133,9 +128,9 @@ int main()
     scene = {};
     view = {};
     recreated = {};
-    check(first.active() && first.header.request == ready_a && a->retainedBytes() > 0);
+    check(first.active() && first.header.request == ready_a);
     first = {};
-    check(a->retainedBytes() == 0); // published typed Hello and its budget survive server
+    // Actual published directory remains valid after the Server, with no request lease.
 
     RenderServerConfig invalid{"runtime.failure", true};
     invalid.device.physical_device_index = 0xfffffffe;

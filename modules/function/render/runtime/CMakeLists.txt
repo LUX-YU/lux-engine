@@ -1,46 +1,25 @@
-find_package(lux-cxx CONFIG REQUIRED COMPONENTS concurrent)
-
-generate_visibility_header(
-    ENABLE_MACRO_NAME LUX_RENDER_CLIENT_LIBRARY
-    PUBLIC_MACRO_NAME LUX_RENDER_CLIENT_PUBLIC
-    GENERATE_FILE_PATH lux/engine/render/runtime/visibility.h
-)
-
-add_component(
-    COMPONENT_NAME render_client
+# Real builtin command value declarations; no Client object, Client DLL, Pending table or forwarding API.
+add_interface_component(
+    COMPONENT_NAME render_commands
     NAMESPACE lux::engine::render
-    OUTPUT_NAME lux_engine_render_client
-    SOURCE_FILES src/RenderClient.cpp
 )
 
-component_include_directories(render_client
-    BUILD_TIME_EXPORT "${CMAKE_CURRENT_SOURCE_DIR}/include" "${LUX_GENERATE_HEADER_DIR}"
-    PRIVATE pinclude
+component_include_directories(render_commands
+    BUILD_TIME_EXPORT "${CMAKE_CURRENT_SOURCE_DIR}/include"
     INSTALL_TIME include
 )
 
-component_add_internal_dependencies(render_client
+component_add_internal_dependencies(render_commands
     lux::engine::render::render_core lux::engine::render::render_data lux::engine::render::render_protocol
 )
 
-target_link_libraries(render_client PUBLIC lux::engine::platform::platform_ipc)
-
-target_compile_definitions(render_client PRIVATE LUX_RENDER_CLIENT_LIBRARY)
-
-component_add_transitive_commands(render_client
-    [=[find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_ipc
-        HINTS "${CMAKE_CURRENT_LIST_DIR}/../../lux-engine-platform")]=]
-)
-
-target_compile_features(render_client PUBLIC cxx_std_20)
+target_compile_features(render_commands INTERFACE cxx_std_20)
 
 if(LUX_RENDER_CLIENT_ONLY)
     if(BUILD_TESTING)
         add_executable(render_sync_source_consumer test/client_installed/Main.cpp)
-        target_link_libraries(render_sync_source_consumer PRIVATE render_client)
+        target_link_libraries(render_sync_source_consumer PRIVATE render_commands lux::engine::platform::platform_ipc)
         add_custom_command(TARGET render_sync_source_consumer POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "$<TARGET_FILE:render_client>" "$<TARGET_FILE_DIR:render_sync_source_consumer>"
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "$<TARGET_FILE:lux::engine::platform::platform_ipc>" "$<TARGET_FILE_DIR:render_sync_source_consumer>"
         )
@@ -74,28 +53,23 @@ component_include_directories(render_runtime
 )
 
 component_add_internal_dependencies(render_runtime
-    lux::engine::render::render_client lux::engine::render::render_features
+    lux::engine::render::render_commands lux::engine::render::render_features
     lux::engine::render::render_native_vulkan_extensions lux::engine::render::render_protocol_async
 )
 
 target_link_libraries(render_runtime PRIVATE
-    lux::engine::platform::platform_ipc lux::cxx::concurrent lux::engine::platform::platform_process
+    lux::engine::platform::platform_ipc lux::engine::platform::platform_process
 )
 
 component_add_transitive_commands(render_runtime
-    "find_package(lux-cxx CONFIG REQUIRED COMPONENTS concurrent)"
     [=[find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_process
         HINTS "${CMAKE_CURRENT_LIST_DIR}/../../lux-engine-platform")]=]
 )
 
 target_include_directories(render_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../native/vulkan/sinclude")
 
-foreach(component render_client render_runtime)
-    target_compile_features(${component} PUBLIC cxx_std_20)
-endforeach()
+target_compile_features(render_runtime PUBLIC cxx_std_20)
 
 if(BUILD_TESTING)
-    target_sources(render_client PRIVATE test/ClientAllocation.cpp)
-    set_target_properties(render_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
     add_subdirectory(test)
 endif()

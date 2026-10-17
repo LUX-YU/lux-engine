@@ -72,11 +72,11 @@ static void exercise(bool close_requester)
     waited.store(false);
     auto server = take(createTestServer({close_requester ? "runtime.close.gpu" : "runtime.stop.gpu", true}));
     check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs})));
-    auto client = take(TestClient::create(close_requester ? "runtime.close.gpu" : "runtime.stop.gpu"));
+    auto client = take(TestClient::create(close_requester ? "runtime.close.gpu" : "runtime.stop.gpu", take(server->commandId<ListCommands>())));
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool(server->run()); });
     TestCommand command;
-    command.session = call(*client, command).session;
+    (void)call(*client, command);
     command.operation = ETestCommand::CREATE_SCENE;
     command.scene = call(*client, command).scene;
     command.operation = ETestCommand::CREATE_VIEW;
@@ -123,11 +123,11 @@ static void retirementAtomicity()
     options.retirement_capacity = 2;
     auto server = take(createTestServer(options));
     check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs})));
-    auto client = take(TestClient::create(options.channel_name));
+    auto client = take(TestClient::create(options.channel_name, take(server->commandId<ListCommands>())));
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool(server->run()); });
     TestCommand command;
-    command.session = call(*client, command).session;
+    (void)call(*client, command);
     command.operation = ETestCommand::CREATE_SCENE;
     command.scene = call(*client, command).scene;
     command.operation = ETestCommand::CREATE_VIEW;
@@ -151,7 +151,7 @@ static void retirementAtomicity()
     command.target = third_target;
     auto unprepared = wait(*client, take(client->submit(command)));
     check(unprepared.header.outcome == ECommandOutcome::FAILED);
-    check(unprepared.header.error.type == vulkan::kCapacity);
+    check(unprepared.error.type == vulkan::kCapacity);
     check(backing == 6 && !waited); // capacity failure precedes Native Context/backing publication
     const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (server->stats().submissions < 2 && std::chrono::steady_clock::now() < deadline)
@@ -169,7 +169,7 @@ static void retirementAtomicity()
         command.description.width = 16;
         auto rejected = wait(*client, take(client->submit(command)));
         check(rejected.header.outcome == ECommandOutcome::FAILED);
-        check(rejected.header.error.type == vulkan::kCapacity);
+        check(rejected.error.type == vulkan::kCapacity);
         check(!take(receiveExpected(*client, request)) && backing == 6 && !waited);
     }
     hold.store(false); // observe real fence completion; the untouched readback must still succeed

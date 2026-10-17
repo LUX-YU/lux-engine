@@ -13,10 +13,6 @@
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <tuple>
 
-namespace lux::render
-{
-}
-
 namespace extension_test
 {
     using namespace lux::render;
@@ -67,32 +63,6 @@ namespace extension_test
             const Ops* ops_;
         };
     };
-}
-
-namespace lux::render
-{
-
-    template <> struct CommandValueTraits<extension_test::SetBuffer::Request> final
-    {
-        static RenderResult<std::size_t> retainedBytes(const extension_test::SetBuffer::Request& value) noexcept
-        {
-            const auto bytes = cxx::checkedAdd(sizeof(value), value.source.retainedBytes());
-            if (!bytes) return cxx::unexpected(RenderError{kEncodingLimit});
-            return *bytes;
-        }
-    };
-
-    template <> struct CommandValueTraits<extension_test::ReadBuffer::Response> final
-    {
-        static RenderResult<std::size_t> retainedBytes(const extension_test::ReadBuffer::Response& value) noexcept
-        {
-            const auto bytes = cxx::checkedAdd(sizeof(value), value.pixels.retainedBytes());
-            if (!bytes) return cxx::unexpected(RenderError{kEncodingLimit});
-            return *bytes;
-        }
-    };
-
-
 }
 
 namespace extension_test

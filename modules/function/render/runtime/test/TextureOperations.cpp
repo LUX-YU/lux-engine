@@ -7,26 +7,6 @@
 
 using namespace std::chrono_literals;
 
-static RenderCompletion wait(RenderClient& client, RequestId id)
-{
-    const auto end = Clock::now() + 15s;
-    while (Clock::now() < end)
-    {
-        RenderCompletion completion;
-        const auto state = take(client.tryReceive(completion));
-        CHECK(state != ERenderReceive::CLOSED);
-        if (state == ERenderReceive::RECEIVED) { CHECK(completion.header.request == id); return completion; }
-        std::this_thread::yield();
-    }
-    std::abort();
-}
-
-template <class C> static TexturePublished published(RenderCompletion result, const BoundCommand<C>& binding)
-{
-    CHECK(result.header.outcome == ECommandOutcome::SUCCESS);
-    return take(std::move(result).take(binding)).response();
-}
-
 int main()
 {
     CpuFixture host;
@@ -35,19 +15,18 @@ int main()
     config.uploads = TransferOptions{1024 * 1024, 2, 128 * 1024 * 1024};
     config.device.texture_descriptors = true;
     auto server = take(RenderServer::create(withCpu(host, config)));
+    const auto catalog = take(server->commandId<ListCommands>());
     CHECK(server->registerStorage<lux::render::TextureStorage>({16, 256 * 1024 * 1024}));
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool(server->run()); });
-    auto a = take(RenderClient::create(config.channel_name));
-    auto b = take(RenderClient::create(config.channel_name));
-    CHECK(wait(*a, take(a->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    auto a = take(runtime_test::connect(config.channel_name, catalog));
+    auto b = take(runtime_test::connect(config.channel_name, catalog));
     CHECK(runtime_test::refresh(*a));
-    CHECK(wait(*b, take(b->hello())).header.outcome == ECommandOutcome::SUCCESS);
     CHECK(runtime_test::refresh(*b));
     const auto storage = take(runtime_test::prepareStorage(*a, kTextureStorageType.name(), "default"));
     CHECK(take(runtime_test::prepareStorage(*b, kTextureStorageType.name(), "default")) == storage);
-    auto bound_a = take(a->bind<SetTexture>());
-    auto bound_b = take(b->bind<SetTexture>());
+    auto bound_a = take(runtime_test::find<SetTexture>(*a));
+    auto bound_b = take(runtime_test::find<SetTexture>(*b));
     auto info = information(64, 4, false);
     const auto last = info.mip_ranges[3];
     std::atomic<unsigned> destroyed{0};
@@ -60,46 +39,46 @@ int main()
     // remains a real native upload boundary error, and both clients recycle the failed request.
     auto malformed = input;
     malformed.source = {};
-    CHECK(wait(*a, take(submitValue(*a, bound_a, malformed))).header.outcome == ECommandOutcome::FAILED);
-    CHECK(wait(*b, take(submitValue(*b, bound_b, malformed))).header.outcome == ECommandOutcome::FAILED);
+    CHECK(wait(*a, take(runtime_test::send<SetTexture>(*a, bound_a, malformed))).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    CHECK(wait(*b, take(runtime_test::send<SetTexture>(*b, bound_b, malformed))).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
     malformed = input;
     malformed.info.mip_ranges[0].size = UINT64_MAX;
-    CHECK(wait(*a, take(submitValue(*a, bound_a, malformed))).header.outcome == ECommandOutcome::FAILED);
-    CHECK(wait(*b, take(submitValue(*b, bound_b, malformed))).header.outcome == ECommandOutcome::FAILED);
+    CHECK(wait(*a, take(runtime_test::send<SetTexture>(*a, bound_a, malformed))).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    CHECK(wait(*b, take(runtime_test::send<SetTexture>(*b, bound_b, malformed))).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
     // Same numeric RequestId on distinct physical clients never returns the other TextureId.
-    auto id_a = take(submitValue(*a, bound_a, input));
-    auto id_b = take(submitValue(*b, bound_b, input));
+    auto id_a = take(runtime_test::send<SetTexture>(*a, bound_a, input));
+    auto id_b = take(runtime_test::send<SetTexture>(*b, bound_b, input));
     CHECK(id_a == id_b);
-    auto texture_a = published(wait(*a, id_a), bound_a);
-    auto texture_b = published(wait(*b, id_b), bound_b);
+    auto texture_a = decoded<TexturePublished>(wait(*a, id_a));
+    auto texture_b = decoded<TexturePublished>(wait(*b, id_b));
     CHECK(texture_a.texture != texture_b.texture && texture_a.revision == 1 && texture_b.revision == 1);
     a.reset(); // creator is not the Global storage owner
     input.texture = texture_a.texture;
     input.expected_revision = 1;
-    texture_a = published(wait(*b, take(submitValue(*b, bound_b, input))), bound_b);
+    texture_a = decoded<TexturePublished>(wait(*b, take(runtime_test::send<SetTexture>(*b, bound_b, input))));
     CHECK(texture_a.revision == 2);
-    CHECK(wait(*b, take(submitValue(*b, bound_b, input))).header.outcome == ECommandOutcome::FAILED);
-    auto region = take(b->bind<SetTextureRegion>());
+    CHECK(wait(*b, take(runtime_test::send<SetTexture>(*b, bound_b, input))).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    auto region = take(runtime_test::find<SetTextureRegion>(*b));
     auto patch = std::make_shared<const std::vector<std::byte>>(28, std::byte{92});
     std::array patch_payload{take(RenderPayload::fromVector(patch, 0, patch->size()))};
-    texture_a = published(wait(*b, take(submitValue(*b, region,
-        SetTextureRegion::Request{texture_a.texture, 2, {1, 2, 1, 3, 2, 16}, patch_payload[0]}))), region);
+    texture_a = decoded<TexturePublished>(wait(*b, take(runtime_test::send<SetTextureRegion>(*b, region,
+        SetTextureRegion::Request{texture_a.texture, 2, {1, 2, 1, 3, 2, 16}, patch_payload[0]}))));
     CHECK(texture_a.revision == 3);
-    auto query = take(b->bind<QueryTexture>());
-    const auto current = published(wait(*b, take(submitValue(*b, query, texture_a.texture))), query);
+    auto query = take(runtime_test::find<QueryTexture>(*b));
+    const auto current = decoded<TexturePublished>(wait(*b, take(runtime_test::send<QueryTexture>(*b, query, texture_a.texture))));
     CHECK(current.texture == texture_a.texture && current.revision == texture_a.revision);
-    CHECK(wait(*b, take(submitValue(*b, query, TextureId{}))).header.outcome == ECommandOutcome::FAILED);
-    auto release = take(b->bind<ReleaseTexture>());
-    CHECK(wait(*b, take(submitValue(*b, release, texture_a))).header.outcome == ECommandOutcome::SUCCESS);
-    CHECK(wait(*b, take(submitValue(*b, query, texture_a.texture))).header.outcome == ECommandOutcome::FAILED);
-    CHECK(wait(*b, take(submitValue(*b, release, texture_a))).header.outcome == ECommandOutcome::FAILED);
-    CHECK(wait(*b, take(submitValue(*b, release, texture_b))).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(wait(*b, take(runtime_test::send<QueryTexture>(*b, query, TextureId{}))).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    auto release = take(runtime_test::find<ReleaseTexture>(*b));
+    CHECK(wait(*b, take(runtime_test::send<ReleaseTexture>(*b, release, texture_a))).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    CHECK(wait(*b, take(runtime_test::send<QueryTexture>(*b, query, texture_a.texture))).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    CHECK(wait(*b, take(runtime_test::send<ReleaseTexture>(*b, release, texture_a))).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    CHECK(wait(*b, take(runtime_test::send<ReleaseTexture>(*b, release, texture_b))).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
     input.texture = {storage, {}}; input.expected_revision = 0;
-    const auto replacement = published(wait(*b, take(submitValue(*b, bound_b, input))), bound_b);
+    const auto replacement = decoded<TexturePublished>(wait(*b, take(runtime_test::send<SetTexture>(*b, bound_b, input))));
     CHECK(replacement.texture != texture_a.texture && replacement.texture != texture_b.texture);
-    CHECK(wait(*b, take(submitValue(*b, release, replacement))).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(wait(*b, take(runtime_test::send<ReleaseTexture>(*b, release, replacement))).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
     asset.reset(); payload = {}; input.source = {}; malformed.source = {};
-    CHECK(destroyed == 1 && b->retainedBytes() == 0);
+    CHECK(destroyed == 1);
     server->stop(); thread.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
     std::printf("production Texture Feature: create/replace/region/release, creator close, stale revision; warnings=%llu\n",

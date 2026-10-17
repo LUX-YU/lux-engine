@@ -1,20 +1,11 @@
 #include "ServerImpl.hpp"
-#include <lux/engine/platform/Random.hpp>
 
 namespace lux::render
 {
     RenderServer::Impl::Impl(
-        RenderServerConfig value, ipc::IpcResponder input, SessionIdentity session, std::size_t pending_capacity
-    )
-        : config(std::move(value)),
-          failure_type(*ipc::IpcMessage::bindType<ValueEnvelope<RenderError>>(
-              ipc::IpcMessage::type<ValueEnvelope<RenderError>>(), config.implementation_code_pin
-          )),
-          responder(std::move(input)), identity(session), completion_events(pending_capacity)
+        RenderServerConfig value, ipc::IpcResponder input
+    ) : config(std::move(value)), responder(std::move(input))
     {
-        undelivered.reserve(128);
-        // Separate admission budgets share one bounded owner and one event queue.
-        deferred.reserve(pending_capacity);
         addBuiltin<CreateScene, &Impl::createScene>();
         addBuiltin<RemoveScene, &Impl::removeScene>();
         addBuiltin<CreateView, &Impl::createView>();
@@ -91,21 +82,11 @@ namespace lux::render
 
     RenderResult<std::unique_ptr<RenderServer>> RenderServer::create(RenderServerConfig config) noexcept
     {
-        const auto pending_capacity = cxx::checkedAdd(config.completion_capacity, config.compile_capacity);
-        const bool invalid_pending_capacity = !pending_capacity || *pending_capacity > 136;
-        const bool invalid =
-            config.requests_per_tick == 0 || config.requests_per_tick > 128 || config.max_config_bytes == 0 ||
-            config.max_reply_bytes < sizeof(RenderError) ||
-            config.max_reply_bytes > 256 * 1024 * 1024 || config.completion_capacity == 0 ||
-            config.completion_capacity > 128 || config.compile_capacity == 0 ||
-            config.compile_capacity > 8 || invalid_pending_capacity;
+        const bool invalid = config.requests_per_tick == 0 || config.max_config_bytes == 0;
         if (invalid) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        SessionIdentity identity{};
-        if (!lux::engine::platform::fillRandomBytes(std::as_writable_bytes(std::span(identity))))
-            return cxx::unexpected(RenderError{kRuntimeState});
         auto responder = ipc::IpcCore::instance().createResponder(config.channel_name);
         if (!responder) return cxx::unexpected(RenderError{kRuntimeState});
-        auto state = std::make_unique<Impl>(std::move(config), std::move(*responder), identity, *pending_capacity);
+        auto state = std::make_unique<Impl>(std::move(config), std::move(*responder));
         if (auto initialized = state->initialize(); !initialized) return cxx::unexpected(initialized.error());
         return std::unique_ptr<RenderServer>(new RenderServer(std::move(state)));
     }

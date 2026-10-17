@@ -69,7 +69,7 @@ component_include_directories(render_native_vulkan_extensions
 )
 
 component_add_internal_dependencies(render_native_vulkan_extensions
-    lux::engine::render::render_native_vulkan
+    lux::engine::render::render_native_vulkan lux::engine::render::render_protocol_handlers
 )
 
 target_compile_features(render_native_vulkan_extensions PUBLIC cxx_std_20)

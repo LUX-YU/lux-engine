@@ -1,3 +1,4 @@
+#include <lux/engine/render/protocol/AsyncCommand.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshCommands.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshStorage.hpp>
 
@@ -5,7 +6,7 @@ namespace lux::render::vulkan
 {
     RenderResult<void> MeshCommands::set(const SetMesh::Request&, Reply<SetMesh>& reply) noexcept
     {
-        auto pending = reply.defer(sizeof(MeshPublished));
+        auto pending = reply.defer();
         if (!pending) return cxx::unexpected(pending.error());
         auto storage = device_.resources().borrow<MeshStorage>(pending->request().mesh.storage);
         if (!storage) return pending->fail(storage.error());

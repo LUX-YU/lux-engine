@@ -7,7 +7,7 @@ target_link_libraries(render_protocol_header PRIVATE render_protocol)
 
 add_executable(render_protocol_command_test Command.cpp)
 
-target_link_libraries(render_protocol_command_test PRIVATE render_protocol)
+target_link_libraries(render_protocol_command_test PRIVATE render_protocol_handlers)
 
 add_test(NAME render.protocol.command COMMAND render_protocol_command_test)
 
@@ -42,6 +42,18 @@ endif()
 
 add_executable(render_protocol_binding_test Binding.cpp)
 
-target_link_libraries(render_protocol_binding_test PRIVATE render_protocol)
+target_link_libraries(render_protocol_binding_test PRIVATE render_protocol_handlers)
 
 add_test(NAME render.protocol.binding COMMAND render_protocol_binding_test)
+
+set_target_properties(render_protocol_binding_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin"
+)
+
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/CommandHandler.cpp" CONTENT
+    "#include <lux/engine/render/protocol/CommandHandler.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native header leaked\n#endif\n"
+)
+
+add_library(render_protocol_handlers_header OBJECT "${CMAKE_CURRENT_BINARY_DIR}/CommandHandler.cpp")
+
+target_link_libraries(render_protocol_handlers_header PRIVATE render_protocol_handlers)

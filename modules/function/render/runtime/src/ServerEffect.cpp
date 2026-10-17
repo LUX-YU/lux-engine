@@ -147,7 +147,7 @@ namespace lux::render
                       },
                       this,
                       implementation_pin,
-                      pending.request->codePin()
+                      {}
                   ),
                   Receiver{&pending}
               ))
@@ -175,7 +175,7 @@ namespace lux::render
     {
         if (!config.cpu) return cxx::unexpected(RenderError{kRuntimeUnsupported});
         const auto& input = request.get<CreateEffectRequest>();
-        if (input.features.empty() || input.features.size() > max_features)
+        if (input.features.empty())
             return cxx::unexpected(RenderError{kFeatureContract});
         std::vector<const FeatureEntry*> selected;
         selected.reserve(input.features.size());
@@ -187,7 +187,7 @@ namespace lux::render
         }
         // Resolve the directory once on its owner thread. Stable entries outlive the accepted compile;
         // neither the worker nor its operation state borrows the mutable Impl or its directory.
-        auto* slot = reserveCompletion(true);
+        auto* slot = reserveCompletion();
         if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
         slot->request.emplace(std::move(request));
         auto& cpu = slot->operation;

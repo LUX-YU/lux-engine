@@ -10,39 +10,15 @@
 
 using namespace std::chrono_literals;
 
-static RenderCompletion wait(RenderClient& client, RequestId id)
+static void pixels(const lux::platform::ipc::IpcMessage& completion, unsigned expected)
 {
-    const auto deadline = Clock::now() + 15s;
-    while (Clock::now() < deadline)
-    {
-        RenderCompletion result;
-        if (take(client.tryReceive(result)) == ERenderReceive::RECEIVED)
-        {
-            CHECK(result.header.request == id);
-            return result;
-        }
-        std::this_thread::sleep_for(100us);
-    }
-    std::abort();
-}
-
-template <RenderCommand C> static TypedRenderCompletion<C> call(RenderClient& client,
-    const BoundCommand<C>& operation, typename C::Request input)
-{
-    auto result = wait(client, take(client.submit(operation, input, 2048)));
-    CHECK(result.header.outcome == ECommandOutcome::SUCCESS);
-    return take(std::move(result).take(operation));
-}
-
-static void pixels(const TypedRenderCompletion<Readback>& completion, unsigned expected)
-{
-    CHECK(completion.header().outcome == ECommandOutcome::SUCCESS);
-    const auto bytes = completion.response().pixels.bytes().view();
+    CHECK(completion.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    const auto bytes = completion.get<Readback::Response>().pixels.bytes().view();
     CHECK(bytes.size() == 1024);
     for (auto byte : bytes) CHECK(std::to_integer<unsigned>(byte) == expected);
 }
 
-static void publishedPixels(RenderClient& client, const BoundCommand<Readback>& read,
+static void publishedPixels(runtime_test::Peer& client, CommandId read,
     const AttachmentRequest& group, unsigned previous, unsigned expected)
 {
     // Readback returns an already submitted frame, not an implicit render-after-update transaction.
@@ -50,8 +26,8 @@ static void publishedPixels(RenderClient& client, const BoundCommand<Readback>& 
     const auto deadline = Clock::now() + 5s;
     while (Clock::now() < deadline)
     {
-        const auto completion = call(client, read, {group, {}});
-        const auto bytes = completion.response().pixels.bytes().view();
+        const auto completion = call<Readback>(client, read, {group, {}});
+        const auto bytes = completion.get<Readback::Response>().pixels.bytes().view();
         CHECK(bytes.size() == 1024);
         if (std::ranges::all_of(bytes, [&](auto byte) { return std::to_integer<unsigned>(byte) == expected; })) return;
         for (auto byte : bytes) CHECK(std::to_integer<unsigned>(byte) == previous);
@@ -68,6 +44,7 @@ int main()
     config.uploads = TransferOptions{65536, 2, 131072};
     config.device.texture_descriptors = true;
     auto server = take(RenderServer::create(withCpu(compiler, config)));
+    const auto catalog = take(server->commandId<ListCommands>());
     CHECK(server->registerStorage<lux::render::TextureStorage>());
     const auto buffer_type = take(server->registerStorage<TestBufferStorage>());
     CHECK(take(server->registerStorage<TestBufferStorage>()) == buffer_type);
@@ -81,23 +58,21 @@ int main()
         }}));
     bool run_ok = false;
     std::thread thread([&] { render_allocation::participate = true; run_ok = bool(server->run()); });
-    auto main = take(RenderClient::create(config.channel_name));
-    auto upload = take(RenderClient::create(config.channel_name));
-    CHECK(wait(*main, take(main->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    auto main = take(runtime_test::connect(config.channel_name, catalog));
+    auto upload = take(runtime_test::connect(config.channel_name, catalog));
     CHECK(runtime_test::refresh(*main));
-    CHECK(wait(*upload, take(upload->hello())).header.outcome == ECommandOutcome::SUCCESS);
     CHECK(runtime_test::refresh(*upload));
     const auto texture_storage = take(runtime_test::prepareStorage(*upload, kTextureStorageType.name(), "default"));
     const auto buffer_storage = take(runtime_test::prepareStorage(*upload, TestBufferStorage::description.type.name(), "values"));
-    auto create_buffer = take(upload->bind<SetBuffer>());
-    auto remove_buffer = take(upload->bind<RemoveBuffer>());
-    auto read_buffer = take(upload->bind<ReadBuffer>());
-    auto upload_texture = take(upload->bind<SetTexture>());
+    auto create_buffer = take(runtime_test::find<SetBuffer>(*upload));
+    auto remove_buffer = take(runtime_test::find<RemoveBuffer>(*upload));
+    auto read_buffer = take(runtime_test::find<ReadBuffer>(*upload));
+    auto upload_texture = take(runtime_test::find<SetTexture>(*upload));
     std::atomic<unsigned> destroyed{0};
     auto asset = std::shared_ptr<const std::vector<std::byte>>(new std::vector<std::byte>(1024, std::byte{128}),
         [&](auto* value) { delete value; ++destroyed; });
     std::array image_source{take(RenderPayload::fromVector(asset, 0, asset->size()))};
-    const auto texture = decoded<TexturePublished>(call(*upload, upload_texture,
+    const auto texture = decoded<TexturePublished>(call<SetTexture>(*upload, upload_texture,
         SetTexture::Request{{texture_storage, {}}, 0, information(16, 1, false), image_source[0]}));
     auto make_source = [](float value) {
         const std::array values{value, value, value, value};
@@ -106,38 +81,38 @@ int main()
         return std::array{take(RenderPayload::fromVector(std::shared_ptr<const std::vector<std::byte>>(bytes), 0, 16))};
     };
     auto source = make_source(0.5f);
-    const auto buffer = decoded<BufferBinding>(call(*upload, create_buffer, SetBuffer::Request{{buffer_storage, {}}, source[0]}));
-    std::optional late_read{call(*upload, read_buffer, buffer)};
-    CHECK(late_read->response().pixels.bytes().view().size() == 16);
+    const auto buffer = decoded<BufferBinding>(call<SetBuffer>(*upload, create_buffer, SetBuffer::Request{{buffer_storage, {}}, source[0]}));
+    std::optional late_read{call<ReadBuffer>(*upload, read_buffer, buffer)};
+    CHECK(late_read->get<ReadBuffer::Response>().pixels.bytes().view().size() == 16);
     for (unsigned i = 0; i < 4; ++i)
     {
         float value = 0;
-        std::memcpy(&value, late_read->response().pixels.bytes().view().data() + i * 4, 4);
+        std::memcpy(&value, late_read->get<ReadBuffer::Response>().pixels.bytes().view().data() + i * 4, 4);
         CHECK(value == 0.5f);
     }
     FeatureUse selected{take(feature_test::find(*main, feature_type.name())), "combined",
         take(ConfigValue::make(ViewConfig{texture.texture, buffer.id}))};
-    auto create_effect = take(main->bind<CreateEffect>());
-    const auto effect = decoded<EffectCreated>(call(*main, create_effect,
+    auto create_effect = take(runtime_test::find<CreateEffect>(*main));
+    const auto effect = decoded<EffectCreated>(call<CreateEffect>(*main, create_effect,
         CreateEffectRequest{target, {selected}})).effect;
-    auto create_scene = take(main->bind<CreateScene>());
-    auto create_view = take(main->bind<CreateView>());
-    auto create_target = take(main->bind<CreateTarget>());
-    auto attach = take(main->bind<Attach>());
-    auto detach = take(main->bind<Detach>());
-    auto read = take(main->bind<Readback>());
+    auto create_scene = take(runtime_test::find<CreateScene>(*main));
+    auto create_view = take(runtime_test::find<CreateView>(*main));
+    auto create_target = take(runtime_test::find<CreateTarget>(*main));
+    auto attach = take(runtime_test::find<Attach>(*main));
+    auto detach = take(runtime_test::find<Detach>(*main));
+    auto read = take(runtime_test::find<Readback>(*main));
     std::array<AttachmentRequest, 4> groups;
     for (unsigned s = 0; s < 2; ++s)
     {
-        const auto scene = decoded<SceneCreated>(call(*main, create_scene, EmptyRequest{})).scene;
+        const auto scene = decoded<SceneCreated>(call<CreateScene>(*main, create_scene, EmptyRequest{})).scene;
         for (unsigned v = 0; v < 2; ++v)
         {
-            const auto view = decoded<ViewCreated>(call(*main, create_view, CreateViewRequest{scene})).view;
-            const auto output = decoded<TargetCreated>(call(*main, create_target, CreateTargetRequest{target})).target;
+            const auto view = decoded<ViewCreated>(call<CreateView>(*main, create_view, CreateViewRequest{scene})).view;
+            const auto output = decoded<TargetCreated>(call<CreateTarget>(*main, create_target, CreateTargetRequest{target})).target;
             groups[2 * s + v] = {scene, view, output, effect};
-            auto linked = call(*main, attach, groups[2 * s + v]);
-            CHECK(linked.response().storages.size() == 2);
-            for (const auto& binding : linked.response().storages)
+            auto linked = call<Attach>(*main, attach, groups[2 * s + v]);
+            CHECK(linked.get<Attach::Response>().storages.size() == 2);
+            for (const auto& binding : linked.get<Attach::Response>().storages)
             {
                 if (binding.resource_key == "shared:texture") CHECK(binding.storage == texture_storage);
                 else
@@ -152,7 +127,7 @@ int main()
         TestBufferStorage::description.type.name(), "private", groups[0]));
     CHECK(attachment_storage != buffer_storage);
     CHECK(take(runtime_test::coldCall<FindStorage>(*main, {groups[0], buffer_type, "private"})) == attachment_storage);
-    for (const auto& group : groups) pixels(call(*main, read, {group, {}}), 64);
+    for (const auto& group : groups) pixels(call<Readback>(*main, read, {group, {}}), 64);
     const auto before = server->stats().submissions;
     render_allocation::calls = 0;
     render_allocation::window = true;
@@ -160,30 +135,30 @@ int main()
     render_allocation::window = false;
     CHECK(render_allocation::calls == 0 && server->stats().submissions > before + 20);
     source = make_source(0.25f);
-    CHECK(decoded<BufferBinding>(call(*upload, create_buffer, SetBuffer::Request{buffer.id, source[0]})).id == buffer.id);
+    CHECK(decoded<BufferBinding>(call<SetBuffer>(*upload, create_buffer, SetBuffer::Request{buffer.id, source[0]})).id == buffer.id);
     // Owner-safe-point publication updates every existing Context without detach/recompile.
     for (const auto& group : groups) publishedPixels(*main, read, group, 64, 32);
-    call(*main, detach, groups[0]);
+    call<Detach>(*main, detach, groups[0]);
     CHECK(!runtime_test::coldCall<ReleasePreparedStorage>(*main, attachment_storage));
     CHECK(!runtime_test::coldCall<FindStorage>(*main, {groups[0], buffer_type, "private"}));
-    call(*main, attach, groups[0]);
-    pixels(call(*main, read, {groups[0], {}}), 32);
-    call(*upload, remove_buffer, buffer);
-    CHECK(wait(*upload, take(submitValue(*upload, read_buffer, buffer, 128))).header.outcome == ECommandOutcome::FAILED);
-    CHECK(wait(*upload, take(submitValue(*upload, create_buffer, SetBuffer::Request{buffer.id, source[0]}))).header.outcome == ECommandOutcome::FAILED);
-    const auto recreated = decoded<BufferBinding>(call(*upload, create_buffer, SetBuffer::Request{{buffer_storage, {}}, source[0]}));
+    call<Attach>(*main, attach, groups[0]);
+    pixels(call<Readback>(*main, read, {groups[0], {}}), 32);
+    call<RemoveBuffer>(*upload, remove_buffer, buffer);
+    CHECK(wait(*upload, take(runtime_test::send<ReadBuffer>(*upload, read_buffer, buffer))).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    CHECK(wait(*upload, take(runtime_test::send<SetBuffer>(*upload, create_buffer, SetBuffer::Request{buffer.id, source[0]}))).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    const auto recreated = decoded<BufferBinding>(call<SetBuffer>(*upload, create_buffer, SetBuffer::Request{{buffer_storage, {}}, source[0]}));
     CHECK(recreated.id.local.index == buffer.id.local.index && recreated.id.local.gen != buffer.id.local.gen);
-    pixels(call(*main, read, {groups[0], {}}), 32);
-    pixels(call(*main, read, {groups[1], {}}), 32);
+    pixels(call<Readback>(*main, read, {groups[0], {}}), 32);
+    pixels(call<Readback>(*main, read, {groups[1], {}}), 32);
     // A second real Feature consumes the SAME Root Texture independently of the Buffer Feature.
     texture_fixture::Config sample{texture.texture};
     FeatureUse image_selected{take(feature_test::find(*main, texture_fixture::type.name())), "image", take(ConfigValue::make(sample))};
-    const auto image_effect = decoded<EffectCreated>(call(*main, create_effect,
+    const auto image_effect = decoded<EffectCreated>(call<CreateEffect>(*main, create_effect,
         CreateEffectRequest{target, {image_selected}})).effect;
-    call(*main, detach, groups[3]);
+    call<Detach>(*main, detach, groups[3]);
     groups[3].effect = image_effect;
-    call(*main, attach, groups[3]);
-    pixels(call(*main, read, {groups[3], {}}), 128);
+    call<Attach>(*main, attach, groups[3]);
+    pixels(call<Readback>(*main, read, {groups[3], {}}), 128);
     const auto stats = server->stats();
     CHECK(stats.validation_errors == 0);
     server->stop();
@@ -193,7 +168,7 @@ int main()
     CHECK(BufferCommands::constructed == 1 && BufferCommands::destroyed == 1);
     upload.reset();
     main.reset();
-    CHECK(late_read->response().pixels.bytes().view().size() == 16); // returned CPU result survives every Native/Server owner
+    CHECK(late_read->get<ReadBuffer::Response>().pixels.bytes().view().size() == 16); // returned CPU result survives every Native/Server owner
     late_read.reset();
     image_source = {};
     asset.reset();

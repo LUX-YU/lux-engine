@@ -85,15 +85,9 @@ namespace lux::render
         [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const MaterialBinding&) noexcept;
     };
 
-    template <> struct CommandValueTraits<MaterialWrite> final
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const MaterialWrite&) noexcept;
-    };
 
-    template <> struct CommandValueTraits<MaterialInformation> final
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const MaterialInformation&) noexcept;
-    };
+
+
 
     struct MaterialStorageConfig final
     {

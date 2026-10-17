@@ -49,7 +49,6 @@ namespace lux::render
         const auto& input = request.get<PrepareStorageRequest>();
         auto owner = storageOwner(input.location.owner);
         if (!owner) return cxx::unexpected(owner.error());
-        if (request.replyCapacity() < sizeof(StorageId)) return cxx::unexpected(RenderError{kRuntimeCapacity});
         auto id = (*owner)->prepare(input.location.type, input.location.key, input.config);
         if (!id) return cxx::unexpected(id.error());
         return request.reply(*id);
@@ -60,7 +59,6 @@ namespace lux::render
         const auto id = request.get<StorageId>();
         auto* owner = device->resources().owner(id);
         if (!owner) return cxx::unexpected(RenderError{kStorageIdentity});
-        if (request.replyCapacity() < sizeof(Ack)) return cxx::unexpected(RenderError{kRuntimeCapacity});
         if (auto result = owner->releasePrepared(id); !result) return result;
         return request.reply();
     }
@@ -102,15 +100,15 @@ namespace lux::render
             response.storages.push_back({std::string(key), id});
         });
         ipc::IpcMessage output;
-        auto charge = request.prepareResponse(&response, output);
-        if (!charge)
+        auto response_ready = request.prepareResponse(&response, output);
+        if (!response_ready)
         {
             if (!device->release(*prepared)) std::terminate(); // unsubmitted candidate
-            return cxx::unexpected(charge.error());
+            return cxx::unexpected(response_ready.error());
         }
         effect->groups.push_back({scene_id, view_id, target_id, *prepared});
         scoped_buffers_created.store(device->resources().creations());
-        return request.publishPrepared(output, *charge);
+        return request.publishPrepared(output);
     }
 
     RenderResult<void> RenderServer::Impl::resize(TargetId id, Target& target, const TargetDesc& description) noexcept

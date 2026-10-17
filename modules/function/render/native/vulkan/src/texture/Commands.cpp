@@ -1,3 +1,4 @@
+#include <lux/engine/render/protocol/AsyncCommand.hpp>
 #include <lux/engine/render/resource/Texture.hpp>
 #include <lux/engine/render/native/vulkan/texture/TextureCommands.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
@@ -25,7 +26,7 @@ namespace lux::render::vulkan
     RenderResult<void> TextureCommands::set(const SetTexture::Request&,
         Reply<SetTexture>& reply) noexcept
     {
-        auto pending = reply.defer(sizeof(SetTexture::Response));
+        auto pending = reply.defer();
         if (!pending) return cxx::unexpected(pending.error());
         const auto id = pending->request().texture.storage;
         auto storage = device_.resources().borrow<vulkan::TextureStorage>(id);
@@ -36,7 +37,7 @@ namespace lux::render::vulkan
     RenderResult<void> TextureCommands::region(const SetTextureRegion::Request&,
         Reply<SetTextureRegion>& reply) noexcept
     {
-        auto pending = reply.defer(sizeof(SetTextureRegion::Response));
+        auto pending = reply.defer();
         if (!pending) return cxx::unexpected(pending.error());
         auto storage = device_.resources().borrow<vulkan::TextureStorage>(pending->request().texture.storage);
         if (!storage) return pending->fail(storage.error());

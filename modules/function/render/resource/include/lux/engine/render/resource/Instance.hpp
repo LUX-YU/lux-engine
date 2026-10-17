@@ -84,10 +84,7 @@ namespace lux::render
         using Response = Ack;
     };
 
-    template <> struct CommandValueTraits<TransformBatch> final
-    {
-        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const TransformBatch&) noexcept;
-    };
+
 
     struct InstanceStorageConfig final
     {

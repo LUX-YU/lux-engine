@@ -1,31 +1,24 @@
-#include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/runtime/RenderClient.hpp>
-#include <lux/engine/render/runtime/Commands.hpp>
 #pragma once
-#include "CameraFixture.hpp"
-#include <lux/engine/render/runtime/RenderClient.hpp>
+#include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
+#include "CameraFixture.hpp"
 #include "ServerFixture.hpp"
-#include "FeatureFixture.hpp"
-#include "Discovery.hpp"
-#include "../pinclude/TypedProtocol.hpp"
-#include <variant>
 #include <algorithm>
+#include <cstdlib>
+#include <chrono>
+#include <thread>
 
-// Only migrates existing behavioral fixtures. Production has no command enum or completion cache.
 using namespace lux::render;
-enum class ETestCommand { READY, CREATE_SCENE, REMOVE_SCENE, CREATE_VIEW, REMOVE_VIEW, CREATE_TARGET,
-    RESIZE_TARGET, CREATE_EFFECT, REMOVE_EFFECT, ATTACH, DETACH, READBACK, STOP };
-struct FeaturePreset final
-{
-    std::string name, instance;
-    ConfigValue config;
-};
+namespace ipc = lux::platform::ipc;
+using ERenderReceive = ipc::EIpcReceive; // Fixture status spelling only, no production Client API.
 
+// Application test driver: it deliberately owns its correlation records outside IPC/Render.
+enum class ETestCommand { CATALOG, CREATE_SCENE, REMOVE_SCENE, CREATE_VIEW, REMOVE_VIEW, CREATE_TARGET,
+    RESIZE_TARGET, CREATE_EFFECT, REMOVE_EFFECT, ATTACH, DETACH, READBACK, STOP };
+struct FeaturePreset final { std::string name, instance; ConfigValue config; };
 struct TestCommand final
 {
-    ETestCommand operation = ETestCommand::READY;
-    SessionIdentity session{};
+    ETestCommand operation = ETestCommand::CATALOG;
     SceneId scene;
     ViewId view;
     TargetId target;
@@ -33,193 +26,144 @@ struct TestCommand final
     TargetDesc description;
     std::array<float, 4> color{1, 0, 0, 1};
     std::vector<FeaturePreset> features;
-    std::size_t reply_capacity = 64 * 1024;
 };
-
-using VTestCompletionOwner = std::variant<RenderCompletion, TypedRenderCompletion<CreateScene>,
-    TypedRenderCompletion<RemoveScene>, TypedRenderCompletion<CreateView>, TypedRenderCompletion<RemoveView>,
-    TypedRenderCompletion<CreateTarget>, TypedRenderCompletion<ResizeTarget>, TypedRenderCompletion<CreateEffect>,
-    TypedRenderCompletion<RemoveEffect>, TypedRenderCompletion<Attach>, TypedRenderCompletion<Detach>,
-    TypedRenderCompletion<Readback>, TypedRenderCompletion<Stop>>;
-
 struct TestCompletion final
 {
-    VTestCompletionOwner owner;
+    ipc::IpcMessage owner;
     ReplyHeader header;
-    SessionIdentity session{};
+    RenderError error;
     SceneId scene;
     ViewId view;
     TargetId target;
     EffectId effect;
     std::uint64_t target_epoch = 0;
-    bool active() const noexcept
-    {
-        return std::visit([](const auto& value) { return value.active(); }, owner);
-    }
-
+    ETestCommand command = ETestCommand::CATALOG;
+    bool active() const noexcept { return !owner.empty(); }
     std::span<const std::byte> bytes() const noexcept
     {
-        const auto* readback = std::get_if<TypedRenderCompletion<Readback>>(&owner);
-        return readback ? readback->response().pixels.bytes().view() : std::span<const std::byte>{};
+        return command == ETestCommand::READBACK && header.outcome == ECommandOutcome::SUCCESS ?
+            owner.get<ReadbackResult>().pixels.bytes().view() : std::span<const std::byte>{};
     }
 };
-
 class TestClient final
 {
 public:
-    static RenderResult<std::unique_ptr<TestClient>> create(std::string_view name, RenderClientConfig config = {})
+    static RenderResult<std::unique_ptr<TestClient>> create(std::string_view name, CommandId catalog)
     {
-        auto client = RenderClient::create(name, config);
-        if (!client) return lux::cxx::unexpected(client.error());
-        return std::unique_ptr<TestClient>(new TestClient(std::move(*client), std::string(name)));
+        auto peer = ipc::IpcCore::instance().createRequester(name);
+        if (!peer) return lux::cxx::unexpected(RenderError{kRuntimeState});
+        return std::unique_ptr<TestClient>(new TestClient(std::move(*peer), catalog));
     }
-
-    RenderResult<RequestId> submit(const TestCommand& command)
+    RenderResult<RequestId> submit(const TestCommand& input)
     {
-        if (command.operation != ETestCommand::READY && !discovered_)
+        switch (input.operation)
         {
-            auto result = runtime_test::refresh(*client_);
-            if (!result) return lux::cxx::unexpected(result.error());
-            discovered_ = true;
-        }
-        switch (command.operation)
-        {
-        case ETestCommand::READY: return client_->hello();
-        case ETestCommand::CREATE_SCENE: return send<CreateScene>({}, command);
-        case ETestCommand::REMOVE_SCENE: return send<RemoveScene>({command.scene}, command);
-        case ETestCommand::CREATE_VIEW: return send<CreateView>({command.scene, camera_fixture::oracle(command.color)}, command);
-        case ETestCommand::REMOVE_VIEW: return send<RemoveView>({command.scene, command.view}, command);
-        case ETestCommand::CREATE_TARGET: return send<CreateTarget>({command.description}, command);
-        case ETestCommand::RESIZE_TARGET: return send<ResizeTarget>({command.target, command.description}, command);
-        case ETestCommand::REMOVE_EFFECT: return send<RemoveEffect>({command.effect}, command);
+        case ETestCommand::CATALOG: return send<ListCommands>({}, input.operation, catalog_);
+        case ETestCommand::CREATE_SCENE: return send<CreateScene>({}, input.operation);
+        case ETestCommand::REMOVE_SCENE: return send<RemoveScene>({input.scene}, input.operation);
+        case ETestCommand::CREATE_VIEW:
+            return send<CreateView>({input.scene, camera_fixture::oracle(input.color)}, input.operation);
+        case ETestCommand::REMOVE_VIEW: return send<RemoveView>({input.scene, input.view}, input.operation);
+        case ETestCommand::CREATE_TARGET: return send<CreateTarget>({input.description}, input.operation);
+        case ETestCommand::RESIZE_TARGET: return send<ResizeTarget>({input.target, input.description}, input.operation);
+        case ETestCommand::REMOVE_EFFECT: return send<RemoveEffect>({input.effect}, input.operation);
         case ETestCommand::ATTACH:
-            return send<Attach>({command.scene, command.view, command.target, command.effect}, command);
+            return send<Attach>({input.scene, input.view, input.target, input.effect}, input.operation);
         case ETestCommand::DETACH:
-            return send<Detach>({command.scene, command.view, command.target, command.effect}, command);
+            return send<Detach>({input.scene, input.view, input.target, input.effect}, input.operation);
         case ETestCommand::READBACK:
-            return send<Readback>({{command.scene, command.view, command.target, command.effect}, {}}, command);
-        case ETestCommand::STOP: return send<Stop>({}, command);
+            return send<Readback>({{input.scene, input.view, input.target, input.effect}, {}}, input.operation);
+        case ETestCommand::STOP: return send<Stop>({}, input.operation);
         case ETestCommand::CREATE_EFFECT:
         {
-            if (!feature_directory_)
+            if (features_.features.empty())
             {
-                auto directory = feature_test::list(*client_);
-                if (!directory) return lux::cxx::unexpected(directory.error());
-                feature_directory_.emplace(std::move(*directory));
+                auto found = std::ranges::find(commands_.commands, ListFeatures::name, &CommandInfo::name);
+                if (found == commands_.commands.end()) return lux::cxx::unexpected(RenderError{kRuntimeIdentity});
+                const RequestId id{next_++};
+                ipc::IpcMessage message;
+                message.emplace<ListFeatures::Request>();
+                message.setMetadata(RequestHeader{id, found->id});
+                if (!peer_.trySend(message)) return lux::cxx::unexpected(RenderError{kRuntimeState});
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+                for (;;)
+                {
+                    if (std::chrono::steady_clock::now() >= deadline) std::abort();
+                    const auto status = peer_.tryReceive(message);
+                    if (status == ipc::EIpcReceive::CLOSED) std::abort();
+                    if (status != ipc::EIpcReceive::RECEIVED) { std::this_thread::yield(); continue; }
+                    const auto header = message.metadata<ReplyHeader>();
+                    if (header.request != id || header.outcome != ECommandOutcome::SUCCESS) std::abort();
+                    features_ = std::move(message.get<FeatureList>());
+                    break;
+                }
             }
-            CreateEffectRequest input{command.description};
-            for (const auto& selected : command.features)
+            CreateEffectRequest request{input.description};
+            for (const auto& selected : input.features)
             {
-                const auto found = std::ranges::find(feature_directory_->features, selected.name, &FeatureInfo::name);
-                if (found == feature_directory_->features.end())
-                    return lux::cxx::unexpected(RenderError{kRuntimeIdentity});
-                input.features.push_back({found->id, selected.instance, selected.config});
+                const auto found = std::ranges::find(features_.features, selected.name, &FeatureInfo::name);
+                if (found == features_.features.end()) return lux::cxx::unexpected(RenderError{kRuntimeIdentity});
+                request.features.push_back({found->id, selected.instance, selected.config});
             }
-            return send<CreateEffect>(std::move(input), command);
+            return send<CreateEffect>(std::move(request), input.operation);
         }
         }
-        return lux::cxx::unexpected(RenderError{kRuntimeUnsupported});
+        std::abort();
     }
-
     RenderResult<ERenderReceive> tryReceive(TestCompletion& output)
     {
         if (output.active()) return lux::cxx::unexpected(RenderError{kRuntimeState});
-        if (raw_pending_)
+        const auto status = peer_.tryReceive(output.owner);
+        if (status != ipc::EIpcReceive::RECEIVED) return status;
+        output.header = output.owner.metadata<ReplyHeader>();
+        const auto found = std::ranges::find(pending_, output.header.request, &Pending::id);
+        if (found == pending_.end()) std::abort();
+        output.command = found->command;
+        pending_.erase(found);
+        if (output.header.outcome != ECommandOutcome::SUCCESS)
         {
-            const auto status = raw_->tryReceive(raw_reply_);
-            if (status == lux::platform::ipc::EIpcReceive::EMPTY) return ERenderReceive::EMPTY;
-            if (status != lux::platform::ipc::EIpcReceive::RECEIVED) std::abort();
-            const auto frame = raw_reply_.message.metadata<runtime_detail::ReplyMetadata>();
-            output.header = {frame.request, frame.outcome,
-                raw_reply_.message.get<runtime_detail::ValueEnvelope<RenderError>>().value};
-            output.session = frame.session;
-            raw_pending_ = false;
-            raw_reply_ = {};
-            return ERenderReceive::RECEIVED;
+            output.error = output.owner.get<RenderError>();
+            return status;
         }
-        RenderCompletion completion;
-        auto result = client_->tryReceive(completion);
-        if (!result || *result != ERenderReceive::RECEIVED) return result;
-        output.header = completion.header;
-        output.session = completion.session;
-        if (completion.header.outcome != ECommandOutcome::SUCCESS || completion.command().isNull())
+        switch (output.command)
         {
-            output.owner = std::move(completion);
-            return result;
+        case ETestCommand::CATALOG: commands_ = output.owner.get<CommandList>(); break;
+        case ETestCommand::CREATE_SCENE: output.scene = output.owner.get<SceneCreated>().scene; break;
+        case ETestCommand::CREATE_VIEW: output.view = output.owner.get<ViewCreated>().view; break;
+        case ETestCommand::CREATE_TARGET:
+        case ETestCommand::RESIZE_TARGET:
+            output.target = output.owner.get<TargetCreated>().target;
+            output.target_epoch = output.owner.get<TargetCreated>().epoch;
+            break;
+        case ETestCommand::CREATE_EFFECT: output.effect = output.owner.get<EffectCreated>().effect; break;
+        default: break;
         }
-        bool matched = false;
-        RenderError error;
-        std::apply([&](const auto&... binding) {
-            ([&] {
-                if (!binding || completion.command() != binding->command()) return;
-                auto typed = std::move(completion).take(*binding);
-                if (!typed) { error = typed.error(); return; }
-                using Owned = std::remove_cvref_t<decltype(*typed)>;
-                const auto& response = typed->response();
-                if constexpr (requires { response.scene; }) output.scene = response.scene;
-                if constexpr (requires { response.view; }) output.view = response.view;
-                if constexpr (requires { response.target; }) output.target = response.target;
-                if constexpr (requires { response.epoch; }) output.target_epoch = response.epoch;
-                if constexpr (requires { response.effect; }) output.effect = response.effect;
-                output.owner.template emplace<Owned>(std::move(*typed));
-                matched = true;
-            }(), ...);
-        }, bindings_);
-        if (error.type) return lux::cxx::unexpected(error);
-        if (!matched) return lux::cxx::unexpected(RenderError{kRuntimeIdentity});
-        return result;
+        return status;
     }
-
-    RenderResult<void> abandon(RequestId id) { return client_->abandon(id); }
-    std::size_t retainedBytes() const { return client_->retainedBytes(); }
-
 private:
-    explicit TestClient(std::unique_ptr<RenderClient> client, std::string name)
-        : client_(std::move(client)), name_(std::move(name)) {}
-
+    TestClient(ipc::IpcRequester peer, CommandId catalog) : peer_(std::move(peer)), catalog_(catalog) {}
     template <RenderCommand C>
-    RenderResult<RequestId> send(typename C::Request payload, const TestCommand& command)
+    RenderResult<RequestId> send(typename C::Request input, ETestCommand operation, CommandId id = {})
     {
-        auto& binding = std::get<std::optional<BoundCommand<C>>>(bindings_);
-        if (!binding)
+        if (id.isNull())
         {
-            auto value = client_->bind<C>();
-            if (!value) return lux::cxx::unexpected(value.error());
-            binding.emplace(std::move(*value));
+            const auto found = std::ranges::find(commands_.commands, C::name, &CommandInfo::name);
+            if (found == commands_.commands.end()) return lux::cxx::unexpected(RenderError{kRuntimeIdentity});
+            id = found->id;
         }
-        if (command.session != client_->session())
-        {
-            // Deliberately hostile raw peer, not a mutable Client binding.
-            if (!raw_)
-            {
-                auto peer = lux::platform::ipc::IpcCore::instance().createRequester(name_);
-                if (!peer) std::abort();
-                raw_.emplace(std::move(*peer));
-            }
-            const RequestId id{UINT32_MAX - 1, 1};
-            lux::platform::ipc::IpcMessage message;
-            message.emplace<runtime_detail::ValueEnvelope<typename C::Request>>(
-                runtime_detail::BudgetLease{}, std::move(payload));
-            message.setMetadata(runtime_detail::RequestMetadata{
-                command.session, id, binding->command(), command.reply_capacity});
-            if (!raw_->trySend(message)) std::abort();
-            raw_pending_ = true;
-            return id;
-        }
-        return client_->submit(*binding, payload, command.reply_capacity);
+        const RequestId request{next_++};
+        ipc::IpcMessage message;
+        message.emplace<typename C::Request>(std::move(input));
+        message.setMetadata(RequestHeader{request, id});
+        if (!peer_.trySend(message)) return lux::cxx::unexpected(RenderError{kRuntimeState});
+        pending_.push_back({request, operation});
+        return request;
     }
-
-    bool discovered_ = false;
-    std::optional<FeatureList> feature_directory_;
-    std::unique_ptr<RenderClient> client_;
-    std::string name_;
-    std::tuple<std::optional<BoundCommand<CreateScene>>, std::optional<BoundCommand<RemoveScene>>,
-        std::optional<BoundCommand<CreateView>>, std::optional<BoundCommand<RemoveView>>,
-        std::optional<BoundCommand<CreateTarget>>, std::optional<BoundCommand<ResizeTarget>>,
-        std::optional<BoundCommand<CreateEffect>>, std::optional<BoundCommand<RemoveEffect>>,
-        std::optional<BoundCommand<Attach>>, std::optional<BoundCommand<Detach>>,
-        std::optional<BoundCommand<Readback>>, std::optional<BoundCommand<Stop>>> bindings_;
-    std::optional<lux::platform::ipc::IpcRequester> raw_;
-    lux::platform::ipc::IpcReply raw_reply_;
-    bool raw_pending_ = false;
+    struct Pending final { RequestId id; ETestCommand command; };
+    ipc::IpcRequester peer_;
+    CommandId catalog_;
+    CommandList commands_;
+    FeatureList features_;
+    std::uint64_t next_ = 1;
+    std::vector<Pending> pending_; // Only this test application's reply expectations, never library state.
 };

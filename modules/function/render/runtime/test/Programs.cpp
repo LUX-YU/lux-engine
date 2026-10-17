@@ -7,6 +7,8 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <source_location>
+#include <cstdio>
 #include <thread>
 #include <latch>
 
@@ -14,7 +16,14 @@ using namespace lux::render;
 using namespace std::chrono_literals;
 static std::atomic<unsigned> mode{0};
 static std::latch entered(1), resume(1);
-static void check(bool value) { if (!value) std::abort(); }
+static void check(bool value, std::source_location at = std::source_location::current())
+{
+    if (!value)
+    {
+        std::fprintf(stderr, "CHECK %s:%u\n", at.file_name(), at.line());
+        std::abort();
+    }
+}
 template <class T> static T take(RenderResult<T> value) { check(bool(value)); return std::move(*value); }
 
 static TestCompletion call(TestClient& client, const TestCommand& command)
@@ -99,11 +108,11 @@ int main()
     check(bool(feature_test::registerGraph(*server, {&parameters, &parameter_graph, zeroPassParameters})));
     check(bool(feature_test::registerGraph(*server, {&texture_fixture::definition, &texture_fixture::definition_graph, ownPrograms})));
     check(bool(feature_test::registerGraph(*server, {&foreign, &foreign_graph, foreignPrograms})));
-    auto client = take(TestClient::create("runtime.program.ownership"));
+    auto client = take(TestClient::create("runtime.program.ownership", take(server->commandId<ListCommands>())));
     bool run_ok = false;
     std::thread worker([&] { run_ok = bool(server->run()); });
     TestCommand command;
-    command.session = call(*client, command).session;
+    (void)call(*client, command);
     command.operation = ETestCommand::CREATE_EFFECT;
     command.description = texture_fixture::target({});
     command.features.push_back({std::string(texture_fixture::type.name()), "main", take(ConfigValue::make(texture_fixture::Config{}))});
@@ -118,7 +127,7 @@ int main()
     {
         mode = i;
         auto failed = call(*client, command);
-        check(failed.header.outcome == ECommandOutcome::FAILED && failed.header.error.type == expected[i - 1]);
+        check(failed.header.outcome == ECommandOutcome::FAILED && failed.error.type == expected[i - 1]);
         check(server->stats().compiled_graphs == 1);
     }
     mode = 0;
@@ -126,16 +135,16 @@ int main()
     check(server->stats().compiled_graphs == 2);
     mode = 5;
     auto conflict = call(*client, command);
-    check(conflict.header.outcome == ECommandOutcome::FAILED && conflict.header.error.type == kStorageMismatch);
+    check(conflict.header.outcome == ECommandOutcome::FAILED && conflict.error.type == kStorageMismatch);
     check(server->stats().compiled_graphs == 2);
     mode = 6;
     auto zero_pass_conflict = call(*client, command);
     check(zero_pass_conflict.header.outcome == ECommandOutcome::FAILED &&
-        zero_pass_conflict.header.error.type == kStorageMismatch && server->stats().compiled_graphs == 2);
+        zero_pass_conflict.error.type == kStorageMismatch && server->stats().compiled_graphs == 2);
     mode = 7;
     auto unknown_argument = call(*client, command);
     check(unknown_argument.header.outcome == ECommandOutcome::FAILED &&
-        unknown_argument.header.error.type == kStorageContract && server->stats().compiled_graphs == 2);
+        unknown_argument.error.type == kStorageContract && server->stats().compiled_graphs == 2);
     mode = 8;
     check(call(*client, command).header.outcome == ECommandOutcome::SUCCESS);
     check(server->stats().compiled_graphs == 3);
@@ -148,24 +157,24 @@ int main()
     const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (server->stats().ticks < ticks + 100 && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(1ms);
-    check(server->stats().ticks >= ticks + 100 && server->stats().compiled_graphs == 3);
+    check(server->stats().ticks >= ticks + 100 && server->stats().compiled_graphs == 4); // Accepted work commits even after its requester closes.
     server->stop();
     server->stop();
     worker.join();
     check(run_ok && server->stats().validation_errors == 0);
     auto missing = take(createTestServer({"runtime.no.program", true}));
     check(bool(feature_test::registerGraph(*missing, {&texture_fixture::definition, &texture_fixture::definition_graph, nullptr})));
-    auto no_program = take(TestClient::create("runtime.no.program"));
+    auto no_program = take(TestClient::create("runtime.no.program", take(missing->commandId<ListCommands>())));
     bool missing_run_ok = false;
     std::thread missing_worker([&] { missing_run_ok = bool(missing->run()); });
     TestCommand missing_command;
-    missing_command.session = call(*no_program, missing_command).session;
+    (void)call(*no_program, missing_command);
     missing_command.operation = ETestCommand::CREATE_EFFECT;
     missing_command.description = texture_fixture::target({});
     missing_command.features.push_back(command.features.front());
     auto missing_reply = call(*no_program, missing_command);
     check(missing_reply.header.outcome == ECommandOutcome::FAILED &&
-        missing_reply.header.error.type == kFeatureContract && missing->stats().compiled_graphs == 0);
+        missing_reply.error.type == kFeatureContract && missing->stats().compiled_graphs == 0);
     missing->stop();
     missing_worker.join();
     check(missing_run_ok && missing->stats().validation_errors == 0);

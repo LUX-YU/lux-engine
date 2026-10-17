@@ -1,15 +1,22 @@
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
-#include "ProtocolAudit.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include <cstdlib>
+#include <source_location>
+#include <cstdio>
 #include <chrono>
 #include <thread>
 
 using namespace lux::render;
-static void check(bool value) { if (!value) std::abort(); }
+static void check(bool value, std::source_location at = std::source_location::current())
+{
+    if (!value)
+    {
+        std::fprintf(stderr, "CHECK %s:%u\n", at.file_name(), at.line());
+        std::abort();
+    }
+}
 struct First final
 {
     static constexpr std::string_view name = "test.registration.first";
@@ -26,7 +33,6 @@ static RenderResult<void> describe(const void*, std::string_view, ResourceClaims
 {
     return {};
 }
-static RenderResult<void> handler(void*, CommandInvocation&) noexcept { return {}; }
 
 struct InstallFeature final
 {
@@ -53,25 +59,6 @@ struct DirectoryInstaller final
     using Bindings = std::tuple<CommandMethod<InstallFeature, &DirectoryInstaller::install>>;
 };
 
-static RenderCompletion receive(RenderClient& client, RequestId request)
-{
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    while (std::chrono::steady_clock::now() < deadline)
-    {
-        RenderCompletion result;
-        const auto status = client.tryReceive(result);
-        check(bool(status));
-        if (*status == ERenderReceive::RECEIVED)
-        {
-            check(result.header.request == request && result.header.outcome == ECommandOutcome::SUCCESS);
-            return result;
-        }
-        check(*status != ERenderReceive::CLOSED);
-        std::this_thread::yield();
-    }
-    std::abort();
-}
-
 static void featureDirectory()
 {
     constexpr std::size_t count = 600; // Cross StableSlotMap blocks, retaining the original identities.
@@ -97,25 +84,22 @@ static void featureDirectory()
     }
     descriptions.clear();
     names.clear();
-    auto input = RenderClient::create("test.feature.directory");
+    auto input = runtime_test::connect("test.feature.directory", *server->commandId<ListCommands>());
     check(bool(input));
     auto client = std::move(*input);
     bool run_ok = false;
     std::thread owner([&] { run_ok = bool(server->run()); });
-    auto hello = client->hello();
-    check(bool(hello));
-    receive(*client, *hello);
     check(bool(runtime_test::refresh(*client)));
-    auto binding = client->bind<ListFeatures>();
+    auto binding = runtime_test::find<ListFeatures>(*client);
     check(bool(binding));
     EmptyRequest request;
-    auto sent = client->submit(*binding, request, 128 * 1024);
+    auto sent = runtime_test::send<ListFeatures>(*client, *binding, request);
     check(bool(sent));
-    auto completed = receive(*client, *sent).take(*binding);
-    check(bool(completed) && completed->response().features.size() == count);
+    auto completed = runtime_test::result<ListFeatures>(runtime_test::wait(*client, *sent));
+    check(bool(completed) && completed->features.size() == count);
     for (std::size_t i = 0; i < count; ++i)
     {
-        const auto& value = completed->response().features[i];
+        const auto& value = completed->features[i];
         check(value.id == ids[i] && value.name == "test.feature." + std::to_string(i));
         if (i == 0)
             check(value.config_type == lux::cxx::typeToken<std::uint32_t>().name() &&
@@ -123,29 +107,29 @@ static void featureDirectory()
         else
             check(value.config_type.empty() && value.config_size == 0 && value.config_alignment == 0);
     }
-    const auto installing = *client->bind<InstallFeature>();
+    const auto installing = *runtime_test::find<InstallFeature>(*client);
     unsigned number = count;
-    auto added = receive(*client, *client->submit(installing, number)).take(installing);
-    check(bool(added) && !added->response().isNull());
-    auto repeated = receive(*client, *client->submit(installing, number)).take(installing);
-    check(repeated && repeated->response() == added->response());
-    auto updated = receive(*client, *client->submit(*binding, request, 128 * 1024)).take(*binding);
-    check(updated && updated->response().features.size() == count + 1);
-    check(updated->response().features.front().id == ids.front());
-    check(updated->response().features.back().id == added->response());
-    check(updated->response().features.back().name == "test.feature.600");
+    auto added = runtime_test::coldCall<InstallFeature>(*client, number);
+    check(bool(added) && !added->isNull());
+    auto repeated = runtime_test::coldCall<InstallFeature>(*client, number);
+    check(repeated && *repeated == *added);
+    auto updated = runtime_test::coldCall<ListFeatures>(*client, request);
+    check(updated && updated->features.size() == count + 1);
+    check(updated->features.front().id == ids.front());
+    check(updated->features.back().id == *added);
+    check(updated->features.back().name == "test.feature.600");
     server->stop();
     owner.join();
     check(run_ok && server->stats().validation_errors == 0);
     server.reset();
     descriptions.clear();
     names.clear();
-    check(completed->response().features.front().name == "test.feature.0");
-    check(completed->response().features.front().config_type == lux::cxx::typeToken<std::uint32_t>().name());
+    check(completed->features.front().name == "test.feature.0");
+    check(completed->features.front().config_type == lux::cxx::typeToken<std::uint32_t>().name());
 
     // A persisted preset saves the stable name, never the Server-local FeatureId. Reversing the
     // install order on a new Server makes stale numeric reuse visible instead of accidentally passing.
-    const std::string preset = completed->response().features.front().name;
+    const std::string preset = completed->features.front().name;
     auto restarted = RenderServer::create({"test.feature.directory", true});
     check(bool(restarted));
     auto next = std::move(*restarted);
@@ -154,47 +138,40 @@ static void featureDirectory()
     check(bool(feature_test::registerGraph(*next, {&other, &graph, nullptr})));
     const auto restored_id = feature_test::registerGraph(*next, {&restored, &graph, nullptr});
     check(restored_id && *restored_id != ids.front());
-    auto connected = RenderClient::create("test.feature.directory");
+    auto connected = runtime_test::connect("test.feature.directory", *next->commandId<ListCommands>());
     check(bool(connected));
     auto next_client = std::move(*connected);
     std::thread next_owner([&] { run_ok = bool(next->run()); });
-    auto next_hello = next_client->hello();
-    check(bool(next_hello));
-    receive(*next_client, *next_hello);
-    auto stale_binding = next_client->submit(*binding, request, 128 * 1024);
-    check(!stale_binding && stale_binding.error().type == kRuntimeIdentity);
-    const auto next_binding = next_client->bind<ListFeatures>();
-    check(bool(next_binding));
-    auto next_sent = next_client->submit(*next_binding, request, 128 * 1024);
-    check(bool(next_sent));
-    auto next_features = receive(*next_client, *next_sent).take(*next_binding);
+    // A new connection discovers its own directory. Old numeric CommandIds carry no cross-link proof.
+    check(bool(runtime_test::refresh(*next_client)));
+    auto next_features = runtime_test::coldCall<ListFeatures>(*next_client, {});
     check(bool(next_features));
-    const auto found = std::ranges::find(next_features->response().features, preset, &FeatureInfo::name);
-    check(found != next_features->response().features.end() && found->id == *restored_id);
+    const auto found = std::ranges::find(next_features->features, preset, &FeatureInfo::name);
+    check(found != next_features->features.end() && found->id == *restored_id);
     next->stop();
     next_owner.join();
     check(run_ok && next->stats().validation_errors == 0);
 }
 
+struct alignas(16) AlignedRequest final { std::uint32_t value; };
+
 template <unsigned Fault> struct TestedHandler final
 {
     static constexpr std::string_view name = "test.feature.registration.handler";
-    struct Binding final
+    struct Command final
     {
-        using Command = std::conditional_t<(Fault >= 4), Second, First>;
-        static CommandHandler bind(TestedHandler& owner) noexcept
-        {
-            static const auto descriptor = [] {
-                auto result = commandDescriptor<Command>();
-                if constexpr (Fault == 1) result.name = CommandName("test.registration.wrong-name");
-                if constexpr (Fault == 2) result.request.alignment *= 2;
-                if constexpr (Fault == 3) result.response = result.request;
-                if constexpr (Fault == 5) result.name = {};
-                return result;
-            }();
-            return protocol_detail::CommandHandlerAudit::make(&descriptor, handler, &owner);
-        }
+        static constexpr std::string_view name = Fault == 5 ? "" : Fault == 4 ? Second::name : First::name;
+        using Request = std::conditional_t<Fault == 1, std::uint64_t,
+            std::conditional_t<Fault == 2, AlignedRequest, std::uint32_t>>;
+        using Response = std::conditional_t<Fault == 3, std::uint32_t, Ack>;
     };
+
+    RenderResult<void> run(const typename Command::Request&, Reply<Command>& reply) noexcept
+    {
+        return reply.complete(typename Command::Response{});
+    }
+
+    using Binding = CommandMethod<Command, &TestedHandler::run>;
     using Bindings = std::conditional_t<Fault == 6, std::tuple<Binding, Binding>, std::tuple<Binding>>;
 };
 

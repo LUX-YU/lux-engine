@@ -1,11 +1,10 @@
 #pragma once
 
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <lux/engine/render/runtime/RenderClient.hpp>
+#include <lux/engine/render/runtime/Error.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include "TypedProtocol.hpp"
 #include "Deferred.hpp"
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <algorithm>
@@ -80,7 +79,6 @@ namespace lux::render
         {
             CommandId id;
             CommandHandler binding;
-            CommandTransport transport;
             std::shared_ptr<const void> code_pin;
             std::vector<SupportedHandler> supported;
             HandlerId selected;
@@ -112,9 +110,7 @@ namespace lux::render
         [[nodiscard]] RenderServerStats stats() const noexcept;
 
         RenderServerConfig config;
-        ipc::IpcBoundType<ValueEnvelope<RenderError>> failure_type;
         ipc::IpcResponder responder;
-        SessionIdentity identity;
         cxx::StableSlotMap<FeatureEntry, FeatureTag> features;
         cxx::SlotMap<CommandEntry, CommandTag> command_table;
         cxx::SlotMap<std::unique_ptr<HandlerEntry>, HandlerTag> handlers;
@@ -127,35 +123,33 @@ namespace lux::render
         DeferredSlots deferred;
         CompletionQueue completion_events;
         std::atomic<std::size_t> completion_publishers{0};
-        std::size_t compiling = 0;
-        unsigned clients = 0;
         std::size_t next_effect = 0;
         std::atomic<bool> stop_requested{false}, started{false}, running{false};
         std::atomic<std::uint64_t> ticks{0}, commands{0}, compiled_graphs{0}, submissions{0};
         std::atomic<std::uint64_t> validation_errors{0}, validation_warnings{0};
         std::atomic<std::uint64_t> scoped_buffers_created{0};
 
-        Impl(RenderServerConfig value, ipc::IpcResponder input, SessionIdentity session, std::size_t pending_capacity);
+        Impl(RenderServerConfig value, ipc::IpcResponder input);
 
         template <RenderCommand C, RenderResult<void> (Impl::*Method)(RenderRequest&) noexcept>
         void addBuiltin() noexcept
         {
-            static constexpr auto handler =
-                +[](Impl& owner, const typename C::Request&, Reply<C>& context) noexcept
-            {
-                auto& invocation = protocol_detail::ReplyAccess::invocation(context);
-                return (owner.*Method)(static_cast<CommandCall*>(invocation.completion_owner)->request);
-            };
-            addCommand(bindCommand<C, handler>(*this), commandTransport<C>(), config.implementation_code_pin);
+            auto binding = CommandHandler::bindInvocation<C>({
+                [](void* owner, CommandInvocation& invocation) noexcept {
+                    auto& accepted = static_cast<CommandCall*>(invocation.completion_owner)->request;
+                    return (static_cast<Impl*>(owner)->*Method)(accepted);
+                }, this
+            });
+            addCommand(binding, config.implementation_code_pin);
         }
 
         CommandId addCommand(
             CommandHandler binding,
-            CommandTransport transport,
             std::shared_ptr<const void> pin = {}
         ) noexcept;
 
         void settle(RenderRequest request, RenderResult<void> result) noexcept;
+        void retryReplies() noexcept;
 
         RenderResult<void> withdraw(RenderEffect& effect, std::size_t index) noexcept;
 
@@ -193,11 +187,11 @@ namespace lux::render
 
         RenderResult<void> resizeTarget(RenderRequest& request) noexcept;
 
-        DeferredCompletion* reserveCompletion(bool for_compile = false) noexcept;
+        DeferredCompletion* reserveCompletion() noexcept;
 
         static void completeOperation(void* value, ECommandOutcome outcome, RenderError error, void* response) noexcept;
 
-        RenderResult<CommandInvocation*> deferCommand(RenderRequest& request, std::size_t reply_bytes) noexcept;
+        RenderResult<CommandInvocation*> deferCommand(RenderRequest& request) noexcept;
 
         struct CompileState;
 
@@ -214,7 +208,7 @@ namespace lux::render
 
         RenderResult<void> listFeatures(RenderRequest& request) noexcept;
         RenderResult<void> listStorages(RenderRequest& request) noexcept;
-        [[nodiscard]] CommandList commandDirectory(bool bootstrap = false) const noexcept;
+        [[nodiscard]] CommandList commandDirectory() const noexcept;
 
         RenderResult<void> listCommands(RenderRequest& request) noexcept;
         RenderResult<void> listCommandBindings(RenderRequest& request) noexcept;

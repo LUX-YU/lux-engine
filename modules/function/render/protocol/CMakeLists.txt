@@ -25,6 +25,21 @@ component_add_transitive_commands(
 
 target_compile_features(render_protocol PUBLIC cxx_std_20)
 
+# Server-side typed invocation depends on IPC; declaration-only Protocol remains independent.
+add_interface_component(
+    COMPONENT_NAME render_protocol_handlers
+    NAMESPACE lux::engine::render
+)
+
+component_add_internal_dependencies(render_protocol_handlers lux::engine::render::render_protocol)
+
+target_link_libraries(render_protocol_handlers INTERFACE lux::engine::platform::platform_ipc)
+
+component_add_transitive_commands(render_protocol_handlers
+    [=[find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_ipc
+        HINTS "${CMAKE_CURRENT_LIST_DIR}/../../lux-engine-platform")]=]
+)
+
 if(NOT LUX_RENDER_CLIENT_ONLY)
     find_package(stdexec CONFIG REQUIRED)
 
@@ -33,7 +48,7 @@ if(NOT LUX_RENDER_CLIENT_ONLY)
         NAMESPACE lux::engine::render
     )
 
-    component_add_internal_dependencies(render_protocol_async lux::engine::render::render_protocol)
+    component_add_internal_dependencies(render_protocol_async lux::engine::render::render_protocol_handlers)
 
     target_link_libraries(render_protocol_async INTERFACE STDEXEC::stdexec lux::engine::core::core_execution)
 

@@ -92,7 +92,6 @@ int main(int argc, char** argv)
         }
         MaterialWrite input{{storage_id, {}}, 0, cooked, cooked.borrow<MaterialProgram>()->defaults};
         input.textures[0] = texture;
-        CHECK(take(CommandValueTraits<MaterialWrite>::retainedBytes(input)) == sizeof(input) + cooked.retainedBytes());
         auto bad = input;
         bad.program = take(ConfigValue::make(42));
         CHECK(!lux::render::upload(storage, bad));

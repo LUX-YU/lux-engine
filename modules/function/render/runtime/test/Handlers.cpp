@@ -1,6 +1,5 @@
 #include "Discovery.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include <atomic>
 #include <chrono>
@@ -124,24 +123,11 @@ private:
     Counts& counts_;
 };
 
-static RenderCompletion receive(RenderClient& client)
+template <class C> static lux::platform::ipc::IpcMessage call(runtime_test::Peer& client,
+    typename C::Request input = {})
 {
-    const auto deadline = std::chrono::steady_clock::now() + 10s;
-    for (;;)
-    {
-        RenderCompletion output;
-        const auto status = take(client.tryReceive(output));
-        if (status == ERenderReceive::RECEIVED) return output;
-        check(status != ERenderReceive::CLOSED && std::chrono::steady_clock::now() < deadline);
-        std::this_thread::yield();
-    }
-}
-
-template <class C> static TypedRenderCompletion<C> call(RenderClient& client, typename C::Request input = {})
-{
-    auto binding = take(client.bind<C>());
-    (void)take(client.submit(binding, input, 16384));
-    return take(receive(client).take(binding));
+    const auto binding = take(runtime_test::find<C>(client));
+    return runtime_test::wait(client, take(runtime_test::send<C>(client, binding, std::move(input))));
 }
 
 int main()
@@ -164,75 +150,63 @@ int main()
 
     RenderResult<void> run;
     std::thread thread([&] { run = server->run(); });
-    auto a = take(RenderClient::create("runtime.handlers"));
-    (void)take(a->hello());
-    check(receive(*a).header.outcome == ECommandOutcome::SUCCESS);
-    check(!a->bind<First>()); // Hello exposes controls, never the business directory.
+    auto a = take(runtime_test::connect("runtime.handlers", directory_id));
+    check(!runtime_test::find<First>(*a)); // The application has not queried the catalog yet.
     check(bool(runtime_test::refresh(*a)));
-    const auto controls = take(a->bind<ListCommands>());
-    check(controls.command() == directory_id);
-    auto protected_control = call<SelectCommandBinding>(*a, {controls.command(), {}});
-    check(protected_control.header().outcome == ECommandOutcome::FAILED &&
-        protected_control.header().error.type == kRuntimeUnsupported);
-    check(!call<ListCommands>(*a).response().commands.empty());
-    const auto bound = take(a->bind<First>());
-    check(bound.command() == first_command_id);
-    const auto bindings = call<ListCommandBindings>(*a, bound.command());
-    check(bindings.response().selected == first && bindings.response().handlers.size() == 2);
-    check(call<First>(*a, 7).response() == 107);
-    check(call<Second>(*a, 8).response() == 108);
-    check(call<Third>(*a, 9).response() == 109);
-    check(call<Fourth>(*a, 10).response() == 110);
-    check(!a->bind<NewBeforeFailure>()); // Failed installation published neither its first command nor supports.
+    const auto controls = take(runtime_test::find<ListCommands>(*a));
+    check(controls == directory_id);
+    auto protected_control = call<SelectCommandBinding>(*a, {controls, {}});
+    check(protected_control.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED &&
+        protected_control.get<RenderError>().type == kRuntimeUnsupported);
+    check(!call<ListCommands>(*a).get<ListCommands::Response>().commands.empty());
+    const auto bound = take(runtime_test::find<First>(*a));
+    check(bound == first_command_id);
+    const auto bindings = call<ListCommandBindings>(*a, bound);
+    check(bindings.get<CommandBindings>().selected == first && bindings.get<CommandBindings>().handlers.size() == 2);
+    check(call<First>(*a, 7).get<First::Response>() == 107);
+    check(call<Second>(*a, 8).get<Second::Response>() == 108);
+    check(call<Third>(*a, 9).get<Third::Response>() == 109);
+    check(call<Fourth>(*a, 10).get<Fourth::Response>() == 110);
+    check(!runtime_test::find<NewBeforeFailure>(*a)); // Failed installation published neither its first command nor supports.
 
-    auto select = take(a->bind<SelectCommandBinding>());
-    CommandSelection selection{bound.command(), second};
+    auto select = take(runtime_test::find<SelectCommandBinding>(*a));
+    CommandSelection selection{bound, second};
     unsigned input = 11;
-    (void)take(a->submit(select, selection));
-    (void)take(a->submit(bound, input)); // FIFO selection takes effect at dispatch.
-    check(take(receive(*a).take(select)).header().outcome == ECommandOutcome::SUCCESS);
-    check(take(receive(*a).take(bound)).response() == 211);
+    const auto select_id = take(runtime_test::send<SelectCommandBinding>(*a, select, selection));
+    const auto first_id = take(runtime_test::send<First>(*a, bound, input));
+    check(runtime_test::wait(*a, select_id).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    check(runtime_test::wait(*a, first_id).get<First::Response>() == 211);
 
-    check(call<SelectCommandBinding>(*a, {bound.command(), {}}).header().outcome == ECommandOutcome::SUCCESS);
+    check(call<SelectCommandBinding>(*a, {bound, {}}).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
     auto unbound = call<First>(*a, 0);
-    check(unbound.header().outcome == ECommandOutcome::FAILED &&
-        unbound.header().error.type == kRuntimeUnsupported);
-    const auto late = call<InstallLate>(*a).response();
-    check(late_counts.created == 1 && call<InstallLate>(*a).response() == late && late_counts.created == 1);
-    check(!a->bind<Late>()); // Existing Client discovery changes only after explicit adoption.
+    check(unbound.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED &&
+        unbound.get<RenderError>().type == kRuntimeUnsupported);
+    const auto late = call<InstallLate>(*a).get<InstallLate::Response>();
+    check(late_counts.created == 1 && call<InstallLate>(*a).get<InstallLate::Response>() == late && late_counts.created == 1);
+    check(!runtime_test::find<Late>(*a)); // Existing Client discovery changes only after explicit adoption.
     unbound = call<First>(*a, 0);
-    check(unbound.header().outcome == ECommandOutcome::FAILED &&
-        unbound.header().error.type == kRuntimeUnsupported); // A new supporter does not steal an unbound command.
-    const auto list_binding = take(a->bind<ListCommands>());
-    ListCommands::Request empty;
-    (void)take(a->submit(list_binding, empty, 16384));
-    auto directory = receive(*a);
-    directory.session[0] ^= 1;
-    auto rejected_directory = a->refreshCommands(directory);
-    check(!rejected_directory && rejected_directory.error().type == kRuntimeIdentity && !a->bind<Late>());
-    directory.session[0] ^= 1;
-    check(bool(a->refreshCommands(directory)) && call<Late>(*a, 9).response() == 309);
-    check(call<ListCommandBindings>(*a, bound.command()).response().handlers.size() == 3);
-    check(call<SelectCommandBinding>(*a, {bound.command(), second}).header().outcome == ECommandOutcome::SUCCESS);
+    check(unbound.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED &&
+        unbound.get<RenderError>().type == kRuntimeUnsupported); // A new supporter does not steal an unbound command.
+    check(bool(runtime_test::refresh(*a)) && call<Late>(*a, 9).get<Late::Response>() == 309);
+    check(call<ListCommandBindings>(*a, bound).get<ListCommandBindings::Response>().handlers.size() == 3);
+    check(call<SelectCommandBinding>(*a, {bound, second}).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
 
-    // A later Client explicitly discovers the live table, not a startup snapshot in Hello.
-    auto b = take(RenderClient::create("runtime.handlers"));
-    (void)take(b->hello());
-    check(receive(*b).header.outcome == ECommandOutcome::SUCCESS);
-    check(!b->bind<Late>());
+    // A later Client explicitly discovers the live table, not a startup-only snapshot.
+    auto b = take(runtime_test::connect("runtime.handlers", directory_id));
+    check(!runtime_test::find<Late>(*b));
     check(bool(runtime_test::refresh(*b)));
-    check(call<Late>(*b, 10).response() == 310);
-    check(call<First>(*b, 12).response() == 212); // Other Client coordinates after the selection reply.
-    auto bad = call<SelectCommandBinding>(*a, {bound.command(), HandlerId{first.index, first.gen + 1}});
-    check(bad.header().outcome == ECommandOutcome::FAILED && bad.header().error.type == kRuntimeIdentity);
-    check(call<First>(*a, 13).response() == 213);
-    check(call<Second>(*a, 14).response() == 114); // Selection is per command, not per object.
+    check(call<Late>(*b, 10).get<Late::Response>() == 310);
+    check(call<First>(*b, 12).get<First::Response>() == 212); // Other Client coordinates after the selection reply.
+    auto bad = call<SelectCommandBinding>(*a, {bound, HandlerId{first.index, first.gen + 1}});
+    check(bad.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED && bad.get<RenderError>().type == kRuntimeIdentity);
+    check(call<First>(*a, 13).get<First::Response>() == 213);
+    check(call<Second>(*a, 14).get<Second::Response>() == 114); // Selection is per command, not per object.
     const auto commands = call<ListCommands>(*a);
     unsigned selected_count = 0;
-    for (const auto& command : commands.response().commands)
+    for (const auto& command : commands.get<CommandList>().commands)
     {
         check(command.name != NewBeforeFailure::name);
-        if (command.id == bound.command()) { check(command.bound); ++selected_count; }
+        if (command.id == bound) { check(command.bound); ++selected_count; }
     }
     check(selected_count == 1 && counts.destroyed == 0);
     server->stop();
@@ -240,6 +214,6 @@ int main()
     check(bool(run) && server->stats().validation_errors == 0 && counts.destroyed == 2);
     check(late_counts.destroyed == 1);
     server.reset();
-    check(counts.destroyed == 2 && bindings.response().handlers[0].instance == "A");
-    std::puts("Handler ownership: exact destruction, rollback, FIFO selection, unbind, dynamic install/refresh and late Hello PASS");
+    check(counts.destroyed == 2 && bindings.get<CommandBindings>().handlers[0].instance == "A");
+    std::puts("Handler ownership: exact destruction, rollback, FIFO selection, unbind, dynamic install/refresh and late catalog discovery PASS");
 }

@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/runtime/CommandValue.hpp>
+#include <lux/engine/render/protocol/CommandHandler.hpp>
+#include <lux/engine/render/runtime/Error.hpp>
 #include <lux/engine/render/features/Registration.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/resource/AsyncWork.hpp>
@@ -21,13 +22,9 @@ namespace lux::render
         vulkan::DeviceOptions device{.dynamic_rendering = true};
         std::uint32_t requests_per_tick = 8;
         std::size_t max_config_bytes = 1024 * 1024;
-        std::size_t max_reply_bytes = 16 * 1024 * 1024;
         std::size_t retirement_capacity = 0; // Optional explicit record budget; zero grows on cold publication.
         // One borrowed host scheduler for cold compilation and transfer preparation.
         CpuSchedule cpu;
-        // Independent logical budgets backed by one slot map and event queue of their combined capacity.
-        std::size_t compile_capacity = 2;
-        std::size_t completion_capacity = 128;
         // Scheduler availability does not imply a persistent staging allocation.
         std::optional<TransferOptions> uploads;
         // Pins the module containing this Server implementation and its builtin reply/destruction code.
@@ -83,7 +80,7 @@ namespace lux::render
             const auto definition = provider.definition();
             if constexpr (std::is_void_v<H>)
             {
-                return installFeature(definition, std::move(code_pin), nullptr, {}, {}, {}, std::move(*dependencies));
+                return installFeature(definition, std::move(code_pin), nullptr, {}, {}, std::move(*dependencies));
             }
             else
             {
@@ -112,9 +109,8 @@ namespace lux::render
                 auto& handler = *static_cast<H*>(entry->object.get());
                 return [&]<typename... B>(std::tuple<B...>*) noexcept {
                     const std::array calls{B::bind(handler)...};
-                    const std::array transports{runtime_detail::commandTransport<typename B::Command>()...};
                     return installFeature(definition, std::move(code_pin), entry, std::move(owner),
-                        calls, transports, std::move(*dependencies));
+                        calls, std::move(*dependencies));
                 }(static_cast<typename H::Bindings*>(nullptr));
             }
         }
@@ -136,8 +132,7 @@ namespace lux::render
             auto& handler = *static_cast<H*>(owner->object.get());
             return [&]<typename... B>(std::tuple<B...>*) noexcept {
                 const std::array calls{B::bind(handler)...};
-                const std::array transports{runtime_detail::commandTransport<typename B::Command>()...};
-                return installHandler(std::move(owner), calls, transports);
+                return installHandler(std::move(owner), calls);
             }(static_cast<typename H::Bindings*>(nullptr));
         }
 
@@ -165,7 +160,6 @@ namespace lux::render
             HandlerEntry* handler = nullptr;
             std::unique_ptr<HandlerEntry> owner;
             std::vector<CommandHandler> calls;
-            std::vector<runtime_detail::CommandTransport> transports;
             std::vector<CommandId> commands;
         };
 
@@ -213,7 +207,6 @@ namespace lux::render
                 auto& handler = *static_cast<H*>(result.handler->object.get());
                 [&]<typename... B>(std::tuple<B...>*) noexcept {
                     result.calls = {B::bind(handler)...};
-                    result.transports = {runtime_detail::commandTransport<typename B::Command>()...};
                 }(static_cast<typename H::Bindings*>(nullptr));
             }
             return result;
@@ -261,16 +254,16 @@ namespace lux::render
         [[nodiscard]] HandlerEntry* handlerEntry(HandlerId) noexcept;
         [[nodiscard]] vulkan::DeviceSession& nativeDevice() noexcept;
         [[nodiscard]] RenderResult<std::vector<CommandId>> prepareHandler(const HandlerEntry&,
-            std::span<const CommandHandler>, std::span<const runtime_detail::CommandTransport>) const noexcept;
+            std::span<const CommandHandler>) const noexcept;
         HandlerId publishHandler(std::unique_ptr<HandlerEntry>, std::span<const CommandHandler>,
-            std::span<const runtime_detail::CommandTransport>, std::vector<CommandId>) noexcept;
+            std::vector<CommandId>) noexcept;
         [[nodiscard]] RenderResult<StorageTypeId> prepareStorage(const StorageInstall&, bool ensure) const noexcept;
         [[nodiscard]] RenderResult<StorageTypeId> installStorage(StorageInstall) noexcept;
         [[nodiscard]] RenderResult<HandlerId> installHandler(std::unique_ptr<HandlerEntry>,
-            std::span<const CommandHandler>, std::span<const runtime_detail::CommandTransport>) noexcept;
+            std::span<const CommandHandler>) noexcept;
         [[nodiscard]] RenderResult<FeatureId> installFeature(feature_detail::Implementation,
             std::shared_ptr<const void>, HandlerEntry*, std::unique_ptr<HandlerEntry>,
-            std::span<const CommandHandler>, std::span<const runtime_detail::CommandTransport>,
+            std::span<const CommandHandler>,
             std::vector<StorageInstall> dependencies = {}) noexcept;
         struct Impl;
         explicit RenderServer(std::unique_ptr<Impl> state) noexcept;

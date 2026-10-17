@@ -205,15 +205,15 @@ namespace
         return result;
     }
 
-    RenderCompletion receive(RenderClient& client) noexcept
+    lux::platform::ipc::IpcMessage receive(runtime_test::Peer& client) noexcept
     {
-        RenderCompletion result;
+        lux::platform::ipc::IpcMessage result;
         until([&] {
-            const auto status = take(client.tryReceive(result));
-            check(status != ERenderReceive::CLOSED);
-            return status == ERenderReceive::RECEIVED;
+            const auto status = client.requester.tryReceive(result);
+            check(status != lux::platform::ipc::EIpcReceive::CLOSED);
+            return status == lux::platform::ipc::EIpcReceive::RECEIVED;
         });
-        check(result.header.outcome == ECommandOutcome::SUCCESS);
+        check(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
         return result;
     }
 
@@ -221,7 +221,7 @@ namespace
     {
         std::ofstream events("async-cost-events.csv"), drains("async-cost-drains.csv"), summary("async-cost-summary.csv");
         check(bool(events) && bool(drains) && bool(summary));
-        events << "mode,N,iteration,warmup,index,request_index,request_generation,slot_index,slot_generation,"
+        events << "mode,N,iteration,warmup,index,request_value,slot_index,slot_generation,"
             "submit_begin_ns,submit_end_ns,handler_begin_ns,register_begin_ns,registered_ns,register_end_ns,"
             "handler_end_ns,worker_arrived_ns,"
             "work_begin_ns,work_end_ns,post_begin_ns,post_end_ns,pop_ns,adopt_begin_ns,adopt_end_ns,client_consume_ns\n";
@@ -232,7 +232,7 @@ namespace
             {
                 const auto& r = batch->records[i];
                 events << name(batch->mode) << ',' << batch->count << ',' << batch->iteration << ',' << batch->warmup
-                    << ',' << i << ',' << r.request.index << ',' << r.request.gen << ',' << r.completion.index << ','
+                    << ',' << i << ',' << r.request.value << ',' << r.completion.index << ','
                     << r.completion.gen << ',' << r.submit_begin << ',' << r.submit_end << ',' << r.handler_begin << ','
                     << r.register_begin << ',' << r.registered << ',' << r.register_end << ',' << r.handler_end << ','
                     << r.worker_arrived << ',' << r.work_begin << ','
@@ -427,13 +427,12 @@ int main()
     config.cpu = state->cpu;
     auto server = take(RenderServer::create(config));
     check(bool(server->registerFeature<CpuOperation>(feature_test::Provider<CpuCommands>{{&feature, &feature_graph, nullptr}}, "", {}, *state)));
+    const auto catalog = take(server->commandId<ListCommands>());
     RenderResult<void> run;
     std::thread render([&] { run = server->run(); });
-    auto client = take(RenderClient::create(config.channel_name, {1024 * 1024, 256}));
-    (void)take(client->hello());
-    (void)receive(*client);
+    auto client = take(runtime_test::connect(config.channel_name, catalog));
     check(bool(runtime_test::refresh(*client)));
-    auto binding = take(client->bind<CpuOperation>());
+    auto binding = take(runtime_test::find<CpuOperation>(*client));
     for (auto mode : modes)
         for (auto count : counts)
             for (unsigned round = 0; round < warmups + samples; ++round)
@@ -446,7 +445,7 @@ int main()
                     auto& record = batch.records[i];
                     CpuOperation::Request request{i};
                     record.submit_begin = now();
-                    const auto id = take(client->submit(binding, request, 128));
+                    const auto id = take(runtime_test::send<CpuOperation>(*client, binding, request));
                     record.submit_end = now();
                     record.request = id;
                 }
@@ -462,12 +461,12 @@ int main()
                 std::array<bool, 128> seen{};
                 for (unsigned i = 0; i < count; ++i)
                 {
-                    auto response = take(receive(*client).take(binding));
-                    const auto index = response.response().index;
+                    auto response = receive(*client);
+                    const auto index = response.get<CpuOperation::Response>().index;
                     check(index < count && !seen[index]);
                     auto& record = batch.records[index];
                     record.consumed = now();
-                    check(response.header().request == record.request && response.response().result == calculate(index));
+                    check(response.metadata<ReplyHeader>().request == record.request && response.get<CpuOperation::Response>().result == calculate(index));
                     seen[index] = true;
                 }
                 until([&] { return batch.finished.load(std::memory_order_acquire) &&
@@ -485,7 +484,7 @@ int main()
             }
     server->stop();
     render.join();
-    check(bool(run) && server->stats().validation_errors == 0 && client->retainedBytes() == 0);
+    check(bool(run) && server->stats().validation_errors == 0);
     writeSamples(*state);
     std::puts("async-cost: real ExecutionRuntime CpuScheduler, 0/1/16/128, sync/normal/burst; K exact, drop=0, burst peak=N");
     std::puts("Costs are instrumented; queue size is sampled before timing. Thread cycles/CPU ns exclude controlled holds.");

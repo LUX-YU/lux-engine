@@ -194,8 +194,6 @@ int main(int argc, char** argv)
         TransformBatch batch{instance_storage, 73,
             {{ids[0].instance, ids[0].revision, kIdentityTransform}, {ids[1].instance, ids[1].revision, kIdentityTransform}}};
         batch.updates.reserve(31);
-        CHECK(take(CommandValueTraits<TransformBatch>::retainedBytes(batch)) ==
-            sizeof(batch) + batch.updates.capacity() * sizeof(TransformUpdate));
         const auto before = take(instances.query(ids[0].instance));
         batch.updates[1].expected_revision = 0;
         CHECK(!instances.update(batch));

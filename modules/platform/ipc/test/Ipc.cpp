@@ -1072,7 +1072,7 @@ namespace
         auto& core = IpcCore::instance();
         auto server = must(core.createResponder("operation.cost"));
         auto client = must(core.createRequester("operation.cost"));
-        lux::cxx::SlotMap<int, RequestTag> pending(8);
+        std::uint64_t next = 1; // This caller owns its correlation sequence.
         auto execute = [&](ReceivedRequest& work) {
             const auto header = work.message().metadata<RequestHeader>();
             check(routes.find(header.command) != nullptr, "endpoint-local command dispatch");
@@ -1114,7 +1114,7 @@ namespace
                 ipc_allocation::start();
                 testing::startAllocations();
                 const auto begin = Clock::now();
-                auto id = pending.emplace(i);
+                const RequestId id{next++};
                 IpcMessage input;
                 input.emplace<Scalar>(Scalar{static_cast<std::uint64_t>(i)});
                 input.setMetadata(RequestHeader{id, command});
@@ -1123,10 +1123,9 @@ namespace
                 IpcMessage reply;
                 while (client.tryReceive(reply) != EIpcReceive::RECEIVED) {}
                 const auto terminal = reply.metadata<TerminalMeta>();
-                check(terminal.request == id && pending.find(terminal.request) &&
+                check(terminal.request == id &&
                     terminal.outcome == ECommandOutcome::SUCCESS && reply.get<Scalar>().value == i + 1,
                     "validate typed terminal correlation and success");
-                pending.erase(terminal.request);
                 const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
                 const auto exe = ipc_allocation::stop(), dll = testing::stopAllocations();
                 check(exe == 0 && dll == 0, "complete small typed command zero allocations");
@@ -1162,9 +1161,8 @@ namespace
         auto server = must(core.createResponder("protocol"));
         auto a = must(core.createRequester("protocol"));
         auto b = must(core.createRequester("protocol"));
-        lux::cxx::SlotMap<int, RequestTag> pending_a, pending_b;
-        const auto id_a = pending_a.emplace(1);
-        const auto id_b = pending_b.emplace(1);
+        const RequestId id_a{1};
+        const RequestId id_b{1};
         check(id_a == id_b, "real Render RequestId collisions across independent clients");
         const CommandId command{0, 1};
 

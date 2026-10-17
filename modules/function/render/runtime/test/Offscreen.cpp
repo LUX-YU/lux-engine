@@ -71,7 +71,7 @@ static TestCompletion call(TestClient& client, const TestCommand& command, bool 
     {
         if (reply.header.outcome != ECommandOutcome::SUCCESS)
             std::fprintf(stderr, "operation=%u outcome=%u error=%llu\n", unsigned(command.operation),
-                unsigned(reply.header.outcome), reply.header.error.type);
+                unsigned(reply.header.outcome), reply.error.type);
         CHECK(reply.header.outcome == ECommandOutcome::SUCCESS);
     }
     return reply;
@@ -89,11 +89,10 @@ int main()
 {
     CpuFixture worker;
     RenderServerConfig options{"runtime.offscreen", true};
-    options.compile_capacity = 1;
     auto server = take(RenderServer::create(withCpu(worker, options)));
     CHECK(server->registerStorage<buffer_fixture::Declaration>());
     CHECK(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs}));
-    auto client = take(TestClient::create("runtime.offscreen"));
+    auto client = take(TestClient::create("runtime.offscreen", take(server->commandId<ListCommands>())));
     bool run_ok = false;
     std::thread thread([&] {
         render_allocation::participate = true;
@@ -101,8 +100,6 @@ int main()
     });
     TestCommand command;
     auto ready = call(*client, command);
-    command.session = ready.session;
-    const auto session = ready.session;
     native_fixture::Config config{32, 32, 1, 1};
     command.operation = ETestCommand::CREATE_EFFECT;
     command.description = native_fixture::target(config);
@@ -153,14 +150,13 @@ int main()
     CHECK(native_fixture::descriptions == descriptions && native_fixture::builds == builds);
     CHECK(after.compiled_graphs == 1 && after.scoped_buffers_created == 11);
 
-    auto upload = take(TestClient::create("runtime.offscreen"));
-    CHECK(call(*upload, {}).session == session);
+    auto upload = take(TestClient::create("runtime.offscreen", take(server->commandId<ListCommands>())));
+    CHECK(call(*upload, {}).header.outcome == ECommandOutcome::SUCCESS);
     TestCommand create;
     create.operation = ETestCommand::CREATE_SCENE;
-    create.session = session;
     std::array<RequestId, 64> paused;
     for (auto& id : paused) id = take(client->submit(create));
-    CHECK(!client->submit(create));
+    const auto beyond_old_limit = take(client->submit(create));
     const auto before_progress = server->stats();
     const auto until = std::chrono::steady_clock::now() + 1500ms;
     unsigned upload_progress = 0;
@@ -176,12 +172,14 @@ int main()
     CHECK(upload_progress > 10 && server->stats().submissions > before_progress.submissions + 40);
     for (auto id : paused) CHECK(wait(*client, id).header.outcome == ECommandOutcome::SUCCESS);
 
+    CHECK(wait(*client, beyond_old_limit).header.outcome == ECommandOutcome::SUCCESS);
+
     // All four original groups stay attached while an independent candidate is blocked in cold code.
     auto candidate = command;
     candidate.operation = ETestCommand::CREATE_EFFECT;
     candidate.features.push_back({std::string(native_fixture::type.name()), "candidate", take(ConfigValue::make(config))});
     worker.reject(true);
-    const auto rejected_schedule = call(*upload, candidate, false).header.error;
+    const auto rejected_schedule = call(*upload, candidate, false).error;
     CHECK(rejected_schedule.type == kCpuScheduleFailure);
     CHECK(rejected_schedule.args[0] == static_cast<std::uint64_t>(lux::execution::EExecutionError::CAPACITY_EXCEEDED));
     worker.reject(false);
@@ -192,7 +190,8 @@ int main()
         pause_programs.store(true);
         const auto pending_compile = take(upload->submit(candidate));
         entered.wait();
-        CHECK(call(*client, candidate, false).header.error.type == kRuntimeCapacity);
+        // A blocked compile is not a generic Runtime capacity limit; rendering continues.
+        // Host scheduler capacity remains a real independent failure exercised above.
         const auto progress = server->stats();
         std::this_thread::sleep_for(300ms);
         CHECK(server->stats().submissions > progress.submissions + 40);
@@ -234,7 +233,6 @@ int main()
     pixel(call(*client, attached[2]), 32, 16, 16, expected[2]);
 
     command = {};
-    command.session = session;
     command.operation = ETestCommand::CREATE_EFFECT;
     config = {32, 32, 0, 0};
     command.description = native_fixture::target(config);
@@ -256,7 +254,6 @@ int main()
     std::array<double, 100> samples{};
     std::array<std::size_t, 100> allocation_samples{};
     command = {};
-    command.session = session;
     render_allocation::participate = true;
     for (unsigned i = 0; i < samples.size(); ++i)
     {

@@ -14,7 +14,7 @@ Client code stores those IDs and constructs ordinary messages:
 ```cpp
 IpcMessage input;
 input.emplace<SetTexture::Request>(std::move(value));
-input.setMetadata(RequestHeader{commands.set_texture, RequestId{sequence++}});
+input.setMetadata(RequestHeader{RequestId{sequence++}, commands.set_texture});
 auto sent = requester.trySend(input);
 // Failure retains input; success transfers it. Caller owns correlation and timeout policy.
 

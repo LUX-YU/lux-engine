@@ -13,29 +13,7 @@ using namespace foundation_test;
 using namespace std::chrono_literals;
 using Clock = std::chrono::steady_clock;
 
-static RenderCompletion wait(RenderClient& client, RequestId id)
-{
-    const auto deadline = Clock::now() + 15s;
-    while (Clock::now() < deadline)
-    {
-        RenderCompletion result;
-        if (take(client.tryReceive(result)) == ERenderReceive::RECEIVED)
-        {
-            CHECK(result.header.request == id);
-            return result;
-        }
-        std::this_thread::yield();
-    }
-    std::abort();
-}
 
-template <RenderCommand C> static TypedRenderCompletion<C> call(
-    RenderClient& client, const BoundCommand<C>& binding, typename C::Request input
-)
-{
-    auto result = wait(client, take(client.submit(binding, input, 4096)));
-    return take(std::move(result).take(binding));
-}
 
 
 int main(int argc, char** argv)
@@ -60,43 +38,43 @@ int main(int argc, char** argv)
     CHECK(server->registerStorage<lux::render::MeshStorage>());
     CHECK(server->registerStorage<lux::render::InstanceStorage>());
     bool run_ok = false;
+    const auto directory_id = take(server->commandId<ListCommands>());
     std::thread thread([&] { run_ok = bool(server->run()); });
-    auto client = take(RenderClient::create(config.channel_name));
-    CHECK(wait(*client, take(client->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    auto client = take(runtime_test::connect(config.channel_name, directory_id));
     CHECK(runtime_test::refresh(*client));
     const auto material_storage = take(runtime_test::prepareStorage(*client, kMaterialStorageType.name(), "material"));
     const auto mesh_storage = take(runtime_test::prepareStorage(*client, kMeshStorageType.name(), "mesh"));
     const auto instance_storage = take(runtime_test::prepareStorage(*client, kInstanceStorageType.name(), "instance"));
-    const auto material_set = take(client->bind<SetMaterial>());
-    const auto mesh_set = take(client->bind<SetMesh>());
-    const auto create = take(client->bind<CreateInstance>());
-    const auto update = take(client->bind<UpdateTransforms>());
-    const auto query = take(client->bind<QueryInstance>());
-    const auto release = take(client->bind<ReleaseInstance>());
+    const auto material_set = take(runtime_test::find<SetMaterial>(*client));
+    const auto mesh_set = take(runtime_test::find<SetMesh>(*client));
+    const auto create = take(runtime_test::find<CreateInstance>(*client));
+    const auto update = take(runtime_test::find<UpdateTransforms>(*client));
+    const auto query = take(runtime_test::find<QueryInstance>(*client));
+    const auto release = take(runtime_test::find<ReleaseInstance>(*client));
     MaterialId material;
     {
-        auto result = call(*client, material_set, {{material_storage, {}}, 0, cooked,
+        auto result = call<SetMaterial>(*client, material_set, {{material_storage, {}}, 0, cooked,
             cooked.borrow<MaterialProgram>()->defaults});
-        CHECK(result.header().outcome == ECommandOutcome::SUCCESS);
-        material = result.response().material;
+        CHECK(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+        material = result.get<SetMaterial::Response>().material;
     }
     auto owner = std::make_shared<std::vector<std::byte>>(60);
     const std::array<unsigned, 3> indices{0, 1, 2};
     std::memcpy(owner->data() + 48, indices.data(), 12);
     MeshId mesh;
     {
-        auto result = call(*client, mesh_set, {{mesh_storage, {}}, 0,
+        auto result = call<SetMesh>(*client, mesh_set, {{mesh_storage, {}}, 0,
             {16, 3, 48, 4, 3, {{0, 0, lux::rdesc::ETextureFormat::RGBA32_SFLOAT}}, {{0, 3, 0}}},
             take(RenderPayload::fromVector(owner, 0, owner->size()))});
-        CHECK(result.header().outcome == ECommandOutcome::SUCCESS);
-        mesh = result.response().mesh;
+        CHECK(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+        mesh = result.get<SetMesh::Response>().mesh;
     }
     std::vector<InstancePublished> instances;
     for (unsigned i = 0; i < 100; ++i)
     {
-        auto result = call(*client, create, {instance_storage, {mesh, material}});
-        CHECK(result.header().outcome == ECommandOutcome::SUCCESS);
-        instances.push_back(result.response());
+        auto result = call<CreateInstance>(*client, create, {instance_storage, {mesh, material}});
+        CHECK(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+        instances.push_back(result.get<CreateInstance::Response>());
     }
     TransformBatch input{instance_storage, 53};
     input.updates.reserve(257);
@@ -105,36 +83,30 @@ int main(int argc, char** argv)
     const auto capacity = input.updates.capacity();
     input.updates.back().expected_revision = 0;
     {
-        auto failed = call(*client, update, std::move(input));
-        CHECK(failed.header().outcome == ECommandOutcome::FAILED);
-        CHECK(failed.request().updates.data() == backing && failed.request().updates.capacity() == capacity);
-        input = std::move(failed.request());
+        auto failed = call<UpdateTransforms>(*client, update, input);
+        CHECK(failed.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
     }
-    CHECK(client->retainedBytes() == 0);
-    CHECK(call(*client, query, instances.front().instance).response().published.revision == 1);
+    CHECK(call<QueryInstance>(*client, query, instances.front().instance).get<QueryInstance::Response>().published.revision == 1);
     input.updates.back().expected_revision = 1;
     input.updates.push_back(input.updates.front());
     input.updates.back().transform[12] = .5f;
     {
-        auto result = call(*client, update, std::move(input));
-        CHECK(result.header().outcome == ECommandOutcome::SUCCESS);
-        CHECK(result.response().sequence == 53 && result.response().changed == 100);
-        CHECK(result.request().updates.data() == backing && result.request().updates.capacity() == capacity);
-        input = std::move(result.request());
+        auto result = call<UpdateTransforms>(*client, update, input);
+        CHECK(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+        CHECK(result.get<UpdateTransforms::Response>().sequence == 53 && result.get<UpdateTransforms::Response>().changed == 100);
     }
-    CHECK(client->retainedBytes() == 0);
-    CHECK(call(*client, query, instances.front().instance).response().description.transform[12] == .5f);
+    CHECK(call<QueryInstance>(*client, query, instances.front().instance).get<QueryInstance::Response>().description.transform[12] == .5f);
     input.sequence = 54;
     // A stale revision n does not overwrite or acknowledge n+1.
-    CHECK(call(*client, update, std::move(input)).header().outcome == ECommandOutcome::FAILED);
-    CHECK(call(*client, query, instances.front().instance).response().published.revision == 2);
+    CHECK(call<UpdateTransforms>(*client, update, input).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    CHECK(call<QueryInstance>(*client, query, instances.front().instance).get<QueryInstance::Response>().published.revision == 2);
     for (auto id : instances)
     {
         id.revision = 2;
-        CHECK(call(*client, release, id).header().outcome == ECommandOutcome::SUCCESS);
-        CHECK(call(*client, query, id.instance).header().outcome == ECommandOutcome::FAILED);
+        CHECK(call<ReleaseInstance>(*client, release, id).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+        CHECK(call<QueryInstance>(*client, query, id.instance).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
     }
     server->stop(); thread.join();
-    CHECK(run_ok && server->stats().validation_errors == 0 && client->retainedBytes() == 0);
-    std::puts("Instance typed batch: all-or-none, Last-Wins, original capacity, budget, exact revision PASS");
+    CHECK(run_ok && server->stats().validation_errors == 0);
+    std::puts("Instance batch: all-or-none, Last-Wins, caller-owned retry input, exact revision");
 }

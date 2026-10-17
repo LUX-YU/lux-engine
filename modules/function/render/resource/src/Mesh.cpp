@@ -23,15 +23,7 @@ namespace lux::render
         return retained(input.description, sizeof(input));
     }
 
-    RenderResult<std::size_t> CommandValueTraits<MeshWrite>::retainedBytes(const MeshWrite& input) noexcept
-    {
-        const auto bytes = cxx::checkedAdd(sizeof(input), input.source.retainedBytes());
-        if (!bytes) return cxx::unexpected(RenderError{kProtocolContract});
-        return retained(input.description, *bytes);
-    }
 
-    RenderResult<std::size_t> CommandValueTraits<MeshInformation>::retainedBytes(const MeshInformation& input) noexcept
-    {
-        return retained(input.description, sizeof(input));
-    }
+
+
 }

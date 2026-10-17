@@ -89,25 +89,6 @@ struct TransferredAsync final
     using Response = Output;
 };
 
-namespace lux::render
-{
-    template <> struct CommandValueTraits<Input>
-    {
-        static RenderResult<std::size_t> retainedBytes(const Input& value) noexcept
-        {
-            return sizeof(value) + (value.owner ? sizeof(Probe) : 0);
-        }
-    };
-
-    template <> struct CommandValueTraits<Output>
-    {
-        static RenderResult<std::size_t> retainedBytes(const Output& value) noexcept
-        {
-            return sizeof(value) + (value.owner ? sizeof(Probe) : 0);
-        }
-    };
-}
-
 struct State final
 {
     struct Gate final
@@ -234,10 +215,9 @@ static RenderResult<void> invoke(State& state, const Async::Request& input, Repl
     }
     if (mode == 8)
     {
-        auto rejected = context.defer(257);
-        check(!rejected && rejected.error().type == kRuntimeCapacity);
-        check(context.active() && &context.request() == &input && input.owner == result.owner);
-        return context.complete(result);
+        auto pending = context.defer();
+        check(bool(pending) && !context.active());
+        return pending->complete(result);
     }
     auto submitted = context.completeWhen(GateSender{&state, index, std::move(result), mode == 4});
     if (submitted)
@@ -249,40 +229,46 @@ static RenderResult<void> invoke(State& state, const Async::Request& input, Repl
     return submitted;
 }
 
-static RenderCompletion wait(RenderClient& client)
+static lux::platform::ipc::IpcMessage wait(runtime_test::Peer& client)
 {
-    RenderCompletion completion;
+    lux::platform::ipc::IpcMessage completion;
     until([&] {
-        auto status = take(client.tryReceive(completion));
-        check(status != ERenderReceive::CLOSED);
-        return status == ERenderReceive::RECEIVED;
+        const auto status = client.requester.tryReceive(completion);
+        check(status != lux::platform::ipc::EIpcReceive::CLOSED);
+        return status == lux::platform::ipc::EIpcReceive::RECEIVED;
     });
     return completion;
 }
 
-static RequestId submit(RenderClient& client, const BoundCommand<Async>& binding, Input input)
+static RequestId submit(runtime_test::Peer& client, CommandId binding, Input input)
 {
-    return take(client.submit(binding, input, 256));
+    return take(runtime_test::send<Async>(client, binding, std::move(input)));
 }
 
 static void eventIdentities()
 {
     using namespace runtime_detail;
     DeferredSlots slots;
-    slots.reserve(128);
-    CompletionQueue queue(128);
-    SessionIdentity epoch{17, 29};
-    CompletionEvent event;
-    check(queue.tryPop(event) == cxx::EQueuePopResult::EMPTY);
-    auto old = *slots.tryEmplacePrepared();
+    CompletionQueue queue;
+    check(queue.tryPop() == nullptr);
+    const auto old = slots.emplace();
     check(slots.erase(old));
-    auto fresh = *slots.tryEmplacePrepared();
-    check(fresh != old && slots.find(old) == nullptr && slots.find(fresh) != nullptr);
-    check(queue.tryPush(CompletionEvent{epoch, old}) == cxx::EQueuePushResult::ACCEPTED);
-    check(queue.tryPop(event) == cxx::EQueuePopResult::VALUE && !slots.find(event.id));
-    check(queue.tryPush(CompletionEvent{SessionIdentity{18, 29}, fresh}) == cxx::EQueuePushResult::ACCEPTED);
-    check(queue.tryPop(event) == cxx::EQueuePopResult::VALUE && event.session != epoch);
+    const auto fresh = slots.emplace();
+    check(fresh != old && slots.find(old) == nullptr);
+    auto* first = slots.find(fresh);
+    queue.push(*first);
+    // Growth cannot move a published notification node; its owner is the existing stable Pending slot.
+    std::vector<CompletionId> ids;
+    for (unsigned i = 0; i < 4096; ++i)
+    {
+        const auto id = slots.emplace();
+        ids.push_back(id);
+        queue.push(*slots.find(id));
+    }
+    check(queue.size() == 4097 && queue.tryPop() == first);
     check(slots.erase(fresh));
+    for (auto id : ids) { check(queue.tryPop() == slots.find(id)); check(slots.erase(id)); }
+    check(queue.tryPop() == nullptr && slots.empty());
 }
 
 struct AsyncCommands final
@@ -319,42 +305,39 @@ int main()
     check(first_handler != second_handler);
     RenderResult<void> run;
     std::atomic<bool> run_returned{false};
+    const auto directory_id = take(server->commandId<ListCommands>());
     std::thread render([&] { run = server->run(); run_returned.store(true, std::memory_order_release); });
-    auto a = take(RenderClient::create("runtime.async", {1024 * 1024, 256}));
-    auto b = take(RenderClient::create("runtime.async", {1024 * 1024, 256}));
-    (void)take(a->hello());
-    (void)take(b->hello());
-    check(wait(*a).header.outcome == ECommandOutcome::SUCCESS);
-    check(wait(*b).header.outcome == ECommandOutcome::SUCCESS);
+    auto a = take(runtime_test::connect("runtime.async", directory_id));
+    auto b = take(runtime_test::connect("runtime.async", directory_id));
     check(bool(runtime_test::refresh(*a)) && bool(runtime_test::refresh(*b)));
-    auto bound_a = take(a->bind<Async>());
-    auto bound_b = take(b->bind<Async>());
+    auto bound_a = take(runtime_test::find<Async>(*a));
+    auto bound_b = take(runtime_test::find<Async>(*b));
 
     const auto first_a = submit(*a, bound_a, {3, 0, 31, {}});
     const auto first_b = submit(*b, bound_b, {3, 1, 47, {}});
     check(first_a == first_b);
     until([&] { return state.started.load() == 2; });
     state.finish(1);
-    check(take(wait(*b).take(bound_b)).response().value == 47);
-    RenderCompletion absent;
-    check(take(a->tryReceive(absent)) == ERenderReceive::EMPTY);
+    check(wait(*b).get<Output>().value == 47);
+    lux::platform::ipc::IpcMessage absent;
+    check(a->requester.tryReceive(absent) == lux::platform::ipc::EIpcReceive::EMPTY);
     // Switch while A's accepted request still belongs to the original Handler. B coordinates
     // through the Select response; its next dispatch uses the new object with the same CommandId.
-    auto selection = take(b->bind<SelectCommandBinding>());
-    CommandSelection change{bound_b.command(), second_handler};
-    (void)take(b->submit(selection, change));
-    check(take(wait(*b).take(selection)).header().outcome == ECommandOutcome::SUCCESS);
+    auto selection = take(runtime_test::find<SelectCommandBinding>(*b));
+    CommandSelection change{bound_b, second_handler};
+    (void)take(runtime_test::send<SelectCommandBinding>(*b, selection, change));
+    check(wait(*b).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
     (void)submit(*b, bound_b, {3, 2, 59, {}});
     until([&] { return alternate.started.load() == 1; });
     check(state.started.load() == 2 && state.gates[0].operation.load() != nullptr);
     alternate.finish(2);
-    check(take(wait(*b).take(bound_b)).response().value == 59);
-    check(take(a->tryReceive(absent)) == ERenderReceive::EMPTY);
+    check(wait(*b).get<Output>().value == 59);
+    check(a->requester.tryReceive(absent) == lux::platform::ipc::EIpcReceive::EMPTY);
     state.finish(0);
-    check(take(wait(*a).take(bound_a)).response().value == 31);
+    check(wait(*a).get<Output>().value == 31);
     change.handler = first_handler;
-    (void)take(b->submit(selection, change));
-    check(take(wait(*b).take(selection)).header().outcome == ECommandOutcome::SUCCESS);
+    (void)take(runtime_test::send<SelectCommandBinding>(*b, selection, change));
+    check(wait(*b).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
     until([&] { return alternate.destroyed.load() == 1; });
 
     // 0 pending, synchronous value/error/stopped, including a sender whose start has a visible tail.
@@ -362,47 +345,42 @@ int main()
     {
         const auto id = submit(*a, bound_a, {mode, 0, 73, {}});
         auto result = wait(*a);
-        check(result.header.request == id);
-        if (mode == 1) check(result.header.outcome == ECommandOutcome::FAILED &&
-            result.header.error.type == kRuntimeUnsupported);
-        else if (mode == 2) check(result.header.outcome == ECommandOutcome::CANCELLED);
-        else check(take(std::move(result).take(bound_a)).response().value == 73);
+        check(result.metadata<ReplyHeader>().request == id);
+        if (mode == 1) check(result.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED &&
+            result.get<RenderError>().type == kRuntimeUnsupported);
+        else if (mode == 2) check(result.metadata<ReplyHeader>().outcome == ECommandOutcome::CANCELLED);
+        else check(std::move(result).get<Output>().value == 73);
     }
     check(state.premature_destroy.load() == 0);
 
     // Explicit promotion moves an inline Request once, then only the stable borrow is used.
-    // Explicit cancellation and unknown outcome both return the owned input without inventing rollback.
+    // Only the explicit Output owns its source after success. Cancellation/unknown do not return an input.
     for (const auto mode : {6u, 7u, 9u})
     {
         std::atomic<unsigned> destroyed{0};
-        const auto budget_before = a->retainedBytes();
         auto owner = std::make_shared<Probe>(&destroyed);
         const auto* backing = owner.get();
         (void)submit(*a, bound_a, {mode, 0, 913, std::move(owner)});
         if (mode == 6) state.finish(0);
         {
-            auto result = take(wait(*a).take(bound_a));
-            check(result.request().owner.get() == backing && result.request().value == 913);
-            check(destroyed.load() == 0 && a->retainedBytes() > budget_before);
-            if (mode == 6) check(result.response().value == 913 && result.response().owner.get() == backing);
+            auto result = wait(*a);
+            if (mode == 6) check(result.get<Output>().value == 913 && result.get<Output>().owner.get() == backing);
             else if (mode == 7)
-                check(result.header().outcome == ECommandOutcome::OUTCOME_UNKNOWN &&
-                    !result.tryResponse() && state.committed.load() == 1);
-            else check(result.header().outcome == ECommandOutcome::CANCELLED && !result.tryResponse());
+                check(result.metadata<ReplyHeader>().outcome == ECommandOutcome::OUTCOME_UNKNOWN && state.committed.load() == 1);
+            else check(result.metadata<ReplyHeader>().outcome == ECommandOutcome::CANCELLED);
         }
         until([&] { return destroyed.load() == 1; });
-        check(a->retainedBytes() == budget_before);
     }
-    auto transferred = take(a->bind<TransferredAsync>());
+    auto transferred = take(runtime_test::find<TransferredAsync>(*a));
     Input invalid;
-    (void)take(a->submit(transferred, invalid, 256));
-    check(wait(*a).header.error.type == kProtocolContract && state.transferred_rejected.load() == 1);
+    (void)take(runtime_test::send<TransferredAsync>(*a, transferred, invalid));
+    check(wait(*a).get<RenderError>().type == kProtocolContract && state.transferred_rejected.load() == 1);
 
     unsigned total = state.started.load();
-    for (const unsigned count : {1u, 16u, 128u})
+    for (const unsigned count : {1u, 16u, 129u})
     {
         std::atomic<unsigned> destroyed{0};
-        std::array<RequestId, 128> ids;
+        std::array<RequestId, 129> ids;
         for (unsigned i = 0; i < count; ++i)
         {
             auto owner = std::make_shared<Probe>(&destroyed);
@@ -415,28 +393,21 @@ int main()
         check(destroyed.load() == 0);
         const auto tick = server->stats().ticks;
         until([&] { return server->stats().ticks > tick + 3; });
-        if (count == 128)
-        {
-            const auto extra = submit(*a, bound_a, {3, 128, 9999, {}});
-            auto rejected = wait(*a);
-            check(rejected.header.request == extra && rejected.header.error.type == kRuntimeCapacity);
-            check(state.started.load() == total && state.gates[128].operation.load() == nullptr);
-        }
         // Reverse burst on a separate producer thread. Both links retain their original RequestId.
         std::thread producer([&] { for (unsigned i = count; i-- > 0;) state.finish(i); });
-        std::array<bool, 128> seen{};
+        std::array<bool, 129> seen{};
         unsigned consumed = 0;
         until([&] {
             for (unsigned link = 0; link < 2; ++link)
             {
                 auto& client = link ? *b : *a;
-                RenderCompletion completion;
-                auto status = take(client.tryReceive(completion));
-                if (status != ERenderReceive::RECEIVED) continue;
-                auto result = take(std::move(completion).take(link ? bound_b : bound_a));
-                const auto index = result.response().value - 1000;
+                lux::platform::ipc::IpcMessage completion;
+                auto status = client.requester.tryReceive(completion);
+                if (status != lux::platform::ipc::EIpcReceive::RECEIVED) continue;
+                auto result = std::move(completion);
+                const auto index = result.get<Output>().value - 1000;
                 check(index < count && index % 2 == link && !seen[index]);
-                check(result.header().request == ids[index] && result.response().owner);
+                check(result.metadata<ReplyHeader>().request == ids[index] && result.get<Output>().owner);
                 seen[index] = true;
                 ++consumed;
             }
@@ -469,5 +440,5 @@ int main()
     server.reset();
     b.reset();
     check(final_destroyed.load() == 1 && state.premature_destroy.load() == 0);
-    std::puts("async: 0/1/16/128 pending; synchronous/error/stopped; reverse burst; capacity; shutdown ownership PASS");
+    std::puts("async: 0/1/16/129 pending; synchronous/error/stopped; reverse burst; dynamic stable slots; shutdown ownership PASS");
 }

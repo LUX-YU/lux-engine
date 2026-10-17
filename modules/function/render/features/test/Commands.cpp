@@ -40,13 +40,13 @@ int main()
     CHECK(payload);
     SetTexture::Request set;
     set.source = std::move(*payload);
-    CHECK(*CommandValueTraits<SetTexture::Request>::retainedBytes(set) == sizeof(set) + backing_bytes);
+    CHECK(set.source.retainedBytes() == backing_bytes);
     CHECK(set.source.bytes().data() == original + 8 && set.source.bytes().size() == 4);
     source.reset();
     SetTextureRegion::Request region;
     region.source = std::move(set.source);
     CHECK(set.source.bytes().empty() && set.source.retainedBytes() == 0);
-    CHECK(*CommandValueTraits<SetTextureRegion::Request>::retainedBytes(region) == sizeof(region) + backing_bytes);
+    CHECK(region.source.retainedBytes() == backing_bytes);
     CHECK(region.source.bytes().data() == original + 8 && destroyed == 0);
     region = {};
     CHECK(destroyed == 1);

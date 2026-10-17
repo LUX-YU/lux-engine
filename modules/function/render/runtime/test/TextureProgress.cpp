@@ -1,3 +1,4 @@
+#include <lux/engine/render/protocol/AsyncCommand.hpp>
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
@@ -25,19 +26,6 @@ struct TextureProbe final
     struct Request final { RenderPayload source; std::uint32_t dimension; };
     using Response = Ack;
 };
-namespace lux::render
-{
-    template <> struct CommandValueTraits<TextureProbe::Request>
-    {
-        static RenderResult<std::size_t> retainedBytes(const TextureProbe::Request& value) noexcept
-        {
-            const auto bytes = cxx::checkedAdd(sizeof(value), value.source.retainedBytes());
-            if (!bytes) return cxx::unexpected(RenderError{kEncodingLimit});
-            return *bytes;
-        }
-    };
-}
-
 static std::atomic<unsigned> sources{0}, pins{0}, completed{0}, submitted{0}, fail_at{0};
 static std::atomic<bool> hold{false};
 static std::atomic<VkResult> submit_error{VK_ERROR_OUT_OF_HOST_MEMORY};
@@ -111,18 +99,6 @@ template <class Predicate> static void until(Predicate predicate)
     while (!predicate()) { CHECK(Clock::now() < end); std::this_thread::yield(); }
 }
 
-static RenderCompletion wait(RenderClient& client, RequestId id)
-{
-    RenderCompletion reply;
-    until([&] {
-        const auto result = take(client.tryReceive(reply));
-        CHECK(result != ERenderReceive::CLOSED);
-        return result == ERenderReceive::RECEIVED;
-    });
-    CHECK(reply.header.request == id);
-    return reply;
-}
-
 static auto asset(unsigned dimension)
 {
     ++sources;
@@ -156,18 +132,18 @@ static void shutdownAndLoss()
         config.device.multiple_queues = true;
         config.uploads = TransferOptions{1024 * 1024, 1, 32 * 1024 * 1024};
         auto server = take(RenderServer::create(withCpu(worker, config)));
+        const auto catalog = take(server->commandId<ListCommands>());
         CHECK(server->registerFeature<TextureProbe>(feature_test::Provider<ProbeCommands>{{&definition, &definition_graph, nullptr}}));
         std::atomic<bool> run_finished{false};
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); run_finished = true; });
-        auto client = take(RenderClient::create(config.channel_name));
-        CHECK(wait(*client, take(client->hello())).header.outcome == ECommandOutcome::SUCCESS);
+        auto client = take(runtime_test::connect(config.channel_name, catalog));
         CHECK(runtime_test::refresh(*client));
-        auto bound = take(client->bind<TextureProbe>());
+        auto bound = take(runtime_test::find<TextureProbe>(*client));
         auto source = asset(2048);
         std::array payload{take(RenderPayload::fromVector(source, 0, source->size()))};
         if (lost) { submit_error = VK_ERROR_DEVICE_LOST; fail_at = submitted + 2; }
-        const auto id = take(submitValue(*client, bound, TextureProbe::Request{payload[0], 2048}));
+        const auto id = take(runtime_test::send<TextureProbe>(*client, bound, TextureProbe::Request{payload[0], 2048}));
         source.reset(); payload = {};
         host.entered.wait();
         CHECK(sources == 1 && pins == 1 && !run_finished);
@@ -175,9 +151,9 @@ static void shutdownAndLoss()
         host.resume.count_down();
         until([&] { return run_finished.load(); });
         render.join();
-        CHECK(run_ok != lost && pins == 0 && sources == 1);
+        CHECK(run_ok != lost && pins == 0 && sources == 0);
         auto reply = wait(*client, id);
-        CHECK(reply.header.outcome == ECommandOutcome::OUTCOME_UNKNOWN);
+        CHECK(reply.metadata<ReplyHeader>().outcome == ECommandOutcome::OUTCOME_UNKNOWN);
         reply = {};
         CHECK(sources == 0 && server->stats().validation_errors == 0);
         fail_at = 0;
@@ -213,18 +189,16 @@ static void productionShutdownAndLoss()
         config.device.texture_descriptors = true;
         config.uploads = TransferOptions{1024 * 1024, 1, 32 * 1024 * 1024};
         auto server = take(RenderServer::create(withCpu(worker, config)));
+        const auto catalog = take(server->commandId<ListCommands>());
         CHECK(server->registerStorage<lux::render::TextureStorage>({16, 32 * 1024 * 1024}));
         std::atomic<bool> run_finished{false};
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); run_finished = true; });
-        auto client = take(RenderClient::create(config.channel_name));
-        CHECK(wait(*client, take(client->hello())).header.outcome == ECommandOutcome::SUCCESS);
+        auto client = take(runtime_test::connect(config.channel_name, catalog));
         CHECK(runtime_test::refresh(*client));
         const auto storage = take(runtime_test::prepareStorage(*client, kTextureStorageType.name(), "default"));
-        auto bound = take(client->bind<SetTexture>());
+        auto bound = take(runtime_test::find<SetTexture>(*client));
         auto source = asset(2048);
-        const auto* address = source->data();
-        const auto capacity = source->capacity();
         SetTexture::Request input{{storage, {}}, 0, information(2048, 1, false),
             take(RenderPayload::fromVector(source, 0, source->size()))};
         const auto before = submitted.load();
@@ -233,7 +207,7 @@ static void productionShutdownAndLoss()
             submit_error = VK_ERROR_DEVICE_LOST;
             fail_at = before + 2;
         }
-        const auto id = take(submitValue(*client, bound, input));
+        const auto id = take(runtime_test::send<SetTexture>(*client, bound, input));
         source.reset();
         input.source = {};
         host.entered.wait();
@@ -244,19 +218,13 @@ static void productionShutdownAndLoss()
         host.resume.count_down();
         until([&] { return run_finished.load(); });
         render.join();
-        CHECK(run_ok != lost && sources == 1);
+        CHECK(run_ok != lost && sources == 0);
         auto reply = wait(*client, id);
-        CHECK(reply.header.outcome == ECommandOutcome::OUTCOME_UNKNOWN);
-        {
-            auto returned = take(std::move(reply).take(bound));
-            CHECK(returned.request().source.bytes().view().data() == address);
-            CHECK(returned.request().source.retainedBytes() >= capacity);
-            CHECK(client->retainedBytes() != 0 && server->stats().validation_errors == 0);
-            server.reset();
-            // The returned request remains independently owned after Device/Responder teardown.
-            CHECK(sources == 1 && returned.request().source.bytes().view().data() == address);
-        }
-        CHECK(sources == 0 && client->retainedBytes() == 0);
+        CHECK(reply.metadata<ReplyHeader>().outcome == ECommandOutcome::OUTCOME_UNKNOWN);
+        CHECK(sources == 0 && server->stats().validation_errors == 0);
+        // Error Reply owns only its RenderError; it never implicitly returns the accepted source.
+        server.reset();
+        CHECK(reply.metadata<ReplyHeader>().outcome == ECommandOutcome::OUTCOME_UNKNOWN);
         fail_at = 0;
         submit_error = VK_ERROR_OUT_OF_HOST_MEMORY;
     }
@@ -272,16 +240,15 @@ int main()
         RenderServerConfig config{"runtime.texture.progress", true};
         config.device.multiple_queues = mode != 0;
         config.device.prefer_dedicated_queues = mode == 2;
-        config.completion_capacity = 1;
         config.uploads = TransferOptions{1024 * 1024, 1, 128 * 1024 * 1024};
         auto server = take(RenderServer::create(withCpu(host, config)));
+        const auto catalog = take(server->commandId<ListCommands>());
         CHECK(server->registerFeature<TextureProbe>(feature_test::Provider<ProbeCommands>{{&definition, &definition_graph, nullptr}}));
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); });
-        auto client = take(RenderClient::create(config.channel_name, {128 * 1024 * 1024}));
-        CHECK(wait(*client, take(client->hello())).header.outcome == ECommandOutcome::SUCCESS);
+        auto client = take(runtime_test::connect(config.channel_name, catalog));
         CHECK(runtime_test::refresh(*client));
-        auto bound = take(client->bind<TextureProbe>());
+        auto bound = take(runtime_test::find<TextureProbe>(*client));
         for (unsigned dimension : {512u, 2048u, 4096u})
         {
             auto source = asset(dimension);
@@ -291,13 +258,14 @@ int main()
             const auto begin = Clock::now();
             const auto before = server->stats().ticks;
             const auto submits = submitted.load();
-            auto id = take(submitValue(*client, bound, TextureProbe::Request{payload[0], dimension}));
+            auto id = take(runtime_test::send<TextureProbe>(*client, bound, TextureProbe::Request{payload[0], dimension}));
             source.reset(); payload = {};
             auto reply = wait(*client, id);
-            CHECK(reply.header.outcome == ECommandOutcome::SUCCESS);
-            CHECK(observed == address && sources == 1 && pins == 0);
+            CHECK(reply.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+            until([] { return sources == 0 && pins == 0; });
+            CHECK(observed == address);
             reply = {};
-            CHECK(sources == 0 && client->retainedBytes() == 0);
+            CHECK(sources == 0);
             csv << mode << ',' << size << ',' << (Clock::now() - begin).count() << ','
                 << server->stats().ticks - before << ',' << submitted - submits << '\n';
         }
@@ -305,13 +273,13 @@ int main()
         auto source = asset(2048);
         std::array payload{take(RenderPayload::fromVector(source, 0, source->size()))};
         fail_at = submitted + 2;
-        auto id = take(submitValue(*client, bound, TextureProbe::Request{payload[0], 2048}));
-        CHECK(wait(*client, id).header.outcome == ECommandOutcome::FAILED);
+        auto id = take(runtime_test::send<TextureProbe>(*client, bound, TextureProbe::Request{payload[0], 2048}));
+        CHECK(wait(*client, id).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
         CHECK(pins == 0);
         fail_at = 0;
         host.reject(true);
-        id = take(submitValue(*client, bound, TextureProbe::Request{payload[0], 2048}));
-        CHECK(wait(*client, id).header.outcome == ECommandOutcome::FAILED);
+        id = take(runtime_test::send<TextureProbe>(*client, bound, TextureProbe::Request{payload[0], 2048}));
+        CHECK(wait(*client, id).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
         host.reject(false);
         CHECK(pins == 0);
         source.reset(); payload = {};
@@ -321,7 +289,7 @@ int main()
         source = asset(512);
         payload = {take(RenderPayload::fromVector(source, 0, source->size()))};
         const auto before = submitted.load();
-        (void)take(submitValue(*client, bound, TextureProbe::Request{payload[0], 512}));
+        (void)take(runtime_test::send<TextureProbe>(*client, bound, TextureProbe::Request{payload[0], 512}));
         source.reset(); payload = {};
         until([&] { return submitted > before; });
         client.reset();

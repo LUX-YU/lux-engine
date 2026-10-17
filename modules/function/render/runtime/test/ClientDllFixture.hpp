@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/runtime/CommandValue.hpp>
+#include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <cstdlib>
 #include <vector>
 
@@ -11,12 +12,12 @@ namespace client_dll_test
         std::uint64_t identity = 0;
         std::vector<std::uint32_t> values;
         int* destroyed = nullptr;
-        const bool* pin_alive = nullptr;
+        const bool* host_loaded = nullptr;
 
         Batch() noexcept = default;
         Batch(Batch&& other) noexcept
             : identity(other.identity), values(std::move(other.values)),
-              destroyed(std::exchange(other.destroyed, nullptr)), pin_alive(other.pin_alive) {}
+              destroyed(std::exchange(other.destroyed, nullptr)), host_loaded(other.host_loaded) {}
         Batch(const Batch&) = delete;
         Batch& operator=(const Batch&) = delete;
         Batch& operator=(Batch&&) = delete;
@@ -25,7 +26,7 @@ namespace client_dll_test
         {
             if (destroyed)
             {
-                if (!*pin_alive) std::_Exit(EXIT_FAILURE);
+                if (!*host_loaded) std::_Exit(EXIT_FAILURE);
                 ++*destroyed;
             }
         }
@@ -43,7 +44,7 @@ namespace client_dll_test
         std::uint64_t identity = 0;
         std::vector<std::uint32_t> values;
         int* destroyed = nullptr;
-        const bool* pin_alive = nullptr;
+        const bool* host_loaded = nullptr;
     };
     static_assert(sizeof(WrongRequest) == sizeof(Batch) && alignof(WrongRequest) == alignof(Batch));
     struct WrongCommand final
@@ -51,18 +52,5 @@ namespace client_dll_test
         static constexpr std::string_view name = Command::name;
         using Request = WrongRequest;
         using Response = Batch;
-    };
-}
-
-namespace lux::render
-{
-    template <> struct CommandValueTraits<client_dll_test::Batch>
-    {
-        static RenderResult<std::size_t> retainedBytes(const client_dll_test::Batch& value) noexcept
-        {
-            if (value.values.capacity() > (SIZE_MAX - sizeof(value)) / sizeof(std::uint32_t))
-                return cxx::unexpected(RenderError{kProtocolContract});
-            return sizeof(value) + value.values.capacity() * sizeof(std::uint32_t);
-        }
     };
 }

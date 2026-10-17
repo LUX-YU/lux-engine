@@ -11,29 +11,7 @@ using namespace foundation_test;
 using namespace std::chrono_literals;
 using Clock = std::chrono::steady_clock;
 
-static RenderCompletion wait(RenderClient& client, RequestId id)
-{
-    const auto deadline = Clock::now() + 15s;
-    while (Clock::now() < deadline)
-    {
-        RenderCompletion result;
-        if (take(client.tryReceive(result)) == ERenderReceive::RECEIVED)
-        {
-            CHECK(result.header.request == id);
-            return result;
-        }
-        std::this_thread::yield();
-    }
-    std::abort();
-}
 
-template <RenderCommand C> static TypedRenderCompletion<C> call(
-    RenderClient& client, const BoundCommand<C>& binding, typename C::Request input
-)
-{
-    auto result = wait(client, take(client.submit(binding, input, 128 * 1024)));
-    return take(std::move(result).take(binding));
-}
 
 
 static std::atomic<unsigned> rejected_programs{0};
@@ -53,11 +31,11 @@ static RenderResult<ProgramContribution> programs(const void* value, std::string
         camera_fixture::programs(config, name), {}};
 }
 
-static void pixel(const TypedRenderCompletion<Readback>& result, unsigned width, unsigned x, unsigned y,
+static void pixel(const lux::platform::ipc::IpcMessage& result, unsigned width, unsigned x, unsigned y,
     std::array<unsigned, 4> expected)
 {
-    CHECK(result.header().outcome == ECommandOutcome::SUCCESS);
-    const auto bytes = result.response().pixels.bytes().view();
+    CHECK(result.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    const auto bytes = result.get<ReadbackResult>().pixels.bytes().view();
     CHECK((y * width + x + 1) * 4 <= bytes.size());
     for (unsigned channel = 0; channel < 4; ++channel)
         CHECK(std::abs(int(std::to_integer<unsigned>(bytes[(y * width + x) * 4 + channel])) -
@@ -83,96 +61,93 @@ int main()
     const auto feature = take(feature_test::registerGraph(*server,
         {&native_fixture::definition, &graph_ops, programs}));
     bool run_ok = false;
+    const auto directory_id = take(server->commandId<ListCommands>());
     std::thread thread([&] { run_ok = bool(server->run()); });
-    auto client = take(RenderClient::create(config.channel_name));
-    CHECK(wait(*client, take(client->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    auto client = take(runtime_test::connect(config.channel_name, directory_id));
     CHECK(runtime_test::refresh(*client));
-    const auto create_scene = take(client->bind<CreateScene>());
-    const auto create_view = take(client->bind<CreateView>());
-    const auto create_target = take(client->bind<CreateTarget>());
-    const auto create_effect = take(client->bind<CreateEffect>());
-    const auto attach = take(client->bind<Attach>());
-    const auto update = take(client->bind<UpdateCamera>());
-    const auto resize = take(client->bind<ResizeTarget>());
-    const auto read = take(client->bind<Readback>());
-    const auto progress = take(client->bind<QueryExecutionProgress>());
-    const auto remove = take(client->bind<RemoveScene>());
-    const auto scene = call(*client, create_scene, {}).response().scene;
+    const auto create_scene = take(runtime_test::find<CreateScene>(*client));
+    const auto create_view = take(runtime_test::find<CreateView>(*client));
+    const auto create_target = take(runtime_test::find<CreateTarget>(*client));
+    const auto create_effect = take(runtime_test::find<CreateEffect>(*client));
+    const auto attach = take(runtime_test::find<Attach>(*client));
+    const auto update = take(runtime_test::find<UpdateCamera>(*client));
+    const auto resize = take(runtime_test::find<ResizeTarget>(*client));
+    const auto read = take(runtime_test::find<Readback>(*client));
+    const auto progress = take(runtime_test::find<QueryExecutionProgress>(*client));
+    const auto remove = take(runtime_test::find<RemoveScene>(*client));
+    const auto scene = call<CreateScene>(*client, create_scene, {}).get<CreateScene::Response>().scene;
     native_fixture::Config graph{32, 32, 1, 0};
     const auto target = native_fixture::target(graph);
     CreateEffectRequest effect_request{target, {{feature, "main", take(ConfigValue::make(graph))}}};
-    auto created = call(*client, create_effect, effect_request);
-    CHECK(created.header().outcome == ECommandOutcome::SUCCESS);
-    const auto effect = created.response().effect;
+    auto created = call<CreateEffect>(*client, create_effect, effect_request);
+    CHECK(created.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    const auto effect = created.get<CreateEffect::Response>().effect;
     auto a = camera_fixture::oracle({1, 0, 0, 1});
     auto b = camera_fixture::oracle({0, 1, 0, 1});
-    const auto va = call(*client, create_view, {scene, a}).response().view;
-    const auto vb = call(*client, create_view, {scene, b}).response().view;
-    const auto ta = call(*client, create_target, {target}).response().target;
-    const auto tb = call(*client, create_target, {target}).response().target;
+    const auto va = call<CreateView>(*client, create_view, {scene, a}).get<CreateView::Response>().view;
+    const auto vb = call<CreateView>(*client, create_view, {scene, b}).get<CreateView::Response>().view;
+    const auto ta = call<CreateTarget>(*client, create_target, {target}).get<CreateTarget::Response>().target;
+    const auto tb = call<CreateTarget>(*client, create_target, {target}).get<CreateTarget::Response>().target;
     const AttachmentRequest ga{scene, va, ta, effect}, gb{scene, vb, tb, effect};
-    CHECK(call(*client, attach, ga).header().outcome == ECommandOutcome::SUCCESS);
-    CHECK(call(*client, attach, gb).header().outcome == ECommandOutcome::SUCCESS);
-    pixel(call(*client, read, {ga, {}}), 32, 16, 16, {255, 0, 0, 255});
-    pixel(call(*client, read, {gb, {}}), 32, 16, 16, {0, 255, 0, 255});
+    CHECK(call<Attach>(*client, attach, ga).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    CHECK(call<Attach>(*client, attach, gb).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    pixel(call<Readback>(*client, read, {ga, {}}), 32, 16, 16, {255, 0, 0, 255});
+    pixel(call<Readback>(*client, read, {gb, {}}), 32, 16, 16, {0, 255, 0, 255});
     const auto output = featureKey(native_fixture::type, "main", "pixels");
-    pixel(call(*client, read, {ga, output}), 32, 16, 16, {255, 0, 0, 255});
-    auto missing = call(*client, read, {ga, "missing.output"});
-    CHECK(missing.header().outcome == ECommandOutcome::FAILED && missing.header().error.type == kRuntimeIdentity);
-    auto image = call(*client, read, {ga, "shared:color"});
-    CHECK(image.header().outcome == ECommandOutcome::FAILED && image.header().error.type == vulkan::kUnsupported);
-    ReadbackRequest limited{ga, output};
-    auto capacity = wait(*client, take(client->submit(read, limited, sizeof(ReadbackResult))));
-    CHECK(capacity.header.outcome == ECommandOutcome::FAILED && capacity.header.error.type == kRuntimeCapacity);
-    pixel(call(*client, read, {ga, output}), 32, 16, 16, {255, 0, 0, 255});
-    const auto before = call(*client, progress, ga).response();
+    pixel(call<Readback>(*client, read, {ga, output}), 32, 16, 16, {255, 0, 0, 255});
+    auto missing = call<Readback>(*client, read, {ga, "missing.output"});
+    CHECK(missing.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED && missing.get<RenderError>().type == kRuntimeIdentity);
+    auto image = call<Readback>(*client, read, {ga, "shared:color"});
+    CHECK(image.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED && image.get<RenderError>().type == vulkan::kUnsupported);
+    pixel(call<Readback>(*client, read, {ga, output}), 32, 16, 16, {255, 0, 0, 255});
+    const auto before = call<QueryExecutionProgress>(*client, progress, ga).get<QueryExecutionProgress::Response>();
     CHECK(before.count(EExecutionOutcome::EXECUTED) > 0);
     auto wrong_group = ga;
     wrong_group.view = {};
-    auto wrong_progress = call(*client, progress, wrong_group);
-    CHECK(wrong_progress.header().outcome == ECommandOutcome::FAILED &&
-        wrong_progress.header().error.type == kRuntimeIdentity);
-    const auto after = call(*client, progress, ga).response();
+    auto wrong_progress = call<QueryExecutionProgress>(*client, progress, wrong_group);
+    CHECK(wrong_progress.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED &&
+        wrong_progress.get<RenderError>().type == kRuntimeIdentity);
+    const auto after = call<QueryExecutionProgress>(*client, progress, ga).get<QueryExecutionProgress::Response>();
     for (std::size_t i = 0; i < before.counts.size(); ++i) CHECK(after.counts[i] >= before.counts[i]);
-    CHECK(call(*client, progress, gb).response().count(EExecutionOutcome::EXECUTED) > 0);
+    CHECK(call<QueryExecutionProgress>(*client, progress, gb).get<QueryExecutionProgress::Response>().count(EExecutionOutcome::EXECUTED) > 0);
     const auto compiled = server->stats().compiled_graphs;
     b.projection[0] = .5f;
     b.viewport = {.5f, 0, .5f, 1};
-    CHECK(call(*client, update, {scene, vb, b}).header().outcome == ECommandOutcome::SUCCESS);
+    CHECK(call<UpdateCamera>(*client, update, {scene, vb, b}).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
     // Camera Ack commits CPU state, not a displayed frame. Observe a subsequent actual output.
     const auto deadline = Clock::now() + 5s;
     for (;;)
     {
-        auto frame = call(*client, read, {gb, {}});
-        CHECK(frame.header().outcome == ECommandOutcome::SUCCESS);
-        const auto pixels = frame.response().pixels.bytes().view();
+        auto frame = call<Readback>(*client, read, {gb, {}});
+        CHECK(frame.metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+        const auto pixels = frame.get<Readback::Response>().pixels.bytes().view();
         const auto green = std::to_integer<int>(pixels[(16 * 32 + 24) * 4 + 1]);
         if (std::abs(green - 128) <= 1) break;
         CHECK(Clock::now() < deadline);
     }
-    pixel(call(*client, read, {gb, {}}), 32, 24, 16, {0, 128, 0, 128});
-    pixel(call(*client, read, {gb, {}}), 32, 8, 16, {32, 64, 128, 255});
-    pixel(call(*client, read, {ga, {}}), 32, 16, 16, {255, 0, 0, 255});
+    pixel(call<Readback>(*client, read, {gb, {}}), 32, 24, 16, {0, 128, 0, 128});
+    pixel(call<Readback>(*client, read, {gb, {}}), 32, 8, 16, {32, 64, 128, 255});
+    pixel(call<Readback>(*client, read, {ga, {}}), 32, 16, 16, {255, 0, 0, 255});
     invalid = b; invalid.projection[15] = std::numeric_limits<float>::quiet_NaN();
-    CHECK(call(*client, update, {scene, vb, invalid}).header().outcome == ECommandOutcome::FAILED);
+    CHECK(call<UpdateCamera>(*client, update, {scene, vb, invalid}).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
     invalid = b; invalid.viewport.x = .75f;
-    CHECK(call(*client, update, {scene, vb, invalid}).header().outcome == ECommandOutcome::FAILED);
+    CHECK(call<UpdateCamera>(*client, update, {scene, vb, invalid}).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
     auto wrong = vb; ++wrong.gen;
-    CHECK(call(*client, update, {scene, wrong, b}).header().outcome == ECommandOutcome::FAILED);
-    pixel(call(*client, read, {gb, {}}), 32, 24, 16, {0, 128, 0, 128});
+    CHECK(call<UpdateCamera>(*client, update, {scene, wrong, b}).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
+    pixel(call<Readback>(*client, read, {gb, {}}), 32, 24, 16, {0, 128, 0, 128});
     auto enlarged = target; enlarged.width = 64; enlarged.height = 48;
-    CHECK(call(*client, resize, {tb, enlarged}).header().outcome == ECommandOutcome::SUCCESS);
-    pixel(call(*client, read, {gb, {}}), 64, 48, 24, {0, 128, 0, 128});
-    pixel(call(*client, read, {gb, {}}), 64, 16, 24, {32, 64, 128, 255});
+    CHECK(call<ResizeTarget>(*client, resize, {tb, enlarged}).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    pixel(call<Readback>(*client, read, {gb, {}}), 64, 48, 24, {0, 128, 0, 128});
+    pixel(call<Readback>(*client, read, {gb, {}}), 64, 16, 24, {32, 64, 128, 255});
     graph.graphics = 2;
     effect_request.features[0].config = take(ConfigValue::make(graph));
-    auto bad = call(*client, create_effect, std::move(effect_request));
-    CHECK(bad.header().outcome == ECommandOutcome::FAILED && bad.header().error.type == kFeatureContract);
+    auto bad = call<CreateEffect>(*client, create_effect, std::move(effect_request));
+    CHECK(bad.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED && bad.get<RenderError>().type == kFeatureContract);
     CHECK(rejected_programs == 1);
     CHECK(server->stats().compiled_graphs == compiled);
-    pixel(call(*client, read, {ga, {}}), 32, 16, 16, {255, 0, 0, 255});
-    CHECK(call(*client, remove, {scene}).header().outcome == ECommandOutcome::SUCCESS);
-    CHECK(call(*client, update, {scene, vb, b}).header().outcome == ECommandOutcome::FAILED);
+    pixel(call<Readback>(*client, read, {ga, {}}), 32, 16, 16, {255, 0, 0, 255});
+    CHECK(call<RemoveScene>(*client, remove, {scene}).metadata<ReplyHeader>().outcome == ECommandOutcome::SUCCESS);
+    CHECK(call<UpdateCamera>(*client, update, {scene, vb, b}).metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED);
     server->stop(); thread.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
     std::puts("Camera complete matrices, isolated View/viewport, resize, stale/invalid rollback: PASS");

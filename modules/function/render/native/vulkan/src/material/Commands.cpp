@@ -1,3 +1,4 @@
+#include <lux/engine/render/protocol/AsyncCommand.hpp>
 #include <lux/engine/render/native/vulkan/material/MaterialCommands.hpp>
 #include <lux/engine/render/native/vulkan/material/MaterialStorage.hpp>
 
@@ -5,7 +6,7 @@ namespace lux::render::vulkan
 {
     RenderResult<void> MaterialCommands::set(const SetMaterial::Request&, Reply<SetMaterial>& reply) noexcept
     {
-        auto pending = reply.defer(sizeof(MaterialPublished));
+        auto pending = reply.defer();
         if (!pending) return cxx::unexpected(pending.error());
         auto storage = device_.resources().borrow<MaterialStorage>(pending->request().material.storage);
         if (!storage) return pending->fail(storage.error());

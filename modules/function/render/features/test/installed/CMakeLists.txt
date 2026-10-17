@@ -17,7 +17,7 @@ enable_testing()
 
 find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_features)
 
-foreach(forbidden render_client render_server render_vulkan render_runtime platform_ipc)
+foreach(forbidden render_commands render_server render_vulkan render_runtime platform_ipc)
     if(TARGET lux::engine::render::${forbidden} OR TARGET lux::engine::platform::${forbidden})
         message(FATAL_ERROR "Feature consumer imported unrelated target ${forbidden}")
     endif()

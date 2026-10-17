@@ -1,5 +1,4 @@
 #include "../Discovery.hpp"
-#include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include "Fixture.hpp"
 #include "../../../resource/test/CpuFixture.hpp"
@@ -40,18 +39,6 @@ template <class Predicate> static void until(Predicate predicate)
     }
 }
 
-static RenderCompletion wait(RenderClient& client, RequestId id)
-{
-    RenderCompletion result;
-    until([&] {
-        const auto state = take(client.tryReceive(result));
-        check(state != ERenderReceive::CLOSED, "endpoint closed before its terminal reply");
-        return state == ERenderReceive::RECEIVED;
-    });
-    check(result.header.request == id, "reply crossed request identity");
-    return result;
-}
-
 static void exercise(const char* library, ETerminal terminal)
 {
     const auto module = LoadLibraryA(library);
@@ -73,6 +60,7 @@ static void exercise(const char* library, ETerminal terminal)
     RenderResult<FeatureId> installed = lux::cxx::unexpected(RenderError{kRuntimeState});
     make(*server, host, pin, installed);
     check(bool(installed), "Feature registration failed");
+    const auto catalog = take(server->commandId<ListCommands>());
     std::atomic<bool> finished{false};
     bool run_ok = false;
     std::thread render([&] {
@@ -80,26 +68,21 @@ static void exercise(const char* library, ETerminal terminal)
         finished.store(true, std::memory_order_release);
     });
     {
-        auto client = take(RenderClient::create("runtime.async.dll_callback_tail"));
-        {
-            auto hello = wait(*client, take(client->hello()));
-            check(hello.header.outcome == ECommandOutcome::SUCCESS, "Hello failed");
-        }
+        auto client = take(runtime_test::connect("runtime.async.dll_callback_tail", catalog));
         check(bool(runtime_test::refresh(*client)), "explicit discovery failed");
-        auto binding = take(client->bind<Command>());
+        auto binding = take(runtime_test::find<Command>(*client));
         std::uint32_t request = 4097;
-        auto reply = wait(*client, take(client->submit(binding, request)));
+        auto reply = runtime_test::wait(*client, take(runtime_test::send<Command>(*client, binding, request)));
         if (terminal == ETerminal::VALUE)
         {
-            auto typed = take(std::move(reply).take(binding));
-            check(typed.response() == 4097, "typed response changed");
+            check(reply.get<Command::Response>() == 4097, "typed response changed");
         }
         else if (terminal == ETerminal::FAILURE)
         {
-            check(reply.header.outcome == ECommandOutcome::FAILED &&
-                reply.header.error == RenderError{kProtocolContract, {73}}, "error terminal changed");
+            check(reply.metadata<ReplyHeader>().outcome == ECommandOutcome::FAILED &&
+                reply.get<RenderError>() == RenderError{kProtocolContract, {73}}, "error terminal changed");
         }
-        else check(reply.header.outcome == ECommandOutcome::CANCELLED, "stopped terminal changed");
+        else check(reply.metadata<ReplyHeader>().outcome == ECommandOutcome::CANCELLED, "stopped terminal changed");
         check(gate.published.try_acquire_for(15s), "provider did not enter its callback tail");
         // All Reply, original Request, bound type and manifest code pins are
         // destroyed with this scope, before checking the callback's own pin.

@@ -48,7 +48,7 @@ target_include_directories(render_native_instrumented
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../pinclude" "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude" "${LUX_VMA_INCLUDE_DIR}"
 )
 
-target_link_libraries(render_native_instrumented PUBLIC render_features Vulkan::Vulkan
+target_link_libraries(render_native_instrumented PUBLIC render_features render_protocol_handlers Vulkan::Vulkan
     PRIVATE lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared lux::engine::platform::gapi
 )
 
@@ -87,7 +87,7 @@ foreach(header Error DeviceSession DescriptorArray CompiledGraph ExecutionContex
         CONTENT "#include <lux/engine/render/native/vulkan/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
     )
     add_library(render_native_header_${target} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp")
-    if(header MATCHES "^(texture|mesh|material)/")
+    if(header MATCHES "^(texture|mesh|material|instance)/")
         target_link_libraries(render_native_header_${target} PRIVATE render_native_vulkan_extensions)
     else()
         target_link_libraries(render_native_header_${target} PRIVATE render_native_vulkan)

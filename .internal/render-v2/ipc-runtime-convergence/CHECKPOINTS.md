@@ -55,3 +55,18 @@ consumer pause before recycle rejects producer growth under injected OOM, then p
 allocation after release. FIFO test streams one million requests/replies. All12 source IPC tests passed.
 Independent I3 Release/Debug/ASan, repeated concurrent stress and comparable I2/I3 cost runs follow commit.
 This is an IPC gate only; full Render API consumers remain the next authorized I4 migration.
+
+### I3 exact checkpoint result
+
+`7f3f62979eaea566ccfe6719708c590d6602bf25` checked in independent no-hardlinks `i3-source`:
+Release/Debug/ASan all builds, second no-work, 12/12 IPC cases each (including relocated consumer/header
+checks), plus50 ASan stress processes (10 each messages/directory/grace/closeout/million-FIFO). Error=0.
+Initial direct ASan stress launch lacked developer-shell runtime PATH (0xc0000135 before main); recorded
+and rerun under the same environment as CTest, without source changes. Raw evidence: `evidence/I3`.
+
+Ten alternating independent process pairs compare exact I2 fixed queue and I3 segmented queue under
+identical direct-message work, 10,000 small operations per mode/run. Median run p95: same-thread200ns
+both, two-core750ns→650ns. These coarse-clock samples are not a speed qualification: I3 maxima include
+614,100ns same-thread and2,658,200ns two-core; tails remain unattributed/PARTIAL. All raw rows retained,
+`paired-summary.csv/json` contains per-run p50/p95/p99/max, allocation counts and paired summaries.
+No comparison to the different old automatic-request-return workload is claimed.

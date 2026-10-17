@@ -2,6 +2,7 @@
 #include "Shader.hpp"
 #include "LayoutPlan.hpp"
 #include "Native.hpp"
+#include "ImageFormat.hpp"
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 
 #include <algorithm>
@@ -54,6 +55,10 @@ namespace lux::render::vulkan
                     VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
                         (use.access == EGraphAccess::ATTACHMENT_LOAD ? VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT : 0),
                     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+            case EGraphUse::DEPTH_ATTACHMENT:
+                return {VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+                    VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
             case EGraphUse::TRANSFER_SOURCE:
                 return {VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL};
             case EGraphUse::VERTEX:
@@ -201,7 +206,9 @@ namespace lux::render::vulkan
             if (auto* b = std::get_if<GraphBufferDesc>(&resource.description))
                 return std::get<GraphBufferRange>(use.range) == GraphBufferRange{0, b->size};
             const auto& image = std::get<GraphImageDesc>(resource.description);
-            return std::get<GraphImageRange>(use.range) == GraphImageRange{1, 0, image.mips, 0, image.layers};
+            return std::get<GraphImageRange>(use.range) == GraphImageRange{
+                rdesc::textureAspectMask(image.format), 0, image.mips, 0, image.layers
+            };
         }
     }
 
@@ -217,7 +224,7 @@ namespace lux::render::vulkan
         if (auto result = target.validate(); !result) return cxx::unexpected(result.error());
         const auto& device = session.device();
         const bool is_unsupported_target = target.kind != ETargetKind::OFFSCREEN || target.samples != 1 ||
-            target.format != rdesc::ETextureFormat::RGBA8_UNORM ||
+            imageFormat(target.format).native == VK_FORMAT_UNDEFINED ||
             target.width > device.properties().limits.maxImageDimension2D ||
             target.height > device.properties().limits.maxImageDimension2D;
         if (is_unsupported_target) return cxx::unexpected(RenderError{kUnsupported});
@@ -251,7 +258,9 @@ namespace lux::render::vulkan
                     image->format == rdesc::ETextureFormat::RGBA8_SRGB || image->format == rdesc::ETextureFormat::BC1_RGBA_SRGB;
                 const bool is_unsupported_image = image->layers != 1 || image->samples != 1 ||
                     (is_imported ? !sampled_format : image->mips != 1 ||
-                        image->format != rdesc::ETextureFormat::RGBA8_UNORM || resource.origin != EGraphOrigin::TRANSIENT);
+                        imageFormat(image->format).native == VK_FORMAT_UNDEFINED ||
+                        imageFormat(image->format).block != 1 ||
+                        resource.origin != EGraphOrigin::TRANSIENT);
                 if (is_unsupported_image) return cxx::unexpected(RenderError{kUnsupported});
             }
         }
@@ -290,6 +299,37 @@ namespace lux::render::vulkan
             plan.target_sized = true;
         }
         if (result.output_ == kGraphInvalidIndex) return cxx::unexpected(RenderError{kInvalidArgument});
+        // All attachments in one rendering scope have the same resize contract. Propagate only this
+        // physical extent constraint across shared Depth attachments; execution order/analysis is untouched.
+        bool changed;
+        do
+        {
+            changed = false;
+            for (const auto id : analysis.execution_order)
+            {
+                const auto& pass = graph.passes()[id.index];
+                if (pass.kind != EGraphPassKind::GRAPHICS) continue;
+                NativeResourcePlan* color = nullptr;
+                NativeResourcePlan* depth = nullptr;
+                for (const auto& use : pass.uses)
+                {
+                    if (use.usage == EGraphUse::COLOR_ATTACHMENT)
+                        color = &result.resources_[use.version.resource.index];
+                    if (use.usage == EGraphUse::DEPTH_ATTACHMENT)
+                        depth = &result.resources_[use.version.resource.index];
+                }
+                if (!color || !depth) continue;
+                const auto& c = std::get<GraphImageDesc>(color->description);
+                const auto& d = std::get<GraphImageDesc>(depth->description);
+                if (c.width != d.width || c.height != d.height)
+                    return cxx::unexpected(RenderError{kInvalidArgument});
+                if (color->target_sized != depth->target_sized)
+                {
+                    color->target_sized = depth->target_sized = true;
+                    changed = true;
+                }
+            }
+        } while (changed);
         auto planned = planLayouts(device, graph, analysis, pass_programs);
         if (!planned) return cxx::unexpected(planned.error());
         result.descriptor_plan_ = std::make_unique<LayoutPlan>(std::move(*planned));
@@ -323,6 +363,9 @@ namespace lux::render::vulkan
             CompiledPass compiled{};
             compiled.layout_program = id.index;
             compiled.clear_color = binding->clear_color;
+            if (!std::isfinite(binding->clear_depth) || binding->clear_depth < 0 || binding->clear_depth > 1)
+                return cxx::unexpected(RenderError{kInvalidArgument});
+            compiled.clear_depth = binding->clear_depth;
             compiled.dispatch = binding->dispatch;
             const bool compute = pass.kind == EGraphPassKind::COMPUTE;
             if (compute)
@@ -342,6 +385,12 @@ namespace lux::render::vulkan
                 const bool is_unsupported_use = use.usage == EGraphUse::UNSPECIFIED || use.fallback ||
                     !fullRange(use, resource);
                 if (is_unsupported_use) return cxx::unexpected(RenderError{kUnsupported, {id.index, index}});
+                if (use.usage == EGraphUse::COLOR_ATTACHMENT || use.usage == EGraphUse::DEPTH_ATTACHMENT)
+                {
+                    auto& attachment = use.usage == EGraphUse::COLOR_ATTACHMENT ? compiled.color : compiled.depth;
+                    if (attachment != kGraphInvalidIndex) return cxx::unexpected(RenderError{kUnsupported});
+                    attachment = index;
+                }
                 if (use.access == EGraphAccess::READ) { compiled.source = index; ++reads; }
                 else { compiled.destination = index; ++writes; }
                 if (resource.origin == EGraphOrigin::IMPORTED && use.access != EGraphAccess::READ)
@@ -391,12 +440,19 @@ namespace lux::render::vulkan
                     barrier.oldLayout = source.layout;
                     barrier.newLayout = current.layout;
                     barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+                    barrier.subresourceRange = {
+                        imageFormat(std::get<GraphImageDesc>(resource.description).format).aspects, 0, 1, 0, 1
+                    };
                     compiled.images.push_back({index, barrier});
                     resource.image_usage |= use.usage == EGraphUse::COLOR_ATTACHMENT ?
-                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : use.usage == EGraphUse::TRANSFER_SOURCE ?
+                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : use.usage == EGraphUse::DEPTH_ATTACHMENT ?
+                        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : use.usage == EGraphUse::TRANSFER_SOURCE ?
                         VK_IMAGE_USAGE_TRANSFER_SRC_BIT : VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-                    if (use.access == EGraphAccess::ATTACHMENT_LOAD) compiled.load = VK_ATTACHMENT_LOAD_OP_LOAD;
+                    if (use.access == EGraphAccess::ATTACHMENT_LOAD)
+                    {
+                        auto& load = use.usage == EGraphUse::DEPTH_ATTACHMENT ? compiled.depth_load : compiled.load;
+                        load = VK_ATTACHMENT_LOAD_OP_LOAD;
+                    }
                 }
                 else
                 {
@@ -426,7 +482,12 @@ namespace lux::render::vulkan
                 used[index] = true;
                 previous[index] = current;
             }
-            const bool is_unsupported_recipe = (!compute && writes != 1) || (compute && writes == 0) ||
+            const bool graphics = pass.kind == EGraphPassKind::GRAPHICS;
+            const auto attachments = unsigned(compiled.color != kGraphInvalidIndex) +
+                unsigned(compiled.depth != kGraphInvalidIndex);
+            if (graphics) compiled.destination = compiled.color != kGraphInvalidIndex ? compiled.color : compiled.depth;
+            const bool is_unsupported_recipe = (graphics && (!attachments || writes != attachments)) ||
+                (pass.kind == EGraphPassKind::TRANSFER && writes != 1) || (compute && writes == 0) ||
                 (pass.kind == EGraphPassKind::TRANSFER && reads > 1) ||
                 (pass.kind == EGraphPassKind::TRANSFER &&
                  !binding->shader.stages.empty());
@@ -464,6 +525,12 @@ namespace lux::render::vulkan
                 CompiledGraph::PipelineIdentity identity{
                     std::move(*shader), compute ? GraphicsState{} : binding->graphics
                 };
+                if (compiled.color != kGraphInvalidIndex)
+                    identity.color = imageFormat(std::get<GraphImageDesc>(
+                        result.resources_[compiled.color].description).format).native;
+                if (compiled.depth != kGraphInvalidIndex)
+                    identity.depth = imageFormat(std::get<GraphImageDesc>(
+                        result.resources_[compiled.depth].description).format).native;
                 std::ranges::sort(identity.graphics.vertex_bindings, {}, &VertexBinding::binding);
                 std::ranges::sort(identity.graphics.vertex_attributes, {}, &VertexAttribute::location);
                 const auto same = std::ranges::find(result.shader_identities_, identity);
@@ -472,7 +539,9 @@ namespace lux::render::vulkan
                 else
                 {
                     auto pipeline = compute ? compileCompute(device, result.layout_, identity.shader) :
-                        compileGraphics(device, result.layout_, identity.shader, identity.graphics);
+                        compileGraphics(
+                            device, result.layout_, identity.shader, identity.graphics, identity.color, identity.depth
+                        );
                     if (!pipeline) return cxx::unexpected(pipeline.error());
                     compiled.pipeline = *pipeline;
                     result.pipelines_.push_back(*pipeline);
@@ -494,10 +563,11 @@ namespace lux::render::vulkan
                 const auto size = std::get<GraphBufferDesc>(destination.description).size;
                 if (const auto* image = std::get_if<GraphImageDesc>(&source.description))
                 {
-                    if (size != std::uint64_t(image->width) * image->height * 4)
+                    if (size != std::uint64_t(image->width) * image->height * imageFormat(image->format).bytes)
                         return cxx::unexpected(RenderError{kInvalidArgument});
                     compiled.recipe = ERecipe::COPY_IMAGE_BUFFER;
                     destination.target_sized = source.target_sized;
+                    destination.target_pixel_bytes = imageFormat(image->format).bytes;
                 }
                 else
                 {
@@ -519,7 +589,8 @@ namespace lux::render::vulkan
             if (i == 0) continue;
             auto& previous = result.passes_[i - 1];
             const bool same_attachment = previous.recipe == ERecipe::DRAW &&
-                previous.destination == current.destination;
+                previous.color == current.color && previous.depth == kGraphInvalidIndex &&
+                current.depth == kGraphInvalidIndex;
             const bool preserves_content = current.load == VK_ATTACHMENT_LOAD_OP_LOAD;
             const bool attachment_only = current.images.size() == 1 && current.buffers.empty() &&
                 current.images[0].native.oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -536,6 +607,23 @@ namespace lux::render::vulkan
             const auto& resource = result.resources_[i];
             if (used[i] && resource.origin == EGraphOrigin::IMPORTED && !resource.storage)
                 return cxx::unexpected(RenderError{kUnsupported});
+            if (used[i] && resource.image_usage)
+            {
+                const auto format = imageFormat(std::get<GraphImageDesc>(resource.description).format).native;
+                VkFormatProperties properties{};
+                vkGetPhysicalDeviceFormatProperties(device.physical(), format, &properties);
+                VkFormatFeatureFlags required = 0;
+                if (resource.image_usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+                    required |= VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT;
+                if (resource.image_usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+                    required |= VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
+                if (resource.image_usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+                    required |= VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
+                if (resource.image_usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+                    required |= VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
+                if ((properties.optimalTilingFeatures & required) != required)
+                    return cxx::unexpected(RenderError{kUnsupported});
+            }
             if (!used[i] || !resource.readback) continue;
             VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
             barrier.srcStageMask = previous[i].stage;

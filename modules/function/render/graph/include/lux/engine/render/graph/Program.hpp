@@ -33,6 +33,7 @@ namespace lux::render
         std::array<float, 4> clear_color{0, 0, 0, 1};
         VDrawCommand draw = DrawVertices{};
         GraphicsState graphics;
+        float clear_depth = 1;
         std::vector<ProgramVertexBuffer> vertex_buffers;
         std::vector<ProgramResourceBinding> resources;
         std::array<std::uint32_t, 3> dispatch{1, 1, 1}; // Actual Compute workgroup count.

@@ -68,6 +68,12 @@ int main()
                     {lux::rdesc::EShaderType::FRAGMENT, "main", {native_fixture::frag.begin(), native_fixture::frag.end()}}
                 };
             }
+            if (graphics)
+            {
+                auto missing_depth = program;
+                missing_depth.graphics.depth_test = true;
+                CHECK(!compileGraph(*session, graph, analysis, {}, {&missing_depth, 1}, target));
+            }
             auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, graph, analysis, {},
                 {&program, 1}, target)));
             CHECK(code->resources().size() == 1 && code->passes().size() == 1 && code->hostBarriers().empty());

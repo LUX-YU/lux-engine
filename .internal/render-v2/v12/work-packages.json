@@ -731,9 +731,10 @@
       "T-GPU-12"
     ],
     "evidence": [
-      "N5-COLD-IMPLEMENTATION.md"
+      "N5-COLD-IMPLEMENTATION.md",
+      "N5-COLD-VERIFICATION.md"
     ],
-    "qualification": "Typed argument/requirement and live lowering checkpoint; final parameter and LayoutPlan contracts still in progress."
+    "qualification": "Implemented checkpoints listed; combined exact-I independent N5 R/D/ASan qualification pending. No performance upgrade."
   },
   "N5.2": {
     "title": "Live graph and parameter plans",
@@ -757,9 +758,10 @@
       "T-GPU-12"
     ],
     "evidence": [
-      "N5-COLD-IMPLEMENTATION.md"
+      "N5-COLD-VERIFICATION.md",
+      "N5-PARAMETERS-VERIFICATION.md"
     ],
-    "qualification": "Typed argument/requirement and live lowering checkpoint; final parameter and LayoutPlan contracts still in progress."
+    "qualification": "Implemented checkpoints listed; combined exact-I independent N5 R/D/ASan qualification pending. No performance upgrade."
   },
   "N5.3": {
     "title": "Single shader layout and relocation",
@@ -783,10 +785,11 @@
       "T-GPU-12"
     ],
     "evidence": [
-      "N5-LAYOUT-FREEZE.md",
-      "N5-LAYOUT-IMPLEMENTATION.md"
+      "N5-LAYOUT-VERIFICATION.md",
+      "N5-ASSETS-IMPLEMENTATION.md",
+      "N5-COMPUTE-VERIFICATION.md"
     ],
-    "qualification": "Native single layout/private packing/controlled relocation checkpoint; lglsl asset path and expanded parameter ABI still in progress."
+    "qualification": "Implemented checkpoints listed; combined exact-I independent N5 R/D/ASan qualification pending. No performance upgrade."
   },
   "N5.4": {
     "title": "Real shader ABI",
@@ -810,9 +813,12 @@
       "T-GPU-12"
     ],
     "evidence": [
-      "N5-STAGES-IMPLEMENTATION.md"
+      "N5-STAGES-VERIFICATION.md",
+      "N5-BLOCK-VERIFICATION.md",
+      "N5-PARAMETERS-VERIFICATION.md",
+      "N5-DEPTH-IMPLEMENTATION.md"
     ],
-    "qualification": "Explicit stage/name and real non-main graphics pixels tested; full ABI, parameters and formats still pending."
+    "qualification": "Implemented checkpoints listed; combined exact-I independent N5 R/D/ASan qualification pending. No performance upgrade."
   },
   "N5.5": {
     "title": "Indexed indirect depth and compute primitives",
@@ -835,7 +841,12 @@
       "T-GPU-11",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N5-COMPUTE-VERIFICATION.md",
+      "N5-GEOMETRY-IMPLEMENTATION.md",
+      "N5-DEPTH-IMPLEMENTATION.md"
+    ],
+    "qualification": "Implemented checkpoints listed; combined exact-I independent N5 R/D/ASan qualification pending. No performance upgrade."
   },
   "N5.6": {
     "title": "Complete rebinding and explicit readback",
@@ -859,11 +870,12 @@
       "T-GPU-12"
     ],
     "evidence": [
-      "N5-COLOR-IMPLEMENTATION.md",
       "N5-COLOR-VERIFICATION.md",
-      "N5-LAYOUT-IMPLEMENTATION.md"
+      "N5-LAYOUT-VERIFICATION.md",
+      "N5-PARAMETERS-VERIFICATION.md",
+      "N5-DEPTH-IMPLEMENTATION.md"
     ],
-    "qualification": "Color-only checkpoint independently verified; Owner-safe-point Texture/Buffer descriptor and barrier rebinding implemented in current checkpoint, pending independent ASan. General parameter sources remain."
+    "qualification": "Implemented checkpoints listed; combined exact-I independent N5 R/D/ASan qualification pending. No performance upgrade."
   },
   "N6.1": {
     "title": "Mesh storage",

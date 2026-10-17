@@ -19,7 +19,7 @@ namespace lux::render::vulkan
         VkBufferUsageFlags buffer_usage = 0;
         bool readback = false;
         bool target_sized = false;
-
+        std::uint32_t target_pixel_bytes = 0; // Explicit target readback Buffer stride, not every Buffer.
     };
 
     enum class ERecipe : std::uint8_t { DRAW, DISPATCH, CLEAR_IMAGE, FILL_BUFFER, COPY_IMAGE_BUFFER, COPY_BUFFER };
@@ -50,6 +50,9 @@ namespace lux::render::vulkan
         ERecipe recipe;
         std::uint32_t source = kGraphInvalidIndex;
         std::uint32_t destination = kGraphInvalidIndex;
+        std::uint32_t color = kGraphInvalidIndex, depth = kGraphInvalidIndex;
+        VkAttachmentLoadOp depth_load = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        float clear_depth = 1;
         std::vector<ImageBarrier> images;
         std::vector<BufferBarrier> buffers;
         VkPipeline pipeline{};
@@ -109,6 +112,7 @@ namespace lux::render::vulkan
         {
             SpirvArtifact shader;
             GraphicsState graphics;
+            VkFormat color = VK_FORMAT_UNDEFINED, depth = VK_FORMAT_UNDEFINED;
             bool operator==(const PipelineIdentity&) const noexcept = default;
         };
         std::vector<PipelineIdentity> shader_identities_;

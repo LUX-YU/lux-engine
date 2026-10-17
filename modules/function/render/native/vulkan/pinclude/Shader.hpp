@@ -20,6 +20,7 @@ namespace lux::render::vulkan
         const VulkanDevice& device, VkPipelineLayout layout, const SpirvArtifact& shader
     ) noexcept;
     [[nodiscard]] RenderResult<VkPipeline> compileGraphics(
-        const VulkanDevice& device, VkPipelineLayout layout, const SpirvArtifact& shader, const GraphicsState& graphics
+        const VulkanDevice& device, VkPipelineLayout layout, const SpirvArtifact& shader,
+        const GraphicsState& graphics, VkFormat color, VkFormat depth
     ) noexcept;
 }

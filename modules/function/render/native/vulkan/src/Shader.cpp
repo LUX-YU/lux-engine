@@ -159,7 +159,8 @@ namespace lux::render::vulkan
 
         bool validateStage(
             const SpirvStage& input, SpvExecutionModel stage, const ShaderInterface& interface,
-            const VkPhysicalDeviceLimits& limits, const GraphicsState* graphics = nullptr, StageIo* io = nullptr
+            const VkPhysicalDeviceLimits& limits, const GraphicsState* graphics = nullptr,
+            StageIo* io = nullptr, bool color = true
         ) noexcept
         {
             const bool invalid_entry = input.entry.empty() || input.entry.find('\0') != std::string::npos;
@@ -333,7 +334,8 @@ namespace lux::render::vulkan
                 }
                 else if (stage == SpvExecutionModelFragment && kind == SPVC_RESOURCE_TYPE_STAGE_OUTPUT)
                 {
-                    if (count != 1) return false;
+                    if (count != unsigned(color)) return false;
+                    if (!color) continue;
                     const bool is_output_mismatch = !float4(spvc_compiler_get_type_handle(compiler, list[0].type_id)) ||
                         spvc_compiler_get_decoration(compiler, list[0].id, SpvDecorationLocation) != 0;
                     if (is_output_mismatch) return false;
@@ -417,7 +419,8 @@ namespace lux::render::vulkan
     }
 
     RenderResult<VkPipeline> compileGraphics(
-        const VulkanDevice& device, VkPipelineLayout layout, const SpirvArtifact& shader, const GraphicsState& graphics
+        const VulkanDevice& device, VkPipelineLayout layout, const SpirvArtifact& shader,
+        const GraphicsState& graphics, VkFormat color, VkFormat depth
     ) noexcept
     {
         const bool needs_arrays = std::ranges::any_of(shader.interface.bindings, [](const auto& value) {
@@ -426,22 +429,27 @@ namespace lux::render::vulkan
         const bool is_unsupported = !device.dynamicRendering() ||
             (needs_arrays && !device.textureDescriptors());
         if (is_unsupported) return cxx::unexpected(RenderError{kUnsupported});
-        if (shader.stages.size() != 2) return cxx::unexpected(RenderError{kInvalidArgument});
+        const bool wrong_count = shader.stages.empty() || shader.stages.size() > 2 ||
+            (color != VK_FORMAT_UNDEFINED && shader.stages.size() != 2);
+        const bool invalid_depth = graphics.depth_compare > EDepthCompare::ALWAYS ||
+            ((graphics.depth_test || graphics.depth_write) && depth == VK_FORMAT_UNDEFINED);
+        if (wrong_count || invalid_depth) return cxx::unexpected(RenderError{kInvalidArgument});
         const SpirvStage* vertex_stage = nullptr;
         const SpirvStage* fragment_stage = nullptr;
         for (const auto& stage : shader.stages)
         {
-            if (stage.stage == rdesc::EShaderType::VERTEX) vertex_stage = &stage;
-            else if (stage.stage == rdesc::EShaderType::FRAGMENT) fragment_stage = &stage;
+            if (stage.stage == rdesc::EShaderType::VERTEX && !vertex_stage) vertex_stage = &stage;
+            else if (stage.stage == rdesc::EShaderType::FRAGMENT && !fragment_stage) fragment_stage = &stage;
+            else return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        const bool missing_stage = !vertex_stage || !fragment_stage;
+        const bool missing_stage = !vertex_stage || (color != VK_FORMAT_UNDEFINED && !fragment_stage);
         if (missing_stage) return cxx::unexpected(RenderError{kInvalidArgument});
         const auto& limits = device.properties().limits;
         StageIo vertex_io, fragment_io;
         const bool valid_vertex = validateStage(*vertex_stage, SpvExecutionModelVertex, shader.interface,
             limits, &graphics, &vertex_io);
-        const bool valid_fragment = validateStage(*fragment_stage, SpvExecutionModelFragment, shader.interface,
-            limits, &graphics, &fragment_io);
+        const bool valid_fragment = !fragment_stage || validateStage(*fragment_stage,
+            SpvExecutionModelFragment, shader.interface, limits, &graphics, &fragment_io, color != VK_FORMAT_UNDEFINED);
         if (!valid_vertex || !valid_fragment) return cxx::unexpected(RenderError{kInvalidArgument});
         for (const auto& input : fragment_io.inputs)
             if (std::ranges::find(vertex_io.outputs, input) == vertex_io.outputs.end())
@@ -494,7 +502,8 @@ namespace lux::render::vulkan
         } modules{device.native()};
         const std::array code{vertex_stage, fragment_stage};
         std::array<VkPipelineShaderStageCreateInfo, 2> stages{};
-        for (std::size_t i = 0; i < 2; ++i)
+        const auto stage_count = fragment_stage ? 2u : 1u;
+        for (std::size_t i = 0; i < stage_count; ++i)
         {
             VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
             info.codeSize = code[i]->words.size() * sizeof(std::uint32_t);
@@ -526,19 +535,23 @@ namespace lux::render::vulkan
         VkPipelineColorBlendAttachmentState attachment{};
         attachment.colorWriteMask = 15;
         VkPipelineColorBlendStateCreateInfo blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
-        blend.attachmentCount = 1;
+        blend.attachmentCount = unsigned(color != VK_FORMAT_UNDEFINED);
         blend.pAttachments = &attachment;
         const VkDynamicState dynamic_states[]{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
         VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
         dynamic.dynamicStateCount = 2;
         dynamic.pDynamicStates = dynamic_states;
-        const VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
+        VkPipelineDepthStencilStateCreateInfo depth_state{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+        depth_state.depthTestEnable = graphics.depth_test;
+        depth_state.depthWriteEnable = graphics.depth_write;
+        depth_state.depthCompareOp = static_cast<VkCompareOp>(graphics.depth_compare);
         VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
-        rendering.colorAttachmentCount = 1;
-        rendering.pColorAttachmentFormats = &format;
+        rendering.colorAttachmentCount = unsigned(color != VK_FORMAT_UNDEFINED);
+        rendering.pColorAttachmentFormats = &color;
+        rendering.depthAttachmentFormat = depth;
         VkGraphicsPipelineCreateInfo info{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
         info.pNext = &rendering;
-        info.stageCount = 2;
+        info.stageCount = stage_count;
         info.pStages = stages.data();
         info.pVertexInputState = &vertex;
         info.pInputAssemblyState = &input;
@@ -546,6 +559,7 @@ namespace lux::render::vulkan
         info.pRasterizationState = &raster;
         info.pMultisampleState = &samples;
         info.pColorBlendState = &blend;
+        info.pDepthStencilState = &depth_state;
         info.pDynamicState = &dynamic;
         info.layout = layout;
         VkPipeline pipeline{};

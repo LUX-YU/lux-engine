@@ -118,7 +118,12 @@ namespace lux::render
                 use.usage == EGraphUse::INDIRECT;
             const bool invalid_geometry = geometry &&
                 (image || pass.kind != EGraphPassKind::GRAPHICS || use.access != EGraphAccess::READ);
-            const bool is_invalid_usage = use.usage > EGraphUse::INDIRECT || invalid_storage || invalid_geometry ||
+            const bool invalid_depth = use.usage == EGraphUse::DEPTH_ATTACHMENT &&
+                (!image || pass.kind != EGraphPassKind::GRAPHICS ||
+                 !rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::DEPTH_STENCIL_ATTACHMENT) ||
+                 (use.access != EGraphAccess::WRITE && use.access != EGraphAccess::ATTACHMENT_LOAD));
+            const bool is_invalid_usage = use.usage > EGraphUse::DEPTH_ATTACHMENT ||
+                invalid_storage || invalid_geometry || invalid_depth ||
                 (use.usage == EGraphUse::STORAGE_READ && (image || use.access != EGraphAccess::READ)) ||
                 is_invalid_color || is_invalid_source || is_invalid_destination || is_invalid_sample;
             if (is_invalid_usage) return cxx::unexpected(graphError(kGraphInvalidDescriptor, id, resource_id));

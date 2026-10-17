@@ -11,6 +11,11 @@ namespace lux::render
     enum class EVertexRate : std::uint8_t { VERTEX, INSTANCE };
     enum class EIndexType : std::uint8_t { UINT16, UINT32 };
 
+    enum class EDepthCompare : std::uint8_t
+    {
+        NEVER, LESS, EQUAL, LESS_EQUAL, GREATER, NOT_EQUAL, GREATER_EQUAL, ALWAYS
+    };
+
     struct VertexBinding final
     {
         std::uint32_t binding = 0, stride = 0;
@@ -30,6 +35,8 @@ namespace lux::render
     {
         std::vector<VertexBinding> vertex_bindings;
         std::vector<VertexAttribute> vertex_attributes;
+        bool depth_test = false, depth_write = false;
+        EDepthCompare depth_compare = EDepthCompare::LESS;
         bool operator==(const GraphicsState&) const noexcept = default;
     };
 

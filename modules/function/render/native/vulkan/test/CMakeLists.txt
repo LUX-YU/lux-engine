@@ -277,7 +277,10 @@ add_test(NAME render.native.lglsl_parameters COMMAND render_parameters_test
 
 set_tests_properties(render.native.lglsl_parameters PROPERTIES TIMEOUT 60)
 
-foreach(asset Compute.comp ComputeUpdate.comp Compute.frag Geometry.comp Geometry.vert Geometry.frag)
+foreach(asset IN ITEMS
+    Compute.comp ComputeUpdate.comp Compute.frag
+    Geometry.comp Geometry.vert Geometry.frag Depth.vert Depth.frag
+)
     add_custom_command(
         OUTPUT "${render_asset_dir}/${asset}.spv"
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${render_asset_dir}"
@@ -315,3 +318,15 @@ add_test(NAME render.native.geometry COMMAND render_geometry_test
 )
 
 set_tests_properties(render.native.geometry PROPERTIES TIMEOUT 60)
+
+add_executable(render_depth_test Depth.cpp Allocation.cpp
+    "${render_asset_dir}/Depth.vert.spv" "${render_asset_dir}/Depth.frag.spv"
+)
+
+target_link_libraries(render_depth_test PRIVATE render_native_vulkan)
+
+add_test(NAME render.native.depth COMMAND render_depth_test
+    "${render_asset_dir}/Depth.vert.spv" "${render_asset_dir}/Depth.frag.spv"
+)
+
+set_tests_properties(render.native.depth PROPERTIES TIMEOUT 60)

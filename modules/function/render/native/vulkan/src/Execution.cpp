@@ -1,6 +1,7 @@
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include "Native.hpp"
 #include "LayoutPlan.hpp"
+#include "ImageFormat.hpp"
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <algorithm>
 #include <cstring>
@@ -109,15 +110,18 @@ namespace lux::render::vulkan
             {
                 const VkExtent2D extent{plan.target_sized ? target.width : image->width,
                     plan.target_sized ? target.height : image->height};
-                auto backing = createImageRecord({extent, VK_FORMAT_R8G8B8A8_UNORM, plan.image_usage});
+                const auto format = imageFormat(image->format);
+                auto backing = createImageRecord({extent, format.native, plan.image_usage});
                 if (!backing) return cxx::unexpected(backing.error());
                 binding.image = *backing;
                 VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
                 view.image = binding.image->native();
                 view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-                view.format = VK_FORMAT_R8G8B8A8_UNORM;
-                view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-                if (plan.image_usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+                view.format = format.native;
+                view.subresourceRange = {format.aspects, 0, 1, 0, 1};
+                const bool attachment = plan.image_usage &
+                    (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+                if (attachment)
                 {
                     const auto status = LUX_NATIVE("image_view", vkCreateImageView(device_.native(), &view,
                         nullptr, &binding.view));
@@ -126,14 +130,18 @@ namespace lux::render::vulkan
             }
             else
             {
-                const auto size = plan.target_sized ? std::uint64_t(target.width) * target.height * 4 :
+                const auto size = plan.target_sized ?
+                    std::uint64_t(target.width) * target.height * plan.target_pixel_bytes :
                     std::get<GraphBufferDesc>(plan.description).size;
                 auto buffer = createBufferRecord(size, plan.buffer_usage,
                     plan.readback ? EMemoryAccess::READBACK : EMemoryAccess::DEVICE);
                 if (!buffer) return cxx::unexpected(buffer.error());
                 binding.owned_buffer = *buffer;
                 binding.buffer = binding.owned_buffer;
-                if (plan.readback && plan.target_sized) context->readback_ = i;
+                if (plan.readback)
+                    for (const auto& pass : context->code_->passes())
+                        if (pass.recipe == ERecipe::COPY_IMAGE_BUFFER && pass.source == context->code_->output() &&
+                            pass.destination == i) context->readback_ = i;
             }
         }
         for (const auto& recipe : context->code_->passes())
@@ -384,17 +392,24 @@ namespace lux::render::vulkan
                 if (recipe.begin_rendering)
                 {
                     VkRenderingAttachmentInfo attachment{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
-                    attachment.imageView = destination.view;
+                    if (recipe.color != kGraphInvalidIndex) attachment.imageView = bindings_[recipe.color].view;
                     attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                     attachment.loadOp = recipe.load;
                     attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
                     std::copy(recipe.clear_color.begin(), recipe.clear_color.end(), attachment.clearValue.color.float32);
+                    VkRenderingAttachmentInfo depth{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+                    if (recipe.depth != kGraphInvalidIndex) depth.imageView = bindings_[recipe.depth].view;
+                    depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                    depth.loadOp = recipe.depth_load;
+                    depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+                    depth.clearValue.depthStencil = {recipe.clear_depth, 0};
                     const auto extent = destination.image->extent();
                     VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
                     rendering.renderArea = {{0, 0}, extent};
                     rendering.layerCount = 1;
-                    rendering.colorAttachmentCount = 1;
+                    rendering.colorAttachmentCount = unsigned(recipe.color != kGraphInvalidIndex);
                     rendering.pColorAttachments = &attachment;
+                    if (recipe.depth != kGraphInvalidIndex) rendering.pDepthAttachment = &depth;
                     LUX_RECORD("cmd_begin", vkCmdBeginRendering(command, &rendering));
                     const VkViewport viewport{0, 0, float(extent.width), float(extent.height), 0, 1};
                     const VkRect2D scissor{{0, 0}, extent};
@@ -448,8 +463,17 @@ namespace lux::render::vulkan
             {
                 VkClearColorValue value;
                 std::copy(recipe.clear_color.begin(), recipe.clear_color.end(), value.float32);
-                const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-                vkCmdClearColorImage(command, destination.image->native(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                const auto format = imageFormat(std::get<GraphImageDesc>(
+                    code_->resources()[recipe.destination].description).format);
+                const VkImageSubresourceRange range{format.aspects, 0, 1, 0, 1};
+                if (format.aspects == VK_IMAGE_ASPECT_DEPTH_BIT)
+                {
+                    const VkClearDepthStencilValue depth{recipe.clear_depth, 0};
+                    vkCmdClearDepthStencilImage(
+                        command, destination.image->native(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &depth, 1, &range
+                    );
+                }
+                else vkCmdClearColorImage(command, destination.image->native(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                     &value, 1, &range);
                 break;
             }
@@ -460,7 +484,8 @@ namespace lux::render::vulkan
             {
                 const auto& image = *bindings_[recipe.source].image;
                 VkBufferImageCopy region{};
-                region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+                region.imageSubresource = {imageFormat(std::get<GraphImageDesc>(
+                    code_->resources()[recipe.source].description).format).aspects, 0, 0, 1};
                 region.imageExtent = {image.extent().width, image.extent().height, 1};
                 vkCmdCopyImageToBuffer(command, image.native(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                     destination.buffer->native(), 1, &region);

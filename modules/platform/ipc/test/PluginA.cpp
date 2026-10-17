@@ -27,7 +27,6 @@ extern "C" bool ipcMakeOwnedA(lux::platform::ipc::IpcMessage* output) noexcept
 extern "C" const std::byte* ipcOwnedDataA(const lux::platform::ipc::IpcMessage* input) noexcept
 {
     using namespace lux::platform::ipc;
-    if (!input->holds(IpcMessage::type<std::unique_ptr<PluginOwner>>())) return nullptr;
     return input->get<std::unique_ptr<PluginOwner>>()->bytes.data();
 }
 

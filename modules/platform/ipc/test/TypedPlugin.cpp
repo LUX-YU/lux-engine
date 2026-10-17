@@ -1,20 +1,18 @@
-#define IPC_TEST_EXTERNAL_POLICY
 #include "TypedFixture.hpp"
 
-extern "C" const lux::platform::ipc::IpcTypeOps* ipcTypedExternalPolicy() noexcept
+extern "C" void ipcTypedBatch(lux::platform::ipc::IpcMessage* message) noexcept
 {
-    return &lux::platform::ipc::IpcMessage::type<ipc_typed_test::StoragePolicyProbe>();
+    message->emplace<ipc_typed_test::Batch>(ipc_typed_test::Batch{7, {3, 5, 9}});
 }
 
-
-extern "C" const lux::platform::ipc::IpcTypeOps* ipcTypedBatch() noexcept
+extern "C" void ipcTypedLarge(lux::platform::ipc::IpcMessage* message) noexcept
 {
-    return &lux::platform::ipc::IpcMessage::type<ipc_typed_test::Batch>();
+    message->emplace<ipc_typed_test::LargeOriginProbe>(std::uint64_t{31});
 }
 
-extern "C" const lux::platform::ipc::IpcTypeOps* ipcTypedPinProbe() noexcept
+extern "C" void ipcTypedAligned(lux::platform::ipc::IpcMessage* message) noexcept
 {
-    return &lux::platform::ipc::IpcMessage::type<ipc_typed_test::PinProbe>();
+    message->emplace<ipc_typed_test::AlignedOriginProbe>(std::uint64_t{37});
 }
 
 extern "C" void ipcTypedSetAllocationOrigin(std::uint64_t origin) noexcept
@@ -30,14 +28,4 @@ extern "C" void ipcTypedClearAllocationOrigin() noexcept
 extern "C" ipc_typed_test::AllocationOriginCounts ipcTypedAllocationOriginCounts() noexcept
 {
     return ipc_typed_test::allocationOriginCounts();
-}
-
-extern "C" const lux::platform::ipc::IpcTypeOps* ipcTypedLargeOriginProbe() noexcept
-{
-    return &lux::platform::ipc::IpcMessage::type<ipc_typed_test::LargeOriginProbe>();
-}
-
-extern "C" const lux::platform::ipc::IpcTypeOps* ipcTypedAlignedOriginProbe() noexcept
-{
-    return &lux::platform::ipc::IpcMessage::type<ipc_typed_test::AlignedOriginProbe>();
 }

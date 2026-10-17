@@ -20,8 +20,6 @@ component_include_directories(
     PRIVATE pinclude
 )
 
-target_include_directories(platform_ipc PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/sinclude>")
-
 target_compile_definitions(platform_ipc PRIVATE LUX_PLATFORM_IPC_LIBRARY)
 target_link_libraries(platform_ipc PUBLIC lux::cxx::compile_time PRIVATE lux::cxx::concurrent)
 target_compile_features(platform_ipc PUBLIC cxx_std_20)

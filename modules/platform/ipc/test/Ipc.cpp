@@ -95,7 +95,6 @@ namespace
     template <std::size_t Size = 8>
     std::uint64_t valueOf(const IpcMessage& message)
     {
-        check(message.holds(IpcMessage::type<FixedValue<Size>>()), "typed value qualification");
         const auto& value = message.get<FixedValue<Size>>();
         for (std::size_t i = 1; i < value.words.size(); ++i)
             check(value.words[i] == 0, "validate every fixed array field");
@@ -113,16 +112,28 @@ namespace
         return {};
     }
 
-    IpcReply receivedReply(IpcRequester& requester)
+    IpcMessage receivedReply(IpcRequester& requester)
     {
-        IpcReply output;
+        IpcMessage output;
         check(requester.tryReceive(output) == EIpcReceive::RECEIVED, "reply available");
         return output;
     }
 
+    void publish(IpcResponder& responder, ReceivedRequest& work, IpcMessage& result)
+    {
+        const auto deadline = Clock::now() + 10s;
+        for (;;)
+        {
+            const auto sent = responder.tryReply(work, result);
+            if (sent) return;
+            check(sent.error() == EIpcError::WOULD_BLOCK && Clock::now() < deadline, "reply retry timed out");
+            std::this_thread::yield();
+        }
+    }
+
     void drain(IpcRequester& requester)
     {
-        IpcReply reply;
+        IpcMessage reply;
         while (requester.tryReceive(reply) == EIpcReceive::RECEIVED) reply = {};
     }
 
@@ -207,7 +218,6 @@ namespace
 
     std::span<const std::byte> ownedBytes(const IpcMessage& message)
     {
-        check(message.holds(IpcMessage::type<std::unique_ptr<Owner>>()), "unique owner qualification");
         return message.get<std::unique_ptr<Owner>>()->bytes;
     }
 
@@ -221,11 +231,9 @@ namespace
             IpcMessage assigned;
             assigned = std::move(moved);
             const auto moves = testing::stopMoves();
-            const auto expected_bytes = IpcMessage::stores_inline<FixedValue<Length>> ? 2 * Length : 0;
-            check(moves.moves == 2 && moves.inline_object_bytes == expected_bytes, "inline object move accounting");
+            check(moves.moves == 2, "message move accounting");
             check(input.empty() && moved.empty() && valueOf<Length>(assigned) == 45, "typed moved-from empty");
-            std::printf("value_bytes=%zu moves=%zu inline_object_bytes=%zu\n", Length,
-                moves.moves, moves.inline_object_bytes);
+            std::printf("value_bytes=%zu moves=%zu\n", Length, moves.moves);
         };
         verify_moves.template operator()<8>();
         verify_moves.template operator()<128>();
@@ -240,7 +248,7 @@ namespace
             IpcMessage assigned;
             assigned = std::move(moved);
             const auto moves = testing::stopMoves();
-            check(moves.moves == 2 && moves.inline_object_bytes == 2 * sizeof(std::unique_ptr<Owner>),
+            check(moves.moves == 2,
                 "moves construct only the unique pointer object");
             check(ownedBytes(assigned).data() == address && destroyed == 0, "owned move keeps backing");
             assigned.reset();
@@ -252,7 +260,7 @@ namespace
             auto server = must(core.createResponder("r2.unread"));
             auto client = must(core.createRequester("r2.unread", {2, 2}));
             // One unread reply plus one unread request: closing never needs to drain either.
-            for (int i = 0; i < 2; ++i)
+            for (int i = 0; i < 3; ++i)
             {
                 auto owner = std::make_unique<Owner>(1024 * 1024, &destroyed);
                 IpcMessage input;
@@ -262,7 +270,7 @@ namespace
                 {
                     auto work = receive(server);
                     IpcMessage reply;
-                    must(server.tryReply(work, reply));
+                    publish(server, work, reply);
                 }
             }
             int failed_destroyed = 0;
@@ -275,25 +283,25 @@ namespace
             failed.reset();
             check(failed_destroyed == 1, "failed send still has one caller owner");
             if (order == 0) client.reset(); else server.reset();
-            check(destroyed == 0 && testing::counts().rings == 1, "first exit retains unread Rings");
+            check(destroyed == 1 && testing::counts().rings == 1, "first exit retains unread Rings");
             if (order == 0)
             {
                 ReceivedRequest skipped;
                 check(server.tryReceive(skipped) == EIpcReceive::EMPTY, "closed link skipped without hot disposal");
-                check(destroyed == 0, "poll never destroys orphan queued payload");
+                check(destroyed == 1, "poll never destroys orphan queued payload");
                 server.reset();
             }
             else client.reset();
-            check(destroyed == 2, "final role discards both unread owners once");
+            check(destroyed == 3, "finished input and two orphan inputs each released once");
             empty();
         }
         {
             auto server = must(core.createResponder("r2.outputs"));
             auto wrong = must(core.createResponder("r2.wrong"));
             auto client = must(core.createRequester("r2.outputs"));
-            IpcReply output;
-            output.message = makeValue(73);
-            check(client.tryReceive(output) == EIpcReceive::EMPTY && valueOf(output.message) == 73,
+            IpcMessage output;
+            output = makeValue(73);
+            check(client.tryReceive(output) == EIpcReceive::EMPTY && valueOf(output) == 73,
                 "empty output unchanged");
             output = {};
             auto measured_input = makeValue(1);
@@ -305,8 +313,8 @@ namespace
             must(server.tryReply(measured_work, measured_reply));
             check(client.tryReceive(output) == EIpcReceive::RECEIVED, "direct reply pop");
             const auto moves = testing::stopMoves();
-            check(moves.moves == 6 && moves.inline_object_bytes == 48, "direct roundtrip has six effective moves");
-            std::printf("roundtrip_moves=%zu inline_object_bytes=%zu extra_lifetime_rmw=0\n", moves.moves, moves.inline_object_bytes);
+            check(moves.moves == 4, "direct roundtrip has four effective moves");
+            std::printf("roundtrip_moves=%zu extra_lifetime_rmw=0\n", moves.moves);
             output = {};
             auto input = makeValue(74);
             must(client.trySend(input));
@@ -314,17 +322,17 @@ namespace
             auto reply = makeValue(75);
             check(wrong.tryReply(work, reply).error() == EIpcError::INVALID_SOURCE && work.active() &&
                 valueOf(reply) == 75 && valueOf(work.message()) == 74, "wrong responder preserves both owners");
-            work.reset(); // live-server abandonment returns its credit
+            work.reset(); // transport disposal is not a business terminal result
             output = {};
-            check(client.tryReceive(output) == EIpcReceive::RECEIVED && output.delivery == EIpcDelivery::ABORTED,
-                "abandon returns credit");
+            check(client.tryReceive(output) == EIpcReceive::EMPTY,
+                "reset does not manufacture a business reply");
             output = {};
-            output.message = makeValue(76);
+            output = makeValue(76);
             ReceivedRequest untouched;
             check(server.tryReceive(untouched) == EIpcReceive::EMPTY && !untouched.active(), "empty request untouched");
             server.reset();
             check(server.tryReceive(untouched) == EIpcReceive::CLOSED && !untouched.active(), "closed request untouched");
-            check(client.tryReceive(output) == EIpcReceive::CLOSED && valueOf(output.message) == 76,
+            check(client.tryReceive(output) == EIpcReceive::CLOSED && valueOf(output) == 76,
                 "closed reply output unchanged");
             client.reset(); wrong.reset();
             empty();
@@ -334,6 +342,33 @@ namespace
     void messages()
     {
         auto& core = IpcCore::instance();
+        {
+            auto limited = must(core.createResponder("reply.retry"));
+            auto requester = must(core.createRequester("reply.retry", {2, 1}));
+            auto first = makeValue(1), second = makeValue(2);
+            must(requester.trySend(first));
+            must(requester.trySend(second));
+            auto one = receive(limited), two = receive(limited);
+            auto result_one = makeValue(11);
+            must(limited.tryReply(one, result_one));
+            int destroyed = 0;
+            auto owner = std::make_unique<Owner>(65536, &destroyed);
+            const auto* address = owner->bytes.data();
+            IpcMessage result_two;
+            result_two.emplace<std::unique_ptr<Owner>>(std::move(owner));
+            const auto full = limited.tryReply(two, result_two);
+            check(!full && full.error() == EIpcError::WOULD_BLOCK, "reply publication can fail without credits");
+            check(two.active() && valueOf(two.message()) == 2 && destroyed == 0 &&
+                ownedBytes(result_two).data() == address, "failure retains source and completed result");
+            check(valueOf(receivedReply(requester)) == 11, "first result unchanged");
+            must(limited.tryReply(two, result_two));
+            check(!two.active() && result_two.empty(), "retry consumes both once");
+            auto result = receivedReply(requester);
+            requester.reset(); limited.reset();
+            check(ownedBytes(result).data() == address && destroyed == 0, "explicit result survives roles");
+            result.reset();
+            check(destroyed == 1, "retained result destroyed once");
+        }
         auto server = must(core.createResponder("messages"));
         auto a = must(core.createRequester("messages", {2, 2}));
         auto b = must(core.createRequester("messages", {2, 2}));
@@ -345,7 +380,8 @@ namespace
                 "request ring fullness rolls back credit");
             auto first = receive(server);
             first.reset();
-            check(receivedReply(queue).delivery == EIpcDelivery::ABORTED, "recovered aborted slot");
+            IpcMessage no_reply;
+            check(queue.tryReceive(no_reply) == EIpcReceive::EMPTY, "no automatic aborted wrapper");
             must(queue.trySend(two));
             queue.reset(); // retained by Channel until its final role, not destroyed on hot polling
         }
@@ -364,15 +400,15 @@ namespace
         for (auto& work : deferred)
         {
             auto reply = makeValue(valueOf(work.message()) + 1);
-            must(server.tryReply(work, reply));
+            publish(server, work, reply);
             check(!server.tryReply(work, reply), "double reply rejected");
         }
-        std::vector<IpcReply> held;
+        std::vector<IpcMessage> held;
         for (int round = 0; round < 100; ++round)
         {
             for (auto* client : {&a, &b})
             {
-                IpcReply reply;
+                IpcMessage reply;
                 while (client->tryReceive(reply) == EIpcReceive::RECEIVED) held.push_back(std::move(reply));
                 auto message = makeValue(100 + round);
                 must(client->trySend(message));
@@ -386,9 +422,8 @@ namespace
         auto abort = makeValue(99);
         must(a.trySend(abort));
         receive(server).reset();
-        auto aborted = receivedReply(a);
-        check(aborted.delivery == EIpcDelivery::ABORTED &&
-            valueOf(aborted.original_request) == 99, "abort correlates original opaque input");
+        IpcMessage no_reply;
+        check(a.tryReceive(no_reply) == EIpcReceive::EMPTY, "caller tracks unanswered business requests");
 
         int destroyed = 0;
         auto owner = std::make_unique<Owner>(1024 * 1024, &destroyed);
@@ -405,11 +440,11 @@ namespace
         work.reset();
         check(destroyed == 1, "cold orphan releases exactly once");
         server.reset();
-        IpcReply remaining;
+        IpcMessage remaining;
         check(b.tryReceive(remaining) == EIpcReceive::RECEIVED, "published reply readable after responder reset");
         check(b.tryReceive(remaining) == EIpcReceive::CLOSED, "closed after terminal drain");
         b.reset();
-        check(valueOf(held.front().message) >= 42, "reply outlives channel");
+        check(valueOf(held.front()) >= 42, "reply outlives channel");
         empty();
 
         server = must(core.createResponder("dll.owner"));
@@ -426,7 +461,7 @@ namespace
         auto plugin_output = receivedReply(a);
         a.reset(); server.reset();
         empty();
-        check(ipcDestroyedA() == before_destroy, "returned DLL owner survives Channel");
+        check(ipcDestroyedA() == before_destroy + 1, "successful reply ends input use inside originating DLL");
         plugin_output = {};
         check(ipcDestroyedA() == before_destroy + 1, "source DLL deleter runs once");
     }
@@ -558,16 +593,16 @@ namespace
         must(client.trySend(input));
         auto work = receive(server);
         arm(testing::EPoint::REPLY_EMPTY);
-        IpcReply output;
+        IpcMessage output;
         std::jthread polling([&] { check(client.tryReceive(output) == EIpcReceive::RECEIVED, "close race reply"); });
         while (!hook_entered) std::this_thread::yield();
         auto reply = makeValue(82);
-        must(server.tryReply(work, reply));
+        publish(server, work, reply);
         server.reset();
         hook_release = true;
         polling.join();
         testing::setHook(nullptr);
-        check(valueOf(output.message) == 82, "terminal published during close cannot be hidden");
+        check(valueOf(output) == 82, "terminal published during close cannot be hidden");
         client.reset();
         empty();
     }
@@ -606,7 +641,7 @@ namespace
                 publisher.join();
                 testing::setHook(nullptr);
                 check(!work.active() && result.empty(), "accepted publication consumes once");
-                check(input_destroyed == 0 && result_destroyed == 0, "unread reply survives until cold teardown");
+                check(input_destroyed == 1 && result_destroyed == 0, "finished input released; unread result retained");
                 server.reset();
                 check(input_destroyed == 1 && result_destroyed == 1, "orphaned reply releases both owners once");
                 empty();
@@ -673,18 +708,18 @@ namespace
                 auto result = makeValue(1);
                 must(server.tryReply(work, result));
             }
-            else work.reset(); // same logical owner as responder; ABORTED if requester is live
+            else work.reset(); // host owns the unanswered-operation policy
             check(!work.active(), "all source borrows settled before responder reset");
             server.reset();
-            if (path != 2)
+            IpcMessage reply;
+            if (path == 0)
             {
-                IpcReply reply;
                 check(client.tryReceive(reply) == EIpcReceive::RECEIVED, "published reply precedes closed");
-                const auto delivery = path == 0 ? EIpcDelivery::REPLY : EIpcDelivery::ABORTED;
-                check(reply.delivery == delivery, "explicit transport outcome");
-                client.reset();
-                check(destroyed == 0 && ownedBytes(reply.original_request).size() == 4096, "reply outlives roles");
+                check(valueOf(reply) == 1, "reply payload survives responder");
             }
+            else if (path == 1)
+                check(client.tryReceive(reply) == EIpcReceive::CLOSED, "failure without response remains unknown");
+            client.reset();
             check(destroyed == 1, "host exit releases input exactly once");
             empty();
         }
@@ -704,7 +739,7 @@ namespace
                 if (server.tryReceive(work) != EIpcReceive::RECEIVED) continue;
                 check(valueOf(work.message()) == expected, "request FIFO exactly once");
                 auto response = makeValue(expected++);
-                must(server.tryReply(work, response));
+                publish(server, work, response);
             }
         });
         std::uint64_t sent = 0, received = 0;
@@ -717,9 +752,9 @@ namespace
                 if (result) ++sent;
                 else check(result.error() == EIpcError::WOULD_BLOCK && valueOf(message) == sent, "retry preserves input");
             }
-            IpcReply reply;
+            IpcMessage reply;
             if (client.tryReceive(reply) == EIpcReceive::RECEIVED)
-                check(valueOf(reply.message) == received++, "reply FIFO exactly once");
+                check(valueOf(reply) == received++, "reply FIFO exactly once");
         }
         consumer.join();
         client.reset(); server.reset();
@@ -746,7 +781,7 @@ namespace
                     ReceivedRequest work;
                     if (server.tryReceive(work) != EIpcReceive::RECEIVED) break;
                     auto reply = makeValue(valueOf(work.message()) + 1);
-                    must(server.tryReply(work, reply));
+                    publish(server, work, reply);
                 }
                 ++ticks;
                 if (tick_samples.size() < tick_samples.capacity()) tick_samples.push_back(
@@ -761,10 +796,10 @@ namespace
                 if (!b.trySend(input)) continue;
                 while (!stop)
                 {
-                    IpcReply reply;
+                    IpcMessage reply;
                     if (b.tryReceive(reply) == EIpcReceive::RECEIVED)
                     {
-                        check(valueOf(reply.message) == sequence + 1, "source-local response");
+                        check(valueOf(reply) == sequence + 1, "source-local response");
                         ++sequence;
                         ++completed;
                         break;
@@ -774,18 +809,17 @@ namespace
         });
         std::this_thread::sleep_for(1500ms);
         check(ticks > 100 && completed > 100, "B and tick progress while A does nothing");
-        auto full = makeValue(9);
-        check(a.trySend(full).error() == EIpcError::WOULD_BLOCK, "A backpressure remains local");
+        check(a.ready(), "A remains connected with eight unread replies; no shared reply credits");
         // B keeps flooding while A resumes; every A request must make progress.
         drain(a);
         for (int i = 0; i < 100; ++i)
         {
             auto message = makeValue(10000 + i);
             must(a.trySend(message));
-            IpcReply reply;
+            IpcMessage reply;
             const auto deadline = Clock::now() + 2s;
             while (a.tryReceive(reply) != EIpcReceive::RECEIVED) check(Clock::now() < deadline, "A not starved by B");
-            check(valueOf(reply.message) == static_cast<std::uint64_t>(10001 + i), "A independent result");
+            check(valueOf(reply) == static_cast<std::uint64_t>(10001 + i), "A independent result");
         }
         stop = true;
         background.join();
@@ -801,7 +835,7 @@ namespace
     void cost()
     {
         std::printf("typed_inline_capacity=%zu sizeof_message=%zu sizeof_reply=%zu\n",
-            IpcMessage::typed_inline_capacity, sizeof(IpcMessage), sizeof(IpcReply));
+            IpcMessage::typed_inline_capacity, sizeof(IpcMessage), sizeof(IpcMessage));
         auto& core = IpcCore::instance();
         auto server = must(core.createResponder("cost"));
         auto client = must(core.createRequester("cost"));
@@ -820,10 +854,10 @@ namespace
                 must(client.trySend(input));
                 auto work = receive(server);
                 auto reply = makeValue<Size>(valueOf<Size>(work.message()) + 1);
-                must(server.tryReply(work, reply));
-                IpcReply output;
+                publish(server, work, reply);
+                IpcMessage output;
                 check(client.tryReceive(output) == EIpcReceive::RECEIVED, "measured reply");
-                check(valueOf<Size>(output.message) == static_cast<std::uint64_t>(i + 1), "typed full result");
+                check(valueOf<Size>(output) == static_cast<std::uint64_t>(i + 1), "typed full result");
                 auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
                 const auto exe = ipc_allocation::stop(), dll = testing::stopAllocations();
                 exe_allocations += exe;
@@ -856,9 +890,9 @@ namespace
             check(ownedBytes(work.message()).data() == pointer, "large pointer identity");
             auto output = makeValue(size);
             must(server.tryReply(work, output));
-            IpcReply result;
+            IpcMessage result;
             check(client.tryReceive(result) == EIpcReceive::RECEIVED, "large reply");
-            check(ownedBytes(result.original_request).data() == pointer && destroyed == 0, "large input returned");
+            check(valueOf(result) == size && destroyed == 1, "large input released on server after use");
             const auto handed = Clock::now();
             result = {};
             const auto ended = Clock::now();
@@ -876,10 +910,10 @@ namespace
             must(client.trySend(prepared));
             auto work = receive(server);
             IpcMessage reply;
-            must(server.tryReply(work, reply));
-            IpcReply output;
+            publish(server, work, reply);
+            IpcMessage output;
             check(client.tryReceive(output) == EIpcReceive::RECEIVED, "measured reply");
-            prepared = std::move(output.original_request);
+            prepared = makeValue(8);
             const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count();
             queue_samples << i << ',' << ns << '\n';
         }
@@ -928,9 +962,9 @@ namespace
                 const auto start = Clock::now();
                 auto message = makeValue<Size>(i);
                 must(client.trySend(message));
-                IpcReply reply;
+                IpcMessage reply;
                 while (client.tryReceive(reply) != EIpcReceive::RECEIVED) {}
-                check(valueOf<Size>(reply.message) == static_cast<std::uint64_t>(i + 1), "paired typed full result");
+                check(valueOf<Size>(reply) == static_cast<std::uint64_t>(i + 1), "paired typed full result");
                 const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count();
                 paired << Size << ',' << i << ',' << ns << '\n';
             }
@@ -955,7 +989,6 @@ namespace
         check(static_cast<bool>(compatibleCommands(descriptor, descriptor)), "cold full typed command binding");
         lux::cxx::SlotMap<CommandDescriptor, CommandTag> routes;
         const auto command = routes.emplace(descriptor);
-        auto bound = must(IpcMessage::bindType<Scalar>(IpcMessage::type<Scalar>()));
         auto& core = IpcCore::instance();
         auto server = must(core.createResponder("operation.cost"));
         auto client = must(core.createRequester("operation.cost"));
@@ -963,12 +996,11 @@ namespace
         auto execute = [&](ReceivedRequest& work) {
             const auto header = work.message().metadata<RequestHeader>();
             check(routes.find(header.command) != nullptr, "endpoint-local command dispatch");
-            check(work.message().holds(bound.operations()), "canonical request type at boundary");
             const auto& value = work.message().get<Scalar>();
             IpcMessage reply;
-            reply.emplace(bound, Scalar{value.value + 1});
+            reply.emplace<Scalar>(Scalar{value.value + 1});
             reply.setMetadata(TerminalMeta{header.request, ECommandOutcome::SUCCESS});
-            must(server.tryReply(work, reply));
+            publish(server, work, reply);
         };
         std::ofstream samples("ipc-operation.csv");
         samples << "mode,iteration,ns,exe_allocations,dll_allocations\n";
@@ -1004,16 +1036,15 @@ namespace
                 const auto begin = Clock::now();
                 auto id = pending.emplace(i);
                 IpcMessage input;
-                input.emplace(bound, Scalar{static_cast<std::uint64_t>(i)});
+                input.emplace<Scalar>(Scalar{static_cast<std::uint64_t>(i)});
                 input.setMetadata(RequestHeader{id, command});
                 must(client.trySend(input));
                 if (!paired) { auto work = receive(server); execute(work); }
-                IpcReply reply;
+                IpcMessage reply;
                 while (client.tryReceive(reply) != EIpcReceive::RECEIVED) {}
-                const auto terminal = reply.message.metadata<TerminalMeta>();
-                check(reply.message.holds(bound.operations()), "canonical response type at boundary");
+                const auto terminal = reply.metadata<TerminalMeta>();
                 check(terminal.request == id && pending.find(terminal.request) &&
-                    terminal.outcome == ECommandOutcome::SUCCESS && reply.message.get<Scalar>().value == i + 1,
+                    terminal.outcome == ECommandOutcome::SUCCESS && reply.get<Scalar>().value == i + 1,
                     "validate typed terminal correlation and success");
                 pending.erase(terminal.request);
                 const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
@@ -1046,8 +1077,6 @@ namespace
         conflict = descriptor;
         conflict.request.type = lux::cxx::TypeToken(conflict.request.type.hash(), "collision.other");
         check(!compatibleCommands(descriptor, conflict), "full type name rejects a hash collision");
-        auto request_type = must(IpcMessage::bindType<AssetRequest>(IpcMessage::type<AssetRequest>()));
-        auto response_type = must(IpcMessage::bindType<Scalar>(IpcMessage::type<Scalar>()));
 
         auto& core = IpcCore::instance();
         auto server = must(core.createResponder("protocol"));
@@ -1065,19 +1094,17 @@ namespace
         auto source = lux::cxx::SharedBytes<>::fromOwner(shared_source, std::span(shared_source->bytes).first(8));
         const auto* pointer = source.data();
         IpcMessage input;
-        input.emplace(request_type, AssetRequest{{5}, std::move(source)});
+        input.emplace<AssetRequest>(AssetRequest{{5}, std::move(source)});
         input.setMetadata(RequestHeader{id_a, command});
         shared_source.reset();
         check(shared_destroyed == 0, "typed request pins original shared asset");
         must(a.trySend(input));
         IpcMessage other;
-        other.emplace(request_type, AssetRequest{{101}, {}});
+        other.emplace<AssetRequest>(AssetRequest{{101}, {}});
         other.setMetadata(RequestHeader{id_b, command});
         must(b.trySend(other));
         auto first = receive(server);
         auto second = receive(server);
-        check(first.message().holds(request_type.operations()) && second.message().holds(request_type.operations()),
-            "canonical request proof before typed access");
         auto* asset = first.message().get<AssetRequest>().asset.data() == pointer ? &first : &second;
         auto* other_work = asset == &first ? &second : &first;
         check(asset->message().get<AssetRequest>().asset.data() == pointer, "typed asset transferred without copy");
@@ -1086,34 +1113,34 @@ namespace
             const auto header = work.message().metadata<RequestHeader>();
             const auto& request = work.message().get<AssetRequest>();
             IpcMessage reply;
-            reply.emplace(response_type, Scalar{request.scalar.value + 1});
+            reply.emplace<Scalar>(Scalar{request.scalar.value + 1});
             reply.setMetadata(TerminalMeta{header.request, ECommandOutcome::SUCCESS});
-            must(server.tryReply(work, reply));
+            publish(server, work, reply);
         };
         answer(*other_work);
         answer(*asset);
         {
             auto result_a = receivedReply(a);
             auto result_b = receivedReply(b);
-            check(result_a.message.holds(response_type.operations()) && result_b.message.holds(response_type.operations()),
-                "canonical response proof before typed access");
-            check(result_a.message.metadata<TerminalMeta>().request == id_a &&
-                result_a.message.get<Scalar>().value == 6, "reply A despite equal Render ID");
-            check(result_b.message.metadata<TerminalMeta>().request == id_b &&
-                result_b.message.get<Scalar>().value == 102, "reply B despite reverse completion");
-            check(result_a.original_request.get<AssetRequest>().asset.data() == pointer && shared_destroyed == 0,
-                "reply retains original asset owner");
+            check(result_a.metadata<TerminalMeta>().request == id_a &&
+                result_a.get<Scalar>().value == 6, "reply A despite equal Render ID");
+            check(result_b.metadata<TerminalMeta>().request == id_b &&
+                result_b.get<Scalar>().value == 102, "reply B despite reverse completion");
+            check(shared_destroyed == 1, "input released when business finishes, not returned implicitly");
         }
         check(shared_destroyed == 1 && weak_source.expired(), "shared asset last release exactly once");
 
+        // A wrong get<T>() is a caller precondition violation, not runtime ABI negotiation.
+        // Invalid command identity remains a protocol boundary rejection without touching its payload.
         IpcMessage wrong;
         wrong.emplace<Scalar>(Scalar{7});
-        wrong.setMetadata(RequestHeader{id_a, command});
+        wrong.setMetadata(RequestHeader{id_a, {}});
         must(a.trySend(wrong));
         auto rejected = receive(server);
-        check(!rejected.message().holds(request_type.operations()), "wrong C++ request type rejected before access");
+        check(rejected.message().metadata<RequestHeader>().command == CommandId{}, "invalid command can be rejected before access");
         rejected.reset();
-        check(receivedReply(a).delivery == EIpcDelivery::ABORTED, "rejected raw input still settles IPC credit");
+        IpcMessage unanswered;
+        check(a.tryReceive(unanswered) == EIpcReceive::EMPTY, "IPC does not invent a business outcome");
         a.reset(); b.reset(); server.reset();
         empty();
     }

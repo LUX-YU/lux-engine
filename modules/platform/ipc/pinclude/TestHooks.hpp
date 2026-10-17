@@ -5,9 +5,9 @@
 namespace lux::platform::ipc::testing
 {
     struct Counts { std::size_t channels; std::size_t links; std::size_t rings; std::size_t allocations; };
-    // Sum of sizeof(T) for inline object move constructions, not a memcpy byte count.
-    struct MoveCounts { std::size_t moves; std::size_t inline_object_bytes; };
-    void recordMove(std::size_t bytes) noexcept;
+    // Message moves only. Object-specific move counts belong to fixture payloads.
+    struct MoveCounts { std::size_t moves; };
+    void recordMove() noexcept;
     LUX_PLATFORM_IPC_PUBLIC void startMoves() noexcept;
     LUX_PLATFORM_IPC_PUBLIC MoveCounts stopMoves() noexcept;
     enum class EPoint

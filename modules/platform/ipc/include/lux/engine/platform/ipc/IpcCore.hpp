@@ -50,7 +50,7 @@ namespace lux::platform::ipc
         [[nodiscard]] bool ready() const noexcept;
         [[nodiscard]] Result<void> trySend(IpcMessage& message) noexcept;
         // Only RECEIVED modifies output. Output must be empty/settled on success.
-        [[nodiscard]] EIpcReceive tryReceive(IpcReply& output) noexcept;
+        [[nodiscard]] EIpcReceive tryReceive(IpcMessage& output) noexcept;
         // Cold. Closes participation without waiting for Ring access or consumption.
         // Host serializes this with this requester's own send/receive operations.
         void reset() noexcept;
@@ -59,7 +59,6 @@ namespace lux::platform::ipc
         friend class IpcCore;
         detail::Channel* channel_ = nullptr;
         detail::Link* link_ = nullptr;
-        std::size_t outstanding_ = 0;
     };
 
     class LUX_PLATFORM_IPC_PUBLIC IpcResponder final

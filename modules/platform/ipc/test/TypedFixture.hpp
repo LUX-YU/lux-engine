@@ -7,55 +7,10 @@
 
 namespace ipc_typed_test
 {
-    // Identical POD layout in both modules. The ABI-negative DLL changes the
-    // actual standard-library configuration, never this type or its TypeToken.
-    struct AbiProbe final
-    {
-        std::uint64_t value = 0;
-    };
-
-    // Deliberately incompatible definitions across the negative-test DLL boundary:
-    // identical token/layout/compiler ABI, but different noexcept move and thus storage policy.
-    // Only TypeOps metadata crosses this boundary; no Probe object may be transferred.
-    struct StoragePolicyProbe final
-    {
-        std::uint64_t value = 0;
-#if defined(IPC_TEST_EXTERNAL_POLICY)
-        StoragePolicyProbe(StoragePolicyProbe&& other) noexcept(false) : value(other.value) {}
-#else
-        StoragePolicyProbe(StoragePolicyProbe&& other) noexcept : value(other.value) {}
-#endif
-    };
-
     struct Batch final
     {
         std::uint64_t scene = 0;
         std::vector<std::uint64_t> values;
-    };
-
-    struct DifferentBatch final
-    {
-        std::uint64_t scene = 0;
-        std::vector<std::uint64_t> values;
-    };
-
-    struct PinProbe final
-    {
-        int* destroyed = nullptr;
-        const bool* pin_alive = nullptr;
-
-        PinProbe(int& count, const bool& alive) noexcept : destroyed(&count), pin_alive(&alive) {}
-        PinProbe(PinProbe&& other) noexcept
-            : destroyed(std::exchange(other.destroyed, nullptr)), pin_alive(other.pin_alive) {}
-
-        ~PinProbe() noexcept
-        {
-            if (destroyed)
-            {
-                if (!*pin_alive) std::abort();
-                ++*destroyed;
-            }
-        }
     };
 
     struct AllocationOriginCounts final

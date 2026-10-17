@@ -28,7 +28,6 @@ struct AssetRequest final
 
 static const AssetRequest& assetRequest(const IpcMessage& input)
 {
-    check(input.holds(IpcMessage::type<AssetRequest>()));
     return input.get<AssetRequest>();
 }
 
@@ -60,7 +59,7 @@ static void fixedFields()
     for (std::size_t i = 0; i < Size; ++i) value.values[i] = std::byte(i);
     const auto* before = &value;
     auto moved = std::move(input);
-    check(input.empty() && moved.holds(IpcMessage::type<Fields<Size>>()));
+    check(input.empty());
     if constexpr (!IpcMessage::stores_inline<Fields<Size>>) check(&moved.get<Fields<Size>>() == before);
     for (std::size_t i = 0; i < Size; ++i) check(moved.get<Fields<Size>>().values[i] == std::byte(i));
     moved = std::move(moved);
@@ -104,7 +103,7 @@ static void storageModes()
     destination.reset();
     check(destination.empty());
     std::printf("typed SBO/external boundaries, owner replacement and array deleter; Message=%zu Reply=%zu\n",
-        sizeof(IpcMessage), sizeof(IpcReply));
+        sizeof(IpcMessage), sizeof(IpcMessage));
 }
 
 int main()
@@ -137,22 +136,20 @@ int main()
     IpcMessage reply;
     reply.emplace<std::uint64_t>(19);
     check(bool(responder.tryReply(*work, reply)));
-    IpcReply received;
+    IpcMessage received;
     check(requester.tryReceive(received) == EIpcReceive::RECEIVED);
-    check(received.message.get<std::uint64_t>() == 19);
-    check(assetRequest(received.original_request).source.data() == pointer);
+    check(received.get<std::uint64_t>() == 19);
+    check(destroyed == 1); // server finished using the only input owner
     check(bool(requester.trySend(second)));
     {
         auto abandoned = receive(responder);
         abandoned.reset();
     }
-    IpcReply aborted;
-    check(requester.tryReceive(aborted) == EIpcReceive::RECEIVED);
-    check(aborted.delivery == EIpcDelivery::ABORTED);
-    check(assetRequest(aborted.original_request).source.data() == second_pointer);
+    IpcMessage aborted;
+    check(requester.tryReceive(aborted) == EIpcReceive::EMPTY);
     requester.reset();
     responder.reset();
-    check(destroyed == 0);
+    check(destroyed == 2);
     received = {};
     aborted = {};
     check(destroyed == 2);

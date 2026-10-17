@@ -1,0 +1,1106 @@
+{
+  "implementation": "21113c6cf90e2249c9b388cd97f40ea3e1e030bc",
+  "archive": "E:\\RenderV2Rebuild\\V12\\archive\\21113c6cf90e2249c9b388cd97f40ea3e1e030bc\\typed-feature",
+  "files": [
+    {
+      "path": "feature-fix-build.log",
+      "size": 28732,
+      "sha256": "aab85c5a83afdaed03115e86120ec0c8c6b2a38ab95877cd9d91c32b33605c19"
+    },
+    {
+      "path": "feature-fix-build2.log",
+      "size": 558,
+      "sha256": "e6f7e09cf4beff9e60549cf25f3041da4339f6ff07910554fbcb5118d11a96d0"
+    },
+    {
+      "path": "feature-fix-no-work.log",
+      "size": 400,
+      "sha256": "61ed996c38977c3fcee60f715defa95a2c2de10eca6f6f87b44e63b5d3466cc2"
+    },
+    {
+      "path": "feature-fix-test.log",
+      "size": 4870,
+      "sha256": "6fbc8155834262cc326f8dc49652c56dcbb3f135411a39c8120ec2894ee136fa"
+    },
+    {
+      "path": "metadata.json",
+      "size": 677,
+      "sha256": "d72e94e2be632f1bf0951f1a13e17f1765af2279682d8b569c3e5b1e5821a4b4"
+    },
+    {
+      "path": "typed-feature/build-RelWithDebInfo-20261017-031024-252.log",
+      "size": 20443,
+      "sha256": "dc488c283b28e055a2299d6bcd08f426ca535de5b28a1450fc0e34844702e5b4"
+    },
+    {
+      "path": "typed-feature/build-RelWithDebInfo-20261017-031214-747.log",
+      "size": 1380,
+      "sha256": "89fd725b278edf9fdcb1c03bad8330651f983df938fa217e4aaf7a622770f117"
+    },
+    {
+      "path": "typed-feature/build-RelWithDebInfo-20261017-031327-283.log",
+      "size": 320,
+      "sha256": "a8d409725c7eec01c3f5522e25f3fff469a81cbffafdc2426b7fdda000c6af4e"
+    },
+    {
+      "path": "typed-feature/build-RelWithDebInfo-20261017-031334-809.log",
+      "size": 157,
+      "sha256": "95f7bcb7a501c462d5eda92979bd4c36b3aaa5b63c28e786a0fa9aea8ae7228b"
+    },
+    {
+      "path": "typed-feature/protection-precommit.json",
+      "size": 17316,
+      "sha256": "adf53be2d4f97cd2b5c3dade0a2dd0e3071f29165e2c6aacb46428f3305ff6d8"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log",
+      "size": 5317,
+      "sha256": "1bcec3d0ff752ed7634cfbd0ac1df34b4cb190e3ddf43311ec3b67d7b126452f"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.ctest.txt",
+      "size": 6510,
+      "sha256": "4d07a912b3e46b4e3c3e1369ff18cc77f619e4f5adc90fb4aef248fee70b35e1"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/ipc/test/ipc-cold.csv",
+      "size": 1260,
+      "sha256": "c0e5e1c13f6e61fdeab5aca70e09dec494cc16d9599c329f3eccf07dc25dbaf3"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/ipc/test/ipc-operation.csv",
+      "size": 487916,
+      "sha256": "c48f53d56042380e1e917358cf45da7a483139e02246068961bb20e38608403f"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/ipc/test/ipc-queue.csv",
+      "size": 98911,
+      "sha256": "0a0fda832a7d765875d850588c1e8191adf328a86a3428e331d3082161280043"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/ipc/test/ipc-roundtrip.csv",
+      "size": 795704,
+      "sha256": "04385e8a32639a784bc9d2366824df02328c0353b4bfb56a5f337ad21af5ed7e"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/ipc/test/ipc-ticks.csv",
+      "size": 497247,
+      "sha256": "d9a934a6b54ca102a602b0a310344cb838bb6291be0c4558f9a829db6e857f50"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/ipc/test/ipc-two-core.csv",
+      "size": 521273,
+      "sha256": "196afa04ab0762d623a8c7e67c9e03e5dbac321f839b02be1c87dfe3f65c2cbc"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "size": 7838,
+      "sha256": "42637bdcdbd58e0885686fc255f72d81d7c18659a6664abeb8f7835dabdac2bd"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "size": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "size": 10709,
+      "sha256": "6df8a044f88fedc4ea069025865e58a002efd453ab48e67c1a6da001d810baa1"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "size": 1113,
+      "sha256": "064143ce9b31ced286744215d034874b561b575f857250ae620ddefc5612cb67"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "size": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/async-cost-drains.csv",
+      "size": 88820,
+      "sha256": "40927b316fd4c758063906cc0690dc1ed39234c5f22a285ecdc668c8f7c0b341"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/async-cost-events.csv",
+      "size": 13446518,
+      "sha256": "fb3981a6daf836a4a6f7336360e02a739aec8cd15eff8b3f699ef3b610051876"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/async-cost-summary.csv",
+      "size": 6556,
+      "sha256": "556f190ab0b16724d42f02c6af73db6efe9272b124f06735cbeeb04fe941c397"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "ae54dd98d458343e0adb238f10813bd2a9e8ae20aafcf4296b2b8ba3819adf02"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/runtime-api.csv",
+      "size": 1418,
+      "sha256": "25ef265fad9092b3045a0b0be11e35832baa541f74bd11815ff2a1128a563eaa"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "size": 302,
+      "sha256": "b00f853f446c209c9f6008157dcc6491fe903e1510bfd278158870b54ade7efe"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "7f65d919dca8231efab3048543a6e5cf706a41aab69d0be87c358ad4c1c0f059"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "size": 31326,
+      "sha256": "bf19c8ab0ff59d7b8818298399d3ebfcc072ac362bdd912641ecf19e0c05fdbd"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "size": 21583,
+      "sha256": "eacde72ce1073982da9e4b5f6110a3dfa35984403470ec4aef1e6ec9801a4db9"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "2cb0dc524f2a0dae7f6a1fb18bd011dfd9181a6f3c127ea6c48770b3f3168c25"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "size": 11997,
+      "sha256": "4a6e305ecfa2cda750ea2d09b8ee5e17770b1bd698d8dc9a261a78e46220727e"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "size": 12927,
+      "sha256": "7ced215a6d58392c2ce14917f22fed1b1ac5ff38ca47c3fe23c8e77781ce29fb"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/texture-progress.csv",
+      "size": 281,
+      "sha256": "085a1f2ed6553e2525a84db6fd6b799b15139b110218ad0d6950044f8d63f17c"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "size": 1182,
+      "sha256": "53924c0278d3dfd993f9a1c329565c1e722b90d4fc2e53b6d2a2785d3c9efded"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031221-200.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "size": 1405,
+      "sha256": "b1559ccb6ccbe50e9e2ea55a7ca23b2c7a285c3bb8d9faf9aea2a4f0ddaf6ed0"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log",
+      "size": 607902,
+      "sha256": "1667f05c982dd843ba241b40da550e73dbf2e34c3d682c070c3da43884c342c6"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.ctest.txt",
+      "size": 620115,
+      "sha256": "9a9a625b2ba5baa0f1fd450608e6448939251ddebc84bc4987fa918ad248b32f"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/ipc/test/ipc-cold.csv",
+      "size": 1271,
+      "sha256": "e462bd91e7c31143eba94e9e0d710688f57ac9afa8805e1915ac1e8afb3aa647"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/ipc/test/ipc-operation.csv",
+      "size": 487917,
+      "sha256": "3911b93a94328d9a22c57bcb315aca8a934969f80dd5e97b30be8f6a99513410"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/ipc/test/ipc-queue.csv",
+      "size": 98906,
+      "sha256": "ea8e502a7cd699551a6f0bc7a0f97eda8d522be3e91c1a87d549546c8da91b47"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/ipc/test/ipc-roundtrip.csv",
+      "size": 795695,
+      "sha256": "b043da0ba7bd9f31915aa9f31490904f93d7e307d2f3f925a78ff364807cdb1b"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/ipc/test/ipc-ticks.csv",
+      "size": 502455,
+      "sha256": "80c87d67650ea7d3f00b8151dca180b468c3def2e355a27597696d8b5db10ba5"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/ipc/test/ipc-two-core.csv",
+      "size": 515794,
+      "sha256": "802fc70f020d0587f8ea4cc4063601c9604772ea46442b7757c57fc99d47e5b9"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "size": 7838,
+      "sha256": "b05b00c20c840757ce3418921f98ab45c9446a6284c2977440623d5da6a7437c"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "size": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "size": 10486,
+      "sha256": "54c5cf78d7aa861d119ca8a19b76671b3a55bb78690eccaefad8ce3bfaa92b8e"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "size": 1113,
+      "sha256": "f1bf8062ace39d044191ea76cab9e2347025942f58b1c53d126091dd3573d936"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "size": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/async-cost-drains.csv",
+      "size": 89148,
+      "sha256": "61000e90eb50cd4c2ee44e16a69c4b8303f5c83c4e2195e9e4361d12b1ef0dfa"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/async-cost-events.csv",
+      "size": 13446518,
+      "sha256": "3c283dc6549dd4a2bd8e34c99cd012b7a6701f0238155c4321f60f95db57f9ca"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/async-cost-summary.csv",
+      "size": 6569,
+      "sha256": "d1f974a4c16dbf36ce437cae5161edf238a5f9802165777c3ab65a3a1db5bd68"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "ec2c614f35af27dc89bd7bd85d1c9314aab9d3ed870324cebcc961e0b42b5502"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/runtime-api.csv",
+      "size": 1422,
+      "sha256": "c549a218c3b94110aac545c8b7e50b10edbc4e80ce557df40bb0be74e16e9820"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "size": 407,
+      "sha256": "2aa21bb6b33e6c2f0db736a6976a17d462b947944e2e7f8a8f2c098f5a0ba020"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "aa36ddb4499b0b6a6dc763aead8e60fb4be08bd604daa5eca16ba01e40060748"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "size": 31686,
+      "sha256": "6de37504788cce89285b55e28dfab90715b2f60a41394d0fafbbe9d6dbdd4a83"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "size": 21604,
+      "sha256": "831fb429e46f231e0a25b14d92492f9dc053318a77ac69034e494e95a823ce9f"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "364ac29348d5cf11cb9269dd2f44347b505455d0f8ff6725a2616009b5d89b1d"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "size": 11967,
+      "sha256": "2986d440417944671e274f6831f5ca2024b232f051cc8b44705aabff347134c7"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "size": 13047,
+      "sha256": "6ea36d2ee621af676ab475e6622ca745a38b4601642c4085793b97e773d9f34f"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/texture-progress.csv",
+      "size": 281,
+      "sha256": "14e1f4c4542fb46ca111a6c61be7c49064622d0472d9dfab6cb909b93513626d"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "size": 1219,
+      "sha256": "10a65e015d25986de25ee0815dba3ec4b67be7cb6666c5b771c9e7b727cb3b3b"
+    },
+    {
+      "path": "typed-feature/test-RelWithDebInfo-20261017-031336-551.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "size": 1404,
+      "sha256": "38fae20ea504e51413aa5938eab76f67d44fdb15932aa75b86876df7552bc59c"
+    },
+    {
+      "path": "typed-feature-admission-fix/build-RelWithDebInfo-20261017-032515-108.log",
+      "size": 28489,
+      "sha256": "d577212c5095443761d96a1fc7d0009da7c95577014632d31334ea19c65d92e1"
+    },
+    {
+      "path": "typed-feature-admission-fix/build-RelWithDebInfo-20261017-032716-395.log",
+      "size": 315,
+      "sha256": "3f3a7aca8f62eac91102650adf2b912e37cd380e08da3f40ade01b041e6698d3"
+    },
+    {
+      "path": "typed-feature-admission-fix/build-RelWithDebInfo-20261017-032723-950.log",
+      "size": 157,
+      "sha256": "95f7bcb7a501c462d5eda92979bd4c36b3aaa5b63c28e786a0fa9aea8ae7228b"
+    },
+    {
+      "path": "typed-feature-admission-fix/protection.json",
+      "size": 17379,
+      "sha256": "827b3dd9263c41bdfd3704c4257cc78fc5ac47966fb5395a8f27b1660a95abe2"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log",
+      "size": 4627,
+      "sha256": "84d7f631ff04a9ac692925c2bb2b9fa44824db9c1f113a1c1a77df183fc6b9de"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.ctest.txt",
+      "size": 4673,
+      "sha256": "1c726d7e4a16cdc567af4a0a6330ac08c14d37602bd092b6f07838db8781898f"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/ipc/test/ipc-cold.csv",
+      "size": 1271,
+      "sha256": "e462bd91e7c31143eba94e9e0d710688f57ac9afa8805e1915ac1e8afb3aa647"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/ipc/test/ipc-operation.csv",
+      "size": 487917,
+      "sha256": "3911b93a94328d9a22c57bcb315aca8a934969f80dd5e97b30be8f6a99513410"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/ipc/test/ipc-queue.csv",
+      "size": 98906,
+      "sha256": "ea8e502a7cd699551a6f0bc7a0f97eda8d522be3e91c1a87d549546c8da91b47"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/ipc/test/ipc-roundtrip.csv",
+      "size": 795695,
+      "sha256": "b043da0ba7bd9f31915aa9f31490904f93d7e307d2f3f925a78ff364807cdb1b"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/ipc/test/ipc-ticks.csv",
+      "size": 502455,
+      "sha256": "80c87d67650ea7d3f00b8151dca180b468c3def2e355a27597696d8b5db10ba5"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/ipc/test/ipc-two-core.csv",
+      "size": 515794,
+      "sha256": "802fc70f020d0587f8ea4cc4063601c9604772ea46442b7757c57fc99d47e5b9"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "size": 7838,
+      "sha256": "b05b00c20c840757ce3418921f98ab45c9446a6284c2977440623d5da6a7437c"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "size": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "size": 10486,
+      "sha256": "54c5cf78d7aa861d119ca8a19b76671b3a55bb78690eccaefad8ce3bfaa92b8e"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "size": 1113,
+      "sha256": "f1bf8062ace39d044191ea76cab9e2347025942f58b1c53d126091dd3573d936"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "size": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/async-cost-drains.csv",
+      "size": 89148,
+      "sha256": "61000e90eb50cd4c2ee44e16a69c4b8303f5c83c4e2195e9e4361d12b1ef0dfa"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/async-cost-events.csv",
+      "size": 13446518,
+      "sha256": "3c283dc6549dd4a2bd8e34c99cd012b7a6701f0238155c4321f60f95db57f9ca"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/async-cost-summary.csv",
+      "size": 6569,
+      "sha256": "d1f974a4c16dbf36ce437cae5161edf238a5f9802165777c3ab65a3a1db5bd68"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "02263949050b7b6115fbbb39464d2c533ec5f93cb30dacbff1d24f2594bef50c"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/runtime-api.csv",
+      "size": 1422,
+      "sha256": "c549a218c3b94110aac545c8b7e50b10edbc4e80ce557df40bb0be74e16e9820"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "size": 2047,
+      "sha256": "2b64ca534bd1697d2a0726e2b8181294c93def3573ff7b99f5a44ece61b38e2f"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "size": 87047,
+      "sha256": "60aa8310e178817b05e3b6f46e5b4bf5add01dacb09d6e9e3c346d894268e591"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "size": 31686,
+      "sha256": "6de37504788cce89285b55e28dfab90715b2f60a41394d0fafbbe9d6dbdd4a83"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "size": 21604,
+      "sha256": "831fb429e46f231e0a25b14d92492f9dc053318a77ac69034e494e95a823ce9f"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "4978d5ed8c13cecdb903066c4263e75274ec113f1d44f057a6ff7594debb867d"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "size": 11967,
+      "sha256": "2986d440417944671e274f6831f5ca2024b232f051cc8b44705aabff347134c7"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "size": 13047,
+      "sha256": "6ea36d2ee621af676ab475e6622ca745a38b4601642c4085793b97e773d9f34f"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/texture-progress.csv",
+      "size": 281,
+      "sha256": "14e1f4c4542fb46ca111a6c61be7c49064622d0472d9dfab6cb909b93513626d"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "size": 1219,
+      "sha256": "10a65e015d25986de25ee0815dba3ec4b67be7cb6666c5b771c9e7b727cb3b3b"
+    },
+    {
+      "path": "typed-feature-admission-fix/test-RelWithDebInfo-20261017-032725-707.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "size": 1404,
+      "sha256": "38fae20ea504e51413aa5938eab76f67d44fdb15932aa75b86876df7552bc59c"
+    },
+    {
+      "path": "typed-feature-build1.console.log",
+      "size": 20686,
+      "sha256": "6b17f44f35f1f06e4b8e7f9b5d492167feeb9f2281981d2ea04d20cfdc6b9568"
+    },
+    {
+      "path": "typed-feature-build2.console.log",
+      "size": 1623,
+      "sha256": "1c5b3b519c653f69a4e872d44b109503375d21ccce10bfc823e91eaca5f2b1ef"
+    },
+    {
+      "path": "typed-feature-build3.console.log",
+      "size": 563,
+      "sha256": "57d63d91fbe0c6197d2f50a24091df68f09b16dffc7bad7708b1e9c86a3187f7"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log",
+      "size": 2216,
+      "sha256": "3309703f8f53248d119444984f4c5ba1849b09545dbd07a269c913c784c5a1bd"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.ctest.txt",
+      "size": 1565,
+      "sha256": "71463733080d8679cd55a17bf9adecdbe4a91ad96b43e56e8d5bf79e569b2fb9"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/ipc/test/ipc-cold.csv",
+      "size": 1522,
+      "sha256": "56a1e247e0b5e0da5fd8d7668ce461f2070451fb2473f8478cc81775dd9e0b45"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/ipc/test/ipc-operation.csv",
+      "size": 507884,
+      "sha256": "ac585faa637f1767419a6b4347e98e4bf0e7b0eb33b1325560db3475fa583f81"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/ipc/test/ipc-queue.csv",
+      "size": 100023,
+      "sha256": "46f16dab75fda0b22e3b329a103657c7c316661c3ebc46a9f5da0e0d8379e427"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/ipc/test/ipc-roundtrip.csv",
+      "size": 818769,
+      "sha256": "9cf7cc10a7f904fe421f2415c39d5acc7b18fa8dbfe7ce646d12f9f7764ad389"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/ipc/test/ipc-ticks.csv",
+      "size": 507885,
+      "sha256": "2e9bebdb6ef727316edcea62462b8c63a5993daf3a31f676c200e0faa6006839"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/ipc/test/ipc-two-core.csv",
+      "size": 555484,
+      "sha256": "e129e10787fc84b1590cc514b91783d3d367609915e5f11a82009ed008bff1a3"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "size": 7838,
+      "sha256": "24d7dd8c86222cfcc796686463af9e753e58644945824368c6313938c217a2bc"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "size": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "size": 10719,
+      "sha256": "c690e0293650d4310977c1e78914b27645cb18d17d48383ca89d83b9395fef97"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "size": 1123,
+      "sha256": "774f8404546a774c9b430b61a611738886e9ed0e39fdb85d4f3f2a37136158ea"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "size": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/async-cost-drains.csv",
+      "size": 85582,
+      "sha256": "1a3fbe9de529909c4475ce86f770781d474c83e0d073f9a951a40a5090a3c533"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/async-cost-events.csv",
+      "size": 13446518,
+      "sha256": "6cfcfed5d680afabc08fe04e72070661ac566b26bc66b5307cd7784c6891feb5"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/async-cost-summary.csv",
+      "size": 6758,
+      "sha256": "2f004d0ecf29c97915bec764cfa5e9c7569942bc0f7548baa325084c91e0f2e1"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "283ec29402a9eb5309848b109ab4f14e71fdcbe5ea32007cc7b9e96dd4e4aa09"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/runtime-api.csv",
+      "size": 1324,
+      "sha256": "1acefd41dc6e0c69e8995cd776028c88d97bdab2481b46ffc8492d6961f2cdbc"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "size": 5073,
+      "sha256": "f8eab1d700d663a0b11f1c70a11cf4baf6808c161c23061f41c95a7f69d41a89"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "size": 87055,
+      "sha256": "d2151c3e5b52b0299ae5a201473c0f01b86a0edc025abc10273435891ebc1cc9"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "size": 33653,
+      "sha256": "b3697aecfa80e7403f1d55efcbda53b42ec36226caef6e8169ca88ca84c3acae"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "size": 21615,
+      "sha256": "c2d5503e09ed9b7ef9bd47181f946cad96975ad035397a13aab854abd45009ba"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "ceb66264d0a156aeac65e3ed9405d514f640f97ea3113ebbd7ee17751fd47647"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "size": 12492,
+      "sha256": "28f1fd68a06d61a21a543800d8c615467c2e3a5b2456b2463cae2adacd4fa9a4"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "size": 11667,
+      "sha256": "57c644b5f82038c144979547c83d32b2d0fd493e6260473e96547873b6bf5d1e"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/texture-progress.csv",
+      "size": 283,
+      "sha256": "c4234582c8dcff3b34f0bb1a81f6d9c5352032701bb73c7dd92b1cb8dd9c2eb1"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "size": 1374,
+      "sha256": "2ea04d4a9f150c7face4cd1d2a59cd3db8cd11df3eb2d21531d8a6c4ad915667"
+    },
+    {
+      "path": "typed-feature-failure-reproduce/test-RelWithDebInfo-20261017-032425-589.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "size": 1304,
+      "sha256": "936bc2a295edb0f653a3e449a7882ff7720a96409d58c8946366a3b53ae4a416"
+    },
+    {
+      "path": "typed-feature-focused.console.log",
+      "size": 5560,
+      "sha256": "9d934e6359cb7a9a03e630187de9bf1873fcdccfd8b13a407831984b43113e6a"
+    },
+    {
+      "path": "typed-feature-full.console.log",
+      "size": 608145,
+      "sha256": "6cc7ac55f0ed698b7baf6adeea9ee6a1cdf786834f626a4f16f4acacc5e37ff5"
+    },
+    {
+      "path": "typed-feature-independent/build-20261017-031645.console.log",
+      "size": 41204,
+      "sha256": "4c44d0aa296a9d558b1337e8361d998e3191cd4c659eb9adaa9094f62da22295"
+    },
+    {
+      "path": "typed-feature-independent/build-20261017-031913.console.log",
+      "size": 459,
+      "sha256": "b12622750196fb30175dbf6c9713433cca9331b57857522de525fbdc60d8fd28"
+    },
+    {
+      "path": "typed-feature-independent/build-RelWithDebInfo-20261017-031647-036.log",
+      "size": 40961,
+      "sha256": "70ebc95389afb2868ed4e617424b640096e5cae387c1393e6c53b5199652aa3b"
+    },
+    {
+      "path": "typed-feature-independent/build-RelWithDebInfo-20261017-031915-028.log",
+      "size": 216,
+      "sha256": "93fa3b9a9717c63fc2fae2b9b97b1be9506cf4c6950e2861263b80367b3be821"
+    },
+    {
+      "path": "typed-feature-independent/configure-20261017-031640.console.log",
+      "size": 1889,
+      "sha256": "41e4e39a1fecf59e72a8bfd299b4e8dcbf13d3db72c5195f51d0c3dde41b8686"
+    },
+    {
+      "path": "typed-feature-independent/configure-RelWithDebInfo-20261017-031642-002.log",
+      "size": 1646,
+      "sha256": "6c660d89c838e875fd497e3131a9fdb47d849a1ea1d510da6db5bb1fe8fb8fa6"
+    },
+    {
+      "path": "typed-feature-independent/snapshot-20261017-031629.console.log",
+      "size": 640,
+      "sha256": "6a43420b66b12bba20dcf8cbb980ee28cc26c43522c0552bcaa1b6310f931c31"
+    },
+    {
+      "path": "typed-feature-independent/snapshot-RelWithDebInfo-20261017-031631-648.log",
+      "size": 397,
+      "sha256": "59dc06facac263db497f573fe81ac40bfe06b5aacbb71697e6a07b1c08ac34e0"
+    },
+    {
+      "path": "typed-feature-independent/test-20261017-031915.console.log",
+      "size": 665287,
+      "sha256": "d62cc3e30bd62eced07df5d8ebf405070fc1cb0995afce1aa1dd71d7433ab4ac"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log",
+      "size": 665044,
+      "sha256": "7aea797886a467db903a9ae6b7595607b520cf704c09dee40e384f2f595f2dea"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.ctest.txt",
+      "size": 676957,
+      "sha256": "b24fb6a10c7abc19871c8aa20ac656e94827ebb3188357286b61c99f144235a4"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/ipc/test/ipc-cold.csv",
+      "size": 1522,
+      "sha256": "56a1e247e0b5e0da5fd8d7668ce461f2070451fb2473f8478cc81775dd9e0b45"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/ipc/test/ipc-operation.csv",
+      "size": 507884,
+      "sha256": "ac585faa637f1767419a6b4347e98e4bf0e7b0eb33b1325560db3475fa583f81"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/ipc/test/ipc-queue.csv",
+      "size": 100023,
+      "sha256": "46f16dab75fda0b22e3b329a103657c7c316661c3ebc46a9f5da0e0d8379e427"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/ipc/test/ipc-roundtrip.csv",
+      "size": 818769,
+      "sha256": "9cf7cc10a7f904fe421f2415c39d5acc7b18fa8dbfe7ce646d12f9f7764ad389"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/ipc/test/ipc-ticks.csv",
+      "size": 507885,
+      "sha256": "2e9bebdb6ef727316edcea62462b8c63a5993daf3a31f676c200e0faa6006839"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/ipc/test/ipc-two-core.csv",
+      "size": 555484,
+      "sha256": "e129e10787fc84b1590cc514b91783d3d367609915e5f11a82009ed008bff1a3"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "size": 7838,
+      "sha256": "24d7dd8c86222cfcc796686463af9e753e58644945824368c6313938c217a2bc"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "size": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "size": 10719,
+      "sha256": "c690e0293650d4310977c1e78914b27645cb18d17d48383ca89d83b9395fef97"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "size": 1123,
+      "sha256": "774f8404546a774c9b430b61a611738886e9ed0e39fdb85d4f3f2a37136158ea"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "size": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/async-cost-drains.csv",
+      "size": 85582,
+      "sha256": "1a3fbe9de529909c4475ce86f770781d474c83e0d073f9a951a40a5090a3c533"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/async-cost-events.csv",
+      "size": 13446518,
+      "sha256": "6cfcfed5d680afabc08fe04e72070661ac566b26bc66b5307cd7784c6891feb5"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/async-cost-summary.csv",
+      "size": 6758,
+      "sha256": "2f004d0ecf29c97915bec764cfa5e9c7569942bc0f7548baa325084c91e0f2e1"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "283ec29402a9eb5309848b109ab4f14e71fdcbe5ea32007cc7b9e96dd4e4aa09"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/runtime-api.csv",
+      "size": 1324,
+      "sha256": "1acefd41dc6e0c69e8995cd776028c88d97bdab2481b46ffc8492d6961f2cdbc"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "size": 33653,
+      "sha256": "b3697aecfa80e7403f1d55efcbda53b42ec36226caef6e8169ca88ca84c3acae"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "size": 21615,
+      "sha256": "c2d5503e09ed9b7ef9bd47181f946cad96975ad035397a13aab854abd45009ba"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "ceb66264d0a156aeac65e3ed9405d514f640f97ea3113ebbd7ee17751fd47647"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "size": 12492,
+      "sha256": "28f1fd68a06d61a21a543800d8c615467c2e3a5b2456b2463cae2adacd4fa9a4"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "size": 11667,
+      "sha256": "57c644b5f82038c144979547c83d32b2d0fd493e6260473e96547873b6bf5d1e"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/texture-progress.csv",
+      "size": 283,
+      "sha256": "c4234582c8dcff3b34f0bb1a81f6d9c5352032701bb73c7dd92b1cb8dd9c2eb1"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "size": 1374,
+      "sha256": "2ea04d4a9f150c7face4cd1d2a59cd3db8cd11df3eb2d21531d8a6c4ad915667"
+    },
+    {
+      "path": "typed-feature-independent/test-RelWithDebInfo-20261017-031917-015.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "size": 1304,
+      "sha256": "936bc2a295edb0f653a3e449a7882ff7720a96409d58c8946366a3b53ae4a416"
+    },
+    {
+      "path": "typed-feature-no-work.console.log",
+      "size": 400,
+      "sha256": "61ed996c38977c3fcee60f715defa95a2c2de10eca6f6f87b44e63b5d3466cc2"
+    },
+    {
+      "path": "typed-feature-repaired-independent/build-20261017-032844.console.log",
+      "size": 41399,
+      "sha256": "32f114cabadb45b87b50ed98f458ed9af5cf2ebc7695e7ae0a36bf6eb4a02792"
+    },
+    {
+      "path": "typed-feature-repaired-independent/build-20261017-033111.console.log",
+      "size": 465,
+      "sha256": "ed183736906e4f73bfd07cdc82d0f1590b945ef6b1782fe1b73a8150cd77961a"
+    },
+    {
+      "path": "typed-feature-repaired-independent/build-RelWithDebInfo-20261017-032845-773.log",
+      "size": 41156,
+      "sha256": "fb10eed3961e6aa7ff47ab9fc9a4b5d6a7be60a2b380d5032e4bb887ddaa7a57"
+    },
+    {
+      "path": "typed-feature-repaired-independent/build-RelWithDebInfo-20261017-033113-017.log",
+      "size": 222,
+      "sha256": "85ba6eadd1ca2de1bf6be97c2610d6ea5406ec2317b269d6d7a2753196e9d5a7"
+    },
+    {
+      "path": "typed-feature-repaired-independent/configure-20261017-032839.console.log",
+      "size": 1898,
+      "sha256": "ad9846e89d62d766b5fafd2ac41877d508e4c1e9ca2b94250bd9c32102cce4b7"
+    },
+    {
+      "path": "typed-feature-repaired-independent/configure-RelWithDebInfo-20261017-032841-125.log",
+      "size": 1655,
+      "sha256": "cc55403daf047d26ab4285b70ebe84f19812f7471799d4deeecf217ed6ff9ce0"
+    },
+    {
+      "path": "typed-feature-repaired-independent/protection.json",
+      "size": 17448,
+      "sha256": "21a727ad714554bd57104dfdafc86b17e5f86779d249cdeba4235e5d23493fae"
+    },
+    {
+      "path": "typed-feature-repaired-independent/snapshot-20261017-032829.console.log",
+      "size": 646,
+      "sha256": "7b022a0c9c2910244af5c7be12dcfcbc593dc59f5a39af272ba890d538901998"
+    },
+    {
+      "path": "typed-feature-repaired-independent/snapshot-RelWithDebInfo-20261017-032831-509.log",
+      "size": 403,
+      "sha256": "7e769e6eeafb1633f16477845e2a3b55e4269cad1fb6c76405804e9a0fa5d5db"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-20261017-033113.console.log",
+      "size": 678192,
+      "sha256": "ed2a6e13018d61f81466451952f1cae8374113713d1429d072dc237e266abbbd"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log",
+      "size": 677949,
+      "sha256": "f24cccd2726d232b862297473ebcea6a94a0489762b8ab95acf88a754ed75689"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.ctest.txt",
+      "size": 689983,
+      "sha256": "637a5c1927b7c61643347127d8bceb98d3510bca76ce58db27060f5352fd3e19"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/ipc/test/ipc-cold.csv",
+      "size": 1510,
+      "sha256": "4c1c95d159f305f95ee268e61a1a065cdaac03a29f2ccc9fd9f4fed7d59fc477"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/ipc/test/ipc-operation.csv",
+      "size": 507868,
+      "sha256": "2a2e58fd06c96743506618cd7280269d445cd7652e00df7790dc4125ebc21a9c"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/ipc/test/ipc-queue.csv",
+      "size": 98950,
+      "sha256": "65922ae8bc210c91480477155c33024922ada2adefa4f7f59ea47cd8e51ba887"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/ipc/test/ipc-roundtrip.csv",
+      "size": 807695,
+      "sha256": "7095ceab780588e4bf5017fc770bcfd86a886127f13f1a05847bf8e04011e26b"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/ipc/test/ipc-ticks.csv",
+      "size": 521552,
+      "sha256": "f4c3412e6c6d9f384454e03d2b600c68bb339e519e23415f92e8b5e37d7e3589"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/ipc/test/ipc-two-core.csv",
+      "size": 554250,
+      "sha256": "3d83d247ea4a57e07d17d9753815b6d6b10087d28cadc4f49e9ebb60658f6ed7"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "size": 7838,
+      "sha256": "0dbbeabdeb05fbeb085cb7b29b432fbd535d46b1abe04e2372f0b30f04a704dd"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "size": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "size": 10737,
+      "sha256": "d2026ef1d850efaa246892108dec1d916863d7e21a527433707b7f9330432d22"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "size": 1124,
+      "sha256": "6675d6fde2781ed1287e22027e5931c61c08b8531b2a3479d413ac0d5c276b0e"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "size": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/async-cost-drains.csv",
+      "size": 85465,
+      "sha256": "0d0b07de1dd978d37643d90eab0df63278499ef12776a1969a3c36f2288c0c19"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/async-cost-events.csv",
+      "size": 13446413,
+      "sha256": "54cca9839d3c55d9a9105666d9e41eddebfd992318d03f370b8f8c8db7905b1e"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/async-cost-summary.csv",
+      "size": 6729,
+      "sha256": "82d1a6cbe0860f6ee5fd35f4729f3f2a067eaab6972141a076ba7c9fce95fd1e"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "6f5c2f645a87ca53df42d5417a52f1998b76fb632853369c9b68bba3908009d7"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/runtime-api.csv",
+      "size": 1318,
+      "sha256": "c53217905a72e9ae4d4283d5ce8f72206a50f8797c16b61e7002a931dc03aae4"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "size": 3061,
+      "sha256": "42b1d82d30425005e085581ae920ed87ffcbef7f445e4a7209349e7e92e26167"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "size": 87048,
+      "sha256": "4076b247bbb93b1f3079c33378816fa1779ec523b79b3860b368d146331f31e4"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "size": 33868,
+      "sha256": "46a72c8945d3d7bd204d1fc89b070ae9fb741529694879a76cc26fce14f12808"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "size": 21617,
+      "sha256": "9f127f8765c7aaf6046b1c7968bf3a7e83e6c1c505cfe53be1caff450dce2b43"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "size": 87046,
+      "sha256": "45952da290f0f83fe10d8ae157df315daaae63ff17fb22b952a706d9fc8a27bb"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "size": 11277,
+      "sha256": "83a639743d15e18be91335a5f1a03ad56519b550228506b1c3e14487968f0ceb"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "size": 11817,
+      "sha256": "094c67fca35271242528e2c8e897bcb4b35e5912c6d9adcdfcc50312f6640d07"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/texture-progress.csv",
+      "size": 281,
+      "sha256": "3228cf2e0cc155359fed326c3d643eb62d9e98bfc3370be42ab8db57a2f974e3"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "size": 1189,
+      "sha256": "bc3d145823314767fec2c8aafa3f21547e2b493e8873fd52fe709017431ac0ac"
+    },
+    {
+      "path": "typed-feature-repaired-independent/test-RelWithDebInfo-20261017-033114-919.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "size": 1303,
+      "sha256": "a6f4bd2e910d0160c142e93c762876006c3ea7fbfe638bc6e2ffd1ed731289d5"
+    },
+    {
+      "path": "typed-feature-reproduce.log",
+      "size": 2459,
+      "sha256": "14f97082a751fd6c2c68a4b05bc322564393fd7a589ce3a83775f3e87023e296"
+    },
+    {
+      "path": "verify-n2-feature-repaired.ps1",
+      "size": 756,
+      "sha256": "343182004f55fc9542ab6170b05cbf3cecc567a262cb8dac286316dd1f5a4c2c"
+    },
+    {
+      "path": "verify-n2-typed-feature.ps1",
+      "size": 739,
+      "sha256": "dcbbce6e0412c88f9af04c3cbffb5af8f248588b25401897d41dd901dbf184e0"
+    }
+  ]
+}

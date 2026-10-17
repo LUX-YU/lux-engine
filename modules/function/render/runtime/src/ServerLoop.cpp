@@ -98,7 +98,7 @@ namespace lux::render
             else
             {
                 result = request.reply(HelloResponse{config.implementation_code_pin,
-                    commandDirectory().commands, &failure_type.operations()});
+                    commandDirectory(true).commands, &failure_type.operations()});
                 if (result) ++clients;
             }
         }

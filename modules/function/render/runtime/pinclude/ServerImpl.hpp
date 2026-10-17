@@ -219,7 +219,7 @@ namespace lux::render
 
         RenderResult<void> listFeatures(RenderRequest& request) noexcept;
         RenderResult<void> listStorages(RenderRequest& request) noexcept;
-        [[nodiscard]] CommandList commandDirectory() const noexcept;
+        [[nodiscard]] CommandList commandDirectory(bool bootstrap = false) const noexcept;
 
         RenderResult<void> listCommands(RenderRequest& request) noexcept;
         RenderResult<void> listCommandBindings(RenderRequest& request) noexcept;

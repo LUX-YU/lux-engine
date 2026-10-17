@@ -7,7 +7,10 @@ namespace lux::render
         FeatureList result;
         result.features.reserve(features.size());
         for (const auto& entry : features)
-            result.features.push_back({entry.id, std::string(entry.descriptor.type.name())});
+            result.features.push_back({
+                entry.id, std::string(entry.descriptor.type.name()), std::string(entry.descriptor.config.token.name()),
+                entry.descriptor.config.size, entry.descriptor.config.alignment
+            });
         return request.reply(std::move(result));
     }
 
@@ -21,14 +24,18 @@ namespace lux::render
         return request.reply(std::move(result));
     }
 
-    CommandList RenderServer::Impl::commandDirectory() const noexcept
+    CommandList RenderServer::Impl::commandDirectory(bool bootstrap) const noexcept
     {
         CommandList result;
-        result.commands.reserve(command_table.size());
+        result.commands.reserve(bootstrap ? 5 : command_table.size());
         for (const auto& route : command_table)
         {
             const auto& entry = *route.cold;
             const auto& descriptor = *entry.binding.descriptor();
+            const auto name = descriptor.name.name();
+            const bool is_control = name == ListCommands::name || name == ListCommandBindings::name ||
+                name == SelectCommandBinding::name || name == ListFeatures::name || name == ListStorages::name;
+            if (bootstrap && !is_control) continue;
             result.commands.push_back({entry.code_pin, std::string(descriptor.name.name()), entry.id,
                 descriptor.request, descriptor.response, entry.transport.request, entry.transport.response,
                 route.active.invoke != nullptr});
@@ -60,6 +67,9 @@ namespace lux::render
         const auto& input = request.get<CommandSelection>();
         auto* entry = command_table.find(input.command);
         if (!entry) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        // Runtime-private controls have no installed Handler choice. In particular, disabling
+        // ListCommands would remove the only discovery path for every future Client.
+        if (entry->cold->supported.empty()) return cxx::unexpected(RenderError{kRuntimeUnsupported});
         if (input.handler.isNull())
         {
             entry->cold->selected = {};

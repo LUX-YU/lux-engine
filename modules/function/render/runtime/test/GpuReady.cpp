@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include "ProtocolAudit.hpp"
@@ -340,7 +341,9 @@ int main(int argc, char** argv)
     bool run_ok = false;
     std::thread render([&] { render_allocation::participate = true; run_ok = bool(server->run()); });
     CHECK(wait(*a, take(a->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(runtime_test::refresh(*a));
     CHECK(wait(*b, take(b->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(runtime_test::refresh(*b));
     auto bound_a = take(a->bind<UploadProbe>());
     auto bound_b = take(b->bind<UploadProbe>());
     auto source_a = asset(37), source_b = asset(73);
@@ -690,6 +693,7 @@ int main(int argc, char** argv)
     bool closing_ok = false;
     std::thread closing_thread([&] { closing_ok = bool(closing_server->run()); });
     CHECK(wait(*closing_client, take(closing_client->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(runtime_test::refresh(*closing_client));
     auto closing_binding = take(closing_client->bind<UploadProbe>());
     auto closing_source = asset(91);
     std::array closing_payload{take(RenderPayload::fromVector(closing_source, 17, 64))};

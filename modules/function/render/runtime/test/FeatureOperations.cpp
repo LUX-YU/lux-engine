@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/runtime/RenderClient.hpp>
@@ -278,6 +279,7 @@ int main()
     std::thread worker([&] { render_allocation::participate = true; run_ok = bool(server->run()); });
     check(wait(*a, hello_a).header.outcome == ECommandOutcome::SUCCESS);
     check(wait(*b, hello_b).header.outcome == ECommandOutcome::SUCCESS);
+    check(bool(runtime_test::refresh(*a)) && bool(runtime_test::refresh(*b)));
     // Dynamic installation is Owner-thread-only; this Client thread does not mutate the running directory.
     check(!a->bind<UnqualifiedType>());
     auto bound_a = take(a->bind<SetExposure>());

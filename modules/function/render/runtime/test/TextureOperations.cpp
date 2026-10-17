@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include "ServerFixture.hpp"
 #include "TypedTest.hpp"
 #include "TextureFixture.hpp"
@@ -40,7 +41,9 @@ int main()
     auto a = take(RenderClient::create(config.channel_name));
     auto b = take(RenderClient::create(config.channel_name));
     CHECK(wait(*a, take(a->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(runtime_test::refresh(*a));
     CHECK(wait(*b, take(b->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(runtime_test::refresh(*b));
     auto bound_a = take(a->bind<SetTexture>());
     auto bound_b = take(b->bind<SetTexture>());
     auto info = information(64, 4, false);

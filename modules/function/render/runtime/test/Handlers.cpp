@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
@@ -161,6 +162,13 @@ int main()
     auto a = take(RenderClient::create("runtime.handlers"));
     (void)take(a->hello());
     check(receive(*a).header.outcome == ECommandOutcome::SUCCESS);
+    check(!a->bind<First>()); // Hello exposes controls, never the business directory.
+    check(bool(runtime_test::refresh(*a)));
+    const auto controls = take(a->bind<ListCommands>());
+    auto protected_control = call<SelectCommandBinding>(*a, {controls.command(), {}});
+    check(protected_control.header().outcome == ECommandOutcome::FAILED &&
+        protected_control.header().error.type == kRuntimeUnsupported);
+    check(!call<ListCommands>(*a).response().commands.empty());
     const auto bound = take(a->bind<First>());
     const auto bindings = call<ListCommandBindings>(*a, bound.command());
     check(bindings.response().selected == first && bindings.response().handlers.size() == 2);
@@ -200,10 +208,12 @@ int main()
     check(call<ListCommandBindings>(*a, bound.command()).response().handlers.size() == 3);
     check(call<SelectCommandBinding>(*a, {bound.command(), second}).header().outcome == ECommandOutcome::SUCCESS);
 
-    // A later Client bootstrap is built from the same live Command table, not the startup snapshot.
+    // A later Client explicitly discovers the live table, not a startup snapshot in Hello.
     auto b = take(RenderClient::create("runtime.handlers"));
     (void)take(b->hello());
     check(receive(*b).header.outcome == ECommandOutcome::SUCCESS);
+    check(!b->bind<Late>());
+    check(bool(runtime_test::refresh(*b)));
     check(call<Late>(*b, 10).response() == 310);
     check(call<First>(*b, 12).response() == 212); // Other Client coordinates after the selection reply.
     auto bad = call<SelectCommandBinding>(*a, {bound.command(), HandlerId{first.index, first.gen + 1}});

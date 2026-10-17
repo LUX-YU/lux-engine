@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include "ProtocolAudit.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -88,7 +89,8 @@ static void featureDirectory()
     for (std::size_t i = 0; i < count; ++i)
     {
         names.push_back("test.feature." + std::to_string(i));
-        descriptions.push_back({FeatureName(names.back()), {}});
+        descriptions.push_back({FeatureName(names.back()),
+            i == 0 ? ConfigValue::typeOf<std::uint32_t>() : ConfigValue::Type{}});
         auto registered = feature_test::registerGraph(*server, {&descriptions.back(), &graph, nullptr});
         check(bool(registered));
         ids.push_back(*registered);
@@ -103,6 +105,7 @@ static void featureDirectory()
     auto hello = client->hello();
     check(bool(hello));
     receive(*client, *hello);
+    check(bool(runtime_test::refresh(*client)));
     auto binding = client->bind<ListFeatures>();
     check(bool(binding));
     EmptyRequest request;
@@ -114,6 +117,11 @@ static void featureDirectory()
     {
         const auto& value = completed->response().features[i];
         check(value.id == ids[i] && value.name == "test.feature." + std::to_string(i));
+        if (i == 0)
+            check(value.config_type == lux::cxx::typeToken<std::uint32_t>().name() &&
+                value.config_size == sizeof(std::uint32_t) && value.config_alignment == alignof(std::uint32_t));
+        else
+            check(value.config_type.empty() && value.config_size == 0 && value.config_alignment == 0);
     }
     const auto installing = *client->bind<InstallFeature>();
     unsigned number = count;
@@ -133,6 +141,39 @@ static void featureDirectory()
     descriptions.clear();
     names.clear();
     check(completed->response().features.front().name == "test.feature.0");
+    check(completed->response().features.front().config_type == lux::cxx::typeToken<std::uint32_t>().name());
+
+    // A persisted preset saves the stable name, never the Server-local FeatureId. Reversing the
+    // install order on a new Server makes stale numeric reuse visible instead of accidentally passing.
+    const std::string preset = completed->response().features.front().name;
+    auto restarted = RenderServer::create({"test.feature.directory", true});
+    check(bool(restarted));
+    auto next = std::move(*restarted);
+    const FeatureDescriptor other{FeatureName("test.feature.restart-first"), {}};
+    const FeatureDescriptor restored{FeatureName(preset), ConfigValue::typeOf<std::uint32_t>()};
+    check(bool(feature_test::registerGraph(*next, {&other, &graph, nullptr})));
+    const auto restored_id = feature_test::registerGraph(*next, {&restored, &graph, nullptr});
+    check(restored_id && *restored_id != ids.front());
+    auto connected = RenderClient::create("test.feature.directory");
+    check(bool(connected));
+    auto next_client = std::move(*connected);
+    std::thread next_owner([&] { run_ok = bool(next->run()); });
+    auto next_hello = next_client->hello();
+    check(bool(next_hello));
+    receive(*next_client, *next_hello);
+    auto stale_binding = next_client->submit(*binding, request, 128 * 1024);
+    check(!stale_binding && stale_binding.error().type == kRuntimeIdentity);
+    const auto next_binding = next_client->bind<ListFeatures>();
+    check(bool(next_binding));
+    auto next_sent = next_client->submit(*next_binding, request, 128 * 1024);
+    check(bool(next_sent));
+    auto next_features = receive(*next_client, *next_sent).take(*next_binding);
+    check(bool(next_features));
+    const auto found = std::ranges::find(next_features->response().features, preset, &FeatureInfo::name);
+    check(found != next_features->response().features.end() && found->id == *restored_id);
+    next->stop();
+    next_owner.join();
+    check(run_ok && next->stats().validation_errors == 0);
 }
 
 template <unsigned Fault> struct TestedHandler final

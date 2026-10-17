@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
@@ -269,6 +270,7 @@ int main()
     std::thread worker([&] { render_allocation::participate = true; run_ok = bool(server->run()); });
     CHECK(wait(*a, hello_a).header.outcome == ECommandOutcome::SUCCESS);
     CHECK(wait(*b, hello_b).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(runtime_test::refresh(*a) && runtime_test::refresh(*b));
     auto create_scene = take(a->bind<CreateScene>());
     const auto scene_a = call(*a, create_scene, {}).response().scene;
     const auto scene_b = call(*a, create_scene, {}).response().scene;
@@ -590,6 +592,7 @@ int main()
     worker = std::thread([&] { run_ok = bool(server->run()); });
     CHECK(wait(*replacement, hello).header.outcome == ECommandOutcome::SUCCESS);
     CHECK(replacement->session() != previous_session);
+    CHECK(runtime_test::refresh(*replacement));
     auto replacement_create = take(replacement->bind<CreateScene>());
     const auto rebuilt_scene = call(*replacement, replacement_create, {}).response().scene;
     bindScene(*state, rebuilt_scene);

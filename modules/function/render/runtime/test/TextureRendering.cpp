@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include "ServerFixture.hpp"
 #include "TypedTest.hpp"
@@ -105,7 +106,9 @@ int main(int argc, char** argv)
     auto a = take(RenderClient::create(config.channel_name));
     auto b = take(RenderClient::create(config.channel_name, {128 * 1024 * 1024, 64}));
     CHECK(wait(*a, take(a->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(runtime_test::refresh(*a));
     CHECK(wait(*b, take(b->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(runtime_test::refresh(*b));
     auto upload = take(b->bind<SetTexture>());
     auto release = take(b->bind<ReleaseTexture>());
     std::atomic<unsigned> destroyed{0};

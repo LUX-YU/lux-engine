@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include "ProtocolAudit.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -307,12 +308,15 @@ struct AsyncCommands final
 int main()
 {
     eventIdentities();
-    State state;
+    State state, alternate;
     static const std::array descriptors{commandDescriptor<Async>(), commandDescriptor<TransferredAsync>()};
     const FeatureDescriptor definition{FeatureName("test.async.feature"), {}};
     const FeatureGraphOps definition_graph{[](const void*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
     auto server = take(RenderServer::create({"runtime.async", true}));
     check(bool(server->registerFeature<Async>(feature_test::Provider<AsyncCommands>{{&definition, &definition_graph, nullptr}}, "", {}, state)));
+    const auto first_handler = take(server->emplaceHandler<AsyncCommands>("", {}, state));
+    const auto second_handler = take(server->emplaceHandler<AsyncCommands>("alternate", {}, alternate));
+    check(first_handler != second_handler);
     RenderResult<void> run;
     std::atomic<bool> run_returned{false};
     std::thread render([&] { run = server->run(); run_returned.store(true, std::memory_order_release); });
@@ -322,6 +326,7 @@ int main()
     (void)take(b->hello());
     check(wait(*a).header.outcome == ECommandOutcome::SUCCESS);
     check(wait(*b).header.outcome == ECommandOutcome::SUCCESS);
+    check(bool(runtime_test::refresh(*a)) && bool(runtime_test::refresh(*b)));
     auto bound_a = take(a->bind<Async>());
     auto bound_b = take(b->bind<Async>());
 
@@ -333,8 +338,24 @@ int main()
     check(take(wait(*b).take(bound_b)).response().value == 47);
     RenderCompletion absent;
     check(take(a->tryReceive(absent)) == ERenderReceive::EMPTY);
+    // Switch while A's accepted request still belongs to the original Handler. B coordinates
+    // through the Select response; its next dispatch uses the new object with the same CommandId.
+    auto selection = take(b->bind<SelectCommandBinding>());
+    CommandSelection change{bound_b.command(), second_handler};
+    (void)take(b->submit(selection, change));
+    check(take(wait(*b).take(selection)).header().outcome == ECommandOutcome::SUCCESS);
+    (void)submit(*b, bound_b, {3, 2, 59, {}});
+    until([&] { return alternate.started.load() == 1; });
+    check(state.started.load() == 2 && state.gates[0].operation.load() != nullptr);
+    alternate.finish(2);
+    check(take(wait(*b).take(bound_b)).response().value == 59);
+    check(take(a->tryReceive(absent)) == ERenderReceive::EMPTY);
     state.finish(0);
     check(take(wait(*a).take(bound_a)).response().value == 31);
+    change.handler = first_handler;
+    (void)take(b->submit(selection, change));
+    check(take(wait(*b).take(selection)).header().outcome == ECommandOutcome::SUCCESS);
+    until([&] { return alternate.destroyed.load() == 1; });
 
     // 0 pending, synchronous value/error/stopped, including a sender whose start has a visible tail.
     for (std::uint32_t mode : {0u, 1u, 2u, 4u, 5u, 8u})

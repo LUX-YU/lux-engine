@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include "BufferExtension.hpp"
 #include "TypedTest.hpp"
@@ -66,7 +67,9 @@ int main()
     auto main = take(RenderClient::create(config.channel_name));
     auto upload = take(RenderClient::create(config.channel_name));
     CHECK(wait(*main, take(main->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(runtime_test::refresh(*main));
     CHECK(wait(*upload, take(upload->hello())).header.outcome == ECommandOutcome::SUCCESS);
+    CHECK(runtime_test::refresh(*upload));
     auto create_buffer = take(upload->bind<SetBuffer>());
     auto remove_buffer = take(upload->bind<RemoveBuffer>());
     auto read_buffer = take(upload->bind<ReadBuffer>());

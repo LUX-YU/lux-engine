@@ -144,7 +144,7 @@
   },
   "N2.1": {
     "title": "Native initialization and build selection",
-    "status": "IN_PROGRESS",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -175,12 +175,13 @@
     ],
     "evidence": [
       "N2.1-IMPLEMENTATION.md",
-      "N2.1-VERIFICATION.md"
+      "N2.1-VERIFICATION.md",
+      "N2-N3-JOINT-IMPLEMENTATION.md"
     ]
   },
   "N2.2": {
     "title": "Typed identities and ConfigValue",
-    "status": "IN_PROGRESS",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -212,12 +213,13 @@
     "evidence": [
       "N2-CONFIG-VERIFICATION.md",
       "n2-identity-verification.md",
-      "N2-FEATURE-CONFIG-CHECKPOINT.md"
+      "N2-FEATURE-CONFIG-CHECKPOINT.md",
+      "N2-N3-JOINT-IMPLEMENTATION.md"
     ]
   },
   "N2.3": {
     "title": "Command and Handler ownership",
-    "status": "IN_PROGRESS",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -252,12 +254,13 @@
       "N2-HANDLERS-VERIFICATION.md",
       "N2-DIRECTORY-VERIFICATION.md",
       "N2-TYPED-STORAGE-CHECKPOINT.md",
-      "N2-TYPED-FEATURE-CHECKPOINT.md"
+      "N2-TYPED-FEATURE-CHECKPOINT.md",
+      "N2-N3-JOINT-IMPLEMENTATION.md"
     ]
   },
   "N2.4": {
     "title": "Atomic typed module installation",
-    "status": "IN_PROGRESS",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -289,12 +292,13 @@
     "evidence": [
       "N2-STORAGE-INSTALL-CHECKPOINT.md",
       "N2-TYPED-STORAGE-CHECKPOINT.md",
-      "N2-TYPED-FEATURE-CHECKPOINT.md"
+      "N2-TYPED-FEATURE-CHECKPOINT.md",
+      "N2-N3-JOINT-IMPLEMENTATION.md"
     ]
   },
   "N2.5": {
     "title": "Client control and FeatureId",
-    "status": "IN_PROGRESS",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -327,12 +331,13 @@
       "N2-HANDLERS-CHECKPOINT.md",
       "N2-DIRECTORY-VERIFICATION.md",
       "N2-STORAGE-INSTALL-CHECKPOINT.md",
-      "N2-FEATURE-CONFIG-CHECKPOINT.md"
+      "N2-FEATURE-CONFIG-CHECKPOINT.md",
+      "N2-N3-JOINT-IMPLEMENTATION.md"
     ]
   },
   "N3.1": {
     "title": "Typed Reply and unique Pending",
-    "status": "IN_PROGRESS",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -361,12 +366,13 @@
       "N3-REPLY-CHECKPOINT.md",
       "N2-HANDLERS-CHECKPOINT.md",
       "N3-NATIVE-UPLOAD-CHECKPOINT.md (partial prerequisite; independent verification pending)",
-      "N3-GENERIC-COMPLETION-CHECKPOINT.md (exact-I independent verification pending)"
+      "N3-GENERIC-COMPLETION-CHECKPOINT.md (exact-I independent verification pending)",
+      "N2-N3-JOINT-IMPLEMENTATION.md"
     ]
   },
   "N3.2": {
     "title": "Native upload and readback operations",
-    "status": "IN_PROGRESS",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -393,12 +399,13 @@
     ],
     "evidence": [
       "N3-NATIVE-UPLOAD-CHECKPOINT.md (partial prerequisite; independent verification pending)",
-      "N3-GENERIC-COMPLETION-CHECKPOINT.md (exact-I independent verification pending)"
+      "N3-GENERIC-COMPLETION-CHECKPOINT.md (exact-I independent verification pending)",
+      "N2-N3-JOINT-IMPLEMENTATION.md"
     ]
   },
   "N3.3": {
     "title": "Narrow compile input",
-    "status": "IN_PROGRESS",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -427,12 +434,13 @@
       "n2-identity-verification.md",
       "N3-GENERIC-COMPLETION-VERIFICATION.md",
       "N2-TYPED-FEATURE-CHECKPOINT.md",
-      "N2-FEATURE-CONFIG-CHECKPOINT.md"
+      "N2-FEATURE-CONFIG-CHECKPOINT.md",
+      "N2-N3-JOINT-IMPLEMENTATION.md"
     ]
   },
   "N3.4": {
     "title": "Completion cancellation and shutdown",
-    "status": "IN_PROGRESS",
+    "status": "IMPLEMENTED_PENDING_VERIFICATION",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -459,7 +467,8 @@
     ],
     "evidence": [
       "N3-NATIVE-UPLOAD-CHECKPOINT.md (partial prerequisite; independent verification pending)",
-      "N3-GENERIC-COMPLETION-CHECKPOINT.md (exact-I independent verification pending)"
+      "N3-GENERIC-COMPLETION-CHECKPOINT.md (exact-I independent verification pending)",
+      "N2-N3-JOINT-IMPLEMENTATION.md"
     ]
   },
   "N4.1": {

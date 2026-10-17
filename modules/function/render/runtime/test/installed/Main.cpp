@@ -1,5 +1,6 @@
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/runtime/RenderClient.hpp>
+#include <lux/engine/render/runtime/Commands.hpp>
 #include <chrono>
 #include <thread>
 
@@ -26,7 +27,28 @@ int main()
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    bool discovered = false;
+    if (ready && !(*client)->bind<CreateScene>())
+    {
+        auto directory = (*client)->bind<ListCommands>();
+        EmptyRequest input;
+        auto sent = directory ? (*client)->submit(*directory, input, 65536) :
+            RenderResult<RequestId>{lux::cxx::unexpected(RenderError{kRuntimeState})};
+        while (sent && std::chrono::steady_clock::now() < deadline)
+        {
+            RenderCompletion reply;
+            auto status = (*client)->tryReceive(reply);
+            if (!status) break;
+            if (*status == ERenderReceive::RECEIVED)
+            {
+                discovered = reply.header.request == *sent && (*client)->refreshCommands(reply) &&
+                    (*client)->bind<CreateScene>();
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
     (*server)->stop();
     thread.join();
-    return ready && run_ok && (*server)->stats().validation_errors == 0 ? 0 : 2;
+    return ready && discovered && run_ok && (*server)->stats().validation_errors == 0 ? 0 : 2;
 }

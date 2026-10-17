@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
@@ -138,6 +139,7 @@ static void lateReply(EReplyCase mode)
         else
         {
             greeting = {};
+            check(bool(runtime_test::refresh(*client)), "explicit business discovery failed");
             auto binding = take(client->bind<CreateScene>());
             CreateScene::Request request{};
             auto completion = wait(*client, take(client->submit(binding, request)));

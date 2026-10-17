@@ -6,6 +6,7 @@
 #include <lux/engine/render/runtime/Commands.hpp>
 #include "ServerFixture.hpp"
 #include "FeatureFixture.hpp"
+#include "Discovery.hpp"
 #include "../pinclude/TypedProtocol.hpp"
 #include <variant>
 #include <algorithm>
@@ -74,6 +75,12 @@ public:
 
     RenderResult<RequestId> submit(const TestCommand& command)
     {
+        if (command.operation != ETestCommand::READY && !discovered_)
+        {
+            auto result = runtime_test::refresh(*client_);
+            if (!result) return lux::cxx::unexpected(result.error());
+            discovered_ = true;
+        }
         switch (command.operation)
         {
         case ETestCommand::READY: return client_->hello();
@@ -201,6 +208,7 @@ private:
         return client_->submit(*binding, payload, command.reply_capacity);
     }
 
+    bool discovered_ = false;
     std::optional<FeatureList> feature_directory_;
     std::unique_ptr<RenderClient> client_;
     std::string name_;

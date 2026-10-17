@@ -1,3 +1,4 @@
+#include "../Discovery.hpp"
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include "Fixture.hpp"
@@ -84,6 +85,7 @@ static void exercise(const char* library, ETerminal terminal)
             auto hello = wait(*client, take(client->hello()));
             check(hello.header.outcome == ECommandOutcome::SUCCESS, "Hello failed");
         }
+        check(bool(runtime_test::refresh(*client)), "explicit discovery failed");
         auto binding = take(client->bind<Command>());
         std::uint32_t request = 4097;
         auto reply = wait(*client, take(client->submit(binding, request)));

@@ -32,6 +32,7 @@ namespace lux::render::runtime_detail
     {
         // Independent of the capability list: even an empty manifest can name a module-local error type.
         std::shared_ptr<const void> failure_code_pin;
+        // Session bootstrap controls only; business discovery uses an explicit ListCommands reply.
         std::vector<CommandInfo> capabilities;
         const platform::ipc::IpcTypeOps* failure_ops = &platform::ipc::IpcMessage::type<ValueEnvelope<RenderError>>();
     };

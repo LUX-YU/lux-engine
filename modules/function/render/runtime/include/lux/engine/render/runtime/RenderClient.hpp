@@ -133,6 +133,8 @@ namespace lux::render
         static void operator delete(void* value) noexcept;
         RenderClient(const RenderClient&) = delete;
         RenderClient& operator=(const RenderClient&) = delete;
+        // Bootstrap Session and basic directory controls. Query ListCommands and refreshCommands
+        // explicitly before binding business commands; later installs do not mutate this Client cache.
         [[nodiscard]] RenderResult<RequestId> hello() noexcept;
         // Explicitly adopt a successful ListCommands reply from this Server session. Existing
         // BoundCommands retain their own canonical qualifications; this only updates cold discovery.

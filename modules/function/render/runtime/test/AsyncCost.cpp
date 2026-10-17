@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include "ProtocolAudit.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -431,6 +432,7 @@ int main()
     auto client = take(RenderClient::create(config.channel_name, {1024 * 1024, 256}));
     (void)take(client->hello());
     (void)receive(*client);
+    check(bool(runtime_test::refresh(*client)));
     auto binding = take(client->bind<CpuOperation>());
     for (auto mode : modes)
         for (auto count : counts)

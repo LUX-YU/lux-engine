@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/data/ConfigValue.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -142,6 +143,7 @@ static int exerciseRegistration(unsigned& pin_releases)
     bool run_ok = false;
     std::thread owner([&] { run_ok = bool(server.run()); });
     receive(*client, *client->hello());
+    CHECK(runtime_test::refresh(*client));
     EmptyRequest empty;
     const auto listing = *client->bind<ListStorages>();
     auto initial = receive(*client, *client->submit(listing, empty, 8192)).take(listing);

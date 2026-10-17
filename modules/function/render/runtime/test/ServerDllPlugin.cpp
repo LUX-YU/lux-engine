@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
@@ -65,6 +66,7 @@ extern "C" __declspec(dllexport) bool serverDllReadback(const char* name, Render
     if (!client) return false;
     auto hello = (*client)->hello();
     if (!hello || !receive(**client, *hello)) return false;
+    if (!runtime_test::refresh(**client)) return false;
     auto scene = call<CreateScene>(**client, {});
     if (!scene) return false;
     auto view = call<CreateView>(**client, {scene->response().scene, {1, 0, 0, 1}});

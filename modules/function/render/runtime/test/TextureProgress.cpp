@@ -1,3 +1,4 @@
+#include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include "ProtocolAudit.hpp"
@@ -160,6 +161,7 @@ static void shutdownAndLoss()
         std::thread render([&] { run_ok = bool(server->run()); run_finished = true; });
         auto client = take(RenderClient::create(config.channel_name));
         CHECK(wait(*client, take(client->hello())).header.outcome == ECommandOutcome::SUCCESS);
+        CHECK(runtime_test::refresh(*client));
         auto bound = take(client->bind<TextureProbe>());
         auto source = asset(2048);
         std::array payload{take(RenderPayload::fromVector(source, 0, source->size()))};
@@ -216,6 +218,7 @@ static void productionShutdownAndLoss()
         std::thread render([&] { run_ok = bool(server->run()); run_finished = true; });
         auto client = take(RenderClient::create(config.channel_name));
         CHECK(wait(*client, take(client->hello())).header.outcome == ECommandOutcome::SUCCESS);
+        CHECK(runtime_test::refresh(*client));
         auto bound = take(client->bind<SetTexture>());
         auto source = asset(2048);
         const auto* address = source->data();
@@ -275,6 +278,7 @@ int main()
         std::thread render([&] { run_ok = bool(server->run()); });
         auto client = take(RenderClient::create(config.channel_name, {128 * 1024 * 1024}));
         CHECK(wait(*client, take(client->hello())).header.outcome == ECommandOutcome::SUCCESS);
+        CHECK(runtime_test::refresh(*client));
         auto bound = take(client->bind<TextureProbe>());
         for (unsigned dimension : {512u, 2048u, 4096u})
         {

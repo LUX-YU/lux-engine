@@ -51,6 +51,8 @@ namespace lux::render
     {
         FeatureId id;
         std::string name;
+        std::string config_type;
+        std::size_t config_size = 0, config_alignment = 0;
     };
 
     struct FeatureList final { std::vector<FeatureInfo> features; };
@@ -109,6 +111,9 @@ namespace lux::render
                 if (feature.name.capacity() >= SIZE_MAX - bytes)
                     return cxx::unexpected(RenderError{kProtocolContract});
                 bytes += feature.name.capacity() + 1;
+                if (feature.config_type.capacity() >= SIZE_MAX - bytes)
+                    return cxx::unexpected(RenderError{kProtocolContract});
+                bytes += feature.config_type.capacity() + 1;
             }
             return bytes;
         }

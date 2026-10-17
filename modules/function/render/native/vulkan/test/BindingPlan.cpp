@@ -62,12 +62,15 @@ namespace
 
     std::vector<PassProgram> programs(bool different)
     {
-        const SpirvArtifact shader{{native_fixture::vert.begin(), native_fixture::vert.end()},
-            {native_fixture::frag.begin(), native_fixture::frag.end()}, {}};
+        const SpirvArtifact shader{{
+            {lux::rdesc::EShaderType::VERTEX, "main", {native_fixture::vert.begin(), native_fixture::vert.end()}},
+            {lux::rdesc::EShaderType::FRAGMENT, "main", {native_fixture::frag.begin(), native_fixture::frag.end()}}
+        }, {}};
         std::vector<PassProgram> result;
         result.push_back({featureKey(type, "main", "a"), shader, {0.125f, 0.25f, 0.5f, 1}});
         result.push_back({featureKey(type, "main", "b"), shader, {0, 1, 0, 1}});
-        if (different) result.back().shader.fragment.assign(native_fixture::swizzle.begin(), native_fixture::swizzle.end());
+        if (different)
+            result.back().shader.stages[1].words.assign(native_fixture::swizzle.begin(), native_fixture::swizzle.end());
         result.push_back({featureKey(type, "main", "copy")});
         if (selected_case == ECase::TRANSFER_READ) result.push_back({featureKey(type, "main", "snapshot")});
         return result;

@@ -127,7 +127,7 @@ int main()
             CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, bad_programs, texture_fixture::target(config)));
             // A structurally valid SPIR-V module with the wrong Descriptor binding fails reflection before Vulkan.
             bad_programs = texture_fixture::programs(config);
-            auto& words = bad_programs[0].shader.fragment;
+            auto& words = bad_programs[0].shader.stages[1].words;
             bool changed = false;
             for (std::size_t i = 5; i < words.size(); i += words[i] >> 16)
                 if ((words[i] & 65535) == 71 && (words[i] >> 16) == 4 && words[i + 2] == 33)

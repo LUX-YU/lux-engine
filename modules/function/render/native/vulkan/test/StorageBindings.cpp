@@ -101,7 +101,7 @@ int main()
         CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, bad, extension_test::target));
     }
     auto wrong_block = programs;
-    wrong_block[0].shader.fragment.assign(extension_test::wrong_block.begin(), extension_test::wrong_block.end());
+    wrong_block[0].shader.stages[1].words.assign(extension_test::wrong_block.begin(), extension_test::wrong_block.end());
     CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, wrong_block, extension_test::target));
     const std::array<float, 4> quarter{0.25f, 0.25f, 0.25f, 0.25f};
     const auto quarter_bytes = std::as_bytes(std::span(quarter));

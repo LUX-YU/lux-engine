@@ -4,7 +4,6 @@
 
 #include <spirv-tools/libspirv.h>
 #include <spirv_cross/spirv_cross_c.h>
-#include <cstring>
 #include <algorithm>
 #include <lux/engine/gapi/vk/Descriptor.hpp>
 #include <exception>
@@ -27,8 +26,11 @@ namespace lux::render::vulkan
                 spvc_type_get_num_array_dimensions(type) == 0;
         }
 
-        bool validateStage(std::span<const std::uint32_t> words, SpvExecutionModel stage, const ShaderInterface& interface) noexcept
+        bool validateStage(const SpirvStage& input, SpvExecutionModel stage, const ShaderInterface& interface) noexcept
         {
+            const bool invalid_entry = input.entry.empty() || input.entry.find('\0') != std::string::npos;
+            if (invalid_entry) return false;
+            const auto words = std::span(input.words);
             // Use the existing SPIR-V tools, not another shader parser or handwritten instruction decoder.
             const auto validation = spvContextCreate(SPV_ENV_VULKAN_1_3);
             if (!validation) std::terminate();
@@ -64,7 +66,7 @@ namespace lux::render::vulkan
             std::size_t count = 0;
             if (!check(spvc_compiler_get_entry_points(compiler, &entries, &count))) return false;
             const bool is_entry_mismatch = count != 1 || entries[0].execution_model != stage ||
-                std::strcmp(entries[0].name, "main") != 0;
+                input.entry != entries[0].name;
             if (is_entry_mismatch) return false;
             if (!check(spvc_compiler_create_shader_resources(compiler, &resources))) return false;
             for (unsigned kind = SPVC_RESOURCE_TYPE_UNIFORM_BUFFER; kind <= SPVC_RESOURCE_TYPE_SHADER_RECORD_BUFFER;
@@ -194,8 +196,19 @@ namespace lux::render::vulkan
         const bool is_unsupported = shader.interface.push_bytes != 16 || !device.dynamicRendering() ||
             (needs_arrays && !device.textureDescriptors());
         if (is_unsupported) return cxx::unexpected(RenderError{kUnsupported});
-        if (!validateStage(shader.vertex, SpvExecutionModelVertex, shader.interface) ||
-            !validateStage(shader.fragment, SpvExecutionModelFragment, shader.interface))
+        if (shader.stages.size() != 2) return cxx::unexpected(RenderError{kInvalidArgument});
+        const SpirvStage* vertex_stage = nullptr;
+        const SpirvStage* fragment_stage = nullptr;
+        for (const auto& stage : shader.stages)
+        {
+            if (stage.stage == rdesc::EShaderType::VERTEX) vertex_stage = &stage;
+            else if (stage.stage == rdesc::EShaderType::FRAGMENT) fragment_stage = &stage;
+        }
+        const bool missing_stage = !vertex_stage || !fragment_stage;
+        if (missing_stage) return cxx::unexpected(RenderError{kInvalidArgument});
+        const bool is_invalid_shader = !validateStage(*vertex_stage, SpvExecutionModelVertex, shader.interface) ||
+            !validateStage(*fragment_stage, SpvExecutionModelFragment, shader.interface);
+        if (is_invalid_shader)
             return cxx::unexpected(RenderError{kInvalidArgument});
         struct Modules final
         {
@@ -207,20 +220,20 @@ namespace lux::render::vulkan
                     if (shader) LUX_DESTROY("shader", vkDestroyShaderModule(device, shader, nullptr));
             }
         } modules{device.native()};
-        const std::array code{std::span(shader.vertex), std::span(shader.fragment)};
+        const std::array code{vertex_stage, fragment_stage};
         std::array<VkPipelineShaderStageCreateInfo, 2> stages{};
         for (std::size_t i = 0; i < 2; ++i)
         {
             VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
-            info.codeSize = code[i].size_bytes();
-            info.pCode = code[i].data();
+            info.codeSize = code[i]->words.size() * sizeof(std::uint32_t);
+            info.pCode = code[i]->words.data();
             const auto created = LUX_NATIVE("shader", vkCreateShaderModule(device.native(), &info, nullptr,
                 &modules.handles[i]));
             if (created != VK_SUCCESS) return cxx::unexpected(nativeError(created));
             stages[i] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
             stages[i].stage = i == 0 ? VK_SHADER_STAGE_VERTEX_BIT : VK_SHADER_STAGE_FRAGMENT_BIT;
             stages[i].module = modules.handles[i];
-            stages[i].pName = "main";
+            stages[i].pName = code[i]->entry.c_str();
         }
         // Same dynamic-rendering recipe as the audited R4 Graphics.cpp subset: no vertex buffers,
         // one RGBA8 attachment, no depth/blend, dynamic viewport/scissor, triangle list.

@@ -62,8 +62,10 @@ int main()
             PassProgram program{"output"};
             if (graphics)
             {
-                program.shader.vertex.assign(native_fixture::vert.begin(), native_fixture::vert.end());
-                program.shader.fragment.assign(native_fixture::frag.begin(), native_fixture::frag.end());
+                program.shader.stages = {
+                    {lux::rdesc::EShaderType::VERTEX, "main", {native_fixture::vert.begin(), native_fixture::vert.end()}},
+                    {lux::rdesc::EShaderType::FRAGMENT, "main", {native_fixture::frag.begin(), native_fixture::frag.end()}}
+                };
             }
             auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, graph, analysis, {},
                 {&program, 1}, target)));

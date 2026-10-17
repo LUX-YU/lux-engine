@@ -219,9 +219,14 @@
     "id": "delete.28",
     "old": "Context强制Readback_/target-sized buffer条件",
     "action": "删除普遍前提，读回显式可选",
-    "work_package": "N5.4",
-    "status": "PLANNED",
-    "evidence": []
+    "work_package": "N5.6",
+    "status": "REMOVED_TESTED_SCOPE",
+    "evidence": [
+      "N5-COLOR-VERIFICATION.md"
+    ],
+    "implementation": "0ff7329855344af3d7c0280800450cf7de5bd794",
+    "verification": "53e13fb16c51a789fcb6a8816795e0df06efc328",
+    "qualification": "Mandatory readback admission removed; optional readback_ index remains for an explicitly declared output."
   },
   {
     "id": "delete.29",

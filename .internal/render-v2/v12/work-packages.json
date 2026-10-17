@@ -786,7 +786,7 @@
   },
   "N5.4": {
     "title": "Real shader ABI",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/features/",
       "modules/function/render/graph/",
@@ -805,7 +805,10 @@
       "T-GPU-11",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N5-STAGES-IMPLEMENTATION.md"
+    ],
+    "qualification": "Explicit stage/name and real non-main graphics pixels tested; full ABI, parameters and formats still pending."
   },
   "N5.5": {
     "title": "Indexed indirect depth and compute primitives",
@@ -832,7 +835,7 @@
   },
   "N5.6": {
     "title": "Complete rebinding and explicit readback",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/features/",
       "modules/function/render/graph/",
@@ -851,7 +854,11 @@
       "T-GPU-11",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N5-COLOR-IMPLEMENTATION.md",
+      "N5-COLOR-VERIFICATION.md"
+    ],
+    "qualification": "Color-only no-copy/no-readback-buffer subset passed independent ASan107; full prepared-resource rebinding pending."
   },
   "N6.1": {
     "title": "Mesh storage",

@@ -300,7 +300,7 @@ namespace lux::render::vulkan
             }
             const bool is_unsupported_recipe = writes != 1 || (pass.kind == EGraphPassKind::TRANSFER && reads > 1) ||
                 (pass.kind == EGraphPassKind::TRANSFER &&
-                 (!binding->shader.vertex.empty() || !binding->shader.fragment.empty()));
+                 !binding->shader.stages.empty());
             if (is_unsupported_recipe) return cxx::unexpected(RenderError{kUnsupported});
             const bool writes_image = std::holds_alternative<GraphImageDesc>(
                 result.resources_[compiled.destination].description);

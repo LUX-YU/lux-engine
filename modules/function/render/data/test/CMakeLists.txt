@@ -21,6 +21,7 @@ endforeach()
 
 get_target_property(data_links render_data INTERFACE_LINK_LIBRARIES)
 set(expected_links lux::engine::render::render_core lux::cxx::core lux::cxx::binary lux::cxx::memory)
+list(APPEND expected_links "$<BUILD_INTERFACE:lux::engine::resource::shader_metadata>")
 if(NOT data_links STREQUAL expected_links)
     message(FATAL_ERROR "Unexpected Data public dependency: ${data_links}")
 endif()

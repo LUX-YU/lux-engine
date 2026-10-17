@@ -927,7 +927,7 @@
       "action": "color-only与显式Readback分离"
     },
     "work_package": "N5.6",
-    "status": "PLANNED",
+    "status": "PASS_TESTED_SCOPE",
     "production_paths": [
       "modules/function/render/features/",
       "modules/function/render/graph/",
@@ -946,7 +946,25 @@
       "T-GPU-11",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N5-COLOR-VERIFICATION.md"
+    ],
+    "implementation": "0ff7329855344af3d7c0280800450cf7de5bd794",
+    "verification": "53e13fb16c51a789fcb6a8816795e0df06efc328",
+    "implementation_symbols": [
+      "DeviceSession::prepare",
+      "ExecutionContext::readbackBytes",
+      "ExecutionContext::readback",
+      "ReadbackOperation::start",
+      "RenderServer::Impl::readback"
+    ],
+    "verification_tests": [
+      "render.native.color_only",
+      "render.native.execution",
+      "render.native.binding_plan",
+      "render.runtime.gpu_ready"
+    ],
+    "qualification": "Explicit graph readback remains; absent output fails before work. Whole N5 rebinding is not covered."
   },
   {
     "id": "review.R09",

@@ -61,8 +61,13 @@ namespace extension_test
         const auto* config = static_cast<const ViewConfig*>(wire);
         ProgramContribution result;
         PassProgram draw{featureKey(feature_type, name, "draw")};
-        draw.shader = {{texture_fixture::vert.begin(), texture_fixture::vert.end()}, {fragment.begin(), fragment.end()},
-            {{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}, {1, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16}}, 16}};
+        draw.shader.stages = {
+            {lux::rdesc::EShaderType::VERTEX, "main", {texture_fixture::vert.begin(), texture_fixture::vert.end()}},
+            {lux::rdesc::EShaderType::FRAGMENT, "main", {fragment.begin(), fragment.end()}}
+        };
+        draw.shader.interface = {
+            {{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}, {1, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16}}, 16
+        };
         result.arguments.push_back({"shared:texture", *ConfigValue::make(TextureBinding{config->texture})});
         result.arguments.push_back({"shared:values", *ConfigValue::make(BufferBinding{config->buffer})});
         result.programs.push_back(std::move(draw));

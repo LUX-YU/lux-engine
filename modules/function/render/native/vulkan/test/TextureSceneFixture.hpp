@@ -72,7 +72,11 @@ namespace texture_fixture
     inline std::vector<PassProgram> programs(Config c, std::string_view instance = "main")
     {
         PassProgram draw{featureKey(type, instance, "draw")};
-        draw.shader = {{vert.begin(), vert.end()}, {frag.begin(), frag.end()}, {{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}}, 16}};
+        draw.shader.stages = {
+            {lux::rdesc::EShaderType::VERTEX, "main", {vert.begin(), vert.end()}},
+            {lux::rdesc::EShaderType::FRAGMENT, "main", {frag.begin(), frag.end()}}
+        };
+        draw.shader.interface = {{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}}, 16};
         std::vector<PassProgram> result;
         result.push_back(std::move(draw));
         result.push_back({featureKey(type, instance, "readback")});

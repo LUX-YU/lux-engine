@@ -2,8 +2,34 @@
 #include "Support.hpp"
 #include "SceneFixture.hpp"
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
+#include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 
 using namespace foundation_test;
+
+namespace
+{
+    void renameFixtureEntry(SpirvStage& stage, std::string name)
+    {
+        // Test-only mutation of the checked-in four-character entry literal. The production boundary
+        // still runs SPIRV-Tools and SPIRV-Cross against the resulting real binary and declared entry.
+        CHECK(name.size() == 4);
+        for (std::size_t word = 5; word < stage.words.size();)
+        {
+            const auto count = stage.words[word] >> 16;
+            CHECK(count != 0 && count <= stage.words.size() - word);
+            if ((stage.words[word] & 0xffff) == 15) // OpEntryPoint
+            {
+                CHECK(count >= 5 && stage.words[word + 3] == 0x6e69616d && stage.words[word + 4] == 0);
+                stage.words[word + 3] = std::uint32_t(name[0]) | (std::uint32_t(name[1]) << 8) |
+                    (std::uint32_t(name[2]) << 16) | (std::uint32_t(name[3]) << 24);
+                stage.entry = std::move(name);
+                return;
+            }
+            word += count;
+        }
+        CHECK(false);
+    }
+}
 
 int main()
 {
@@ -58,14 +84,45 @@ int main()
             CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, missing, native_fixture::target(config)));
             if (graphics)
             {
+                auto named = programs;
+                renameFixtureEntry(named[0].shader.stages[0], "draw");
+                renameFixtureEntry(named[0].shader.stages[1], "frag");
+                std::ranges::reverse(named[0].shader.stages); // Stage identity is not vector position.
+                auto named_code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly.definition,
+                    assembly.analysis, assembly.external_bindings, named, native_fixture::target(config))));
+                StorageSet scene(session->resources()), view(session->resources());
+                auto* named_context = take(session->prepare(named_code, native_fixture::target(config), &scene, &view));
+                CHECK(take(named_context->execute()));
+                CHECK(take(session->queue().wait(*named_context->lastUse(), UINT64_MAX)));
+                auto pixels = take(named_context->readback());
+                const auto center = (16 * 32 + 16) * 4;
+                CHECK(pixels[center] == std::byte{255} && pixels[center + 1] == std::byte{0} &&
+                    pixels[center + 2] == std::byte{0} && pixels[center + 3] == std::byte{255});
+                CHECK(session->release(named_context));
+                named_code.reset();
+                for (unsigned mode = 0; mode != 6; ++mode)
+                {
+                    auto wrong = named;
+                    switch (mode)
+                    {
+                    case 0: wrong[0].shader.stages[0].entry = "main"; break;
+                    case 1: wrong[0].shader.stages[0].entry.clear(); break;
+                    case 2: wrong[0].shader.stages[0].entry = std::string("frag\0hidden", 11); break;
+                    case 3: wrong[0].shader.stages[0].stage = lux::rdesc::EShaderType::COMPUTE; break;
+                    case 4: wrong[0].shader.stages[0].stage = wrong[0].shader.stages[1].stage; break;
+                    case 5: wrong[0].shader.stages.push_back(wrong[0].shader.stages[0]); break;
+                    }
+                    CHECK(!compileGraph(*session, assembly.definition, assembly.analysis, assembly.external_bindings,
+                        wrong, native_fixture::target(config)));
+                }
                 auto bad = programs;
                 bad[0].shader.interface.bindings = {{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}};
                 CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, bad, native_fixture::target(config)));
                 bad = programs;
-                bad[0].shader.fragment = bad[0].shader.vertex;
+                bad[0].shader.stages[1].words = bad[0].shader.stages[0].words;
                 CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, bad, native_fixture::target(config)));
                 bad = programs;
-                bad[0].shader.vertex[0] = 0;
+                bad[0].shader.stages[0].words[0] = 0;
                 CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, bad, native_fixture::target(config)));
                 options.dynamic_rendering = false;
                 auto unsupported = take(DeviceSession::create(bootstrap, options));
@@ -93,7 +150,7 @@ int main()
             auto analysis = take(analyze(graph));
             auto programs = native_fixture::programs(config);
             PassProgram unused{"dead.pass"};
-            unused.shader.vertex = {0};
+            unused.shader.stages = {{lux::rdesc::EShaderType::VERTEX, "main", {0}}};
             unused.shader.interface.bindings = {{999, 999, EDescriptorKind::STORAGE_BUFFER, 99, 99}};
             programs.push_back(std::move(unused));
             GraphStorageBindings bindings;

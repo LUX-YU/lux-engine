@@ -258,7 +258,7 @@ namespace
         const auto first = *graphics.lastSubmitted();
         CHECK(session->uploadStats().chunks - chunks_before == 1);
         CHECK(first.serial() == submissions_before + 1);
-        CHECK(take(context->execute()));
+        CHECK(take(context->execute()) == EExecutionOutcome::EXECUTED);
         const auto draw = *context->lastUse();
         CHECK(&draw.owner() == &first.owner() && draw.serial() == first.serial() + 1);
         CHECK(timeline.count == 2 && timeline.submissions[0].result == VK_SUCCESS &&
@@ -364,7 +364,7 @@ namespace
             CHECK(graphics.submitted() == draw.serial()); // Cold reservation did not submit work.
             capacity_recovered.second.reset();
             observed_limit = UINT64_MAX;
-            CHECK(take(context->execute()));
+            CHECK(take(context->execute()) == EExecutionOutcome::EXECUTED);
             CHECK(take(graphics.wait(*context->lastUse(), UINT64_MAX)));
             pixels(*context, 96); // The same compiled program now reads the published replacement.
             CHECK(session->release(context));

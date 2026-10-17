@@ -29,6 +29,7 @@ namespace lux::render
         addBuiltin<Readback, &Impl::readback>();
         addBuiltin<Stop, &Impl::stopCommand>();
         addBuiltin<QueryRenderStats, &Impl::queryRenderStats>();
+        addBuiltin<QueryExecutionProgress, &Impl::queryExecutionProgress>();
         addBuiltin<ListFeatures, &Impl::listFeatures>();
         addBuiltin<ListStorages, &Impl::listStorages>();
         addBuiltin<FindStorage, &Impl::findStorage>();

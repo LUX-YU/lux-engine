@@ -102,7 +102,7 @@ int main()
         *session, definition, analysis, bindings, programs, target
     )));
     auto* execution = take(session->prepare(code, target, nullptr, nullptr, arguments));
-    CHECK(take(execution->execute()));
+    CHECK(take(execution->execute()) == EExecutionOutcome::EXECUTED);
     CHECK(take(session->queue().wait(*execution->lastUse(), UINT64_MAX)));
     auto readback = take(execution->readback());
     for (auto byte : readback) CHECK(std::to_integer<unsigned>(byte) == 32);
@@ -134,7 +134,7 @@ int main()
         *session, definition, analysis, bindings, records, target
     )));
     auto* record_execution = take(session->prepare(record_code, target, nullptr, nullptr, arguments));
-    CHECK(take(record_execution->execute()));
+    CHECK(take(record_execution->execute()) == EExecutionOutcome::EXECUTED);
     CHECK(take(session->queue().wait(*record_execution->lastUse(), UINT64_MAX)));
     for (auto byte : take(record_execution->readback())) CHECK(std::to_integer<unsigned>(byte) == 32);
     records[0].shader.interface.bindings[1].block.size = 112;

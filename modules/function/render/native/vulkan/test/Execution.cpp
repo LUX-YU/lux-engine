@@ -47,7 +47,7 @@ static void readbackOperations(DeviceSession& session, const std::shared_ptr<Com
         a.start();
         b.start();
         CHECK(submitted == 1 && first.count == 0 && second.count == 0);
-        CHECK(!take(context->execute()));
+        CHECK(take(context->execute()) == EExecutionOutcome::READBACK_HELD);
         CHECK(take(session.queue().wait(*context->lastUse(), UINT64_MAX)));
         CHECK(first.count == 0 && second.count == 0); // Native completion observation does not dispatch.
         session.dispatchCompletions();
@@ -152,8 +152,8 @@ int main()
         const std::array<float, 4> values{0, 1, 0, 1};
         CHECK(b->setContextParameters(std::as_bytes(std::span(values))));
     }
-    CHECK(take(a->execute()));
-    CHECK(take(b->execute()));
+    CHECK(take(a->execute()) == EExecutionOutcome::EXECUTED);
+    CHECK(take(b->execute()) == EExecutionOutcome::EXECUTED);
     CHECK(take(session->queue().wait(*b->lastUse(), UINT64_MAX)));
     auto red = take(a->readback()), green = take(b->readback());
     pixel(red, 32, 16, 16, {255, 0, 0, 255});
@@ -162,7 +162,7 @@ int main()
     std::array<double, 1000> samples{};
     for (unsigned frame = 0; frame < 20; ++frame)
     {
-        CHECK(take(a->execute()));
+        CHECK(take(a->execute()) == EExecutionOutcome::EXECUTED);
         CHECK(take(session->queue().wait(*a->lastUse(), UINT64_MAX)));
     }
     render_allocation::participate = true;
@@ -171,7 +171,7 @@ int main()
     for (auto& sample : samples)
     {
         const auto start = std::chrono::steady_clock::now();
-        CHECK(take(a->execute()));
+        CHECK(take(a->execute()) == EExecutionOutcome::EXECUTED);
         const auto end = std::chrono::steady_clock::now();
         sample = std::chrono::duration<double, std::micro>(end - start).count();
         CHECK(take(session->queue().wait(*a->lastUse(), UINT64_MAX)));
@@ -190,10 +190,10 @@ int main()
             const auto data = take(a->readback(i));
             CHECK(data.size() == 16 && std::ranges::all_of(data, [](auto byte) { return byte == std::byte{0}; }));
         }
-    CHECK(take(a->execute()));
+    CHECK(take(a->execute()) == EExecutionOutcome::EXECUTED);
     CHECK(session->release(a));
     CHECK(session->retirement().pending() >= 1); // Context plus any last-use private backing
-    CHECK(take(b->execute()));
+    CHECK(take(b->execute()) == EExecutionOutcome::EXECUTED);
     CHECK(take(session->queue().wait(*b->lastUse(), UINT64_MAX)));
     pixel(take(b->readback()), 32, 16, 16, {0, 255, 0, 255});
     auto resized = native_fixture::target(config);
@@ -207,7 +207,7 @@ int main()
         const std::array<float, 4> values{0, 0, 1, 1};
         CHECK(larger->setContextParameters(std::as_bytes(std::span(values))));
     }
-    CHECK(take(larger->execute()));
+    CHECK(take(larger->execute()) == EExecutionOutcome::EXECUTED);
     CHECK(take(session->queue().wait(*larger->lastUse(), UINT64_MAX)));
     auto blue = take(larger->readback());
     CHECK(blue.size() == 64 * 48 * 4);
@@ -222,7 +222,7 @@ int main()
     const std::array<float, 4> restored_color{1, 0, 0, 1};
     CHECK(reattached->setContextParameters(std::as_bytes(std::span(restored_color))));
     CHECK(session->resources().creations() == creations + 4);
-    CHECK(take(reattached->execute()));
+    CHECK(take(reattached->execute()) == EExecutionOutcome::EXECUTED);
     CHECK(take(session->queue().wait(*reattached->lastUse(), UINT64_MAX)));
     pixel(take(reattached->readback()), 32, 16, 16, {255, 0, 0, 255});
     CHECK(session->release(reattached));
@@ -240,7 +240,7 @@ int main()
     auto* clear = take(session->prepare(transfer_code, native_fixture::target(config), {}));
     for (unsigned frame = 0; frame < 4; ++frame)
     {
-        CHECK(take(clear->execute()));
+        CHECK(take(clear->execute()) == EExecutionOutcome::EXECUTED);
         CHECK(take(session->queue().wait(*clear->lastUse(), UINT64_MAX)));
         auto bytes = take(clear->readback());
         pixel(bytes, 32, 0, 0, {32, 64, 128, 255});

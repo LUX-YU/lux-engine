@@ -23,7 +23,7 @@ target_link_libraries(core_consumer PRIVATE lux::engine::render::render_core)
 
 add_test(NAME installed.core COMMAND core_consumer)
 
-foreach(header Ids Error Target)
+foreach(header Ids Error Target Camera Execution)
     string(CONCAT header_probe
         "#include <lux/engine/render/core/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
         "#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native header leaked into Core\n#endif\n"

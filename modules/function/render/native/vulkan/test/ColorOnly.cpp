@@ -97,14 +97,14 @@ int main()
                 {
                     const auto prior_barriers = barriers;
                     const auto prior_draws = draws;
-                    CHECK(take(context->execute()));
+                    CHECK(take(context->execute()) == EExecutionOutcome::EXECUTED);
                     CHECK(take(session->queue().wait(*context->lastUse(), UINT64_MAX)));
                     CHECK(barriers == prior_barriers + 1); // Only the color transition; no hidden host/copy barrier.
                     CHECK(draws == prior_draws + unsigned(graphics));
                     CHECK(buffers == buffers_before);
                 }
                 hold_observation = true;
-                CHECK(take(context->execute()));
+                CHECK(take(context->execute()) == EExecutionOutcome::EXECUTED);
                 const auto ticket = *context->lastUse();
                 const auto prior_releases = released_images;
                 CHECK(session->release(context));

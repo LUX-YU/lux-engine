@@ -210,6 +210,7 @@ namespace lux::render
         RenderResult<void> detach(RenderRequest& request) noexcept;
 
         RenderResult<void> queryRenderStats(RenderRequest& request) noexcept;
+        RenderResult<void> queryExecutionProgress(RenderRequest& request) noexcept;
 
         RenderResult<void> listFeatures(RenderRequest& request) noexcept;
         RenderResult<void> listStorages(RenderRequest& request) noexcept;

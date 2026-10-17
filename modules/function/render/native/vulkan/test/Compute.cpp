@@ -85,7 +85,7 @@ int main(int argc, char** argv)
         render_allocation::participate = true;
         render_allocation::calls = 0;
         render_allocation::window = true;
-        CHECK(take(execution->execute()));
+        CHECK(take(execution->execute()) == EExecutionOutcome::EXECUTED);
         CHECK(take(session->queue().wait(*execution->lastUse(), UINT64_MAX)));
         render_allocation::window = false;
         CHECK(render_allocation::calls == 0);

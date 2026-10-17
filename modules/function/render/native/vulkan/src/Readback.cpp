@@ -70,7 +70,7 @@ namespace lux::render::vulkan
                 finish(cxx::unexpected(executed.error()));
                 return;
             }
-            if (*executed && submitted_) submitted_(observer_);
+            if (*executed == EExecutionOutcome::EXECUTED && submitted_) submitted_(observer_);
         }
         auto ticket = context_->lastUse();
         if (!ticket) ticket = queue_->oldestPending();

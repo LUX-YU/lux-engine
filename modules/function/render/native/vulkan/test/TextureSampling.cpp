@@ -156,7 +156,7 @@ int main()
                     CHECK(&views[2 * s + v]->code() == code.get());
                 }
             }
-            for (auto* view : views) CHECK(take(view->execute()));
+            for (auto* view : views) CHECK(take(view->execute()) == EExecutionOutcome::EXECUTED);
             CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
             const auto tolerance = space == rdesc::ETextureColorSpace::DATA ? 0u : 2u;
             for (auto* view : views) pixels(take(view->readback()), oracle(values[mip], space), tolerance);
@@ -165,7 +165,7 @@ int main()
             render_allocation::window = true;
             for (unsigned frame = 0; frame < 32; ++frame)
             {
-                for (auto* view : views) CHECK(take(view->execute()));
+                for (auto* view : views) CHECK(take(view->execute()) == EExecutionOutcome::EXECUTED);
                 CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
             }
             render_allocation::window = false;
@@ -174,7 +174,7 @@ int main()
             if (mip == 3)
             {
                 // Accepted draws pin the old physical slot, publication refreshes only prepared borrows.
-                for (auto* view : views) CHECK(take(view->execute()));
+                for (auto* view : views) CHECK(take(view->execute()) == EExecutionOutcome::EXECUTED);
                 auto* old = take(storage.acquire(published.texture));
                 std::vector<std::byte> replacement(input.size(), std::byte{64});
                 auto replacement_owner = std::make_shared<const std::vector<std::byte>>(std::move(replacement));
@@ -185,7 +185,7 @@ int main()
                 CHECK(storage.residentVersions() == 2);
                 storage.releaseLease(*old);
                 CHECK(session->collect());
-                for (auto* view : views) CHECK(take(view->execute()));
+                for (auto* view : views) CHECK(take(view->execute()) == EExecutionOutcome::EXECUTED);
                 CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
                 for (auto* view : views) pixels(take(view->readback()), oracle({64, 64, 64, 64}, space), tolerance);
                 CHECK(pipelines == old_pipelines + 1);
@@ -194,7 +194,7 @@ int main()
                 upload = take(lux::render::upload(storage,
                     SetTextureRegion::Request{published.texture, 2, {3, 0, 0, 2, 2, 12}, payload(patch_owner)}));
                 complete(upload.second, host, *session); upload.second.reset();
-                for (auto* view : views) CHECK(take(view->execute()));
+                for (auto* view : views) CHECK(take(view->execute()) == EExecutionOutcome::EXECUTED);
                 CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
                 for (auto* view : views) pixels(take(view->readback()), oracle({96, 96, 96, 96}, space), tolerance);
                 CHECK(pipelines == old_pipelines + 1);
@@ -202,7 +202,7 @@ int main()
                 CHECK(storage.release(published.texture, 3));
                 // Released business ID cannot be rebound; existing consumers keep valid backing.
                 CHECK(!session->prepare(code, texture_fixture::target(config), nullptr, nullptr, texture_fixture::arguments(config)));
-                for (auto* view : views) CHECK(take(view->execute()));
+                for (auto* view : views) CHECK(take(view->execute()) == EExecutionOutcome::EXECUTED);
                 CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
             }
             for (auto* view : views) CHECK(session->release(view));
@@ -226,7 +226,7 @@ int main()
         auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
             texture_fixture::programs(config), texture_fixture::target(config))));
         auto* context = take(session->prepare(code, texture_fixture::target(config), nullptr, nullptr, texture_fixture::arguments(config)));
-        CHECK(take(context->execute()));
+        CHECK(take(context->execute()) == EExecutionOutcome::EXECUTED);
         CHECK(take(session->queue().wait(*context->lastUse(), UINT64_MAX)));
         pixels(take(context->readback()), oracle({255, 0, 0, 255}, rdesc::ETextureColorSpace::SRGB), 2);
         CHECK(storage.release(id, 1));
@@ -279,13 +279,13 @@ int main()
             contexts[i] = take(session->prepare(code, texture_fixture::target(config), &scenes[i], nullptr,
                 texture_fixture::arguments(config)));
             CHECK(&contexts[i]->code() == code.get());
-            CHECK(take(contexts[i]->execute()));
+            CHECK(take(contexts[i]->execute()) == EExecutionOutcome::EXECUTED);
         }
         CHECK(take(session->queue().wait(*contexts[1]->lastUse(), UINT64_MAX)));
         pixels(take(contexts[0]->readback()), {32, 32, 32, 32}, 0);
         pixels(take(contexts[1]->readback()), {96, 96, 96, 96}, 0);
         hold_observation = true;
-        CHECK(take(contexts[0]->execute()));
+        CHECK(take(contexts[0]->execute()) == EExecutionOutcome::EXECUTED);
         const auto ticket = *contexts[0]->lastUse();
         const auto destroyed = destroyed_samplers;
         const auto pools = destroyed_texture_pools;
@@ -294,7 +294,7 @@ int main()
         CHECK(scenes[0].size() == 0 && !session->resources().native(textures[0].storage));
         CHECK(destroyed_samplers == destroyed && destroyed_texture_pools == pools);
         // The other Scene is still recordable while the first Scene's physical backing retires.
-        CHECK(take(contexts[1]->execute()));
+        CHECK(take(contexts[1]->execute()) == EExecutionOutcome::EXECUTED);
         hold_observation = false;
         CHECK(take(session->queue().wait(*contexts[1]->lastUse(), UINT64_MAX)));
         CHECK(session->queue().completed() >= ticket.serial());
@@ -324,7 +324,7 @@ int main()
         auto* context = take(session->prepare(code, texture_fixture::target(config), nullptr, nullptr,
             texture_fixture::arguments(config)));
         hold_observation = true;
-        CHECK(take(context->execute()));
+        CHECK(take(context->execute()) == EExecutionOutcome::EXECUTED);
         const auto ticket = *context->lastUse();
         const auto samplers = destroyed_samplers;
         const auto pools = destroyed_texture_pools;

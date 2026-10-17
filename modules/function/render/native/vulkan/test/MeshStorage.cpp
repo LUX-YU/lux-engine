@@ -55,7 +55,7 @@ static void pixels(ExecutionContext& context, DeviceSession& session, unsigned v
     render_allocation::participate = true;
     render_allocation::calls = 0;
     render_allocation::window = true;
-    CHECK(take(context.execute()));
+    CHECK(take(context.execute()) == EExecutionOutcome::EXECUTED);
     CHECK(take(session.queue().wait(*context.lastUse(), UINT64_MAX)));
     render_allocation::window = false;
     CHECK(render_allocation::calls == 0);
@@ -177,7 +177,7 @@ int main(int argc, char** argv)
             CHECK(session->release(first));
             pixels(*second, *session, 191);
             CHECK(!storage.release(published.mesh, 1));
-            CHECK(take(second->execute()));
+            CHECK(take(second->execute()) == EExecutionOutcome::EXECUTED);
             hold_completion = true;
             CHECK(storage.release(published.mesh, 2));
             CHECK(storage.residentVersions() == 1);

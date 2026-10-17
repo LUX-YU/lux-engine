@@ -140,7 +140,7 @@ int main(int argc, char** argv)
     CHECK(a->setContextParameters(std::as_bytes(std::span(half))));
     CHECK(b->setContextParameters(std::as_bytes(std::span(one))));
     const auto execute = [&](ExecutionContext& context, unsigned expected) {
-        CHECK(take(context.execute()));
+        CHECK(take(context.execute()) == EExecutionOutcome::EXECUTED);
         CHECK(take(session->queue().wait(*context.lastUse(), UINT64_MAX)));
         for (auto byte : take(context.readback())) CHECK(std::to_integer<unsigned>(byte) == expected);
     };
@@ -184,7 +184,7 @@ int main(int argc, char** argv)
     for (unsigned i = 0; i < 20; ++i)
     {
         CHECK(a->setContextParameters(std::as_bytes(std::span(i % 2 ? half : one))));
-        CHECK(take(a->execute()));
+        CHECK(take(a->execute()) == EExecutionOutcome::EXECUTED);
         CHECK(take(session->queue().wait(*a->lastUse(), UINT64_MAX)));
     }
     render_allocation::window = false;

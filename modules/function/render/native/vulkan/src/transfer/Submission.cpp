@@ -260,6 +260,11 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(completion.error());
         }
+        return beginAfterPoll();
+    }
+
+    RenderResult<CommandBatch> SubmissionQueue::beginAfterPoll() noexcept
+    {
         const bool is_full = backing_->submitted - backing_->completed == capacity();
         const bool is_exhausted = backing_->submitted == std::numeric_limits<std::uint64_t>::max() ||
                                   backing_->recording_id == std::numeric_limits<std::uint64_t>::max();

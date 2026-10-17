@@ -164,7 +164,7 @@ int main(int argc, char** argv)
         camera.view[13] = .4f;
         CHECK(second->setContextParameters(cameraParameters(camera)));
         const auto render = [&](ExecutionContext& context) {
-            CHECK(take(context.execute()));
+            CHECK(take(context.execute()) == EExecutionOutcome::EXECUTED);
             CHECK(take(session->queue().wait(*context.lastUse(), UINT64_MAX)));
             return take(context.readback());
         };

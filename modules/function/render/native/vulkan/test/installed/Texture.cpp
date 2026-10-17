@@ -24,7 +24,7 @@ int main()
     auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
         texture_fixture::programs(config), texture_fixture::target(config))));
     auto* context = take(session->prepare(code, texture_fixture::target(config), nullptr, nullptr, texture_fixture::arguments(config)));
-    CHECK(take(context->execute()));
+    CHECK(take(context->execute()) == EExecutionOutcome::EXECUTED);
     CHECK(take(session->queue().wait(*context->lastUse(), UINT64_MAX)));
     CHECK(take(context->readback()) == *input);
     CHECK(session->release(context));

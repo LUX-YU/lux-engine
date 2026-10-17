@@ -7,7 +7,7 @@ foreach(test ids scopes exhaustion target epochs errors)
 endforeach()
 
 set(core_header_sources)
-foreach(header Ids Error Target Camera)
+foreach(header Ids Error Target Camera Execution)
     set(probe "${CMAKE_CURRENT_BINARY_DIR}/headers/${header}.cpp")
     string(CONCAT header_probe
         "#include <lux/engine/render/core/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"

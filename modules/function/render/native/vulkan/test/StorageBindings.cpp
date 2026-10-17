@@ -42,7 +42,7 @@ namespace lux::render::vulkan::test
 
 static void execute(ExecutionContext& context, DeviceSession& session, unsigned expected)
 {
-    CHECK(take(context.execute()));
+    CHECK(take(context.execute()) == EExecutionOutcome::EXECUTED);
     CHECK(take(session.queue().wait(*context.lastUse(), UINT64_MAX)));
     const auto data = take(context.readback());
     CHECK(data.size() == 1024);
@@ -233,15 +233,15 @@ int main()
     render_allocation::window = true;
     for (unsigned i = 0; i < 32; ++i)
     {
-        CHECK(take(context->execute()));
-        CHECK(take(replacement->execute()));
+        CHECK(take(context->execute()) == EExecutionOutcome::EXECUTED);
+        CHECK(take(replacement->execute()) == EExecutionOutcome::EXECUTED);
         CHECK(take(session->queue().wait(*replacement->lastUse(), UINT64_MAX)));
     }
     render_allocation::window = false;
     CHECK(render_allocation::calls == 0);
     hold_completion = true;
-    CHECK(take(context->execute()));
-    CHECK(take(replacement->execute()));
+    CHECK(take(context->execute()) == EExecutionOutcome::EXECUTED);
+    CHECK(take(replacement->execute()) == EExecutionOutcome::EXECUTED);
     const auto ticket = *replacement->lastUse();
     NativeMemoryAudit::repeatedRebind(*context);
     NativeMemoryAudit::repeatedRebind(*replacement);

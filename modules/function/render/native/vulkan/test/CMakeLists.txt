@@ -490,3 +490,11 @@ add_dependencies(render_mesh_features_test render_material_assets)
 add_test(NAME render.native.mesh_features COMMAND render_mesh_features_test "${render_asset_dir}/Unlit.frag.spv")
 
 set_tests_properties(render.native.mesh_features PROPERTIES TIMEOUT 90)
+
+add_executable(render_execution_outcomes_test ExecutionOutcomes.cpp)
+
+target_link_libraries(render_execution_outcomes_test PRIVATE render_native_instrumented)
+
+add_test(NAME render.native.execution_outcomes COMMAND render_execution_outcomes_test)
+
+set_tests_properties(render.native.execution_outcomes PROPERTIES TIMEOUT 60)

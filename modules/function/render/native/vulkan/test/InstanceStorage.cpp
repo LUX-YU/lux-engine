@@ -80,7 +80,7 @@ static void groups(DeviceSession& session, lux::render::vulkan::InstanceStorage&
     auto* second = take(session.prepare(code, target, nullptr, nullptr, arguments));
     CHECK(instances.residentBytes() == before + group_bytes * 3); // Shared selection, no per-View GPU group copy.
     hold_completion = true;
-    CHECK(take(first->execute()));
+    CHECK(take(first->execute()) == EExecutionOutcome::EXECUTED);
     fail_flush = 1;
     CHECK(!instances.release(removed));
     CHECK(instances.query(removed.instance));
@@ -93,7 +93,7 @@ static void groups(DeviceSession& session, lux::render::vulkan::InstanceStorage&
     auto replacement = take(instances.create(input));
     CHECK(replacement.instance.local.index == removed.instance.local.index);
     CHECK(replacement.instance.local.gen != removed.instance.local.gen);
-    CHECK(take(second->execute()));
+    CHECK(take(second->execute()) == EExecutionOutcome::EXECUTED);
     CHECK(instances.release(replacement));
     auto busy = instances.create(input); // Both non-current group banks are held by accepted GPU work.
     CHECK(!busy && busy.error().type == kBusy);
@@ -260,7 +260,7 @@ int main(int argc, char** argv)
         const std::array arguments{StorageArgument{"instances", take(ConfigValue::make(InstanceBinding{2}))}};
         std::array<ExecutionContext*, 3> contexts;
         for (auto& context : contexts) context = take(session->prepare(code, target, nullptr, nullptr, arguments));
-        CHECK(take(contexts[0]->execute()));
+        CHECK(take(contexts[0]->execute()) == EExecutionOutcome::EXECUTED);
         CHECK(take(session->queue().wait(*contexts[0]->lastUse(), UINT64_MAX)));
         const auto bytes = take(contexts[0]->readback(2));
         TransformMatrix actual;
@@ -276,7 +276,7 @@ int main(int argc, char** argv)
                 CHECK(instances.update(batch));
                 ++ids[0].revision;
             }
-            CHECK(take(contexts[i]->execute()));
+            CHECK(take(contexts[i]->execute()) == EExecutionOutcome::EXECUTED);
         }
         batch.updates = {{ids[0].instance, ids[0].revision, kIdentityTransform}};
         auto busy = instances.update(batch);

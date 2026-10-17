@@ -95,6 +95,7 @@ int main()
     const auto update = take(client->bind<UpdateCamera>());
     const auto resize = take(client->bind<ResizeTarget>());
     const auto read = take(client->bind<Readback>());
+    const auto progress = take(client->bind<QueryExecutionProgress>());
     const auto remove = take(client->bind<RemoveScene>());
     const auto scene = call(*client, create_scene, {}).response().scene;
     native_fixture::Config graph{32, 32, 1, 0};
@@ -124,6 +125,16 @@ int main()
     auto capacity = wait(*client, take(client->submit(read, limited, sizeof(ReadbackResult))));
     CHECK(capacity.header.outcome == ECommandOutcome::FAILED && capacity.header.error.type == kRuntimeCapacity);
     pixel(call(*client, read, {ga, output}), 32, 16, 16, {255, 0, 0, 255});
+    const auto before = call(*client, progress, ga).response();
+    CHECK(before.count(EExecutionOutcome::EXECUTED) > 0);
+    auto wrong_group = ga;
+    wrong_group.view = {};
+    auto wrong_progress = call(*client, progress, wrong_group);
+    CHECK(wrong_progress.header().outcome == ECommandOutcome::FAILED &&
+        wrong_progress.header().error.type == kRuntimeIdentity);
+    const auto after = call(*client, progress, ga).response();
+    for (std::size_t i = 0; i < before.counts.size(); ++i) CHECK(after.counts[i] >= before.counts[i]);
+    CHECK(call(*client, progress, gb).response().count(EExecutionOutcome::EXECUTED) > 0);
     const auto compiled = server->stats().compiled_graphs;
     b.projection[0] = .5f;
     b.viewport = {.5f, 0, .5f, 1};

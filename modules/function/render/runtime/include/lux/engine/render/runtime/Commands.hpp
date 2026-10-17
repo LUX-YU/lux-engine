@@ -9,6 +9,7 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/core/Camera.hpp>
+#include <lux/engine/render/core/Execution.hpp>
 #include <lux/engine/render/data/Payload.hpp>
 #include <lux/engine/render/data/ConfigValue.hpp>
 #include <lux/engine/render/protocol/Protocol.hpp>
@@ -383,6 +384,13 @@ namespace lux::render
         static constexpr std::string_view name{"render.stop"};
         using Request = EmptyRequest;
         using Response = Ack;
+    };
+
+    struct QueryExecutionProgress final
+    {
+        static constexpr std::string_view name{"render.execution.progress"};
+        using Request = AttachmentRequest;
+        using Response = ExecutionProgress;
     };
 
     struct QueryRenderStats final

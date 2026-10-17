@@ -130,7 +130,7 @@ int main()
                     const std::array<float, 4> values{1, 0, 0, 1};
                     CHECK(context->setContextParameters(std::as_bytes(std::span(values))));
                 }
-                CHECK(take(context->execute()));
+                CHECK(take(context->execute()) == EExecutionOutcome::EXECUTED);
                 CHECK(take(session->queue().wait(*context->lastUse(), UINT64_MAX)));
                 auto bytes = take(context->readback());
                 pixel(bytes, 16, 16, different ? std::array{0, 0, 255, 255} : std::array{255, 0, 0, 255});

@@ -70,7 +70,7 @@ int main()
             CHECK((live == std::array<int, 3>{}));
         }
         auto* accepted = take(session->prepare(code, native_fixture::target(config), &scene, &view));
-        CHECK(resources.size() == 4 && take(accepted->execute()));
+        CHECK(resources.size() == 4 && take(accepted->execute()) == EExecutionOutcome::EXECUTED);
         const auto ticket = *accepted->lastUse();
         const auto before = live;
         fail_buffer = 1;

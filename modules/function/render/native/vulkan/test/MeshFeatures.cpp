@@ -110,7 +110,7 @@ int main(int argc, char** argv)
         auto [first, first_code] = compile.template operator()<BasicMeshFeature>();
         auto [depth, depth_code] = compile.template operator()<DepthOnlyFeature>();
         const auto render = [&](ExecutionContext& context) {
-            CHECK(checked(context.execute()));
+            CHECK(checked(context.execute()) == EExecutionOutcome::EXECUTED);
             CHECK(checked(session->queue().wait(*context.lastUse(), UINT64_MAX)));
             return checked(context.readback());
         };

@@ -188,6 +188,9 @@ namespace lux::render::vulkan
 
     private:
         friend class CommandBatch;
+        friend class ExecutionContext;
+        // Same serialized owner has just checked recording and polled; no callback/Submit in between.
+        [[nodiscard]] RenderResult<CommandBatch> beginAfterPoll() noexcept;
         friend class SubmissionCallback;
         friend class StagingArena;
         friend class RetirementQueue;

@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Camera.hpp>
+#include <lux/engine/render/core/Execution.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 
@@ -27,7 +28,8 @@ namespace lux::render::vulkan
         // Owner-thread caller has validated the viewport at its request boundary.
         void setViewport(const CameraViewport& viewport) noexcept { viewport_ = viewport; }
         [[nodiscard]] const CameraViewport& viewport() const noexcept { return viewport_; }
-        [[nodiscard]] RenderResult<bool> execute() noexcept;
+        [[nodiscard]] RenderResult<EExecutionOutcome> execute() noexcept;
+        [[nodiscard]] const ExecutionProgress& progress() const noexcept { return progress_; }
         [[nodiscard]] RenderResult<bool> completed() noexcept;
         [[nodiscard]] RenderResult<std::vector<std::byte>> readback(std::uint32_t resource = kGraphInvalidIndex) noexcept;
         // Zero means no such explicit exported readback buffer. Drawing does not require one.
@@ -106,6 +108,7 @@ namespace lux::render::vulkan
         unsigned submitted_bank_ = 0;
         std::vector<VkBufferMemoryBarrier2> host_barriers_;
         std::optional<SubmissionTicket> last_use_;
+        ExecutionProgress progress_;
         std::uint32_t readback_ = kGraphInvalidIndex;
         std::uint32_t readers_ = 0;
 

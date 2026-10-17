@@ -365,7 +365,7 @@ int main()
             auto* first = take(session->prepare(code, native_fixture::target(execution_config), {}));
             auto* second = take(session->prepare(code, native_fixture::target(execution_config), {}));
             const auto creations = created;
-            CHECK(take(first->execute()));
+            CHECK(take(first->execute()) == EExecutionOutcome::EXECUTED);
             const auto accepted = *first->lastUse();
             hold_fences = true; // force the admitted first submission to remain unobserved
             fails("submit", [&] { return second->execute(); });

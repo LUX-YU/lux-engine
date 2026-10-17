@@ -29,7 +29,7 @@ int main()
         )));
         CHECK(graph->passes().size() == 2);
         auto* execution = take(session->prepare(graph, target));
-        CHECK(take(execution->execute()));
+        CHECK(take(execution->execute()) == EExecutionOutcome::EXECUTED);
         CHECK(take(session->queue().wait(*execution->lastUse(), UINT64_MAX)));
         auto output = take(execution->readback());
         CHECK(output.size() == 1024);

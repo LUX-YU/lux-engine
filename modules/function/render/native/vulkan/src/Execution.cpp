@@ -359,19 +359,22 @@ namespace lux::render::vulkan
         return *completed >= last_use_->serial();
     }
 
-    RenderResult<bool> ExecutionContext::execute() noexcept
+    RenderResult<EExecutionOutcome> ExecutionContext::execute() noexcept
     {
-        if (last_use_)
-        {
-            if (readers_) return false;
-            auto ready = completed();
-            if (!ready) return cxx::unexpected(ready.error());
-            if (!*ready) return false;
-        }
-        auto batch = queue_->begin();
+        const auto outcome = [this](EExecutionOutcome value) noexcept {
+            ++progress_.counts[static_cast<std::size_t>(value)];
+            return value;
+        };
+        if (last_use_ && readers_) return outcome(EExecutionOutcome::READBACK_HELD);
+        auto ready = queue_->poll();
+        if (!ready) return cxx::unexpected(ready.error());
+        if (last_use_ && *ready < last_use_->serial())
+            return outcome(EExecutionOutcome::PREVIOUS_SUBMISSION_PENDING);
+        if (queue_->recording()) return outcome(EExecutionOutcome::RECORDING_BUSY);
+        auto batch = queue_->beginAfterPoll();
         if (!batch)
         {
-            if (batch.error().type == kBusy || batch.error().type == kCapacity) return false;
+            if (batch.error().type == kCapacity) return outcome(EExecutionOutcome::QUEUE_FULL);
             return cxx::unexpected(batch.error());
         }
         const auto command = batch->native();
@@ -513,7 +516,7 @@ namespace lux::render::vulkan
         last_use_ = *submitted;
         submitted_bank_ = descriptor_bank_;
         for (const auto& lease : leases_) if (lease.binding.last_use) lease.binding.last_use->merge(*submitted);
-        return true;
+        return outcome(EExecutionOutcome::EXECUTED);
     }
 
     RenderResult<std::vector<std::byte>> ExecutionContext::readback(std::uint32_t resource) noexcept

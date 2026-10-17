@@ -12,7 +12,7 @@ namespace lux::render
                 auto& group = effect.groups[(effect.next_group + g) % effect.groups.size()];
                 auto result = group.context->execute();
                 if (!result) return cxx::unexpected(result.error());
-                if (*result) ++submissions;
+                if (*result == EExecutionOutcome::EXECUTED) ++submissions;
             }
             effect.next_group = effect.groups.empty() ? 0 : (effect.next_group + 1) % effect.groups.size();
         }
@@ -24,6 +24,18 @@ namespace lux::render
         device->dispatchCompletions();
 #endif
         return collected;
+    }
+
+    RenderResult<void> RenderServer::Impl::queryExecutionProgress(RenderRequest& request) noexcept
+    {
+        const auto& input = request.get<AttachmentRequest>();
+        const auto* effect = effects.find(input.effect);
+        if (!effect) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        const auto found = std::ranges::find_if(effect->groups, [&](const auto& group) {
+            return group.scene == input.scene && group.view == input.view && group.target == input.target;
+        });
+        if (found == effect->groups.end()) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        return request.reply(found->context->progress());
     }
 
     RenderResult<void> RenderServer::Impl::queryRenderStats(RenderRequest& request) noexcept

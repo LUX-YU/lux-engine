@@ -123,8 +123,11 @@ int main()
     render_allocation::window = true;
     CHECK(session->release(context));
     CHECK(session->release(replacement));
+    const auto context_release_calls = render_allocation::calls.load();
     CHECK(session->globalStorages().releasePrepared(instance_id));
     render_allocation::window = false;
+    std::printf("Buffer owner release allocations: contexts=%zu storage=%zu\n", context_release_calls,
+        render_allocation::calls.load() - context_release_calls);
     CHECK(render_allocation::calls == 0);
     CHECK(!session->resources().native(instance_id));
     CHECK(session->collect() && destroyed_buffers == destroyed_before);

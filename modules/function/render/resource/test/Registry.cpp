@@ -268,6 +268,22 @@ int main()
         ResourceRegistry registry(&counts, 0);
         counts.registry = &registry;
         StorageSet actual(registry);
+        require(bool(registry.installFactory(factory(), 7u)));
+        auto first = actual.acquire<TestStorage>("first");
+        auto last = actual.acquire<TestStorage>("last", config(19));
+        require(first && last);
+        const auto erased = first->id();
+        const auto surviving = last->id();
+        first->reset();
+        require(!registry.native(erased) && actual.size() == 1);
+        require(registry.owner(surviving) == &actual && registry.tryGet<TestStorage>(surviving)->read() == 19);
+        last->reset();
+        require(actual.size() == 0 && counts.created == counts.destroyed);
+    }
+    {
+        ResourceRegistry registry(&counts, 0);
+        counts.registry = &registry;
+        StorageSet actual(registry);
         auto type = registry.installFactory(factory());
         require(bool(type));
         counts.referenced = *actual.prepare(*type, "texture-like", config(1));

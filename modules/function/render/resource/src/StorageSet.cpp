@@ -138,15 +138,18 @@ namespace lux::render
 
     void StorageSet::erase(std::size_t position) noexcept
     {
-        auto removed = std::move(records_[position]);
-        registry_.entries_.erase(removed.id);
+        const auto id = records_[position].id;
+        auto config = std::move(records_[position].config);
+        auto native = std::move(records_[position].native);
+        registry_.entries_.erase(id);
         if (position + 1 != records_.size())
         {
             records_[position] = std::move(records_.back());
             registry_.entries_.find(records_[position].id)->position = position;
         }
         records_.pop_back();
-        // removed's Native deleter runs only after both containers are coherent. Config/pin stays live.
+        // Native deletion follows index repair; its Config/code pin remains live until it returns.
+        // Do not move-construct Record: MSVC checked string iterators allocate a new proxy even for a move.
     }
 
     void StorageSet::clear() noexcept

@@ -7,6 +7,19 @@
 #include "shaders/Texture.hpp"
 #include <lux/engine/render/graph/Builder.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
+#include <fstream>
+
+static std::vector<std::uint32_t> readSpirv(const char* path)
+{
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    CHECK(input);
+    const auto bytes = input.tellg();
+    CHECK(bytes > 0 && bytes % 4 == 0);
+    std::vector<std::uint32_t> result(static_cast<std::size_t>(bytes) / 4);
+    input.seekg(0);
+    CHECK(input.read(reinterpret_cast<char*>(result.data()), bytes));
+    return result;
+}
 
 static ShaderBlock parameterBlock() noexcept
 {
@@ -19,8 +32,9 @@ static ShaderBlock parameterBlock() noexcept
     return ShaderBlock::from({rdesc::EDataLayout::STD430, 64, 16, fields, {}, {}, 0});
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    CHECK(argc == 1 || argc == 3);
     Validation validation;
     auto bootstrap = instance(validation);
     DeviceOptions options;
@@ -92,6 +106,15 @@ int main()
         {2, 9, EDescriptorKind::STORAGE_BUFFER, 1, extension_test::colorBlock(), "data", 3}
     };
     draw.resources = {{"textures", "texture"}, {"data", "data"}};
+    if (argc == 3)
+    {
+        draw.shader.stages[0].words = readSpirv(argv[1]);
+        draw.shader.stages[1].words = readSpirv(argv[2]);
+        draw.shader.interface.bindings[0].set = 0;
+        draw.shader.interface.bindings[0].binding = 0;
+        draw.shader.interface.bindings[1].set = 0;
+        draw.shader.interface.bindings[1].binding = 1;
+    }
     draw.shader.interface.parameters = parameterBlock();
     draw.shader.interface.parameter_stages = 3;
     draw.context_parameters = parameter_fixture::float4("tint");

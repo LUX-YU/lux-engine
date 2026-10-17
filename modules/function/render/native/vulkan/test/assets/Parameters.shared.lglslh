@@ -1,0 +1,5 @@
+// Resource declarations come from the same Pass contract for every stage.
+vec4 sharedColor()
+{
+    return data.color;
+}

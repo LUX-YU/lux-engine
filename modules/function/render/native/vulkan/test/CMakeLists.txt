@@ -213,3 +213,66 @@ set_target_properties(render_parameters_test PROPERTIES
 add_test(NAME render.native.parameters COMMAND render_parameters_test)
 
 set_tests_properties(render.native.parameters PROPERTIES TIMEOUT 60)
+
+# Offline fixture asset generation reuses the existing tool implementation. No Render library
+# links Engine/toolchain or the emitter; only this build-time executable does.
+get_filename_component(render_source_root "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../.." ABSOLUTE)
+
+add_executable(render_pass_asset_tool
+    assets/EmitPass.cpp
+    "${render_source_root}/engine/toolchain/shader/src/lglsl/LglslEmitter.cpp"
+)
+
+target_include_directories(render_pass_asset_tool PRIVATE
+    "${render_source_root}/engine/toolchain/shader/include"
+    "${render_source_root}/modules/resource/description/include"
+    "${LUX_GENERATE_HEADER_DIR}"
+)
+
+target_link_libraries(render_pass_asset_tool PRIVATE lux::cxx::core)
+
+if(NOT Vulkan_GLSLANG_VALIDATOR_EXECUTABLE)
+    message(FATAL_ERROR "The real Pass asset fixture requires glslangValidator")
+endif()
+
+set(render_asset_dir "${CMAKE_CURRENT_BINARY_DIR}/assets")
+
+foreach(stage vert frag)
+    add_custom_command(
+        OUTPUT "${render_asset_dir}/Parameters.${stage}.spv"
+        BYPRODUCTS "${render_asset_dir}/Parameters.${stage}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${render_asset_dir}"
+        COMMAND render_pass_asset_tool
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/Parameters.${stage}.lglsl"
+            "${render_asset_dir}/Parameters.${stage}"
+        COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -S ${stage}
+            "-I${CMAKE_CURRENT_SOURCE_DIR}/assets"
+            "${render_asset_dir}/Parameters.${stage}" -o "${render_asset_dir}/Parameters.${stage}.spv"
+        DEPENDS render_pass_asset_tool
+            "assets/Parameters.${stage}.lglsl" assets/Parameters.shared.lglslh
+        VERBATIM
+    )
+endforeach()
+
+add_custom_command(
+    OUTPUT "${render_asset_dir}/manifest.txt"
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" "-DEMITTER=$<TARGET_FILE:render_pass_asset_tool>"
+        "-DROOT=${render_source_root}" "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/assets"
+        "-DGENERATED=${render_asset_dir}" "-DOUTPUT=${render_asset_dir}/manifest.txt"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/assets/Manifest.cmake"
+    DEPENDS "${render_asset_dir}/Parameters.vert.spv" "${render_asset_dir}/Parameters.frag.spv"
+        assets/Manifest.cmake
+    VERBATIM
+)
+
+add_custom_target(render_pass_assets ALL DEPENDS "${render_asset_dir}/manifest.txt"
+)
+
+add_dependencies(render_parameters_test render_pass_assets)
+
+add_test(NAME render.native.lglsl_parameters COMMAND render_parameters_test
+    "${render_asset_dir}/Parameters.vert.spv" "${render_asset_dir}/Parameters.frag.spv"
+)
+
+set_tests_properties(render.native.lglsl_parameters PROPERTIES TIMEOUT 60)

@@ -25,10 +25,12 @@ namespace lux::render
             }
         );
         if (found == effect->groups.end()) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        const auto bytes = found->context->readbackBytes();
+        if (!bytes) return cxx::unexpected(RenderError{vulkan::kUnsupported});
         const bool full = request.replyCapacity() < sizeof(ReadbackResult) ||
-            found->context->readbackBytes() > request.replyCapacity() - sizeof(ReadbackResult);
+            bytes > request.replyCapacity() - sizeof(ReadbackResult);
         if (full) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        auto invocation = deferCommand(request, sizeof(ReadbackResult) + found->context->readbackBytes());
+        auto invocation = deferCommand(request, sizeof(ReadbackResult) + bytes);
         if (!invocation) return cxx::unexpected(invocation.error());
         auto pending = protocol_detail::ReplyAccess::make<Readback>(**invocation);
         return pending.completeWhen(stdexec::then(

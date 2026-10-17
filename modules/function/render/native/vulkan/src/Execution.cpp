@@ -128,7 +128,6 @@ namespace lux::render::vulkan
                 if (plan.readback && plan.target_sized) context->readback_ = i;
             }
         }
-        if (context->readback_ == kGraphInvalidIndex) return cxx::unexpected(RenderError{kUnsupported});
         for (const auto& recipe : context->code_->passes())
         {
             ExecutionContext::Pass pass{&recipe};
@@ -302,13 +301,14 @@ namespace lux::render::vulkan
 
     RenderResult<std::vector<std::byte>> ExecutionContext::readback(std::uint32_t resource) noexcept
     {
-        auto ready = completed();
-        if (!ready) return cxx::unexpected(ready.error());
-        if (!*ready) return cxx::unexpected(RenderError{kBusy});
         if (resource == kGraphInvalidIndex) resource = readback_;
+        if (resource == kGraphInvalidIndex) return cxx::unexpected(RenderError{kUnsupported});
         const bool invalid = resource >= bindings_.size() || !code_->resources()[resource].readback ||
             !bindings_[resource].buffer;
         if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
+        auto ready = completed();
+        if (!ready) return cxx::unexpected(ready.error());
+        if (!*ready) return cxx::unexpected(RenderError{kBusy});
         const auto* buffer = bindings_[resource].buffer;
         std::vector<std::byte> result(static_cast<std::size_t>(buffer->size()));
         if (auto read = owner_->read(*buffer, 0, result); !read) return cxx::unexpected(read.error());

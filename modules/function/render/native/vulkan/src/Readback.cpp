@@ -19,6 +19,11 @@ namespace lux::render::vulkan
             finish(cxx::unexpected(RenderError{kWorkStopped}));
             return;
         }
+        if (!context_->readbackBytes())
+        {
+            finish(cxx::unexpected(RenderError{kUnsupported}));
+            return;
+        }
         if (auto reserved = queue_->reserve(callback_); !reserved)
         {
             finish(cxx::unexpected(reserved.error()));

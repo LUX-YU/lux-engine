@@ -5,6 +5,7 @@
 
 namespace lux::render::vulkan
 {
+    // Reads an explicit graph readback output; it does not add an implicit copy to a color-only graph.
     // Stable Native use, owned by a finite sender operation. The Context borrows it only until
     // cancellation; an armed Queue callback independently retains the operation's lifetime contract.
     class ReadbackOperation final

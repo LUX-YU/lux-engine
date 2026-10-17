@@ -123,6 +123,14 @@ target_link_libraries(render_binding_plan_test PRIVATE render_native_instrumente
 add_test(NAME render.native.binding_plan COMMAND render_binding_plan_test)
 set_tests_properties(render.native.binding_plan PROPERTIES TIMEOUT 60)
 
+add_executable(render_color_only_test ColorOnly.cpp)
+
+target_link_libraries(render_color_only_test PRIVATE render_native_instrumented)
+
+add_test(NAME render.native.color_only COMMAND render_color_only_test)
+
+set_tests_properties(render.native.color_only PROPERTIES TIMEOUT 60)
+
 add_executable(render_transfer_test Transfer.cpp)
 target_link_libraries(render_transfer_test PRIVATE render_native_vulkan)
 add_test(NAME render.native.transfer COMMAND render_transfer_test)

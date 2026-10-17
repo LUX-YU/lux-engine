@@ -1,0 +1,571 @@
+{
+  "implementation": "c5766220ceff3ba98650e893b39dcab972e5280a",
+  "archive": "E:\\RenderV2Rebuild\\V12\\archive\\c5766220ceff3ba98650e893b39dcab972e5280a\\directory",
+  "files": [
+    {
+      "path": "directory/build-RelWithDebInfo-20261017-021657-944.log",
+      "size": 21227,
+      "sha256": "fe08ea5b63154c709b86876b647cb43a014e0e8577b9e16545737357e08dd2fc"
+    },
+    {
+      "path": "directory/build-RelWithDebInfo-20261017-021951-032.log",
+      "size": 275,
+      "sha256": "5741aa11d9685a0880639b671a3ae839c0e61dc216e4d8debfb29077db113ad1"
+    },
+    {
+      "path": "directory/build-RelWithDebInfo-20261017-022058-722.log",
+      "size": 308,
+      "sha256": "5c31489a0ec75ffb23c52d72e4d62709832af485250e206a7a3849d3ca0d18e1"
+    },
+    {
+      "path": "directory/build-RelWithDebInfo-20261017-022102-046.log",
+      "size": 157,
+      "sha256": "95f7bcb7a501c462d5eda92979bd4c36b3aaa5b63c28e786a0fa9aea8ae7228b"
+    },
+    {
+      "path": "directory/protection.json",
+      "size": 16096,
+      "sha256": "d9cf028e2dd50b1b5b3a3bb3f3d40fae59a31dd67b9af63f87d9642a8093969c"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log",
+      "size": 63339,
+      "sha256": "152602583543950e85345a58ef896cbdb8a7c64bcd64b99832cf2c5b0ad81b76"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.ctest.txt",
+      "size": 63758,
+      "sha256": "31d6a6807cb174bb9f8608ef77e8237f3c88339723244bc4efd894673fea5f48"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/ipc/test/ipc-cold.csv",
+      "size": 1277,
+      "sha256": "773d2fde316fae83748d23b297eb4edc2beda7e71cb27d7b288ba942dddf4224"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/ipc/test/ipc-operation.csv",
+      "size": 487960,
+      "sha256": "a05e2b61e3254a45931ec404a4d2cecfdd3724b547c8983d8827b0e3c30a2cf4"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/ipc/test/ipc-queue.csv",
+      "size": 98927,
+      "sha256": "8ad8c8d0f9c82aaca9cd4e0fab92ed31233e274fbf7cc89daeb37dd260f7fc20"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/ipc/test/ipc-roundtrip.csv",
+      "size": 795702,
+      "sha256": "7de6a1c89fcb5a5c5d04ce2f4adf0e2405b08ad0f919572e540baaa2ab0b0d0e"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/ipc/test/ipc-ticks.csv",
+      "size": 497360,
+      "sha256": "d2fceaefa0dbbeb6bbd5667767ef27b2de9c1cb2d23525aac0338dfdc49a5c59"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/ipc/test/ipc-two-core.csv",
+      "size": 517096,
+      "sha256": "d3eb8b70e4c645ee3759442d0e312322ad3dda5020b31c85bd54516da301b9d8"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "size": 7580,
+      "sha256": "01bdeee4292c6f50356119ef0db3bd76bcf1d1656b3fadf72bbe63b3b0e71869"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "size": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "size": 10664,
+      "sha256": "211918ec5c6532cb55a9df6bc59697106f656f89dc56b4c6942f9a90b1bc6add"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "size": 1114,
+      "sha256": "c93fb2a1f640073fd64fc0c0b2afbde24033fd5e59815c7a929388f8f1bbb7b8"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "size": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/async-cost-drains.csv",
+      "size": 85685,
+      "sha256": "8be23703b4675b42de1fae6b9e4c2ca8054e8bd82da53d2ff32157379132cb15"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/async-cost-events.csv",
+      "size": 12715613,
+      "sha256": "fc7103ef369d310185a00f358b56c721026b3695f013b6d784e8cff66b21ea5b"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/async-cost-summary.csv",
+      "size": 6553,
+      "sha256": "6a37a1c896ca56b0199b66ff84b0dc7e8d0d182ac5c84c7bfe7f0885d948c36b"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "size": 82046,
+      "sha256": "ef2b6d4f85825dd07be7d5f0c5b1a0df415f58a4c3e84ada23619d232f512448"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/runtime-api.csv",
+      "size": 1426,
+      "sha256": "afd0a32089d953114ad8f198451798c53348ba8815e06965adb9397a9d54e1f5"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "size": 139,
+      "sha256": "6bcd8d335d1d6f7218330c12eb66a80fcdae11aa879d18f10ba2704b7fa383ab"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "size": 82046,
+      "sha256": "1910e72ca28d700ff5bded134ec18a8853dc5af75f00d6f6636ca76f0fc42c38"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "size": 31505,
+      "sha256": "68ee3b7f5574f8c28a7c75b99d68da918b75b5510a1840dbf70c684fe042b528"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "size": 21597,
+      "sha256": "01555beede26919ea6d4cd2fa367d3db77bc45513fa7d93917311c8a7f93daaf"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "size": 82046,
+      "sha256": "a26c82a01f9985c30357aaf0e86e8b21f7efd5599d41684c069ef4becdccc803"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "size": 12492,
+      "sha256": "d0f7b398643a9f8b5c068852fe9b6fbc672f5521fe914756e75a3d78542d3661"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "size": 13197,
+      "sha256": "fb83e86c033f7cdc82d1885153a7cef949d2fcbc94c419998d9733d34e8a46d7"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/texture-progress.csv",
+      "size": 282,
+      "sha256": "b062f547c8f01610808b3aeaf33580c3cf4e85dfa60d64f6c21e32b4f8b3873e"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "size": 1329,
+      "sha256": "cce1bbb0f7940ed842e4397f8ff8a2cf65e8bb628a747d739677b52135aab937"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-021955-227.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "size": 1402,
+      "sha256": "383263a44a3ba855ae5fe0b5b356b318c421e61835e101f2b1c0b381ebb2efe6"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log",
+      "size": 608991,
+      "sha256": "79994ab13156b56ba96d2c606a8c9fed156454f295e7476938ccbb4747ea28a4"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.ctest.txt",
+      "size": 621167,
+      "sha256": "1a4bbc7cca2f576c552da17ec6b0fed7adfd60adec1266a8e66a66e19a93fc4b"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/ipc/test/ipc-cold.csv",
+      "size": 1298,
+      "sha256": "f661d3a523bbf5d097532712e9ec921c56ae30f8ddf48efaa3ce96f778cb9d5a"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/ipc/test/ipc-operation.csv",
+      "size": 487964,
+      "sha256": "3d1c29acc59f1443291b0f2a4c11f5c5360ce9eda480438d1c3b2e45f2587390"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/ipc/test/ipc-queue.csv",
+      "size": 98917,
+      "sha256": "c294163ed9a6fadb37541c9c9aaf17de9ecd3c26d56c091ccf933d6d1107783a"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/ipc/test/ipc-roundtrip.csv",
+      "size": 795753,
+      "sha256": "22b5d226a98acfd89d0e76567adef561a29612006d921f107eda728315fa102d"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/ipc/test/ipc-ticks.csv",
+      "size": 508391,
+      "sha256": "40d21a1c2df8ba2ff8d443d4d6ef2fd598bb4ff5dd469a8e7025c40fd567cc51"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/ipc/test/ipc-two-core.csv",
+      "size": 516008,
+      "sha256": "e226833c4b63167bf91a8b8b436f9e4a457076323f80712dd80269166bc1d7d8"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "size": 7580,
+      "sha256": "b8b06376788d11fa30c7dbb2349242c98bb10b103629d9bb9fb8a8295a707480"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "size": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "size": 10748,
+      "sha256": "aa12504589c2b79e95e6dce6eee5191fc0e3c2ba42c2e8bdb22de9b8fef91270"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "size": 1119,
+      "sha256": "c1b91a29fb8da9fcee4a2fadac96231dcb601750add0cb09e0434022c4218c16"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "size": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/async-cost-drains.csv",
+      "size": 85209,
+      "sha256": "1573c00ff404f6faa5a0699c8dfb548030c7a0703e01fd49e176c4a2615a6fbc"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/async-cost-events.csv",
+      "size": 12715928,
+      "sha256": "a53c8a32a31d6e4faf7ead17d7c56f2901d351966cdfda1d302b437d4174d3a5"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/async-cost-summary.csv",
+      "size": 6576,
+      "sha256": "c8bb82929b68cd006b17de40028a1fe9447768d9f9b99cd831d9f6371f7025ca"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "size": 82046,
+      "sha256": "2f9b0ba9f94250e9809d31301680457393fae9abfed1583b1c44be6f903d8c92"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/runtime-api.csv",
+      "size": 1422,
+      "sha256": "42578e1a91bc5fab2aa0cdac6e258b5a4d5efb9c2a797beeef84ec8a5325fbd6"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "size": 139,
+      "sha256": "16020374af05a3ce51346258f8d061911d848f29ad318de3e9c13529a600c3f0"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "size": 82046,
+      "sha256": "403a3a77551b3cd30066ee229c5ab2424d51b7990f3a79fb6636f664d997e604"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "size": 31614,
+      "sha256": "07e0ee3bacdea20a8f9635b3621476738a296d6ceff2285a5906467324e92acb"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "size": 21607,
+      "sha256": "e7c705476ee09d64488c551de77738a305a5f468f3a8059bb844ea032bc3db94"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "size": 82046,
+      "sha256": "f43c022b30b40c1f684d2fec2e71f7d3478c92b5f6f8f2d788ecf645c42d8da7"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "size": 12417,
+      "sha256": "80de086d8087404f68c21682fe6b75856c6a7e6f7627a88c68bbb06496ec02a2"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "size": 12492,
+      "sha256": "9a2b7d914a58a7b90480aa6aa1b2a93ab7a522a9580ba84aca750b83ca5dd7a9"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/texture-progress.csv",
+      "size": 282,
+      "sha256": "84b2494b1cf0a5fc650e47dc4d5c0c6a3fbc8d7596d1a6426e6ed12fbab98708"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "size": 1329,
+      "sha256": "8077bc33db9594d9a9868a7dcf6b6e8936f65c2b1c39c0a9f91809c9703ce28a"
+    },
+    {
+      "path": "directory/test-RelWithDebInfo-20261017-022103-668.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "size": 1332,
+      "sha256": "1d20b64ed0e046add77d3db8d4f141fb03072cb15594c53d8179c5083c354af1"
+    },
+    {
+      "path": "directory-build.console.log",
+      "size": 21470,
+      "sha256": "2854adea24f93719940cf045451e18bc72b530bafdccb7817ec2b2d0a0f71fec"
+    },
+    {
+      "path": "directory-build2.console.log",
+      "size": 518,
+      "sha256": "43fc58f94f5b6238e9a273d68cad2ed578ddb6ce1b6cb931102bfcad5a3047fb"
+    },
+    {
+      "path": "directory-build3.console.log",
+      "size": 551,
+      "sha256": "be6e9daa5ce8d1dfaebe0c5fbb30761d85d5cfd5c5ccb2cbbaf0f7ec5e71a94e"
+    },
+    {
+      "path": "directory-focused.console.log",
+      "size": 63582,
+      "sha256": "aa83bdec33701f36243a202059069abb4510e5eacf8fbbece90c8d7c3382e7d6"
+    },
+    {
+      "path": "directory-full.console.log",
+      "size": 609234,
+      "sha256": "e972e4da99be1c259f2fa0b48c5cdb27273094e8ea9b16372e6275eec8634a31"
+    },
+    {
+      "path": "directory-independent/build-20261017-022724.console.log",
+      "size": 41054,
+      "sha256": "477a8052dee53191d9dc474f32a182f9e064a081c4fc0bdb989c77fb9a600503"
+    },
+    {
+      "path": "directory-independent/build-20261017-022958.console.log",
+      "size": 451,
+      "sha256": "d8af74d74245fccf98fadbf7d77bacb28f34bc9d6ee1fe8f960f5d5d8a2bd55f"
+    },
+    {
+      "path": "directory-independent/build-RelWithDebInfo-20261017-022725-729.log",
+      "size": 40811,
+      "sha256": "01b502172c1815933ffc3362fedce534f38db62deff20eef688cdd58b3bdab7c"
+    },
+    {
+      "path": "directory-independent/build-RelWithDebInfo-20261017-022959-941.log",
+      "size": 208,
+      "sha256": "54b1b411a37471ee4c9043666718ff1942c8e08697942055b5fdeb85089676cc"
+    },
+    {
+      "path": "directory-independent/configure-20261017-022718.console.log",
+      "size": 1877,
+      "sha256": "c81c242b1239267b6d152ac841996222d97ee07b22928c08c112d61a754425b0"
+    },
+    {
+      "path": "directory-independent/configure-RelWithDebInfo-20261017-022720-165.log",
+      "size": 1634,
+      "sha256": "3235548ebfae3a1fce9f535b3d455aaf78485ad7fdfd118672f5ccd96b3f8915"
+    },
+    {
+      "path": "directory-independent/protection.json",
+      "size": 16217,
+      "sha256": "637dd0dfc4346efc6645d425d0497d4daf173a180d61b6bc01bf386656bcc655"
+    },
+    {
+      "path": "directory-independent/snapshot-20261017-022711.console.log",
+      "size": 632,
+      "sha256": "804d0e4970b2330c0ceeddcb601153411937c632006e4e86f7fcdd86b53d09d2"
+    },
+    {
+      "path": "directory-independent/snapshot-RelWithDebInfo-20261017-022713-498.log",
+      "size": 389,
+      "sha256": "aff3d2f533391614fb3af508321334c7b010143635225becb13547cecfb28db1"
+    },
+    {
+      "path": "directory-independent/test-20261017-023000.console.log",
+      "size": 650722,
+      "sha256": "4ad09b3ffb1a2c40fdd407d21ddd101045d9c0972c7a2e84a5a70d94a366521f"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log",
+      "size": 650479,
+      "sha256": "11b5b4166d35d4edea6327eaf828b59ce436e8646a2ac280a07ea0587e93a612"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.ctest.txt",
+      "size": 662544,
+      "sha256": "417082df98ee1fa77049d8031edacf2bd6aa452dc5122843b57e5f6a9e237452"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/ipc/test/ipc-cold.csv",
+      "size": 1526,
+      "sha256": "352fcc67d6e668834314e5c9e3440741fa0d2bda23688356a98f03bd3277a682"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/ipc/test/ipc-operation.csv",
+      "size": 507864,
+      "sha256": "9180682a495d77f072cb8c127cb17adac05a957cb4d1a13dee9caaef9d8331e5"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/ipc/test/ipc-queue.csv",
+      "size": 100393,
+      "sha256": "1e4c40dfe7a6c0a3b6b7d79eead2ad802cddf636c250bd79e6bb5759fee87488"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/ipc/test/ipc-roundtrip.csv",
+      "size": 823691,
+      "sha256": "cf99f71db8cab8d76594603543ead501c1746fc5d2a33e0291aa8ccf497de9b0"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/ipc/test/ipc-ticks.csv",
+      "size": 523995,
+      "sha256": "e48b646eee4d6f9e6a141d42a4fcbfc02d0d0b58cb9ed7679bf8dfe88743930d"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/ipc/test/ipc-two-core.csv",
+      "size": 554438,
+      "sha256": "fe99d846ac916c2376d3e1a21dbca1ab2c5a251798bf1801cc9f64a73599b4fe"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "size": 7580,
+      "sha256": "3673367ab648d9d3971555a9e1e0fbd3e8626e4df6911f3bb7769ef0a2f98037"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "size": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "size": 10731,
+      "sha256": "b71dac91088017a51362e848c7cd4e57a1bdc28c78df22894ee67da85800a58b"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "size": 1122,
+      "sha256": "e494920f3baf7b87e515018849a09fc3c31011e9d7e61f3b30f4b8684f066dad"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "size": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/async-cost-drains.csv",
+      "size": 82874,
+      "sha256": "4d5d9735ad657663354f7efd44a4c4208eae8b002ba9af17204b97be423b005c"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/async-cost-events.csv",
+      "size": 12715613,
+      "sha256": "aaed8b84d065efbc1ecb8eb831d0f2db2b08f87c8c810cdf50185ae5a95ea6a3"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/async-cost-summary.csv",
+      "size": 6778,
+      "sha256": "132ae92a72d89c411e9b183ca94d7d95988ed6030da5bffeda2060ec73be30a7"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "size": 82046,
+      "sha256": "9b8bc0d043d171a0f5a49486f8bec0843d8b57ef2bb3e762d32afd2d43b71dd7"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/runtime-api.csv",
+      "size": 1326,
+      "sha256": "80393523af43839fa0975489440b72c6f1ac1639397ec86ad4eacae079dd3d37"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "size": 3155,
+      "sha256": "604317f9f323c5b2ce05011e4be3dec753855bf0b0ef15134da55c88c81d7af4"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "size": 82050,
+      "sha256": "ca0a5dcdbea7f9d24b81a0fb7a5392a43934b78726fef62f44eb7ede4f43ac9e"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "size": 33708,
+      "sha256": "f42cf56c700fc66c3c5a4563ca049b0f350e665a27f318015b7f8a5e0984e787"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "size": 21625,
+      "sha256": "1e1c7258ce21dd4619642a2a17fb0fc5e590611f4fc6fa14d437813804cf3b66"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "size": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "size": 82046,
+      "sha256": "00b77615834d103ea3f1aab4c0435b1ad8b6ecd1272ac1a8f344a225dc3d4b30"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "size": 11757,
+      "sha256": "b5ae2ee2fb2dc20b89c8dfb5976b33555094ac383e223f6573fb3faa5ae3fab7"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "size": 11202,
+      "sha256": "6fb3dbb2905d41e7a049626408f126c5f77adcaffb6f93749dccdefbe1373c53"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/texture-progress.csv",
+      "size": 282,
+      "sha256": "7dc493e39253cfb1e6d95cefcd7e3e8760c70c2f57f8688103e53b2df5c4fff3"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "size": 1296,
+      "sha256": "f604fc10d0bba9bcd8c86ca92008ede729723c987d36457a2585e7638fd07abd"
+    },
+    {
+      "path": "directory-independent/test-RelWithDebInfo-20261017-023001-955.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "size": 1225,
+      "sha256": "93083b60f2cecf1dadad57067b56096a7d8006106fc10d04dae038a149d457a3"
+    },
+    {
+      "path": "directory-nowork.console.log",
+      "size": 400,
+      "sha256": "61ed996c38977c3fcee60f715defa95a2c2de10eca6f6f87b44e63b5d3466cc2"
+    },
+    {
+      "path": "metadata.json",
+      "size": 455,
+      "sha256": "49cec312ca35bf6abf50656b71741ca7933b6230a5956abf1b4c0c619a9a3691"
+    },
+    {
+      "path": "verify-n2-directory.ps1",
+      "size": 721,
+      "sha256": "707aa34409eca60b147a498eb288e702278b214f954ce477412a237177fba07e"
+    }
+  ]
+}

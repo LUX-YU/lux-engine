@@ -955,7 +955,8 @@
     ],
     "evidence": [
       "N6-INSTANCE-IMPLEMENTATION.md",
-      "N6-CAMERA-IMPLEMENTATION.md"
+      "N6-CAMERA-IMPLEMENTATION.md",
+      "N6-GROUPS-IMPLEMENTATION.md"
     ]
   },
   "N6.4": {

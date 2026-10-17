@@ -37,6 +37,93 @@ static std::vector<std::uint32_t> spirv(const char* path)
     return result;
 }
 
+static void groups(DeviceSession& session, lux::render::vulkan::InstanceStorage& instances,
+    MeshId mesh, MaterialId material, InstancePublished removed)
+{
+    const auto capacity = instances.recordCount();
+    const auto matrix_bytes = std::uint64_t(capacity) * sizeof(TransformMatrix);
+    const auto group_bytes = (std::uint64_t(capacity) + 5) * sizeof(std::uint32_t);
+    const TargetDesc target{16, 16, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
+    RenderGraphBuilder builder;
+    const auto matrices = take(builder.declareResource({"matrices", GraphBufferDesc{matrix_bytes},
+        EGraphOrigin::IMPORTED, {GraphBufferRange{0, matrix_bytes}}}));
+    const auto members = take(builder.declareResource({"members", GraphBufferDesc{group_bytes},
+        EGraphOrigin::IMPORTED, {GraphBufferRange{0, group_bytes}}}));
+    const auto color = take(builder.declareResource({"color", GraphImageDesc{16, 16}}));
+    const auto matrix_copy = take(builder.declareResource({"matrix_copy", GraphBufferDesc{matrix_bytes}}));
+    const auto group_copy = take(builder.declareResource({"group_copy", GraphBufferDesc{group_bytes}}));
+    CHECK(builder.addPass({"clear", EGraphPassKind::TRANSFER,
+        {{{color, 1}, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::TRANSFER_DESTINATION}}}));
+    for (const auto& pair : {std::pair{matrices, matrix_copy}, std::pair{members, group_copy}})
+        CHECK(builder.addPass({pair.first == matrices ? "matrices" : "members", EGraphPassKind::TRANSFER,
+            {{{pair.first, 0}, {}, EGraphAccess::READ, 0, {}, EGraphUse::TRANSFER_SOURCE},
+             {{pair.second, 1}, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::TRANSFER_DESTINATION}}}));
+    CHECK(builder.exportOutput({{color, 1}, {}, target}));
+    CHECK(builder.exportOutput({{matrix_copy, 1}}));
+    CHECK(builder.exportOutput({{group_copy, 1}}));
+    auto definition = take(std::move(builder).finish());
+    auto analysis = take(analyze(definition));
+    GraphStorageBindings bindings;
+    bindings.global = {{matrices, {StorageName(kInstanceStorageType.name()), "instances"}},
+        {members, {StorageName(kInstanceStorageType.name()), "instances"}}};
+    const std::array programs{PassProgram{"clear"}, PassProgram{"matrices"}, PassProgram{"members"}};
+    auto code = std::make_shared<CompiledGraph>(take(compileGraph(
+        session, definition, analysis, bindings, programs, target)));
+    const InstanceDrawGroup selection{mesh, material};
+    const std::array arguments{
+        StorageArgument{"matrices", take(ConfigValue::make(InstanceBinding{capacity, selection}))},
+        StorageArgument{"members", take(ConfigValue::make(InstanceBinding{capacity, selection, EInstanceBinding::DRAW}))}
+    };
+    const auto before = instances.residentBytes();
+    auto* first = take(session.prepare(code, target, nullptr, nullptr, arguments));
+    CHECK(instances.residentBytes() == before + group_bytes * 3);
+    auto* second = take(session.prepare(code, target, nullptr, nullptr, arguments));
+    CHECK(instances.residentBytes() == before + group_bytes * 3); // Shared selection, no per-View GPU group copy.
+    hold_completion = true;
+    CHECK(take(first->execute()));
+    fail_flush = 1;
+    CHECK(!instances.release(removed));
+    CHECK(instances.query(removed.instance));
+    CHECK(instances.release(removed));
+    CHECK(!instances.query(removed.instance));
+    InstanceDescription input{mesh, material};
+    input.transform[12] = 42;
+    fail_flush = 2; // Membership staging succeeds; matrix staging then fails before either publication.
+    CHECK(!instances.create(input));
+    auto replacement = take(instances.create(input));
+    CHECK(replacement.instance.local.index == removed.instance.local.index);
+    CHECK(replacement.instance.local.gen != removed.instance.local.gen);
+    CHECK(take(second->execute()));
+    CHECK(instances.release(replacement));
+    auto busy = instances.create(input); // Both non-current group banks are held by accepted GPU work.
+    CHECK(!busy && busy.error().type == kBusy);
+    CHECK(!instances.query(replacement.instance));
+    hold_completion = false;
+    CHECK(session.drain());
+    const auto old_matrix = take(first->readback(matrix_copy.index));
+    const auto new_matrix = take(second->readback(matrix_copy.index));
+    TransformMatrix old_value, new_value;
+    const auto offset = std::size_t(removed.instance.local.index) * sizeof(TransformMatrix);
+    std::memcpy(old_value.data(), old_matrix.data() + offset, sizeof(old_value));
+    std::memcpy(new_value.data(), new_matrix.data() + offset, sizeof(new_value));
+    CHECK(old_value[12] == 0 && new_value[12] == 42);
+    const auto old_group = take(first->readback(group_copy.index));
+    const auto new_group = take(second->readback(group_copy.index));
+    std::array<std::uint32_t, 5> old_args, new_args;
+    std::memcpy(old_args.data(), old_group.data(), sizeof(old_args));
+    std::memcpy(new_args.data(), new_group.data(), sizeof(new_args));
+    CHECK(old_args[0] == 3 && old_args[1] == 9999 && old_args[4] == 0);
+    CHECK(new_args == old_args); // Replacement restores the count without recompiling the Graph.
+    replacement = take(instances.create(input));
+    CHECK(instances.release(replacement));
+    CHECK(session.release(first));
+    CHECK(instances.residentBytes() == before + group_bytes * 3);
+    CHECK(session.release(second));
+    CHECK(session.drain());
+    CHECK(instances.residentBytes() == before);
+    std::puts("Instance group: shared snapshots, held delete/reuse, flush rollback, Busy and zero residual group bytes");
+}
+
 int main(int argc, char** argv)
 {
     setvbuf(stdout, nullptr, _IONBF, 0);
@@ -148,6 +235,8 @@ int main(int argc, char** argv)
         CHECK(rebuilt.instance != released.instance);
         CHECK(!instances.query(released.instance));
         CHECK(instances.release(rebuilt));
+
+        groups(*session, instances, mesh, material, ids[1]);
 
         const TargetDesc target{16, 16, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
         RenderGraphBuilder builder;

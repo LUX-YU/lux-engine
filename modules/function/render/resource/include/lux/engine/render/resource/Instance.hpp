@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/resource/Mesh.hpp>
 #include <lux/engine/render/resource/Material.hpp>
+#include <optional>
 
 namespace lux::render
 {
@@ -37,9 +38,21 @@ namespace lux::render
     };
 
     struct TransformApplied final { std::uint64_t sequence = 0; std::uint32_t changed = 0; };
+    struct InstanceDrawGroup final
+    {
+        MeshId mesh;
+        MaterialId material;
+        std::uint32_t submesh = 0;
+        bool operator==(const InstanceDrawGroup&) const noexcept = default;
+    };
+
+    enum class EInstanceBinding : std::uint8_t { MATRICES, DRAW };
+
     struct InstanceBinding final
     {
         std::uint32_t record_count = 0; // Cold declared prefix; growth never enlarges an existing Graph's range.
+        std::optional<InstanceDrawGroup> group;
+        EInstanceBinding role = EInstanceBinding::MATRICES;
         bool operator==(const InstanceBinding&) const noexcept = default;
     };
 

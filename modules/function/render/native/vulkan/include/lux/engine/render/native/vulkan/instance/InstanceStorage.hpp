@@ -17,7 +17,13 @@ namespace lux::render::vulkan
         struct Backing;
         struct Use;
         struct Physical;
-        struct Entry final { InstanceDescription description; std::uint64_t revision = 1; };
+        struct Group;
+        struct Entry final
+        {
+            InstanceDescription description;
+            std::uint64_t revision = 1;
+            cxx::SlotKey<InstanceTag> key;
+        };
         using Banks = std::array<std::unique_ptr<Backing>, 3>;
 
     public:
@@ -42,6 +48,10 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> grow(std::size_t) noexcept;
         [[nodiscard]] RenderResult<Backing*> writable() noexcept;
         [[nodiscard]] RenderResult<void> write(Backing&, std::uint32_t, const TransformMatrix&) noexcept;
+        [[nodiscard]] RenderResult<Group*> prepareGroup(const InstanceBinding&) noexcept;
+        [[nodiscard]] RenderResult<Backing*> stageGroup(Group&, std::span<const std::uint32_t>) noexcept;
+        [[nodiscard]] Group* findGroup(const InstanceDescription&) noexcept;
+        void publishGroup(Group&, Backing&, std::vector<std::uint32_t>) noexcept;
         void publish(Backing&) noexcept;
         void retire(std::unique_ptr<Backing>&) noexcept;
         DeviceSession& session_;
@@ -52,6 +62,7 @@ namespace lux::render::vulkan
         Banks banks_;
         Backing* current_ = nullptr;
         std::vector<Use*> uses_;
+        std::vector<std::unique_ptr<Group>> groups_;
         std::shared_ptr<Physical> physical_;
         std::uint64_t written_records_ = 0, checked_updates_ = 0;
     };

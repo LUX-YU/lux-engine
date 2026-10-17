@@ -444,3 +444,27 @@ add_dependencies(render_instance_storage_test render_material_assets)
 add_test(NAME render.native.instance_storage COMMAND render_instance_storage_test "${render_asset_dir}/Unlit.frag.spv")
 
 set_tests_properties(render.native.instance_storage PROPERTIES TIMEOUT 120)
+
+add_custom_command(
+    OUTPUT "${render_asset_dir}/Instance.vert.spv"
+    COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -S vert
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/Instance.vert" -o "${render_asset_dir}/Instance.vert.spv"
+    DEPENDS assets/Instance.vert
+    VERBATIM
+)
+
+add_custom_target(render_instance_vertex ALL DEPENDS "${render_asset_dir}/Instance.vert.spv")
+
+add_executable(render_instance_draw_test InstanceDraw.cpp "${render_asset_dir}/Geometry.frag.spv")
+
+target_link_libraries(render_instance_draw_test PRIVATE render_native_instrumented lux::engine::core::core_execution)
+
+set_target_properties(render_instance_draw_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_dependencies(render_instance_draw_test render_instance_vertex render_material_assets)
+
+add_test(NAME render.native.instance_draw COMMAND render_instance_draw_test
+    "${render_asset_dir}/Instance.vert.spv" "${render_asset_dir}/Geometry.frag.spv" "${render_asset_dir}/Unlit.frag.spv"
+)
+
+set_tests_properties(render.native.instance_draw PROPERTIES TIMEOUT 90)

@@ -461,9 +461,41 @@ int main(int argc, char** argv)
         CHECK(readback.response().pixels.bytes().view()[(16 * 32 + 16) * 4] == std::byte{255});
     }
 
+    // A shared Graphics queue may legitimately reject before submit while the four Views progress.
+    // These two scenarios require accepted work: consume explicit capacity refusals and retry under
+    // the existing deadline, without releasing the held completion observation or increasing capacity.
+    unsigned late_admission_backpressure = 0;
+    auto accepted_request = [&](std::uint32_t sample) {
+        auto id = send(*b, bound_b, payload_b, sample);
+        until([&] {
+            if (samples[sample].submit != 0) return true;
+            RenderCompletion result;
+            if (take(b->tryReceive(result)) != ERenderReceive::RECEIVED) return false;
+            CHECK(result.header.request == id && result.header.outcome == ECommandOutcome::FAILED);
+            CHECK(result.header.error.type == vulkan::kCapacity && samples[sample].submit == 0);
+            std::fprintf(stderr, "accepted-work pre-submit refusal sample=%u inbound=%lld submit=%lld\n",
+                sample, samples[sample].inbound.load(), samples[sample].submit.load());
+            ++late_admission_backpressure;
+            result = {};
+            id = send(*b, bound_b, payload_b, sample);
+            return false;
+        });
+        return id;
+    };
+    // Force a pre-submit refusal once: waiting only for a submission timestamp would never
+    // terminate after this valid failure Reply. Consume the refusal and keep the source available.
+    hold_fences.store(true);
+    auto refused_held = wait(*b, send(*b, bound_b, payload_b, 7, 4));
+    CHECK(refused_held.header.outcome == ECommandOutcome::FAILED);
+    CHECK(refused_held.header.error.type == vulkan::kCapacity && samples[7].submit == 0);
+    {
+        auto refused_input = take(std::move(refused_held).take(bound_b));
+        CHECK(refused_input.request().source.bytes().view().data() == payload_b[0].bytes().view().data());
+    }
+    hold_fences.store(false);
+    std::fprintf(stderr, "held request: controlled pre-submit capacity Reply consumed, source preserved\n");
     hold_observation.store(true);
-    const auto held = send(*b, bound_b, payload_b, 7);
-    until([&] { return samples[7].submit != 0; });
+    const auto held = accepted_request(7);
     const auto rendering_before = server->stats().submissions;
     const auto continued = Clock::now() + 100ms;
     while (Clock::now() < continued) std::this_thread::sleep_for(1ms);
@@ -579,25 +611,6 @@ int main(int argc, char** argv)
             unsigned(late_reply.header.outcome), late_reply.header.error.type, vulkan::kCapacity,
             samples[1020].submit.load(), samples[1020].fence.load());
     CHECK(late_reply.header.outcome == ECommandOutcome::SUCCESS);
-    // A shared Graphics queue may legitimately reject before submit while the four Views progress.
-    // These two scenarios require accepted work: consume explicit capacity refusals and retry under
-    // the existing deadline, without releasing the held completion observation or increasing capacity.
-    unsigned late_admission_backpressure = 0;
-    auto accepted_request = [&](std::uint32_t sample) {
-        auto id = send(*b, bound_b, payload_b, sample);
-        until([&] {
-            if (samples[sample].submit != 0) return true;
-            RenderCompletion result;
-            if (take(b->tryReceive(result)) != ERenderReceive::RECEIVED) return false;
-            CHECK(result.header.request == id && result.header.outcome == ECommandOutcome::FAILED);
-            CHECK(result.header.error.type == vulkan::kCapacity && samples[sample].submit == 0);
-            ++late_admission_backpressure;
-            result = {};
-            id = send(*b, bound_b, payload_b, sample);
-            return false;
-        });
-        return id;
-    };
     std::fprintf(stderr, "stage abandon\n");
     // Abandon does not refund source backing while execution owns it.
     hold_observation.store(true);

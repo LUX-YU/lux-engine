@@ -139,7 +139,7 @@ foreach(header RenderServer Commands Error)
     add_library(render_runtime_header_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")
     if(header STREQUAL "RenderServer")
         # Server declaration stays neutral; only VulkanServer exposes the selected Native installation.
-        target_link_libraries(render_runtime_header_${header} PRIVATE render_runtime)
+        target_link_libraries(render_runtime_header_${header} PRIVATE render_commands render_features render_resource)
     else()
         target_link_libraries(render_runtime_header_${header} PRIVATE render_commands render_features)
     endif()

@@ -116,9 +116,7 @@ namespace lux::render
         return request.reply();
     }
 
-    CommandId RenderServer::Impl::addCommand(
-        CommandHandler binding
-    ) noexcept
+    CommandId RenderServer::Impl::addCommand(CommandHandler binding) noexcept
     {
         // Full registration comparison proved equivalence; retain the template's static contract.
         auto metadata = std::make_unique<CommandMetadata>(
@@ -265,7 +263,8 @@ namespace lux::render
 
     RenderResult<FeatureId> RenderServer::installFeature(
         feature_detail::Implementation definition,
-        HandlerEntry* handler, std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls, std::vector<StorageInstall> dependencies
+        HandlerEntry* handler, std::unique_ptr<HandlerEntry> owner,
+        std::span<const CommandHandler> calls, std::vector<StorageInstall> dependencies
     ) noexcept
     {
         auto& state = *impl_;

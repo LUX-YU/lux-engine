@@ -92,15 +92,16 @@ namespace lux::render
             auto& handler = *static_cast<H*>(entry->object.get());
             return [&]<typename... B>(std::tuple<B...>*) noexcept {
                 const std::array calls{B::bind(handler)...};
-                return installFeature(definition, entry, std::move(owner),
-                    calls, std::move(dependencies));
+                return installFeature(definition, entry, std::move(owner), calls, std::move(dependencies));
             }(static_cast<typename H::Bindings*>(nullptr));
         }
     }
 
     template <class T, class Provider>
-    RenderResult<RenderServer::StorageInstall> RenderServer::storageCandidate(const typename T::Config& config, std::string_view key,
-        std::span<const StorageInstall> previous) noexcept
+    RenderResult<RenderServer::StorageInstall>
+    RenderServer::storageCandidate(
+        const typename T::Config& config, std::string_view key, std::span<const StorageInstall> previous
+    ) noexcept
     {
         using H = typename Provider::Handler;
         using Config = typename T::Config;

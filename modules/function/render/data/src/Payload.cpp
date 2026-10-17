@@ -8,7 +8,6 @@ namespace lux::render
     {
         if (this != &other)
         {
-            bytes_ = {};
             bytes_ = other.bytes_;
             retained_bytes_ = other.retained_bytes_;
         }
@@ -26,7 +25,6 @@ namespace lux::render
     {
         if (this != &other)
         {
-            bytes_ = {};
             bytes_ = std::move(other.bytes_);
             retained_bytes_ = std::exchange(other.retained_bytes_, 0);
             other.bytes_ = {};

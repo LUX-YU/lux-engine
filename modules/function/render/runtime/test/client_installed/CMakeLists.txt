@@ -67,6 +67,7 @@ foreach(header
     lux/engine/render/resource/AsyncWork.hpp
     lux/engine/render/resource/Upload.hpp
     lux/engine/render/runtime/Commands.hpp
+    lux/engine/render/runtime/VulkanServer.hpp
     lux/engine/render/runtime/Error.hpp
     lux/engine/render/native/vulkan/Readback.hpp
     lux/engine/render/native/vulkan/texture/TextureCommands.hpp

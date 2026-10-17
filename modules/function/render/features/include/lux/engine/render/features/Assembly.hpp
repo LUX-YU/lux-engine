@@ -10,7 +10,7 @@ namespace lux::render
     // Synchronous cold contributions. Callbacks may append, never finish/move/retain the Builder.
     struct FeatureGraphOps final
     {
-        RenderResult<void> (*describe)(const void*, std::string_view, std::vector<ResourceClaim>&) noexcept;
+        RenderResult<void> (*describe)(const void*, std::string_view, ResourceClaims&) noexcept;
         RenderResult<void> (*build)(const void*, std::string_view,
             std::span<const ResolvedResource>, RenderGraphBuilder&) noexcept = nullptr;
     };
@@ -34,7 +34,7 @@ namespace lux::render
     {
         RenderGraphDefinition definition;
         GraphAnalysis analysis;
-        std::vector<GraphStorageBinding> external_bindings;
+        GraphStorageBindings external_bindings;
         std::vector<FeatureContribution> contributions;
     };
 

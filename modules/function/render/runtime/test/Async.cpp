@@ -311,7 +311,7 @@ int main()
     State state, alternate;
     static const std::array descriptors{commandDescriptor<Async>(), commandDescriptor<TransferredAsync>()};
     const FeatureDescriptor definition{FeatureName("test.async.feature"), {}};
-    const FeatureGraphOps definition_graph{[](const void*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+    const FeatureGraphOps definition_graph{[](const void*, std::string_view, ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
     auto server = take(RenderServer::create({"runtime.async", true}));
     check(bool(server->registerFeature<Async>(feature_test::Provider<AsyncCommands>{{&definition, &definition_graph, nullptr}}, "", {}, state)));
     const auto first_handler = take(server->emplaceHandler<AsyncCommands>("", {}, state));

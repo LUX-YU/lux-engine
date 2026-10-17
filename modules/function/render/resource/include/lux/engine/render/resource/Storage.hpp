@@ -10,7 +10,14 @@ namespace lux::render
     using StorageName = cxx::SchemaId<StorageNameTag>;
     using StorageNameView = cxx::SchemaIdView<StorageNameTag>;
 
-    enum class EResourceScope : std::uint8_t { GLOBAL, SCENE, VIEW, ATTACHMENT };
+    // Qualified resource identity. The local key is allocated only by its actual professional Storage.
+    template <class Tag> struct StorageResourceId final
+    {
+        StorageId storage;
+        cxx::SlotKey<Tag> local;
+        [[nodiscard]] bool isNull() const noexcept { return local.isNull(); }
+        bool operator==(const StorageResourceId&) const noexcept = default;
+    };
 
     enum class EStorageCapability : std::uint32_t
     {
@@ -22,8 +29,7 @@ namespace lux::render
     struct StorageRequirement final
     {
         StorageName type;
-        EResourceScope scope = EResourceScope::GLOBAL;
-        std::string key; // empty uses the Graph semantic key; otherwise names the scoped Storage instance
+        std::string key; // empty uses the Graph semantic key; otherwise names the Storage instance in its actual owner
         bool operator==(const StorageRequirement&) const noexcept = default;
     };
 
@@ -42,7 +48,7 @@ namespace lux::render
     inline constexpr auto kStorageMismatch = error::errorId("lux.render.resource.mismatch");
     inline constexpr auto kStorageFactory = error::errorId("lux.render.resource.factory");
     inline constexpr auto kStorageCapability = error::errorId("lux.render.resource.capability");
-    inline constexpr auto kStorageDomain = error::errorId("lux.render.resource.domain");
+    inline constexpr auto kStorageIdentity = error::errorId("lux.render.resource.identity");
     inline constexpr auto kStorageCapacity = error::errorId("lux.render.resource.capacity");
 
     [[nodiscard]] RenderResult<void> validateStorage(const StorageDescriptor& descriptor) noexcept;

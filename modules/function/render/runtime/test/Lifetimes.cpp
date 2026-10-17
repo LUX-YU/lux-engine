@@ -33,7 +33,7 @@ static std::latch* entered = nullptr;
 static std::latch* resume = nullptr;
 static std::atomic<const std::byte*> observed{};
 
-static RenderResult<void> describeAsset(const void* wire, std::string_view, std::vector<ResourceClaim>&) noexcept
+static RenderResult<void> describeAsset(const void* wire, std::string_view, ResourceClaims&) noexcept
 {
     const auto* config = static_cast<const AssetConfig*>(wire);
     const auto asset = config->asset.bytes().view();

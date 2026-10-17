@@ -21,7 +21,7 @@ namespace extension_test
 {
     using namespace lux::render;
     struct BufferTag;
-    using BufferId = lux::cxx::SlotKey<BufferTag>;
+    using BufferId = StorageResourceId<BufferTag>;
     struct BufferBinding final { BufferId id; };
     struct SetBuffer final
     {
@@ -89,23 +89,30 @@ namespace lux::render
 
     template <> struct DataSchema<extension_test::BufferBinding>
     {
-        static inline constexpr DataField fields[]{{"index", cxx::EScalarKind::U32}, {"generation", cxx::EScalarKind::U32}};
+        static inline constexpr DataField fields[]{
+            {"storage_index", cxx::EScalarKind::U32}, {"storage_generation", cxx::EScalarKind::U32},
+            {"index", cxx::EScalarKind::U32}, {"generation", cxx::EScalarKind::U32}
+        };
         static inline constexpr DataSchemaDescriptor schema{
-            DataTypeIdView("test.extension.BufferBinding"), {1, 0}, {1, 0}, fields, 8, 4
+            DataTypeIdView("test.extension.BufferBinding"), {2, 0}, {2, 0}, fields, 16, 4
         };
         static const DataSchemaDescriptor& describe() noexcept { return schema; }
-        static RenderResult<std::size_t> encodedSize(const extension_test::BufferBinding&) noexcept { return 8; }
+        static RenderResult<std::size_t> encodedSize(const extension_test::BufferBinding&) noexcept { return 16; }
         static RenderResult<void> encode(const extension_test::BufferBinding& value, cxx::BinarySpanWriter& out) noexcept
         {
-            out.writeUnsigned(value.id.index);
-            out.writeUnsigned(value.id.gen);
+            out.writeUnsigned(value.id.storage.index);
+            out.writeUnsigned(value.id.storage.gen);
+            out.writeUnsigned(value.id.local.index);
+            out.writeUnsigned(value.id.local.gen);
             return {};
         }
         static RenderResult<extension_test::BufferBinding> decode(cxx::BinaryReader& in, EncodedDataView) noexcept
         {
             extension_test::BufferBinding value;
-            in.readUnsigned(value.id.index);
-            in.readUnsigned(value.id.gen);
+            in.readUnsigned(value.id.storage.index);
+            in.readUnsigned(value.id.storage.gen);
+            in.readUnsigned(value.id.local.index);
+            in.readUnsigned(value.id.local.gen);
             return value;
         }
         static RenderResult<extension_test::BufferBinding> decode(cxx::BinaryReader& in, RetainableEncodedDataView wire) noexcept

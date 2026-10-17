@@ -235,7 +235,7 @@ namespace lux::render
             const bool is_wrong_implementation = previous.native_type != factory.native_type ||
                 previous.config_type != factory.config_type || previous.ops_type != factory.ops_type ||
                 previous.create != factory.create || previous.ops != factory.ops ||
-                previous.binding_ops != factory.binding_ops || previous.collect != factory.collect ||
+                previous.binding_ops != factory.binding_ops ||
                 previous.compatible_config != factory.compatible_config;
             if (is_wrong_implementation) return cxx::unexpected(RenderError{kStorageMismatch});
             const auto* original = resources.configuration(factory.description->type);

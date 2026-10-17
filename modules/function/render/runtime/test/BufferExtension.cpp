@@ -70,6 +70,8 @@ int main()
     CHECK(runtime_test::refresh(*main));
     CHECK(wait(*upload, take(upload->hello())).header.outcome == ECommandOutcome::SUCCESS);
     CHECK(runtime_test::refresh(*upload));
+    const auto texture_storage = take(runtime_test::prepareStorage(*upload, kTextureStorageType.name(), "default"));
+    const auto buffer_storage = take(runtime_test::prepareStorage(*upload, TestBufferStorage::description.type.name(), "values"));
     auto create_buffer = take(upload->bind<SetBuffer>());
     auto remove_buffer = take(upload->bind<RemoveBuffer>());
     auto read_buffer = take(upload->bind<ReadBuffer>());
@@ -79,7 +81,7 @@ int main()
         [&](auto* value) { delete value; ++destroyed; });
     std::array image_source{take(RenderPayload::fromVector(asset, 0, asset->size()))};
     const auto texture = decoded<TexturePublished>(call(*upload, upload_texture,
-        SetTexture::Request{{}, 0, information(16, 1, false), image_source[0]}));
+        SetTexture::Request{{texture_storage, {}}, 0, information(16, 1, false), image_source[0]}));
     auto make_source = [](float value) {
         const std::array values{value, value, value, value};
         auto bytes = std::make_shared<std::vector<std::byte>>(16);
@@ -87,7 +89,7 @@ int main()
         return std::array{take(RenderPayload::fromVector(std::shared_ptr<const std::vector<std::byte>>(bytes), 0, 16))};
     };
     auto source = make_source(0.5f);
-    const auto buffer = decoded<BufferBinding>(call(*upload, create_buffer, SetBuffer::Request{{}, source[0]}));
+    const auto buffer = decoded<BufferBinding>(call(*upload, create_buffer, SetBuffer::Request{{buffer_storage, {}}, source[0]}));
     std::optional late_read{call(*upload, read_buffer, buffer)};
     CHECK(late_read->response().pixels.bytes().view().size() == 16);
     for (unsigned i = 0; i < 4; ++i)
@@ -116,9 +118,23 @@ int main()
             const auto view = decoded<ViewCreated>(call(*main, create_view, CreateViewRequest{scene})).view;
             const auto output = decoded<TargetCreated>(call(*main, create_target, CreateTargetRequest{target})).target;
             groups[2 * s + v] = {scene, view, output, effect};
-            call(*main, attach, groups[2 * s + v]);
+            auto linked = call(*main, attach, groups[2 * s + v]);
+            CHECK(linked.response().storages.size() == 2);
+            for (const auto& binding : linked.response().storages)
+            {
+                if (binding.resource_key == "shared:texture") CHECK(binding.storage == texture_storage);
+                else
+                {
+                    CHECK(binding.resource_key == "shared:values");
+                    CHECK(binding.storage == buffer_storage);
+                }
+            }
         }
     }
+    const auto attachment_storage = take(runtime_test::prepareStorage(*main,
+        TestBufferStorage::description.type.name(), "private", groups[0]));
+    CHECK(attachment_storage != buffer_storage);
+    CHECK(take(runtime_test::coldCall<FindStorage>(*main, {groups[0], buffer_type, "private"})) == attachment_storage);
     for (const auto& group : groups) pixels(call(*main, read, group), 64);
     const auto before = server->stats().submissions;
     render_allocation::calls = 0;
@@ -131,13 +147,15 @@ int main()
     // Future users keep their original valid backing until the explicit detach/attach boundary.
     pixels(call(*main, read, groups[0]), 64);
     call(*main, detach, groups[0]);
+    CHECK(!runtime_test::coldCall<ReleasePreparedStorage>(*main, attachment_storage));
+    CHECK(!runtime_test::coldCall<FindStorage>(*main, {groups[0], buffer_type, "private"}));
     call(*main, attach, groups[0]);
     pixels(call(*main, read, groups[0]), 32);
     call(*upload, remove_buffer, buffer);
     CHECK(wait(*upload, take(submitValue(*upload, read_buffer, buffer, 128))).header.outcome == ECommandOutcome::FAILED);
     CHECK(wait(*upload, take(submitValue(*upload, create_buffer, SetBuffer::Request{buffer.id, source[0]}))).header.outcome == ECommandOutcome::FAILED);
-    const auto recreated = decoded<BufferBinding>(call(*upload, create_buffer, SetBuffer::Request{{}, source[0]}));
-    CHECK(recreated.id.index == buffer.id.index && recreated.id.gen != buffer.id.gen);
+    const auto recreated = decoded<BufferBinding>(call(*upload, create_buffer, SetBuffer::Request{{buffer_storage, {}}, source[0]}));
+    CHECK(recreated.id.local.index == buffer.id.local.index && recreated.id.local.gen != buffer.id.local.gen);
     pixels(call(*main, read, groups[0]), 32);
     pixels(call(*main, read, groups[1]), 64);
     // A second real Feature consumes the SAME Root Texture independently of the Buffer Feature.

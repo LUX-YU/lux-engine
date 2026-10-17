@@ -17,19 +17,18 @@ namespace extension_test
 namespace extension_test
 {
     inline constexpr FeatureName feature_type("test.extension.BufferFeature");
-    inline constexpr EncodedDataLimits limits{16, 0};
+    inline constexpr EncodedDataLimits limits{sizeof(ViewConfig), 0};
     inline const TargetDesc target{16, 16, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
 
-    inline RenderResult<void> describe(const void*, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    inline RenderResult<void> describe(const void*, std::string_view, ResourceClaims& out) noexcept
     {
-        out.push_back({"texture", EResourceClaim::PROVIDE, GraphImageDesc{16, 16}, EGraphOrigin::IMPORTED,
+        out.storage.global.push_back({"texture", EResourceClaim::PROVIDE, GraphImageDesc{16, 16}, EGraphOrigin::IMPORTED,
             {GraphImageRange{1, 0, 1, 0, 1}},
-            StorageRequirement{StorageName(kTextureStorageType.name()), EResourceScope::GLOBAL, "default"}});
-        out.push_back({"values", EResourceClaim::PROVIDE, GraphBufferDesc{16}, EGraphOrigin::IMPORTED,
+            StorageRequirement{StorageName(kTextureStorageType.name()), "default"}});
+        out.storage.global.push_back({"values", EResourceClaim::PROVIDE, GraphBufferDesc{16}, EGraphOrigin::IMPORTED,
             {GraphBufferRange{0, 16}},
-            StorageRequirement{StorageName(TestBufferStorage::description.type.name()),
-                EResourceScope::GLOBAL, "values"}});
-        out.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{16, 16}});
+            StorageRequirement{StorageName(TestBufferStorage::description.type.name()), "values"}});
+        out.resources.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{16, 16}});
         return {};
     }
 
@@ -64,8 +63,8 @@ namespace extension_test
         PassProgram draw{featureKey(feature_type, name, "draw")};
         draw.shader = {{texture_fixture::vert.begin(), texture_fixture::vert.end()}, {fragment.begin(), fragment.end()},
             {{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}, {1, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16}}, 16}};
-        result.arguments.push_back({"shared:texture", *encodeData(TextureBinding{config->texture}, {}, {12, 0})});
-        result.arguments.push_back({"shared:values", *encodeData(BufferBinding{config->buffer}, {}, {8, 0})});
+        result.arguments.push_back({"shared:texture", *encodeData(TextureBinding{config->texture}, {}, {20, 0})});
+        result.arguments.push_back({"shared:values", *encodeData(BufferBinding{config->buffer}, {}, {16, 0})});
         result.programs.push_back(std::move(draw));
         result.programs.push_back({featureKey(feature_type, name, "readback")});
         return result;

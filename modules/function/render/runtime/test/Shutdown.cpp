@@ -119,7 +119,7 @@ static void retirementAtomicity()
     hold.store(true);
     waited.store(false);
     RenderServerConfig options{"runtime.retirement.atomic", true};
-    options.retirement_capacity = 1;
+    options.retirement_capacity = 2;
     auto server = take(createTestServer(options));
     check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs})));
     auto client = take(TestClient::create(options.channel_name));
@@ -137,6 +137,7 @@ static void retirementAtomicity()
     const auto first_target = call(*client, command).target;
     command.target = call(*client, command).target;
     const auto second_target = command.target;
+    const auto third_target = call(*client, command).target;
     command.operation = ETestCommand::CREATE_EFFECT;
     command.features.push_back({std::string(native_fixture::type.name()), "main", take(ConfigValue::make(config))});
     command.effect = call(*client, command).effect;
@@ -146,24 +147,28 @@ static void retirementAtomicity()
     call(*client, command);
     command.target = second_target;
     call(*client, command);
+    command.target = third_target;
+    auto unprepared = wait(*client, take(client->submit(command)));
+    check(unprepared.header.outcome == ECommandOutcome::FAILED);
+    check(unprepared.header.error.type == vulkan::kCapacity);
+    check(backing == 6 && !waited); // capacity failure precedes Native Context/backing publication
     const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (server->stats().submissions < 2 && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(1ms);
     check(server->stats().submissions == 2);
     command.operation = ETestCommand::DETACH;
     command.target = first_target;
-    call(*client, command); // fills the only retirement slot with an actual in-flight context
+    call(*client, command); // consumes its creation-time reservation; detach cannot fail for capacity
     command.target = second_target;
     command.operation = ETestCommand::READBACK;
     const auto request = take(client->submit(command));
-    for (auto operation : {ETestCommand::DETACH, ETestCommand::RESIZE_TARGET,
-        ETestCommand::REMOVE_VIEW, ETestCommand::REMOVE_SCENE, ETestCommand::REMOVE_EFFECT})
+    for (unsigned attempt = 0; attempt < 3; ++attempt)
     {
-        command.operation = operation;
+        command.operation = ETestCommand::RESIZE_TARGET;
         command.description.width = 16;
         auto rejected = wait(*client, take(client->submit(command)));
         check(rejected.header.outcome == ECommandOutcome::FAILED);
-        check(rejected.header.error.type == kRuntimeCapacity);
+        check(rejected.header.error.type == vulkan::kCapacity);
         check(!take(receiveExpected(*client, request)) && backing == 6 && !waited);
     }
     hold.store(false); // observe real fence completion; the untouched readback must still succeed
@@ -175,10 +180,15 @@ static void retirementAtomicity()
     command.operation = ETestCommand::RESIZE_TARGET;
     const auto resized = call(*client, command);
     check(resized.target_epoch == 2); // rejected resize never published an epoch
+    for (auto operation : {ETestCommand::REMOVE_VIEW, ETestCommand::REMOVE_SCENE, ETestCommand::REMOVE_EFFECT})
+    {
+        command.operation = operation;
+        call(*client, command); // withdraw consumes prepared rights, never asks for new retirement capacity
+    }
     server->stop();
     thread.join();
     check(run_ok && backing == 0 && server->stats().validation_errors == 0);
-    std::puts("Retirement full: Detach/Resize/Remove preserve pending readback, group, target epoch and pixels");
+    std::puts("Retirement reserved before Attach/Resize: rejection preserves readback/epoch/pixels; Detach/Remove cannot exhaust capacity");
 }
 
 int main()

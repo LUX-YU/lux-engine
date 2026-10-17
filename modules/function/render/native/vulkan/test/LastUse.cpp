@@ -203,7 +203,7 @@ namespace
             graphics.nativeQueue().family != transfer.nativeQueue().family);
 
         const auto original = std::make_shared<const std::vector<std::byte>>(1024, std::byte{128});
-        const SetTexture::Request create{{}, 0, information(16, 1, false), payload(original)};
+        const SetTexture::Request create{{storage.id(), {}}, 0, information(16, 1, false), payload(original)};
         std::vector<TexturePublished> fillers;
         if (!multiple_chunks)
             for (unsigned i = 0; i < 14; ++i) fillers.push_back(createTexture(storage, create, *session, host));
@@ -219,7 +219,7 @@ namespace
         auto graph = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
             texture_fixture::programs(config), texture_fixture::target(config))));
         CHECK(pipelines == pipelines_before + 1);
-        auto* context = take(session->prepare(graph, texture_fixture::target(config), {},
+        auto* context = take(session->prepare(graph, texture_fixture::target(config), nullptr, nullptr,
             texture_fixture::arguments(config)));
         CHECK(session->drain());
         for (const auto role : {EQueueRole::GRAPHICS, EQueueRole::COMPUTE, EQueueRole::TRANSFER})

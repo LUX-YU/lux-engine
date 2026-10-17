@@ -17,6 +17,12 @@ namespace lux::render
         std::optional<StorageRequirement> storage;
     };
 
+    struct ResourceClaims final
+    {
+        std::vector<ResourceClaim> resources; // Graph-owned/transient or non-Storage graph inputs
+        StorageGroups<ResourceClaim> storage; // explicit actual-owner requirements
+    };
+
     // Borrowed only during build. Missing OPTIONAL ports have no entry.
     struct ResolvedResource final
     {

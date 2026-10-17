@@ -34,7 +34,6 @@ namespace lux::render
         bool (*compatible_config)(const void* instance, const void* config) noexcept;
         std::shared_ptr<const void> code_pin;
         const void* binding_ops = nullptr; // API-specific immutable preparation functions; never a second owner
-        void (*collect)(void*) noexcept = nullptr;
         StorageCppType config_type;
         StorageCppType ops_type;
         StorageCppType native_type;
@@ -46,16 +45,16 @@ namespace lux::render
                 Device&, StorageId, const typename Declaration::Config&) noexcept> &&
                 std::same_as<decltype(Compatible), bool (*)(const Native&, const typename Declaration::Config&) noexcept>
         friend StorageFactory makeStorageFactory(
-            const typename Declaration::Ops&, const void*, void (*)(void*) noexcept, std::shared_ptr<const void>
+            const typename Declaration::Ops&, const void*, std::shared_ptr<const void>
         ) noexcept;
 
         StorageFactory(const StorageDescriptor* description, const void* ops,
             RenderResult<NativeStorage> (*create)(void*, StorageId, const void*) noexcept,
             bool (*compatible_config)(const void*, const void*) noexcept,
-            std::shared_ptr<const void> code_pin, const void* binding_ops, void (*collect)(void*) noexcept,
+            std::shared_ptr<const void> code_pin, const void* binding_ops,
             StorageCppType config_type, StorageCppType ops_type, StorageCppType native_type) noexcept
             : description(description), ops(ops), create(create), compatible_config(compatible_config),
-              code_pin(std::move(code_pin)), binding_ops(binding_ops), collect(collect),
+              code_pin(std::move(code_pin)), binding_ops(binding_ops),
               config_type(config_type), ops_type(ops_type), native_type(native_type) {}
 
     };
@@ -67,7 +66,7 @@ namespace lux::render
             std::same_as<decltype(Compatible), bool (*)(const Native&, const typename Declaration::Config&) noexcept>
     [[nodiscard]] StorageFactory makeStorageFactory(
         const typename Declaration::Ops& ops, const void* binding_ops = nullptr,
-        void (*collect)(void*) noexcept = nullptr, std::shared_ptr<const void> code_pin = {}
+        std::shared_ptr<const void> code_pin = {}
     ) noexcept
     {
         return {&Declaration::description, &ops,
@@ -79,7 +78,7 @@ namespace lux::render
                 return NativeStorage{candidate->release(), [](void* value) noexcept { delete static_cast<Native*>(value); }};
             }, [](const void* instance, const void* config) noexcept {
                 return Compatible(*static_cast<const Native*>(instance), *static_cast<const typename Declaration::Config*>(config));
-            }, std::move(code_pin), binding_ops, collect,
+            }, std::move(code_pin), binding_ops,
             storageCppType<typename Declaration::Config>(), storageCppType<typename Declaration::Ops>(),
             storageCppType<Native>()};
     }

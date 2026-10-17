@@ -279,7 +279,7 @@ static const CommandDescriptor probe = commandDescriptor<UploadProbe>();
 static const CommandDescriptor cpu = commandDescriptor<CpuResult>();
 static const std::array operations_list{probe, cpu};
 static const FeatureDescriptor feature{FeatureName("test.g10.feature"), {}};
-static const FeatureGraphOps feature_graph{[](const void*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+static const FeatureGraphOps feature_graph{[](const void*, std::string_view, ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 struct ProbeCommands final
 {
     static constexpr std::string_view name = "test.gpu.probe.commands";

@@ -14,8 +14,36 @@ namespace extension_test
     // An external professional Storage: only public Render/Native extension contracts are used.
     class NativeBuffer final
     {
+        struct Physical final
+        {
+            explicit Physical(vk::DeviceSession& value) noexcept : session(value) {}
+            ~Physical() noexcept
+            {
+                if (resident) std::terminate();
+                if (pool) vkDestroyDescriptorPool(session.device().native(), pool, nullptr);
+                if (layout) vkDestroyDescriptorSetLayout(session.device().native(), layout, nullptr);
+            }
+            vk::DeviceSession& session;
+            VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+            VkDescriptorPool pool = VK_NULL_HANDLE;
+            std::size_t resident = 0;
+        };
         struct Backing final
         {
+            explicit Backing(std::shared_ptr<Physical> value) noexcept : physical(std::move(value))
+            {
+                ++physical->resident;
+            }
+            ~Backing() noexcept
+            {
+                if (descriptors) vkFreeDescriptorSets(device(), physical->pool, 1, &descriptors);
+                if (buffer && !physical->session.releaseCompleted(buffer, last_use)) std::terminate();
+                --physical->resident;
+            }
+            [[nodiscard]] VkDevice device() const noexcept { return physical->session.device().native(); }
+            std::shared_ptr<Physical> physical;
+            vk::RetirementReservation retirement;
+            std::size_t position = 0;
             vk::BufferPermit buffer;
             VkDescriptorSet descriptors = VK_NULL_HANDLE;
             vk::SubmissionRequirements last_use;
@@ -31,18 +59,18 @@ namespace extension_test
             vk::PreparedStorageBinding& binding;
             void update(Backing& value) noexcept
             {
-                if (backing) --backing->references;
+                if (backing) storage.releaseReference(*backing);
                 backing = &value;
                 ++backing->references;
                 binding.buffer = storage.session_.borrow(value.buffer);
                 binding.descriptors = value.descriptors;
                 binding.last_use = &value.last_use;
             }
-            ~Use() noexcept { --backing->references; std::erase(storage.uses_, this); }
+            ~Use() noexcept { storage.releaseReference(*backing); std::erase(storage.uses_, this); }
         };
     public:
         NativeBuffer(vk::DeviceSession& session, StorageId id, TestBufferStorage::Config config)
-            : session_(session), id_(id), config_(config)
+            : session_(session), id_(id), config_(config), physical_(std::make_shared<Physical>(session))
         {
             entries_.reserve(config.capacity);
             backings_.reserve(config.capacity * 2);
@@ -50,9 +78,7 @@ namespace extension_test
         ~NativeBuffer() noexcept
         {
             if (!uses_.empty()) std::terminate();
-            for (auto& value : backings_) destroy(*value);
-            if (pool_) vkDestroyDescriptorPool(session_.device().native(), pool_, nullptr);
-            if (layout_) vkDestroyDescriptorSetLayout(session_.device().native(), layout_, nullptr);
+            while (!backings_.empty()) erase(backings_.back().get());
         }
 
         RenderResult<void> initialize() noexcept
@@ -63,7 +89,7 @@ namespace extension_test
             VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
             layout.bindingCount = 1;
             layout.pBindings = &binding;
-            auto result = vkCreateDescriptorSetLayout(session_.device().native(), &layout, nullptr, &layout_);
+            auto result = vkCreateDescriptorSetLayout(session_.device().native(), &layout, nullptr, &physical_->layout);
             if (result != VK_SUCCESS) return lux::cxx::unexpected(vk::nativeError(result));
             VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, config_.capacity * 2};
             VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
@@ -71,7 +97,7 @@ namespace extension_test
             pool.maxSets = size.descriptorCount;
             pool.poolSizeCount = 1;
             pool.pPoolSizes = &size;
-            result = vkCreateDescriptorPool(session_.device().native(), &pool, nullptr, &pool_);
+            result = vkCreateDescriptorPool(session_.device().native(), &pool, nullptr, &physical_->pool);
             return result == VK_SUCCESS ? RenderResult<void>{} : lux::cxx::unexpected(vk::nativeError(result));
         }
 
@@ -84,19 +110,18 @@ namespace extension_test
             NativeBuffer& storage;
             BufferId id;
             Backing* backing;
-            StorageId storage_id;
+            StorageLease lease;
             bool published = false;
 
             ~Candidate() noexcept
             {
                 if (!published)
                 {
-                    auto& entry = *storage.entries_.find(id);
+                    auto& entry = *storage.entries_.find(id.local);
                     entry.updating = false;
-                    if (!entry.current) storage.entries_.erase(id);
+                    if (!entry.current) storage.entries_.erase(id.local);
                     storage.erase(backing);
                 }
-                storage.session_.resources().release(storage_id);
             }
 
             RenderResult<void> publish(vk::Transfer& transfer) noexcept
@@ -112,11 +137,16 @@ namespace extension_test
                 write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
                 write.pBufferInfo = &info;
                 vkUpdateDescriptorSets(storage.session_.device().native(), 1, &write, 0, nullptr);
-                auto& entry = *storage.entries_.find(id);
-                if (entry.current) entry.current->live = false;
+                auto& entry = *storage.entries_.find(id.local);
+                auto* previous = entry.current;
                 entry.current = backing;
                 entry.updating = false;
                 backing->live = true;
+                if (previous)
+                {
+                    previous->live = false;
+                    storage.retireUnused(*previous);
+                }
                 // Existing prepared users retain their old backing until detach; new Attach sees this publication.
                 published = true;
                 return {};
@@ -128,28 +158,32 @@ namespace extension_test
         {
             const auto source = input.source.bytes().view();
             auto id = input.id;
+            if (id.storage != id_) return lux::cxx::unexpected(RenderError{kStorageIdentity});
             if (source.size() != 16) return lux::cxx::unexpected(RenderError{kStorageContract});
-            collect();
-            if (backings_.size() == config_.capacity * 2 || (id.isNull() && entries_.size() == config_.capacity))
+            if (auto collected = session_.collect(); !collected) return lux::cxx::unexpected(collected.error());
+            if (physical_->resident == config_.capacity * 2 || (id.isNull() && entries_.size() == config_.capacity))
                 return lux::cxx::unexpected(RenderError{kStorageCapacity});
-            if (!id.isNull() && !entries_.find(id)) return lux::cxx::unexpected(RenderError{kStorageDomain});
-            if (!id.isNull() && entries_.find(id)->updating) return lux::cxx::unexpected(RenderError{vk::kBusy});
+            if (!id.isNull() && !entries_.find(id.local)) return lux::cxx::unexpected(RenderError{kStorageIdentity});
+            if (!id.isNull() && entries_.find(id.local)->updating) return lux::cxx::unexpected(RenderError{vk::kBusy});
             auto transfer = session_.uploadBuffer(source, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
             if (!transfer) return lux::cxx::unexpected(transfer.error());
-            auto backing = std::make_unique<Backing>();
+            auto retirement = session_.retirement().reserve();
+            if (!retirement) return lux::cxx::unexpected(retirement.error());
+            auto backing = std::make_unique<Backing>(physical_);
+            backing->retirement = std::move(*retirement);
+            backing->position = backings_.size();
             VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-            allocate.descriptorPool = pool_;
+            allocate.descriptorPool = physical_->pool;
             allocate.descriptorSetCount = 1;
-            allocate.pSetLayouts = &layout_;
+            allocate.pSetLayouts = &physical_->layout;
             const auto result = vkAllocateDescriptorSets(session_.device().native(), &allocate, &backing->descriptors);
             if (result != VK_SUCCESS) return lux::cxx::unexpected(vk::nativeError(result));
-            if (id.isNull()) id = entries_.emplace();
-            entries_.find(id)->updating = true;
+            if (id.isNull()) id = BufferId{id_, entries_.emplace()};
+            entries_.find(id.local)->updating = true;
             auto* value = backing.get();
             backings_.push_back(std::move(backing));
-            const auto storage_id = id_;
-            session_.resources().retain(storage_id);
-            auto candidate = std::make_unique<Candidate>(*this, id, value, storage_id);
+            auto lease = session_.resources().lease(id_);
+            auto candidate = std::make_unique<Candidate>(*this, id, value, std::move(*lease));
             auto work = vk::GpuWork::pending<[](Candidate& value, vk::Transfer& upload, vk::DeviceSession&) noexcept {
                 return value.publish(upload);
             }>(session_, *transfer, candidate);
@@ -160,26 +194,23 @@ namespace extension_test
     public:
         RenderResult<void> remove(BufferId id) noexcept
         {
-            auto* entry = entries_.find(id);
-            if (!entry) return lux::cxx::unexpected(RenderError{kStorageDomain});
+            if (id.storage != id_) return lux::cxx::unexpected(RenderError{kStorageIdentity});
+            auto* entry = entries_.find(id.local);
+            if (!entry) return lux::cxx::unexpected(RenderError{kStorageIdentity});
             if (entry->updating) return lux::cxx::unexpected(RenderError{vk::kBusy});
-            entry->current->live = false;
-            entries_.erase(id);
-            collect();
+            auto* value = entry->current;
+            value->live = false;
+            entries_.erase(id.local);
+            retireUnused(*value);
             return {};
         }
-        bool exists(BufferId id) const noexcept { const auto* value = entries_.find(id); return value && value->current; }
-        std::size_t backingCount() const noexcept { return backings_.size(); }
-        bool compatible(const TestBufferStorage::Config& config) const noexcept { return config == config_; }
-        void collect() noexcept
+        bool exists(BufferId id) const noexcept
         {
-            for (std::size_t i = backings_.size(); i-- > 0;)
-            {
-                auto* value = backings_[i].get();
-                if (!value->live && !value->references && value->buffer && value->last_use.completed())
-                    erase(value);
-            }
+            const auto* value = id.storage == id_ ? entries_.find(id.local) : nullptr;
+            return value && value->current;
         }
+        std::size_t backingCount() const noexcept { return physical_->resident; }
+        bool compatible(const TestBufferStorage::Config& config) const noexcept { return config == config_; }
         RenderResult<void> prepare(const vk::NativeResourcePlan& plan, std::span<const std::byte> bytes,
             vk::PreparedStorageBinding& binding) noexcept
         {
@@ -187,8 +218,9 @@ namespace extension_test
             if (!description || description->size != 16) return lux::cxx::unexpected(RenderError{kStorageMismatch});
             lux::cxx::BinaryReader reader(bytes, bytes.size());
             auto argument = DataSchema<BufferBinding>::decode(reader, EncodedDataView{DataSchema<BufferBinding>::schema, bytes, {}});
-            auto* entry = entries_.find(argument->id);
-            if (!entry || !entry->current) return lux::cxx::unexpected(RenderError{kStorageDomain});
+            if (argument->id.storage != id_) return lux::cxx::unexpected(RenderError{kStorageIdentity});
+            auto* entry = entries_.find(argument->id.local);
+            if (!entry || !entry->current) return lux::cxx::unexpected(RenderError{kStorageIdentity});
             auto use = std::make_unique<Use>(*this, argument->id, nullptr, binding);
             use->update(*entry->current);
             uses_.push_back(use.get());
@@ -196,17 +228,29 @@ namespace extension_test
             return {};
         }
     private:
-        void destroy(Backing& value) noexcept
+        void releaseReference(Backing& value) noexcept
         {
-            if (value.references) std::terminate();
-            if (value.descriptors) vkFreeDescriptorSets(session_.device().native(), pool_, 1, &value.descriptors);
-            if (value.buffer)
-                if (!session_.releaseCompleted(value.buffer, value.last_use)) std::terminate();
+            --value.references;
+            retireUnused(value);
+        }
+        void retireUnused(Backing& value) noexcept
+        {
+            if (!value.live && !value.references) erase(&value);
         }
         void erase(Backing* value) noexcept
         {
-            destroy(*value);
-            std::erase_if(backings_, [&](const auto& item) { return item.get() == value; });
+            if (value->references) std::terminate();
+            const auto position = value->position;
+            auto owned = std::move(backings_[position]);
+            if (position + 1 != backings_.size())
+            {
+                backings_[position] = std::move(backings_.back());
+                backings_[position]->position = position;
+            }
+            backings_.pop_back();
+            if (owned->last_use.completed()) return;
+            auto result = session_.retirement().retire(owned->retirement, owned->last_use, owned);
+            if (!result) std::terminate();
         }
         vk::DeviceSession& session_;
         StorageId id_;
@@ -214,8 +258,7 @@ namespace extension_test
         lux::cxx::SlotMap<Entry, BufferTag> entries_;
         std::vector<std::unique_ptr<Backing>> backings_;
         std::vector<Use*> uses_;
-        VkDescriptorSetLayout layout_ = VK_NULL_HANDLE;
-        VkDescriptorPool pool_ = VK_NULL_HANDLE;
+        std::shared_ptr<Physical> physical_;
     };
 
     inline StorageFactory bufferFactory() noexcept
@@ -239,7 +282,7 @@ namespace extension_test
             return value.compatible(config);
         };
         return makeStorageFactory<TestBufferStorage, NativeBuffer, vk::DeviceSession, create, compatible>(
-            ops, &binding, [](void* object) noexcept { static_cast<NativeBuffer*>(object)->collect(); });
+            ops, &binding);
     }
 }
 

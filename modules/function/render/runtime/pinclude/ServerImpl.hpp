@@ -24,12 +24,14 @@ namespace lux::render
         struct View final
         {
             std::array<float, 4> color;
-            ResourceDomain domain;
+            StorageSet storages;
+            View(ResourceRegistry& registry, std::array<float, 4> value) noexcept : color(value), storages(registry) {}
         };
         struct Scene final
         {
-            ResourceDomain domain;
-            cxx::SlotMap<View, ViewTag> views;
+            StorageSet storages;
+            cxx::StableSlotMap<View, ViewTag> views;
+            explicit Scene(ResourceRegistry& registry) noexcept : storages(registry) {}
         };
         struct Target final
         {
@@ -116,7 +118,7 @@ namespace lux::render
         cxx::StableSlotMap<FeatureEntry, FeatureTag> features;
         cxx::SlotMap<CommandEntry, CommandTag> command_table;
         cxx::SlotMap<std::unique_ptr<HandlerEntry>, HandlerTag> handlers;
-        cxx::SlotMap<Scene, SceneTag> scenes;
+        cxx::StableSlotMap<Scene, SceneTag> scenes;
         cxx::SlotMap<Target, TargetTag> targets;
         cxx::SlotMap<RenderEffect, EffectTag> effects;
         std::optional<vulkan::InstanceContext> instance;
@@ -157,19 +159,10 @@ namespace lux::render
 
         RenderResult<void> withdraw(RenderEffect& effect, std::size_t index) noexcept;
 
-        template <class Predicate> RenderResult<void> admitWithdraw(Predicate matches) const noexcept
-        {
-            std::size_t needed = 0;
-            for (const auto& effect : effects)
-                for (const auto& group : effect.groups)
-                    if (matches(effect, group))
-                        if (auto ticket = group.context->lastUse();
-                            ticket && ticket->serial() > device->queue().completed())
-                            ++needed;
-            const auto& retired = device->retirement();
-            if (needed > retired.capacity() - retired.pending()) return cxx::unexpected(RenderError{kRuntimeCapacity});
-            return {};
-        }
+        RenderResult<StorageSet*> storageOwner(const VStorageOwner&) noexcept;
+        RenderResult<void> findStorage(RenderRequest&) noexcept;
+        RenderResult<void> prepareStorage(RenderRequest&) noexcept;
+        RenderResult<void> releasePreparedStorage(RenderRequest&) noexcept;
 
         RenderResult<void> attach(RenderRequest& request) noexcept;
 

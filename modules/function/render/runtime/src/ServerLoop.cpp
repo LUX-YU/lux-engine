@@ -155,7 +155,11 @@ namespace lux::render
             std::this_thread::yield();
         undelivered.clear();
         responder.reset();
+        for (auto& effect : effects)
+            while (!effect.groups.empty())
+                if (!withdraw(effect, effect.groups.size() - 1)) std::terminate();
         effects.clear();
+        scenes.clear();
         handlers.clear(); // All operations ended; professional Handler borrows still have a live Device.
         device.reset();
         instance.reset();

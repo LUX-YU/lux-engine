@@ -44,6 +44,8 @@ int main()
     CHECK(runtime_test::refresh(*a));
     CHECK(wait(*b, take(b->hello())).header.outcome == ECommandOutcome::SUCCESS);
     CHECK(runtime_test::refresh(*b));
+    const auto storage = take(runtime_test::prepareStorage(*a, kTextureStorageType.name(), "default"));
+    CHECK(take(runtime_test::prepareStorage(*b, kTextureStorageType.name(), "default")) == storage);
     auto bound_a = take(a->bind<SetTexture>());
     auto bound_b = take(b->bind<SetTexture>());
     auto info = information(64, 4, false);
@@ -53,7 +55,7 @@ int main()
         new std::vector<std::byte>(last.offset + last.size, std::byte{31}),
         [&](auto* value) { delete value; ++destroyed; });
     std::array payload{take(RenderPayload::fromVector(asset, 0, asset->size()))};
-    SetTexture::Request input{{}, 0, info, payload[0]};
+    SetTexture::Request input{{storage, {}}, 0, info, payload[0]};
     // Typed messages cannot express an out-of-range external attachment index. An empty source
     // remains a real native upload boundary error, and both clients recycle the failed request.
     auto malformed = input;
@@ -92,7 +94,7 @@ int main()
     CHECK(wait(*b, take(submitValue(*b, query, texture_a.texture))).header.outcome == ECommandOutcome::FAILED);
     CHECK(wait(*b, take(submitValue(*b, release, texture_a))).header.outcome == ECommandOutcome::FAILED);
     CHECK(wait(*b, take(submitValue(*b, release, texture_b))).header.outcome == ECommandOutcome::SUCCESS);
-    input.texture = {}; input.expected_revision = 0;
+    input.texture = {storage, {}}; input.expected_revision = 0;
     const auto replacement = published(wait(*b, take(submitValue(*b, bound_b, input))), bound_b);
     CHECK(replacement.texture != texture_a.texture && replacement.texture != texture_b.texture);
     CHECK(wait(*b, take(submitValue(*b, release, replacement))).header.outcome == ECommandOutcome::SUCCESS);

@@ -58,7 +58,7 @@ static RenderResult<ProgramContribution> zeroPassParameters(const void* input, s
         std::array{mode == 6 ? std::byte{2} : std::byte{1}})}}};
 }
 
-static RenderResult<void> emptyDescribe(const void*, std::string_view, std::vector<ResourceClaim>&) noexcept
+static RenderResult<void> emptyDescribe(const void*, std::string_view, ResourceClaims&) noexcept
 {
     return {};
 }

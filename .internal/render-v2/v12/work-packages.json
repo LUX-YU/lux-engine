@@ -544,12 +544,13 @@
       "T-GPU-12"
     ],
     "evidence": [
-      "N4.2-IDENTITY-IMPLEMENTATION.md"
+      "N4.2-IDENTITY-IMPLEMENTATION.md",
+      "N4-OWNERS-IMPLEMENTATION.md"
     ]
   },
   "N4.3": {
     "title": "Storage discovery and qualified handles",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -576,11 +577,13 @@
       "T-GPU-07",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N4-OWNERS-IMPLEMENTATION.md"
+    ]
   },
   "N4.4": {
     "title": "Attach withdrawal and resource leases",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -607,11 +610,13 @@
       "T-GPU-07",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N4-OWNERS-IMPLEMENTATION.md"
+    ]
   },
   "N4.5": {
     "title": "Logical growth and descriptor allocation",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -638,11 +643,13 @@
       "T-GPU-07",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N4-OWNERS-IMPLEMENTATION.md"
+    ]
   },
   "N4.6": {
     "title": "Event-driven physical retirement",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/runtime/",
@@ -669,7 +676,9 @@
       "T-GPU-07",
       "T-GPU-12"
     ],
-    "evidence": []
+    "evidence": [
+      "N4-OWNERS-IMPLEMENTATION.md"
+    ]
   },
   "N5.1": {
     "title": "Typed arguments and actual owner placement",

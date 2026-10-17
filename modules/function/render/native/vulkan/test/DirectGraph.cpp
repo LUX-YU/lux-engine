@@ -28,9 +28,7 @@ int main()
             *session, definition, analysis, {}, programs, target
         )));
         CHECK(graph->passes().size() == 2);
-        auto scene = take(session->resources().createDomain(session->resources().root(), EResourceScope::SCENE));
-        auto view = take(session->resources().createDomain(scene, EResourceScope::VIEW));
-        auto* execution = take(session->prepare(graph, target, view));
+        auto* execution = take(session->prepare(graph, target));
         CHECK(take(execution->execute()));
         CHECK(take(session->queue().wait(*execution->lastUse(), UINT64_MAX)));
         auto output = take(execution->readback());

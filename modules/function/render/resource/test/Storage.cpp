@@ -48,7 +48,7 @@ int main()
         std::string_view{"lux.render.resource.mismatch"},
         std::string_view{"lux.render.resource.factory"},
         std::string_view{"lux.render.resource.capability"},
-        std::string_view{"lux.render.resource.domain"},
+        std::string_view{"lux.render.resource.identity"},
         std::string_view{"lux.render.resource.capacity"},
         std::string_view{"lux.render.resource.cpu_stopped"},
         std::string_view{"lux.render.resource.cpu_schedule_failure"}
@@ -74,7 +74,7 @@ int main()
         },
         [](const void* instance, const void* config) noexcept {
             return static_cast<const Value*>(instance)->value == *static_cast<const unsigned*>(config);
-        }, {}, nullptr, nullptr, storageCppType<unsigned>(), storageCppType<Ops>()
+        }, {}, nullptr, storageCppType<unsigned>(), storageCppType<Ops>()
     );
     require(bool(validateStorageFactory(original, factory)));
     auto wrong_factory = factory;

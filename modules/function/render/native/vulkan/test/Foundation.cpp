@@ -130,6 +130,59 @@ static void exclusiveRetirement(const InstanceContext& bootstrap)
     std::printf("exclusive retirement: duplicate/stale/cross-session/full retry/image alias rejection PASS\n");
 }
 
+static void preparedRetirement(const InstanceContext& bootstrap)
+{
+    auto session = take(DeviceSession::create(bootstrap, {}, 3, 2));
+    auto foreign = take(DeviceSession::create(bootstrap, {}, 3, 2));
+    auto first = take(session->retirement().reserve());
+    auto second = take(session->retirement().reserve());
+    CHECK(session->retirement().reservations() == 2 && !session->retirement().reserve());
+    auto moved = std::move(first);
+    CHECK(!first && moved);
+    auto buffer = take(session->createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
+    auto batch = take(session->queue().begin());
+    vkCmdFillBuffer(batch.native(), session->borrow(buffer)->native(), 0, 64, 23);
+    const auto ticket = take(std::move(batch).submit());
+    SubmissionRequirements requirements;
+    requirements.merge(ticket);
+    CHECK(!foreign->retirement().retire(moved, requirements, buffer) && moved && buffer);
+    CHECK(session->retirement().retire(moved, requirements, buffer) && !moved && !buffer);
+    CHECK(session->retirement().reservations() == 1 && session->retirement().pending() == 1);
+    second.reset();
+    CHECK(session->retirement().reservations() == 0);
+    CHECK(take(session->queue().wait(ticket, UINT64_MAX)));
+    CHECK(take(session->retirement().collect()) == 1);
+
+    // An owned composite can retire another resource from its deleter. Its old entry must be erased first.
+    struct Composite final
+    {
+        DeviceSession& session;
+        RetirementReservation child;
+        BufferPermit buffer;
+        SubmissionRequirements requirements;
+        unsigned& destroyed;
+        VkDevice device() const noexcept { return session.device().native(); }
+        ~Composite() noexcept
+        {
+            CHECK(session.retirement().retire(child, requirements, buffer));
+            ++destroyed;
+        }
+    };
+    unsigned destroyed = 0;
+    auto outer = take(session->retirement().reserve());
+    auto child = take(session->retirement().reserve());
+    auto owned_buffer = take(session->createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
+    auto submitted = take(session->queue().begin());
+    vkCmdFillBuffer(submitted.native(), session->borrow(owned_buffer)->native(), 0, 64, 29);
+    SubmissionRequirements uses;
+    uses.merge(take(std::move(submitted).submit()));
+    auto composite = std::make_unique<Composite>(*session, std::move(child), std::move(owned_buffer), uses, destroyed);
+    CHECK(session->retirement().retire(outer, uses, composite) && !outer && !composite);
+    CHECK(session->drain());
+    CHECK(destroyed == 1 && session->retirement().pending() == 0 && session->retirement().reservations() == 0);
+    std::printf("prepared retirement: capacity before submit, move, wrong owner, nested release PASS\n");
+}
+
 static void allocationRecords(DeviceSession& session)
 {
     auto upload_permit = take(session.createBuffer(64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD));
@@ -270,6 +323,7 @@ int main()
 #endif
         auto bootstrap = instance(validation);
         exclusiveRetirement(bootstrap);
+        preparedRetirement(bootstrap);
         DeviceOptions options;
         options.dynamic_rendering = true;
         {

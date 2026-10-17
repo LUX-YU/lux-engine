@@ -87,25 +87,27 @@ static void readbackOperations(DeviceSession& session, const std::shared_ptr<Com
         CHECK(!context->lastUse() && session.queue().callbackReservations() == 0);
     }
     CHECK(session.release(context));
-    // A refused Detach must preserve the active Readback. Fill retirement with real Native allocations,
-    // then submit this Context without advancing the CPU-observed completion frontier.
-    context = take(session.prepare(code, target, {}));
+    // Retirement admission moved to prepare(). Detach consumes the reserved right without allocation,
+    // even when other records are reserved; it cancels an active Readback while retaining submitted backing.
+    context = take(session.prepare(code, target));
     {
+        std::vector<RetirementReservation> reservations;
+        for (unsigned i = 0; i < 128; ++i) reservations.push_back(take(session.retirement().reserve()));
         Result result;
         ReadbackOperation pending{*context, &result, Result::complete, nullptr, nullptr};
         pending.start();
         const auto ticket = *context->lastUse();
-        for (std::size_t i = session.retirement().pending(); i < session.retirement().capacity(); ++i)
-        {
-            auto buffer = take(session.createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
-            CHECK(session.retirement().retire(ticket, buffer));
-        }
-        auto refused = session.release(context);
-        CHECK(!refused && refused.error().type == kCapacity && result.count == 0);
+        render_allocation::participate = true;
+        render_allocation::calls = 0;
+        render_allocation::window = true;
+        CHECK(session.release(context));
+        render_allocation::window = false;
+        CHECK(render_allocation::calls == 0 && result.count == 0); // Armed Queue borrow still owns terminal delivery.
         CHECK(take(session.queue().wait(ticket, UINT64_MAX)));
         session.dispatchCompletions();
-        CHECK(result.count == 1 && result.value); // Failed admission did not cancel or detach the use.
-        CHECK(session.release(context));
+        CHECK(result.count == 1 && !result.value && result.value.error().type == kWorkStopped);
+        session.dispatchCompletions();
+        CHECK(result.count == 1); // Cancelled terminal cannot be completed twice.
         CHECK(session.retirement().collect());
         CHECK(session.retirement().pending() == 0);
     }
@@ -124,18 +126,19 @@ int main()
     auto assembly = take(native_fixture::assemble(config));
     auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
         native_fixture::programs(config), native_fixture::target(config))));
-    auto scene = take(session->resources().createDomain(session->resources().root(), EResourceScope::SCENE));
-    auto view_a = take(session->resources().createDomain(scene, EResourceScope::VIEW));
-    auto view_b = take(session->resources().createDomain(scene, EResourceScope::VIEW));
-    auto* a = take(session->prepare(code, native_fixture::target(config), view_a));
-    auto* b = take(session->prepare(code, native_fixture::target(config), view_b));
+    StorageSet scene(session->resources());
+    StorageSet view_a(session->resources());
+    StorageSet view_b(session->resources());
+    auto* a = take(session->prepare(code, native_fixture::target(config), &scene, &view_a));
+    auto* b = take(session->prepare(code, native_fixture::target(config), &scene, &view_b));
     CHECK(&a->code() == &b->code() && session->resources().size() == 6);
     for (std::uint32_t i = 0; i < code->resources().size(); ++i)
     {
         const auto& resource = code->resources()[i];
         if (!resource.storage) continue;
-        const bool shared = resource.storage->scope == EResourceScope::GLOBAL ||
-            resource.storage->scope == EResourceScope::SCENE;
+        const auto& groups = code->storageGroups();
+        const bool shared = std::ranges::find(groups.global, i) != groups.global.end() ||
+            std::ranges::find(groups.scene, i) != groups.scene.end();
         CHECK((a->nativeBuffer(i) == b->nativeBuffer(i)) == shared);
     }
     std::vector<VkBuffer> original_scopes(code->resources().size());
@@ -183,17 +186,17 @@ int main()
         }
     CHECK(take(a->execute()));
     CHECK(session->release(a));
-    CHECK(session->retirement().pending() == 1);
+    CHECK(session->retirement().pending() >= 1); // Context plus any last-use private backing
     CHECK(take(b->execute()));
     CHECK(take(session->queue().wait(*b->lastUse(), UINT64_MAX)));
     pixel(take(b->readback()), 32, 16, 16, {0, 255, 0, 255});
     auto resized = native_fixture::target(config);
     resized.width = 64;
     resized.height = 48;
-    auto* larger = take(session->prepare(code, resized, view_b));
+    auto* larger = take(session->prepare(code, resized, &scene, &view_b));
     for (std::uint32_t i = 0; i < code->resources().size(); ++i)
         if (const auto& storage = code->resources()[i].storage; storage)
-            CHECK((b->nativeBuffer(i) == larger->nativeBuffer(i)) == (storage->scope != EResourceScope::ATTACHMENT));
+            CHECK((b->nativeBuffer(i) == larger->nativeBuffer(i)) == (std::ranges::find(code->storageGroups().attachment, i) == code->storageGroups().attachment.end()));
     larger->setColor({0, 0, 1, 1});
     CHECK(take(larger->execute()));
     CHECK(take(session->queue().wait(*larger->lastUse(), UINT64_MAX)));
@@ -203,23 +206,19 @@ int main()
     CHECK(session->release(b));
     CHECK(session->release(larger));
     CHECK(session->drain());
-    // The former leases==0 deletion contract is intentionally replaced by business-scope lifetime.
-    CHECK(session->resources().size() == 4); // Global + Scene + two Views, no Attachment-private backing
+    // No preload: the last Attach lease removes the live identity, including Global/Scene/View.
+    CHECK(session->resources().size() == 0);
     const auto creations = session->resources().creations();
-    auto* reattached = take(session->prepare(code, native_fixture::target(config), view_a));
-    CHECK(session->resources().creations() == creations + 1); // only Attachment-private storage is new
-    for (std::uint32_t i = 0; i < original_scopes.size(); ++i)
-        if (const auto& storage = code->resources()[i].storage;
-            storage && storage->scope != EResourceScope::ATTACHMENT)
-            CHECK(reattached->nativeBuffer(i) == original_scopes[i]);
+    auto* reattached = take(session->prepare(code, native_fixture::target(config), &scene, &view_a));
+    CHECK(session->resources().creations() == creations + 4);
     CHECK(take(reattached->execute()));
     CHECK(take(session->queue().wait(*reattached->lastUse(), UINT64_MAX)));
     pixel(take(reattached->readback()), 32, 16, 16, {255, 0, 0, 255});
     CHECK(session->release(reattached));
-    CHECK(session->resources().closeDomain(view_a));
-    CHECK(session->resources().size() == 3);
-    CHECK(session->resources().closeDomain(scene));
-    CHECK(session->resources().size() == 1); // Global survives until session/explicit asset lifetime ends
+    view_a.clear();
+    view_b.clear();
+    scene.clear();
+    CHECK(session->resources().size() == 0);
     code.reset();
 
     config = {32, 32, 0, 0};

@@ -83,7 +83,7 @@ struct Installer final
     void install(const unsigned& mode, Reply<InstallTextures> reply) noexcept
     {
         TextureStorageConfig config;
-        if (mode == 2) config.capacity *= 2;
+        if (mode == 2) config.resident_versions_budget = 16;
         const auto key = mode == 0 ? "" : (mode == 1 ? "second" : "failed");
         auto installed = server.registerStorage<TextureStorage>(config, key, code_pin);
         const auto completed = installed ? reply.complete(*installed) : reply.fail(installed.error());
@@ -187,6 +187,61 @@ static int exerciseRegistration(unsigned& pin_releases)
     auto unchanged = receive(*client, *client->submit(listing, empty, 8192)).take(listing);
     CHECK(unchanged && unchanged->response().storages.size() == 1);
     CHECK(unchanged->response().storages.front().id == storage.id);
+    {
+        // Real protocol controls resolve actual owners; no Domain ancestry or parallel instance table.
+        const auto scene_a = runtime_test::coldCall<CreateScene>(*client, {});
+        const auto scene_b = runtime_test::coldCall<CreateScene>(*client, {});
+        CHECK(scene_a && scene_b);
+        const auto view_a = runtime_test::coldCall<CreateView>(*client, {scene_a->scene, {}});
+        CHECK(view_a);
+        const std::array<VStorageOwner, 4> owners{
+            GlobalStorageOwner{}, scene_a->scene, scene_b->scene, ViewRequest{scene_a->scene, view_a->view}
+        };
+        std::array<StorageId, 4> identities;
+        for (std::size_t i = 0; i < owners.size(); ++i)
+        {
+            StorageLocation location{owners[i], storage.id, "prepared"};
+            auto missing = runtime_test::coldCall<FindStorage>(*client, location);
+            CHECK(!missing && missing.error().type == kStorageIdentity);
+            auto prepared = runtime_test::coldCall<PrepareStorage>(*client, {location, {}});
+            CHECK(prepared);
+            identities[i] = *prepared;
+            for (std::size_t j = 0; j < i; ++j) CHECK(identities[i] != identities[j]);
+            auto found = runtime_test::coldCall<FindStorage>(*client, location);
+            CHECK(found && *found == identities[i]);
+            auto repeated = runtime_test::coldCall<PrepareStorage>(*client, {location, {}});
+            CHECK(repeated && *repeated == identities[i]);
+            CHECK(runtime_test::coldCall<ReleasePreparedStorage>(*client, identities[i]));
+            CHECK(runtime_test::coldCall<FindStorage>(*client, location)); // the other preload remains
+        }
+        StorageLocation invalid{scene_a->scene, storage.id, "rejected"};
+        auto wrong_config = ConfigValue::make(17u);
+        CHECK(wrong_config);
+        CHECK(!runtime_test::coldCall<PrepareStorage>(*client, {invalid, std::move(*wrong_config)}));
+        CHECK(!runtime_test::coldCall<FindStorage>(*client, invalid));
+        const auto preparing = *client->bind<PrepareStorage>();
+        PrepareStorageRequest no_reply{invalid, {}};
+        const auto refused = client->submit(preparing, no_reply, 0);
+        CHECK(!refused && refused.error().type == kRuntimeCapacity);
+        CHECK(no_reply.location.key == "rejected"); // rejected before moving the input
+        CHECK(!runtime_test::coldCall<FindStorage>(*client, invalid));
+        CHECK(runtime_test::coldCall<RemoveScene>(*client, {scene_a->scene}));
+        CHECK(!runtime_test::coldCall<FindStorage>(*client, {owners[1], storage.id, "prepared"}));
+        CHECK(!runtime_test::coldCall<FindStorage>(*client, {owners[3], storage.id, "prepared"}));
+        CHECK(!runtime_test::coldCall<ReleasePreparedStorage>(*client, identities[1]));
+        CHECK(!runtime_test::coldCall<ReleasePreparedStorage>(*client, identities[3]));
+        for (const auto i : {0u, 2u})
+        {
+            CHECK(runtime_test::coldCall<FindStorage>(*client, {owners[i], storage.id, "prepared"}));
+            CHECK(runtime_test::coldCall<ReleasePreparedStorage>(*client, identities[i]));
+            CHECK(!runtime_test::coldCall<ReleasePreparedStorage>(*client, identities[i]));
+        }
+        const auto replacement = runtime_test::coldCall<CreateScene>(*client, {});
+        CHECK(replacement && replacement->scene != scene_a->scene);
+        CHECK(!runtime_test::coldCall<PrepareStorage>(*client, {{scene_a->scene, storage.id, "stale"}, {}}));
+        CHECK(runtime_test::coldCall<RemoveScene>(*client, {scene_b->scene}));
+        CHECK(runtime_test::coldCall<RemoveScene>(*client, {replacement->scene}));
+    }
     server.stop();
     owner.join();
     CHECK(run_ok && server.stats().validation_errors == 0);

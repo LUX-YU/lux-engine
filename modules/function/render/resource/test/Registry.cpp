@@ -21,9 +21,8 @@ namespace
         Counts* counts;
         unsigned initial;
         unsigned value;
-        ResourceRegistry* registry = nullptr;
-        StorageId referenced;
         StorageId identity;
+        StorageLease reference;
     };
 
     struct TestStorage final
@@ -43,7 +42,7 @@ namespace
             unsigned read() const noexcept { return ops_->read(value_); }
             RenderResult<void> write(unsigned value) noexcept
             {
-                if (!writable_) return lux::cxx::unexpected(RenderError{kStorageDomain});
+                if (!writable_) return lux::cxx::unexpected(RenderError{kStorageIdentity});
                 ops_->write(value_, value);
                 return {};
             }
@@ -98,22 +97,36 @@ namespace
                     return lux::cxx::unexpected(RenderError{kStorageCapacity});
                 ++counts->created;
                 const auto initial = *static_cast<const unsigned*>(config);
-                auto* registry = initial == 88 ? counts->registry : nullptr;
-                if (registry) registry->retain(counts->referenced);
+                StorageLease reference;
+                if (initial == 88)
+                {
+                    auto borrowed = counts->registry->lease(counts->referenced);
+                    require(bool(borrowed));
+                    reference = std::move(*borrowed);
+                }
                 return NativeStorage{
-                    new Value{counts, initial, initial, registry, counts->referenced, id},
+                    new Value{counts, initial, initial, id, std::move(reference)},
                     [](void* instance) noexcept {
                         auto* value = static_cast<Value*>(instance);
                         ++value->counts->destroyed;
-                        if (value->registry) value->registry->release(value->referenced);
                         delete value;
                     }
                 };
             },
             [](const void* instance, const void* config) noexcept {
                 return static_cast<const Value*>(instance)->initial == *static_cast<const unsigned*>(config);
-            }, {}, nullptr, nullptr, storageCppType<unsigned>(), storageCppType<TestStorage::Ops>()
+            }, {}, nullptr, storageCppType<unsigned>(), storageCppType<TestStorage::Ops>()
         );
+    }
+}
+
+namespace
+{
+    ConfigValue config(unsigned value)
+    {
+        auto result = ConfigValue::make(value);
+        require(bool(result));
+        return std::move(*result);
     }
 }
 
@@ -121,9 +134,13 @@ int main()
 {
     static_assert(!std::is_same_v<StorageId, StorageTypeId>);
     static_assert(!std::is_constructible_v<StorageTypeId, StorageNameView>);
+    static_assert(!std::is_move_constructible_v<StorageSet>);
+    static_assert(!std::is_copy_constructible_v<StorageLease>);
     {
         Counts counts;
         ResourceRegistry directory(&counts, 1u);
+        StorageSet global(directory);
+        counts.registry = &directory;
         auto description = TestStorage::description;
         description.required_capabilities = 2u;
         auto candidate = factory();
@@ -141,16 +158,16 @@ int main()
             ++visits;
         });
         require(visits == 1);
-        auto original = directory.getOrCreate(directory.root(), "original", description, nullptr);
+        auto original = global.acquire(*installed, "original");
         require(bool(original));
         auto other_description = TestStorage::description;
         other_description.type = StorageNameView("test.late.storage");
         auto other_factory = factory();
         other_factory.description = &other_description;
-        require(bool(directory.installFactory(other_factory)));
-        // A C++ Config is required even when no encoded schema exists. Reject before typed create.
-        require(!directory.getOrCreate(directory.root(), "missing", other_description, nullptr));
-        require(counts.created == 1 && static_cast<Value*>(directory.native(*original))->value == 7u);
+        auto other_type = directory.installFactory(other_factory);
+        require(bool(other_type));
+        require(!global.acquire(*other_type, "missing")); // no Schema never means no Config
+        require(counts.created == 1 && static_cast<Value*>(directory.native(original->id()))->value == 7u);
         require(directory.configuration(description.type) != nullptr);
     }
     {
@@ -182,23 +199,10 @@ int main()
         require(directory.typeId(StorageNameView("test.missing")).isNull());
     }
     Counts counts;
-    ResourceDomain old_root;
     {
         ResourceRegistry registry(&counts, 0);
         counts.registry = &registry;
-        ResourceRegistry other(&counts, 0);
-        const auto root = registry.root();
-        old_root = root;
-        require(!registry.valid(other.root()));
-        require(!registry.createDomain(root, EResourceScope::VIEW));
-        auto scene = registry.createDomain(root, EResourceScope::SCENE);
-        auto scene2 = registry.createDomain(root, EResourceScope::SCENE);
-        auto view = registry.createDomain(*scene, EResourceScope::VIEW);
-        auto attachment = registry.createDomain(*view, EResourceScope::ATTACHMENT);
-        require(scene && scene2 && view && attachment);
-        require(registry.ancestor(*attachment, EResourceScope::GLOBAL).value() == root);
-        require(registry.ancestor(*attachment, EResourceScope::SCENE).value() == *scene);
-        // Same schema and same sizeof cannot authorize a different native C++ Config.
+        StorageSet global(registry), scene(registry), other_scene(registry), view(registry), attachment(registry);
         struct WrongConfig { unsigned value; };
         static_assert(sizeof(WrongConfig) == sizeof(TestStorage::Config));
         require(!registry.installFactory(factory(), WrongConfig{7}));
@@ -206,82 +210,71 @@ int main()
         require(registry.factory(TestStorage::description.type) == nullptr && counts.created == 0);
         const auto installed = registry.installFactory(factory(), 7u);
         require(bool(installed));
-        require(registry.typeId(TestStorage::description.type) == *installed);
-        const WrongConfig wrong{7};
-        require(!registry.getOrCreate(root, "wrong", TestStorage::description, &wrong));
-        require(counts.created == 0);
         require(!registry.installFactory(factory(), 8u));
         require(*static_cast<const unsigned*>(registry.configuration(TestStorage::description.type)) == 7u);
-        // Wrong Ops on a NEW key must reject before Native create, not merely fail Access afterwards.
-        const auto before_wrong_ops = counts.created;
-        const auto before_wrong_destroy = counts.destroyed;
-        const auto before_wrong_size = registry.size();
-        require(!registry.getOrCreate<WrongOpsStorage>(root, "wrong-ops-explicit", 7u));
-        std::fprintf(stderr, "wrong Ops new key: create delta=%u destroy delta=%u instance delta=%zu\n",
-            counts.created - before_wrong_ops, counts.destroyed - before_wrong_destroy, registry.size() - before_wrong_size);
-        require(counts.created == before_wrong_ops && counts.destroyed == before_wrong_destroy &&
-            registry.size() == before_wrong_size);
-        require(!registry.getOrCreate<WrongOpsStorage>(root, "wrong-ops-default"));
-        require(counts.created == before_wrong_ops && counts.destroyed == before_wrong_destroy &&
-            registry.size() == before_wrong_size);
-        require(!registry.getOrCreate<WrongConfigStorage>(root, "wrong-config-default"));
-        require(!registry.getOrCreate<WrongConfigStorage>(root, "wrong-config-explicit", {7}));
-        require(counts.created == before_wrong_ops && counts.destroyed == before_wrong_destroy &&
-            registry.size() == before_wrong_size);
-        auto global = registry.getOrCreate<TestStorage>(root, "shared");
-        auto repeated = registry.getOrCreate<TestStorage>(root, "shared", 7);
-        require(global && repeated && counts.created == 1);
-        require(!registry.tryGet<WrongOpsStorage>(root, "shared"));
-        require(bool(global->write(11)) && repeated->read() == 11);
-        require(!registry.getOrCreate<TestStorage>(root, "shared", 8));
-        auto inherited = registry.findVisible<TestStorage>(*attachment, "shared");
-        require(inherited && inherited->read() == 11 && !inherited->write(12));
-        require(!registry.tryGet<TestStorage>(*attachment, "shared"));
-        auto local = registry.getOrCreate<TestStorage>(*scene, "shared", 8);
-        auto separate = registry.getOrCreate<TestStorage>(*scene2, "shared", 9);
-        require(local && separate && local->read() == 8 && separate->read() == 9);
-        require(registry.findVisible<TestStorage>(*attachment, "shared")->read() == 8);
-        require(!registry.getOrCreate<TestStorage>(*view, "failed", 99));
+        auto wrong = ConfigValue::make(WrongConfig{7});
+        require(wrong && !global.acquire(*installed, "wrong", std::move(*wrong)));
+        require(!global.acquire<WrongOpsStorage>("wrong-ops-explicit", config(7)));
+        require(!global.acquire<WrongOpsStorage>("wrong-ops-default"));
+        require(!global.acquire<WrongConfigStorage>("wrong-config-default"));
+        auto wrong_typed = ConfigValue::make(WrongConfigStorage::Config{7});
+        require(wrong_typed && !global.acquire<WrongConfigStorage>("wrong-config-explicit", std::move(*wrong_typed)));
+        require(counts.created == 0 && counts.destroyed == 0 && registry.size() == 0);
+        auto shared = scene.acquire<TestStorage>("shared");
+        auto repeated = scene.acquire<TestStorage>("shared", config(7));
+        require(shared && repeated && shared->id() == repeated->id() && counts.created == 1);
+        const auto shared_id = shared->id();
+        require(!registry.tryGet<WrongOpsStorage>(shared_id));
+        auto access = registry.tryGet<TestStorage>(shared_id);
+        require(access && access->write(11) && registry.tryGet<TestStorage>(repeated->id())->read() == 11);
+        require(!scene.acquire<TestStorage>("shared", config(8)));
+        require(global.find(*installed, "shared").isNull());
+        auto separate = other_scene.acquire<TestStorage>("shared", config(9));
+        require(separate && separate->id() != shared_id && registry.tryGet<TestStorage>(separate->id())->read() == 9);
+        shared->reset();
+        require(registry.native(shared_id) && counts.destroyed == 0);
+        repeated->reset();
+        require(!registry.native(shared_id) && scene.size() == 0 && counts.destroyed == 1);
+        auto replaced = scene.acquire<TestStorage>("shared", config(17));
+        require(replaced && replaced->id() != shared_id && !registry.native(shared_id));
+        require(!view.acquire<TestStorage>("failed", config(99)));
         const auto failed_identity = counts.last_identity;
         require(!registry.native(failed_identity));
-        require(!registry.getOrCreate<TestStorage>(*view, "empty", 98));
+        require(!view.acquire<TestStorage>("empty", config(98)));
         const auto empty_identity = counts.last_identity;
-        require(failed_identity != empty_identity && !registry.native(empty_identity));
-        require(registry.size() == 3);
-        auto private_value = registry.getOrCreate<TestStorage>(*attachment, "private", 3);
-        require(bool(private_value));
-        const auto id = registry.find(*attachment, "private", TestStorage::description).value();
+        require(empty_identity != failed_identity && !registry.native(empty_identity));
+        auto private_use = attachment.acquire<TestStorage>("private", config(3));
+        require(bool(private_use));
+        const auto id = private_use->id();
         require(id == counts.last_identity && id == static_cast<Value*>(registry.native(id))->identity);
-        require(id != empty_identity && !registry.native(failed_identity) && !registry.native(empty_identity));
-        registry.retain(id);
-        require(bool(registry.closeDomain(*scene)));
-        require(!registry.valid(*scene) && !registry.valid(*view) && !registry.valid(*attachment));
-        require(counts.destroyed == 1 && registry.size() == 3); // retained private instance survives domain close
-        require(static_cast<Value*>(registry.native(id))->value == 3);
-        require(!registry.getOrCreate<TestStorage>(*scene, "stale", 7));
-        auto replacement = registry.createDomain(root, EResourceScope::SCENE);
-        require(replacement && *replacement != *scene);
-        registry.release(id);
-        require(!registry.native(id) && counts.destroyed == 2);
-        require(separate->read() == 9 && global->read() == 11);
-        const auto rollback = registry.getOrCreate(*replacement, "candidate", TestStorage::description,
-            std::make_shared<const unsigned>(17).get()).value();
-        registry.rollback(rollback);
-        require(registry.size() == 2);
+        require(!registry.native(empty_identity) && !registry.native(failed_identity));
+        require(!view.releasePrepared(id)); // wrong actual owner cannot release an Attachment record
+        const auto preload = global.prepare(*installed, "asset", config(5));
+        require(bool(preload));
+        auto lease = global.acquire<TestStorage>("asset", config(5));
+        require(lease && lease->id() == *preload);
+        require(global.releasePrepared(*preload) && registry.native(*preload));
+        require(!global.releasePrepared(*preload)); // cannot consume the remaining real use
+        lease->reset();
+        require(!registry.native(*preload));
+        private_use->reset();
+        require(!registry.native(id) && attachment.size() == 0);
+        // Failed/cancelled preparation drops only its candidate lease; existing shared records survive.
+        { auto candidate = scene.acquire<TestStorage>("candidate", config(18)); require(bool(candidate)); }
+        require(scene.size() == 1 && registry.native(replaced->id()));
     }
     require(counts.created == counts.destroyed);
     {
-        // A professional indirect reference must be released outside the Registry's SlotMap mutation.
         ResourceRegistry registry(&counts, 0);
         counts.registry = &registry;
-        require(bool(registry.installFactory(factory())));
-        require(bool(registry.getOrCreate<TestStorage>(registry.root(), "texture-like", 1)));
-        counts.registry = &registry;
-        counts.referenced = registry.find(registry.root(), "texture-like", TestStorage::description).value();
-        require(bool(registry.getOrCreate<TestStorage>(registry.root(), "material-like", 88)));
-        require(bool(registry.closeDomain(registry.root())));
+        StorageSet actual(registry);
+        auto type = registry.installFactory(factory());
+        require(bool(type));
+        counts.referenced = *actual.prepare(*type, "texture-like", config(1));
+        require(bool(actual.prepare(*type, "material-like", config(88))));
+        actual.clear(); // removes material first; its lease can safely release the other dense record
         require(registry.size() == 0 && counts.created == counts.destroyed);
+        require(!actual.acquire(*type, "closed", config(1)));
     }
-    ResourceRegistry replacement(&counts, 0);
-    require(!replacement.valid(old_root));
+    std::printf("StorageSet owners, sharing, preload separation, factory rollback and indirect release passed\n");
 }

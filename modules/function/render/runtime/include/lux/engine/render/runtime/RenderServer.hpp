@@ -22,7 +22,7 @@ namespace lux::render
         std::uint32_t requests_per_tick = 8;
         std::size_t max_config_bytes = 1024 * 1024;
         std::size_t max_reply_bytes = 16 * 1024 * 1024;
-        std::size_t retirement_capacity = 64;
+        std::size_t retirement_capacity = 0; // Optional explicit record budget; zero grows on cold publication.
         // One borrowed host scheduler for cold compilation and transfer preparation.
         CpuSchedule cpu;
         // Independent logical budgets backed by one slot map and event queue of their combined capacity.

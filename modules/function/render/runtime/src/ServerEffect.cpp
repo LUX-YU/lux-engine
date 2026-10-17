@@ -175,8 +175,6 @@ namespace lux::render
         const auto* input = &request.get<EffectRequest>();
         auto* effect = effects.find(input->effect);
         if (!effect) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        if (auto admitted = admitWithdraw([&](const auto& owner, const auto&) { return &owner == effect; }); !admitted)
-            return admitted;
         while (!effect->groups.empty())
             if (auto result = withdraw(*effect, effect->groups.size() - 1); !result) return result;
         effects.erase(input->effect);

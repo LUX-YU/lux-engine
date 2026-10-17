@@ -21,12 +21,18 @@ namespace lux::render
                 ":" + std::to_string(instance.size()) + ":" + std::string(instance) + ":";
         }
 
+        struct PlacedClaim final
+        {
+            ResourceClaim value;
+            std::vector<GraphStorageBinding>* destination = nullptr;
+        };
+
         // These are call-local authorship intervals, not another graph or owner.
         struct Contribution final
         {
             FeatureInstanceView selected;
             std::size_t input_index;
-            std::vector<ResourceClaim> claims;
+            std::vector<PlacedClaim> claims;
             std::vector<ResolvedResource> bindings;
             std::size_t first_resource = 0, last_resource = 0;
             std::size_t first_pass = 0, last_pass = 0;
@@ -124,27 +130,36 @@ namespace lux::render
             return {};
         }
 
-        RenderResult<void> collectClaims(std::vector<Contribution>& work) noexcept
+        RenderResult<void> collectClaims(std::vector<Contribution>& work, GraphStorageBindings& external) noexcept
         {
             for (std::size_t i = 0; i < work.size(); ++i)
             {
                 auto& w = work[i];
                 const auto& s = w.selected;
-                if (auto r = s.graph->describe(s.config ? s.config->data() : nullptr, s.instance_key, w.claims); !r) return r;
+                ResourceClaims declared;
+                if (auto r = s.graph->describe(s.config ? s.config->data() : nullptr, s.instance_key, declared); !r) return r;
+                const auto append = [&](std::vector<ResourceClaim>& source, std::vector<GraphStorageBinding>* destination) {
+                    for (auto& claim : source) w.claims.push_back({std::move(claim), destination});
+                };
+                append(declared.resources, nullptr);
+                append(declared.storage.global, &external.global);
+                append(declared.storage.scene, &external.scene);
+                append(declared.storage.view, &external.view);
+                append(declared.storage.attachment, &external.attachment);
                 std::sort(w.claims.begin(), w.claims.end(), [](const auto& a, const auto& b) {
-                    return a.key < b.key;
+                    return a.value.key < b.value.key;
                 });
                 for (std::size_t j = 0; j < w.claims.size(); ++j)
                 {
-                    auto& c = w.claims[j];
+                    auto& c = w.claims[j].value;
                     const bool is_invalid_claim = c.key.empty() || c.participation > EResourceClaim::OPTIONAL ||
                         c.origin > EGraphOrigin::HISTORY_CURRENT;
-                    const bool is_invalid_storage = c.storage && (!c.storage->type.isValid() ||
-                        c.storage->scope > EResourceScope::ATTACHMENT ||
-                        c.origin == EGraphOrigin::TRANSIENT);
+                    const bool is_invalid_placement = bool(c.storage) != (w.claims[j].destination != nullptr);
+                    const bool is_invalid_storage = is_invalid_placement || (c.storage &&
+                        (!c.storage->type.isValid() || c.origin == EGraphOrigin::TRANSIENT));
                     if (is_invalid_claim || is_invalid_storage)
                         return cxx::unexpected(failure(kFeatureContract, i, j));
-                    if (j > 0 && w.claims[j - 1].key == c.key)
+                    if (j > 0 && w.claims[j - 1].value.key == c.key)
                         return cxx::unexpected(failure(kFeatureDuplicate, i, j));
                     canonicalizeRanges(c);
                 }
@@ -155,14 +170,14 @@ namespace lux::render
         RenderResult<void> resolveClaims(
             std::vector<Contribution>& work,
             RenderGraphBuilder& builder,
-            std::vector<SharedPort>& ports,
-            std::vector<GraphStorageBinding>& external
+            std::vector<SharedPort>& ports
         ) noexcept
         {
             std::vector<ClaimLocation> locations;
             for (std::size_t i = 0; i < work.size(); ++i)
                 for (std::size_t j = 0; j < work[i].claims.size(); ++j) locations.push_back({i, j});
-            const auto claim = [&](ClaimLocation p) -> const ResourceClaim& { return work[p.feature].claims[p.claim]; };
+            const auto claim = [&](ClaimLocation p) -> const ResourceClaim& { return work[p.feature].claims[p.claim].value; };
+            const auto placement = [&](ClaimLocation p) { return work[p.feature].claims[p.claim].destination; };
             std::sort(locations.begin(), locations.end(), [&](auto a, auto b) {
                 return std::tuple{claim(a).key, a.feature} < std::tuple{claim(b).key, b.feature};
             });
@@ -177,7 +192,7 @@ namespace lux::render
                 {
                     const auto at = locations[i];
                     const auto& c = claim(at);
-                    if (!compatibleClaims(base, c))
+                    if (!compatibleClaims(base, c) || placement(locations[first]) != placement(at))
                         return cxx::unexpected(failure(kFeatureResourceMismatch, at.feature, at.claim));
                     required |= c.participation == EResourceClaim::REQUIRE;
                     if (c.participation != EResourceClaim::PROVIDE) continue;
@@ -198,7 +213,7 @@ namespace lux::render
                         (c.origin == EGraphOrigin::IMPORTED && !c.initial_ranges.empty());
                     const GraphVersion version{*resource, is_initial ? 0u : 1u};
                     ports.push_back({*provider, version});
-                    if (c.storage) external.push_back({*resource, *c.storage});
+                    if (c.storage) placement(*provider)->push_back({*resource, *c.storage});
                     for (auto i = first; i < end; ++i)
                         work[locations[i].feature].bindings.push_back({c.key, version});
                 }
@@ -230,7 +245,7 @@ namespace lux::render
                         return {};
                     }
                     const auto& port = ports[r];
-                    const auto& c = work[port.provider.feature].claims[port.provider.claim];
+                    const auto& c = work[port.provider.feature].claims[port.provider.claim].value;
                     if (!findResource(w.bindings, c.key))
                         return cxx::unexpected(failure(kFeatureOwnership, i, r));
                     if (version != port.version) return cxx::unexpected(failure(kFeatureVersion, i, r));
@@ -302,11 +317,11 @@ namespace lux::render
         work.reserve(selected.size());
         for (std::size_t i = 0; i < selected.size(); ++i) work.push_back({selected[i], i});
         if (auto r = validateInstances(work, config_byte_limit); !r) return cxx::unexpected(r.error());
-        if (auto r = collectClaims(work); !r) return cxx::unexpected(r.error());
+        GraphStorageBindings external;
+        if (auto r = collectClaims(work, external); !r) return cxx::unexpected(r.error());
         RenderGraphBuilder builder;
         std::vector<SharedPort> ports;
-        std::vector<GraphStorageBinding> external;
-        if (auto r = resolveClaims(work, builder, ports, external); !r) return cxx::unexpected(r.error());
+        if (auto r = resolveClaims(work, builder, ports); !r) return cxx::unexpected(r.error());
         for (auto& w : work)
         {
             w.first_resource = builder.resourceCount();

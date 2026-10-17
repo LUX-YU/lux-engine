@@ -22,7 +22,7 @@ namespace lux::render
     };
 }
 
-static RenderResult<void> emptyDescribe(const void*, std::string_view, std::vector<ResourceClaim>&) noexcept
+static RenderResult<void> emptyDescribe(const void*, std::string_view, ResourceClaims&) noexcept
 {
     return {};
 }
@@ -70,7 +70,8 @@ static int composition()
     CHECK(!duplicate && duplicate.error().type == kFeatureDuplicate);
     auto hzb = fixture::scenario(1);
     CHECK(hzb && hzb->external_bindings.size() == 2 && hzb->analysis.execution_order.size() == 1);
-    for (const auto& b : hzb->external_bindings) CHECK(b.storage.scope == EResourceScope::VIEW);
+    CHECK(hzb->external_bindings.view.size() == 2 && hzb->external_bindings.global.empty() &&
+        hzb->external_bindings.scene.empty() && hzb->external_bindings.attachment.empty());
     const auto& hr = hzb->definition.resources();
     CHECK(hr.size() == 2 && hr[0].origin == EGraphOrigin::HISTORY_CURRENT);
     CHECK(hr[1].origin == EGraphOrigin::HISTORY_PREVIOUS);
@@ -80,7 +81,7 @@ static int composition()
     auto material = fixture::scenario(2);
     CHECK(material && material->external_bindings.size() == 1);
     CHECK(material->definition.resources().size() == 2 && material->definition.passes().size() == 1);
-    CHECK(material->external_bindings[0].storage.type.name() == "test.MaterialStorage");
+    CHECK(material->external_bindings.global[0].storage.type.name() == "test.MaterialStorage");
     CHECK(material->definition.passes()[0].uses[0].version.number == 0);
     return 0;
 }
@@ -225,18 +226,21 @@ namespace negative
 {
     thread_local std::vector<ResourceClaim> provided, required;
     thread_local unsigned mode = 0;
+    thread_local bool require_scene = false;
     inline constexpr FeatureName provider_type("test.provider"), consumer_type("test.consumer");
 
-    RenderResult<void> provide(const void*, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    RenderResult<void> provide(const void*, std::string_view, ResourceClaims& out) noexcept
     {
-        out = provided;
+        for (const auto& claim : provided)
+            (claim.storage ? out.storage.global : out.resources).push_back(claim);
         if (mode == 10) return cxx::unexpected(RenderError{kInvalidEncoding, {101}});
         return {};
     }
 
-    RenderResult<void> require(const void*, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    RenderResult<void> require(const void*, std::string_view, ResourceClaims& out) noexcept
     {
-        out = required;
+        for (const auto& claim : required)
+            (claim.storage ? (require_scene ? out.storage.scene : out.storage.global) : out.resources).push_back(claim);
         return {};
     }
 
@@ -296,6 +300,7 @@ namespace negative
     void reset()
     {
         mode = 0;
+        require_scene = false;
         provided = {{"r", EResourceClaim::PROVIDE, GraphBufferDesc{64}}};
         required = provided;
         required[0].participation = EResourceClaim::REQUIRE;
@@ -328,7 +333,7 @@ static int claims()
             provided[0].key = "r";
             required[0] = provided[0];
             required[0].participation = EResourceClaim::REQUIRE;
-            if (fault == 4) required[0].storage->scope = EResourceScope::SCENE;
+            if (fault == 4) require_scene = true;
             if (fault == 5) required[0].storage->key = "different-instance";
             if (fault == 6) required[0].storage->type = StorageName("test.OtherStorage");
             if (fault == 7) required[0].storage.reset();
@@ -349,7 +354,7 @@ static int claims()
     required[0].description = provided[0].description;
     CHECK(!run());
     reset();
-    provided[0].storage = StorageRequirement{StorageName("bad"), EResourceScope::GLOBAL};
+    provided[0].storage = StorageRequirement{StorageName("bad")};
     CHECK(!run()); // Persistent storage cannot be transient.
     for (unsigned fault = 0; fault < 3; ++fault)
     {
@@ -368,17 +373,17 @@ static int claims()
 static int fallback()
 {
     static const FeatureDescriptor provider{FeatureName("test.history"), {}};
-    static const FeatureGraphOps provider_graph{+[](const void*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
+    static const FeatureGraphOps provider_graph{+[](const void*, std::string_view, ResourceClaims& out) noexcept -> RenderResult<void> {
             auto claim = fixture::history("previous", EResourceClaim::PROVIDE, true);
             claim.initial_ranges.clear();
-            out.push_back(std::move(claim));
+            out.storage.view.push_back(std::move(claim));
             return {};
         }, nullptr};
     static const FeatureDescriptor consumer{FeatureName("test.fallback"), {}};
-    static const FeatureGraphOps consumer_graph{+[](const void*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
+    static const FeatureGraphOps consumer_graph{+[](const void*, std::string_view, ResourceClaims& out) noexcept -> RenderResult<void> {
             auto claim = fixture::history("previous", EResourceClaim::REQUIRE, true);
             claim.initial_ranges.clear();
-            out.push_back(std::move(claim));
+            out.storage.view.push_back(std::move(claim));
             return {};
         }, +[](const void*, std::string_view instance, std::span<const ResolvedResource> bindings,
             RenderGraphBuilder& b) noexcept -> RenderResult<void> {
@@ -457,7 +462,7 @@ static int lifetime()
     }
     negative::provided.clear();
     negative::required.clear();
-    CHECK(retained.external_bindings[0].storage.type.name() == "owned.dynamic.material.type");
+    CHECK(retained.external_bindings.global[0].storage.type.name() == "owned.dynamic.material.type");
     auto moved = std::move(retained);
     CHECK(analyze(moved.definition)->execution_order == moved.analysis.execution_order);
     const auto descriptions = fixture::descriptions.load();
@@ -523,6 +528,7 @@ static int concurrency()
 namespace dependency_test
 {
     thread_local unsigned mode = 0;
+    thread_local bool require_scene = false;
 
     RenderResult<void> first(const void*, std::string_view instance, std::span<const ResolvedResource>,
         RenderGraphBuilder& b) noexcept

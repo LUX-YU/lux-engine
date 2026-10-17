@@ -102,8 +102,8 @@ namespace batch_fixture
     static RenderResult<void> set(State& state, const SetValues::Request& request, Reply<SetValues>& context) noexcept
     {
         ++state.boundaries;
-        const bool invalid_scene = request.scene.index >= state.scenes.size() ||
-            state.scenes[request.scene.index].scene != request.scene;
+        const auto found = std::ranges::find(state.scenes, request.scene, &SceneData::scene);
+        const bool invalid_scene = found == state.scenes.end();
         if (invalid_scene) return cxx::unexpected(RenderError{kRuntimeIdentity});
         if (!request.revision || request.changes.size() > UINT32_MAX)
             return cxx::unexpected(RenderError{kProtocolContract});
@@ -120,7 +120,7 @@ namespace batch_fixture
         state.checked_entries.fetch_add(checked);
         // One whole-batch validation, then O(K) application. Repeated slots are
         // applied in order, so the last input wins without a deduplication map.
-        auto& scene = state.scenes[request.scene.index];
+        auto& scene = *found;
         for (const auto& entry : request.changes) scene.values[entry.slot] = {entry.value, request.revision};
         state.applied_entries.fetch_add(request.changes.size());
         return context.complete(SetValues::Response{request.revision, static_cast<std::uint32_t>(request.changes.size())});
@@ -128,17 +128,17 @@ namespace batch_fixture
 
     static RenderResult<void> read(State& state, const ReadValue::Request& request, Reply<ReadValue>& context) noexcept
     {
-        const bool invalid_scene = request.scene.index >= state.scenes.size() ||
-            state.scenes[request.scene.index].scene != request.scene;
+        const auto found = std::ranges::find(state.scenes, request.scene, &SceneData::scene);
+        const bool invalid_scene = found == state.scenes.end();
         if (invalid_scene) return cxx::unexpected(RenderError{kRuntimeIdentity});
         if (request.slot >= slots) return cxx::unexpected(RenderError{kProtocolContract});
-        auto response = state.scenes[request.scene.index].values[request.slot];
+        auto response = found->values[request.slot];
         return context.complete(response);
     }
 
     static const std::array commands{commandDescriptor<SetValues>(), commandDescriptor<ReadValue>()};
     static const FeatureDescriptor definition{FeatureName("test.batch.values"), {}};
-    static const FeatureGraphOps definition_graph{[](const void*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+    static const FeatureGraphOps definition_graph{[](const void*, std::string_view, ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 }
 
 namespace lux::render
@@ -252,9 +252,11 @@ static std::unique_ptr<RenderServer> create(batch_fixture::State& state, CpuFixt
 
 static void bindScene(batch_fixture::State& state, SceneId scene)
 {
-    CHECK(scene.index < state.scenes.size());
+    const auto empty = std::ranges::find_if(state.scenes, [](const auto& value) { return value.scene.isNull(); });
+    CHECK(empty != state.scenes.end());
+    // IDs come from the real stable Owner, not from this fixture array.
     // No handler can read this scene until the next release-published command.
-    state.scenes[scene.index].scene = scene;
+    empty->scene = scene;
 }
 
 int main()

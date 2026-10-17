@@ -24,6 +24,11 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<bool> completed() noexcept;
         [[nodiscard]] RenderResult<std::vector<std::byte>> readback(std::uint32_t resource = kGraphInvalidIndex) noexcept;
         [[nodiscard]] std::size_t readbackBytes() const noexcept { return bindings_[readback_].buffer->size(); }
+        [[nodiscard]] StorageSet& attachmentStorages() noexcept { return storages_; }
+        template <class Visitor> void forEachStorage(Visitor&& visitor) const noexcept
+        {
+            for (const auto& use : leases_) visitor(code_->resources()[use.resource].key, use.lease.id());
+        }
         // Compiled resource indices are trusted here; this is a Native diagnostic borrow.
         [[nodiscard]] VkBuffer nativeBuffer(std::uint32_t resource) const noexcept
         {
@@ -35,6 +40,7 @@ namespace lux::render::vulkan
         friend class DeviceSession;
         friend class ReadbackOperation;
         void cancelReadbacks() noexcept;
+        void withdraw() noexcept;
         ReadbackOperation* readbacks_ = nullptr;
         struct Binding final
         {
@@ -54,18 +60,18 @@ namespace lux::render::vulkan
         ExecutionContext(DeviceSession& owner, SubmissionQueue& queue, std::shared_ptr<const CompiledGraph> code, TargetDesc target) noexcept;
         DeviceSession* owner_;
         SubmissionQueue* queue_;
+        RetirementReservation retirement_;
         std::shared_ptr<const CompiledGraph> code_;
         TargetDesc target_;
         std::vector<Binding> bindings_;
         struct StorageUse final
         {
-            StorageId id;
+            StorageLease lease;
             PreparedStorageBinding binding;
-            bool created;
+            std::uint32_t resource;
         };
+        StorageSet storages_;
         std::vector<StorageUse> leases_;
-        ResourceDomain domain_;
-        bool published_ = false;
 
         std::vector<Pass> passes_;
         std::vector<VkBufferMemoryBarrier2> host_barriers_;

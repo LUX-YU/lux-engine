@@ -88,8 +88,8 @@ static rdesc::TextureInfo information(unsigned dimension, unsigned mips, bool bc
 static lux::render::vulkan::TextureStorage* textures(DeviceSession& session) noexcept
 {
     auto& registry = session.resources();
-    auto id = registry.find(registry.root(), "default", lux::render::TextureStorage::description);
-    return id ? static_cast<lux::render::vulkan::TextureStorage*>(registry.native(*id)) : nullptr;
+    auto id = session.globalStorages().find(registry.typeId(kTextureStorageType), "default");
+    return static_cast<lux::render::vulkan::TextureStorage*>(registry.native(id));
 }
 
 static RenderResult<void> configureTextures(DeviceSession& session, std::uint32_t capacity, std::uint64_t bytes) noexcept
@@ -99,7 +99,8 @@ static RenderResult<void> configureTextures(DeviceSession& session, std::uint32_
     if (!registry.factory(lux::render::TextureStorage::description.type))
         if (auto installed = registry.installFactory(textureStorageFactory(), config); !installed)
             return lux::cxx::unexpected(installed.error());
-    auto id = registry.getOrCreate(registry.root(), "default", lux::render::TextureStorage::description, &config);
+    auto id = session.globalStorages().prepare(registry.typeId(kTextureStorageType), "default",
+        *ConfigValue::make(config));
     if (!id) return lux::cxx::unexpected(id.error());
     return {};
 }

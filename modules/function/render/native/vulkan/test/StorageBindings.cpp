@@ -6,6 +6,22 @@
 #include "Allocation.hpp"
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 
+static bool hold_completion = false;
+static unsigned destroyed_buffers = 0;
+namespace lux::render::vulkan::test
+{
+    VkResult before(const char* operation) noexcept
+    {
+        if (hold_completion && std::string_view(operation) == "fence_status") return VK_NOT_READY;
+        return VK_SUCCESS;
+    }
+    VkResult after(const char*, VkResult result) noexcept { return result; }
+    void destroyed(const char* operation) noexcept
+    {
+        if (std::string_view(operation) == "buffer") ++destroyed_buffers;
+    }
+}
+
 static void execute(ExecutionContext& context, DeviceSession& session, unsigned expected)
 {
     CHECK(take(context.execute()));
@@ -29,20 +45,21 @@ int main()
     CHECK(session->configureUploads({65536, 2, 131072}, worker.cpu()));
     CHECK(configureTextures(*session, 16, 1024 * 1024));
     CHECK(session->resources().installFactory(extension_test::bufferFactory(), TestBufferStorage::Config{}));
-    auto instance_id = take(session->resources().getOrCreate(session->resources().root(), "values", TestBufferStorage::description, nullptr));
+    auto instance_id = take(session->globalStorages().prepare(
+        session->resources().typeId(TestBufferStorage::description.type), "values"));
     auto& buffer = *static_cast<NativeBuffer*>(session->resources().native(instance_id));
     const std::array<float, 4> half{0.5f, 0.5f, 0.5f, 0.5f};
     const auto half_bytes = std::as_bytes(std::span(half));
     const auto half_owner = std::make_shared<const std::vector<std::byte>>(half_bytes.begin(), half_bytes.end());
-    auto upload = take(lux::render::upload(buffer, extension_test::SetBuffer::Request{{}, payload(half_owner)}));
+    auto upload = take(lux::render::upload(buffer, extension_test::SetBuffer::Request{{instance_id, {}}, payload(half_owner)}));
     const auto id = upload.first.id;
     complete(upload.second, worker, *session);
     upload.second.reset();
-    CHECK(take(session->resources().tryGet<TestBufferStorage>(session->resources().root(), "values")).exists(id));
+    CHECK(take(session->resources().tryGet<TestBufferStorage>(instance_id)).exists(id));
     const auto white_owner = std::make_shared<const std::vector<std::byte>>(1024, std::byte{128});
     const auto& white = *white_owner;
     auto image = take(lux::render::upload(*textures(*session),
-        SetTexture::Request{{}, 0, information(16, 1, false), payload(white_owner)}));
+        SetTexture::Request{{textures(*session)->id(), {}}, 0, information(16, 1, false), payload(white_owner)}));
     const auto texture = image.first.texture;
     complete(image.second, worker, *session);
     image.second.reset();
@@ -55,7 +72,7 @@ int main()
     auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, programs, extension_test::target)));
     CHECK(session->resources().size() == count_before); // compiling cannot create physical scoped instances
     auto& arguments = contribution.arguments;
-    auto* context = take(session->prepare(code, extension_test::target, {}, arguments));
+    auto* context = take(session->prepare(code, extension_test::target, nullptr, nullptr, arguments));
     execute(*context, *session, 64);
     // Reflection mismatches are rejected, including type, layout, set and array extent.
     for (unsigned fault = 0; fault < 4; ++fault)
@@ -78,12 +95,12 @@ int main()
     complete(upload.second, worker, *session);
     upload.second.reset();
     CHECK(buffer.backingCount() == 2);
-    auto* replacement = take(session->prepare(code, extension_test::target, {}, arguments));
+    auto* replacement = take(session->prepare(code, extension_test::target, nullptr, nullptr, arguments));
     CHECK(&replacement->code() == &context->code()); // same immutable code, distinct prepared asset bindings
     execute(*context, *session, 64);
     execute(*replacement, *session, 32);
     CHECK(buffer.remove(id));
-    CHECK(!session->prepare(code, extension_test::target, {}, arguments));
+    CHECK(!session->prepare(code, extension_test::target, nullptr, nullptr, arguments));
     execute(*context, *session, 64);
     execute(*replacement, *session, 32);
     render_allocation::participate = true;
@@ -97,24 +114,39 @@ int main()
     }
     render_allocation::window = false;
     CHECK(render_allocation::calls == 0);
+    hold_completion = true;
+    CHECK(take(context->execute()));
+    CHECK(take(replacement->execute()));
+    const auto ticket = *replacement->lastUse();
+    const auto destroyed_before = destroyed_buffers;
+    render_allocation::calls = 0;
+    render_allocation::window = true;
     CHECK(session->release(context));
     CHECK(session->release(replacement));
+    CHECK(session->globalStorages().releasePrepared(instance_id));
+    render_allocation::window = false;
+    CHECK(render_allocation::calls == 0);
+    CHECK(!session->resources().native(instance_id));
+    CHECK(session->collect() && destroyed_buffers == destroyed_before);
+    CHECK(session->queue().completed() < ticket.serial());
+    hold_completion = false;
+    CHECK(take(session->queue().wait(ticket, UINT64_MAX)));
     CHECK(session->collect());
-    CHECK(buffer.backingCount() == 0);
+    CHECK(destroyed_buffers == destroyed_before + 4); // two professional versions + two Context readback buffers
     // Minimal indirect Material-like owner: a stored Texture reference survives both its creator
-    // and the Root domain. It is the sole future user, and keeps the backing through a REAL copy ticket.
+    // and its preload. It is the sole future user, and keeps the backing through a REAL copy ticket.
     auto& registry = session->resources();
-    auto texture_instance = take(registry.find(registry.root(), "default", lux::render::TextureStorage::description));
+    auto texture_instance = textures(*session)->id();
     auto* storage = textures(*session);
     auto* indirect = take(storage->acquire(texture));
-    registry.retain(texture_instance);
+    auto indirect_storage = take(registry.lease(texture_instance));
     CHECK(storage->release(texture, 1));
-    CHECK(registry.closeDomain(registry.root()));
+    CHECK(session->globalStorages().releasePrepared(texture_instance));
     CHECK(registry.native(texture_instance) == storage);
     const auto copied = read(*session, *indirect);
     CHECK(std::ranges::equal(copied, white));
     storage->releaseLease(*indirect); // read() waited the actual accepted copy ticket
-    registry.release(texture_instance);
+    indirect_storage.reset();
     CHECK(!registry.native(texture_instance));
     CHECK(session->drain());
     code.reset();

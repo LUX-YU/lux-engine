@@ -25,17 +25,21 @@ namespace native_fixture
         return {c.width, c.height, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     }
 
-    inline RenderResult<void> describe(const void* wire, std::string_view, std::vector<ResourceClaim>& claims) noexcept
+    inline RenderResult<void> describe(const void* wire, std::string_view, ResourceClaims& claims) noexcept
     {
         ++descriptions;
         const auto* c = static_cast<const Config*>(wire);
         if (c->graphics > 1 || c->scopes > 1) return cxx::unexpected(RenderError{kFeatureContract});
-        claims.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{c->width, c->height}});
+        claims.resources.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{c->width, c->height}});
         if (c->scopes)
-            for (unsigned i = 0; i < 4; ++i)
-                claims.push_back({"scope" + std::to_string(i), EResourceClaim::PROVIDE, GraphBufferDesc{16},
+        {
+            const std::array groups{&claims.storage.global, &claims.storage.scene,
+                &claims.storage.view, &claims.storage.attachment};
+            for (unsigned i = 0; i < groups.size(); ++i)
+                groups[i]->push_back({"scope" + std::to_string(i), EResourceClaim::PROVIDE, GraphBufferDesc{16},
                     EGraphOrigin::IMPORTED, {GraphBufferRange{0, 16}},
-                    StorageRequirement{StorageName("test.zero_buffer"), static_cast<EResourceScope>(i)}});
+                    StorageRequirement{StorageName("test.zero_buffer")}});
+        }
         return {};
     }
 

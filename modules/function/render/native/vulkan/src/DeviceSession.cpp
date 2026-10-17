@@ -1,4 +1,5 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include <algorithm>
 #include "SessionUploads.hpp"
@@ -8,12 +9,9 @@
 namespace lux::render::vulkan
 {
     DeviceSession::DeviceSession(VulkanDevice native, VulkanAllocator memory) noexcept
-        : device_(std::move(native)), allocator_(std::move(memory))
-    {
-        const std::uint32_t capabilities = (device_.textureDescriptors() ? 1u : 0u) |
-            (device_.textureCompressionBc() ? 2u : 0u);
-        resources_ = std::make_unique<ResourceRegistry>(this, capabilities);
-    }
+        : device_(std::move(native)), allocator_(std::move(memory)),
+          resources_(this, (device_.textureDescriptors() ? 1u : 0u) | (device_.textureCompressionBc() ? 2u : 0u)),
+          globals_(resources_) {}
 
     DeviceSession::~DeviceSession() noexcept
     {
@@ -21,12 +19,13 @@ namespace lux::render::vulkan
         const bool is_device_lost = !result && result.error().type == kNativeFailure &&
             result.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
         if (!result && !is_device_lost) std::terminate();
-        // Retired contexts still hold scoped leases, including the device-lost path.
-        for (auto& retirement : retirement_owners_) retirement.reset();
+        // Logical subscriptions/actual Sets end while Native retirement and Queue owners still exist.
         contexts_.clear();
+        globals_.clear();
         uploads_.reset();
-        if (resources_->valid(resources_->root())) (void)resources_->closeDomain(resources_->root());
-        resources_.reset();
+        for (auto& retirement : retirement_owners_) retirement.reset();
+        for (const auto& array : descriptor_arrays_) if (!array.expired()) std::terminate();
+        descriptor_arrays_.clear();
         while (!buffers_.empty()) destroyFinished(&*buffers_.begin());
         // Destroy aliases before allocations, including aliases not explicitly released by the caller.
         for (;;)
@@ -46,7 +45,7 @@ namespace lux::render::vulkan
         std::size_t retirement_capacity
     ) noexcept
     {
-        if (slots == 0 || retirement_capacity == 0) return cxx::unexpected(RenderError{kInvalidArgument});
+        if (slots == 0) return cxx::unexpected(RenderError{kInvalidArgument});
         auto device = VulkanDevice::create(instance, options);
         if (!device) return cxx::unexpected(device.error());
         auto allocator = VulkanAllocator::create(*device);
@@ -116,7 +115,6 @@ namespace lux::render::vulkan
             if (!retirement) continue;
             (void)retirement->collectReady();
         }
-        resources_->collect();
         if (failure) return cxx::unexpected(*failure);
         return {};
     }

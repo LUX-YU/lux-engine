@@ -13,7 +13,7 @@ namespace lux::render
 {
     class ResourceRegistry;
     struct TextureTag;
-    using TextureId = cxx::SlotKey<TextureTag>; // Server session-local; not an asset hash or descriptor index.
+    using TextureId = StorageResourceId<TextureTag>;
     inline constexpr StorageNameView kTextureStorageType("lux.render.TextureStorage");
 
     struct TexturePublished final
@@ -31,25 +31,30 @@ namespace lux::render
     template <> struct DataSchema<TextureBinding>
     {
         static inline constexpr DataField fields[]{
+            {"storage_index", cxx::EScalarKind::U32}, {"storage_generation", cxx::EScalarKind::U32},
             {"index", cxx::EScalarKind::U32}, {"generation", cxx::EScalarKind::U32}, {"lod", cxx::EScalarKind::U32}
         };
         static inline constexpr DataSchemaDescriptor schema{
-            DataTypeIdView("lux.render.TextureBinding"), {1, 0}, {1, 0}, fields, 12, 4
+            DataTypeIdView("lux.render.TextureBinding"), {2, 0}, {2, 0}, fields, 20, 4
         };
         static const DataSchemaDescriptor& describe() noexcept { return schema; }
-        static RenderResult<std::size_t> encodedSize(const TextureBinding&) noexcept { return 12; }
+        static RenderResult<std::size_t> encodedSize(const TextureBinding&) noexcept { return 20; }
         static RenderResult<void> encode(const TextureBinding& value, cxx::BinarySpanWriter& out) noexcept
         {
-            out.writeUnsigned(value.texture.index);
-            out.writeUnsigned(value.texture.gen);
+            out.writeUnsigned(value.texture.storage.index);
+            out.writeUnsigned(value.texture.storage.gen);
+            out.writeUnsigned(value.texture.local.index);
+            out.writeUnsigned(value.texture.local.gen);
             out.writeUnsigned(value.lod);
             return {};
         }
         static RenderResult<TextureBinding> decode(cxx::BinaryReader& in, EncodedDataView) noexcept
         {
             TextureBinding value;
-            in.readUnsigned(value.texture.index);
-            in.readUnsigned(value.texture.gen);
+            in.readUnsigned(value.texture.storage.index);
+            in.readUnsigned(value.texture.storage.gen);
+            in.readUnsigned(value.texture.local.index);
+            in.readUnsigned(value.texture.local.gen);
             in.readUnsigned(value.lod);
             return value;
         }
@@ -67,7 +72,7 @@ namespace lux::render
 
     struct TextureWrite final
     {
-        TextureId texture{}; // null creates; otherwise replace the named current revision
+        TextureId texture{}; // valid StorageId + null local key creates; otherwise replace that qualified resource
         std::uint64_t expected_revision = 0;
         rdesc::TextureInfo info;
         RenderPayload source;
@@ -123,8 +128,9 @@ namespace lux::render
 
     struct TextureStorageConfig final
     {
-        std::uint32_t capacity = 128;
-        std::uint64_t byte_limit = 256 * 1024 * 1024;
+        // Optional application residency budgets. Zero imposes no business limit; real device limits remain.
+        std::uint32_t resident_versions_budget = 0;
+        std::uint64_t resident_byte_budget = 0;
         bool operator==(const TextureStorageConfig&) const noexcept = default;
     };
 
@@ -153,7 +159,7 @@ namespace lux::render
 
             [[nodiscard]] RenderResult<void> release(TextureId id, std::uint64_t revision) const noexcept
             {
-                if (!writable_) return cxx::unexpected(RenderError{kStorageDomain});
+                if (!writable_) return cxx::unexpected(RenderError{kStorageIdentity});
                 return ops_->release(native_, id, revision);
             }
 

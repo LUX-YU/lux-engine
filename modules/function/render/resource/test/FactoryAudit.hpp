@@ -10,10 +10,10 @@ namespace lux::render::resource_detail
         static StorageFactory make(const StorageDescriptor* description, const void* ops,
             RenderResult<NativeStorage> (*create)(void*, StorageId, const void*) noexcept,
             bool (*compatible)(const void*, const void*) noexcept,
-            std::shared_ptr<const void> pin, const void* bindings, void (*collect)(void*) noexcept,
+            std::shared_ptr<const void> pin, const void* bindings,
             StorageCppType config_type, StorageCppType ops_type) noexcept
         {
-            return {description, ops, create, compatible, std::move(pin), bindings, collect, config_type, ops_type, {}};
+            return {description, ops, create, compatible, std::move(pin), bindings, config_type, ops_type, {}};
         }
     };
 }

@@ -24,10 +24,9 @@ namespace extension_test
             auto pending = context.defer();
             if (!pending) return lux::cxx::unexpected(pending.error());
             auto& registry = session.resources();
-            auto instance = registry.getOrCreate(registry.root(), "values", TestBufferStorage::description, nullptr);
-            if (!instance) return pending->fail(instance.error());
-            auto& storage = *static_cast<NativeBuffer*>(registry.native(*instance));
-            auto upload = lux::render::upload(storage, pending->request());
+            auto storage = registry.borrow<NativeBuffer>(pending->request().id.storage);
+            if (!storage) return pending->fail(storage.error());
+            auto upload = lux::render::upload(**storage, pending->request());
             if (!upload) return pending->fail(upload.error());
             return pending->completeWhen(vk::GpuWorkSender<BufferBinding>{
                 std::move(upload->first), std::move(upload->second)
@@ -39,9 +38,9 @@ namespace extension_test
         {
             auto& session = session_;
             auto& registry = session.resources();
-            auto id = registry.find(registry.root(), "values", TestBufferStorage::description);
-            if (!id) return lux::cxx::unexpected(id.error());
-            auto result = static_cast<NativeBuffer*>(registry.native(*id))->remove(input.id);
+            auto storage = registry.borrow<NativeBuffer>(input.id.storage);
+            if (!storage) return lux::cxx::unexpected(storage.error());
+            auto result = (*storage)->remove(input.id);
             return result ? context.complete(Ack{}) : result;
         }
 
@@ -53,12 +52,12 @@ namespace extension_test
             if (!pending) return lux::cxx::unexpected(pending.error());
             const auto& input = pending->request();
             auto& registry = session.resources();
-            auto id = registry.find(registry.root(), "values", TestBufferStorage::description);
-            if (!id) return pending->fail(id.error());
+            auto storage = registry.borrow<NativeBuffer>(input.id.storage);
+            if (!storage) return pending->fail(storage.error());
             struct Read final
             {
                 vk::DeviceSession& session;
-                StorageId storage;
+                StorageLease storage;
                 vk::PreparedStorageBinding source;
                 vk::BufferPermit buffer;
                 std::optional<vk::SubmissionTicket> ticket;
@@ -72,7 +71,7 @@ namespace extension_test
                         if (!result) std::terminate();
                     }
                     source.reference.reset();
-                    session.resources().release(storage);
+                    storage.reset();
                 }
 
                 vk::SubmissionQueue& queue() noexcept { return session.queue(); }
@@ -114,13 +113,14 @@ namespace extension_test
             auto payload = RenderPayload::fromVector(output, 0, output->size());
             if (!payload) return pending->fail(payload.error());
             ReadBuffer::Response response{std::move(*payload)};
-            registry.retain(*id);
-            auto owner = std::make_unique<Read>(session, *id, vk::PreparedStorageBinding{}, vk::BufferPermit{},
+            auto lease = registry.lease(input.id.storage);
+            if (!lease) return pending->fail(lease.error());
+            auto owner = std::make_unique<Read>(session, std::move(*lease), vk::PreparedStorageBinding{}, vk::BufferPermit{},
                 std::optional<vk::SubmissionTicket>{}, output);
             vk::NativeResourcePlan plan{"values", GraphBufferDesc{16}, EGraphOrigin::IMPORTED};
-            auto argument = encodeData(input, {}, {8, 0});
+            auto argument = encodeData(input, {}, {16, 0});
             if (!argument) return pending->fail(argument.error());
-            auto prepared = static_cast<NativeBuffer*>(registry.native(*id))->prepare(plan, argument->view(), owner->source);
+            auto prepared = (*storage)->prepare(plan, argument->view(), owner->source);
             if (!prepared) return pending->fail(prepared.error());
             auto buffer = session.createBuffer(16, VK_BUFFER_USAGE_TRANSFER_DST_BIT, vk::EMemoryAccess::READBACK);
             if (!buffer) return pending->fail(buffer.error());

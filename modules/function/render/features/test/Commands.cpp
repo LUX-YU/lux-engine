@@ -50,10 +50,10 @@ int main()
     region = {};
     CHECK(destroyed == 1);
 
-    TextureBinding binding{{3, 2}, 1};
-    auto encoded = encodeData(binding, {}, {12, 0});
+    TextureBinding binding{{{7, 4}, {3, 2}}, 1};
+    auto encoded = encodeData(binding, {}, {20, 0});
     CHECK(encoded);
-    auto decoded = decodeData<TextureBinding>({DataSchema<TextureBinding>::describe(), *encoded, {}}, {12, 0});
+    auto decoded = decodeData<TextureBinding>({DataSchema<TextureBinding>::describe(), *encoded, {}}, {20, 0});
     CHECK(decoded && decoded->texture == binding.texture && decoded->lod == binding.lod);
     auto config = ConfigValue::make(TextureStorage::Config{});
     CHECK(config && config->type() == lux::cxx::typeToken<TextureStorage::Config>());

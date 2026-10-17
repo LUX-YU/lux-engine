@@ -30,17 +30,17 @@ namespace texture_fixture
             lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     }
 
-    inline RenderResult<void> describe(const void* wire, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    inline RenderResult<void> describe(const void* wire, std::string_view, ResourceClaims& out) noexcept
     {
         const auto* c = static_cast<const Config*>(wire);
         const bool is_invalid = !c->width || !c->height || !c->mips || c->mips > 16 || c->lod >= c->mips;
         if (is_invalid) return cxx::unexpected(RenderError{kFeatureContract});
-        out.push_back({"texture", EResourceClaim::PROVIDE,
+        out.storage.global.push_back({"texture", EResourceClaim::PROVIDE,
             GraphImageDesc{c->width, c->height, c->mips, 1, c->format}, EGraphOrigin::IMPORTED,
             {GraphImageRange{1, 0, c->mips, 0, 1}},
-            StorageRequirement{StorageName(kTextureStorageType.name()), EResourceScope::GLOBAL, "default"}});
+            StorageRequirement{StorageName(kTextureStorageType.name()), "default"}});
         const auto t = target(*c);
-        out.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{t.width, t.height}});
+        out.resources.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{t.width, t.height}});
         return {};
     }
 
@@ -81,7 +81,7 @@ namespace texture_fixture
 
     inline std::vector<StorageArgument> arguments(Config c)
     {
-        return {{"shared:texture", *encodeData(TextureBinding{c.texture, c.lod}, {}, {12, 0})}};
+        return {{"shared:texture", *encodeData(TextureBinding{c.texture, c.lod}, {}, {20, 0})}};
     }
 
     inline RenderResult<FeatureAssembly> assemble(Config c)

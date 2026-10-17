@@ -21,7 +21,7 @@ namespace lux::render::vulkan
 
     CompiledGraph::CompiledGraph(CompiledGraph&& other) noexcept
         : device_(std::exchange(other.device_, VK_NULL_HANDLE)), target_(other.target_), layout_(other.layout_),
-          resources_(std::move(other.resources_)), passes_(std::move(other.passes_)),
+          resources_(std::move(other.resources_)), storage_groups_(std::move(other.storage_groups_)), passes_(std::move(other.passes_)),
           host_barriers_(std::move(other.host_barriers_)), shader_identities_(std::move(other.shader_identities_)),
           pipelines_(std::move(other.pipelines_)), descriptor_layouts_(std::move(other.descriptor_layouts_)),
           output_(other.output_)
@@ -77,7 +77,7 @@ namespace lux::render::vulkan
         const DeviceSession& session,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
-        std::span<const GraphStorageBinding> external_bindings,
+        const GraphStorageBindings& external_bindings,
         std::span<const PassProgram> programs,
         const TargetDesc& target
     ) noexcept
@@ -107,18 +107,28 @@ namespace lux::render::vulkan
             }
             result.resources_.push_back({resource.key, resource.description, resource.origin});
         }
-        for (const auto& binding : external_bindings)
-        {
-            if (binding.resource.index >= result.resources_.size())
-                return cxx::unexpected(RenderError{kInvalidArgument});
-            auto& resource = result.resources_[binding.resource.index];
-            if (resource.storage) return cxx::unexpected(RenderError{kInvalidArgument});
-            const auto* factory = session.resources().factory(binding.storage.type.view());
-            if (!factory || !factory->binding_ops ||
-                !static_cast<const StorageBindingOps*>(factory->binding_ops)->prepare)
-                return cxx::unexpected(RenderError{kStorageFactory});
-            resource.storage = binding.storage;
-        }
+        const auto install = [&](std::span<const GraphStorageBinding> source,
+            std::vector<std::uint32_t>& indices) -> RenderResult<void> {
+            for (const auto& binding : source)
+            {
+                if (binding.resource.index >= result.resources_.size())
+                    return cxx::unexpected(RenderError{kInvalidArgument});
+                auto& resource = result.resources_[binding.resource.index];
+                if (resource.storage) return cxx::unexpected(RenderError{kInvalidArgument});
+                const auto* factory = session.resources().factory(binding.storage.type.view());
+                if (!factory || !factory->binding_ops ||
+                    !static_cast<const StorageBindingOps*>(factory->binding_ops)->prepare)
+                    return cxx::unexpected(RenderError{kStorageFactory});
+                resource.storage = binding.storage;
+                indices.push_back(binding.resource.index);
+            }
+            return {};
+        };
+        if (auto r = install(external_bindings.global, result.storage_groups_.global); !r) return cxx::unexpected(r.error());
+        if (auto r = install(external_bindings.scene, result.storage_groups_.scene); !r) return cxx::unexpected(r.error());
+        if (auto r = install(external_bindings.view, result.storage_groups_.view); !r) return cxx::unexpected(r.error());
+        if (auto r = install(external_bindings.attachment, result.storage_groups_.attachment); !r)
+            return cxx::unexpected(r.error());
         for (const auto& output : graph.outputs())
         {
             auto& plan = result.resources_[output.version.resource.index];
@@ -169,9 +179,10 @@ namespace lux::render::vulkan
             if (!provider) return cxx::unexpected(RenderError{kStorageContract});
             const auto& ops = *static_cast<const StorageBindingOps*>(provider->binding_ops);
             if (!contract.count && !ops.descriptor_count) return cxx::unexpected(RenderError{kStorageFactory});
-            const auto count = contract.count ? contract.count : ops.descriptor_count(
-                session.resources().configuration(provider->description->type));
-            auto layout = createDescriptorLayout(device, std::span(&contract, 1), count, "shader_layout");
+            RenderResult<std::uint32_t> count{contract.count};
+            if (!contract.count) count = ops.descriptor_count(session, session.resources().configuration(provider->description->type));
+            if (!count) return cxx::unexpected(count.error());
+            auto layout = createDescriptorLayout(device, std::span(&contract, 1), *count, "shader_layout");
             if (!layout) return cxx::unexpected(layout.error());
             result.descriptor_layouts_.push_back(*layout);
         }

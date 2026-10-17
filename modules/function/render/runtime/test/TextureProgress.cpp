@@ -71,7 +71,7 @@ static RenderResult<void> ready(Pin&, Transfer& upload, DeviceSession& session) 
 static const auto operation = commandDescriptor<TextureProbe>();
 static const std::array texture_operations{operation};
 static const FeatureDescriptor definition{FeatureName("test.texture.progress"), {}};
-static const FeatureGraphOps definition_graph{[](const void*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+static const FeatureGraphOps definition_graph{[](const void*, std::string_view, ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 
 static RenderResult<void> invoke(DeviceSession& session, const TextureProbe::Request&, Reply<TextureProbe>& context) noexcept
 {
@@ -219,11 +219,12 @@ static void productionShutdownAndLoss()
         auto client = take(RenderClient::create(config.channel_name));
         CHECK(wait(*client, take(client->hello())).header.outcome == ECommandOutcome::SUCCESS);
         CHECK(runtime_test::refresh(*client));
+        const auto storage = take(runtime_test::prepareStorage(*client, kTextureStorageType.name(), "default"));
         auto bound = take(client->bind<SetTexture>());
         auto source = asset(2048);
         const auto* address = source->data();
         const auto capacity = source->capacity();
-        SetTexture::Request input{{}, 0, information(2048, 1, false),
+        SetTexture::Request input{{storage, {}}, 0, information(2048, 1, false),
             take(RenderPayload::fromVector(source, 0, source->size()))};
         const auto before = submitted.load();
         if (lost)

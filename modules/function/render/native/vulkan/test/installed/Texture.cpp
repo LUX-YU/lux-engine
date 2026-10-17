@@ -15,7 +15,7 @@ int main()
     CHECK(session->configureUploads({1024 * 1024, 1, 1024 * 1024}, host.cpu()));
     CHECK(configureTextures(*session, 16, 1024 * 1024));
     auto input = std::make_shared<const std::vector<std::byte>>(1024, std::byte{73});
-    const SetTexture::Request request{{}, 0, information(16, 1, false), payload(input)};
+    const SetTexture::Request request{{textures(*session)->id(), {}}, 0, information(16, 1, false), payload(input)};
     auto upload = take(lux::render::upload(*textures(*session), request));
     const auto texture = upload.first;
     complete(upload.second, host, *session); upload.second.reset();
@@ -23,7 +23,7 @@ int main()
     auto assembly = take(texture_fixture::assemble(config));
     auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
         texture_fixture::programs(config), texture_fixture::target(config))));
-    auto* context = take(session->prepare(code, texture_fixture::target(config), {}, texture_fixture::arguments(config)));
+    auto* context = take(session->prepare(code, texture_fixture::target(config), nullptr, nullptr, texture_fixture::arguments(config)));
     CHECK(take(context->execute()));
     CHECK(take(session->queue().wait(*context->lastUse(), UINT64_MAX)));
     CHECK(take(context->readback()) == *input);

@@ -7,60 +7,57 @@ namespace lux::render::vulkan
 {
     ExecutionContext::ExecutionContext(DeviceSession& owner, SubmissionQueue& queue,
         std::shared_ptr<const CompiledGraph> code, TargetDesc target) noexcept
-        : owner_(&owner), queue_(&queue), code_(std::move(code)), target_(target), bindings_(code_->resources().size())
+        : owner_(&owner), queue_(&queue), code_(std::move(code)), target_(target),
+          bindings_(code_->resources().size()), storages_(owner.resources())
     {
         leases_.reserve(bindings_.size());
     }
 
     ExecutionContext::~ExecutionContext() noexcept
     {
-        cancelReadbacks();
+        withdraw();
         for (auto& binding : bindings_)
         {
             if (binding.view) LUX_DESTROY("image_view", vkDestroyImageView(device(), binding.view, nullptr));
             if (binding.image) owner_->destroyFinished(binding.image);
             if (binding.owned_buffer) owner_->destroyFinished(binding.owned_buffer);
         }
-        for (auto& lease : leases_)
-        {
-            lease.binding.reference.reset();
-            owner_->resources().release(lease.id);
-        }
-        if (owner_->resources().valid(domain_)) (void)owner_->resources().closeDomain(domain_);
-        if (!published_)
-            for (const auto& lease : leases_)
-                if (lease.created && owner_->resources().native(lease.id)) owner_->resources().rollback(lease.id);
+    }
+
+    void ExecutionContext::withdraw() noexcept
+    {
+        cancelReadbacks();
+        // All future-use subscriptions end while the actual Storage owners still exist. Physical
+        // backing retirement is the professional Native object's responsibility, using submitted LastUse.
+        for (auto& use : leases_) use.binding.reference.reset();
+        leases_.clear();
+        storages_.clear();
     }
 
     RenderResult<ExecutionContext*> DeviceSession::prepare(std::shared_ptr<const CompiledGraph> code,
-        const TargetDesc& target, const ResourceDomain& view, std::span<const StorageArgument> arguments) noexcept
+        const TargetDesc& target, StorageSet* scene, StorageSet* view,
+        std::span<const StorageArgument> arguments) noexcept
     {
         const auto max_extent = device_.properties().limits.maxImageDimension2D;
         const bool invalid = !code || code->device() != device_.native() || !code->compatible(target) ||
             target.width == 0 || target.height == 0 || target.width > max_extent || target.height > max_extent;
         if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
-        if (!view.id().isNull() && !resources_->valid(view)) return cxx::unexpected(RenderError{kStorageDomain});
+        const bool is_wrong_owner = (scene && &scene->registry() != &resources_) ||
+            (view && &view->registry() != &resources_);
+        if (is_wrong_owner) return cxx::unexpected(RenderError{kStorageIdentity});
+        auto reservation = retirement().reserve();
+        if (!reservation) return cxx::unexpected(reservation.error());
         auto context = std::unique_ptr<ExecutionContext>(new ExecutionContext(*this, queue(), std::move(code), target));
-        if (resources_->valid(view))
-        {
-            auto domain = resources_->createDomain(view, EResourceScope::ATTACHMENT);
-            if (!domain) return cxx::unexpected(domain.error());
-            context->domain_ = std::move(*domain);
-        }
+        context->retirement_ = std::move(*reservation);
         std::vector<PreparedStorageBinding*> prepared_bindings(context->bindings_.size());
-        for (std::uint32_t i = 0; i < context->bindings_.size(); ++i)
-        {
-            auto& binding = context->bindings_[i];
-            const auto& plan = context->code_->resources()[i];
-            if (!plan.image_usage && !plan.buffer_usage) continue; // G4-pruned resources allocate nothing
-            if (plan.storage)
+        const auto prepareGroup = [&](std::span<const std::uint32_t> indices, StorageSet* set) -> RenderResult<void> {
+            for (auto i : indices)
             {
-                const auto* factory = resources_->factory(plan.storage->type.view());
-                // Compiler already proved the installed typed Factory and binding contract.
-                auto domain = plan.storage->scope == EResourceScope::GLOBAL ?
-                    RenderResult<ResourceDomain>{resources_->root()} :
-                    resources_->ancestor(context->domain_, plan.storage->scope);
-                if (!domain) return cxx::unexpected(domain.error());
+                const auto& plan = context->code_->resources()[i];
+                if (!plan.image_usage && !plan.buffer_usage) continue;
+                if (!set) return cxx::unexpected(RenderError{kStorageIdentity});
+                auto& binding = context->bindings_[i];
+                const auto* factory = resources_.factory(plan.storage->type.view());
                 const auto key = plan.storage->key.empty() ? plan.key : plan.storage->key;
                 const auto argument = std::ranges::find(arguments, plan.key, &StorageArgument::resource_key);
                 const auto bytes = argument == arguments.end() ? std::span<const std::byte>{} : argument->bytes.view();
@@ -71,18 +68,28 @@ namespace lux::render::vulkan
                         return cxx::unexpected(valid.error());
                 }
                 else if (!bytes.empty()) return cxx::unexpected(RenderError{kStorageContract});
-                const auto previous = resources_->find(*domain, key, *factory->description);
-                auto instance = resources_->getOrCreate(*domain, key, *factory->description, nullptr);
+                auto instance = set->acquire(resources_.typeId(plan.storage->type.view()), key);
                 if (!instance) return cxx::unexpected(instance.error());
-                resources_->retain(*instance);
-                auto& lease = context->leases_.emplace_back(*instance, PreparedStorageBinding{}, !previous);
+                const auto id = instance->id();
+                auto& lease = context->leases_.emplace_back(std::move(*instance), PreparedStorageBinding{}, i);
                 const auto& ops = *static_cast<const StorageBindingOps*>(factory->binding_ops);
-                if (auto prepared = ops.prepare(resources_->native(*instance), plan, bytes, lease.binding); !prepared)
+                if (auto prepared = ops.prepare(resources_.native(id), plan, bytes, lease.binding); !prepared)
                     return cxx::unexpected(prepared.error());
                 binding.buffer = lease.binding.buffer;
                 prepared_bindings[i] = &lease.binding;
-                continue;
             }
+            return {};
+        };
+        const auto& groups = context->code_->storageGroups();
+        if (auto r = prepareGroup(groups.global, &globals_); !r) return cxx::unexpected(r.error());
+        if (auto r = prepareGroup(groups.scene, scene); !r) return cxx::unexpected(r.error());
+        if (auto r = prepareGroup(groups.view, view); !r) return cxx::unexpected(r.error());
+        if (auto r = prepareGroup(groups.attachment, &context->storages_); !r) return cxx::unexpected(r.error());
+        for (std::uint32_t i = 0; i < context->bindings_.size(); ++i)
+        {
+            auto& binding = context->bindings_[i];
+            const auto& plan = context->code_->resources()[i];
+            if ((!plan.image_usage && !plan.buffer_usage) || plan.storage) continue;
             if (const auto* image = std::get_if<GraphImageDesc>(&plan.description))
             {
                 const VkExtent2D extent{plan.target_sized ? target.width : image->width,
@@ -152,7 +159,6 @@ namespace lux::render::vulkan
             native.buffer = context->bindings_[barrier.resource].buffer->native();
             context->host_barriers_.push_back(native);
         }
-        context->published_ = true;
         auto* result = context.get();
         contexts_.push_back(std::move(context));
         return result;
@@ -166,10 +172,12 @@ namespace lux::render::vulkan
         if (found == contexts_.end()) return cxx::unexpected(RenderError{kWrongOwner});
         if (auto ticket = context->lastUse(); ticket && queue().completed() < ticket->serial())
         {
-            if (auto result = retirement().retire(*ticket, std::move(*found)); !result) return result;
+            SubmissionRequirements requirements;
+            requirements.merge(*ticket);
+            if (auto result = retirement().retire(context->retirement_, requirements, *found); !result) return result;
         }
-        // Retirement admission must succeed before detaching the logical readback uses.
-        context->cancelReadbacks();
+        // The retirement record was reserved before Context publication; no release-time capacity allocation.
+        context->withdraw();
         contexts_.erase(found);
         return {};
     }

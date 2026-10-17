@@ -34,7 +34,7 @@ namespace fixture
     inline ResourceClaim material(EResourceClaim participation)
     {
         return {"material", participation, GraphBufferDesc{256}, EGraphOrigin::IMPORTED, {{}},
-            StorageRequirement{StorageName("test.MaterialStorage"), EResourceScope::GLOBAL}};
+            StorageRequirement{StorageName("test.MaterialStorage")}};
     }
 
     inline ResourceClaim history(std::string key, EResourceClaim participation, bool previous)
@@ -42,24 +42,28 @@ namespace fixture
         auto c = image(std::move(key), participation);
         c.origin = previous ? EGraphOrigin::HISTORY_PREVIOUS : EGraphOrigin::HISTORY_CURRENT;
         if (previous) c.initial_ranges.push_back({});
-        c.storage = StorageRequirement{StorageName("test.HzbStorage"), EResourceScope::VIEW};
+        c.storage = StorageRequirement{StorageName("test.HzbStorage")};
         return c;
     }
 
     template <ERole R>
-    RenderResult<void> describe(const void*, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    RenderResult<void> describe(const void*, std::string_view, ResourceClaims& out) noexcept
     {
         ++descriptions;
         using enum EResourceClaim;
-        if constexpr (R == ERole::GEOMETRY) out = {image("gbuffer", PROVIDE)};
+        if constexpr (R == ERole::GEOMETRY) out.resources = {image("gbuffer", PROVIDE)};
         if constexpr (R == ERole::LIGHTING || R == ERole::ALTERNATE)
-            out = {image("gbuffer", REQUIRE), image("hdr", PROVIDE)};
-        if constexpr (R == ERole::TONEMAP) out = {image("hdr", REQUIRE), image("color", PROVIDE)};
-        if constexpr (R == ERole::HISTORY) out = {history("hzb.previous", PROVIDE, true)};
+            out.resources = {image("gbuffer", REQUIRE), image("hdr", PROVIDE)};
+        if constexpr (R == ERole::TONEMAP) out.resources = {image("hdr", REQUIRE), image("color", PROVIDE)};
+        if constexpr (R == ERole::HISTORY) out.storage.view = {history("hzb.previous", PROVIDE, true)};
         if constexpr (R == ERole::CULL)
-            out = {history("hzb.previous", REQUIRE, true), history("hzb.current", PROVIDE, false)};
-        if constexpr (R == ERole::MATERIAL) out = {material(PROVIDE)};
-        if constexpr (R == ERole::MESH) out = {material(REQUIRE), image("color", PROVIDE)};
+            out.storage.view = {history("hzb.previous", REQUIRE, true), history("hzb.current", PROVIDE, false)};
+        if constexpr (R == ERole::MATERIAL) out.storage.global = {material(PROVIDE)};
+        if constexpr (R == ERole::MESH)
+        {
+            out.storage.global = {material(REQUIRE)};
+            out.resources = {image("color", PROVIDE)};
+        }
         return {};
     }
 

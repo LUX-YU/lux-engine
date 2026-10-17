@@ -16,12 +16,13 @@ namespace buffer_fixture
         native::DeviceSession& device;
         Config config;
         native::BufferPermit permit;
+        native::RetirementReservation retirement;
         native::SubmissionRequirements last_use;
 
         ~Native() noexcept
         {
             if (!device.borrow(permit)) return;
-            const auto result = last_use.empty() ? device.destroyUnsubmitted(permit) : device.releaseCompleted(permit, last_use);
+            const auto result = last_use.empty() ? device.destroyUnsubmitted(permit) : device.retirement().retire(retirement, last_use, permit);
             if (!result) std::terminate();
         }
     };
@@ -51,7 +52,10 @@ namespace buffer_fixture
         };
         static const auto create = +[](native::DeviceSession& session, StorageId, const Config& value) noexcept
             -> RenderResult<std::unique_ptr<Native>> {
+            auto reservation = session.retirement().reserve();
+            if (!reservation) return lux::cxx::unexpected(reservation.error());
             auto candidate = std::make_unique<Native>(session, value);
+            candidate->retirement = std::move(*reservation);
             auto buffer = session.createBuffer(value.size,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, native::EMemoryAccess::UPLOAD);
             if (!buffer) return lux::cxx::unexpected(buffer.error());

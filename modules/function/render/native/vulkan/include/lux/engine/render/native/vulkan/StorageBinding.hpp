@@ -7,6 +7,7 @@
 namespace lux::render::vulkan
 {
     struct NativeResourcePlan;
+    class DeviceSession;
 
     // Stable Context-owned binding. The professional reference protects future uses; its last-use
     // field is written directly after submit. No Storage lookup or dynamic dispatch occurs per draw.
@@ -24,6 +25,6 @@ namespace lux::render::vulkan
     {
         RenderResult<void> (*prepare)(void*, const NativeResourcePlan&, std::span<const std::byte>,
             PreparedStorageBinding&) noexcept;
-        std::uint32_t (*descriptor_count)(const void* configuration) noexcept = nullptr;
+        RenderResult<std::uint32_t> (*descriptor_count)(const DeviceSession&, const void* configuration) noexcept = nullptr;
     };
 }

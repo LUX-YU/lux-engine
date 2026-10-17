@@ -46,11 +46,11 @@ int main()
             CHECK(!compileGraph(*session, assembly.definition, assembly.analysis, assembly.external_bindings,
                 unknown, native_fixture::target(config)));
             auto bindings = assembly.external_bindings;
-            bindings.front().resource.index = UINT32_MAX;
+            bindings.global.front().resource.index = UINT32_MAX;
             CHECK(!compileGraph(*session, assembly.definition, assembly.analysis, bindings,
                 programs, native_fixture::target(config)));
             bindings = assembly.external_bindings;
-            bindings.push_back(bindings.front());
+            bindings.global.push_back(bindings.global.front());
             CHECK(!compileGraph(*session, assembly.definition, assembly.analysis, bindings,
                 programs, native_fixture::target(config)));
             auto missing = programs;

@@ -27,11 +27,10 @@ namespace lux::render::vulkan
     {
         auto pending = reply.defer(sizeof(SetTexture::Response));
         if (!pending) return cxx::unexpected(pending.error());
-        auto& resources = device_.resources();
-        auto instance = resources.getOrCreate(resources.root(), "default", render::TextureStorage::description, nullptr);
-        if (!instance) return pending->fail(instance.error());
-        auto& storage = *static_cast<vulkan::TextureStorage*>(resources.native(*instance));
-        return upload(storage, std::move(*pending));
+        const auto id = pending->request().texture.storage;
+        auto storage = device_.resources().borrow<vulkan::TextureStorage>(id);
+        if (!storage) return pending->fail(storage.error());
+        return upload(**storage, std::move(*pending));
     }
 
     RenderResult<void> TextureCommands::region(const SetTextureRegion::Request&,
@@ -39,29 +38,24 @@ namespace lux::render::vulkan
     {
         auto pending = reply.defer(sizeof(SetTextureRegion::Response));
         if (!pending) return cxx::unexpected(pending.error());
-        auto& registry = device_.resources();
-        auto id = registry.find(registry.root(), "default", render::TextureStorage::description);
-        auto* storage = id ? static_cast<vulkan::TextureStorage*>(registry.native(*id)) : nullptr;
-        if (!storage) return pending->fail(RenderError{vulkan::kUnsupported});
-        return upload(*storage, std::move(*pending));
+        auto storage = device_.resources().borrow<vulkan::TextureStorage>(pending->request().texture.storage);
+        if (!storage) return pending->fail(storage.error());
+        return upload(**storage, std::move(*pending));
     }
 
     RenderResult<void> TextureCommands::release(const ReleaseTexture::Request& input,
         Reply<ReleaseTexture>& context) noexcept
     {
-        auto& registry = device_.resources();
-        auto id = registry.find(registry.root(), "default", render::TextureStorage::description);
-        auto* storage = id ? static_cast<vulkan::TextureStorage*>(registry.native(*id)) : nullptr;
-        if (!storage) return cxx::unexpected(RenderError{vulkan::kUnsupported});
-        if (auto result = storage->release(input.texture, input.revision); !result) return result;
+        auto storage = device_.resources().borrow<vulkan::TextureStorage>(input.texture.storage);
+        if (!storage) return cxx::unexpected(storage.error());
+        if (auto result = (*storage)->release(input.texture, input.revision); !result) return result;
         return context.complete(Ack{});
     }
 
     RenderResult<void> TextureCommands::query(const QueryTexture::Request& input,
         Reply<QueryTexture>& context) noexcept
     {
-        auto& registry = device_.resources();
-        auto storage = registry.tryGet<render::TextureStorage>(registry.root(), "default");
+        auto storage = device_.resources().tryGet<render::TextureStorage>(input.storage);
         if (!storage) return cxx::unexpected(storage.error());
         auto result = storage->query(input);
         if (!result) return cxx::unexpected(result.error());

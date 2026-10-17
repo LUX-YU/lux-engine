@@ -144,7 +144,7 @@ extern "C" __declspec(dllexport) void makeAsyncTailFeature(
     using namespace lux::render;
     static const FeatureDescriptor definition{FeatureName("test.async.dll_callback_tail.feature"), {}};
     static const FeatureGraphOps graph{[](const void*, std::string_view,
-        std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+        ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
     output = server.registerFeature<async_tail_test::Command>(
         feature_test::Provider<async_tail_test::TailCommands>{{&definition, &graph, nullptr}}, "", pin, host);
 }

@@ -125,7 +125,7 @@ static const std::array descriptors{
     commandDescriptor<SetExposure>(), commandDescriptor<AcceptCustomData>(), commandDescriptor<InvalidReply>()
 };
 static const FeatureDescriptor feature{FeatureName("test.open.operation"), {}};
-static const FeatureGraphOps feature_graph{[](const void*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+static const FeatureGraphOps feature_graph{[](const void*, std::string_view, ResourceClaims&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 static_assert(!std::is_default_constructible_v<BoundCommand<SetExposure>>);
 static_assert(std::same_as<decltype(std::declval<const BoundCommand<SetExposure>&>().command()), CommandId>);
 template <class T>

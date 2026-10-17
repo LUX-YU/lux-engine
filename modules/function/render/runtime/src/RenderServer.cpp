@@ -30,6 +30,9 @@ namespace lux::render
         addBuiltin<QueryRenderStats, &Impl::queryRenderStats>();
         addBuiltin<ListFeatures, &Impl::listFeatures>();
         addBuiltin<ListStorages, &Impl::listStorages>();
+        addBuiltin<FindStorage, &Impl::findStorage>();
+        addBuiltin<PrepareStorage, &Impl::prepareStorage>();
+        addBuiltin<ReleasePreparedStorage, &Impl::releasePreparedStorage>();
         addBuiltin<ListCommands, &Impl::listCommands>();
         addBuiltin<ListCommandBindings, &Impl::listCommandBindings>();
         addBuiltin<SelectCommandBinding, &Impl::selectCommandBinding>();
@@ -92,7 +95,7 @@ namespace lux::render
             config.requests_per_tick == 0 || config.requests_per_tick > 128 || config.max_config_bytes == 0 ||
             config.max_reply_bytes < sizeof(RenderError) ||
             config.max_reply_bytes > 256 * 1024 * 1024 || config.completion_capacity == 0 ||
-            config.completion_capacity > 128 || config.retirement_capacity == 0 || config.compile_capacity == 0 ||
+            config.completion_capacity > 128 || config.compile_capacity == 0 ||
             config.compile_capacity > 8 || invalid_pending_capacity;
         if (invalid) return cxx::unexpected(RenderError{kRuntimeCapacity});
         SessionIdentity identity{};

@@ -2,11 +2,13 @@
 
 #include <lux/engine/render/resource/Texture.hpp>
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
+#include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/Upload.hpp>
 #include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
+#include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
 
 namespace lux::render::vulkan
 {
@@ -19,21 +21,26 @@ namespace lux::render::vulkan
 
     class TextureStorage final
     {
+        struct Physical;
+        struct RetiredBacking;
         class Backing final
         {
         public:
-            Backing() noexcept = default;
+            Backing() noexcept;
+            ~Backing() noexcept;
             Backing(const Backing&) = delete;
             Backing& operator=(const Backing&) = delete;
             [[nodiscard]] const rdesc::TextureInfo& info() const noexcept { return info_; }
-            [[nodiscard]] std::uint32_t descriptorIndex() const noexcept { return key_.index; }
+            [[nodiscard]] std::uint32_t descriptorIndex() const noexcept { return descriptor_.index; }
             [[nodiscard]] const ImageAllocation& image() const noexcept { return *image_; }
             [[nodiscard]] std::uint64_t revision() const noexcept { return revision_; }
         private:
             friend class TextureStorage;
+            friend struct Physical;
             friend class DeviceSession;
             friend class ExecutionContext;
             cxx::SlotKey<TextureDescriptorTag> key_;
+            DescriptorArray::Slot descriptor_;
             rdesc::TextureInfo info_{};
             ImagePermit permit_;
             const ImageAllocation* image_ = nullptr;
@@ -43,6 +50,8 @@ namespace lux::render::vulkan
             std::uint64_t bytes_ = 0, revision_ = 0;
             std::uint32_t leases_ = 0;
             bool live_ = false, reserved_ = true;
+            RetirementReservation retirement_;
+            std::unique_ptr<RetiredBacking> retired_;
         };
 
     public:
@@ -50,21 +59,22 @@ namespace lux::render::vulkan
         create(DeviceSession& session, StorageId id, const TextureStorageConfig& config) noexcept;
         [[nodiscard]] bool compatibleConfig(const TextureStorageConfig& config) const noexcept
         {
-            return capacity_ == config.capacity && byte_limit_ == config.byte_limit;
+            return config_ == config;
         }
 
+        [[nodiscard]] StorageId id() const noexcept { return id_; }
         ~TextureStorage() noexcept;
         TextureStorage(const TextureStorage&) = delete;
         TextureStorage& operator=(const TextureStorage&) = delete;
         [[nodiscard]] RenderResult<void> release(TextureId, std::uint64_t expected_revision) noexcept;
         [[nodiscard]] RenderResult<Backing*> acquire(TextureId) noexcept;
-        void releaseLease(Backing& version) noexcept { --version.leases_; }
+        void releaseLease(Backing& version) noexcept;
         [[nodiscard]] const Backing* find(TextureId) const noexcept;
-        [[nodiscard]] VkDescriptorSetLayout layout() const noexcept { return layout_; }
-        [[nodiscard]] VkDescriptorSet descriptors() const noexcept { return descriptors_; }
-        [[nodiscard]] std::size_t residentVersions() const noexcept { return versions_.size(); }
-        [[nodiscard]] std::uint64_t residentBytes() const noexcept { return resident_bytes_; }
-        [[nodiscard]] std::uint64_t residentPeak() const noexcept { return resident_peak_; }
+        [[nodiscard]] VkDescriptorSetLayout layout() const noexcept;
+        [[nodiscard]] VkDescriptorSet descriptors() const noexcept;
+        [[nodiscard]] std::size_t residentVersions() const noexcept;
+        [[nodiscard]] std::uint64_t residentBytes() const noexcept;
+        [[nodiscard]] std::uint64_t residentPeak() const noexcept;
     private:
         friend class DeviceSession;
         friend StorageFactory textureStorageFactory() noexcept;
@@ -82,21 +92,17 @@ namespace lux::render::vulkan
         RenderResult<void> prepare(const NativeResourcePlan&, std::span<const std::byte>, PreparedStorageBinding&) noexcept;
         std::vector<Use*> uses_; // non-owning subscriptions, changed only at Attach/publication/detach
         struct Record final { Backing* current = nullptr; bool updating = false; };
-        TextureStorage(DeviceSession& session, StorageId id, std::size_t capacity, std::uint64_t bytes) noexcept;
+        TextureStorage(DeviceSession& session, StorageId id, TextureStorageConfig config) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         void rollback(Candidate&) noexcept;
         void publish(Candidate&, Transfer&) noexcept;
-        void collect() noexcept;
+        void retireUnused(Backing&) noexcept;
         void destroy(Backing&) noexcept;
         DeviceSession& session_;
         StorageId id_;
         cxx::SlotMap<Record, TextureTag> textures_;
-        cxx::StableSlotMap<Backing, TextureDescriptorTag, cxx::NoAux, 16> versions_;
-        VkDescriptorSetLayout layout_ = VK_NULL_HANDLE;
-        VkDescriptorPool pool_ = VK_NULL_HANDLE;
-        VkDescriptorSet descriptors_ = VK_NULL_HANDLE;
-        std::size_t capacity_;
-        std::uint64_t byte_limit_, resident_bytes_ = 0, resident_peak_ = 0;
+        std::shared_ptr<Physical> physical_;
+        TextureStorageConfig config_;
     };
 }
 

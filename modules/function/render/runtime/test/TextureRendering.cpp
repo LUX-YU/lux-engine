@@ -109,6 +109,7 @@ int main(int argc, char** argv)
     CHECK(runtime_test::refresh(*a));
     CHECK(wait(*b, take(b->hello())).header.outcome == ECommandOutcome::SUCCESS);
     CHECK(runtime_test::refresh(*b));
+    const auto storage = take(runtime_test::prepareStorage(*b, kTextureStorageType.name(), "default"));
     auto upload = take(b->bind<SetTexture>());
     auto release = take(b->bind<ReleaseTexture>());
     std::atomic<unsigned> destroyed{0};
@@ -116,7 +117,7 @@ int main(int argc, char** argv)
         [&](auto* bytes) { delete bytes; ++destroyed; });
     std::array payload{take(RenderPayload::fromVector(asset, 0, asset->size()))};
     auto info = information(16, 1, false);
-    SetTexture::Request input{{}, 0, info, payload[0]};
+    SetTexture::Request input{{storage, {}}, 0, info, payload[0]};
     auto texture = decoded<TexturePublished>(call(*b, upload, input));
     texture_fixture::Config sample{texture.texture};
     FeatureUse selected{take(feature_test::find(*a, texture_fixture::type.name())), "main", take(ConfigValue::make(sample))};
@@ -176,7 +177,7 @@ int main(int argc, char** argv)
     CHECK(!submitValue(*a, create_scene, EmptyRequest{}));
     auto large = std::make_shared<const std::vector<std::byte>>(16 * 1024 * 1024, std::byte{91});
     std::array large_owner{take(RenderPayload::fromVector(large, 0, large->size()))};
-    const SetTexture::Request large_input{{}, 0, information(2048, 1, false), large_owner[0]};
+    const SetTexture::Request large_input{{storage, {}}, 0, information(2048, 1, false), large_owner[0]};
     const auto stalled = server->stats();
     const auto until = Clock::now() + 1500ms;
     std::ofstream csv(config.device.multiple_queues ? "texture-rendering-dedicated.csv" : "texture-rendering-alias.csv");

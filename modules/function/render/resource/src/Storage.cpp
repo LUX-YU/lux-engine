@@ -61,7 +61,7 @@ namespace lux::render
             error::ErrorDescriptor{"lux.render.resource.mismatch", "Incompatible storage contract"},
             error::ErrorDescriptor{"lux.render.resource.factory", "Missing or conflicting storage factory"},
             error::ErrorDescriptor{"lux.render.resource.capability", "Storage capability unavailable"},
-            error::ErrorDescriptor{"lux.render.resource.domain", "Invalid storage domain"},
+            error::ErrorDescriptor{"lux.render.resource.identity", "Invalid storage identity"},
             error::ErrorDescriptor{"lux.render.resource.capacity", "Storage capacity exhausted"}
         };
         return descriptors;

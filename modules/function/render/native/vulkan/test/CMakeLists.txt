@@ -77,7 +77,7 @@ add_test(NAME render.native.buffer_transfer COMMAND render_buffer_transfer_test)
 
 set_tests_properties(render.native.buffer_transfer PROPERTIES TIMEOUT 60)
 
-foreach(header Error DeviceSession CompiledGraph ExecutionContext StorageBinding device/Device device/DeviceOptions memory/Memory
+foreach(header Error DeviceSession DescriptorArray CompiledGraph ExecutionContext StorageBinding device/Device device/DeviceOptions memory/Memory
     Readback transfer/Submission transfer/Transfer transfer/GpuWork
     texture/TextureStorage texture/TextureCommands retirement/Retirement
 )
@@ -151,7 +151,9 @@ set_tests_properties(render.native.texture_sampling PROPERTIES TIMEOUT 90)
 
 add_executable(render_storage_bindings_test StorageBindings.cpp Allocation.cpp)
 
-target_link_libraries(render_storage_bindings_test PRIVATE render_native_vulkan_extensions)
+target_link_libraries(render_storage_bindings_test PRIVATE render_native_instrumented)
+
+target_compile_definitions(render_storage_bindings_test PRIVATE LUX_VULKAN_TEST_SEAM)
 
 add_test(NAME render.native.storage_bindings COMMAND render_storage_bindings_test)
 

@@ -31,7 +31,7 @@ int main()
                 const auto& last = info.mip_ranges[info.mip_count - 1];
                 auto source = std::make_shared<std::vector<std::byte>>(last.offset + last.size);
                 for (std::size_t i = 0; i < source->size(); ++i) (*source)[i] = std::byte(i % 251);
-                SetTexture::Request request{{}, 0, info, payload(source)};
+                SetTexture::Request request{{storage.id(), {}}, 0, info, payload(source)};
                 auto malformed = request;
                 malformed.info.mip_ranges[0].size = UINT64_MAX;
                 CHECK(!lux::render::upload(storage, malformed));

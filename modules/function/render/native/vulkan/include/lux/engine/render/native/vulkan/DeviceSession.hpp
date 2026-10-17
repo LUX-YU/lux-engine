@@ -11,6 +11,7 @@
 namespace lux::render::vulkan
 {
     class CompiledGraph;
+    class DescriptorArray;
     class ExecutionContext;
     class Transfer;
     struct ImageTransferRegion;
@@ -24,7 +25,7 @@ namespace lux::render::vulkan
             const InstanceContext& instance,
             const DeviceOptions& options = {},
             std::uint32_t slots = 3,
-            std::size_t retirement_capacity = 64
+            std::size_t retirement_capacity = 0
         ) noexcept;
         ~DeviceSession() noexcept;
         DeviceSession(const DeviceSession&) = delete;
@@ -36,7 +37,7 @@ namespace lux::render::vulkan
         void dispatchCompletions() noexcept;
         [[nodiscard]] RenderResult<ExecutionContext*> prepare(
             std::shared_ptr<const CompiledGraph> code, const TargetDesc& target,
-            const ResourceDomain& view, std::span<const StorageArgument> arguments = {}
+            StorageSet* scene = nullptr, StorageSet* view = nullptr, std::span<const StorageArgument> arguments = {}
         ) noexcept;
         [[nodiscard]] RenderResult<void> release(ExecutionContext* context) noexcept;
         [[nodiscard]] SubmissionQueue& queue(EQueueRole role = EQueueRole::GRAPHICS) noexcept
@@ -48,6 +49,8 @@ namespace lux::render::vulkan
             return *retirements_[static_cast<std::size_t>(role)];
         }
 
+        [[nodiscard]] RenderResult<std::uint32_t> sampledImageCapacity() const noexcept;
+        [[nodiscard]] RenderResult<std::shared_ptr<DescriptorArray>> sampledImageArray(ShaderBinding binding) noexcept;
         [[nodiscard]] const VulkanDevice& device() const noexcept { return device_; }
         // Boundary lookup compares stable owner identity before inspecting the ticket's queue.
         [[nodiscard]] SubmissionQueue* queueFor(SubmissionTicket ticket) noexcept;
@@ -60,8 +63,9 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadBuffer(
             std::span<const std::byte>, VkBufferUsageFlags usage) noexcept;
         [[nodiscard]] TransferStats uploadStats() const noexcept;
-        [[nodiscard]] ResourceRegistry& resources() noexcept { return *resources_; }
-        [[nodiscard]] const ResourceRegistry& resources() const noexcept { return *resources_; }
+        [[nodiscard]] ResourceRegistry& resources() noexcept { return resources_; }
+        [[nodiscard]] const ResourceRegistry& resources() const noexcept { return resources_; }
+        [[nodiscard]] StorageSet& globalStorages() noexcept { return globals_; }
         [[nodiscard]] RenderResult<BufferPermit> createBuffer(
             VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access
         ) noexcept;
@@ -116,6 +120,8 @@ namespace lux::render::vulkan
         // GPU ticket retires. Member destruction is explicitly ordered in the destructor.
         std::vector<std::unique_ptr<ExecutionContext>> contexts_;
         std::unique_ptr<UploadState> uploads_;
-        std::unique_ptr<ResourceRegistry> resources_;
+        ResourceRegistry resources_;
+        StorageSet globals_;
+        std::vector<std::weak_ptr<DescriptorArray>> descriptor_arrays_;
     };
 }

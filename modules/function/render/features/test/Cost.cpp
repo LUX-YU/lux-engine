@@ -76,15 +76,15 @@ using namespace lux::render;
 static constexpr FeatureName kType("test.cost");
 
 static RenderResult<void>
-describe(const void* wire, std::string_view, std::vector<ResourceClaim>& out) noexcept
+describe(const void* wire, std::string_view, ResourceClaims& out) noexcept
 {
     const auto* config = static_cast<const fixture::Config*>(wire);
     const auto& c = *config;
     if (c.first > c.total || c.count > c.total - c.first) return lux::cxx::unexpected(RenderError{kFeatureContract});
     for (std::uint32_t i = c.first; i < c.first + c.count; ++i)
-        out.push_back({std::to_string(i), EResourceClaim::PROVIDE, GraphBufferDesc{64}});
+        out.resources.push_back({std::to_string(i), EResourceClaim::PROVIDE, GraphBufferDesc{64}});
     if (c.chain && c.first && c.count)
-        out.push_back({std::to_string(c.first - 1), EResourceClaim::REQUIRE, GraphBufferDesc{64}});
+        out.resources.push_back({std::to_string(c.first - 1), EResourceClaim::REQUIRE, GraphBufferDesc{64}});
     return {};
 }
 

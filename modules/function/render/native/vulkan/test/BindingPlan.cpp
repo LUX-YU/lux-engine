@@ -14,7 +14,7 @@ namespace
     unsigned live_pipelines = 0;
     constexpr FeatureName type("test.native.plan");
 
-    RenderResult<void> describe(const void*, std::string_view, std::vector<ResourceClaim>&) noexcept { return {}; }
+    RenderResult<void> describe(const void*, std::string_view, ResourceClaims&) noexcept { return {}; }
 
     RenderResult<void> build(const void*, std::string_view name,
         std::span<const ResolvedResource>, RenderGraphBuilder& builder) noexcept

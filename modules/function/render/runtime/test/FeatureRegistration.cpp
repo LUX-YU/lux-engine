@@ -22,7 +22,7 @@ struct Second final
     using Request = std::uint32_t;
     using Response = Ack;
 };
-static RenderResult<void> describe(const void*, std::string_view, std::vector<ResourceClaim>&) noexcept
+static RenderResult<void> describe(const void*, std::string_view, ResourceClaims&) noexcept
 {
     return {};
 }

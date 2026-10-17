@@ -2,6 +2,68 @@
 
 namespace lux::render
 {
+    RenderResult<StorageSet*> RenderServer::Impl::storageOwner(const VStorageOwner& address) noexcept
+    {
+        return std::visit([&](const auto& owner) -> RenderResult<StorageSet*> {
+            using T = std::decay_t<decltype(owner)>;
+            if constexpr (std::same_as<T, GlobalStorageOwner>) return &device->globalStorages();
+            else if constexpr (std::same_as<T, SceneId>)
+            {
+                auto* scene = scenes.find(owner);
+                if (!scene) return cxx::unexpected(RenderError{kRuntimeIdentity});
+                return &scene->storages;
+            }
+            else
+            {
+                auto* scene = scenes.find(owner.scene);
+                auto* view = scene ? scene->views.find(owner.view) : nullptr;
+                if (!view) return cxx::unexpected(RenderError{kRuntimeIdentity});
+                if constexpr (std::same_as<T, ViewRequest>) return &view->storages;
+                else
+                {
+                    auto* effect = effects.find(owner.effect);
+                    if (effect)
+                        for (const auto& group : effect->groups)
+                            if (group.scene == owner.scene && group.view == owner.view && group.target == owner.target)
+                                return &group.context->attachmentStorages();
+                    return cxx::unexpected(RenderError{kRuntimeIdentity});
+                }
+            }
+        }, address);
+    }
+
+    RenderResult<void> RenderServer::Impl::findStorage(RenderRequest& request) noexcept
+    {
+        const auto& input = request.get<StorageLocation>();
+        auto owner = storageOwner(input.owner);
+        if (!owner) return cxx::unexpected(owner.error());
+        if (!device->resources().factory(input.type)) return cxx::unexpected(RenderError{kStorageFactory});
+        const auto id = (*owner)->find(input.type, input.key);
+        if (id.isNull()) return cxx::unexpected(RenderError{kStorageIdentity});
+        return request.reply(id);
+    }
+
+    RenderResult<void> RenderServer::Impl::prepareStorage(RenderRequest& request) noexcept
+    {
+        const auto& input = request.get<PrepareStorageRequest>();
+        auto owner = storageOwner(input.location.owner);
+        if (!owner) return cxx::unexpected(owner.error());
+        if (request.replyCapacity() < sizeof(StorageId)) return cxx::unexpected(RenderError{kRuntimeCapacity});
+        auto id = (*owner)->prepare(input.location.type, input.location.key, input.config);
+        if (!id) return cxx::unexpected(id.error());
+        return request.reply(*id);
+    }
+
+    RenderResult<void> RenderServer::Impl::releasePreparedStorage(RenderRequest& request) noexcept
+    {
+        const auto id = request.get<StorageId>();
+        auto* owner = device->resources().owner(id);
+        if (!owner) return cxx::unexpected(RenderError{kStorageIdentity});
+        if (request.replyCapacity() < sizeof(Ack)) return cxx::unexpected(RenderError{kRuntimeCapacity});
+        if (auto result = owner->releasePrepared(id); !result) return result;
+        return request.reply();
+    }
+
     RenderResult<void> RenderServer::Impl::withdraw(RenderEffect& effect, std::size_t index) noexcept
     {
         auto* context = effect.groups[index].context;
@@ -14,8 +76,8 @@ namespace lux::render
     {
         const auto* decoded = &request.get<AttachmentRequest>();
         const auto [scene_id, view_id, target_id, effect_id] = *decoded;
-        const auto* scene = scenes.find(scene_id);
-        const auto* view = scene ? scene->views.find(view_id) : nullptr;
+        auto* scene = scenes.find(scene_id);
+        auto* view = scene ? scene->views.find(view_id) : nullptr;
         const auto* target = targets.find(target_id);
         auto* effect = effects.find(effect_id);
         const bool invalid = !view || !target || !effect;
@@ -23,12 +85,23 @@ namespace lux::render
         for (const auto& existing : effects)
             for (const auto& group : existing.groups)
                 if (group.target == target_id) return cxx::unexpected(RenderError{kRuntimeState});
-        auto prepared = device->prepare(effect->code, target->description, view->domain, effect->arguments);
+        auto prepared = device->prepare(effect->code, target->description, &scene->storages, &view->storages, effect->arguments);
         if (!prepared) return cxx::unexpected(prepared.error());
+        AttachmentCreated response;
+        (*prepared)->forEachStorage([&](std::string_view key, StorageId id) noexcept {
+            response.storages.push_back({std::string(key), id});
+        });
+        ipc::IpcMessage output;
+        auto charge = request.prepareResponse(&response, output);
+        if (!charge)
+        {
+            if (!device->release(*prepared)) std::terminate(); // unsubmitted candidate
+            return cxx::unexpected(charge.error());
+        }
         (*prepared)->setColor(view->color);
         effect->groups.push_back({scene_id, view_id, target_id, *prepared});
         scoped_buffers_created.store(device->resources().creations());
-        return request.reply();
+        return request.publishPrepared(output, *charge);
     }
 
     RenderResult<void> RenderServer::Impl::resize(TargetId id, Target& target, const TargetDesc& description) noexcept
@@ -46,12 +119,10 @@ namespace lux::render
                 }
         if (group)
         {
-            if (auto admitted = admitWithdraw([&](const auto&, const auto& current) { return current.target == id; });
-                !admitted)
-                return admitted;
             // One Target writer, proven on attach. Resize builds one candidate without recompilation.
             auto candidate = device->prepare(
-                std::move(code), description, scenes.find(group->scene)->views.find(group->view)->domain, arguments
+                std::move(code), description, &scenes.find(group->scene)->storages,
+                &scenes.find(group->scene)->views.find(group->view)->storages, arguments
             );
             if (!candidate) return cxx::unexpected(candidate.error());
             (*candidate)->setColor(group->context->color());
@@ -70,9 +141,7 @@ namespace lux::render
 
     RenderResult<void> RenderServer::Impl::createScene(RenderRequest& request) noexcept
     {
-        auto domain = device->resources().createDomain(device->resources().root(), EResourceScope::SCENE);
-        if (!domain) return cxx::unexpected(domain.error());
-        return request.reply(SceneCreated{scenes.emplace(Scene{std::move(*domain), {}})});
+        return request.reply(SceneCreated{scenes.emplace(device->resources())});
     }
 
     RenderResult<void> RenderServer::Impl::removeScene(RenderRequest& request) noexcept
@@ -80,14 +149,10 @@ namespace lux::render
         const auto* input = &request.get<SceneRequest>();
         const auto scene_id = input->scene;
         if (!scenes.find(scene_id)) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        if (auto admitted = admitWithdraw([&](const auto&, const auto& group) { return group.scene == scene_id; });
-            !admitted)
-            return admitted;
         for (auto& effect : effects)
             for (std::size_t i = effect.groups.size(); i-- > 0;)
                 if (effect.groups[i].scene == scene_id)
                     if (auto result = withdraw(effect, i); !result) return result;
-        (void)device->resources().closeDomain(scenes.find(scene_id)->domain);
         scenes.erase(scene_id);
         return request.reply();
     }
@@ -99,9 +164,7 @@ namespace lux::render
         if (!scene) return cxx::unexpected(RenderError{kRuntimeIdentity});
         if (!std::ranges::all_of(input->color, [](float x) { return std::isfinite(x); }))
             return cxx::unexpected(RenderError{kInvalidEncoding});
-        auto domain = device->resources().createDomain(scene->domain, EResourceScope::VIEW);
-        if (!domain) return cxx::unexpected(domain.error());
-        return request.reply(ViewCreated{scene->views.emplace(View{input->color, std::move(*domain)})});
+        return request.reply(ViewCreated{scene->views.emplace(device->resources(), input->color)});
     }
 
     RenderResult<void> RenderServer::Impl::removeView(RenderRequest& request) noexcept
@@ -109,15 +172,10 @@ namespace lux::render
         const auto* input = &request.get<ViewRequest>();
         auto* scene = scenes.find(input->scene);
         if (!scene || !scene->views.find(input->view)) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        if (auto admitted = admitWithdraw([&](const auto&, const auto& group)
-                                          { return group.scene == input->scene && group.view == input->view; });
-            !admitted)
-            return admitted;
         for (auto& effect : effects)
             for (std::size_t i = effect.groups.size(); i-- > 0;)
                 if (effect.groups[i].scene == input->scene && effect.groups[i].view == input->view)
                     if (auto result = withdraw(effect, i); !result) return result;
-        (void)device->resources().closeDomain(scene->views.find(input->view)->domain);
         scene->views.erase(input->view);
         return request.reply();
     }
@@ -152,10 +210,6 @@ namespace lux::render
             const auto& group = effect->groups[i];
             if (group.scene == input->scene && group.view == input->view && group.target == input->target)
             {
-                if (auto admitted = admitWithdraw([&](const auto&, const auto& current)
-                                                  { return current.context == group.context; });
-                    !admitted)
-                    return admitted;
                 if (auto result = withdraw(*effect, i); !result) return result;
                 return request.reply();
             }

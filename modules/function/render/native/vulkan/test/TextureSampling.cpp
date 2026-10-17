@@ -11,6 +11,7 @@ namespace cxx = lux::cxx;
 namespace
 {
     unsigned pipelines = 0, descriptor_binds = 0, max_error = 0;
+    unsigned destroyed_samplers = 0, destroyed_texture_pools = 0;
     bool hold_observation = false;
 }
 
@@ -29,7 +30,11 @@ namespace lux::render::vulkan::test
         return result;
     }
 
-    void destroyed(const char*) noexcept {}
+    void destroyed(const char* call) noexcept
+    {
+        if (std::string_view(call) == "texture_sampler") ++destroyed_samplers;
+        if (std::string_view(call) == "descriptor_array_pool") ++destroyed_texture_pools;
+    }
 }
 
 static std::array<unsigned, 4> oracle(std::array<unsigned, 4> rgba, rdesc::ETextureColorSpace space)
@@ -106,9 +111,9 @@ int main()
         {
             auto ambiguous = info;
             ambiguous.flags = rdesc::toUnderlying(rdesc::ETextureAssetFlags::PREMULTIPLIED_ALPHA);
-            CHECK(!lux::render::upload(storage, SetTexture::Request{{}, 0, ambiguous, payload(input_owner)}));
+            CHECK(!lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, ambiguous, payload(input_owner)}));
         }
-        auto upload = take(lux::render::upload(storage, SetTexture::Request{{}, 0, info, payload(input_owner)}));
+        auto upload = take(lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, info, payload(input_owner)}));
         const auto published = upload.first;
         complete(upload.second, host, *session); upload.second.reset();
         for (unsigned mip = 0; mip < 4; ++mip)
@@ -135,18 +140,19 @@ int main()
             // Asset identity/LOD are Attach arguments, never immutable code identity.
             auto invalid = config;
             invalid.texture = {};
-            CHECK(!session->prepare(code, texture_fixture::target(config), {}, texture_fixture::arguments(invalid)));
+            CHECK(!session->prepare(code, texture_fixture::target(config), nullptr, nullptr, texture_fixture::arguments(invalid)));
             invalid = config;
             invalid.lod = 4;
-            CHECK(!session->prepare(code, texture_fixture::target(config), {}, texture_fixture::arguments(invalid)));
+            CHECK(!session->prepare(code, texture_fixture::target(config), nullptr, nullptr, texture_fixture::arguments(invalid)));
             std::array<ExecutionContext*, 4> views{};
+            std::array<StorageSet, 2> scenes{StorageSet{session->resources()}, StorageSet{session->resources()}};
+            std::array<StorageSet, 4> view_storages{StorageSet{session->resources()}, StorageSet{session->resources()},
+                StorageSet{session->resources()}, StorageSet{session->resources()}};
             for (unsigned s = 0; s < 2; ++s)
             {
-                const auto scene = take(session->resources().createDomain(session->resources().root(), EResourceScope::SCENE));
                 for (unsigned v = 0; v < 2; ++v)
                 {
-                    const auto view = take(session->resources().createDomain(scene, EResourceScope::VIEW));
-                    views[2 * s + v] = take(session->prepare(code, texture_fixture::target(config), view, texture_fixture::arguments(config)));
+                    views[2 * s + v] = take(session->prepare(code, texture_fixture::target(config), &scenes[s], &view_storages[2 * s + v], texture_fixture::arguments(config)));
                     CHECK(&views[2 * s + v]->code() == code.get());
                 }
             }
@@ -195,7 +201,7 @@ int main()
 
                 CHECK(storage.release(published.texture, 3));
                 // Released business ID cannot be rebound; existing consumers keep valid backing.
-                CHECK(!session->prepare(code, texture_fixture::target(config), {}, texture_fixture::arguments(config)));
+                CHECK(!session->prepare(code, texture_fixture::target(config), nullptr, nullptr, texture_fixture::arguments(config)));
                 for (auto* view : views) CHECK(take(view->execute()));
                 CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
             }
@@ -212,19 +218,130 @@ int main()
         for (std::size_t i = 0; i < blocks.size(); i += 8)
         { blocks[i] = std::byte{0}; blocks[i + 1] = std::byte{0xf8}; } // RGB565 red, index zero
         auto blocks_owner = std::make_shared<const std::vector<std::byte>>(std::move(blocks));
-        auto upload = take(lux::render::upload(storage, SetTexture::Request{{}, 0, info, payload(blocks_owner)}));
+        auto upload = take(lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, info, payload(blocks_owner)}));
         const auto id = upload.first.texture;
         complete(upload.second, host, *session); upload.second.reset();
         texture_fixture::Config config{id, 16, 16, 4, rdesc::ETextureFormat::BC1_RGBA_SRGB, 1};
         auto assembly = take(texture_fixture::assemble(config));
         auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
             texture_fixture::programs(config), texture_fixture::target(config))));
-        auto* context = take(session->prepare(code, texture_fixture::target(config), {}, texture_fixture::arguments(config)));
+        auto* context = take(session->prepare(code, texture_fixture::target(config), nullptr, nullptr, texture_fixture::arguments(config)));
         CHECK(take(context->execute()));
         CHECK(take(session->queue().wait(*context->lastUse(), UINT64_MAX)));
         pixels(take(context->readback()), oracle({255, 0, 0, 255}, rdesc::ETextureColorSpace::SRGB), 2);
         CHECK(storage.release(id, 1));
         CHECK(session->release(context));
+    }
+    CHECK(session->drain());
+    {
+        // Actual Scene owners share only the device descriptor allocation, never resource identities.
+        std::array<StorageSet, 2> scenes{StorageSet{session->resources()}, StorageSet{session->resources()}};
+        std::array<StorageLease, 2> leases;
+        std::array<lux::render::vulkan::TextureStorage*, 2> scene_textures{};
+        std::array<TextureId, 2> textures;
+        std::array<ExecutionContext*, 2> contexts{};
+        const auto type = session->resources().typeId(kTextureStorageType);
+        const auto info = information(16, 1, false);
+        for (std::size_t i = 0; i < scenes.size(); ++i)
+        {
+            leases[i] = take(scenes[i].acquire(type, "default"));
+            scene_textures[i] = static_cast<lux::render::vulkan::TextureStorage*>(
+                session->resources().native(leases[i].id())
+            );
+            CHECK(scene_textures[i]->descriptors() == storage.descriptors());
+            auto bytes = std::make_shared<const std::vector<std::byte>>(16 * 16 * 4, std::byte(i ? 96 : 32));
+            auto work = take(lux::render::upload(*scene_textures[i],
+                SetTexture::Request{{leases[i].id(), {}}, 0, info, payload(bytes)}));
+            textures[i] = work.first.texture;
+            complete(work.second, host, *session);
+            work.second.reset();
+        }
+        CHECK(textures[0].storage != textures[1].storage);
+        CHECK(scene_textures[0]->find(textures[0])->descriptorIndex() !=
+            scene_textures[1]->find(textures[1])->descriptorIndex());
+        CHECK(!scene_textures[0]->find(textures[1]) && !scene_textures[1]->find(textures[0]));
+        const FeatureGraphOps scene_graph{
+            [](const void* config, std::string_view name, ResourceClaims& out) noexcept -> RenderResult<void> {
+                if (auto result = texture_fixture::describe(config, name, out); !result) return result;
+                out.storage.scene = std::move(out.storage.global);
+                return {};
+            }, texture_fixture::build
+        };
+        texture_fixture::Config config{textures[0], 16, 16, 1, rdesc::ETextureFormat::RGBA8_UNORM, 0};
+        const auto value = take(ConfigValue::make(config));
+        const FeatureInstanceView selected{&texture_fixture::definition, &scene_graph, &value, "main"};
+        auto assembly = take(assembleFeatures({&selected, 1}, texture_fixture::limits.max_encoded_bytes));
+        auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly.definition, assembly.analysis,
+            assembly.external_bindings, texture_fixture::programs(config), texture_fixture::target(config))));
+        for (std::size_t i = 0; i < scenes.size(); ++i)
+        {
+            config.texture = textures[i];
+            contexts[i] = take(session->prepare(code, texture_fixture::target(config), &scenes[i], nullptr,
+                texture_fixture::arguments(config)));
+            CHECK(&contexts[i]->code() == code.get());
+            CHECK(take(contexts[i]->execute()));
+        }
+        CHECK(take(session->queue().wait(*contexts[1]->lastUse(), UINT64_MAX)));
+        pixels(take(contexts[0]->readback()), {32, 32, 32, 32}, 0);
+        pixels(take(contexts[1]->readback()), {96, 96, 96, 96}, 0);
+        hold_observation = true;
+        CHECK(take(contexts[0]->execute()));
+        const auto ticket = *contexts[0]->lastUse();
+        const auto destroyed = destroyed_samplers;
+        const auto pools = destroyed_texture_pools;
+        CHECK(session->release(contexts[0]));
+        leases[0].reset();
+        CHECK(scenes[0].size() == 0 && !session->resources().native(textures[0].storage));
+        CHECK(destroyed_samplers == destroyed && destroyed_texture_pools == pools);
+        // The other Scene is still recordable while the first Scene's physical backing retires.
+        CHECK(take(contexts[1]->execute()));
+        hold_observation = false;
+        CHECK(take(session->queue().wait(*contexts[1]->lastUse(), UINT64_MAX)));
+        CHECK(session->queue().completed() >= ticket.serial());
+        CHECK(session->collect());
+        CHECK(destroyed_samplers == destroyed + 1 && destroyed_texture_pools == pools);
+        pixels(take(contexts[1]->readback()), {96, 96, 96, 96}, 0);
+        CHECK(session->release(contexts[1]));
+        leases[1].reset();
+        CHECK(session->collect());
+        CHECK(destroyed_samplers == destroyed + 2 && destroyed_texture_pools == pools);
+        std::puts("Scene Texture owners: distinct IDs/slots, one device descriptor table, shared Graph, pixels=32/96; "
+            "first owner closes in-flight while second continues; exact retirement");
+    }
+    {
+        // Last logical owner may disappear while the real draw is accepted but unobserved.
+        // No manual acquire lease, Scene owner or Storage identity is retained by retirement.
+        auto info = information(16, 1, false);
+        auto bytes = std::make_shared<const std::vector<std::byte>>(16 * 16 * 4, std::byte{63});
+        auto work = take(lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, info, payload(bytes)}));
+        const auto id = work.first.texture;
+        complete(work.second, host, *session);
+        work.second.reset();
+        texture_fixture::Config config{id, 16, 16, 1, rdesc::ETextureFormat::RGBA8_UNORM, 0};
+        auto assembly = take(texture_fixture::assemble(config));
+        auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly.definition, assembly.analysis,
+            assembly.external_bindings, texture_fixture::programs(config), texture_fixture::target(config))));
+        auto* context = take(session->prepare(code, texture_fixture::target(config), nullptr, nullptr,
+            texture_fixture::arguments(config)));
+        hold_observation = true;
+        CHECK(take(context->execute()));
+        const auto ticket = *context->lastUse();
+        const auto samplers = destroyed_samplers;
+        const auto pools = destroyed_texture_pools;
+        render_allocation::calls = 0;
+        render_allocation::window = true;
+        CHECK(session->release(context));
+        CHECK(session->globalStorages().releasePrepared(id.storage));
+        render_allocation::window = false;
+        CHECK(render_allocation::calls == 0);
+        CHECK(!session->resources().native(id.storage));
+        CHECK(session->collect());
+        CHECK(destroyed_samplers == samplers && destroyed_texture_pools == pools);
+        CHECK(session->queue().completed() < ticket.serial());
+        hold_observation = false;
+        CHECK(take(session->queue().wait(ticket, UINT64_MAX)));
+        CHECK(session->collect());
+        CHECK(destroyed_samplers == samplers + 1 && destroyed_texture_pools == pools + 1);
     }
     CHECK(session->drain());
     session.reset();

@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <tuple>
+#include <variant>
 #include <vector>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
@@ -31,6 +32,78 @@ namespace lux::render
     struct ResizeTargetRequest final { TargetId target{}; TargetDesc description{}; };
     struct EffectRequest final { EffectId effect{}; };
     struct AttachmentRequest final { SceneId scene{}; ViewId view{}; TargetId target{}; EffectId effect{}; };
+    struct GlobalStorageOwner final {};
+    using VStorageOwner = std::variant<GlobalStorageOwner, SceneId, ViewRequest, AttachmentRequest>;
+    struct StorageLocation final
+    {
+        VStorageOwner owner;
+        StorageTypeId type;
+        std::string key;
+    };
+    struct PrepareStorageRequest final { StorageLocation location; ConfigValue config; };
+    struct StorageBindingInfo final { std::string resource_key; StorageId storage; };
+    struct AttachmentCreated final { std::vector<StorageBindingInfo> storages; };
+
+    struct FindStorage final
+    {
+        static constexpr std::string_view name{"render.storage.find"};
+        using Request = StorageLocation;
+        using Response = StorageId;
+    };
+    struct PrepareStorage final
+    {
+        static constexpr std::string_view name{"render.storage.prepare"};
+        using Request = PrepareStorageRequest;
+        using Response = StorageId;
+    };
+    struct ReleasePreparedStorage final
+    {
+        static constexpr std::string_view name{"render.storage.release_prepared"};
+        using Request = StorageId;
+        using Response = Ack;
+    };
+
+    template <> struct CommandValueTraits<StorageLocation>
+    {
+        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const StorageLocation& value) noexcept
+        {
+            if (value.key.capacity() >= SIZE_MAX - sizeof(value))
+                return cxx::unexpected(RenderError{kProtocolContract});
+            return sizeof(value) + value.key.capacity() + 1;
+        }
+    };
+
+    template <> struct CommandValueTraits<PrepareStorageRequest>
+    {
+        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const PrepareStorageRequest& value) noexcept
+        {
+            auto bytes = CommandValueTraits<StorageLocation>::retainedBytes(value.location);
+            if (!bytes) return cxx::unexpected(bytes.error());
+            if (*bytes > SIZE_MAX - sizeof(ConfigValue)) return cxx::unexpected(RenderError{kProtocolContract});
+            *bytes += sizeof(ConfigValue);
+            if (value.config.retainedBytes() > SIZE_MAX - *bytes)
+                return cxx::unexpected(RenderError{kProtocolContract});
+            return *bytes + value.config.retainedBytes();
+        }
+    };
+
+    template <> struct CommandValueTraits<AttachmentCreated>
+    {
+        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const AttachmentCreated& value) noexcept
+        {
+            if (value.storages.capacity() > (SIZE_MAX - sizeof(value)) / sizeof(StorageBindingInfo))
+                return cxx::unexpected(RenderError{kProtocolContract});
+            auto bytes = sizeof(value) + value.storages.capacity() * sizeof(StorageBindingInfo);
+            for (const auto& item : value.storages)
+            {
+                if (item.resource_key.capacity() >= SIZE_MAX - bytes)
+                    return cxx::unexpected(RenderError{kProtocolContract});
+                bytes += item.resource_key.capacity() + 1;
+            }
+            return bytes;
+        }
+    };
+
     struct SceneCreated final { SceneId scene{}; };
     struct ViewCreated final { ViewId view{}; };
     struct TargetCreated final { TargetId target{}; std::uint64_t epoch = 0; };
@@ -263,7 +336,7 @@ namespace lux::render
     {
         static constexpr std::string_view name{"render.attach"};
         using Request = AttachmentRequest;
-        using Response = Ack;
+        using Response = AttachmentCreated;
     };
 
     struct Detach final

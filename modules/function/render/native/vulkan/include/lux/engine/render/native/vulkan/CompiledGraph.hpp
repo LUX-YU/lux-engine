@@ -66,6 +66,7 @@ namespace lux::render::vulkan
         [[nodiscard]] VkPipelineLayout layout() const noexcept { return layout_; }
         [[nodiscard]] const TargetDesc& target() const noexcept { return target_; }
         [[nodiscard]] std::span<const NativeResourcePlan> resources() const noexcept { return resources_; }
+        [[nodiscard]] const StorageGroups<std::uint32_t>& storageGroups() const noexcept { return storage_groups_; }
         [[nodiscard]] std::span<const CompiledPass> passes() const noexcept { return passes_; }
         [[nodiscard]] std::span<const BufferBarrier> hostBarriers() const noexcept { return host_barriers_; }
         [[nodiscard]] std::uint32_t output() const noexcept { return output_; }
@@ -74,13 +75,14 @@ namespace lux::render::vulkan
     private:
         friend RenderResult<CompiledGraph> compileGraph(
             const DeviceSession&, const RenderGraphDefinition&, const GraphAnalysis&,
-            std::span<const GraphStorageBinding>, std::span<const PassProgram>, const TargetDesc&
+            const GraphStorageBindings&, std::span<const PassProgram>, const TargetDesc&
         ) noexcept;
         CompiledGraph(VkDevice device, TargetDesc target) noexcept : device_(device), target_(target) {}
         VkDevice device_;
         TargetDesc target_;
         VkPipelineLayout layout_{};
         std::vector<NativeResourcePlan> resources_;
+        StorageGroups<std::uint32_t> storage_groups_;
         std::vector<CompiledPass> passes_;
         std::vector<BufferBarrier> host_barriers_;
         std::vector<SpirvArtifact> shader_identities_;
@@ -95,7 +97,7 @@ namespace lux::render::vulkan
         const DeviceSession& session,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
-        std::span<const GraphStorageBinding> external_bindings,
+        const GraphStorageBindings& external_bindings,
         std::span<const PassProgram> programs,
         const TargetDesc& target
     ) noexcept;

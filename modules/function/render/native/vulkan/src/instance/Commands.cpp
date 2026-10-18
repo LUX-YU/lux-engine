@@ -91,8 +91,8 @@ namespace lux::render
         return vulkan::instanceStorageFactory();
     }
 
-    StorageCppType StorageProvider<render::InstanceStorage>::implementationType() noexcept
+    CppType StorageProvider<render::InstanceStorage>::implementationType() noexcept
     {
-        return storageCppType<Storage>();
+        return cppType<Storage>();
     }
 } // namespace lux::render

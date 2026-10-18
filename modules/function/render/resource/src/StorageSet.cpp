@@ -40,7 +40,7 @@ namespace lux::render
 
     RenderResult<StorageId> StorageSet::ensure(
         StorageTypeId type, std::string_view key, ConfigValue config,
-        StorageCppType requested_config, StorageCppType requested_ops
+        CppType requested_config, CppType requested_ops
     ) noexcept
     {
         if (closing_) return cxx::unexpected(RenderError{kStorageIdentity});
@@ -53,7 +53,7 @@ namespace lux::render
         if (is_wrong_config || is_wrong_ops) return cxx::unexpected(RenderError{kStorageMismatch});
         if (config)
         {
-            const StorageCppType actual{config.type(), config.objectSize(), config.objectAlignment()};
+            const auto actual = config.typeInfo();
             if (actual != factory.config_type) return cxx::unexpected(RenderError{kStorageMismatch});
         }
         else config = installed->configuration; // already qualified at installation
@@ -84,7 +84,7 @@ namespace lux::render
 
     RenderResult<StorageLease> StorageSet::acquireImpl(
         const StorageDescriptor& description, std::string_view key, ConfigValue config,
-        StorageCppType config_type, StorageCppType ops_type
+        CppType config_type, CppType ops_type
     ) noexcept
     {
         const auto type = registry_.typeId(description.type);

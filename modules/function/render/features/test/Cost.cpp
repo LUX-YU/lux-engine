@@ -110,7 +110,7 @@ static RenderResult<void> build(
 
 int main()
 {
-    const FeatureDescriptor type{kType, ConfigValue::typeOf<fixture::Config>()};
+    const FeatureDescriptor type{kType, cppType<fixture::Config>()};
     const FeatureGraphOps type_graph{describe, build};
     std::puts("shape,features,passes,sample,assemble_ns,allocations,allocated_bytes,destroy_ns");
     for (bool chain : {false, true})

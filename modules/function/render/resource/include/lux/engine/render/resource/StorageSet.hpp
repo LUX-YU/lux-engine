@@ -47,7 +47,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<StorageLease> acquire(std::string_view key, ConfigValue config = {}) noexcept
         {
             return acquireImpl(T::description, key, std::move(config),
-                storageCppType<typename T::Config>(), storageCppType<typename T::Ops>());
+                cppType<typename T::Config>(), cppType<typename T::Ops>());
         }
 
         [[nodiscard]] RenderResult<StorageLease>
@@ -77,10 +77,10 @@ namespace lux::render
         };
 
         [[nodiscard]] RenderResult<StorageLease> acquireImpl(
-            const StorageDescriptor&, std::string_view, ConfigValue, StorageCppType, StorageCppType
+            const StorageDescriptor&, std::string_view, ConfigValue, CppType, CppType
         ) noexcept;
         [[nodiscard]] RenderResult<StorageId> ensure(
-            StorageTypeId, std::string_view, ConfigValue, StorageCppType = {}, StorageCppType = {}
+            StorageTypeId, std::string_view, ConfigValue, CppType = {}, CppType = {}
         ) noexcept;
         void release(StorageId id) noexcept;
         void erase(std::size_t position) noexcept;

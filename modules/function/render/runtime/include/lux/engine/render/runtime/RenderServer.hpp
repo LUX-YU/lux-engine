@@ -67,7 +67,7 @@ namespace lux::render
         {
             static_assert(std::is_nothrow_constructible_v<H, Args...> && std::is_nothrow_destructible_v<H>);
             static_assert(std::tuple_size_v<typename H::Bindings> != 0);
-            const CommandValueType type{cxx::typeToken<H>(), sizeof(H), alignof(H)};
+            const auto type = cppType<H>();
             auto existing = findHandler(type, key);
             if (!existing) return cxx::unexpected(existing.error());
             if (!existing->isNull()) return *existing;
@@ -88,7 +88,7 @@ namespace lux::render
 
         struct HandlerRecord final
         {
-            CommandValueType type;
+            CppType type;
             std::string name;
             std::string instance_name;
             std::unique_ptr<void, void (*)(void*) noexcept> object{nullptr, [](void*) noexcept {}};
@@ -123,7 +123,7 @@ namespace lux::render
             return owner;
         }
 
-        [[nodiscard]] RenderResult<HandlerId> findHandler(CommandValueType, std::string_view) const noexcept;
+        [[nodiscard]] RenderResult<HandlerId> findHandler(CppType, std::string_view) const noexcept;
         [[nodiscard]] RenderResult<CommandId> findCommand(const CommandDescriptor&) const noexcept;
         [[nodiscard]] HandlerRecord* handlerRecord(HandlerId) noexcept;
         [[nodiscard]] RenderResult<std::vector<CommandId>> prepareHandler(const HandlerRecord&,

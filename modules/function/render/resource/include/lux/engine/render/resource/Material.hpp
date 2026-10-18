@@ -100,7 +100,7 @@ namespace lux::render
     public:
         using Config = MaterialStorageConfig;
         static inline const StorageDescriptor description{
-            kMaterialStorageType, 0, 0, ConfigValue::typeOf<MaterialBinding>()
+            kMaterialStorageType, 0, 0, cppType<MaterialBinding>()
         };
         struct Ops final
         {

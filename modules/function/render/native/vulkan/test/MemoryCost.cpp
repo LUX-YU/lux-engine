@@ -57,7 +57,7 @@ namespace lux::render::vulkan
                     [](void*, StorageId, const void*) noexcept -> RenderResult<NativeStorage> {
                         return NativeStorage{new std::byte{}, [](void* p) noexcept { delete static_cast<std::byte*>(p); }};
                     }, [](const void*, const void*) noexcept { return true; }, nullptr,
-                    storageCppType<unsigned>(), storageCppType<unsigned>());
+                    cppType<unsigned>(), cppType<unsigned>());
                 if (!registry.installFactory(factory, 0u))
                     std::abort();
                 std::vector<std::unique_ptr<StorageSet>> scenes;
@@ -99,7 +99,7 @@ namespace lux::render::vulkan
                     return NativeStorage{new LiveBuffer{session, std::move(*reservation), std::move(*buffer)},
                         [](void* value) noexcept { delete static_cast<LiveBuffer*>(value); }};
                 }, [](const void*, const void*) noexcept { return true; }, nullptr,
-                storageCppType<unsigned>(), storageCppType<unsigned>());
+                cppType<unsigned>(), cppType<unsigned>());
             const auto type = take(session->resources().installFactory(std::move(factory), 0u));
             std::ofstream raw("zero-retirement.csv");
             raw << "live_buffers,live_storages,reservations,sample,collect_ns,candidate_visits,new_calls\n";

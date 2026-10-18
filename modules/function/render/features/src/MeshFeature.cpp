@@ -137,9 +137,9 @@ namespace lux::render
         }
     }
 
-    const FeatureDescriptor BasicMeshFeature::descriptor{name, ConfigValue::typeOf<Config>()};
+    const FeatureDescriptor BasicMeshFeature::descriptor{name, cppType<Config>()};
     const FeatureGraphOps BasicMeshFeature::graph{describe<false>, build<false>};
-    const FeatureDescriptor DepthOnlyFeature::descriptor{name, ConfigValue::typeOf<Config>()};
+    const FeatureDescriptor DepthOnlyFeature::descriptor{name, cppType<Config>()};
     const FeatureGraphOps DepthOnlyFeature::graph{describe<true>, build<true>};
 
     RenderResult<std::size_t>

@@ -8,7 +8,7 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
-#include <lux/cxx/compile_time/TypeToken.hpp>
+#include <lux/engine/render/core/CppType.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/cxx/core/Schema.hpp>
 #include <lux/engine/render/core/Error.hpp>
@@ -41,20 +41,12 @@ namespace lux::render
     struct Ack final {};
 
 
-    struct CommandValueType final
-    {
-        cxx::TypeToken type;
-        std::size_t size = 0;
-        std::size_t alignment = 0;
-        bool operator==(const CommandValueType&) const noexcept = default;
-    };
-
     // Cold declaration metadata; same controlled C++ build is the host precondition.
     struct CommandDescriptor final
     {
         CommandName name;
-        CommandValueType request;
-        CommandValueType response;
+        CppType request;
+        CppType response;
     };
 
     template <typename C>
@@ -70,8 +62,8 @@ namespace lux::render
     template <RenderCommand C>
     inline constexpr CommandDescriptor kCommandDescriptor{
         CommandName(C::name),
-        {cxx::typeToken<typename C::Request>(), sizeof(typename C::Request), alignof(typename C::Request)},
-        {cxx::typeToken<typename C::Response>(), sizeof(typename C::Response), alignof(typename C::Response)}
+        cppType<typename C::Request>(),
+        cppType<typename C::Response>()
     };
 
     template <RenderCommand C>

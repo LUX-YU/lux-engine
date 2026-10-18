@@ -7,8 +7,8 @@ namespace lux::render
     RenderResult<void> validateCommand(const CommandDescriptor& descriptor) noexcept
     {
         const bool is_invalid_identity = !descriptor.name.isValid();
-        const auto invalid_value = [](const CommandValueType& value) noexcept {
-            return !value.type.isValid() || value.size == 0 || !std::has_single_bit(value.alignment) ||
+        const auto invalid_value = [](const CppType& value) noexcept {
+            return !value.token.isValid() || value.size == 0 || !std::has_single_bit(value.alignment) ||
                 value.size % value.alignment != 0;
         };
         const bool is_invalid_layout = invalid_value(descriptor.request) || invalid_value(descriptor.response);

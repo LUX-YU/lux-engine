@@ -3,26 +3,12 @@
 #include <lux/engine/render/resource/Storage.hpp>
 #include <memory>
 #include <concepts>
-#include <lux/cxx/compile_time/TypeToken.hpp>
+#include <lux/engine/render/core/CppType.hpp>
 
 namespace lux::render
 {
     // One owned native instance. The factory's matching Ops are separate immutable metadata.
     using NativeStorage = std::unique_ptr<void, void (*)(void*) noexcept>;
-
-    struct StorageCppType final
-    {
-        cxx::TypeToken type;
-        std::size_t size = 0;
-        std::size_t alignment = 0;
-        bool operator==(const StorageCppType&) const noexcept = default;
-    };
-
-    template <class T>
-    [[nodiscard]] constexpr StorageCppType storageCppType() noexcept
-    {
-        return {cxx::typeToken<T>(), sizeof(T), alignof(T)};
-    }
 
     namespace resource_detail { struct StorageFactoryAudit; }
 
@@ -33,9 +19,9 @@ namespace lux::render
         RenderResult<NativeStorage> (*const create)(void* device, StorageId id, const void* config) noexcept;
         bool (*const compatible_config)(const void* instance, const void* config) noexcept;
         const void* const binding_ops; // API-specific immutable preparation functions; never a second owner
-        const StorageCppType config_type;
-        const StorageCppType ops_type;
-        const StorageCppType native_type;
+        const CppType config_type;
+        const CppType ops_type;
+        const CppType native_type;
 
     private:
         friend struct resource_detail::StorageFactoryAudit;
@@ -51,7 +37,7 @@ namespace lux::render
             RenderResult<NativeStorage> (*create)(void*, StorageId, const void*) noexcept,
             bool (*compatible_config)(const void*, const void*) noexcept,
             const void* binding_ops,
-            StorageCppType config_type, StorageCppType ops_type, StorageCppType native_type) noexcept
+            CppType config_type, CppType ops_type, CppType native_type) noexcept
             : description(description), ops(ops), create(create), compatible_config(compatible_config),
               binding_ops(binding_ops),
               config_type(config_type), ops_type(ops_type), native_type(native_type) {}
@@ -77,8 +63,8 @@ namespace lux::render
             }, [](const void* instance, const void* config) noexcept {
                 return Compatible(*static_cast<const Native*>(instance), *static_cast<const typename Declaration::Config*>(config));
             }, binding_ops,
-            storageCppType<typename Declaration::Config>(), storageCppType<typename Declaration::Ops>(),
-            storageCppType<Native>()};
+            cppType<typename Declaration::Config>(), cppType<typename Declaration::Ops>(),
+            cppType<Native>()};
     }
 
     [[nodiscard]] RenderResult<void>

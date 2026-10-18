@@ -44,7 +44,7 @@ static RenderResult<void> describeAsset(const void* wire, std::string_view, Reso
     return {};
 }
 
-static const FeatureDescriptor asset_definition{FeatureName("test.asset"), ConfigValue::typeOf<AssetConfig>()};
+static const FeatureDescriptor asset_definition{FeatureName("test.asset"), cppType<AssetConfig>()};
 static const FeatureGraphOps asset_definition_graph{describeAsset, nullptr};
 
 static RenderResult<ProgramContribution> assetPrograms(const void*, std::string_view) noexcept { return {}; }

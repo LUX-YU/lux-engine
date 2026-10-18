@@ -67,7 +67,7 @@ namespace lux::render
         }
         else
         {
-            const CommandValueType type{cxx::typeToken<H>(), sizeof(H), alignof(H)};
+            const auto type = cppType<H>();
             auto existing = findHandler(type, handler_key);
             if (!existing) return cxx::unexpected(existing.error());
             std::unique_ptr<HandlerRecord> owner;
@@ -76,7 +76,7 @@ namespace lux::render
                 for (const auto& dependency : dependencies)
                 {
                     auto* old = dependency.handler;
-                    if (!old || old->type.type.name() != type.type.name() || old->instance_name != handler_key) continue;
+                    if (!old || old->type.token.name() != type.token.name() || old->instance_name != handler_key) continue;
                     if (old->type != type) return cxx::unexpected(RenderError{kProtocolContract});
                     entry = old;
                     break;
@@ -111,14 +111,14 @@ namespace lux::render
         if (auto valid = compatibleStorage(T::description, *factory.description); !valid)
             return cxx::unexpected(valid.error());
         const bool is_wrong_provider = factory.native_type != Provider::implementationType() ||
-            factory.config_type != storageCppType<Config>() || factory.ops_type != storageCppType<typename T::Ops>();
+            factory.config_type != cppType<Config>() || factory.ops_type != cppType<typename T::Ops>();
         if (is_wrong_provider) return cxx::unexpected(RenderError{kStorageMismatch});
         auto configuration = ConfigValue::make(config);
         if (!configuration) return cxx::unexpected(configuration.error());
         StorageInstall result{std::move(factory), std::move(*configuration)};
         if constexpr (!std::is_void_v<H>)
         {
-            const CommandValueType type{cxx::typeToken<H>(), sizeof(H), alignof(H)};
+            const auto type = cppType<H>();
             auto existing = findHandler(type, key);
             if (!existing) return cxx::unexpected(existing.error());
             result.handler = existing->isNull() ? nullptr : handlerRecord(*existing);
@@ -126,7 +126,7 @@ namespace lux::render
                 for (const auto& candidate : previous)
                 {
                     const auto* old = candidate.handler;
-                    if (!old || old->type.type.name() != type.type.name() || old->instance_name != key) continue;
+                    if (!old || old->type.token.name() != type.token.name() || old->instance_name != key) continue;
                     if (old->type != type) return cxx::unexpected(RenderError{kProtocolContract});
                     result.handler = candidate.handler;
                     break;

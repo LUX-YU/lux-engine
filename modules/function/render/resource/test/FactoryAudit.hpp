@@ -11,7 +11,7 @@ namespace lux::render::resource_detail
             RenderResult<NativeStorage> (*create)(void*, StorageId, const void*) noexcept,
             bool (*compatible)(const void*, const void*) noexcept,
             const void* bindings,
-            StorageCppType config_type, StorageCppType ops_type, StorageCppType native_type = {}) noexcept
+            CppType config_type, CppType ops_type, CppType native_type = {}) noexcept
         {
             return {description, ops, create, compatible, bindings, config_type, ops_type, native_type};
         }

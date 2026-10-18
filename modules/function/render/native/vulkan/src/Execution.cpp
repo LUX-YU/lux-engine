@@ -81,7 +81,7 @@ namespace lux::render::vulkan
                 const auto* factory = resources_.factory(plan.storage->type.view());
                 const auto key = plan.storage->key.empty() ? plan.key : plan.storage->key;
                 const auto* argument = resolved_arguments[i];
-                const auto type = argument ? argument->typeInfo() : ConfigValue::Type{};
+                const auto type = argument ? argument->typeInfo() : CppType{};
                 if (type != factory->description->binding_type)
                     return cxx::unexpected(RenderError{kStorageContract});
                 const auto* value = argument ? argument->data() : nullptr;

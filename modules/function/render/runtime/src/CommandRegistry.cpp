@@ -106,9 +106,9 @@ namespace lux::render::runtime_detail
         return id;
     }
 
-    RenderResult<HandlerId> CommandRegistry::findHandler(CommandValueType type, std::string_view instance) const noexcept
+    RenderResult<HandlerId> CommandRegistry::findHandler(CppType type, std::string_view instance) const noexcept
     {
-        const auto found = handlers_by_name_.find({type.type.name(), instance});
+        const auto found = handlers_by_name_.find({type.token.name(), instance});
         if (found == handlers_by_name_.end())
         {
             return HandlerId{};
@@ -174,7 +174,7 @@ namespace lux::render::runtime_detail
         // Recoverable validation is complete; ordinary host allocation exhaustion remains fatal.
         auto* record = handler.get();
         const auto id = handlers_.emplace(std::move(handler));
-        handlers_by_name_.emplace(HandlerName{record->type.type.name(), record->instance_name}, id);
+        handlers_by_name_.emplace(HandlerName{record->type.token.name(), record->instance_name}, id);
         for (std::size_t i = 0; i < calls.size(); ++i)
         {
             // An earlier dependency in this validated batch can have published the same declaration.

@@ -51,13 +51,13 @@ static int descriptor()
     const auto& reference = commandDescriptor<Query>();
     CHECK(validateCommand(reference));
     CHECK(reference.name.name() == Query::name);
-    CHECK(reference.request.type == cxx::typeToken<Query::Request>());
-    CHECK(reference.response.type == cxx::typeToken<Query::Response>());
+    CHECK(reference.request.token == cxx::typeToken<Query::Request>());
+    CHECK(reference.response.token == cxx::typeToken<Query::Response>());
     CHECK(reference.request.size == sizeof(Query::Request));
     CHECK(reference.response.alignment == alignof(Query::Response));
     const auto& signal = commandDescriptor<Signal>();
     CHECK(signal.name.name() == Signal::name);
-    CHECK(signal.response.type == cxx::typeToken<Signal::Response>());
+    CHECK(signal.response.token == cxx::typeToken<Signal::Response>());
     CHECK(compatibleCommands(reference, reference));
     CHECK(CommandName::fromVerified(reference.name.name(), reference.name.hash()) == reference.name);
     const CommandName other_name("test.Other");
@@ -84,22 +84,22 @@ static int descriptor()
     std::puts("CommandName: real FNV1a64 collision 0x8FCF3BE2DE898214 retains distinct full-name identity");
 
     std::string copied_name(reference.name.name());
-    std::string copied_request(reference.request.type.name());
+    std::string copied_request(reference.request.token.name());
     auto equivalent = reference;
     equivalent.name = CommandName(copied_name);
-    equivalent.request.type = cxx::TypeToken(reference.request.type.hash(), copied_request);
+    equivalent.request.token = cxx::TypeToken(reference.request.token.hash(), copied_request);
     CHECK(compatibleCommands(reference, equivalent));
     for (unsigned fault = 0; fault < 10; ++fault)
     {
         auto changed = reference;
         if (fault == 0) changed.name = CommandName("test.Other");
-        if (fault == 1) changed.request.type = cxx::typeToken<std::uint64_t>();
+        if (fault == 1) changed.request.token = cxx::typeToken<std::uint64_t>();
         if (fault == 2) ++changed.request.size;
         if (fault == 3) changed.request.alignment *= 2;
-        if (fault == 4) changed.response.type = cxx::typeToken<Ack>();
-        if (fault == 5) changed.request.type = cxx::TypeToken(changed.request.type.hash(), "same-hash-other-name");
-        if (fault == 6) changed.request.type = cxx::TypeToken(0, changed.request.type.name());
-        if (fault == 7) changed.response.type = cxx::TypeToken(changed.response.type.hash(), "other-response");
+        if (fault == 4) changed.response.token = cxx::typeToken<Ack>();
+        if (fault == 5) changed.request.token = cxx::TypeToken(changed.request.token.hash(), "same-hash-other-name");
+        if (fault == 6) changed.request.token = cxx::TypeToken(0, changed.request.token.name());
+        if (fault == 7) changed.response.token = cxx::TypeToken(changed.response.token.hash(), "other-response");
         if (fault == 8) ++changed.response.size;
         if (fault == 9) changed.response.alignment *= 2;
         auto mismatch = compatibleCommands(reference, changed);
@@ -110,11 +110,11 @@ static int descriptor()
         auto changed = reference;
         if (fault == 0) changed.name = {};
         if (fault == 1) changed.response.size = 1;
-        if (fault == 2) changed.request.type = {};
+        if (fault == 2) changed.request.token = {};
         if (fault == 3) changed.request.size = 0;
         if (fault == 4) changed.response.alignment = 0;
         if (fault == 5) changed.response.alignment = 3;
-        if (fault == 6) changed.response.type = {};
+        if (fault == 6) changed.response.token = {};
         CHECK(!validateCommand(changed));
     }
     return 0;

@@ -97,7 +97,7 @@ namespace lux::render
     public:
         using Config = InstanceStorageConfig;
         static inline const StorageDescriptor description{kInstanceStorageType, 0, 0,
-            ConfigValue::typeOf<InstanceBinding>()};
+            cppType<InstanceBinding>()};
         struct Ops final
         {
             RenderResult<InstanceInformation> (*query)(const void*, InstanceId) noexcept;

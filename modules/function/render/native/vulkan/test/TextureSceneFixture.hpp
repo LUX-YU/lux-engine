@@ -67,7 +67,7 @@ namespace texture_fixture
         return builder.exportOutput({{*pixels, 1}});
     }
 
-    inline const FeatureDescriptor definition{type, ConfigValue::typeOf<Config>()};
+    inline const FeatureDescriptor definition{type, cppType<Config>()};
     inline const FeatureGraphOps definition_graph{describe, build};
 
     inline std::vector<PassProgram> programs(Config c, std::string_view instance = "main")

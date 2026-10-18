@@ -91,7 +91,7 @@ int main()
                 EGraphPassKind::TRANSFER, {}});
             return pass ? RenderResult<void>{} : lux::cxx::unexpected(pass.error());
         }};
-    const FeatureDescriptor parameters{FeatureName("test.zzz.parameters"), ConfigValue::typeOf<TextureBinding>()};
+    const FeatureDescriptor parameters{FeatureName("test.zzz.parameters"), cppType<TextureBinding>()};
     const FeatureGraphOps parameter_graph{emptyDescribe, nullptr};
     const FeatureDescriptor dead{FeatureName("test.dead.no.program"), {}};
     const FeatureGraphOps dead_graph{emptyDescribe,

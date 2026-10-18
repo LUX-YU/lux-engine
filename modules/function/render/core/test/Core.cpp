@@ -1,8 +1,10 @@
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/core/CppType.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <cstdio>
 #include <limits>
 #include <string_view>
+#include <string>
 #include <type_traits>
 
 #define CHECK(condition) \
@@ -191,6 +193,27 @@ int epochs()
     return 0;
 }
 
+int cppTypes()
+{
+    constexpr auto value = cppType<std::uint32_t>();
+    static_assert(value.size == sizeof(std::uint32_t));
+    static_assert(value.alignment == alignof(std::uint32_t));
+    static_assert(value != cppType<float>());
+    CHECK(value != CppType{});
+    std::string name(value.token.name());
+    CppType equivalent{cxx::TypeToken(value.token.hash(), name), value.size, value.alignment};
+    CHECK(value == equivalent);
+    equivalent.token = cxx::TypeToken(value.token.hash(), "different-name-same-hash");
+    CHECK(value != equivalent);
+    equivalent = value;
+    ++equivalent.size;
+    CHECK(value != equivalent);
+    equivalent = value;
+    equivalent.alignment *= 2;
+    CHECK(value != equivalent);
+    return 0;
+}
+
 int errors()
 {
     const auto descriptors = renderCoreErrorDescriptors();
@@ -220,6 +243,7 @@ int main(int argc, char** argv)
     if (test == "exhaustion") return exhaustion();
     if (test == "target") return targetValues();
     if (test == "epochs") return epochs();
+    if (test == "cpp_type") return cppTypes();
     if (test == "errors") return errors();
     return 2;
 }

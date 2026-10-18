@@ -78,7 +78,7 @@ static void featureDirectory()
     {
         names.push_back("test.feature." + std::to_string(i));
         descriptions.push_back({FeatureName(names.back()),
-            i == 0 ? ConfigValue::typeOf<std::uint32_t>() : ConfigValue::Type{}});
+            i == 0 ? cppType<std::uint32_t>() : CppType{}});
         auto registered = feature_test::registerGraph(*server, {&descriptions.back(), &graph, nullptr});
         check(bool(registered));
         ids.push_back(*registered);
@@ -135,7 +135,7 @@ static void featureDirectory()
     check(bool(restarted));
     auto next = std::move(*restarted);
     const FeatureDescriptor other{FeatureName("test.feature.restart-first"), {}};
-    const FeatureDescriptor restored{FeatureName(preset), ConfigValue::typeOf<std::uint32_t>()};
+    const FeatureDescriptor restored{FeatureName(preset), cppType<std::uint32_t>()};
     check(bool(feature_test::registerGraph(*next, {&other, &graph, nullptr})));
     const auto restored_id = feature_test::registerGraph(*next, {&restored, &graph, nullptr});
     check(restored_id && *restored_id != ids.front());

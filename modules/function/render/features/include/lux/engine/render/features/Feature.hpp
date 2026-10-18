@@ -13,6 +13,6 @@ namespace lux::render
     struct FeatureDescriptor final
     {
         FeatureName type;
-        ConfigValue::Type config;
+        CppType config;
     };
 }

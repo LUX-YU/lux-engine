@@ -47,7 +47,7 @@ namespace
     {
         using Handler = AlternateTexture;
         static StorageFactory factory() noexcept { return StorageProvider<TextureStorage>::factory(); }
-        static StorageCppType implementationType() noexcept
+        static CppType implementationType() noexcept
         { return StorageProvider<TextureStorage>::implementationType(); }
     };
 }

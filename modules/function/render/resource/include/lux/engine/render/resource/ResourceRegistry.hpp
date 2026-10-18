@@ -55,7 +55,7 @@ namespace lux::render
             if (!entry || !entry->native) return cxx::unexpected(RenderError{kStorageIdentity});
             const auto& factory = types_.find(entry->type)->factory;
             const bool is_wrong_interface = factory.description->type != T::description.type ||
-                factory.ops_type != storageCppType<typename T::Ops>();
+                factory.ops_type != cppType<typename T::Ops>();
             if (is_wrong_interface) return cxx::unexpected(RenderError{kStorageMismatch});
             return typename T::Access(entry->native, *static_cast<const typename T::Ops*>(factory.ops), true);
         }
@@ -65,7 +65,7 @@ namespace lux::render
         {
             auto* entry = entries_.find(id);
             if (!entry || !entry->native) return cxx::unexpected(RenderError{kStorageIdentity});
-            if (types_.find(entry->type)->factory.native_type != storageCppType<Native>())
+            if (types_.find(entry->type)->factory.native_type != cppType<Native>())
                 return cxx::unexpected(RenderError{kStorageMismatch});
             return static_cast<Native*>(entry->native);
         }

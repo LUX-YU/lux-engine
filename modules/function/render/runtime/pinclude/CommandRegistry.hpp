@@ -35,7 +35,7 @@ namespace lux::render::runtime_detail
         using HandlerRecord = RenderServer::HandlerRecord;
         CommandId registerCommand(CommandBinding) noexcept;
         RenderResult<CommandId> findCommand(const CommandDescriptor&) const noexcept;
-        RenderResult<HandlerId> findHandler(CommandValueType, std::string_view) const noexcept;
+        RenderResult<HandlerId> findHandler(CppType, std::string_view) const noexcept;
         RenderResult<std::vector<CommandId>> prepareHandler(
             const HandlerRecord&, std::span<const CommandBinding>
         ) const noexcept;

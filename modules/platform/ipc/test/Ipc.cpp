@@ -1162,13 +1162,13 @@ namespace
         const auto& descriptor = commandDescriptor<AssetIncrement>();
         check(static_cast<bool>(validateCommand(descriptor)), "typed command contract");
         auto conflict = descriptor;
-        conflict.response.type = lux::cxx::typeToken<Ack>();
+        conflict.response.token = lux::cxx::typeToken<Ack>();
         check(!compatibleCommands(descriptor, conflict), "response type rejected by pure protocol");
         conflict = descriptor;
         conflict.request.alignment *= 2;
         check(!compatibleCommands(descriptor, conflict), "layout rejected");
         conflict = descriptor;
-        conflict.request.type = lux::cxx::TypeToken(conflict.request.type.hash(), "collision.other");
+        conflict.request.token = lux::cxx::TypeToken(conflict.request.token.hash(), "collision.other");
         check(!compatibleCommands(descriptor, conflict), "full type name rejects a hash collision");
 
         auto& core = IpcCore::instance();

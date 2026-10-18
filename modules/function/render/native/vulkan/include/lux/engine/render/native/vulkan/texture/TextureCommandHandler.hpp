@@ -45,6 +45,6 @@ namespace lux::render
         using Storage = vulkan::TextureStorage;
         using Handler = vulkan::TextureCommandHandler;
         [[nodiscard]] static StorageFactory factory() noexcept;
-        [[nodiscard]] static StorageCppType implementationType() noexcept;
+        [[nodiscard]] static CppType implementationType() noexcept;
     };
 } // namespace lux::render

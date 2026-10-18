@@ -105,7 +105,7 @@ static int identity()
     CHECK(!assembleFeatures({&s, 1}, {}));
     d = saved;
     d_graph = saved_graph;
-    d.config = ConfigValue::typeOf<std::uint32_t>();
+    d.config = cppType<std::uint32_t>();
     CHECK(!assembleFeatures({&s, 1}, {}));
     d = saved;
     d_graph = saved_graph;
@@ -147,7 +147,7 @@ static int config()
 {
     auto owned = ConfigValue::make(fixture::Config{});
     CHECK(owned);
-    FeatureDescriptor d{FeatureName("test.configured"), ConfigValue::typeOf<fixture::Config>()};
+    FeatureDescriptor d{FeatureName("test.configured"), cppType<fixture::Config>()};
     FeatureGraphOps d_graph{emptyDescribe, nullptr};
     FeatureInstanceView s{&d, &d_graph, &*owned, "one"};
     CHECK(assembleFeatures({&s, 1}, owned->retainedBytes()));
@@ -159,13 +159,13 @@ static int config()
     CHECK(!assembleFeatures({&s, 1}, fixture::limits.max_encoded_bytes));
     for (unsigned fault = 0; fault < 3; ++fault)
     {
-        d.config = ConfigValue::typeOf<fixture::Config>();
+        d.config = cppType<fixture::Config>();
         if (fault == 0) d.config.token = cxx::typeToken<std::uint64_t>();
         if (fault == 1) ++d.config.size;
         if (fault == 2) d.config.alignment *= 2;
         CHECK(!assembleFeatures({&s, 1}, fixture::limits.max_encoded_bytes));
     }
-    d.config = ConfigValue::typeOf<fixture::Config>();
+    d.config = cppType<fixture::Config>();
     auto wrong = ConfigValue::make(std::uint64_t{});
     CHECK(wrong);
     s.config = &*wrong;
@@ -494,7 +494,7 @@ static int lifetime()
         auto config = ConfigValue::make(CountedConfig{owner});
         CHECK(config);
         std::string type_name = "test.temporary";
-        FeatureDescriptor d{FeatureName(type_name), ConfigValue::typeOf<CountedConfig>()};
+        FeatureDescriptor d{FeatureName(type_name), cppType<CountedConfig>()};
         FeatureGraphOps d_graph{emptyDescribe, +[](const void* wire, std::string_view instance, std::span<const ResolvedResource>,
                 RenderGraphBuilder& b) noexcept -> RenderResult<void> {
                 const auto* c = static_cast<const CountedConfig*>(wire)->value.get();

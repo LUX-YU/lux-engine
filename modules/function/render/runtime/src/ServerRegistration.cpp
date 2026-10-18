@@ -302,7 +302,7 @@ namespace lux::render
         return impl_->command_registry_.findCommand(descriptor);
     }
 
-    RenderResult<HandlerId> RenderServer::findHandler(CommandValueType type, std::string_view key) const noexcept
+    RenderResult<HandlerId> RenderServer::findHandler(CppType type, std::string_view key) const noexcept
     {
         if (impl_->stop_requested.load())
         {

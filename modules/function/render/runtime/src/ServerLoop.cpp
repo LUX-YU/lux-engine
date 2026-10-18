@@ -83,7 +83,7 @@ namespace lux::render
         {
             response_outbox_.emplaceResponse<RenderError>(route, RenderError{kProtocolContract});
         }
-        else if (received.message().typeHash() != entry->description->request.type.hash())
+        else if (received.message().typeHash() != entry->description->request.token.hash())
         {
             response_outbox_.emplaceResponse<RenderError>(route, RenderError{kProtocolContract});
         }

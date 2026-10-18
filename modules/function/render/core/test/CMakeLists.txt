@@ -2,12 +2,12 @@ add_executable(render_core_test Core.cpp)
 
 target_link_libraries(render_core_test PRIVATE render_core)
 
-foreach(test ids scopes exhaustion target epochs errors)
+foreach(test ids scopes exhaustion target epochs errors cpp_type)
     add_test(NAME render.core.${test} COMMAND render_core_test ${test})
 endforeach()
 
 set(core_header_sources)
-foreach(header Ids Error Target Camera Execution)
+foreach(header CppType Ids Error Target Camera Execution)
     set(probe "${CMAKE_CURRENT_BINARY_DIR}/headers/${header}.cpp")
     string(CONCAT header_probe
         "#include <lux/engine/render/core/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"

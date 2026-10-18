@@ -115,7 +115,7 @@ namespace
             },
             [](const void* instance, const void* config) noexcept {
                 return static_cast<const Value*>(instance)->initial == *static_cast<const unsigned*>(config);
-            }, nullptr, storageCppType<unsigned>(), storageCppType<TestStorage::Ops>()
+            }, nullptr, cppType<unsigned>(), cppType<TestStorage::Ops>()
         );
     }
 }

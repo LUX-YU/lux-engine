@@ -41,7 +41,7 @@ namespace lux::render
         StorageNameView type;
         std::uint32_t required_capabilities = 0;
         std::uint32_t optional_capabilities = 0;
-        ConfigValue::Type binding_type;
+        CppType binding_type;
     };
 
     inline constexpr auto kStorageContract = error::errorId("lux.render.resource.contract");

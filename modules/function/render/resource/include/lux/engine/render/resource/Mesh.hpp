@@ -101,7 +101,7 @@ namespace lux::render
     {
     public:
         using Config = MeshStorageConfig;
-        static inline const StorageDescriptor description{kMeshStorageType, 0, 0, ConfigValue::typeOf<MeshBinding>()};
+        static inline const StorageDescriptor description{kMeshStorageType, 0, 0, cppType<MeshBinding>()};
         struct Ops final
         {
             RenderResult<MeshInformation> (*query)(const void*, MeshId) noexcept;

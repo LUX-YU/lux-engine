@@ -22,11 +22,11 @@ int main()
     CHECK(validateCommand(commandDescriptor<SetTextureRegion>()));
     CHECK(validateCommand(commandDescriptor<ReleaseTexture>()));
     CHECK(validateCommand(commandDescriptor<QueryTexture>()));
-    CHECK(commandDescriptor<SetTexture>().request.type == lux::cxx::typeToken<TextureWrite>());
-    CHECK(commandDescriptor<SetTextureRegion>().request.type == lux::cxx::typeToken<TextureRegionWrite>());
-    CHECK(commandDescriptor<ReleaseTexture>().response.type == lux::cxx::typeToken<RenderResult<Ack>>());
-    CHECK(commandDescriptor<ReleaseTexture>().request.type == lux::cxx::typeToken<TexturePublished>());
-    CHECK(commandDescriptor<QueryTexture>().response.type == lux::cxx::typeToken<QueryTexture::Response>());
+    CHECK(commandDescriptor<SetTexture>().request.token == lux::cxx::typeToken<TextureWrite>());
+    CHECK(commandDescriptor<SetTextureRegion>().request.token == lux::cxx::typeToken<TextureRegionWrite>());
+    CHECK(commandDescriptor<ReleaseTexture>().response.token == lux::cxx::typeToken<RenderResult<Ack>>());
+    CHECK(commandDescriptor<ReleaseTexture>().request.token == lux::cxx::typeToken<TexturePublished>());
+    CHECK(commandDescriptor<QueryTexture>().response.token == lux::cxx::typeToken<QueryTexture::Response>());
 
     int destroyed = 0;
     auto source = std::shared_ptr<std::vector<std::byte>>(

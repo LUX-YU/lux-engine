@@ -136,8 +136,8 @@ namespace lux::render
         // Cold directory values retain the provider of the canonical value operations.
         std::string name;
         CommandId id;
-        CommandValueType request;
-        CommandValueType response;
+        CppType request;
+        CppType response;
         bool bound = false;
 
         [[nodiscard]] CommandDescriptor descriptor() const noexcept

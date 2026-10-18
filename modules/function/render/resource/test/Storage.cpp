@@ -23,10 +23,10 @@ int main()
     require(bool(validateStorage(original)));
     require(bool(compatibleStorage(original, original)));
     auto changed = original;
-    changed.binding_type = ConfigValue::typeOf<std::uint32_t>();
+    changed.binding_type = cppType<std::uint32_t>();
     require(bool(validateStorage(changed)) && !compatibleStorage(original, changed));
     auto other_binding = changed;
-    other_binding.binding_type = ConfigValue::typeOf<float>();
+    other_binding.binding_type = cppType<float>();
     require(!compatibleStorage(changed, other_binding));
     changed = original;
     changed.type = StorageNameView("test.Other");
@@ -74,7 +74,7 @@ int main()
         },
         [](const void* instance, const void* config) noexcept {
             return static_cast<const Value*>(instance)->value == *static_cast<const unsigned*>(config);
-        }, nullptr, storageCppType<unsigned>(), storageCppType<Ops>()
+        }, nullptr, cppType<unsigned>(), cppType<Ops>()
     );
     require(bool(validateStorageFactory(original, factory)));
     static_assert(!std::is_assignable_v<StorageFactory&, StorageFactory>);

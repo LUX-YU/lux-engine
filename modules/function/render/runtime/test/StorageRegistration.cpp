@@ -30,7 +30,7 @@ namespace lux::render
     {
         using Storage = vulkan::TextureStorage;
         using Handler = vulkan::TextureCommandHandler;
-        static StorageCppType implementationType() noexcept
+        static CppType implementationType() noexcept
         { return StorageProvider<render::TextureStorage>::implementationType(); }
         static StorageFactory factory() noexcept
         {
@@ -43,9 +43,9 @@ namespace lux::render
             return resource_detail::StorageFactoryAudit::make(
                 Fault == 4 ? &wrong : value.description, value.ops,
                 Fault == 0 ? nullptr : value.create, value.compatible_config, value.binding_ops,
-                Fault == 1 ? storageCppType<unsigned>() : value.config_type,
-                Fault == 2 ? storageCppType<unsigned>() : value.ops_type,
-                Fault == 3 ? storageCppType<unsigned>() : value.native_type);
+                Fault == 1 ? cppType<unsigned>() : value.config_type,
+                Fault == 2 ? cppType<unsigned>() : value.ops_type,
+                Fault == 3 ? cppType<unsigned>() : value.native_type);
         }
     };
 }

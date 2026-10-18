@@ -1,10 +1,13 @@
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/core/CppType.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/core/Camera.hpp>
 
 int main()
 {
     using namespace lux::render;
+    static_assert(cppType<int>().size == sizeof(int));
+    static_assert(cppType<int>() != cppType<unsigned>());
     lux::cxx::SlotMap<int, SceneTag> scenes;
     const SceneId old = scenes.insert(42);
     if (!scenes.erase(old)) return 1;

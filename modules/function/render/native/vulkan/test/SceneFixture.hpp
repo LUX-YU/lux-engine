@@ -79,7 +79,7 @@ namespace native_fixture
         return {};
     }
 
-    inline const FeatureDescriptor definition{type, ConfigValue::typeOf<Config>()};
+    inline const FeatureDescriptor definition{type, cppType<Config>()};
     inline const FeatureGraphOps definition_graph{describe, build};
 
     inline std::vector<PassProgram> programs(Config config, std::string_view instance = "main")

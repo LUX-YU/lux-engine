@@ -54,7 +54,7 @@ namespace extension_test
         return graph.exportOutput({{*pixels, 1}});
     }
 
-    inline const FeatureDescriptor definition{feature_type, ConfigValue::typeOf<ViewConfig>()};
+    inline const FeatureDescriptor definition{feature_type, cppType<ViewConfig>()};
     inline const FeatureGraphOps definition_graph{describe, build};
 
     inline ShaderBlock colorBlock() noexcept

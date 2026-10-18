@@ -135,7 +135,7 @@ namespace lux::render
         using Storage = extension_test::NativeBuffer;
         using Handler = extension_test::BufferCommands;
         static StorageFactory factory() noexcept { return extension_test::bufferFactory(); }
-        static StorageCppType implementationType() noexcept { return storageCppType<Storage>(); }
+        static CppType implementationType() noexcept { return cppType<Storage>(); }
     };
 }
 

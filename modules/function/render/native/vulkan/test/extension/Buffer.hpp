@@ -70,6 +70,6 @@ namespace extension_test
 {
     inline const StorageDescriptor TestBufferStorage::description{
         StorageNameView("test.extension.BufferStorage"),
-        0, 0, ConfigValue::typeOf<BufferBinding>()
+        0, 0, cppType<BufferBinding>()
     };
 }

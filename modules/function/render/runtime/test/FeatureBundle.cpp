@@ -52,14 +52,14 @@ namespace lux::render
     {
         using Handler = ::TrackedHandler;
         static StorageFactory factory() noexcept { return StorageProvider<render::TextureStorage>::factory(); }
-        static StorageCppType implementationType() noexcept
+        static CppType implementationType() noexcept
         { return StorageProvider<render::TextureStorage>::implementationType(); }
     };
     template <> struct StorageProvider<::WrongTexture> final
     {
         using Handler = ::WrongHandler;
         static StorageFactory factory() noexcept { return StorageProvider<render::TextureStorage>::factory(); }
-        static StorageCppType implementationType() noexcept
+        static CppType implementationType() noexcept
         { return StorageProvider<render::TextureStorage>::implementationType(); }
     };
 }

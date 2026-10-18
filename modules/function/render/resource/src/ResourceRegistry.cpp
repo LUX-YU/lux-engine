@@ -46,7 +46,7 @@ namespace lux::render
         const auto& type = *factory.description;
         if ((type.required_capabilities & ~capabilities_) != 0)
             return cxx::unexpected(RenderError{kStorageCapability});
-        const StorageCppType actual{configuration.type(), configuration.objectSize(), configuration.objectAlignment()};
+        const auto actual = configuration.typeInfo();
         if (configuration && factory.config_type != actual)
             return cxx::unexpected(RenderError{kStorageMismatch});
         if (!typeId(factory.description->type).isNull())

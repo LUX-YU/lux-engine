@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/cxx/compile_time/TypeToken.hpp>
+#include <lux/engine/render/core/CppType.hpp>
 #include <concepts>
 #include <memory>
 #include <type_traits>
@@ -26,20 +26,7 @@ namespace lux::render
     class ConfigValue final
     {
     public:
-        struct Type final
-        {
-            cxx::TypeToken token;
-            std::size_t size = 0;
-            std::size_t alignment = 0;
-            bool operator==(const Type&) const noexcept = default;
-        };
-
-        template <class T> [[nodiscard]] static constexpr Type typeOf() noexcept
-        {
-            return {cxx::typeToken<T>(), sizeof(T), alignof(T)};
-        }
-
-        [[nodiscard]] Type typeInfo() const noexcept { return type_ ? type_->identity : Type{}; }
+        [[nodiscard]] CppType typeInfo() const noexcept { return type_ ? type_->identity : CppType{}; }
 
         // Cold semantic agreement only. No object representation/padding comparison and no hash shortcut.
         // Non-comparable configurations can still be shared by copying their existing immutable owner.
@@ -82,7 +69,7 @@ namespace lux::render
             if (*bytes < sizeof(Value)) return cxx::unexpected(RenderError{kInvalidConfig});
             ConfigValue result;
             result.value_ = std::make_shared<const Value>(std::forward<T>(value));
-            static constexpr Metadata type{typeOf<Value>(), equality<Value>()};
+            static constexpr Metadata type{cppType<Value>(), equality<Value>()};
             result.type_ = &type;
             result.retained_bytes_ = *bytes;
             return result;
@@ -97,8 +84,7 @@ namespace lux::render
         template <class T>
         [[nodiscard]] const T* borrow() const noexcept
         {
-            const bool matches = type() == cxx::typeToken<T>() && objectSize() == sizeof(T) &&
-                objectAlignment() == alignof(T);
+            const bool matches = typeInfo() == cppType<T>();
             return matches ? static_cast<const T*>(value_.get()) : nullptr;
         }
 
@@ -109,7 +95,7 @@ namespace lux::render
         using Equal = bool (*)(const void*, const void*) noexcept;
         struct Metadata final
         {
-            Type identity;
+            CppType identity;
             Equal equal;
         };
 

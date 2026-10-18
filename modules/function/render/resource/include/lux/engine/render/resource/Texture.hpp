@@ -98,7 +98,7 @@ namespace lux::render
         static inline constexpr StorageDescriptor description{
             kTextureStorageType,
             static_cast<std::uint32_t>(EStorageCapability::SAMPLED_IMAGE_ARRAY),
-            static_cast<std::uint32_t>(EStorageCapability::BLOCK_COMPRESSION_BC), ConfigValue::typeOf<TextureBinding>()
+            static_cast<std::uint32_t>(EStorageCapability::BLOCK_COMPRESSION_BC), cppType<TextureBinding>()
         };
         struct Ops final
         {

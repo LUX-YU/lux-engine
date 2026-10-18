@@ -21,7 +21,7 @@ namespace lux::render
         using Storage = buffer_fixture::Native;
         using Handler = void; // Graph-only zero-buffer provider; no dummy operation object.
         static StorageFactory factory() noexcept { return buffer_fixture::factory(); }
-        static StorageCppType implementationType() noexcept { return storageCppType<Storage>(); }
+        static CppType implementationType() noexcept { return cppType<Storage>(); }
     };
 }
 

@@ -1,6 +1,6 @@
 #include <algorithm>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
-#include <lux/engine/render/features/MeshFeature.hpp>
+#include <lux/engine/render/features/mesh/MeshFeature.hpp>
 
 namespace lux::render
 {

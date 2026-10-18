@@ -3,8 +3,8 @@
 // glslang's --vn output uses uint32_t without including its declaration.
 #include "BasicMeshVertex.hpp"
 #include "DepthOnlyVertex.hpp"
-#include <lux/engine/render/features/MeshFeature.hpp>
-#include <lux/engine/render/native/vulkan/features/MeshFeature.hpp>
+#include <lux/engine/render/features/mesh/MeshFeature.hpp>
+#include <lux/engine/render/native/vulkan/mesh/MeshFeature.hpp>
 
 namespace lux::render::vulkan
 {

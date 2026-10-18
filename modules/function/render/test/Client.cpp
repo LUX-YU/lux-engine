@@ -9,7 +9,7 @@
 #include <latch>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/features/MeshFeature.hpp>
+#include <lux/engine/render/features/mesh/MeshFeature.hpp>
 #include <source_location>
 #include <thread>
 

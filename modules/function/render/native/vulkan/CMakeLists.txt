@@ -106,7 +106,7 @@ add_component(
     COMPONENT_NAME render_native_vulkan_features
     NAMESPACE lux::engine::render
     OUTPUT_NAME lux_engine_render_native_vulkan_features
-    SOURCE_FILES src/features/MeshFeature.cpp ${mesh_shader_headers}
+    SOURCE_FILES src/mesh/MeshFeature.cpp ${mesh_shader_headers}
 )
 
 component_include_directories(render_native_vulkan_features

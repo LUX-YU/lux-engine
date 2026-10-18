@@ -3,6 +3,7 @@
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include <algorithm>
 #include "SessionUploads.hpp"
+#include "StagingArena.hpp"
 
 #include <exception>
 
@@ -22,11 +23,12 @@ namespace lux::render::vulkan
         // Logical subscriptions/actual Sets end while Native retirement and Queue owners still exist.
         contexts_.clear();
         globals_.clear();
-        uploads_.reset();
         for (auto& retirement : retirement_owners_) retirement.reset();
         // On Device Lost, batches retain resources until queue teardown instead of a completed fence.
         // Release them while the allocator/device and descriptor-table lifetime check still exist.
         for (auto& queue : queue_owners_) queue.reset();
+        uploads_.reset();
+        staging_arena_.reset();
         if (!sampled_images_.expired()) std::terminate();
         sampled_images_.reset();
         buffers_.clear();

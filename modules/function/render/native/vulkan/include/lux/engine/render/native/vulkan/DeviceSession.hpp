@@ -15,6 +15,7 @@ namespace lux::render::vulkan
     class DescriptorArray;
     class ExecutionContext;
     class Transfer;
+    class StagingArena;
     struct ImageTransferRegion;
     struct TransferStats;
     // Stable Native lifetime root. Bootstrap owns InstanceContext and outlives this object.
@@ -115,6 +116,7 @@ namespace lux::render::vulkan
         // Unique physical owners. Context leases borrow entries until their real
         // GPU ticket retires. Member destruction is explicitly ordered in the destructor.
         std::vector<std::unique_ptr<ExecutionContext>> contexts_;
+        std::unique_ptr<StagingArena> staging_arena_;
         std::unique_ptr<UploadState> uploads_;
         ResourceRegistry resources_;
         StorageSet globals_;

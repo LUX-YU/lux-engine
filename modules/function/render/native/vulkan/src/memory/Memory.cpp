@@ -107,6 +107,20 @@ namespace lux::render::vulkan
         return {};
     }
 
+    RenderResult<void> Buffer::flush(VkDeviceSize offset, VkDeviceSize size) noexcept
+    {
+        const bool is_invalid_range = offset > size_ || size > size_ - offset;
+        const bool is_invalid_access = !mapped_ || is_invalid_range;
+        if (is_invalid_access) return cxx::unexpected(RenderError{kInvalidArgument});
+        if (!size) return {};
+        const auto result = LUX_NATIVE("flush", vmaFlushAllocation(allocator_->native(), allocation_, offset, size));
+        if (result != VK_SUCCESS)
+        {
+            return cxx::unexpected(nativeError(result));
+        }
+        return {};
+    }
+
     RenderResult<void> Buffer::read(VkDeviceSize offset,
         std::span<std::byte> bytes) const noexcept
     {

@@ -3,12 +3,12 @@
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include "Native.hpp"
 #include "SessionUploads.hpp"
+#include "StagingArena.hpp"
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <algorithm>
 #include <bit>
 #include <chrono>
 #include <cstring>
-#include <vk_mem_alloc.h>
 
 namespace lux::render::vulkan
 {
@@ -69,11 +69,6 @@ namespace lux::render::vulkan
 
     DeviceSession::UploadState::~UploadState() noexcept
     {
-        // Construction failure or Session's joined + drained teardown; no caller may retain a candidate here.
-        for (auto& page : pages)
-        {
-            if (page.leased) std::terminate();
-        }
         if (timestamps) vkDestroyQueryPool(session.device().native(), timestamps, nullptr);
     }
 
@@ -105,17 +100,11 @@ namespace lux::render::vulkan
             const auto result = vkCreateQueryPool(device_.native(), &query, nullptr, &state->timestamps);
             if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
         }
-        state->pages.resize(options.staging_pages);
         const std::array families{queue().nativeQueue().family, state->copy_queue->nativeQueue().family};
         const auto sharing = families[0] == families[1] ? std::span<const std::uint32_t>{} : std::span(families);
-        for (auto& page : state->pages)
-        {
-            auto buffer = allocator_.createBuffer(options.chunk_bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                EMemoryAccess::UPLOAD, sharing);
-            if (!buffer) return cxx::unexpected(buffer.error());
-            page.buffer = std::move(*buffer);
-            page.mapped = static_cast<std::byte*>(page.buffer->mapped_);
-        }
+        auto arena = StagingArena::create(allocator_, options.chunk_bytes, options.staging_pages, sharing);
+        if (!arena) return cxx::unexpected(arena.error());
+        staging_arena_ = std::move(*arena);
         state->stats.staging_bytes = options.chunk_bytes * options.staging_pages;
         uploads_ = std::move(state);
         return {};
@@ -171,12 +160,13 @@ namespace lux::render::vulkan
                 return cxx::unexpected(RenderError{kInvalidArgument});
         }
         auto& state = *uploads_;
-        auto page = std::find_if(state.pages.begin(), state.pages.end(), [](const auto& value) { return !value.leased; });
-        if (page == state.pages.end() || source.size() > state.options.pending_bytes - state.stats.pending_bytes)
+        if (source.size() > state.options.pending_bytes - state.stats.pending_bytes)
             return cxx::unexpected(RenderError{kCapacity});
+        auto page = staging_arena_->acquire();
+        if (!page) return cxx::unexpected(page.error());
         auto image = allocator_.createImage(description);
         if (!image) return cxx::unexpected(image.error());
-        auto result = std::unique_ptr<Transfer>(new Transfer(*this, source, std::size_t(page - state.pages.begin())));
+        auto result = std::unique_ptr<Transfer>(new Transfer(*this, source, std::move(*page)));
         result->image_ = std::move(*image);
         result->regions_.assign(regions.begin(), regions.end());
         result->clone_ = std::move(clone);
@@ -192,22 +182,24 @@ namespace lux::render::vulkan
         if (!uploads_) return cxx::unexpected(RenderError{kUnsupported});
         if (source.empty() || source.size() % 4) return cxx::unexpected(RenderError{kInvalidArgument});
         auto& state = *uploads_;
-        auto page = std::find_if(state.pages.begin(), state.pages.end(), [](const auto& value) { return !value.leased; });
-        if (page == state.pages.end() || source.size() > state.options.pending_bytes - state.stats.pending_bytes)
+        if (source.size() > state.options.pending_bytes - state.stats.pending_bytes)
             return cxx::unexpected(RenderError{kCapacity});
+        auto page = staging_arena_->acquire();
+        if (!page) return cxx::unexpected(page.error());
         auto buffer = createBuffer(source.size(), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE);
         if (!buffer) return cxx::unexpected(buffer.error());
-        auto result = std::unique_ptr<Transfer>(new Transfer(*this, source, std::size_t(page - state.pages.begin())));
+        auto result = std::unique_ptr<Transfer>(new Transfer(*this, source, std::move(*page)));
         result->buffer_ = std::move(*buffer);
         result->copy_queue_ = state.copy_queue;
         return result;
     }
 
-    Transfer::Transfer(DeviceSession& session, std::span<const std::byte> source, std::size_t page) noexcept
-        : session_(&session), source_(source), mapped_(session.uploads_->pages[page].mapped), page_(page)
+    Transfer::Transfer(
+        DeviceSession& session, std::span<const std::byte> source, std::shared_ptr<StagingPage> page
+    ) noexcept
+        : session_(&session), source_(source), mapped_(page->buffer().mappedBytes().data()), staging_page_(std::move(page))
     {
         auto& state = *session.uploads_;
-        state.pages[page].leased = true;
         state.stats.pending_bytes += source.size();
         state.stats.pending_peak = std::max(state.stats.pending_peak, state.stats.pending_bytes);
     }
@@ -220,7 +212,6 @@ namespace lux::render::vulkan
             auto result = !requirements_.empty() ? session_->releaseCompleted(buffer_, requirements_) : session_->destroyUnsubmitted(buffer_);
             if (!result) std::terminate();
         }
-        session_->uploads_->pages[page_].leased = false;
         session_->uploads_->stats.pending_bytes -= source_.size();
     }
 
@@ -346,8 +337,10 @@ namespace lux::render::vulkan
         if (query_pending_)
         {
             std::array<std::uint64_t, 2> stamps{};
-            const auto result = vkGetQueryPoolResults(device(), state.timestamps, std::uint32_t(page_ * 2), 2,
-                sizeof(stamps), stamps.data(), sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT);
+            const auto result = vkGetQueryPoolResults(
+                device(), state.timestamps, std::uint32_t(staging_page_->index() * 2), 2,
+                sizeof(stamps), stamps.data(), sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT
+            );
             if (result != VK_SUCCESS) { failure_ = nativeError(result); finish(); return; }
             const auto mask = timestamp_bits == 64 ? UINT64_MAX : (std::uint64_t{1} << timestamp_bits) - 1;
             state.stats.gpu_ns += std::uint64_t(double((stamps[1] - stamps[0]) & mask) *
@@ -406,17 +399,15 @@ namespace lux::render::vulkan
         const bool timestamp = !acquiring && state.timestamps && timestamp_bits;
         if (timestamp)
         {
-            vkResetQueryPool(device(), state.timestamps, std::uint32_t(page_ * 2), 2);
+            vkResetQueryPool(device(), state.timestamps, std::uint32_t(staging_page_->index() * 2), 2);
             vkCmdWriteTimestamp2(batch->native(), VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, state.timestamps,
-                std::uint32_t(page_ * 2));
+                std::uint32_t(staging_page_->index() * 2));
         }
         if (!acquiring)
         {
-            const auto& page = state.pages[page_];
-            batch->retain(page.buffer);
-            const auto flushed = LUX_NATIVE("flush", vmaFlushAllocation(session_->allocator_.native(),
-                page.buffer->allocation_, 0, chunk_size_));
-            if (flushed != VK_SUCCESS) { failure_ = nativeError(flushed); finish(); return; }
+            batch->retain(staging_page_);
+            const auto flushed = staging_page_->buffer().flush(0, chunk_size_);
+            if (!flushed) { failure_ = flushed.error(); finish(); return; }
         }
         if (image_) batch->retain(image_);
         if (!initialized_ && clone_) batch->retain(clone_);
@@ -436,7 +427,7 @@ namespace lux::render::vulkan
         const std::optional<SubmissionWait> wait = acquiring ?
             std::optional{SubmissionWait{*ticket_, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT}} : std::nullopt;
         if (timestamp) vkCmdWriteTimestamp2(batch->native(), VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-            state.timestamps, std::uint32_t(page_ * 2 + 1));
+            state.timestamps, std::uint32_t(staging_page_->index() * 2 + 1));
         auto accepted = std::move(*batch).submit(wait ? std::span(&*wait, 1) : std::span<const SubmissionWait>{});
         if (!accepted) { failure_ = accepted.error(); finish(); return; }
         ticket_ = *accepted;
@@ -458,7 +449,7 @@ namespace lux::render::vulkan
         if (!acquiring)
         {
             const VkBufferCopy copy{0, offset_, chunk_size_};
-            vkCmdCopyBuffer(command, session_->uploads_->pages[page_].buffer->native(), buffer().native(), 1, &copy);
+            vkCmdCopyBuffer(command, staging_page_->buffer().native(), buffer().native(), 1, &copy);
         }
         if (!final) return;
         VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
@@ -540,7 +531,7 @@ namespace lux::render::vulkan
             region.imageExtent = {input.extent.width,
                 std::uint32_t(std::min(std::uint64_t(rows_) * input.block_extent,
                     std::uint64_t(input.extent.height - row_ * input.block_extent))), 1};
-            vkCmdCopyBufferToImage(command, session_->uploads_->pages[page_].buffer->native(), barrier.image,
+            vkCmdCopyBufferToImage(command, staging_page_->buffer().native(), barrier.image,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
         }
         if (final)

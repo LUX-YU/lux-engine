@@ -6,6 +6,8 @@
 
 namespace lux::render::vulkan
 {
+    class StagingPage;
+
     struct TransferStats final
     {
         std::uint64_t copied_bytes = 0, chunks = 0, prepare_ns = 0, owner_ns = 0;
@@ -53,7 +55,7 @@ namespace lux::render::vulkan
     private:
         friend class DeviceSession;
         enum class EPhase { PREPARE, CPU_PENDING, COPY, COPY_PENDING, ACQUIRE, FINAL_PENDING, COMPLETE };
-        Transfer(DeviceSession&, std::span<const std::byte>, std::size_t) noexcept;
+        Transfer(DeviceSession&, std::span<const std::byte>, std::shared_ptr<StagingPage>) noexcept;
         struct CpuPreparation;
         static void prepare(void*) noexcept;
         static void resumeCpu(void*, RenderResult<void>) noexcept;
@@ -70,7 +72,8 @@ namespace lux::render::vulkan
         std::shared_ptr<const Image> clone_;
         SubmissionRequirements* clone_last_use_ = nullptr;
         std::vector<ImageTransferRegion> regions_;
-        std::size_t page_, region_ = 0, offset_ = 0;
+        std::shared_ptr<StagingPage> staging_page_;
+        std::size_t region_ = 0, offset_ = 0;
         std::uint32_t row_ = 0, rows_ = 0;
         std::size_t row_bytes_ = 0, chunk_size_ = 0;
         CompletionPost completion_post_;

@@ -142,5 +142,9 @@ render_native_vulkan contains Device/Memory/Submission/Transfer/GpuWork/Retireme
 Factory installation is explicit and cold. Session contains no default Texture factory. Transfer retains
 actual source/destination Image objects; Texture keeps the source TextureData and its real synchronization
 requirements for Clone. These requirements no longer control Texture destruction. Accepted-submit merging
-and queue callbacks are unchanged. SessionUploads is a component-private definition; DeviceSession.cpp owns
-construction/destruction in the original order.
+and queue callbacks are unchanged. StagingArena owns mapped buffers and an O(1) free-list. An acquired
+StagingPage is retained by CPU preparation and accepted Copy batches; only its final reference returns
+the page for reuse. Session releases queued batches before the arena, including on Device Lost.
+SessionUploads still contains transfer scheduling/statistics until the UploadContext migration; upload
+publication currently still waits for completion observation. Page retention alone does not implement
+the later submission-accepted success contract.

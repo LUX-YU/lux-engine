@@ -107,6 +107,12 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> write(VkDeviceSize offset, std::span<const std::byte> bytes) noexcept;
         [[nodiscard]] RenderResult<void> read(VkDeviceSize offset, std::span<std::byte> bytes) const noexcept;
         [[nodiscard]] BufferMemoryBinding memoryBinding() const noexcept;
+        [[nodiscard]] std::span<std::byte> mappedBytes() noexcept
+        {
+            return mapped_ ? std::span(static_cast<std::byte*>(mapped_), static_cast<std::size_t>(size_)) :
+                std::span<std::byte>{};
+        }
+        [[nodiscard]] RenderResult<void> flush(VkDeviceSize offset, VkDeviceSize size) noexcept;
 
         Buffer(const Buffer&) = delete;
         Buffer& operator=(const Buffer&) = delete;

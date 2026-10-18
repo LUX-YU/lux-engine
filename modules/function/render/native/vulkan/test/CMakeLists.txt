@@ -74,6 +74,8 @@ add_executable(render_buffer_transfer_test BufferTransfer.cpp)
 
 target_link_libraries(render_buffer_transfer_test PRIVATE render_native_instrumented)
 
+target_include_directories(render_buffer_transfer_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../pinclude")
+
 add_test(NAME render.native.buffer_transfer COMMAND render_buffer_transfer_test)
 
 set_tests_properties(render.native.buffer_transfer PROPERTIES TIMEOUT 60)

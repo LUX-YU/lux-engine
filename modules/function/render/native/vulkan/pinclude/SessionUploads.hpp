@@ -7,17 +7,10 @@ namespace lux::render::vulkan
 {
     struct DeviceSession::UploadState final
     {
-        struct Page final
-        {
-            std::shared_ptr<Buffer> buffer;
-            std::byte* mapped = nullptr;
-            bool leased = false;
-        };
         DeviceSession& session;
         SubmissionQueue* copy_queue = nullptr;
         TransferOptions options;
         execution::CpuScheduler cpu;
-        std::vector<Page> pages;
         TransferStats stats;
         VkQueryPool timestamps = VK_NULL_HANDLE;
         std::uint32_t copy_timestamp_bits = 0, graphics_timestamp_bits = 0;

@@ -1,6 +1,8 @@
 #include "TextureFixture.hpp"
+#include "StagingArena.hpp"
 #include <lux/engine/render/native/vulkan/transfer/Transfer.hpp>
 #include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
+#include <cstring>
 #include <semaphore>
 
 static unsigned fail_submit = 0;
@@ -86,6 +88,79 @@ static std::vector<std::byte> read(DeviceSession& session, BufferPermit& buffer)
     return bytes;
 }
 
+// A page's mapped contents cannot be recycled merely because its CPU producer has returned.
+static void stagingLifetime(DeviceSession& session)
+{
+    const auto before = live_buffers;
+    auto& queue = session.queue(EQueueRole::TRANSFER);
+    auto arena = take(StagingArena::create(session.allocator(), 256, 2, {}));
+    CHECK(arena->available() == 2 && live_buffers == before + 2);
+    {
+        auto page = take(arena->acquire());
+        const auto first_index = page->index();
+        auto other = take(arena->acquire());
+        CHECK(page->index() != other->index() && !arena->acquire());
+        auto output = take(session.allocator().createBuffer(
+            256, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK
+        ));
+        std::array<std::byte, 256> source{};
+        for (std::size_t i = 0; i < source.size(); ++i) source[i] = std::byte((i * 13 + 7) % 251);
+        const auto mapped = page->buffer().mappedBytes();
+        CHECK(mapped.size() == source.size());
+        std::memcpy(mapped.data(), source.data(), source.size());
+        CHECK(page->buffer().flush(0, source.size()));
+        CHECK(!page->buffer().flush(source.size(), 1));
+        auto batch = take(queue.begin());
+        batch.retain(page);
+        batch.retain(output);
+        const VkBufferCopy copy{0, 0, source.size()};
+        vkCmdCopyBuffer(batch.native(), page->buffer().native(), output->native(), 1, &copy);
+        VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+        barrier.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+        barrier.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+        barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer = output->native();
+        barrier.size = VK_WHOLE_SIZE;
+        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        dependency.bufferMemoryBarrierCount = 1;
+        dependency.pBufferMemoryBarriers = &barrier;
+        vkCmdPipelineBarrier2(batch.native(), &dependency);
+        hold_completion = true;
+        const auto accepted = take(std::move(batch).submit());
+        const std::weak_ptr<StagingPage> retained = page;
+        page.reset();
+        CHECK(queue.poll() && !retained.expired() && arena->available() == 0);
+
+        // A rejected later submission returns only its own page, never the earlier accepted page.
+        const auto other_index = other->index();
+        {
+            auto rejected = take(queue.begin());
+            rejected.retain(other);
+            other.reset();
+            fail_submit = 1;
+            const auto failure = std::move(rejected).submit();
+            CHECK(!failure && failure.error().type == kNativeFailure && fail_submit == 0);
+        }
+        CHECK(arena->available() == 1 && !retained.expired());
+        auto reused = take(arena->acquire());
+        CHECK(reused->index() == other_index && !arena->acquire());
+        hold_completion = false;
+        CHECK(take(queue.wait(accepted, UINT64_MAX)));
+        CHECK(retained.expired() && arena->available() == 1);
+        auto completed = take(arena->acquire());
+        CHECK(completed->index() == first_index);
+        std::array<std::byte, 256> readback{};
+        CHECK(output->read(0, readback) && readback == source);
+    }
+    CHECK(arena->available() == 2 && live_buffers == before + 2);
+    arena.reset();
+    CHECK(live_buffers == before);
+    std::printf("staging page retained until actual completion; failed Submit returns only rejected page; "
+        "bytes=256 Page=%zu Arena=%zu\n", sizeof(StagingPage), sizeof(StagingArena));
+}
+
 int main()
 {
     Validation validation;
@@ -99,6 +174,7 @@ int main()
         options.multiple_queues = topology != 0;
         options.prefer_dedicated_queues = topology == 2;
         auto session = take(DeviceSession::create(bootstrap, options));
+        stagingLifetime(*session);
         CHECK(session->configureUploads({65536, 1, source.size()}, host.cpu()));
         ImageDescription invalid_image{{4, 4}, VK_FORMAT_R8G8B8A8_UNORM,
             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT};

@@ -23,7 +23,17 @@ Full-name command discovery and Handler type/instance discovery use ordered indi
 Handler selection uses the ordered, append-only HandlerId bindings and verifies the
 full generation. Individual Handler unloading is not supported; clear removes all
 indices before destroying Handler objects. Built-in control calls remain unselectable.
-Registration compares complete declarations before publishing typed member thunks.
+A temporary RegistrationBatch collects new Handler objects/member calls, Storage factories
+and Feature declarations. Installation checks the complete batch against existing entries
+and against its other entries before publishing anything. Unpublished objects are destroyed
+on failure. Existing Handler type/instance pairs are reused without reconstruction; explicit
+Storage configuration wins over a Feature dependency's default configuration.
+
+Native Providers explicitly implement `createHandler(DeviceSession&, ...)`, naming the
+actual constructor arguments. Runtime never infers dependencies from constructor shapes.
+The batch is discarded after installation; it owns no running work or persistent directory.
+Publication performs no extension callbacks after the final recoverable capability/config
+check. Host heap exhaustion remains fatal, including installation-time container growth.
 Clients explicitly query ListCommands/ListCommandBindings and may select a binding.
 Selection affects future dispatch, never an already-started operation.
 

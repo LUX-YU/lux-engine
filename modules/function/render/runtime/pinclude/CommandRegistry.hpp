@@ -44,6 +44,12 @@ namespace lux::render::runtime_detail
         ) noexcept;
         CommandList listCommands() const noexcept;
 
+        void reserve(std::size_t added_commands, std::size_t added_handlers)
+        {
+            commands_.reserve(commands_.size() + added_commands);
+            handlers_.reserve(handlers_.size() + added_handlers);
+        }
+
         [[nodiscard]] const CommandRecord* findCommand(CommandId id) const noexcept
         {
             return commands_.find(id);

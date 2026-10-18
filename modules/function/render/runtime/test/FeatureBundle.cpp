@@ -26,7 +26,11 @@ struct TrackedHandler final
 {
     static constexpr std::string_view name = "test.bundle.texture";
     vulkan::TextureCommandHandler actual;
-    explicit TrackedHandler(DeviceSession& session) noexcept : actual(session) { ++constructed; }
+    TrackedHandler(DeviceSession& session, unsigned dependency_cookie) noexcept : actual(session)
+    {
+        CHECK(dependency_cookie == 71);
+        ++constructed;
+    }
     ~TrackedHandler() noexcept { ++destroyed; }
     void query(const QueryTexture::Request& input, QueryTexture::Response& reply) noexcept
     { actual.queryTexture(input, reply); }
@@ -51,6 +55,8 @@ namespace lux::render
     template <> struct StorageProvider<::TrackedTexture> final
     {
         using Handler = ::TrackedHandler;
+        static std::unique_ptr<Handler> createHandler(vulkan::DeviceSession& device) noexcept
+        { return std::make_unique<Handler>(device, 71); }
         static StorageFactory factory() noexcept { return StorageProvider<render::TextureStorage>::factory(); }
         static CppType implementationType() noexcept
         { return StorageProvider<render::TextureStorage>::implementationType(); }
@@ -58,6 +64,8 @@ namespace lux::render
     template <> struct StorageProvider<::WrongTexture> final
     {
         using Handler = ::WrongHandler;
+        static std::unique_ptr<Handler> createHandler(vulkan::DeviceSession& device) noexcept
+        { return std::make_unique<Handler>(device); }
         static StorageFactory factory() noexcept { return StorageProvider<render::TextureStorage>::factory(); }
         static CppType implementationType() noexcept
         { return StorageProvider<render::TextureStorage>::implementationType(); }
@@ -68,6 +76,10 @@ static RenderResult<void> describe(const void*, std::string_view, ResourceClaims
 template <unsigned Mode> struct Bundle final
 {
     using Handler = std::conditional_t<Mode == 5, TrackedHandler, void>;
+    static std::unique_ptr<TrackedHandler> createHandler(vulkan::DeviceSession& device) noexcept
+        requires (Mode == 5)
+    { return std::make_unique<TrackedHandler>(device, 71); }
+
     using Storages = std::conditional_t<Mode == 2, std::tuple<TrackedTexture, WrongTexture>,
         std::tuple<lux::render::MeshStorage, TrackedTexture, TrackedTexture>>;
     feature_detail::Implementation definition() const noexcept

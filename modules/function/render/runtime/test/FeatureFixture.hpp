@@ -29,6 +29,22 @@ namespace feature_test
         lux::render::feature_detail::Implementation graph;
 
         lux::render::feature_detail::Implementation definition() const noexcept { return graph; }
+
+        template <class... Args>
+        std::unique_ptr<H> createHandler(lux::render::vulkan::DeviceSession&, Args&&... args) const noexcept
+            requires (!std::is_void_v<H>)
+        { return std::make_unique<H>(std::forward<Args>(args)...); }
+
+    };
+
+    template <class H> struct NativeProvider final
+    {
+        using Handler = H;
+        lux::render::feature_detail::Implementation graph;
+
+        lux::render::feature_detail::Implementation definition() const noexcept { return graph; }
+        std::unique_ptr<H> createHandler(lux::render::vulkan::DeviceSession& device) const noexcept
+        { return std::make_unique<H>(device); }
     };
 
     inline lux::render::RenderResult<lux::render::FeatureId> registerGraph(

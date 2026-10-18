@@ -40,6 +40,11 @@ namespace lux::render
     {
         using Storage = vulkan::MaterialStorage;
         using Handler = vulkan::MaterialCommandHandler;
+        [[nodiscard]] static std::unique_ptr<Handler> createHandler(vulkan::DeviceSession& device) noexcept
+        {
+            return std::make_unique<Handler>(device);
+        }
+
         [[nodiscard]] static StorageFactory factory() noexcept;
         [[nodiscard]] static CppType implementationType() noexcept;
     };

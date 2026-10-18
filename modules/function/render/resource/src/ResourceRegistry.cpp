@@ -82,6 +82,7 @@ namespace lux::render
                 if (candidates[j].factory.description->type == candidate.factory.description->type)
                     return cxx::unexpected(RenderError{kStorageFactory});
         }
+        types_.reserve(types_.size() + candidates.size());
         std::vector<StorageTypeId> ids;
         ids.reserve(candidates.size());
         for (auto& candidate : candidates)

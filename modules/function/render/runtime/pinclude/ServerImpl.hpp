@@ -96,6 +96,7 @@ namespace lux::render
         execution::CpuScheduler scheduler; // Borrowed from the Host runtime.
         ipc::IpcResponder responder;
         cxx::StableSlotMap<FeatureEntry, FeatureTag> features;
+        std::map<std::string_view, FeatureId, std::less<>> features_by_name;
         CommandRegistry command_registry_;
         cxx::StableSlotMap<Scene, SceneTag> scenes;
         cxx::SlotMap<Target, TargetTag> targets;

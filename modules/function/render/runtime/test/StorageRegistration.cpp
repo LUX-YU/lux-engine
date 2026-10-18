@@ -30,6 +30,8 @@ namespace lux::render
     {
         using Storage = vulkan::TextureStorage;
         using Handler = vulkan::TextureCommandHandler;
+        static std::unique_ptr<Handler> createHandler(vulkan::DeviceSession& device) noexcept
+        { return std::make_unique<Handler>(device); }
         static CppType implementationType() noexcept
         { return StorageProvider<render::TextureStorage>::implementationType(); }
         static StorageFactory factory() noexcept

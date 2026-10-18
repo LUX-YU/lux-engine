@@ -46,6 +46,8 @@ namespace
     struct AlternateProvider final
     {
         using Handler = AlternateTexture;
+        static std::unique_ptr<Handler> createHandler(vulkan::DeviceSession& device) noexcept
+        { return std::make_unique<Handler>(device); }
         static StorageFactory factory() noexcept { return StorageProvider<TextureStorage>::factory(); }
         static CppType implementationType() noexcept
         { return StorageProvider<TextureStorage>::implementationType(); }

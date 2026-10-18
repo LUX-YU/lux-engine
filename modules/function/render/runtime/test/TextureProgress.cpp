@@ -133,7 +133,7 @@ static void shutdownAndLoss()
         config.uploads = TransferOptions{1024 * 1024, 1, 32 * 1024 * 1024};
         auto server = take(createTestServer(worker, config, config_device));
         const auto catalog = take(server->commandId<ListCommands>());
-        CHECK(server->registerFeature<TextureProbe>(feature_test::Provider<ProbeCommands>{{&definition, &definition_graph, nullptr}}));
+        CHECK(server->registerFeature<TextureProbe>(feature_test::NativeProvider<ProbeCommands>{{&definition, &definition_graph, nullptr}}));
         std::atomic<bool> run_finished{false};
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); run_finished = true; });
@@ -245,7 +245,7 @@ int main()
         config.uploads = TransferOptions{1024 * 1024, 1, 128 * 1024 * 1024};
         auto server = take(createTestServer(host, config, config_device));
         const auto catalog = take(server->commandId<ListCommands>());
-        CHECK(server->registerFeature<TextureProbe>(feature_test::Provider<ProbeCommands>{{&definition, &definition_graph, nullptr}}));
+        CHECK(server->registerFeature<TextureProbe>(feature_test::NativeProvider<ProbeCommands>{{&definition, &definition_graph, nullptr}}));
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); });
         auto client = take(runtime_test::connect(config.channel_name, catalog));

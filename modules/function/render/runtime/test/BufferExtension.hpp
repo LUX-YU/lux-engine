@@ -134,6 +134,8 @@ namespace lux::render
     {
         using Storage = extension_test::NativeBuffer;
         using Handler = extension_test::BufferCommands;
+        static std::unique_ptr<Handler> createHandler(vulkan::DeviceSession& device) noexcept
+        { return std::make_unique<Handler>(device); }
         static StorageFactory factory() noexcept { return extension_test::bufferFactory(); }
         static CppType implementationType() noexcept { return cppType<Storage>(); }
     };
@@ -144,6 +146,8 @@ namespace lux::render
     template <> struct FeatureProvider<extension_test::TestBufferFeature> final
     {
         using Handler = extension_test::BufferCommands;
+        static std::unique_ptr<Handler> createHandler(vulkan::DeviceSession& device) noexcept
+        { return std::make_unique<Handler>(device); }
         feature_detail::Implementation definition() const noexcept
         {
             return {&extension_test::definition, &extension_test::definition_graph, extension_test::programs};

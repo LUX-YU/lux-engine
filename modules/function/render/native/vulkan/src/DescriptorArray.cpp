@@ -7,6 +7,37 @@
 
 namespace lux::render::vulkan
 {
+    DescriptorRange::DescriptorRange(std::shared_ptr<DescriptorArray> array,
+        cxx::SlotKey<DescriptorSlotTag> slot) noexcept : array_(std::move(array)), slot_(slot)
+    {
+    }
+
+    DescriptorRange::~DescriptorRange() noexcept
+    {
+        if (array_) array_->release(slot_);
+    }
+
+    DescriptorRange::DescriptorRange(DescriptorRange&& other) noexcept
+        : array_(std::move(other.array_)), slot_(other.slot_)
+    {
+    }
+
+    DescriptorRange& DescriptorRange::operator=(DescriptorRange&& other) noexcept
+    {
+        if (this != &other)
+        {
+            if (array_) array_->release(slot_);
+            array_ = std::move(other.array_);
+            slot_ = other.slot_;
+        }
+        return *this;
+    }
+
+    void DescriptorRange::write(VkImageView image, VkSampler sampler) noexcept
+    {
+        array_->write(slot_, image, sampler);
+    }
+
     RenderResult<std::uint32_t> DeviceSession::sampledImageCapacity() const noexcept
     {
         if (!device_.textureDescriptors()) return cxx::unexpected(RenderError{kUnsupported});
@@ -61,7 +92,7 @@ namespace lux::render::vulkan
         if (layout_) LUX_DESTROY("descriptor_array_layout", vkDestroyDescriptorSetLayout(device_.native(), layout_, nullptr));
     }
 
-    RenderResult<DescriptorArray::Slot> DescriptorArray::acquire() noexcept
+    RenderResult<DescriptorRange> DescriptorArray::allocate() noexcept
     {
         if (slots_.size() == capacity_) return cxx::unexpected(RenderError{kCapacity});
         const auto slot = slots_.emplace();
@@ -71,7 +102,7 @@ namespace lux::render::vulkan
             slots_.erase(slot);
             return cxx::unexpected(RenderError{kCapacity});
         }
-        return slot;
+        return DescriptorRange{shared_from_this(), slot};
     }
 
     void DescriptorArray::write(Slot slot, VkImageView image, VkSampler sampler) noexcept
@@ -87,9 +118,8 @@ namespace lux::render::vulkan
         vkUpdateDescriptorSets(device_.native(), 1, &write, 0, nullptr);
     }
 
-    RenderResult<void> DescriptorArray::release(Slot slot) noexcept
+    void DescriptorArray::release(Slot slot) noexcept
     {
-        if (!slots_.erase(slot)) return cxx::unexpected(RenderError{kWrongOwner});
-        return {};
+        slots_.erase(slot);
     }
 }

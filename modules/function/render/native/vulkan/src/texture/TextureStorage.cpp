@@ -371,12 +371,12 @@ namespace lux::render::vulkan
         if (is_byte_budget_full) return cxx::unexpected(RenderError{kCapacity});
         auto retirement = session_.retirement().reserve();
         if (!retirement) return cxx::unexpected(retirement.error());
-        auto descriptor = physical_->descriptors->acquire();
+        auto descriptor = physical_->descriptors->allocate();
         if (!descriptor) return cxx::unexpected(descriptor.error());
         const auto slot = physical_->versions.emplace();
         auto& version = *physical_->versions.find(slot);
         version.key_ = slot;
-        version.descriptor_ = *descriptor;
+        version.descriptor_ = std::move(*descriptor);
         version.retirement_ = std::move(*retirement);
         version.retired_ = std::make_unique<RetiredBacking>();
         version.info_ = info;
@@ -401,7 +401,7 @@ namespace lux::render::vulkan
         result = LUX_NATIVE("texture_sampler", vkCreateSampler(device, &sampler, nullptr, &version.sampler_));
         if (result != VK_SUCCESS) { destroy(version); return cxx::unexpected(nativeError(result)); }
         // This unused descriptor is not reachable by any Context until publish after final Graphics completion.
-        physical_->descriptors->write(*descriptor, version.view_, version.sampler_);
+        version.descriptor_.write(version.view_, version.sampler_);
         if (id.isNull()) id = TextureId{id_, textures_.emplace()};
         record = textures_.find(id.local);
         record->updating = true;
@@ -525,7 +525,6 @@ namespace lux::render::vulkan
             auto result = session.releaseCompleted(version.permit_, version.last_use_);
             if (!result) std::terminate();
         }
-        if (!descriptors->release(version.descriptor_)) std::terminate();
         bytes -= version.bytes_;
         versions.erase(version.key_);
     }

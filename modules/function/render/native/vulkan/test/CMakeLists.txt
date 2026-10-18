@@ -279,7 +279,7 @@ add_test(NAME render.native.lglsl_parameters COMMAND render_parameters_test
 set_tests_properties(render.native.lglsl_parameters PROPERTIES TIMEOUT 60)
 
 foreach(asset IN ITEMS
-    Compute.comp ComputeUpdate.comp Compute.frag
+    Compute.comp ComputeUpdate.comp Compute.frag BatchResources.comp
     Geometry.comp Geometry.vert Geometry.frag Depth.vert Depth.frag
 )
     add_custom_command(
@@ -291,6 +291,14 @@ foreach(asset IN ITEMS
         VERBATIM
     )
 endforeach()
+
+add_executable(render_batch_resources_test BatchResources.cpp "${render_asset_dir}/BatchResources.comp.spv")
+
+target_link_libraries(render_batch_resources_test PRIVATE render_native_instrumented)
+
+add_test(NAME render.native.batch_resources COMMAND render_batch_resources_test "${render_asset_dir}/BatchResources.comp.spv")
+
+set_tests_properties(render.native.batch_resources PROPERTIES TIMEOUT 90)
 
 add_executable(render_compute_test Compute.cpp Allocation.cpp
     "${render_asset_dir}/Compute.comp.spv" "${render_asset_dir}/ComputeUpdate.comp.spv"

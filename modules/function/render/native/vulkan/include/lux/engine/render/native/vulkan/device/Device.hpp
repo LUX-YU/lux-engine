@@ -158,6 +158,7 @@ namespace lux::render::vulkan
         [[nodiscard]] bool textureCompressionBc() const noexcept { return texture_compression_bc_; }
         [[nodiscard]] bool textureDescriptors() const noexcept { return texture_descriptors_; }
         [[nodiscard]] bool hostQueryReset() const noexcept { return host_query_reset_; }
+        [[nodiscard]] bool bufferDeviceAddress() const noexcept { return buffer_device_address_; }
 
         [[nodiscard]] bool swapchainMaintenance() const noexcept
         {
@@ -168,6 +169,7 @@ namespace lux::render::vulkan
         bool texture_compression_bc_ = false;
         bool texture_descriptors_ = false;
         bool host_query_reset_ = false;
+        bool buffer_device_address_ = false;
         VulkanDevice(
             VkInstance instance,
             VkPhysicalDevice physical,
@@ -219,10 +221,11 @@ namespace lux::render::vulkan
         }
 
     private:
-        VulkanAllocator(VmaAllocator_T* allocator, VkDevice device) noexcept;
+        VulkanAllocator(VmaAllocator_T* allocator, VkDevice device, bool buffer_device_address) noexcept;
         void release() noexcept;
 
         VmaAllocator_T* allocator_;
         VkDevice device_;
+        bool buffer_device_address_;
     };
 } // namespace lux::render::vulkan

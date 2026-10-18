@@ -21,6 +21,7 @@ namespace lux::render::vulkan
         bool texture_compression_bc{false};
         bool texture_descriptors{false};
         bool host_query_reset{false};
+        bool buffer_device_address{false};
         bool optional_texture_descriptors{false};
         bool optional_texture_compression_bc{false};
     };

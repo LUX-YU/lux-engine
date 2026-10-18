@@ -20,6 +20,16 @@ or abandoned recording releases only its own set; a later Submit failure never d
 batch. Reference-array capacity is reused when slots cycle. Upload staging pages now use this path.
 Object retention does not permit rewriting a page or descriptor still in use by the GPU.
 
+`DescriptorArray::allocate()` returns a move-only `DescriptorRange`. The range keeps the array alive,
+returns its generation slot on destruction, and writes only before publication. Texture backing owns
+the range directly; there is no public manual slot-release operation. Retain the resource references
+as well as the range: keeping a DescriptorSet alone does not keep its sampled images alive.
+
+Buffer device addresses are explicitly enabled through `DeviceOptions::buffer_device_address`, after
+checking the physical-device feature. VMA receives the matching allocation flag; creating an address
+buffer without that capability returns `kUnsupported`. Any submitted BDA pointer must be accompanied
+by its actual Buffer owner in the retained binding set.
+
 Professional destinations are still being migrated from Session tables and permit/retirement ownership. Their existing safety checks remain until all indirect bindings and actual
 GPU uses have batch owners. Primitive Copy/Alias tests are not proof of complete graph resource coverage.
 An outstanding ticket remains queue-scoped evidence of accepted work, never a frame index. Final teardown

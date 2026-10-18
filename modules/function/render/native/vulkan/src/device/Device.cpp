@@ -314,6 +314,7 @@ namespace lux::render::vulkan
         texture_compression_bc_ = options.texture_compression_bc;
         texture_descriptors_ = options.texture_descriptors;
         host_query_reset_ = options.host_query_reset;
+        buffer_device_address_ = options.buffer_device_address;
         vkGetPhysicalDeviceProperties(physical, &properties_);
     }
 
@@ -402,6 +403,7 @@ namespace lux::render::vulkan
                                         (options.dynamic_rendering && !supported.dynamicRendering) ||
                                         (options.multiple_queues && !supported12.timelineSemaphore) ||
                                         (options.host_query_reset && !supported12.hostQueryReset) ||
+                                        (options.buffer_device_address && !supported12.bufferDeviceAddress) ||
                                         (options.texture_compression_bc && !features.features.textureCompressionBC) ||
                                         (options.multiview && !supported11.multiview) ||
                                         (options.separate_depth_stencil && !supported12.separateDepthStencilLayouts) ||
@@ -483,6 +485,7 @@ namespace lux::render::vulkan
         VkPhysicalDeviceVulkan12Features enabled12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
         enabled12.timelineSemaphore = options.multiple_queues;
         enabled12.hostQueryReset = options.host_query_reset;
+        enabled12.bufferDeviceAddress = options.buffer_device_address;
         enabled12.separateDepthStencilLayouts = options.separate_depth_stencil;
         enabled12.runtimeDescriptorArray = enabled_options.texture_descriptors;
         enabled12.descriptorBindingPartiallyBound = enabled_options.texture_descriptors;
@@ -547,7 +550,7 @@ namespace lux::render::vulkan
 
     VulkanDevice::VulkanDevice(VulkanDevice&& other) noexcept
         : texture_compression_bc_(other.texture_compression_bc_), texture_descriptors_(other.texture_descriptors_),
-          host_query_reset_(other.host_query_reset_),
+          host_query_reset_(other.host_query_reset_), buffer_device_address_(other.buffer_device_address_),
           instance_(other.instance_), physical_(other.physical_), device_(std::exchange(other.device_, VK_NULL_HANDLE)),
           properties_(other.properties_),
           dynamic_rendering_(other.dynamic_rendering_), queues_(other.queues_), multiview_(other.multiview_),
@@ -564,6 +567,7 @@ namespace lux::render::vulkan
             texture_compression_bc_ = other.texture_compression_bc_;
             texture_descriptors_ = other.texture_descriptors_;
             host_query_reset_ = other.host_query_reset_;
+            buffer_device_address_ = other.buffer_device_address_;
             instance_ = other.instance_;
             physical_ = other.physical_;
             device_ = std::exchange(other.device_, VK_NULL_HANDLE);
@@ -579,8 +583,8 @@ namespace lux::render::vulkan
         return *this;
     }
 
-    VulkanAllocator::VulkanAllocator(VmaAllocator_T* allocator, VkDevice device) noexcept
-        : allocator_(allocator), device_(device)
+    VulkanAllocator::VulkanAllocator(VmaAllocator_T* allocator, VkDevice device, bool buffer_device_address) noexcept
+        : allocator_(allocator), device_(device), buffer_device_address_(buffer_device_address)
     {
     }
 
@@ -591,13 +595,14 @@ namespace lux::render::vulkan
         info.physicalDevice = device.physical();
         info.device = device.native();
         info.vulkanApiVersion = VK_API_VERSION_1_3;
+        if (device.bufferDeviceAddress()) info.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
         VmaAllocator allocator{};
         const auto result = LUX_NATIVE("allocator", vmaCreateAllocator(&info, &allocator));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
         }
-        return VulkanAllocator{allocator, device.native()};
+        return VulkanAllocator{allocator, device.native(), device.bufferDeviceAddress()};
     }
 
     void VulkanAllocator::release() noexcept
@@ -614,7 +619,8 @@ namespace lux::render::vulkan
     }
 
     VulkanAllocator::VulkanAllocator(VulkanAllocator&& other) noexcept
-        : allocator_(std::exchange(other.allocator_, nullptr)), device_(other.device_)
+        : allocator_(std::exchange(other.allocator_, nullptr)), device_(other.device_),
+          buffer_device_address_(other.buffer_device_address_)
     {
     }
 
@@ -625,6 +631,7 @@ namespace lux::render::vulkan
             release();
             allocator_ = std::exchange(other.allocator_, nullptr);
             device_ = other.device_;
+            buffer_device_address_ = other.buffer_device_address_;
         }
         return *this;
     }

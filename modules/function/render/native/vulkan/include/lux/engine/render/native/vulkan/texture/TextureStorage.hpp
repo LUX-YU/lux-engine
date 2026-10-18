@@ -31,7 +31,7 @@ namespace lux::render::vulkan
             Backing(const Backing&) = delete;
             Backing& operator=(const Backing&) = delete;
             [[nodiscard]] const rdesc::TextureInfo& info() const noexcept { return info_; }
-            [[nodiscard]] std::uint32_t descriptorIndex() const noexcept { return descriptor_.index; }
+            [[nodiscard]] std::uint32_t descriptorIndex() const noexcept { return descriptor_.index(); }
             [[nodiscard]] const Image& image() const noexcept { return *image_; }
             [[nodiscard]] std::uint64_t revision() const noexcept { return revision_; }
         private:
@@ -40,7 +40,7 @@ namespace lux::render::vulkan
             friend class DeviceSession;
             friend class ExecutionContext;
             cxx::SlotKey<TextureDescriptorTag> key_;
-            DescriptorArray::Slot descriptor_;
+            DescriptorRange descriptor_;
             rdesc::TextureInfo info_{};
             ImagePermit permit_;
             const Image* image_ = nullptr;

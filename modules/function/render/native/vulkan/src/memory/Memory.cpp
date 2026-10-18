@@ -38,6 +38,11 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
+        const bool is_unsupported_address = (usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) && !buffer_device_address_;
+        if (is_unsupported_address)
+        {
+            return cxx::unexpected(RenderError{kUnsupported});
+        }
         VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         info.size = size;
         info.usage = usage;

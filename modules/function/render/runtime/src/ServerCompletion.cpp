@@ -8,7 +8,10 @@ namespace lux::render
         auto prepare = [&]() noexcept -> vulkan::ReadbackSender
         {
             const auto* found = attachments.find(input.attachment);
-            if (!found) return vulkan::ReadbackSender{RenderError{kRuntimeIdentity}};
+            if (!found)
+            {
+                return vulkan::ReadbackSender{RenderError{kRuntimeIdentity}};
+            }
             auto resource = kGraphInvalidIndex;
             if (!input.output.empty())
             {

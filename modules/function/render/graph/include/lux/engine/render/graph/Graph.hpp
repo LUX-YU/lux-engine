@@ -2,13 +2,13 @@
 
 #include <cstdint>
 #include <limits>
+#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/core/Target.hpp>
 #include <optional>
 #include <span>
 #include <string>
 #include <variant>
 #include <vector>
-#include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/core/Ids.hpp>
 
 namespace lux::render
 {
@@ -53,15 +53,42 @@ namespace lux::render
     // monostate explicitly means the complete declared resource.
     using VGraphRange = std::variant<std::monostate, GraphBufferRange, GraphImageRange>;
 
-    enum class EGraphOrigin : std::uint8_t { TRANSIENT, IMPORTED, HISTORY_PREVIOUS, HISTORY_CURRENT };
-    enum class EGraphPassKind : std::uint8_t { GRAPHICS, COMPUTE, TRANSFER };
-    enum class EGraphAccess : std::uint8_t { READ, WRITE, READ_WRITE, ATTACHMENT_LOAD };
+    enum class EGraphOrigin : std::uint8_t
+    {
+        TRANSIENT,
+        IMPORTED,
+        HISTORY_PREVIOUS,
+        HISTORY_CURRENT
+    };
+    enum class EGraphPassKind : std::uint8_t
+    {
+        GRAPHICS,
+        COMPUTE,
+        TRANSFER
+    };
+    enum class EGraphAccess : std::uint8_t
+    {
+        READ,
+        WRITE,
+        READ_WRITE,
+        ATTACHMENT_LOAD
+    };
     // Orthogonal to logical version access. UNSPECIFIED remains legal for neutral analysis;
     // a Native compiler rejects it when it needs an execution recipe.
     enum class EGraphUse : std::uint8_t
     {
-        UNSPECIFIED, COLOR_ATTACHMENT, TRANSFER_SOURCE, TRANSFER_DESTINATION,
-        SAMPLED, STORAGE_READ, STORAGE_WRITE, STORAGE_READ_WRITE, VERTEX, INDEX, INDIRECT, DEPTH_ATTACHMENT
+        UNSPECIFIED,
+        COLOR_ATTACHMENT,
+        TRANSFER_SOURCE,
+        TRANSFER_DESTINATION,
+        SAMPLED,
+        STORAGE_READ,
+        STORAGE_WRITE,
+        STORAGE_READ_WRITE,
+        VERTEX,
+        INDEX,
+        INDIRECT,
+        DEPTH_ATTACHMENT
     };
 
     struct GraphResource final
@@ -120,10 +147,25 @@ namespace lux::render
     class RenderGraphDefinition final
     {
     public:
-        [[nodiscard]] std::span<const GraphResource> resources() const noexcept { return resources_; }
-        [[nodiscard]] std::span<const GraphPass> passes() const noexcept { return passes_; }
-        [[nodiscard]] std::span<const GraphDependency> dependencies() const noexcept { return dependencies_; }
-        [[nodiscard]] std::span<const GraphOutput> outputs() const noexcept { return outputs_; }
+        [[nodiscard]] std::span<const GraphResource> resources() const noexcept
+        {
+            return resources_;
+        }
+
+        [[nodiscard]] std::span<const GraphPass> passes() const noexcept
+        {
+            return passes_;
+        }
+
+        [[nodiscard]] std::span<const GraphDependency> dependencies() const noexcept
+        {
+            return dependencies_;
+        }
+
+        [[nodiscard]] std::span<const GraphOutput> outputs() const noexcept
+        {
+            return outputs_;
+        }
 
     private:
         friend class RenderGraphBuilder;
@@ -147,4 +189,4 @@ namespace lux::render
     inline constexpr auto kGraphMissingInitial = error::errorId("lux.render.graph.missing_initial");
 
     [[nodiscard]] std::span<const error::ErrorDescriptor> renderGraphErrorDescriptors() noexcept;
-}
+} // namespace lux::render

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/resource/Mesh.hpp>
 #include <lux/engine/render/resource/Material.hpp>
+#include <lux/engine/render/resource/Mesh.hpp>
 #include <optional>
 
 namespace lux::render
@@ -20,9 +20,24 @@ namespace lux::render
         TransformMatrix transform = kIdentityTransform;
     };
 
-    struct InstancePublished final { InstanceId instance; std::uint64_t revision = 0; };
-    struct InstanceInformation final { InstancePublished published; InstanceDescription description; };
-    struct InstanceCreate final { StorageId storage; InstanceDescription description; };
+    struct InstancePublished final
+    {
+        InstanceId instance;
+        std::uint64_t revision = 0;
+    };
+
+    struct InstanceInformation final
+    {
+        InstancePublished published;
+        InstanceDescription description;
+    };
+
+    struct InstanceCreate final
+    {
+        StorageId storage;
+        InstanceDescription description;
+    };
+
     struct TransformUpdate final
     {
         InstanceId instance;
@@ -37,7 +52,12 @@ namespace lux::render
         std::vector<TransformUpdate> updates;
     };
 
-    struct TransformApplied final { std::uint64_t sequence = 0; std::uint32_t changed = 0; };
+    struct TransformApplied final
+    {
+        std::uint64_t sequence = 0;
+        std::uint32_t changed = 0;
+    };
+
     struct InstanceDrawGroup final
     {
         MeshId mesh;
@@ -46,7 +66,11 @@ namespace lux::render
         bool operator==(const InstanceDrawGroup&) const noexcept = default;
     };
 
-    enum class EInstanceBinding : std::uint8_t { MATRICES, DRAW };
+    enum class EInstanceBinding : std::uint8_t
+    {
+        MATRICES,
+        DRAW
+    };
 
     struct InstanceBinding final
     {
@@ -84,8 +108,6 @@ namespace lux::render
         using Response = RenderResult<Ack>;
     };
 
-
-
     struct InstanceStorageConfig final
     {
         std::uint64_t resident_byte_budget = 0;
@@ -96,12 +118,13 @@ namespace lux::render
     {
     public:
         using Config = InstanceStorageConfig;
-        static inline const StorageDescriptor description{kInstanceStorageType, 0, 0,
-            cppType<InstanceBinding>()};
+        static inline const StorageDescriptor description{kInstanceStorageType, 0, 0, cppType<InstanceBinding>()};
+
         struct Ops final
         {
             RenderResult<InstanceInformation> (*query)(const void*, InstanceId) noexcept;
         };
+
         class Access final
         {
         public:
@@ -112,9 +135,11 @@ namespace lux::render
 
         private:
             friend class ResourceRegistry;
+
             Access(void* native, const Ops& ops, bool) noexcept : native_(native), ops_(&ops) {}
+
             void* native_;
             const Ops* ops_;
         };
     };
-}
+} // namespace lux::render

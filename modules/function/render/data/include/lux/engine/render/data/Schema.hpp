@@ -2,11 +2,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <lux/cxx/binary/ScalarSchema.hpp>
+#include <lux/cxx/core/Schema.hpp>
+#include <lux/engine/render/core/Error.hpp>
 #include <span>
 #include <string_view>
-#include <lux/cxx/core/Schema.hpp>
-#include <lux/cxx/binary/ScalarSchema.hpp>
-#include <lux/engine/render/core/Error.hpp>
 
 namespace lux::render
 {
@@ -55,8 +55,10 @@ namespace lux::render
 
     [[nodiscard]] RenderResult<void> validateDataSchema(const DataSchemaDescriptor& schema) noexcept;
 
-    [[nodiscard]] RenderResult<void>
-    compatibleDataSchemas(const DataSchemaDescriptor& expected, const DataSchemaDescriptor& actual) noexcept;
+    [[nodiscard]] RenderResult<void> compatibleDataSchemas(
+        const DataSchemaDescriptor& expected,
+        const DataSchemaDescriptor& actual
+    ) noexcept;
 
     [[nodiscard]] std::span<const error::ErrorDescriptor> renderDataErrorDescriptors() noexcept;
-}
+} // namespace lux::render

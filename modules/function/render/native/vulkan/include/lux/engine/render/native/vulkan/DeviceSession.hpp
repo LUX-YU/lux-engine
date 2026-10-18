@@ -1,12 +1,12 @@
 #pragma once
 #include <lux/engine/core/execution/Scheduler.hpp>
 
-#include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
-#include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/resource/TransferOptions.hpp>
+#include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 #include <lux/engine/render/resource/AsyncWork.hpp>
+#include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/TransferOptions.hpp>
 
 namespace lux::render::vulkan
 {
@@ -18,6 +18,7 @@ namespace lux::render::vulkan
     class StagingArena;
     struct ImageTransferRegion;
     struct TransferStats;
+
     // Stable Native lifetime root. Bootstrap owns InstanceContext and outlives this object.
     // Queue roles that alias the same VkQueue borrow the same SubmissionQueue owner.
     class DeviceSession final
@@ -37,10 +38,14 @@ namespace lux::render::vulkan
         // Explicit RenderThread safe point, separate from polling and resource admission/collection.
         void dispatchCompletions() noexcept;
         [[nodiscard]] RenderResult<ExecutionContext*> prepare(
-            std::shared_ptr<const CompiledGraph> code, const TargetDesc& target,
-            StorageSet* scene = nullptr, StorageSet* view = nullptr, std::span<const StorageArgument> arguments = {}
+            std::shared_ptr<const CompiledGraph> code,
+            const TargetDesc& target,
+            StorageSet* scene = nullptr,
+            StorageSet* view = nullptr,
+            std::span<const StorageArgument> arguments = {}
         ) noexcept;
         [[nodiscard]] RenderResult<void> release(ExecutionContext* context) noexcept;
+
         [[nodiscard]] SubmissionQueue& queue(EQueueRole role = EQueueRole::GRAPHICS) noexcept
         {
             return *queues_[static_cast<std::size_t>(role)];
@@ -48,23 +53,54 @@ namespace lux::render::vulkan
 
         [[nodiscard]] RenderResult<std::uint32_t> sampledImageCapacity() const noexcept;
         [[nodiscard]] RenderResult<std::shared_ptr<DescriptorArray>> sampledImageArray() noexcept;
-        [[nodiscard]] VulkanAllocator& allocator() noexcept { return allocator_; }
-        [[nodiscard]] const VulkanDevice& device() const noexcept { return device_; }
+
+        [[nodiscard]] VulkanAllocator& allocator() noexcept
+        {
+            return allocator_;
+        }
+
+        [[nodiscard]] const VulkanDevice& device() const noexcept
+        {
+            return device_;
+        }
+
         // Boundary lookup compares stable owner identity before inspecting the ticket's queue.
         [[nodiscard]] SubmissionQueue* queueFor(SubmissionTicket ticket) noexcept;
         [[nodiscard]] bool deviceLost() const noexcept;
         [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&, execution::CpuScheduler) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadImage(
-            const ImageDescription&, std::span<const std::byte>, std::span<const ImageTransferRegion>,
-            std::shared_ptr<const Image> clone = {}, bool graphics_queue = false,
-            SubmissionRequirements* clone_last_use = nullptr) noexcept;
+            const ImageDescription&,
+            std::span<const std::byte>,
+            std::span<const ImageTransferRegion>,
+            std::shared_ptr<const Image> clone = {},
+            bool graphics_queue = false,
+            SubmissionRequirements* clone_last_use = nullptr
+        ) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadBuffer(
-            std::span<const std::byte>, VkBufferUsageFlags usage) noexcept;
+            std::span<const std::byte>,
+            VkBufferUsageFlags usage
+        ) noexcept;
         [[nodiscard]] TransferStats uploadStats() const noexcept;
-        [[nodiscard]] UploadContext& uploads() noexcept { return *uploads_; }
-        [[nodiscard]] ResourceRegistry& resources() noexcept { return resources_; }
-        [[nodiscard]] const ResourceRegistry& resources() const noexcept { return resources_; }
-        [[nodiscard]] StorageSet& globalStorages() noexcept { return globals_; }
+
+        [[nodiscard]] UploadContext& uploads() noexcept
+        {
+            return *uploads_;
+        }
+
+        [[nodiscard]] ResourceRegistry& resources() noexcept
+        {
+            return resources_;
+        }
+
+        [[nodiscard]] const ResourceRegistry& resources() const noexcept
+        {
+            return resources_;
+        }
+
+        [[nodiscard]] StorageSet& globalStorages() noexcept
+        {
+            return globals_;
+        }
 
     private:
         friend struct NativeMemoryAudit;
@@ -85,4 +121,4 @@ namespace lux::render::vulkan
         StorageSet globals_;
         std::weak_ptr<DescriptorArray> sampled_images_;
     };
-}
+} // namespace lux::render::vulkan

@@ -1,19 +1,34 @@
 #pragma once
 
-#include <lux/engine/description/Image.hpp>
 #include <cstdint>
+#include <lux/engine/description/Image.hpp>
 #include <string>
 #include <variant>
 #include <vector>
 
 namespace lux::render
 {
-    enum class EVertexRate : std::uint8_t { VERTEX, INSTANCE };
-    enum class EIndexType : std::uint8_t { UINT16, UINT32 };
+    enum class EVertexRate : std::uint8_t
+    {
+        VERTEX,
+        INSTANCE
+    };
+    enum class EIndexType : std::uint8_t
+    {
+        UINT16,
+        UINT32
+    };
 
     enum class EDepthCompare : std::uint8_t
     {
-        NEVER, LESS, EQUAL, LESS_EQUAL, GREATER, NOT_EQUAL, GREATER_EQUAL, ALWAYS
+        NEVER,
+        LESS,
+        EQUAL,
+        LESS_EQUAL,
+        GREATER,
+        NOT_EQUAL,
+        GREATER_EQUAL,
+        ALWAYS
     };
 
     struct VertexBinding final
@@ -72,4 +87,4 @@ namespace lux::render
     };
 
     using VDrawCommand = std::variant<DrawVertices, DrawIndexed, DrawIndexedIndirect>;
-}
+} // namespace lux::render

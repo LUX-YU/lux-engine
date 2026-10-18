@@ -24,13 +24,20 @@ namespace lux::render::vulkan
         SubmissionRequirements* last_use = nullptr;
         void* update_context = nullptr;
         void (*updated)(void*) noexcept = nullptr; // Owner publication only; not a per-frame callback
-        void publishUpdate() noexcept { if (updated) updated(update_context); }
+
+        void publishUpdate() noexcept
+        {
+            if (updated)
+            {
+                updated(update_context);
+            }
+        }
+
         std::unique_ptr<void, void (*)(void*) noexcept> reference{nullptr, [](void*) noexcept {}};
     };
 
     struct StorageBindingOps final
     {
-        RenderResult<void> (*prepare)(void*, const NativeResourcePlan&, const void*,
-            PreparedStorageBinding&) noexcept;
+        RenderResult<void> (*prepare)(void*, const NativeResourcePlan&, const void*, PreparedStorageBinding&) noexcept;
     };
-}
+} // namespace lux::render::vulkan

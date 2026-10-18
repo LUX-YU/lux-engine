@@ -1,9 +1,9 @@
 #pragma once
 
 #include <lux/engine/render/graph/Analysis.hpp>
-#include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/graph/Program.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/resource/Binding.hpp>
 
 namespace lux::render::vulkan
 {
@@ -22,7 +22,15 @@ namespace lux::render::vulkan
         std::uint32_t target_pixel_bytes = 0; // Explicit target readback Buffer stride, not every Buffer.
     };
 
-    enum class ERecipe : std::uint8_t { DRAW, DISPATCH, CLEAR_IMAGE, FILL_BUFFER, COPY_IMAGE_BUFFER, COPY_BUFFER };
+    enum class ERecipe : std::uint8_t
+    {
+        DRAW,
+        DISPATCH,
+        CLEAR_IMAGE,
+        FILL_BUFFER,
+        COPY_IMAGE_BUFFER,
+        COPY_BUFFER
+    };
 
     struct ImageBarrier final
     {
@@ -42,7 +50,12 @@ namespace lux::render::vulkan
         VkDeviceSize offset;
     };
 
-    enum class EDrawRecipe : std::uint8_t { VERTICES, INDEXED, INDEXED_INDIRECT };
+    enum class EDrawRecipe : std::uint8_t
+    {
+        VERTICES,
+        INDEXED,
+        INDEXED_INDIRECT
+    };
 
     // One compiled pass recipe, not an author graph. Native handles belong to CompiledGraph.
     struct CompiledPass final
@@ -82,23 +95,53 @@ namespace lux::render::vulkan
         CompiledGraph(const CompiledGraph&) = delete;
         CompiledGraph& operator=(const CompiledGraph&) = delete;
 
-        [[nodiscard]] VkDevice device() const noexcept { return device_; }
-        [[nodiscard]] VkPipelineLayout layout() const noexcept { return layout_; }
-        [[nodiscard]] const TargetDesc& target() const noexcept { return target_; }
-        [[nodiscard]] std::span<const NativeResourcePlan> resources() const noexcept { return resources_; }
-        [[nodiscard]] const StorageGroups<std::uint32_t>& storageGroups() const noexcept { return storage_groups_; }
-        [[nodiscard]] std::span<const CompiledPass> passes() const noexcept { return passes_; }
-        [[nodiscard]] std::span<const BufferBarrier> hostBarriers() const noexcept { return host_barriers_; }
-        [[nodiscard]] std::uint32_t output() const noexcept { return output_; }
+        [[nodiscard]] VkDevice device() const noexcept
+        {
+            return device_;
+        }
+
+        [[nodiscard]] VkPipelineLayout layout() const noexcept
+        {
+            return layout_;
+        }
+
+        [[nodiscard]] const TargetDesc& target() const noexcept
+        {
+            return target_;
+        }
+
+        [[nodiscard]] std::span<const NativeResourcePlan> resources() const noexcept
+        {
+            return resources_;
+        }
+
+        [[nodiscard]] const StorageGroups<std::uint32_t>& storageGroups() const noexcept
+        {
+            return storage_groups_;
+        }
+
+        [[nodiscard]] std::span<const CompiledPass> passes() const noexcept
+        {
+            return passes_;
+        }
+
+        [[nodiscard]] std::span<const BufferBarrier> hostBarriers() const noexcept
+        {
+            return host_barriers_;
+        }
+
+        [[nodiscard]] std::uint32_t output() const noexcept
+        {
+            return output_;
+        }
+
         [[nodiscard]] bool compatible(const TargetDesc& target) const noexcept;
 
     private:
         friend class ExecutionContext;
         friend class DeviceSession;
-        friend RenderResult<CompiledGraph> compileGraph(
-            const DeviceSession&, const RenderGraphDefinition&, const GraphAnalysis&,
-            const GraphStorageBindings&, std::span<const PassProgram>, const TargetDesc&
-        ) noexcept;
+        friend RenderResult<CompiledGraph>
+        compileGraph(const DeviceSession&, const RenderGraphDefinition&, const GraphAnalysis&, const GraphStorageBindings&, std::span<const PassProgram>, const TargetDesc&) noexcept;
         CompiledGraph(VkDevice device, TargetDesc target) noexcept;
         std::unique_ptr<LayoutPlan> descriptor_plan_;
         VkDevice device_;
@@ -108,6 +151,7 @@ namespace lux::render::vulkan
         StorageGroups<std::uint32_t> storage_groups_;
         std::vector<CompiledPass> passes_;
         std::vector<BufferBarrier> host_barriers_;
+
         struct PipelineIdentity final
         {
             SpirvArtifact shader;
@@ -115,6 +159,7 @@ namespace lux::render::vulkan
             VkFormat color = VK_FORMAT_UNDEFINED, depth = VK_FORMAT_UNDEFINED;
             bool operator==(const PipelineIdentity&) const noexcept = default;
         };
+
         std::vector<PipelineIdentity> shader_identities_;
         std::vector<VkPipeline> pipelines_; // unique physical owners; Pass recipes only borrow handles
         std::vector<VkDescriptorSetLayout> descriptor_layouts_;
@@ -131,4 +176,4 @@ namespace lux::render::vulkan
         std::span<const PassProgram> programs,
         const TargetDesc& target
     ) noexcept;
-}
+} // namespace lux::render::vulkan

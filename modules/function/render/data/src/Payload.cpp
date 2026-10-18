@@ -1,6 +1,6 @@
 #include <lux/engine/render/data/Payload.hpp>
-#include <utility>
 #include <lux/engine/render/data/Schema.hpp>
+#include <utility>
 
 namespace lux::render
 {
@@ -15,8 +15,7 @@ namespace lux::render
     }
 
     RenderPayload::RenderPayload(RenderPayload&& other) noexcept
-        : bytes_(std::move(other.bytes_)),
-          retained_bytes_(std::exchange(other.retained_bytes_, 0))
+        : bytes_(std::move(other.bytes_)), retained_bytes_(std::exchange(other.retained_bytes_, 0))
     {
         other.bytes_ = {};
     }
@@ -39,7 +38,10 @@ namespace lux::render
     ) noexcept
     {
         const bool is_invalid_range = !owner || !size || offset > owner->size() || size > owner->size() - offset;
-        if (is_invalid_range) return cxx::unexpected(RenderError{kInvalidDataReference});
+        if (is_invalid_range)
+        {
+            return cxx::unexpected(RenderError{kInvalidDataReference});
+        }
         RenderPayload result;
         result.retained_bytes_ = owner->capacity();
         result.bytes_ = lux::cxx::SharedBytes<>::fromOwner(owner, std::span(*owner).subspan(offset, size));
@@ -53,4 +55,4 @@ namespace lux::render
         result.retained_bytes_ = bytes.size();
         return result;
     }
-}
+} // namespace lux::render

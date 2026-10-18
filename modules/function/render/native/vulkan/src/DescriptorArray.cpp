@@ -1,20 +1,26 @@
-#include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
-#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
-#include "Shader.hpp"
 #include "LayoutPlan.hpp"
 #include "Native.hpp"
+#include "Shader.hpp"
 #include <algorithm>
+#include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 
 namespace lux::render::vulkan
 {
-    DescriptorRange::DescriptorRange(std::shared_ptr<DescriptorArray> array,
-        cxx::SlotKey<DescriptorSlotTag> slot) noexcept : array_(std::move(array)), slot_(slot)
+    DescriptorRange::DescriptorRange(
+        std::shared_ptr<DescriptorArray> array,
+        cxx::SlotKey<DescriptorSlotTag> slot
+    ) noexcept
+        : array_(std::move(array)), slot_(slot)
     {
     }
 
     DescriptorRange::~DescriptorRange() noexcept
     {
-        if (array_) array_->release(slot_);
+        if (array_)
+        {
+            array_->release(slot_);
+        }
     }
 
     DescriptorRange::DescriptorRange(DescriptorRange&& other) noexcept
@@ -26,7 +32,10 @@ namespace lux::render::vulkan
     {
         if (this != &other)
         {
-            if (array_) array_->release(slot_);
+            if (array_)
+            {
+                array_->release(slot_);
+            }
             array_ = std::move(other.array_);
             slot_ = other.slot_;
         }
@@ -40,14 +49,26 @@ namespace lux::render::vulkan
 
     RenderResult<std::uint32_t> DeviceSession::sampledImageCapacity() const noexcept
     {
-        if (!device_.textureDescriptors()) return cxx::unexpected(RenderError{kUnsupported});
-        VkPhysicalDeviceDescriptorIndexingProperties limits{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES};
+        if (!device_.textureDescriptors())
+        {
+            return cxx::unexpected(RenderError{kUnsupported});
+        }
+        VkPhysicalDeviceDescriptorIndexingProperties limits{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES
+        };
         VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &limits};
         vkGetPhysicalDeviceProperties2(device_.physical(), &properties);
-        const auto maximum = std::min({limits.maxDescriptorSetUpdateAfterBindSamplers,
-            limits.maxDescriptorSetUpdateAfterBindSampledImages, limits.maxPerStageDescriptorUpdateAfterBindSamplers,
-            limits.maxPerStageDescriptorUpdateAfterBindSampledImages, limits.maxUpdateAfterBindDescriptorsInAllPools});
-        if (!maximum) return cxx::unexpected(RenderError{kUnsupported});
+        const auto maximum = std::min(
+            {limits.maxDescriptorSetUpdateAfterBindSamplers,
+             limits.maxDescriptorSetUpdateAfterBindSampledImages,
+             limits.maxPerStageDescriptorUpdateAfterBindSamplers,
+             limits.maxPerStageDescriptorUpdateAfterBindSampledImages,
+             limits.maxUpdateAfterBindDescriptorsInAllPools}
+        );
+        if (!maximum)
+        {
+            return cxx::unexpected(RenderError{kUnsupported});
+        }
         return maximum;
     }
 
@@ -55,11 +76,20 @@ namespace lux::render::vulkan
     {
         const auto& binding = sampledImageTableBinding();
         // Exactly one complete device table shape; its last actual user controls reclamation.
-        if (auto existing = sampled_images_.lock()) return existing;
+        if (auto existing = sampled_images_.lock())
+        {
+            return existing;
+        }
         auto capacity = sampledImageCapacity();
-        if (!capacity) return cxx::unexpected(capacity.error());
+        if (!capacity)
+        {
+            return cxx::unexpected(capacity.error());
+        }
         auto result = std::shared_ptr<DescriptorArray>(new DescriptorArray(device_, binding, *capacity));
-        if (auto ready = result->initialize(); !ready) return cxx::unexpected(ready.error());
+        if (auto ready = result->initialize(); !ready)
+        {
+            return cxx::unexpected(ready.error());
+        }
         sampled_images_ = result;
         return result;
     }
@@ -67,7 +97,10 @@ namespace lux::render::vulkan
     RenderResult<void> DescriptorArray::initialize() noexcept
     {
         auto layout = createDescriptorLayout(device_, std::span(&binding_, 1), capacity_, "descriptor_array_layout");
-        if (!layout) return cxx::unexpected(layout.error());
+        if (!layout)
+        {
+            return cxx::unexpected(layout.error());
+        }
         layout_ = *layout;
         VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, capacity_};
         VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
@@ -75,26 +108,43 @@ namespace lux::render::vulkan
         pool.maxSets = 1;
         pool.poolSizeCount = 1;
         pool.pPoolSizes = &size;
-        auto result = LUX_NATIVE("descriptor_array_pool", vkCreateDescriptorPool(device_.native(), &pool, nullptr, &pool_));
-        if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
+        auto result =
+            LUX_NATIVE("descriptor_array_pool", vkCreateDescriptorPool(device_.native(), &pool, nullptr, &pool_));
+        if (result != VK_SUCCESS)
+        {
+            return cxx::unexpected(nativeError(result));
+        }
         VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
         allocate.descriptorPool = pool_;
         allocate.descriptorSetCount = 1;
         allocate.pSetLayouts = &layout_;
-        result = LUX_NATIVE("descriptor_array_set", vkAllocateDescriptorSets(device_.native(), &allocate, &descriptors_));
+        result =
+            LUX_NATIVE("descriptor_array_set", vkAllocateDescriptorSets(device_.native(), &allocate, &descriptors_));
         return result == VK_SUCCESS ? RenderResult<void>{} : cxx::unexpected(nativeError(result));
     }
 
     DescriptorArray::~DescriptorArray() noexcept
     {
-        if (!slots_.empty()) std::terminate();
-        if (pool_) LUX_DESTROY("descriptor_array_pool", vkDestroyDescriptorPool(device_.native(), pool_, nullptr));
-        if (layout_) LUX_DESTROY("descriptor_array_layout", vkDestroyDescriptorSetLayout(device_.native(), layout_, nullptr));
+        if (!slots_.empty())
+        {
+            std::terminate();
+        }
+        if (pool_)
+        {
+            LUX_DESTROY("descriptor_array_pool", vkDestroyDescriptorPool(device_.native(), pool_, nullptr));
+        }
+        if (layout_)
+        {
+            LUX_DESTROY("descriptor_array_layout", vkDestroyDescriptorSetLayout(device_.native(), layout_, nullptr));
+        }
     }
 
     RenderResult<DescriptorRange> DescriptorArray::allocate() noexcept
     {
-        if (slots_.size() == capacity_) return cxx::unexpected(RenderError{kCapacity});
+        if (slots_.size() == capacity_)
+        {
+            return cxx::unexpected(RenderError{kCapacity});
+        }
         const auto slot = slots_.emplace();
         // Exhausted generations are never recycled by SlotMap, including at the physical array bound.
         if (slot.index >= capacity_)
@@ -122,4 +172,4 @@ namespace lux::render::vulkan
     {
         slots_.erase(slot);
     }
-}
+} // namespace lux::render::vulkan

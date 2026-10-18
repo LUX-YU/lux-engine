@@ -1,8 +1,8 @@
 #pragma once
 
-#include <lux/engine/render/data/ConfigValue.hpp>
 #include <lux/cxx/core/Schema.hpp>
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/data/ConfigValue.hpp>
 
 namespace lux::render
 {
@@ -15,4 +15,4 @@ namespace lux::render
         FeatureName type;
         CppType config;
     };
-}
+} // namespace lux::render

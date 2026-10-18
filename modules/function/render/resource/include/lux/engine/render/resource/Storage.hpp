@@ -1,8 +1,8 @@
 #pragma once
 
-#include <lux/engine/render/data/ConfigValue.hpp>
 #include <lux/cxx/core/Schema.hpp>
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/data/ConfigValue.hpp>
 
 namespace lux::render
 {
@@ -15,7 +15,12 @@ namespace lux::render
     {
         StorageId storage;
         cxx::SlotKey<Tag> local;
-        [[nodiscard]] bool isNull() const noexcept { return local.isNull(); }
+
+        [[nodiscard]] bool isNull() const noexcept
+        {
+            return local.isNull();
+        }
+
         bool operator==(const StorageResourceId&) const noexcept = default;
     };
 
@@ -52,8 +57,10 @@ namespace lux::render
     inline constexpr auto kStorageCapacity = error::errorId("lux.render.resource.capacity");
 
     [[nodiscard]] RenderResult<void> validateStorage(const StorageDescriptor& descriptor) noexcept;
-    [[nodiscard]] RenderResult<void>
-    compatibleStorage(const StorageDescriptor& expected, const StorageDescriptor& actual) noexcept;
+    [[nodiscard]] RenderResult<void> compatibleStorage(
+        const StorageDescriptor& expected,
+        const StorageDescriptor& actual
+    ) noexcept;
 
     [[nodiscard]] std::span<const error::ErrorDescriptor> renderResourceErrorDescriptors() noexcept;
-}
+} // namespace lux::render

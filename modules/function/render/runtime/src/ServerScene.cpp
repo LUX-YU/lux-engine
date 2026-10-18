@@ -26,13 +26,19 @@ namespace lux::render
                 {
                     auto* scene = scenes.find(owner.scene);
                     auto* view = scene ? scene->views.find(owner.view) : nullptr;
-                    if (!view) return cxx::unexpected(RenderError{kRuntimeIdentity});
+                    if (!view)
+                    {
+                        return cxx::unexpected(RenderError{kRuntimeIdentity});
+                    }
                     return &view->storages;
                 }
                 else
                 {
                     auto* attachment = attachments.find(owner);
-                    if (!attachment) return cxx::unexpected(RenderError{kRuntimeIdentity});
+                    if (!attachment)
+                    {
+                        return cxx::unexpected(RenderError{kRuntimeIdentity});
+                    }
                     return &attachment->context->attachmentStorages();
                 }
             },
@@ -112,12 +118,18 @@ namespace lux::render
         auto& attachment = *attachments.find(id);
         // Existing Native release validates and transfers in-flight ownership before destruction.
         // No Runtime mutation or dispatch can re-enter during this release.
-        if (auto released = device->release(attachment.context); !released) return released;
+        if (auto released = device->release(attachment.context); !released)
+        {
+            return released;
+        }
         auto& view = *scenes.find(attachment.scene)->views.find(attachment.view);
         auto& effect = *effects.find(attachment.effect);
         auto& target = *targets.find(attachment.target);
         attachment.unlink(attachments, view, effect, target);
-        if (target.attachments.empty()) active_targets.erase(attachment.target);
+        if (target.attachments.empty())
+        {
+            active_targets.erase(attachment.target);
+        }
         attachments.erase(id);
         return {};
     }
@@ -158,7 +170,10 @@ namespace lux::render
         }
         if (auto values = (*prepared)->setContextParameters(decoded->parameters.bytes().view()); !values)
         {
-            if (!device->release(*prepared)) std::terminate(); // Unsubmitted candidate.
+            if (!device->release(*prepared))
+            {
+                std::terminate(); // Unsubmitted candidate.
+            }
             output_response = cxx::unexpected(values.error());
             return;
         }

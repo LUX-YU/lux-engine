@@ -27,15 +27,16 @@ namespace lux::render::runtime_detail
         {
             const auto& entry = *commands_.find(id);
             const auto& description = *entry.description;
-            result.commands.push_back({
-                std::string(name), id, description.request, description.response, entry.selectedBinding() != nullptr
-            });
+            result.commands.push_back(
+                {std::string(name), id, description.request, description.response, entry.selectedBinding() != nullptr}
+            );
         }
         return result;
     }
 
     void CommandRegistry::listCommandBindings(
-        const ListCommandBindings::Request& command, ListCommandBindings::Response& response
+        const ListCommandBindings::Request& command,
+        ListCommandBindings::Response& response
     ) noexcept
     {
         const auto* entry = commands_.find(command);
@@ -61,7 +62,8 @@ namespace lux::render::runtime_detail
     }
 
     void CommandRegistry::selectHandler(
-        const SelectCommandBinding::Request& input, SelectCommandBinding::Response& response
+        const SelectCommandBinding::Request& input,
+        SelectCommandBinding::Response& response
     ) noexcept
     {
         auto* entry = commands_.find(input.command);
@@ -84,7 +86,10 @@ namespace lux::render::runtime_detail
         // There is no per-Handler erase/hot unload. SlotMap assigns monotonically increasing
         // indices until clear(), so installed bindings are ordered without a second sparse index.
         const auto found = std::ranges::lower_bound(
-            entry->bindings, input.handler.index, {}, [](const HandlerBinding& binding) { return binding.handler.index; }
+            entry->bindings,
+            input.handler.index,
+            {},
+            [](const HandlerBinding& binding) { return binding.handler.index; }
         );
         const bool is_missing_handler = found == entry->bindings.end() || found->handler != input.handler;
         if (is_missing_handler)
@@ -99,9 +104,8 @@ namespace lux::render::runtime_detail
     CommandId CommandRegistry::registerCommand(CommandBinding binding) noexcept
     {
         // Built-in installation and prepared Handler publication have already established uniqueness.
-        const auto id = commands_.emplace(CommandRecord{
-            binding.descriptor_, binding.make_error_, {{{}, binding.call_}}, 0
-        });
+        const auto id =
+            commands_.emplace(CommandRecord{binding.descriptor_, binding.make_error_, {{{}, binding.call_}}, 0});
         commands_by_name_.emplace(binding.descriptor_->name.name(), id);
         return id;
     }
@@ -122,7 +126,8 @@ namespace lux::render::runtime_detail
     }
 
     RenderResult<std::vector<CommandId>> CommandRegistry::prepareHandler(
-        const HandlerRecord& handler, std::span<const CommandBinding> calls
+        const HandlerRecord& handler,
+        std::span<const CommandBinding> calls
     ) const noexcept
     {
         const bool is_invalid_installation = handler.name.empty() || calls.empty();
@@ -189,9 +194,9 @@ namespace lux::render::runtime_detail
             if (commands[i].isNull())
             {
                 const auto& binding = calls[i];
-                commands[i] = commands_.emplace(CommandRecord{
-                    binding.descriptor_, binding.make_error_, {{id, binding.call_}}, 0
-                });
+                commands[i] =
+                    commands_.emplace(CommandRecord{binding.descriptor_, binding.make_error_, {{id, binding.call_}}, 0}
+                    );
                 commands_by_name_.emplace(binding.descriptor_->name.name(), commands[i]);
             }
             else

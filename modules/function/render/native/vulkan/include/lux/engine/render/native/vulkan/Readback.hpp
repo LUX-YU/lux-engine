@@ -13,8 +13,14 @@ namespace lux::render::vulkan
     public:
         using Result = RenderResult<std::vector<std::byte>>;
         using Complete = void (*)(void*, Result) noexcept;
-        ReadbackOperation(ExecutionContext& context, void* owner, Complete complete,
-            void* observer, void (*submitted)(void*) noexcept, std::uint32_t resource = kGraphInvalidIndex) noexcept;
+        ReadbackOperation(
+            ExecutionContext& context,
+            void* owner,
+            Complete complete,
+            void* observer,
+            void (*submitted)(void*) noexcept,
+            std::uint32_t resource = kGraphInvalidIndex
+        ) noexcept;
         ~ReadbackOperation() noexcept;
         ReadbackOperation(const ReadbackOperation&) = delete;
         ReadbackOperation& operator=(const ReadbackOperation&) = delete;
@@ -46,11 +52,19 @@ namespace lux::render::vulkan
     public:
         using sender_concept = stdexec::sender_t;
         using completion_signatures = stdexec::completion_signatures<
-            stdexec::set_value_t(std::vector<std::byte>), stdexec::set_error_t(RenderError), stdexec::set_stopped_t()
-        >;
-        explicit ReadbackSender(ExecutionContext& context, void* observer = nullptr,
-            void (*submitted)(void*) noexcept = nullptr, std::uint32_t resource = kGraphInvalidIndex) noexcept
-            : context_(&context), observer_(observer), submitted_(submitted), resource_(resource) {}
+            stdexec::set_value_t(std::vector<std::byte>),
+            stdexec::set_error_t(RenderError),
+            stdexec::set_stopped_t()>;
+
+        explicit ReadbackSender(
+            ExecutionContext& context,
+            void* observer = nullptr,
+            void (*submitted)(void*) noexcept = nullptr,
+            std::uint32_t resource = kGraphInvalidIndex
+        ) noexcept
+            : context_(&context), observer_(observer), submitted_(submitted), resource_(resource)
+        {
+        }
 
         explicit ReadbackSender(RenderError error) noexcept : initial_error_(error) {}
 
@@ -59,22 +73,36 @@ namespace lux::render::vulkan
             struct OnStop final
             {
                 Operation* operation;
-                void operator()() const noexcept { operation->readback_->cancel(); }
+
+                void operator()() const noexcept
+                {
+                    operation->readback_->cancel();
+                }
             };
 
         public:
             using operation_state_concept = stdexec::operation_state_t;
+
             Operation(ReadbackSender input, Receiver receiver) noexcept
                 : receiver_(std::move(receiver)), initial_error_(input.initial_error_)
             {
-                if (input.context_) readback_.emplace(*input.context_, this, finish,
-                    input.observer_, input.submitted_, input.resource_);
+                if (input.context_)
+                {
+                    readback_
+                        .emplace(*input.context_, this, finish, input.observer_, input.submitted_, input.resource_);
+                }
             }
+
             Operation(const Operation&) = delete;
             Operation(Operation&&) = delete;
+
             void start() noexcept
             {
-                if (!readback_) { stdexec::set_error(std::move(receiver_), initial_error_); return; }
+                if (!readback_)
+                {
+                    stdexec::set_error(std::move(receiver_), initial_error_);
+                    return;
+                }
                 stop_.emplace(stdexec::get_stop_token(stdexec::get_env(receiver_)), OnStop{this});
                 readback_->start();
                 // A synchronous error may publish the terminal event; no access after start.
@@ -85,10 +113,20 @@ namespace lux::render::vulkan
             {
                 auto& self = *static_cast<Operation*>(value);
                 auto receiver = std::move(self.receiver_);
-                if (result) stdexec::set_value(std::move(receiver), std::move(*result));
-                else if (result.error().type == kWorkStopped) stdexec::set_stopped(std::move(receiver));
-                else stdexec::set_error(std::move(receiver), result.error());
+                if (result)
+                {
+                    stdexec::set_value(std::move(receiver), std::move(*result));
+                }
+                else if (result.error().type == kWorkStopped)
+                {
+                    stdexec::set_stopped(std::move(receiver));
+                }
+                else
+                {
+                    stdexec::set_error(std::move(receiver), result.error());
+                }
             }
+
             Receiver receiver_;
             RenderError initial_error_;
             std::optional<ReadbackOperation> readback_;
@@ -96,7 +134,9 @@ namespace lux::render::vulkan
         };
 
         template <class Receiver> [[nodiscard]] Operation<std::decay_t<Receiver>> connect(Receiver&& receiver) &&
-        { return {std::move(*this), std::forward<Receiver>(receiver)}; }
+        {
+            return {std::move(*this), std::forward<Receiver>(receiver)};
+        }
 
     private:
         ExecutionContext* context_ = nullptr;
@@ -105,4 +145,4 @@ namespace lux::render::vulkan
         std::uint32_t resource_ = kGraphInvalidIndex;
         RenderError initial_error_;
     };
-}
+} // namespace lux::render::vulkan

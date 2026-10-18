@@ -25,4 +25,4 @@ namespace lux::render::vulkan
         bool optional_texture_descriptors{false};
         bool optional_texture_compression_bc{false};
     };
-}
+} // namespace lux::render::vulkan

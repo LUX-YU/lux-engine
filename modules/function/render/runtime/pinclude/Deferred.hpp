@@ -2,9 +2,9 @@
 
 #include "ResponseOutbox.hpp"
 #include <atomic>
+#include <lux/engine/core/execution/RunLoop.hpp>
 #include <lux/engine/render/resource/AsyncWork.hpp>
 #include <lux/engine/render/runtime/CommandBinding.hpp>
-#include <lux/engine/core/execution/RunLoop.hpp>
 
 #ifdef LUX_RUNTIME_ASYNC_TEST_SEAM
 namespace lux::render::runtime_detail::test
@@ -37,6 +37,7 @@ namespace lux::render::runtime_detail
     struct CommandCompletion final : execution::RunLoop::Work
     {
         CommandCompletion() noexcept : Work(deliver) {}
+
         static void deliver(execution::RunLoop::Work&) noexcept;
 
         ResponseRoute response_route_;

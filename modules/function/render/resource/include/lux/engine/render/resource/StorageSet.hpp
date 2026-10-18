@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/data/ConfigValue.hpp>
+#include <lux/engine/render/resource/Factory.hpp>
 #include <map>
 #include <string>
 #include <tuple>
@@ -16,6 +16,7 @@ namespace lux::render
     {
     public:
         explicit StorageSet(ResourceRegistry& registry) noexcept : registry_(registry) {}
+
         ~StorageSet() noexcept;
         StorageSet(const StorageSet&) = delete;
         StorageSet& operator=(const StorageSet&) = delete;
@@ -26,24 +27,41 @@ namespace lux::render
         [[nodiscard]] RenderResult<StorageId> getOrCreate(std::string_view key, ConfigValue config = {}) noexcept
         {
             return getOrCreateImpl(
-                T::description, key, std::move(config), cppType<typename T::Config>(), cppType<typename T::Ops>()
+                T::description,
+                key,
+                std::move(config),
+                cppType<typename T::Config>(),
+                cppType<typename T::Ops>()
             );
         }
 
-        [[nodiscard]] RenderResult<StorageId>
-        getOrCreate(StorageTypeId type, std::string_view key, ConfigValue config = {}) noexcept;
+        [[nodiscard]] RenderResult<StorageId> getOrCreate(
+            StorageTypeId type,
+            std::string_view key,
+            ConfigValue config = {}
+        ) noexcept;
 
         // Revokes the ID before releasing this set's reference. Already accepted uses remain valid.
         [[nodiscard]] RenderResult<void> remove(StorageId id) noexcept;
         [[nodiscard]] StorageId find(StorageTypeId type, std::string_view key) const noexcept;
-        [[nodiscard]] ResourceRegistry& registry() const noexcept { return registry_; }
-        [[nodiscard]] std::size_t size() const noexcept { return records_.size(); }
+
+        [[nodiscard]] ResourceRegistry& registry() const noexcept
+        {
+            return registry_;
+        }
+
+        [[nodiscard]] std::size_t size() const noexcept
+        {
+            return records_.size();
+        }
+
         void clear() noexcept;
 
     private:
         friend class ResourceRegistry;
         using NameKey = std::tuple<std::uint32_t, std::uint32_t, std::string>;
         using NameIndex = std::map<NameKey, StorageId, std::less<>>;
+
         struct Record final
         {
             StorageId id;
@@ -52,14 +70,17 @@ namespace lux::render
         };
 
         [[nodiscard]] RenderResult<StorageId> getOrCreateImpl(
-            const StorageDescriptor&, std::string_view, ConfigValue, CppType, CppType
+            const StorageDescriptor&,
+            std::string_view,
+            ConfigValue,
+            CppType,
+            CppType
         ) noexcept;
-        [[nodiscard]] RenderResult<StorageId> ensure(
-            StorageTypeId, std::string_view, ConfigValue, CppType = {}, CppType = {}
-        ) noexcept;
+        [[nodiscard]] RenderResult<
+            StorageId> ensure(StorageTypeId, std::string_view, ConfigValue, CppType = {}, CppType = {}) noexcept;
         void erase(std::size_t position) noexcept;
         ResourceRegistry& registry_;
         std::vector<Record> records_;
         NameIndex instances_by_name_;
     };
-}
+} // namespace lux::render

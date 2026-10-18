@@ -1,9 +1,9 @@
 #pragma once
 
-#include <memory>
-#include <vector>
 #include <lux/cxx/memory/SharedBytes.hpp>
 #include <lux/engine/render/core/Error.hpp>
+#include <memory>
+#include <vector>
 
 namespace lux::render
 {
@@ -30,11 +30,18 @@ namespace lux::render
         [[nodiscard]] static RenderPayload copyOf(std::span<const std::byte> bytes) noexcept;
 
         // This is a borrow; copy the byte Owner or retain this Payload across calls.
-        [[nodiscard]] const lux::cxx::SharedBytes<>& bytes() const noexcept { return bytes_; }
-        [[nodiscard]] std::size_t retainedBytes() const noexcept { return retained_bytes_; }
+        [[nodiscard]] const lux::cxx::SharedBytes<>& bytes() const noexcept
+        {
+            return bytes_;
+        }
+
+        [[nodiscard]] std::size_t retainedBytes() const noexcept
+        {
+            return retained_bytes_;
+        }
 
     private:
         lux::cxx::SharedBytes<> bytes_;
         std::size_t retained_bytes_ = 0;
     };
-}
+} // namespace lux::render

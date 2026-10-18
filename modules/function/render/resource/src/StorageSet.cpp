@@ -3,7 +3,10 @@
 
 namespace lux::render
 {
-    StorageSet::~StorageSet() noexcept { clear(); }
+    StorageSet::~StorageSet() noexcept
+    {
+        clear();
+    }
 
     StorageId StorageSet::find(StorageTypeId type, std::string_view key) const noexcept
     {
@@ -12,29 +15,52 @@ namespace lux::render
     }
 
     RenderResult<StorageId> StorageSet::ensure(
-        StorageTypeId type, std::string_view key, ConfigValue config,
-        CppType requested_config, CppType requested_ops
+        StorageTypeId type,
+        std::string_view key,
+        ConfigValue config,
+        CppType requested_config,
+        CppType requested_ops
     ) noexcept
     {
-        if (key.empty()) return cxx::unexpected(RenderError{kStorageContract});
+        if (key.empty())
+        {
+            return cxx::unexpected(RenderError{kStorageContract});
+        }
         const auto* installed = registry_.types_.find(type);
-        if (!installed) return cxx::unexpected(RenderError{kStorageFactory});
+        if (!installed)
+        {
+            return cxx::unexpected(RenderError{kStorageFactory});
+        }
         const auto& factory = installed->factory;
         const bool is_wrong_config = requested_config.size && requested_config != factory.config_type;
         const bool is_wrong_ops = requested_ops.size && requested_ops != factory.ops_type;
-        if (is_wrong_config || is_wrong_ops) return cxx::unexpected(RenderError{kStorageMismatch});
+        if (is_wrong_config || is_wrong_ops)
+        {
+            return cxx::unexpected(RenderError{kStorageMismatch});
+        }
         if (config)
         {
             const auto actual = config.typeInfo();
-            if (actual != factory.config_type) return cxx::unexpected(RenderError{kStorageMismatch});
+            if (actual != factory.config_type)
+            {
+                return cxx::unexpected(RenderError{kStorageMismatch});
+            }
         }
-        else config = installed->configuration; // already qualified at installation
-        if (!config) return cxx::unexpected(RenderError{kStorageContract});
+        else
+        {
+            config = installed->configuration; // already qualified at installation
+        }
+        if (!config)
+        {
+            return cxx::unexpected(RenderError{kStorageContract});
+        }
         if (const auto id = find(type, key); !id.isNull())
         {
             const auto& entry = *registry_.entries_.find(id);
             if (!factory.compatible_config(entry.native, config.data()))
+            {
                 return cxx::unexpected(RenderError{kStorageMismatch});
+            }
             return id;
         }
         const auto id = registry_.entries_.emplace(ResourceRegistry::Entry{this, 0, type});
@@ -49,11 +75,14 @@ namespace lux::render
         auto& entry = *registry_.entries_.find(id);
         entry.position = records_.size();
         const auto destroy = native->get_deleter();
-        std::shared_ptr<void> instance(native->release(),
-            [configuration = std::move(config), destroy](void* value) mutable noexcept {
+        std::shared_ptr<void> instance(
+            native->release(),
+            [configuration = std::move(config), destroy](void* value) mutable noexcept
+            {
                 destroy(value);
                 configuration = {}; // Includes configuration code pins, released after the Native deleter returns.
-            });
+            }
+        );
         const auto name = instances_by_name_.emplace(NameKey{type.index, type.gen, std::string(key)}, id).first;
         records_.push_back(Record{id, name, std::move(instance)});
         entry.native = records_.back().native.get();
@@ -62,20 +91,30 @@ namespace lux::render
     }
 
     RenderResult<StorageId> StorageSet::getOrCreateImpl(
-        const StorageDescriptor& description, std::string_view key, ConfigValue config,
-        CppType config_type, CppType ops_type
+        const StorageDescriptor& description,
+        std::string_view key,
+        ConfigValue config,
+        CppType config_type,
+        CppType ops_type
     ) noexcept
     {
         const auto type = registry_.typeId(description.type);
         const auto* factory = registry_.factory(type);
-        if (!factory) return cxx::unexpected(RenderError{kStorageFactory});
+        if (!factory)
+        {
+            return cxx::unexpected(RenderError{kStorageFactory});
+        }
         if (auto compatible = compatibleStorage(*factory->description, description); !compatible)
+        {
             return cxx::unexpected(compatible.error());
+        }
         return ensure(type, key, std::move(config), config_type, ops_type);
     }
 
     RenderResult<StorageId> StorageSet::getOrCreate(
-        StorageTypeId type, std::string_view key, ConfigValue config
+        StorageTypeId type,
+        std::string_view key,
+        ConfigValue config
     ) noexcept
     {
         return ensure(type, key, std::move(config));
@@ -85,7 +124,9 @@ namespace lux::render
     {
         const auto* entry = registry_.entries_.find(id);
         if (!entry || entry->owner != this || !entry->native)
+        {
             return cxx::unexpected(RenderError{kStorageIdentity});
+        }
         erase(entry->position);
         return {};
     }
@@ -107,7 +148,10 @@ namespace lux::render
 
     void StorageSet::clear() noexcept
     {
-        for (const auto& record : records_) registry_.entries_.erase(record.id);
+        for (const auto& record : records_)
+        {
+            registry_.entries_.erase(record.id);
+        }
         instances_by_name_.clear();
         // Revoke the entire set before any destructor runs. No temporary container or allocation is needed.
         while (!records_.empty())
@@ -116,4 +160,4 @@ namespace lux::render
             records_.pop_back();
         }
     }
-}
+} // namespace lux::render

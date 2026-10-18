@@ -1,5 +1,5 @@
-#include <lux/engine/render/resource/Mesh.hpp>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
+#include <lux/engine/render/resource/Mesh.hpp>
 
 namespace lux::render
 {
@@ -9,21 +9,27 @@ namespace lux::render
         {
             const auto attributes = cxx::checkedMul(description.attributes.capacity(), sizeof(MeshAttribute));
             const auto submeshes = cxx::checkedMul(description.submeshes.capacity(), sizeof(MeshSubmesh));
-            if (!attributes || !submeshes) return cxx::unexpected(RenderError{kProtocolContract});
+            if (!attributes || !submeshes)
+            {
+                return cxx::unexpected(RenderError{kProtocolContract});
+            }
             const auto first = cxx::checkedAdd(bytes, *attributes);
-            if (!first) return cxx::unexpected(RenderError{kProtocolContract});
+            if (!first)
+            {
+                return cxx::unexpected(RenderError{kProtocolContract});
+            }
             const auto total = cxx::checkedAdd(*first, *submeshes);
-            if (!total) return cxx::unexpected(RenderError{kProtocolContract});
+            if (!total)
+            {
+                return cxx::unexpected(RenderError{kProtocolContract});
+            }
             return *total;
         }
-    }
+    } // namespace
 
     RenderResult<std::size_t> ConfigValueTraits<MeshBinding>::retainedBytes(const MeshBinding& input) noexcept
     {
         return retained(input.description, sizeof(input));
     }
 
-
-
-
-}
+} // namespace lux::render

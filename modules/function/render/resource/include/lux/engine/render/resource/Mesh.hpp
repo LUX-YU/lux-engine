@@ -38,7 +38,12 @@ namespace lux::render
         bool operator==(const MeshDescription&) const noexcept = default;
     };
 
-    struct MeshPublished final { MeshId mesh; std::uint64_t revision = 0; };
+    struct MeshPublished final
+    {
+        MeshId mesh;
+        std::uint64_t revision = 0;
+    };
+
     struct MeshBinding final
     {
         MeshId mesh;
@@ -82,10 +87,6 @@ namespace lux::render
         using Response = RenderResult<Ack>;
     };
 
-
-
-
-
     template <> struct ConfigValueTraits<MeshBinding> final
     {
         [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const MeshBinding&) noexcept;
@@ -102,11 +103,13 @@ namespace lux::render
     public:
         using Config = MeshStorageConfig;
         static inline const StorageDescriptor description{kMeshStorageType, 0, 0, cppType<MeshBinding>()};
+
         struct Ops final
         {
             RenderResult<MeshInformation> (*query)(const void*, MeshId) noexcept;
             RenderResult<void> (*release)(void*, MeshId, std::uint64_t) noexcept;
         };
+
         class Access final
         {
         public:
@@ -117,17 +120,24 @@ namespace lux::render
 
             [[nodiscard]] RenderResult<void> release(MeshId id, std::uint64_t revision) const noexcept
             {
-                if (!writable_) return cxx::unexpected(RenderError{kStorageIdentity});
+                if (!writable_)
+                {
+                    return cxx::unexpected(RenderError{kStorageIdentity});
+                }
                 return ops_->release(native_, id, revision);
             }
 
         private:
             friend class ResourceRegistry;
+
             Access(void* native, const Ops& ops, bool writable) noexcept
-                : native_(native), ops_(&ops), writable_(writable) {}
+                : native_(native), ops_(&ops), writable_(writable)
+            {
+            }
+
             void* native_;
             const Ops* ops_;
             bool writable_;
         };
     };
-}
+} // namespace lux::render

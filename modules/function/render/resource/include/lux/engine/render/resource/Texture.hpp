@@ -1,11 +1,10 @@
 #pragma once
 
-
+#include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/description/TextureInfo.hpp>
 #include <lux/engine/render/data/Payload.hpp>
-#include <lux/cxx/container/SlotMap.hpp>
-#include <lux/engine/render/resource/Storage.hpp>
 #include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/render/resource/Storage.hpp>
 
 namespace lux::render
 {
@@ -79,10 +78,6 @@ namespace lux::render
         using Response = RenderResult<TexturePublished>;
     };
 
-
-
-
-
     struct TextureStorageConfig final
     {
         // Optional application residency budgets. Zero imposes no business limit; real device limits remain.
@@ -98,13 +93,16 @@ namespace lux::render
         static inline constexpr StorageDescriptor description{
             kTextureStorageType,
             static_cast<std::uint32_t>(EStorageCapability::SAMPLED_IMAGE_ARRAY),
-            static_cast<std::uint32_t>(EStorageCapability::BLOCK_COMPRESSION_BC), cppType<TextureBinding>()
+            static_cast<std::uint32_t>(EStorageCapability::BLOCK_COMPRESSION_BC),
+            cppType<TextureBinding>()
         };
+
         struct Ops final
         {
             RenderResult<TexturePublished> (*query)(const void*, TextureId) noexcept;
             RenderResult<void> (*release)(void*, TextureId, std::uint64_t) noexcept;
         };
+
         class Access final
         {
         public:
@@ -115,18 +113,25 @@ namespace lux::render
 
             [[nodiscard]] RenderResult<void> release(TextureId id, std::uint64_t revision) const noexcept
             {
-                if (!writable_) return cxx::unexpected(RenderError{kStorageIdentity});
+                if (!writable_)
+                {
+                    return cxx::unexpected(RenderError{kStorageIdentity});
+                }
                 return ops_->release(native_, id, revision);
             }
 
         private:
             friend class ResourceRegistry;
+
             Access(void* native, const Ops& ops, bool writable) noexcept
-                : native_(native), ops_(&ops), writable_(writable) {}
+                : native_(native), ops_(&ops), writable_(writable)
+            {
+            }
+
             void* native_;
             const Ops* ops_;
             bool writable_;
         };
     };
 
-}
+} // namespace lux::render

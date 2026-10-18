@@ -2,14 +2,19 @@
 #include <exec/variant_sender.hpp>
 
 #ifdef LUX_RUNTIME_EFFECT_TEST_SEAM
-namespace lux::render::runtime_cpu_test { void effectAdopted() noexcept; }
+namespace lux::render::runtime_cpu_test
+{
+    void effectAdopted() noexcept;
+}
 #endif
 
 namespace lux::render
 {
     static RenderResult<RenderEffect> compileEffect(
-        vulkan::DeviceSession& device, const CreateEffectRequest& request,
-        std::span<const FeatureEntry* const> registrations, std::size_t max_config_bytes
+        vulkan::DeviceSession& device,
+        const CreateEffectRequest& request,
+        std::span<const FeatureEntry* const> registrations,
+        std::size_t max_config_bytes
     ) noexcept
     {
         const auto* input = &request;
@@ -22,37 +27,61 @@ namespace lux::render
         {
             const auto& selection = input->features[i];
             const auto* registration = registrations[i];
-            selected.push_back({&registration->descriptor, &registration->graph,
-                selection.config ? &selection.config : nullptr, selection.instance});
+            selected.push_back(
+                {&registration->descriptor,
+                 &registration->graph,
+                 selection.config ? &selection.config : nullptr,
+                 selection.instance}
+            );
         }
         auto assembly = assembleFeatures(selected, max_config_bytes);
-        if (!assembly) return cxx::unexpected(assembly.error());
+        if (!assembly)
+        {
+            return cxx::unexpected(assembly.error());
+        }
         for (const auto& contribution : assembly->contributions)
         {
             const auto index = contribution.input_index;
             if (!registrations[index]->programs)
             {
-                const bool has_live_pass = std::ranges::any_of(assembly->analysis.execution_order, [&](auto pass) {
-                    return pass.index >= contribution.first_pass &&
-                        pass.index - contribution.first_pass < contribution.pass_count;
-                });
-                if (has_live_pass) return cxx::unexpected(RenderError{kFeatureContract});
+                const bool has_live_pass = std::ranges::any_of(
+                    assembly->analysis.execution_order,
+                    [&](auto pass)
+                    {
+                        return pass.index >= contribution.first_pass &&
+                               pass.index - contribution.first_pass < contribution.pass_count;
+                    }
+                );
+                if (has_live_pass)
+                {
+                    return cxx::unexpected(RenderError{kFeatureContract});
+                }
                 continue;
             }
             const auto& selection = selected[index];
             auto values = registrations[index]->programs(
-                selection.config ? selection.config->data() : nullptr, selection.instance_key
+                selection.config ? selection.config->data() : nullptr,
+                selection.instance_key
             );
-            if (!values) return cxx::unexpected(values.error());
+            if (!values)
+            {
+                return cxx::unexpected(values.error());
+            }
             const auto passes = assembly->definition.passes().subspan(contribution.first_pass, contribution.pass_count);
             for (std::size_t p = 0; p < values->programs.size(); ++p)
             {
                 const auto& value = values->programs[p];
                 if (std::ranges::none_of(passes, [&](const auto& pass) { return pass.key == value.pass_key; }))
+                {
                     return cxx::unexpected(RenderError{kFeatureOwnership, {index, p}});
+                }
                 for (std::size_t previous = 0; previous < p; ++previous)
+                {
                     if (values->programs[previous].pass_key == value.pass_key)
+                    {
                         return cxx::unexpected(RenderError{kFeatureDuplicate, {index, p, previous}});
+                    }
+                }
             }
             for (auto& value : values->programs)
             {
@@ -60,36 +89,56 @@ namespace lux::render
             }
             for (auto& argument : values->arguments)
             {
-                const auto resource = std::ranges::find(assembly->definition.resources(),
-                    argument.resource_key, &GraphResource::key);
+                const auto resource =
+                    std::ranges::find(assembly->definition.resources(), argument.resource_key, &GraphResource::key);
                 if (resource == assembly->definition.resources().end())
+                {
                     return cxx::unexpected(RenderError{kStorageContract});
-                const auto resource_index = static_cast<std::uint32_t>(resource - assembly->definition.resources().begin());
-                const auto declared = [&](const auto& group) {
-                    return std::ranges::any_of(group, [&](const auto& binding) {
-                        return binding.resource.index == resource_index;
-                    });
+                }
+                const auto resource_index =
+                    static_cast<std::uint32_t>(resource - assembly->definition.resources().begin());
+                const auto declared = [&](const auto& group)
+                {
+                    return std::ranges::any_of(
+                        group,
+                        [&](const auto& binding) { return binding.resource.index == resource_index; }
+                    );
                 };
                 const auto& bindings = assembly->external_bindings;
                 const bool has_declaration = declared(bindings.global) || declared(bindings.scene) ||
-                    declared(bindings.view) || declared(bindings.attachment);
-                if (!has_declaration) return cxx::unexpected(RenderError{kStorageContract});
-                const bool is_live = std::ranges::any_of(assembly->analysis.lifetimes, [&](const auto& lifetime) {
-                    return lifetime.version.resource.index == resource_index;
-                });
-                if (!is_live) continue;
+                                             declared(bindings.view) || declared(bindings.attachment);
+                if (!has_declaration)
+                {
+                    return cxx::unexpected(RenderError{kStorageContract});
+                }
+                const bool is_live = std::ranges::any_of(
+                    assembly->analysis.lifetimes,
+                    [&](const auto& lifetime) { return lifetime.version.resource.index == resource_index; }
+                );
+                if (!is_live)
+                {
+                    continue;
+                }
                 const auto existing =
                     std::ranges::find(arguments, argument.resource_key, &StorageArgument::resource_key);
                 if (existing == arguments.end())
+                {
                     arguments.push_back(std::move(argument));
+                }
                 else if (existing->value != argument.value)
+                {
                     return cxx::unexpected(RenderError{kStorageMismatch});
+                }
             }
         }
         for (const auto pass : assembly->analysis.execution_order)
+        {
             if (std::ranges::find(programs, assembly->definition.passes()[pass.index].key, &PassProgram::pass_key) ==
                 programs.end())
+            {
                 return cxx::unexpected(RenderError{kFeatureContract, {pass.index}});
+            }
+        }
         auto compiled = vulkan::compileGraph(
             device,
             (*assembly).definition,
@@ -98,7 +147,10 @@ namespace lux::render
             programs,
             input->description
         );
-        if (!compiled) return cxx::unexpected(compiled.error());
+        if (!compiled)
+        {
+            return cxx::unexpected(compiled.error());
+        }
         return RenderEffect{std::make_shared<const vulkan::CompiledGraph>(std::move(*compiled)), std::move(arguments)};
     }
 
@@ -106,7 +158,10 @@ namespace lux::render
     {
         RenderError initial_error;
         std::vector<const FeatureEntry*> registrations;
-        if (input.features.empty()) initial_error = {kFeatureContract};
+        if (input.features.empty())
+        {
+            initial_error = {kFeatureContract};
+        }
         registrations.reserve(input.features.size());
         for (const auto& selection : input.features)
         {
@@ -121,29 +176,43 @@ namespace lux::render
 
         // Workers receive only immutable feature entries, the request and the actual device borrow.
         // The final continuation is the sole place that adopts a candidate into the owner table.
-        auto compiled = stdexec::schedule(scheduler)
-            | stdexec::then([
-                  native = device.get(), request = std::move(input), entries = std::move(registrations),
-                  limit = config.max_config_bytes
-              ]() noexcept { return compileEffect(*native, request, entries, limit); })
-            | stdexec::upon_error([](execution::EExecutionError error) noexcept -> RenderResult<RenderEffect> {
-                  return cxx::unexpected(RenderError{kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}});
-              })
-            | stdexec::continues_on(render_loop_.scheduler())
-            | stdexec::let_value([server = this](RenderResult<RenderEffect>& candidate) noexcept {
-                  return stdexec::read_env(stdexec::get_stop_token)
-                      | stdexec::then([server, &candidate](auto stop) noexcept -> CreateEffect::Response {
-                            if (!candidate) return cxx::unexpected(candidate.error());
-                            if (stop.stop_requested())
-                                return cxx::unexpected(RenderError{kCommandCancelled});
+        auto compiled =
+            stdexec::schedule(scheduler) |
+            stdexec::then([native = device.get(),
+                           request = std::move(input),
+                           entries = std::move(registrations),
+                           limit = config.max_config_bytes]() noexcept
+                          { return compileEffect(*native, request, entries, limit); }) |
+            stdexec::upon_error(
+                [](execution::EExecutionError error) noexcept -> RenderResult<RenderEffect>
+                { return cxx::unexpected(RenderError{kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}}); }
+            ) |
+            stdexec::continues_on(render_loop_.scheduler()) |
+            stdexec::let_value(
+                [server = this](RenderResult<RenderEffect>& candidate) noexcept
+                {
+                    return stdexec::read_env(stdexec::get_stop_token) |
+                           stdexec::then(
+                               [server, &candidate](auto stop) noexcept -> CreateEffect::Response
+                               {
+                                   if (!candidate)
+                                   {
+                                       return cxx::unexpected(candidate.error());
+                                   }
+                                   if (stop.stop_requested())
+                                   {
+                                       return cxx::unexpected(RenderError{kCommandCancelled});
+                                   }
 #ifdef LUX_RUNTIME_EFFECT_TEST_SEAM
-                            runtime_cpu_test::effectAdopted();
+                                   runtime_cpu_test::effectAdopted();
 #endif
-                            const auto effect = server->effects.emplace(std::move(*candidate));
-                            ++server->compiled_graphs;
-                            return EffectCreated{effect};
-                        });
-              });
+                                   const auto effect = server->effects.emplace(std::move(*candidate));
+                                   ++server->compiled_graphs;
+                                   return EffectCreated{effect};
+                               }
+                           );
+                }
+            );
         auto invalid = stdexec::just(CreateEffect::Response{cxx::unexpected(initial_error)});
         using VSource = exec::variant_sender<decltype(invalid), decltype(compiled)>;
         return initial_error.type != error::ErrorId{} ? VSource{std::move(invalid)} : VSource{std::move(compiled)};

@@ -34,27 +34,27 @@ namespace lux::render
     std::span<const error::ErrorDescriptor> renderCoreErrorDescriptors() noexcept
     {
         static constexpr error::ErrorDescriptor descriptors[]{
-            {
-                "lux.render.core.invalid_target_extent", "Target width and height must be nonzero",
-                error::ERecovery::PERMANENT, {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
-            },
-            {
-                "lux.render.core.invalid_target_format", "Target format must describe an uncompressed color attachment",
-                error::ERecovery::PERMANENT, {error::EArgument::HEX}
-            },
-            {
-                "lux.render.core.invalid_target_samples", "Target samples must be a power of two from 1 through 64",
-                error::ERecovery::PERMANENT, {error::EArgument::UNSIGNED}
-            },
-            {
-                "lux.render.core.invalid_target_kind", "Unknown target kind",
-                error::ERecovery::PERMANENT, {error::EArgument::UNSIGNED}
-            },
-            {
-                "lux.render.core.invalid_viewport", "Raster viewport coordinates and depth ranges must be valid",
-                error::ERecovery::PERMANENT, {}
-            }
+            {"lux.render.core.invalid_target_extent",
+             "Target width and height must be nonzero",
+             error::ERecovery::PERMANENT,
+             {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}},
+            {"lux.render.core.invalid_target_format",
+             "Target format must describe an uncompressed color attachment",
+             error::ERecovery::PERMANENT,
+             {error::EArgument::HEX}},
+            {"lux.render.core.invalid_target_samples",
+             "Target samples must be a power of two from 1 through 64",
+             error::ERecovery::PERMANENT,
+             {error::EArgument::UNSIGNED}},
+            {"lux.render.core.invalid_target_kind",
+             "Unknown target kind",
+             error::ERecovery::PERMANENT,
+             {error::EArgument::UNSIGNED}},
+            {"lux.render.core.invalid_viewport",
+             "Raster viewport coordinates and depth ranges must be valid",
+             error::ERecovery::PERMANENT,
+             {}}
         };
         return descriptors;
     }
-}
+} // namespace lux::render

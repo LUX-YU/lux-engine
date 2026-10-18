@@ -1,16 +1,20 @@
 #pragma once
 
+#include <list>
+#include <lux/cxx/container/SlotMap.hpp>
+#include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
-#include <lux/cxx/container/SlotMap.hpp>
-#include <lux/cxx/container/StableSlotMap.hpp>
-#include <list>
 #include <memory>
 #include <vector>
 
-namespace lux::render::vulkan { class CompiledGraph; class ExecutionContext; }
+namespace lux::render::vulkan
+{
+    class CompiledGraph;
+    class ExecutionContext;
+} // namespace lux::render::vulkan
 
 namespace lux::render::runtime_detail
 {
@@ -37,6 +41,7 @@ namespace lux::render::runtime_detail
         std::list<AttachmentId> attachments;
 
         explicit RenderTarget(TargetDesc value = {}) noexcept : description(value) {}
+
         RenderTarget(const RenderTarget&) = delete;
         RenderTarget& operator=(const RenderTarget&) = delete;
     };
@@ -88,4 +93,4 @@ namespace lux::render::runtime_detail
             output.attachments.erase(target_position);
         }
     };
-}
+} // namespace lux::render::runtime_detail

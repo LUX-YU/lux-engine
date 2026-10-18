@@ -23,4 +23,4 @@ namespace lux::render
         };
         return descriptors;
     }
-}
+} // namespace lux::render

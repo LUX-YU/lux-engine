@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/cxx/container/SlotMap.hpp>
 #include <limits>
+#include <lux/cxx/container/SlotMap.hpp>
 
 namespace lux::render
 {
@@ -29,10 +29,10 @@ namespace lux::render
     struct StorageTypeTag;
     struct StorageTag;
 
-    using SceneId   = cxx::SlotKey<SceneTag>;
-    using ViewId    = cxx::SlotKey<ViewTag>;
-    using TargetId  = cxx::SlotKey<TargetTag>;
-    using EffectId  = cxx::SlotKey<EffectTag>;
+    using SceneId = cxx::SlotKey<SceneTag>;
+    using ViewId = cxx::SlotKey<ViewTag>;
+    using TargetId = cxx::SlotKey<TargetTag>;
+    using EffectId = cxx::SlotKey<EffectTag>;
     using AttachmentId = cxx::SlotKey<AttachmentTag>;
     using FeatureId = cxx::SlotKey<FeatureTag>;
     using StorageTypeId = cxx::SlotKey<StorageTypeTag>;
@@ -41,4 +41,4 @@ namespace lux::render
     // Keys are owner-local. isValid() only checks the null sentinel; lookup must
     // validate generation in the owning SlotMap. View lookup also needs SceneId.
     // Keys must not cross Server/Endpoint lifetimes or be persisted as global IDs.
-}
+} // namespace lux::render

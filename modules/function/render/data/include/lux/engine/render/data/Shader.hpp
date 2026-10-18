@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/data/ShaderInterface.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
+#include <lux/engine/render/data/ShaderInterface.hpp>
 
 namespace lux::render
 {
@@ -22,4 +22,4 @@ namespace lux::render
         bool operator==(const SpirvArtifact&) const noexcept = default;
     };
 
-}
+} // namespace lux::render

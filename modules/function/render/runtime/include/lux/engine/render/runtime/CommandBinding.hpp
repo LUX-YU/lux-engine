@@ -93,22 +93,27 @@ namespace lux::render
                         // Admission is serialized with scope close on the RenderThread.
                         auto& completion = runtime_detail::prepareCompletion(context);
                         auto sender = (static_cast<H*>(object)->*Method)(std::move(input));
-                        auto normalized = std::move(sender)
-                            | stdexec::upon_error(ResponseError<C>{})
-                            | stdexec::upon_stopped([]() noexcept -> typename C::Response {
-                                  return cxx::unexpected(RenderError{kCommandCancelled});
-                              })
-                            | stdexec::then([record = &completion](typename C::Response response) noexcept {
-                                  runtime_detail::completionResult(*record).emplace<typename C::Response>(
-                                      std::move(response)
-                                  );
-                                  runtime_detail::publishCompletion(*record);
-                              });
+                        auto normalized =
+                            std::move(sender) | stdexec::upon_error(ResponseError<C>{}) |
+                            stdexec::upon_stopped(
+                                []() noexcept -> typename C::Response
+                                { return cxx::unexpected(RenderError{kCommandCancelled}); }
+                            ) |
+                            stdexec::then(
+                                [record = &completion](typename C::Response response) noexcept
+                                {
+                                    runtime_detail::completionResult(*record).emplace<typename C::Response>(
+                                        std::move(response)
+                                    );
+                                    runtime_detail::publishCompletion(*record);
+                                }
+                            );
                         stdexec::spawn(
                             std::move(normalized),
                             runtime_detail::commandScope(context).get_token(),
                             CompletionEnvironment{
-                                runtime_detail::completionPost(completion), runtime_detail::renderScheduler(context)
+                                runtime_detail::completionPost(completion),
+                                runtime_detail::renderScheduler(context)
                             }
                         );
                     }

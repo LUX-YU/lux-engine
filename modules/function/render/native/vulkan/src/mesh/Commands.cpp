@@ -1,6 +1,6 @@
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshStorage.hpp>
-#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 
 namespace lux::render::vulkan
 {
@@ -12,7 +12,10 @@ namespace lux::render::vulkan
     exec::task<SetMesh::Response> MeshCommandHandler::setMesh(SetMesh::Request&& input) noexcept
     {
         auto storage = device_.resources().borrow<MeshStorage>(input.mesh.storage);
-        if (!storage) return rejectedMesh(storage.error());
+        if (!storage)
+        {
+            return rejectedMesh(storage.error());
+        }
         return render::upload(**storage, std::move(input));
     }
 

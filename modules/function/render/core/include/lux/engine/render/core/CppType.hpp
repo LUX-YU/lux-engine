@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/cxx/compile_time/TypeToken.hpp>
 #include <cstddef>
+#include <lux/cxx/compile_time/TypeToken.hpp>
 
 namespace lux::render
 {
@@ -16,9 +16,8 @@ namespace lux::render
         constexpr bool operator==(const CppType&) const noexcept = default;
     };
 
-    template <class T>
-    [[nodiscard]] constexpr CppType cppType() noexcept
+    template <class T> [[nodiscard]] constexpr CppType cppType() noexcept
     {
         return {cxx::typeToken<T>(), sizeof(T), alignof(T)};
     }
-}
+} // namespace lux::render

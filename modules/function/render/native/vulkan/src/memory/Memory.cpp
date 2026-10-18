@@ -38,7 +38,8 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        const bool is_unsupported_address = (usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) && !buffer_device_address_;
+        const bool is_unsupported_address =
+            (usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) && !buffer_device_address_;
         if (is_unsupported_address)
         {
             return cxx::unexpected(RenderError{kUnsupported});
@@ -83,8 +84,7 @@ namespace lux::render::vulkan
         return std::make_shared<Buffer>(*this, buffer, allocation, mapped.pMappedData, size, usage, access);
     }
 
-    RenderResult<void> Buffer::write(VkDeviceSize offset,
-        std::span<const std::byte> bytes) noexcept
+    RenderResult<void> Buffer::write(VkDeviceSize offset, std::span<const std::byte> bytes) noexcept
     {
         const bool is_invalid_range = offset > size_ || bytes.size() > size_ - offset;
         const bool is_invalid_access = access_ == EMemoryAccess::DEVICE || is_invalid_range;
@@ -97,9 +97,8 @@ namespace lux::render::vulkan
             return {};
         }
         std::memcpy(static_cast<std::byte*>(mapped_) + offset, bytes.data(), bytes.size());
-        const auto result = LUX_NATIVE("flush",
-            vmaFlushAllocation(allocator_->native(), allocation_, offset, bytes.size())
-        );
+        const auto result =
+            LUX_NATIVE("flush", vmaFlushAllocation(allocator_->native(), allocation_, offset, bytes.size()));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -111,8 +110,14 @@ namespace lux::render::vulkan
     {
         const bool is_invalid_range = offset > size_ || size > size_ - offset;
         const bool is_invalid_access = !mapped_ || is_invalid_range;
-        if (is_invalid_access) return cxx::unexpected(RenderError{kInvalidArgument});
-        if (!size) return {};
+        if (is_invalid_access)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        if (!size)
+        {
+            return {};
+        }
         const auto result = LUX_NATIVE("flush", vmaFlushAllocation(allocator_->native(), allocation_, offset, size));
         if (result != VK_SUCCESS)
         {
@@ -121,8 +126,7 @@ namespace lux::render::vulkan
         return {};
     }
 
-    RenderResult<void> Buffer::read(VkDeviceSize offset,
-        std::span<std::byte> bytes) const noexcept
+    RenderResult<void> Buffer::read(VkDeviceSize offset, std::span<std::byte> bytes) const noexcept
     {
         const bool is_invalid_range = offset > size_ || bytes.size() > size_ - offset;
         const bool is_invalid_access = access_ != EMemoryAccess::READBACK || is_invalid_range;
@@ -135,9 +139,7 @@ namespace lux::render::vulkan
             return {};
         }
         const auto result =
-            LUX_NATIVE("invalidate",
-                vmaInvalidateAllocation(allocator_->native(), allocation_, offset, bytes.size())
-            );
+            LUX_NATIVE("invalidate", vmaInvalidateAllocation(allocator_->native(), allocation_, offset, bytes.size()));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -209,8 +211,7 @@ namespace lux::render::vulkan
         memory.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         VkImage image{};
         VmaAllocation allocation{};
-        const auto result =
-            LUX_NATIVE("image", vmaCreateImage(native(), &info, &memory, &image, &allocation, nullptr));
+        const auto result = LUX_NATIVE("image", vmaCreateImage(native(), &info, &memory, &image, &allocation, nullptr));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));

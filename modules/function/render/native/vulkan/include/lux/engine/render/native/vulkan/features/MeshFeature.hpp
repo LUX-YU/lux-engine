@@ -2,10 +2,10 @@
 
 #include <lux/engine/render/features/MeshFeature.hpp>
 #include <lux/engine/render/features/Registration.hpp>
-#include <lux/engine/render/native/vulkan/texture/TextureCommandHandler.hpp>
-#include <lux/engine/render/native/vulkan/mesh/MeshCommandHandler.hpp>
-#include <lux/engine/render/native/vulkan/material/MaterialCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/instance/InstanceCommandHandler.hpp>
+#include <lux/engine/render/native/vulkan/material/MaterialCommandHandler.hpp>
+#include <lux/engine/render/native/vulkan/mesh/MeshCommandHandler.hpp>
+#include <lux/engine/render/native/vulkan/texture/TextureCommandHandler.hpp>
 
 namespace lux::render
 {
@@ -14,8 +14,8 @@ namespace lux::render
     template <> struct FeatureProvider<BasicMeshFeature> final
     {
         using Handler = void;
-        using Storages = std::tuple<render::TextureStorage, render::MeshStorage,
-            render::MaterialStorage, render::InstanceStorage>;
+        using Storages =
+            std::tuple<render::TextureStorage, render::MeshStorage, render::MaterialStorage, render::InstanceStorage>;
         [[nodiscard]] feature_detail::Implementation definition() const noexcept;
     };
 
@@ -25,4 +25,4 @@ namespace lux::render
         using Storages = std::tuple<render::MeshStorage, render::MaterialStorage, render::InstanceStorage>;
         [[nodiscard]] feature_detail::Implementation definition() const noexcept;
     };
-}
+} // namespace lux::render

@@ -1,9 +1,9 @@
 #pragma once
 
-#include <lux/engine/render/data/Shader.hpp>
-#include <lux/engine/render/resource/Texture.hpp>
-#include <lux/engine/render/protocol/Protocol.hpp>
 #include <array>
+#include <lux/engine/render/data/Shader.hpp>
+#include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/render/resource/Texture.hpp>
 
 namespace lux::render
 {
@@ -24,11 +24,16 @@ namespace lux::render
 
     [[nodiscard]] const ShaderBlock& materialParameterBlock() noexcept;
 
-    struct MaterialPublished final { MaterialId material; std::uint64_t revision = 0; };
+    struct MaterialPublished final
+    {
+        MaterialId material;
+        std::uint64_t revision = 0;
+    };
+
     struct MaterialBinding final
     {
         MaterialId material;
-        ConfigValue program; // Same complete cooked contract used by the cold Graph compiler.
+        ConfigValue program;                     // Same complete cooked contract used by the cold Graph compiler.
         std::uint32_t texture_slot = UINT32_MAX; // UINT32_MAX selects the parameter Buffer; otherwise one Image.
         bool operator==(const MaterialBinding&) const noexcept = default;
     };
@@ -85,10 +90,6 @@ namespace lux::render
         [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const MaterialBinding&) noexcept;
     };
 
-
-
-
-
     struct MaterialStorageConfig final
     {
         std::uint64_t resident_byte_budget = 0;
@@ -99,14 +100,14 @@ namespace lux::render
     {
     public:
         using Config = MaterialStorageConfig;
-        static inline const StorageDescriptor description{
-            kMaterialStorageType, 0, 0, cppType<MaterialBinding>()
-        };
+        static inline const StorageDescriptor description{kMaterialStorageType, 0, 0, cppType<MaterialBinding>()};
+
         struct Ops final
         {
             RenderResult<MaterialInformation> (*query)(const void*, MaterialId) noexcept;
             RenderResult<void> (*release)(void*, MaterialId, std::uint64_t) noexcept;
         };
+
         class Access final
         {
         public:
@@ -117,17 +118,24 @@ namespace lux::render
 
             [[nodiscard]] RenderResult<void> release(MaterialId id, std::uint64_t revision) const noexcept
             {
-                if (!writable_) return cxx::unexpected(RenderError{kStorageIdentity});
+                if (!writable_)
+                {
+                    return cxx::unexpected(RenderError{kStorageIdentity});
+                }
                 return ops_->release(native_, id, revision);
             }
 
         private:
             friend class ResourceRegistry;
+
             Access(void* native, const Ops& ops, bool writable) noexcept
-                : native_(native), ops_(&ops), writable_(writable) {}
+                : native_(native), ops_(&ops), writable_(writable)
+            {
+            }
+
             void* native_;
             const Ops* ops_;
             bool writable_;
         };
     };
-}
+} // namespace lux::render

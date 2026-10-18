@@ -14,16 +14,21 @@ namespace lux::render::vulkan
     exec::task<SetTexture::Response> TextureCommandHandler::setTexture(SetTexture::Request&& input) noexcept
     {
         auto storage = device_.resources().borrow<TextureStorage>(input.texture.storage);
-        if (!storage) return rejectedTexture(storage.error());
+        if (!storage)
+        {
+            return rejectedTexture(storage.error());
+        }
         return render::upload(**storage, std::move(input));
     }
 
-    exec::task<SetTextureRegion::Response> TextureCommandHandler::updateTextureRegion(
-        SetTextureRegion::Request&& input
+    exec::task<SetTextureRegion::Response> TextureCommandHandler::updateTextureRegion(SetTextureRegion::Request&& input
     ) noexcept
     {
         auto storage = device_.resources().borrow<TextureStorage>(input.texture.storage);
-        if (!storage) return rejectedTexture(storage.error());
+        if (!storage)
+        {
+            return rejectedTexture(storage.error());
+        }
         return render::upload(**storage, std::move(input));
     }
 

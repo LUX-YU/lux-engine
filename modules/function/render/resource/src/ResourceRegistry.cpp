@@ -1,14 +1,19 @@
-#include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <exception>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 
 namespace lux::render
 {
     ResourceRegistry::ResourceRegistry(void* native, std::uint32_t capabilities) noexcept
-        : native_(native), capabilities_(capabilities) {}
+        : native_(native), capabilities_(capabilities)
+    {
+    }
 
     ResourceRegistry::~ResourceRegistry() noexcept
     {
-        if (!entries_.empty()) std::terminate(); // actual Sets must close before their borrowed index
+        if (!entries_.empty())
+        {
+            std::terminate(); // actual Sets must close before their borrowed index
+        }
     }
 
     StorageTypeId ResourceRegistry::typeId(StorageNameView type) const noexcept
@@ -36,20 +41,32 @@ namespace lux::render
     }
 
     RenderResult<void> ResourceRegistry::validateFactory(
-        const StorageFactory& factory, const ConfigValue& configuration
+        const StorageFactory& factory,
+        const ConfigValue& configuration
     ) const noexcept
     {
-        if (!factory.description) return cxx::unexpected(RenderError{kStorageFactory});
+        if (!factory.description)
+        {
+            return cxx::unexpected(RenderError{kStorageFactory});
+        }
         if (auto valid = validateStorageFactory(*factory.description, factory); !valid)
+        {
             return cxx::unexpected(valid.error());
+        }
         const auto& type = *factory.description;
         if ((type.required_capabilities & ~capabilities_) != 0)
+        {
             return cxx::unexpected(RenderError{kStorageCapability});
+        }
         const auto actual = configuration.typeInfo();
         if (configuration && factory.config_type != actual)
+        {
             return cxx::unexpected(RenderError{kStorageMismatch});
+        }
         if (!typeId(factory.description->type).isNull())
+        {
             return cxx::unexpected(RenderError{kStorageFactory});
+        }
         return {};
     }
 
@@ -62,10 +79,14 @@ namespace lux::render
     }
 
     RenderResult<StorageTypeId> ResourceRegistry::installFactory(
-        StorageFactory factory, ConfigValue configuration
+        StorageFactory factory,
+        ConfigValue configuration
     ) noexcept
     {
-        if (auto valid = validateFactory(factory, configuration); !valid) return cxx::unexpected(valid.error());
+        if (auto valid = validateFactory(factory, configuration); !valid)
+        {
+            return cxx::unexpected(valid.error());
+        }
         return publishFactory(std::move(factory), std::move(configuration));
     }
 
@@ -77,16 +98,24 @@ namespace lux::render
         {
             const auto& candidate = candidates[i];
             if (auto valid = validateFactory(candidate.factory, candidate.configuration); !valid)
+            {
                 return cxx::unexpected(valid.error());
+            }
             for (std::size_t j = 0; j < i; ++j)
+            {
                 if (candidates[j].factory.description->type == candidate.factory.description->type)
+                {
                     return cxx::unexpected(RenderError{kStorageFactory});
+                }
+            }
         }
         types_.reserve(types_.size() + candidates.size());
         std::vector<StorageTypeId> ids;
         ids.reserve(candidates.size());
         for (auto& candidate : candidates)
+        {
             ids.push_back(publishFactory(std::move(candidate.factory), std::move(candidate.configuration)));
+        }
         return ids;
     }
 
@@ -106,7 +135,9 @@ namespace lux::render
     {
         auto* entry = entries_.find(id);
         if (!entry || !entry->native)
+        {
             return cxx::unexpected(RenderError{kStorageIdentity});
+        }
         return entry->owner->records_[entry->position].native;
     }
-}
+} // namespace lux::render

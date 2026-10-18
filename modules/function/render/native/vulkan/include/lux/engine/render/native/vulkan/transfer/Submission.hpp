@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/native/vulkan/device/Device.hpp>
 #include <array>
+#include <lux/engine/render/native/vulkan/device/Device.hpp>
 #include <memory>
 #include <optional>
 #include <span>
@@ -42,12 +42,24 @@ namespace lux::render::vulkan
     class SubmissionRequirements final
     {
     public:
-        struct Use final { const SubmissionQueue* queue = nullptr; std::uint64_t serial = 0; };
+        struct Use final
+        {
+            const SubmissionQueue* queue = nullptr;
+            std::uint64_t serial = 0;
+        };
 
         void merge(SubmissionTicket ticket) noexcept;
         [[nodiscard]] bool completed() const noexcept;
-        [[nodiscard]] bool empty() const noexcept { return uses_[0].queue == nullptr; }
-        [[nodiscard]] std::span<const Use> uses() const noexcept { return uses_; }
+
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return uses_[0].queue == nullptr;
+        }
+
+        [[nodiscard]] std::span<const Use> uses() const noexcept
+        {
+            return uses_;
+        }
 
     private:
         std::array<Use, 3> uses_{};
@@ -66,8 +78,16 @@ namespace lux::render::vulkan
         SubmissionCallback& operator=(const SubmissionCallback&) = delete;
 
         void reset() noexcept;
-        [[nodiscard]] bool reserved() const noexcept { return queue_ != nullptr; }
-        [[nodiscard]] bool armed() const noexcept { return armed_; }
+
+        [[nodiscard]] bool reserved() const noexcept
+        {
+            return queue_ != nullptr;
+        }
+
+        [[nodiscard]] bool armed() const noexcept
+        {
+            return armed_;
+        }
 
     private:
         friend class SubmissionQueue;
@@ -171,13 +191,18 @@ namespace lux::render::vulkan
 
         // Reserve before Submit; arming an accepted Ticket has no recoverable capacity failure.
         [[nodiscard]] RenderResult<void> reserve(SubmissionCallback& callback) noexcept;
-        [[nodiscard]] RenderResult<void> onComplete(SubmissionTicket ticket, SubmissionCallback& callback,
-            SubmissionCallbackFn function, void* user) noexcept;
+        [[nodiscard]] RenderResult<void> onComplete(
+            SubmissionTicket ticket,
+            SubmissionCallback& callback,
+            SubmissionCallbackFn function,
+            void* user
+        ) noexcept;
         // Explicit owner-thread safe point. poll/begin/wait never invoke business callbacks.
         // Re-registered nodes, including already completed Tickets, wait for the next dispatch.
         void dispatchCompleted() noexcept;
         [[nodiscard]] std::size_t callbackReservations() const noexcept;
         [[nodiscard]] std::size_t callbackCapacity() const noexcept;
+
         [[nodiscard]] std::optional<SubmissionTicket> oldestPending() const noexcept
         {
             return completed() < submitted() ? std::optional{SubmissionTicket{*this, completed() + 1}} : std::nullopt;
@@ -231,13 +256,21 @@ namespace lux::render::vulkan
             using operation_state_concept = stdexec::operation_state_t;
 
             Operation(SubmissionQueue& queue, SubmissionTicket ticket, Receiver receiver) noexcept
-                : queue_(queue), ticket_(ticket), receiver_(std::move(receiver)) {}
+                : queue_(queue), ticket_(ticket), receiver_(std::move(receiver))
+            {
+            }
 
             void start() & noexcept
             {
                 auto result = queue_.reserve(callback_);
-                if (result) result = queue_.onComplete(ticket_, callback_, finish, this);
-                if (!result) finish(this, std::move(result));
+                if (result)
+                {
+                    result = queue_.onComplete(ticket_, callback_, finish, this);
+                }
+                if (!result)
+                {
+                    finish(this, std::move(result));
+                }
             }
 
         private:
@@ -261,7 +294,9 @@ namespace lux::render::vulkan
 
     private:
         friend class SubmissionQueue;
+
         CompletionSender(SubmissionQueue& queue, SubmissionTicket ticket) noexcept : queue_(queue), ticket_(ticket) {}
+
         SubmissionQueue& queue_;
         SubmissionTicket ticket_;
     };

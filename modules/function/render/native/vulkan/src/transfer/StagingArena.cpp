@@ -1,6 +1,6 @@
 #include "StagingArena.hpp"
-#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include <exception>
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 
 namespace lux::render::vulkan
 {
@@ -12,16 +12,21 @@ namespace lux::render::vulkan
     ) noexcept
     {
         const bool is_invalid_capacity = !page_bytes || !page_count;
-        if (is_invalid_capacity) return cxx::unexpected(RenderError{kInvalidArgument});
+        if (is_invalid_capacity)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
         auto arena = std::unique_ptr<StagingArena>(new StagingArena);
         arena->pages_.reserve(page_count);
         arena->free_pages_.reserve(page_count);
         for (std::size_t i = 0; i < page_count; ++i)
         {
-            auto buffer = allocator.createBuffer(
-                page_bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD, families
-            );
-            if (!buffer) return cxx::unexpected(buffer.error());
+            auto buffer =
+                allocator.createBuffer(page_bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD, families);
+            if (!buffer)
+            {
+                return cxx::unexpected(buffer.error());
+            }
             arena->pages_.push_back(std::move(*buffer));
             arena->free_pages_.push_back(i);
         }
@@ -31,12 +36,18 @@ namespace lux::render::vulkan
     StagingArena::~StagingArena() noexcept
     {
         // Session must release accepted batches and joined CPU work before destroying their arena.
-        if (free_pages_.size() != pages_.size()) std::terminate();
+        if (free_pages_.size() != pages_.size())
+        {
+            std::terminate();
+        }
     }
 
     RenderResult<std::shared_ptr<StagingPage>> StagingArena::acquire() noexcept
     {
-        if (free_pages_.empty()) return cxx::unexpected(RenderError{kCapacity});
+        if (free_pages_.empty())
+        {
+            return cxx::unexpected(RenderError{kCapacity});
+        }
         auto page = std::shared_ptr<StagingPage>(new StagingPage(*this, free_pages_.back()));
         free_pages_.pop_back();
         return page;
@@ -64,4 +75,4 @@ namespace lux::render::vulkan
     {
         return *arena_.pages_[index_];
     }
-}
+} // namespace lux::render::vulkan

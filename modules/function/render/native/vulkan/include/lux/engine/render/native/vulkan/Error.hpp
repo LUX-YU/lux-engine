@@ -1,7 +1,7 @@
 #pragma once
 
-#include <vulkan/vulkan.h>
 #include <lux/engine/render/core/Error.hpp>
+#include <vulkan/vulkan.h>
 
 namespace lux::render::vulkan
 {

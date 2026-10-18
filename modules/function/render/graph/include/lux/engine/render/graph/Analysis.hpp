@@ -4,7 +4,12 @@
 
 namespace lux::render
 {
-    enum class EGraphHazard : std::uint8_t { RAW, WAR, WAW };
+    enum class EGraphHazard : std::uint8_t
+    {
+        RAW,
+        WAR,
+        WAW
+    };
 
     struct GraphHazard final
     {
@@ -52,4 +57,4 @@ namespace lux::render
     };
 
     [[nodiscard]] RenderResult<GraphAnalysis> analyze(const RenderGraphDefinition& definition) noexcept;
-}
+} // namespace lux::render

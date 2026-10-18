@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/core/execution/CompletionPost.hpp>
+#include <lux/engine/render/core/Error.hpp>
 
 namespace lux::render
 {
@@ -10,4 +10,4 @@ namespace lux::render
 
     using CpuResume = execution::CpuResume<RenderError>;
     using CompletionPost = execution::CompletionPost<RenderError>;
-}
+} // namespace lux::render

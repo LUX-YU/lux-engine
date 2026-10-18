@@ -1,10 +1,10 @@
 #pragma once
 
 #include <array>
-#include <memory>
-#include <lux/engine/render/native/vulkan/device/DeviceOptions.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/native/vulkan/Error.hpp>
+#include <lux/engine/render/native/vulkan/device/DeviceOptions.hpp>
+#include <memory>
 
 struct VmaAllocator_T;
 
@@ -155,10 +155,25 @@ namespace lux::render::vulkan
             return timeline_;
         }
 
-        [[nodiscard]] bool textureCompressionBc() const noexcept { return texture_compression_bc_; }
-        [[nodiscard]] bool textureDescriptors() const noexcept { return texture_descriptors_; }
-        [[nodiscard]] bool hostQueryReset() const noexcept { return host_query_reset_; }
-        [[nodiscard]] bool bufferDeviceAddress() const noexcept { return buffer_device_address_; }
+        [[nodiscard]] bool textureCompressionBc() const noexcept
+        {
+            return texture_compression_bc_;
+        }
+
+        [[nodiscard]] bool textureDescriptors() const noexcept
+        {
+            return texture_descriptors_;
+        }
+
+        [[nodiscard]] bool hostQueryReset() const noexcept
+        {
+            return host_query_reset_;
+        }
+
+        [[nodiscard]] bool bufferDeviceAddress() const noexcept
+        {
+            return buffer_device_address_;
+        }
 
         [[nodiscard]] bool swapchainMaintenance() const noexcept
         {
@@ -199,7 +214,9 @@ namespace lux::render::vulkan
         [[nodiscard]] static RenderResult<VulkanAllocator> create(const VulkanDevice& device) noexcept;
         // Returned objects own their Native allocation; this allocator must outlive every reference.
         [[nodiscard]] RenderResult<std::shared_ptr<Buffer>> createBuffer(
-            VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access,
+            VkDeviceSize size,
+            VkBufferUsageFlags usage,
+            EMemoryAccess access,
             std::span<const std::uint32_t> families = {}
         ) noexcept;
         [[nodiscard]] RenderResult<std::shared_ptr<Image>> createImage(const ImageDescription& description) noexcept;

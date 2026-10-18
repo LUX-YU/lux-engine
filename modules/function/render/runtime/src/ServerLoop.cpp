@@ -11,8 +11,14 @@ namespace lux::render
             for (const auto id : target.attachments)
             {
                 auto result = attachments.find(id)->context->execute();
-                if (!result) return cxx::unexpected(result.error());
-                if (*result == EExecutionOutcome::EXECUTED) ++submissions;
+                if (!result)
+                {
+                    return cxx::unexpected(result.error());
+                }
+                if (*result == EExecutionOutcome::EXECUTED)
+                {
+                    ++submissions;
+                }
             }
         }
         next_target = active.empty() ? 0 : (next_target + 1) % active.size();
@@ -75,13 +81,7 @@ namespace lux::render
         }
         else
         {
-            CommandDispatchContext context{
-                received.message(),
-                route,
-                response_outbox_,
-                command_scope_,
-                render_loop_
-            };
+            CommandDispatchContext context{received.message(), route, response_outbox_, command_scope_, render_loop_};
             const auto active = entry->selectedBinding()->call;
             active.invoke(active.object, context);
         }
@@ -94,16 +94,23 @@ namespace lux::render
         command_scope_.close();
         command_scope_.request_stop();
         std::atomic<bool> joined{false};
+
         struct Joined final
         {
             using receiver_concept = stdexec::receiver_t;
             std::atomic<bool>* done;
+
             auto get_env() const noexcept
             {
                 return stdexec::env{stdexec::prop{stdexec::get_scheduler, stdexec::inline_scheduler{}}};
             }
-            void set_value() && noexcept { done->store(true, std::memory_order_release); }
+
+            void set_value() && noexcept
+            {
+                done->store(true, std::memory_order_release);
+            }
         };
+
         auto join = stdexec::connect(command_scope_.join(), Joined{&joined});
         stdexec::start(join);
         response_outbox_.flushTo(responder, config.request_work_budget);
@@ -145,7 +152,10 @@ namespace lux::render
         while (!active_targets.empty())
         {
             auto& target = *targets.find(active_targets.keys().back());
-            if (!detachAttachment(target.attachments.back())) std::terminate();
+            if (!detachAttachment(target.attachments.back()))
+            {
+                std::terminate();
+            }
         }
         effects.clear();
         scenes.clear();

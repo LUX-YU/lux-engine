@@ -26,4 +26,4 @@ namespace lux::render
             return counts[static_cast<std::size_t>(outcome)];
         }
     };
-}
+} // namespace lux::render

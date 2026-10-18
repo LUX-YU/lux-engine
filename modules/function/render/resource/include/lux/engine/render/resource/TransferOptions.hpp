@@ -12,4 +12,4 @@ namespace lux::render
         bool measure_gpu = false; // optional bounded timestamp pairs, never a wait in advance()
     };
 
-}
+} // namespace lux::render

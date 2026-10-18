@@ -11,4 +11,4 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> validate() const noexcept;
         bool operator==(const RasterViewport&) const noexcept = default;
     };
-}
+} // namespace lux::render

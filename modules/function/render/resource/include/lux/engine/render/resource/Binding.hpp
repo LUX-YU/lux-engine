@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/resource/Storage.hpp>
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/resource/Storage.hpp>
 #include <string>
 #include <vector>
 
@@ -14,9 +14,16 @@ namespace lux::render
         std::vector<T> scene;
         std::vector<T> view;
         std::vector<T> attachment;
+
         [[nodiscard]] std::size_t size() const noexcept
-        { return global.size() + scene.size() + view.size() + attachment.size(); }
-        [[nodiscard]] bool empty() const noexcept { return size() == 0; }
+        {
+            return global.size() + scene.size() + view.size() + attachment.size();
+        }
+
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return size() == 0;
+        }
     };
 
     struct GraphStorageBinding final
@@ -34,4 +41,4 @@ namespace lux::render
         ConfigValue value;
     };
 
-}
+} // namespace lux::render

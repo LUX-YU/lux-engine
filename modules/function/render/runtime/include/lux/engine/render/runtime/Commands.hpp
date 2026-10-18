@@ -1,19 +1,19 @@
 #pragma once
 
-#include <optional>
+#include <lux/engine/render/core/Execution.hpp>
+#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/core/RasterViewport.hpp>
+#include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/data/ConfigValue.hpp>
+#include <lux/engine/render/data/Payload.hpp>
+#include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/render/runtime/Error.hpp>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <variant>
 #include <vector>
-#include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/core/RasterViewport.hpp>
-#include <lux/engine/render/core/Execution.hpp>
-#include <lux/engine/render/data/Payload.hpp>
-#include <lux/engine/render/data/ConfigValue.hpp>
-#include <lux/engine/render/protocol/Protocol.hpp>
-#include <lux/engine/render/runtime/Error.hpp>
 
 namespace lux::render
 {
@@ -24,13 +24,42 @@ namespace lux::render
         ConfigValue config;
     };
 
-    struct EmptyRequest final {};
-    struct SceneRequest final { SceneId scene{}; };
-    struct CreateViewRequest final { SceneId scene{}; };
-    struct ViewRequest final { SceneId scene{}; ViewId view{}; };
-    struct CreateTargetRequest final { TargetDesc description{}; };
-    struct ResizeTargetRequest final { TargetId target{}; TargetDesc description{}; };
-    struct EffectRequest final { EffectId effect{}; };
+    struct EmptyRequest final
+    {
+    };
+
+    struct SceneRequest final
+    {
+        SceneId scene{};
+    };
+
+    struct CreateViewRequest final
+    {
+        SceneId scene{};
+    };
+
+    struct ViewRequest final
+    {
+        SceneId scene{};
+        ViewId view{};
+    };
+
+    struct CreateTargetRequest final
+    {
+        TargetDesc description{};
+    };
+
+    struct ResizeTargetRequest final
+    {
+        TargetId target{};
+        TargetDesc description{};
+    };
+
+    struct EffectRequest final
+    {
+        EffectId effect{};
+    };
+
     struct AttachmentRequest final
     {
         SceneId scene;
@@ -47,24 +76,38 @@ namespace lux::render
         RenderPayload parameters;
         RasterViewport viewport;
     };
+
     struct ReadbackRequest final
     {
         AttachmentId attachment;
         std::string output; // Empty selects the explicit Target copy; otherwise an exported buffer key.
     };
 
+    struct GlobalStorageOwner final
+    {
+    };
 
-
-    struct GlobalStorageOwner final {};
     using VStorageOwner = std::variant<GlobalStorageOwner, SceneId, ViewRequest, AttachmentId>;
+
     struct StorageLocation final
     {
         VStorageOwner owner;
         StorageTypeId type;
         std::string key;
     };
-    struct PrepareStorageRequest final { StorageLocation location; ConfigValue config; };
-    struct StorageBindingInfo final { std::string resource_key; StorageId storage; };
+
+    struct PrepareStorageRequest final
+    {
+        StorageLocation location;
+        ConfigValue config;
+    };
+
+    struct StorageBindingInfo final
+    {
+        std::string resource_key;
+        StorageId storage;
+    };
+
     struct AttachmentCreated final
     {
         AttachmentId attachment;
@@ -77,12 +120,14 @@ namespace lux::render
         using Request = StorageLocation;
         using Response = RenderResult<StorageId>;
     };
+
     struct PrepareStorage final
     {
         static constexpr std::string_view name{"render.storage.prepare"};
         using Request = PrepareStorageRequest;
         using Response = RenderResult<StorageId>;
     };
+
     struct RemoveStorage final
     {
         static constexpr std::string_view name{"render.storage.remove"};
@@ -90,17 +135,32 @@ namespace lux::render
         using Response = RenderResult<Ack>;
     };
 
+    struct SceneCreated final
+    {
+        SceneId scene{};
+    };
 
+    struct ViewCreated final
+    {
+        ViewId view{};
+    };
 
+    struct TargetCreated final
+    {
+        TargetId target{};
+        std::uint64_t epoch = 0;
+    };
 
+    struct EffectCreated final
+    {
+        EffectId effect{};
+    };
 
+    struct ReadbackResult final
+    {
+        RenderPayload pixels;
+    };
 
-
-    struct SceneCreated final { SceneId scene{}; };
-    struct ViewCreated final { ViewId view{}; };
-    struct TargetCreated final { TargetId target{}; std::uint64_t epoch = 0; };
-    struct EffectCreated final { EffectId effect{}; };
-    struct ReadbackResult final { RenderPayload pixels; };
     struct RenderStatsSnapshot final
     {
         std::uint64_t ticks = 0, commands = 0, compiled_graphs = 0, submissions = 0;
@@ -120,7 +180,10 @@ namespace lux::render
         std::size_t config_size = 0, config_alignment = 0;
     };
 
-    struct FeatureList final { std::vector<FeatureInfo> features; };
+    struct FeatureList final
+    {
+        std::vector<FeatureInfo> features;
+    };
 
     struct StorageInfo final
     {
@@ -129,7 +192,10 @@ namespace lux::render
         std::uint32_t capabilities = 0;
     };
 
-    struct StorageList final { std::vector<StorageInfo> storages; };
+    struct StorageList final
+    {
+        std::vector<StorageInfo> storages;
+    };
 
     struct ListStorages final
     {
@@ -138,16 +204,12 @@ namespace lux::render
         using Response = RenderResult<StorageList>;
     };
 
-
-
     struct ListFeatures final
     {
         static constexpr std::string_view name{"render.features.list"};
         using Request = EmptyRequest;
         using Response = RenderResult<FeatureList>;
     };
-
-
 
     struct CommandInfo final
     {
@@ -159,41 +221,55 @@ namespace lux::render
         bool bound = false;
 
         [[nodiscard]] CommandDescriptor descriptor() const noexcept
-        { return {CommandName{name}, request, response}; }
+        {
+            return {CommandName{name}, request, response};
+        }
     };
-    struct CommandList final { std::vector<CommandInfo> commands; };
+
+    struct CommandList final
+    {
+        std::vector<CommandInfo> commands;
+    };
+
     struct HandlerInfo final
     {
         HandlerId id;
         std::string name;
         std::string instance;
     };
+
     struct CommandBindings final
     {
         HandlerId selected;
         std::vector<HandlerInfo> handlers;
     };
-    struct CommandSelection final { CommandId command; HandlerId handler; };
+
+    struct CommandSelection final
+    {
+        CommandId command;
+        HandlerId handler;
+    };
+
     struct ListCommands final
     {
         static constexpr std::string_view name{"render.commands.list"};
         using Request = EmptyRequest;
         using Response = RenderResult<CommandList>;
     };
+
     struct ListCommandBindings final
     {
         static constexpr std::string_view name{"render.commands.bindings"};
         using Request = CommandId;
         using Response = RenderResult<CommandBindings>;
     };
+
     struct SelectCommandBinding final
     {
         static constexpr std::string_view name{"render.commands.select"};
         using Request = CommandSelection;
         using Response = RenderResult<Ack>;
     };
-
-
 
     struct CreateScene final
     {
@@ -300,7 +376,4 @@ namespace lux::render
         using Response = RenderResult<RenderStatsSnapshot>;
     };
 
-
-
-
-}
+} // namespace lux::render

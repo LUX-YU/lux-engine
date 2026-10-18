@@ -2,8 +2,8 @@
 
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
-#include <lux/engine/render/resource/AsyncWork.hpp>
 #include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
+#include <lux/engine/render/resource/AsyncWork.hpp>
 
 namespace lux::render::vulkan
 {
@@ -23,23 +23,56 @@ namespace lux::render::vulkan
         void start(CompletionPost post, void* owner, TerminalFn terminal) noexcept;
         void cancel() noexcept;
         [[nodiscard]] VkDevice device() const noexcept;
-        [[nodiscard]] std::optional<SubmissionTicket> lastSubmission() const noexcept { return ticket_; }
-        [[nodiscard]] const SubmissionRequirements& requirements() const noexcept { return requirements_; }
-        [[nodiscard]] bool completed() const noexcept { return phase_ == EPhase::COMPLETE; }
+
+        [[nodiscard]] std::optional<SubmissionTicket> lastSubmission() const noexcept
+        {
+            return ticket_;
+        }
+
+        [[nodiscard]] const SubmissionRequirements& requirements() const noexcept
+        {
+            return requirements_;
+        }
+
+        [[nodiscard]] bool completed() const noexcept
+        {
+            return phase_ == EPhase::COMPLETE;
+        }
+
         [[nodiscard]] RenderResult<void> result() const noexcept;
+
         [[nodiscard]] bool unstartedIn(const DeviceSession& session) const noexcept
         {
             return session_ == &session && !started_ && !failure_;
         }
+
         [[nodiscard]] const Image& image() const noexcept;
         [[nodiscard]] const Buffer& buffer() const noexcept;
-        [[nodiscard]] const std::shared_ptr<Image>& imageResource() const noexcept { return image_; }
+
+        [[nodiscard]] const std::shared_ptr<Image>& imageResource() const noexcept
+        {
+            return image_;
+        }
+
         [[nodiscard]] RenderResult<std::shared_ptr<Buffer>> takeBuffer() noexcept;
-        [[nodiscard]] std::uint64_t prepareNs() const noexcept { return prepare_ns_; }
+
+        [[nodiscard]] std::uint64_t prepareNs() const noexcept
+        {
+            return prepare_ns_;
+        }
 
     private:
         friend class DeviceSession;
-        enum class EPhase { PREPARE, CPU_PENDING, COPY, COPY_PENDING, ACQUIRE, FINAL_PENDING, COMPLETE };
+        enum class EPhase
+        {
+            PREPARE,
+            CPU_PENDING,
+            COPY,
+            COPY_PENDING,
+            ACQUIRE,
+            FINAL_PENDING,
+            COMPLETE
+        };
         Transfer(DeviceSession&, std::span<const std::byte>, std::shared_ptr<StagingPage>) noexcept;
         struct CpuPreparation;
         static void prepare(void*) noexcept;
@@ -74,4 +107,4 @@ namespace lux::render::vulkan
         bool started_ = false, initialized_ = false, query_pending_ = false;
         SubmissionQueue* copy_queue_ = nullptr;
     };
-}
+} // namespace lux::render::vulkan

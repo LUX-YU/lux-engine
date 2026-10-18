@@ -1,9 +1,9 @@
 #pragma once
 
-#include <lux/engine/render/data/Shader.hpp>
-#include <lux/engine/render/graph/Draw.hpp>
 #include <array>
 #include <cstddef>
+#include <lux/engine/render/data/Shader.hpp>
+#include <lux/engine/render/graph/Draw.hpp>
 #include <string>
 
 namespace lux::render
@@ -14,7 +14,11 @@ namespace lux::render
         std::string resource_key;
     };
 
-    enum class EParameterSource : std::uint8_t { STORAGE, CONTEXT };
+    enum class EParameterSource : std::uint8_t
+    {
+        STORAGE,
+        CONTEXT
+    };
 
     struct ProgramParameterBinding final
     {
@@ -38,8 +42,8 @@ namespace lux::render
         std::vector<ProgramResourceBinding> resources;
         std::array<std::uint32_t, 3> dispatch{1, 1, 1}; // Actual Compute workgroup count.
         std::vector<std::byte> parameter_values; // Complete initial Shader ABI bytes, owned by the compiled result.
-        ShaderBlock context_parameters; // Declared frame input ABI, shared by this Graph's Context.
+        ShaderBlock context_parameters;          // Declared frame input ABI, shared by this Graph's Context.
         std::vector<ProgramParameterBinding> parameters; // Named Storage/Context fields override initial bytes.
     };
 
-}
+} // namespace lux::render

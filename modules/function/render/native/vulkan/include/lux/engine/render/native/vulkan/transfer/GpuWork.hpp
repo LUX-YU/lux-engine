@@ -1,12 +1,12 @@
 #pragma once
 
+#include <lux/engine/core/execution/CompletionPost.hpp>
+#include <lux/engine/render/data/Payload.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Transfer.hpp>
 #include <lux/engine/render/protocol/Protocol.hpp>
-#include <lux/engine/render/data/Payload.hpp>
-#include <lux/engine/core/execution/CompletionPost.hpp>
-#include <stdexec/execution.hpp>
 #include <optional>
+#include <stdexec/execution.hpp>
 #include <utility>
 
 namespace lux::render::vulkan
@@ -17,11 +17,20 @@ namespace lux::render::vulkan
     {
     public:
         GpuWork() noexcept = default;
-        ~GpuWork() noexcept { reset(); }
+
+        ~GpuWork() noexcept
+        {
+            reset();
+        }
+
         GpuWork(GpuWork&&) noexcept = default;
+
         GpuWork& operator=(GpuWork&& other) noexcept
         {
-            if (this == &other) return *this;
+            if (this == &other)
+            {
+                return *this;
+            }
             reset();
             session_ = other.session_;
             transfer_ = std::move(other.transfer_);
@@ -29,23 +38,27 @@ namespace lux::render::vulkan
             ready_ = std::exchange(other.ready_, nullptr);
             return *this;
         }
+
         GpuWork(const GpuWork&) = delete;
         GpuWork& operator=(const GpuWork&) = delete;
 
         template <auto Ready, class T>
         [[nodiscard]] static RenderResult<GpuWork> pending(
-            DeviceSession& session, std::unique_ptr<Transfer>& transfer, std::unique_ptr<T>& candidate
+            DeviceSession& session,
+            std::unique_ptr<Transfer>& transfer,
+            std::unique_ptr<T>& candidate
         ) noexcept
         {
             if (!transfer || !candidate || !transfer->unstartedIn(session))
+            {
                 return cxx::unexpected(RenderError{kWrongOwner});
+            }
             GpuWork result;
             result.session_ = &session;
             result.transfer_ = std::move(transfer);
             result.owner_ = {candidate.release(), [](void* value) noexcept { delete static_cast<T*>(value); }};
-            result.ready_ = [](void* value, Transfer& work, DeviceSession& device) noexcept {
-                return Ready(*static_cast<T*>(value), work, device);
-            };
+            result.ready_ = [](void* value, Transfer& work, DeviceSession& device) noexcept
+            { return Ready(*static_cast<T*>(value), work, device); };
             return result;
         }
 
@@ -53,13 +66,29 @@ namespace lux::render::vulkan
         {
             return owner_ && transfer_ && session_ == &session && transfer_->unstartedIn(session);
         }
+
         [[nodiscard]] bool submitted() const noexcept
-        { return !transfer_->requirements().empty(); }
-        [[nodiscard]] bool deviceLost() const noexcept { return session_->deviceLost(); }
+        {
+            return !transfer_->requirements().empty();
+        }
+
+        [[nodiscard]] bool deviceLost() const noexcept
+        {
+            return session_->deviceLost();
+        }
+
         [[nodiscard]] RenderResult<void> prepareCompletion() noexcept;
         void start(CompletionPost post, void* owner, Transfer::TerminalFn terminal) noexcept;
         [[nodiscard]] RenderResult<void> publish() noexcept;
-        void cancel() noexcept { if (transfer_) transfer_->cancel(); }
+
+        void cancel() noexcept
+        {
+            if (transfer_)
+            {
+                transfer_->cancel();
+            }
+        }
+
         void reset() noexcept
         {
             // Candidate rollback destroys dependent views/samplers before Transfer releases its image.
@@ -75,6 +104,7 @@ namespace lux::render::vulkan
         std::unique_ptr<void, void (*)(void*) noexcept> owner_{nullptr, [](void*) noexcept {}};
         RenderResult<void> (*ready_)(void*, Transfer&, DeviceSession&) noexcept = nullptr;
     };
+
     // Finite Native sender around the existing Transfer. It retains the moved upload payload until
     // Transfer ends; no additional queue, Device or request wrapper is created.
     // Runtime acquires its result delivery record before the Handler prepares this owned Native work.
@@ -83,12 +113,15 @@ namespace lux::render::vulkan
     public:
         using sender_concept = stdexec::sender_t;
         using completion_signatures = stdexec::completion_signatures<
-            stdexec::set_value_t(Response), stdexec::set_error_t(RenderError),
-            stdexec::set_error_t(CommandFailure), stdexec::set_stopped_t()
-        >;
+            stdexec::set_value_t(Response),
+            stdexec::set_error_t(RenderError),
+            stdexec::set_error_t(CommandFailure),
+            stdexec::set_stopped_t()>;
 
         GpuWorkSender(Response response, GpuWork work, RenderPayload source = {}) noexcept
-            : source_(std::move(source)), response_(std::move(response)), work_(std::move(work)) {}
+            : source_(std::move(source)), response_(std::move(response)), work_(std::move(work))
+        {
+        }
 
         explicit GpuWorkSender(RenderError error) noexcept : response_(cxx::unexpected(error)), initial_error_(error) {}
 
@@ -97,20 +130,38 @@ namespace lux::render::vulkan
             struct OnStop final
             {
                 Operation* operation;
-                void operator()() const noexcept { operation->work_.cancel(); }
+
+                void operator()() const noexcept
+                {
+                    operation->work_.cancel();
+                }
             };
 
         public:
             using operation_state_concept = stdexec::operation_state_t;
-            Operation(RenderPayload source, Response response, GpuWork work, RenderError initial_error, Receiver receiver) noexcept
-                : source_(std::move(source)), response_(std::move(response)), work_(std::move(work)), initial_error_(initial_error),
-                  receiver_(std::move(receiver)) {}
+
+            Operation(
+                RenderPayload source,
+                Response response,
+                GpuWork work,
+                RenderError initial_error,
+                Receiver receiver
+            ) noexcept
+                : source_(std::move(source)), response_(std::move(response)), work_(std::move(work)),
+                  initial_error_(initial_error), receiver_(std::move(receiver))
+            {
+            }
+
             Operation(const Operation&) = delete;
             Operation(Operation&&) = delete;
 
             void start() noexcept
             {
-                if (initial_error_.type != 0) { stdexec::set_error(std::move(receiver_), initial_error_); return; }
+                if (initial_error_.type != 0)
+                {
+                    stdexec::set_error(std::move(receiver_), initial_error_);
+                    return;
+                }
                 const auto environment = stdexec::get_env(receiver_);
                 const auto token = stdexec::get_stop_token(environment);
                 if (token.stop_requested())
@@ -138,20 +189,35 @@ namespace lux::render::vulkan
                 const bool stopping = stdexec::get_stop_token(stdexec::get_env(self.receiver_)).stop_requested();
                 const bool device_lost = self.work_.deviceLost();
                 const bool unknown = (stopping || device_lost) && self.work_.submitted();
-                if (result && !stopping && !device_lost) result = self.work_.publish();
+                if (result && !stopping && !device_lost)
+                {
+                    result = self.work_.publish();
+                }
                 self.work_.reset(); // Native work ends before the source payload owner is released.
                 auto receiver = std::move(self.receiver_);
                 auto response = std::move(self.response_);
                 if (unknown)
-                    stdexec::set_error(std::move(receiver), CommandFailure{
-                        device_lost ? nativeError(VK_ERROR_DEVICE_LOST) : RenderError{kWorkStopped}, true
-                    });
+                {
+                    stdexec::set_error(
+                        std::move(receiver),
+                        CommandFailure{
+                            device_lost ? nativeError(VK_ERROR_DEVICE_LOST) : RenderError{kWorkStopped},
+                            true
+                        }
+                    );
+                }
                 else if (stopping)
+                {
                     stdexec::set_stopped(std::move(receiver));
+                }
                 else if (!result)
+                {
                     stdexec::set_error(std::move(receiver), result.error());
+                }
                 else
+                {
                     stdexec::set_value(std::move(receiver), std::move(response));
+                }
             }
 
             RenderPayload source_;
@@ -164,7 +230,13 @@ namespace lux::render::vulkan
 
         template <class Receiver> [[nodiscard]] Operation<std::decay_t<Receiver>> connect(Receiver&& receiver) &&
         {
-            return {std::move(source_), std::move(response_), std::move(work_), initial_error_, std::forward<Receiver>(receiver)};
+            return {
+                std::move(source_),
+                std::move(response_),
+                std::move(work_),
+                initial_error_,
+                std::forward<Receiver>(receiver)
+            };
         }
 
     private:
@@ -174,4 +246,4 @@ namespace lux::render::vulkan
         RenderError initial_error_;
     };
 
-}
+} // namespace lux::render::vulkan

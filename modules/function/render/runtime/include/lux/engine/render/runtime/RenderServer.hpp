@@ -1,20 +1,25 @@
 #pragma once
 
+#include <lux/engine/render/data/ConfigValue.hpp>
+#include <lux/engine/render/features/Registration.hpp>
+#include <lux/engine/render/resource/Factory.hpp>
+#include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/runtime/CommandBinding.hpp>
 #include <lux/engine/render/runtime/Error.hpp>
-#include <lux/engine/render/features/Registration.hpp>
-#include <lux/engine/render/resource/TransferOptions.hpp>
-#include <lux/engine/render/resource/Factory.hpp>
-#include <lux/engine/render/data/ConfigValue.hpp>
-#include <optional>
 #include <map>
+#include <optional>
 
-namespace lux::render::runtime_detail { struct ServerBootstrap; class CommandRegistry; }
+namespace lux::render::runtime_detail
+{
+    struct ServerBootstrap;
+    class CommandRegistry;
+} // namespace lux::render::runtime_detail
 
 namespace lux::render
 {
     template <class T> struct StorageProvider;
     template <class T> struct FeatureProvider;
+
     struct RenderServerConfig final
     {
         std::string channel_name;
@@ -40,46 +45,56 @@ namespace lux::render
         ~RenderServer() noexcept;
         RenderServer(const RenderServer&) = delete;
         RenderServer& operator=(const RenderServer&) = delete;
+
         // Cold owner-thread query, before run() or at an owner safe point. No new identity is allocated.
-        template <RenderCommand C>
-        [[nodiscard]] RenderResult<CommandId> commandId() const noexcept
+        template <RenderCommand C> [[nodiscard]] RenderResult<CommandId> commandId() const noexcept
         {
             return findCommand(commandDescriptor<C>());
         }
 
         // Owner-thread installation; selected Native header supplies the typed definitions.
         template <class T, class Provider = StorageProvider<T>>
-        [[nodiscard]] RenderResult<StorageTypeId>
-        registerStorage(const typename T::Config& config = {}, std::string_view handler_key = {}) noexcept;
+        [[nodiscard]] RenderResult<StorageTypeId> registerStorage(
+            const typename T::Config& config = {},
+            std::string_view handler_key = {}
+        ) noexcept;
 
         template <class T, class Provider = FeatureProvider<T>, class... Args>
         [[nodiscard]] RenderResult<FeatureId> registerFeature(
-            Provider provider = {}, std::string_view handler_key = {},
+            Provider provider = {},
+            std::string_view handler_key = {},
             Args&&... args
         ) noexcept;
 
         // Cold provider installation. The caller is the Server owner; no concurrent directory mutation.
         // H::Bindings is a tuple of CommandMethod entries. Reusing type + key is idempotent.
         template <class H, class... Args>
-        [[nodiscard]] RenderResult<HandlerId> emplaceHandler(
-            std::string_view key, Args&&... args
-        ) noexcept
+        [[nodiscard]] RenderResult<HandlerId> emplaceHandler(std::string_view key, Args&&... args) noexcept
         {
             static_assert(std::is_nothrow_constructible_v<H, Args...> && std::is_nothrow_destructible_v<H>);
             static_assert(std::tuple_size_v<typename H::Bindings> != 0);
             const auto type = cppType<H>();
             RegistrationBatch batch;
-            auto prepared = prepareHandler<H>(batch, key, [&]() noexcept {
-                return std::make_unique<H>(std::forward<Args>(args)...);
-            });
-            if (!prepared) return cxx::unexpected(prepared.error());
-            if (auto installed = install(batch); !installed) return cxx::unexpected(installed.error());
+            auto prepared = prepareHandler<H>(
+                batch,
+                key,
+                [&]() noexcept { return std::make_unique<H>(std::forward<Args>(args)...); }
+            );
+            if (!prepared)
+            {
+                return cxx::unexpected(prepared.error());
+            }
+            if (auto installed = install(batch); !installed)
+            {
+                return cxx::unexpected(installed.error());
+            }
             return findHandler(type, key);
         }
 
         [[nodiscard]] RenderResult<void> run() noexcept;
         void stop() noexcept;
         [[nodiscard]] RenderServerStats stats() const noexcept;
+
     private:
         friend struct runtime_detail::ServerBootstrap;
         friend class runtime_detail::CommandRegistry;
@@ -141,19 +156,36 @@ namespace lux::render
 
         template <class T, class Provider>
         static RenderResult<void> prepareStorage(
-            RegistrationBatch& batch, const typename T::Config& config, bool use_existing
+            RegistrationBatch& batch,
+            const typename T::Config& config,
+            bool use_existing
         ) noexcept
         {
             using Config = typename T::Config;
-            static_assert(requires(const Config& a, const Config& b) { { a == b } noexcept -> std::same_as<bool>; });
+            static_assert(requires(const Config& a, const Config& b) {
+                { a == b } noexcept -> std::same_as<bool>;
+            });
             auto factory = Provider::factory();
-            if (!factory.description) return cxx::unexpected(RenderError{kStorageContract});
-            if (auto valid = compatibleStorage(T::description, *factory.description); !valid) return valid;
+            if (!factory.description)
+            {
+                return cxx::unexpected(RenderError{kStorageContract});
+            }
+            if (auto valid = compatibleStorage(T::description, *factory.description); !valid)
+            {
+                return valid;
+            }
             const bool is_wrong_provider = factory.native_type != Provider::implementationType() ||
-                factory.config_type != cppType<Config>() || factory.ops_type != cppType<typename T::Ops>();
-            if (is_wrong_provider) return cxx::unexpected(RenderError{kStorageMismatch});
+                                           factory.config_type != cppType<Config>() ||
+                                           factory.ops_type != cppType<typename T::Ops>();
+            if (is_wrong_provider)
+            {
+                return cxx::unexpected(RenderError{kStorageMismatch});
+            }
             auto configuration = ConfigValue::make(config);
-            if (!configuration) return cxx::unexpected(configuration.error());
+            if (!configuration)
+            {
+                return cxx::unexpected(configuration.error());
+            }
             batch.addStorage(std::move(factory), std::move(*configuration), use_existing);
             return {};
         }
@@ -165,24 +197,36 @@ namespace lux::render
             static_assert(std::is_nothrow_invocable_r_v<std::unique_ptr<H>, Make>);
             const auto type = cppType<H>();
             auto installed = findHandler(type, instance);
-            if (!installed) return cxx::unexpected(installed.error());
-            if (!installed->isNull()) return {};
+            if (!installed)
+            {
+                return cxx::unexpected(installed.error());
+            }
+            if (!installed->isNull())
+            {
+                return {};
+            }
             const auto found = batch.handlers_by_name.find({type.token.name(), instance});
             if (found != batch.handlers_by_name.end())
             {
                 if (batch.handlers[found->second].record->type != type)
+                {
                     return cxx::unexpected(RenderError{kProtocolContract});
+                }
                 return {};
             }
             auto object = create();
-            if (!object) return cxx::unexpected(RenderError{kFeatureContract});
+            if (!object)
+            {
+                return cxx::unexpected(RenderError{kFeatureContract});
+            }
             auto& handler = *object;
             auto record = std::make_unique<HandlerRecord>();
             record->type = type;
             record->name = H::name;
             record->instance_name = instance;
             record->object = {object.release(), [](void* value) noexcept { delete static_cast<H*>(value); }};
-            [&]<class... B>(std::tuple<B...>*) noexcept {
+            [&]<class... B>(std::tuple<B...>*) noexcept
+            {
                 batch.addHandler(std::move(record), {CommandBinding::bind<typename B::Command, B::method>(handler)...});
             }(static_cast<typename H::Bindings*>(nullptr));
             return {};
@@ -195,4 +239,4 @@ namespace lux::render
         explicit RenderServer(std::unique_ptr<Impl> state) noexcept;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::render

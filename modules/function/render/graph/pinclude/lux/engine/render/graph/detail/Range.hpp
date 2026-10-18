@@ -16,9 +16,15 @@ namespace lux::render::detail
         return {type, {pass.index, resource.index, detail}};
     }
 
-    inline bool writes(EGraphAccess access) noexcept { return access != EGraphAccess::READ; }
+    inline bool writes(EGraphAccess access) noexcept
+    {
+        return access != EGraphAccess::READ;
+    }
 
-    inline bool reads(EGraphAccess access) noexcept { return access != EGraphAccess::WRITE; }
+    inline bool reads(EGraphAccess access) noexcept
+    {
+        return access != EGraphAccess::WRITE;
+    }
 
     inline bool validInterval(std::uint64_t start, std::uint64_t count, std::uint64_t limit) noexcept
     {
@@ -29,10 +35,16 @@ namespace lux::render::detail
     {
         if (const auto* buffer = std::get_if<GraphBufferDesc>(&resource.description))
         {
-            if (std::holds_alternative<std::monostate>(range)) range = GraphBufferRange{0, buffer->size};
+            if (std::holds_alternative<std::monostate>(range))
+            {
+                range = GraphBufferRange{0, buffer->size};
+            }
             const auto* bytes = std::get_if<GraphBufferRange>(&range);
             const bool is_valid = bytes && validInterval(bytes->offset, bytes->size, buffer->size);
-            if (!is_valid) return cxx::unexpected(graphError(kGraphInvalidRange));
+            if (!is_valid)
+            {
+                return cxx::unexpected(graphError(kGraphInvalidRange));
+            }
         }
         else
         {
@@ -44,9 +56,12 @@ namespace lux::render::detail
             }
             const auto* part = std::get_if<GraphImageRange>(&range);
             const bool is_valid = part && part->aspects != 0 && (part->aspects & ~aspects) == 0 &&
-                validInterval(part->first_mip, part->mip_count, image.mips) &&
-                validInterval(part->first_layer, part->layer_count, image.layers);
-            if (!is_valid) return cxx::unexpected(graphError(kGraphInvalidRange));
+                                  validInterval(part->first_mip, part->mip_count, image.mips) &&
+                                  validInterval(part->first_layer, part->layer_count, image.layers);
+            if (!is_valid)
+            {
+                return cxx::unexpected(graphError(kGraphInvalidRange));
+            }
         }
         return range;
     }
@@ -70,10 +85,14 @@ namespace lux::render::detail
         std::vector<Box> result;
         for (std::uint32_t bit = 0; bit < 3; ++bit)
         {
-            if ((i.aspects & (1u << bit)) == 0) continue;
-            result.push_back({{bit, i.first_mip, i.first_layer}, {
-                bit + 1u, std::uint64_t(i.first_mip) + i.mip_count, std::uint64_t(i.first_layer) + i.layer_count
-            }});
+            if ((i.aspects & (1u << bit)) == 0)
+            {
+                continue;
+            }
+            result.push_back(
+                {{bit, i.first_mip, i.first_layer},
+                 {bit + 1u, std::uint64_t(i.first_mip) + i.mip_count, std::uint64_t(i.first_layer) + i.layer_count}}
+            );
         }
         return result;
     }
@@ -84,7 +103,10 @@ namespace lux::render::detail
         {
             a.begin[axis] = std::max(a.begin[axis], b.begin[axis]);
             a.end[axis] = std::min(a.end[axis], b.end[axis]);
-            if (a.begin[axis] >= a.end[axis]) return {};
+            if (a.begin[axis] >= a.end[axis])
+            {
+                return {};
+            }
         }
         return a;
     }
@@ -118,11 +140,16 @@ namespace lux::render::detail
 
     inline VGraphRange toRange(const Box& box, bool image) noexcept
     {
-        if (!image) return GraphBufferRange{box.begin[0], box.end[0] - box.begin[0]};
+        if (!image)
+        {
+            return GraphBufferRange{box.begin[0], box.end[0] - box.begin[0]};
+        }
         return GraphImageRange{
             1u << static_cast<std::uint32_t>(box.begin[0]),
-            static_cast<std::uint32_t>(box.begin[1]), static_cast<std::uint32_t>(box.end[1] - box.begin[1]),
-            static_cast<std::uint32_t>(box.begin[2]), static_cast<std::uint32_t>(box.end[2] - box.begin[2])
+            static_cast<std::uint32_t>(box.begin[1]),
+            static_cast<std::uint32_t>(box.end[1] - box.begin[1]),
+            static_cast<std::uint32_t>(box.begin[2]),
+            static_cast<std::uint32_t>(box.end[2] - box.begin[2])
         };
     }
 
@@ -130,8 +157,14 @@ namespace lux::render::detail
     {
         for (const auto& a : boxes(left))
         {
-            for (const auto& b : boxes(right)) if (intersection(a, b)) return true;
+            for (const auto& b : boxes(right))
+            {
+                if (intersection(a, b))
+                {
+                    return true;
+                }
+            }
         }
         return false;
     }
-}
+} // namespace lux::render::detail

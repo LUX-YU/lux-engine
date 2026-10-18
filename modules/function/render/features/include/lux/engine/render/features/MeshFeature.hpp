@@ -1,12 +1,12 @@
 #pragma once
 
-#include <lux/engine/render/features/Assembly.hpp>
-#include <lux/engine/render/data/ShaderBlock.hpp>
 #include <array>
 #include <cstddef>
+#include <lux/engine/render/data/ShaderBlock.hpp>
+#include <lux/engine/render/features/Assembly.hpp>
+#include <lux/engine/render/resource/Instance.hpp>
 #include <span>
 #include <type_traits>
-#include <lux/engine/render/resource/Instance.hpp>
 
 namespace lux::render
 {
@@ -17,8 +17,10 @@ namespace lux::render
         std::array<float, 16> projection{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
     };
 
-    static_assert(std::is_standard_layout_v<MeshViewParameters> && sizeof(MeshViewParameters) == 128 &&
-        offsetof(MeshViewParameters, projection) == 64);
+    static_assert(
+        std::is_standard_layout_v<MeshViewParameters> && sizeof(MeshViewParameters) == 128 &&
+        offsetof(MeshViewParameters, projection) == 64
+    );
 
     [[nodiscard]] inline std::span<const std::byte> meshViewParameterBytes(const MeshViewParameters& values) noexcept
     {
@@ -75,4 +77,4 @@ namespace lux::render
         static const FeatureDescriptor descriptor;
         static const FeatureGraphOps graph;
     };
-}
+} // namespace lux::render

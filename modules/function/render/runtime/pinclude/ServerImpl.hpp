@@ -3,11 +3,11 @@
 #include "CommandDispatchContext.hpp"
 #include "CommandRegistry.hpp"
 #include "Scene.hpp"
-#include <lux/cxx/container/BasicSparseSet.hpp>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <lux/cxx/container/BasicSparseSet.hpp>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>

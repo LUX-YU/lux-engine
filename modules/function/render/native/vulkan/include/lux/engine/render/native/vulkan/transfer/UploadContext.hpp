@@ -1,11 +1,11 @@
 #pragma once
 
+#include <exec/task.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/engine/render/data/Payload.hpp>
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
-#include <exec/task.hpp>
 
 namespace lux::render::vulkan
 {
@@ -44,21 +44,25 @@ namespace lux::render::vulkan
         // resources through actual completion; success does not wait for the final fence observation.
         [[nodiscard]] Task writeBuffer(std::shared_ptr<Buffer> target, RenderPayload source) noexcept;
         [[nodiscard]] Task writeImage(
-            std::shared_ptr<Image> target, RenderPayload source, std::vector<ImageTransferRegion> regions,
-            std::shared_ptr<const Image> clone = {}, SubmissionRequirements* clone_use = nullptr
+            std::shared_ptr<Image> target,
+            RenderPayload source,
+            std::vector<ImageTransferRegion> regions,
+            std::shared_ptr<const Image> clone = {},
+            SubmissionRequirements* clone_use = nullptr
         ) noexcept;
 
-        [[nodiscard]] TransferStats statistics() const noexcept { return stats; }
+        [[nodiscard]] TransferStats statistics() const noexcept
+        {
+            return stats;
+        }
 
     private:
         friend class DeviceSession;
         friend class StagingPage;
         friend class Transfer;
         UploadContext(DeviceSession&, TransferOptions, execution::CpuScheduler) noexcept;
-        [[nodiscard]] Task write(
-            std::shared_ptr<Buffer>, std::shared_ptr<Image>, RenderPayload,
-            std::vector<ImageTransferRegion>, std::shared_ptr<const Image>, SubmissionRequirements*
-        ) noexcept;
+        [[nodiscard]] Task
+        write(std::shared_ptr<Buffer>, std::shared_ptr<Image>, RenderPayload, std::vector<ImageTransferRegion>, std::shared_ptr<const Image>, SubmissionRequirements*) noexcept;
         [[nodiscard]] RenderResult<void> measure(std::size_t page, std::uint32_t bits) noexcept;
 
         DeviceSession& session;
@@ -69,4 +73,4 @@ namespace lux::render::vulkan
         VkQueryPool timestamps = VK_NULL_HANDLE;
         std::uint32_t copy_timestamp_bits = 0, graphics_timestamp_bits = 0;
     };
-}
+} // namespace lux::render::vulkan

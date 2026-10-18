@@ -31,12 +31,17 @@ namespace lux::render
             result.fields.reserve(layout.fields.size());
             for (const auto& field : layout.fields)
             {
-                result.fields.push_back({
-                    std::string(field.path), field.scalar, field.offset, field.rows, field.columns,
-                    field.array_stride, field.matrix_stride
-                });
+                result.fields.push_back(
+                    {std::string(field.path),
+                     field.scalar,
+                     field.offset,
+                     field.rows,
+                     field.columns,
+                     field.array_stride,
+                     field.matrix_stride}
+                );
             }
             return result;
         }
     };
-}
+} // namespace lux::render

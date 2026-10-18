@@ -1,11 +1,16 @@
 #pragma once
 
-#include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/graph/Graph.hpp>
+#include <lux/engine/render/resource/Binding.hpp>
 
 namespace lux::render
 {
-    enum class EResourceClaim : std::uint8_t { PROVIDE, REQUIRE, OPTIONAL };
+    enum class EResourceClaim : std::uint8_t
+    {
+        PROVIDE,
+        REQUIRE,
+        OPTIONAL
+    };
 
     struct ResourceClaim final
     {
@@ -31,6 +36,8 @@ namespace lux::render
     };
 
     // resolved is the key-sorted span supplied by assembleFeatures.
-    [[nodiscard]] const ResolvedResource*
-    findResource(std::span<const ResolvedResource> resolved, std::string_view key) noexcept;
-}
+    [[nodiscard]] const ResolvedResource* findResource(
+        std::span<const ResolvedResource> resolved,
+        std::string_view key
+    ) noexcept;
+} // namespace lux::render

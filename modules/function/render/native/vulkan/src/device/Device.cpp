@@ -307,9 +307,10 @@ namespace lux::render::vulkan
         std::array<NativeQueue, 3> queues,
         const DeviceOptions& options
     ) noexcept
-        : instance_(instance), physical_(physical), device_(device), dynamic_rendering_(options.dynamic_rendering), queues_(queues),
-          multiview_(options.multiview), local_read_(options.local_read), timeline_(options.multiple_queues),
-          separate_depth_stencil_(options.separate_depth_stencil), swapchain_maintenance_(options.swapchain_maintenance)
+        : instance_(instance), physical_(physical), device_(device), dynamic_rendering_(options.dynamic_rendering),
+          queues_(queues), multiview_(options.multiview), local_read_(options.local_read),
+          timeline_(options.multiple_queues), separate_depth_stencil_(options.separate_depth_stencil),
+          swapchain_maintenance_(options.swapchain_maintenance)
     {
         texture_compression_bc_ = options.texture_compression_bc;
         texture_descriptors_ = options.texture_descriptors;
@@ -394,10 +395,10 @@ namespace lux::render::vulkan
             vkGetPhysicalDeviceFeatures2(physical, &features);
             const bool supports_texture_features =
                 !(!supported12.runtimeDescriptorArray || !supported12.descriptorBindingPartiallyBound ||
-                 !supported12.descriptorBindingSampledImageUpdateAfterBind ||
-                 !supported12.descriptorBindingUpdateUnusedWhilePending ||
-                 !supported12.shaderSampledImageArrayNonUniformIndexing ||
-                 !features.features.shaderSampledImageArrayDynamicIndexing);
+                  !supported12.descriptorBindingSampledImageUpdateAfterBind ||
+                  !supported12.descriptorBindingUpdateUnusedWhilePending ||
+                  !supported12.shaderSampledImageArrayNonUniformIndexing ||
+                  !features.features.shaderSampledImageArrayDynamicIndexing);
             const bool is_unsupported = properties.apiVersion < VK_API_VERSION_1_3 || !supported.synchronization2 ||
                                         (options.texture_descriptors && !supports_texture_features) ||
                                         (options.dynamic_rendering && !supported.dynamicRendering) ||
@@ -444,9 +445,10 @@ namespace lux::render::vulkan
             if (score > best_score)
             {
                 selected = physical;
-                enabled_options.texture_descriptors = options.texture_descriptors ||
-                    (options.optional_texture_descriptors && supports_texture_features);
-                enabled_options.texture_compression_bc = options.texture_compression_bc ||
+                enabled_options.texture_descriptors =
+                    options.texture_descriptors || (options.optional_texture_descriptors && supports_texture_features);
+                enabled_options.texture_compression_bc =
+                    options.texture_compression_bc ||
                     (options.optional_texture_compression_bc && features.features.textureCompressionBC);
                 for (std::size_t q = 0; q < queues.size(); ++q)
                 {
@@ -552,9 +554,8 @@ namespace lux::render::vulkan
         : texture_compression_bc_(other.texture_compression_bc_), texture_descriptors_(other.texture_descriptors_),
           host_query_reset_(other.host_query_reset_), buffer_device_address_(other.buffer_device_address_),
           instance_(other.instance_), physical_(other.physical_), device_(std::exchange(other.device_, VK_NULL_HANDLE)),
-          properties_(other.properties_),
-          dynamic_rendering_(other.dynamic_rendering_), queues_(other.queues_), multiview_(other.multiview_),
-          local_read_(other.local_read_), timeline_(other.timeline_),
+          properties_(other.properties_), dynamic_rendering_(other.dynamic_rendering_), queues_(other.queues_),
+          multiview_(other.multiview_), local_read_(other.local_read_), timeline_(other.timeline_),
           separate_depth_stencil_(other.separate_depth_stencil_), swapchain_maintenance_(other.swapchain_maintenance_)
     {
     }
@@ -595,7 +596,10 @@ namespace lux::render::vulkan
         info.physicalDevice = device.physical();
         info.device = device.native();
         info.vulkanApiVersion = VK_API_VERSION_1_3;
-        if (device.bufferDeviceAddress()) info.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+        if (device.bufferDeviceAddress())
+        {
+            info.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+        }
         VmaAllocator allocator{};
         const auto result = LUX_NATIVE("allocator", vmaCreateAllocator(&info, &allocator));
         if (result != VK_SUCCESS)

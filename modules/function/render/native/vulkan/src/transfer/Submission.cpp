@@ -129,7 +129,10 @@ namespace lux::render::vulkan
     SubmissionQueue::~SubmissionQueue() noexcept
     {
         // Subscribers borrow this queue. Their owners must settle and release reservations before teardown.
-        if (backing_->callback_reservations != 0) std::terminate();
+        if (backing_->callback_reservations != 0)
+        {
+            std::terminate();
+        }
         completePending();
     }
 
@@ -155,24 +158,46 @@ namespace lux::render::vulkan
     bool SubmissionRequirements::completed() const noexcept
     {
         for (const auto& use : uses_)
-            if (use.queue && use.queue->completed() < use.serial && !use.queue->deviceLost()) return false;
+        {
+            if (use.queue && use.queue->completed() < use.serial && !use.queue->deviceLost())
+            {
+                return false;
+            }
+        }
         return true;
     }
 
-    SubmissionCallback::~SubmissionCallback() noexcept { reset(); }
+    SubmissionCallback::~SubmissionCallback() noexcept
+    {
+        reset();
+    }
 
     void SubmissionCallback::reset() noexcept
     {
-        if (armed_) std::terminate();
-        if (queue_) queue_->releaseCallback(*this);
+        if (armed_)
+        {
+            std::terminate();
+        }
+        if (queue_)
+        {
+            queue_->releaseCallback(*this);
+        }
     }
 
     RenderResult<void> SubmissionQueue::reserve(SubmissionCallback& callback) noexcept
     {
-        if (callback.queue_) return cxx::unexpected(RenderError{kBusy});
-        if (backing_->terminal) return cxx::unexpected(*backing_->terminal);
+        if (callback.queue_)
+        {
+            return cxx::unexpected(RenderError{kBusy});
+        }
+        if (backing_->terminal)
+        {
+            return cxx::unexpected(*backing_->terminal);
+        }
         if (backing_->callback_reservations == backing_->callback_capacity)
+        {
             return cxx::unexpected(RenderError{kCapacity});
+        }
         ++backing_->callback_reservations;
         callback.queue_ = this;
         return {};
@@ -184,17 +209,27 @@ namespace lux::render::vulkan
         callback.queue_ = nullptr;
     }
 
-    RenderResult<void> SubmissionQueue::onComplete(SubmissionTicket ticket, SubmissionCallback& callback,
-        SubmissionCallbackFn function, void* user) noexcept
+    RenderResult<void> SubmissionQueue::onComplete(
+        SubmissionTicket ticket,
+        SubmissionCallback& callback,
+        SubmissionCallbackFn function,
+        void* user
+    ) noexcept
     {
         const bool is_invalid_subscription = callback.queue_ != this || callback.armed_ || !function || !owns(ticket);
-        if (is_invalid_subscription) return cxx::unexpected(RenderError{kWrongOwner});
+        if (is_invalid_subscription)
+        {
+            return cxx::unexpected(RenderError{kWrongOwner});
+        }
         callback.callback_ = function;
         callback.user_ = user;
         callback.serial_ = ticket.serial();
         callback.armed_ = true;
         auto** link = &backing_->callbacks;
-        while (*link && (*link)->serial_ <= ticket.serial()) link = &(*link)->next_;
+        while (*link && (*link)->serial_ <= ticket.serial())
+        {
+            link = &(*link)->next_;
+        }
         callback.next_ = *link;
         *link = &callback;
         return {};
@@ -204,8 +239,14 @@ namespace lux::render::vulkan
     {
         auto* ready = backing_->callbacks;
         auto** end = &backing_->callbacks;
-        while (*end && (backing_->terminal || (*end)->serial_ <= backing_->completed)) end = &(*end)->next_;
-        if (end == &backing_->callbacks) return;
+        while (*end && (backing_->terminal || (*end)->serial_ <= backing_->completed))
+        {
+            end = &(*end)->next_;
+        }
+        if (end == &backing_->callbacks)
+        {
+            return;
+        }
         auto* pending = *end;
         *end = nullptr;
         backing_->callbacks = pending;
@@ -224,9 +265,15 @@ namespace lux::render::vulkan
         }
     }
 
-    std::size_t SubmissionQueue::callbackReservations() const noexcept { return backing_->callback_reservations; }
+    std::size_t SubmissionQueue::callbackReservations() const noexcept
+    {
+        return backing_->callback_reservations;
+    }
 
-    std::size_t SubmissionQueue::callbackCapacity() const noexcept { return backing_->callback_capacity; }
+    std::size_t SubmissionQueue::callbackCapacity() const noexcept
+    {
+        return backing_->callback_capacity;
+    }
 
     void SubmissionQueue::completePending() noexcept
     {
@@ -438,7 +485,8 @@ namespace lux::render::vulkan
         while (backing_->completed != backing_->submitted)
         {
             const auto slot = static_cast<std::uint32_t>(backing_->completed % capacity());
-            const auto result = LUX_NATIVE("fence_status", vkGetFenceStatus(backing_->device, backing_->batches[slot].fence));
+            const auto result =
+                LUX_NATIVE("fence_status", vkGetFenceStatus(backing_->device, backing_->batches[slot].fence));
             if (result == VK_NOT_READY)
             {
                 break;
@@ -468,8 +516,10 @@ namespace lux::render::vulkan
             return true;
         }
         const auto slot = static_cast<std::uint32_t>((ticket.serial() - 1) % capacity());
-        const auto result =
-            LUX_NATIVE("wait", vkWaitForFences(backing_->device, 1, &backing_->batches[slot].fence, VK_TRUE, timeout_ns));
+        const auto result = LUX_NATIVE(
+            "wait",
+            vkWaitForFences(backing_->device, 1, &backing_->batches[slot].fence, VK_TRUE, timeout_ns)
+        );
         if (result == VK_TIMEOUT)
         {
             return false;
@@ -563,7 +613,10 @@ namespace lux::render::vulkan
     RenderResult<SubmissionTicket> CommandBatch::submit(std::span<const SubmissionWait> waits) && noexcept
     {
         auto result = owner_->submit(waits);
-        if (!result) owner_->cancel();
+        if (!result)
+        {
+            owner_->cancel();
+        }
         owner_ = nullptr;
         return result;
     }
@@ -575,7 +628,10 @@ namespace lux::render::vulkan
     ) && noexcept
     {
         auto result = owner_->submit(waits, acquired, present);
-        if (!result) owner_->cancel();
+        if (!result)
+        {
+            owner_->cancel();
+        }
         owner_ = nullptr;
         return result;
     }

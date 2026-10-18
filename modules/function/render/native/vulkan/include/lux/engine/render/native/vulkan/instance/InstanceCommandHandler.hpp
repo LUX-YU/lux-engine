@@ -41,6 +41,7 @@ namespace lux::render
     {
         using Storage = vulkan::InstanceStorage;
         using Handler = vulkan::InstanceCommandHandler;
+
         [[nodiscard]] static std::unique_ptr<Handler> createHandler(vulkan::DeviceSession& device) noexcept
         {
             return std::make_unique<Handler>(device);

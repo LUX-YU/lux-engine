@@ -26,7 +26,10 @@ namespace lux::render::vulkan
                 {error::EArgument::HEX}
             },
             error::ErrorDescriptor{
-                "lux.render.vulkan.capacity", "Bounded native capacity exhausted", error::ERecovery::PERMANENT, {}
+                "lux.render.vulkan.capacity",
+                "Bounded native capacity exhausted",
+                error::ERecovery::PERMANENT,
+                {}
             },
             error::ErrorDescriptor{
                 "lux.render.vulkan.wrong_owner",
@@ -35,7 +38,10 @@ namespace lux::render::vulkan
                 {}
             },
             error::ErrorDescriptor{
-                "lux.render.vulkan.busy", "Native work or recording still active", error::ERecovery::PERMANENT, {}
+                "lux.render.vulkan.busy",
+                "Native work or recording still active",
+                error::ERecovery::PERMANENT,
+                {}
             },
             error::ErrorDescriptor{
                 "lux.render.vulkan.work_stopped",

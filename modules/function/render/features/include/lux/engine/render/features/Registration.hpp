@@ -12,7 +12,6 @@ namespace lux::render
         std::vector<StorageArgument> arguments;
     };
 
-
     namespace feature_detail
     {
         // Cold template-install material, not a public Command/Owner aggregation.
@@ -22,5 +21,5 @@ namespace lux::render
             const FeatureGraphOps* graph;
             RenderResult<ProgramContribution> (*programs)(const void*, std::string_view) noexcept;
         };
-    }
-}
+    } // namespace feature_detail
+} // namespace lux::render

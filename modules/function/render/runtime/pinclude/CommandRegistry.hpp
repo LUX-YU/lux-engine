@@ -1,8 +1,8 @@
 #pragma once
 
+#include <limits>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <limits>
 #include <map>
 
 namespace lux::render::runtime_detail
@@ -36,12 +36,10 @@ namespace lux::render::runtime_detail
         CommandId registerCommand(CommandBinding) noexcept;
         RenderResult<CommandId> findCommand(const CommandDescriptor&) const noexcept;
         RenderResult<HandlerId> findHandler(CppType, std::string_view) const noexcept;
-        RenderResult<std::vector<CommandId>> prepareHandler(
-            const HandlerRecord&, std::span<const CommandBinding>
-        ) const noexcept;
-        HandlerId registerHandler(
-            std::unique_ptr<HandlerRecord>, std::span<const CommandBinding>, std::vector<CommandId>
-        ) noexcept;
+        RenderResult<std::vector<CommandId>> prepareHandler(const HandlerRecord&, std::span<const CommandBinding>)
+            const noexcept;
+        HandlerId
+            registerHandler(std::unique_ptr<HandlerRecord>, std::span<const CommandBinding>, std::vector<CommandId>) noexcept;
         CommandList listCommands() const noexcept;
 
         void reserve(std::size_t added_commands, std::size_t added_handlers)

@@ -1,6 +1,6 @@
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/material/MaterialCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/material/MaterialStorage.hpp>
-#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 
 namespace lux::render::vulkan
 {
@@ -12,7 +12,10 @@ namespace lux::render::vulkan
     exec::task<SetMaterial::Response> MaterialCommandHandler::setMaterial(SetMaterial::Request&& input) noexcept
     {
         auto storage = device_.resources().borrow<MaterialStorage>(input.material.storage);
-        if (!storage) return rejectedMaterial(storage.error());
+        if (!storage)
+        {
+            return rejectedMaterial(storage.error());
+        }
         return render::upload(**storage, std::move(input));
     }
 

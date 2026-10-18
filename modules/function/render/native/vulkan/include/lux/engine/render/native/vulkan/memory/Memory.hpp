@@ -2,9 +2,9 @@
 
 #include <cstddef>
 #include <exception>
+#include <lux/engine/render/native/vulkan/device/Device.hpp>
 #include <memory>
 #include <utility>
-#include <lux/engine/render/native/vulkan/device/Device.hpp>
 
 struct VmaAllocation_T;
 
@@ -56,8 +56,8 @@ namespace lux::render::vulkan
             VkBufferUsageFlags usage,
             EMemoryAccess access
         ) noexcept
-            : allocator_(&allocator), buffer_(buffer), allocation_(allocation), mapped_(mapped),
-              size_(size), usage_(usage), access_(access)
+            : allocator_(&allocator), buffer_(buffer), allocation_(allocation), mapped_(mapped), size_(size),
+              usage_(usage), access_(access)
         {
         }
 
@@ -66,11 +66,13 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> write(VkDeviceSize offset, std::span<const std::byte> bytes) noexcept;
         [[nodiscard]] RenderResult<void> read(VkDeviceSize offset, std::span<std::byte> bytes) const noexcept;
         [[nodiscard]] BufferMemoryBinding memoryBinding() const noexcept;
+
         [[nodiscard]] std::span<std::byte> mappedBytes() noexcept
         {
-            return mapped_ ? std::span(static_cast<std::byte*>(mapped_), static_cast<std::size_t>(size_)) :
-                std::span<std::byte>{};
+            return mapped_ ? std::span(static_cast<std::byte*>(mapped_), static_cast<std::size_t>(size_))
+                           : std::span<std::byte>{};
         }
+
         [[nodiscard]] RenderResult<void> flush(VkDeviceSize offset, VkDeviceSize size) noexcept;
 
         Buffer(const Buffer&) = delete;
@@ -136,7 +138,10 @@ namespace lux::render::vulkan
             return image_;
         }
 
-        [[nodiscard]] VkDevice device() const noexcept { return memory_->allocator_->device(); }
+        [[nodiscard]] VkDevice device() const noexcept
+        {
+            return memory_->allocator_->device();
+        }
 
         [[nodiscard]] VkExtent2D extent() const noexcept
         {
@@ -181,4 +186,4 @@ namespace lux::render::vulkan
         std::shared_ptr<ImageMemory> memory_;
         ImageDescription description_;
     };
-}
+} // namespace lux::render::vulkan

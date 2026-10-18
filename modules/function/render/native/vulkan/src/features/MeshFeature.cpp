@@ -1,8 +1,8 @@
-#include <lux/engine/render/native/vulkan/features/MeshFeature.hpp>
-#include <lux/engine/render/features/MeshFeature.hpp>
-#include <cstdint>
 #include "BasicMeshVertex.hpp"
 #include "DepthOnlyVertex.hpp"
+#include <cstdint>
+#include <lux/engine/render/features/MeshFeature.hpp>
+#include <lux/engine/render/native/vulkan/features/MeshFeature.hpp>
 
 namespace lux::render::vulkan
 {
@@ -31,55 +31,88 @@ namespace lux::render::vulkan
             draw.shader.interface.parameters = draw.context_parameters = meshViewParameterBlock();
             draw.shader.interface.parameter_stages = 1;
             draw.parameter_values.resize(128);
-            draw.parameters = {{"view", "", "view", EParameterSource::CONTEXT},
-                {"projection", "", "projection", EParameterSource::CONTEXT}};
+            draw.parameters = {
+                {"view", "", "view", EParameterSource::CONTEXT},
+                {"projection", "", "projection", EParameterSource::CONTEXT}
+            };
             draw.resources = {{"transforms", resource("matrices")}, {"members", resource("members")}};
             draw.graphics.vertex_bindings = {{0, config.mesh.description.vertex_stride}};
             for (const auto& attribute : config.mesh.description.attributes)
+            {
                 if (attribute.location == 0 || (!Depth && attribute.location == 1))
+                {
                     draw.graphics.vertex_attributes.push_back(
                         {attribute.location, 0, attribute.offset, attribute.format}
                     );
+                }
+            }
             draw.graphics.depth_test = draw.graphics.depth_write = true;
             draw.vertex_buffers = {{resource("mesh"), 0, 0}};
-            draw.draw = DrawIndexedIndirect{resource("mesh"), config.mesh.description.index_offset,
-                config.mesh.description.index_stride == 2 ? EIndexType::UINT16 : EIndexType::UINT32, resource("members")};
-            const auto argument = [&](std::string_view local, auto binding) -> RenderResult<void> {
+            draw.draw = DrawIndexedIndirect{
+                resource("mesh"),
+                config.mesh.description.index_offset,
+                config.mesh.description.index_stride == 2 ? EIndexType::UINT16 : EIndexType::UINT32,
+                resource("members")
+            };
+            const auto argument = [&](std::string_view local, auto binding) -> RenderResult<void>
+            {
                 auto config_value = ConfigValue::make(std::move(binding));
-                if (!config_value) return cxx::unexpected(config_value.error());
+                if (!config_value)
+                {
+                    return cxx::unexpected(config_value.error());
+                }
                 result.arguments.push_back({resource(local), std::move(*config_value)});
                 return {};
             };
-            if (auto added = argument("mesh", config.mesh); !added) return cxx::unexpected(added.error());
-            if (auto added = argument("matrices", config.instances); !added) return cxx::unexpected(added.error());
+            if (auto added = argument("mesh", config.mesh); !added)
+            {
+                return cxx::unexpected(added.error());
+            }
+            if (auto added = argument("matrices", config.instances); !added)
+            {
+                return cxx::unexpected(added.error());
+            }
             auto members = config.instances;
             members.role = EInstanceBinding::DRAW;
-            if (auto added = argument("members", members); !added) return cxx::unexpected(added.error());
+            if (auto added = argument("members", members); !added)
+            {
+                return cxx::unexpected(added.error());
+            }
             if constexpr (!Depth)
             {
                 // describe already qualified the typed cooked contract. Native reflection checks the actual code ABI.
                 const auto& material = *static_cast<const MaterialProgram*>(config.material.program.data());
                 draw.shader.stages.push_back(material.fragment);
-                draw.shader.interface.bindings.push_back({4, 4, EDescriptorKind::STORAGE_BUFFER, 1,
-                    materialParameterBlock(), "uMats", 2});
+                draw.shader.interface.bindings.push_back(
+                    {4, 4, EDescriptorKind::STORAGE_BUFFER, 1, materialParameterBlock(), "uMats", 2}
+                );
                 draw.resources.push_back({"uMats", resource("material")});
-                if (auto added = argument("material", config.material); !added) return cxx::unexpected(added.error());
+                if (auto added = argument("material", config.material); !added)
+                {
+                    return cxx::unexpected(added.error());
+                }
                 if (!config.textures.empty())
                 {
-                    draw.shader.interface.bindings.push_back({2, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0,
-                        {}, "uTex", 2});
+                    draw.shader.interface.bindings.push_back(
+                        {2, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, {}, "uTex", 2}
+                    );
                     draw.resources.push_back({"uTex", resource("texture0")});
                     for (std::uint32_t i = 0; i < config.textures.size(); ++i)
                     {
                         auto texture = config.material;
                         texture.texture_slot = i;
                         if (auto added = argument("texture" + std::to_string(i), std::move(texture)); !added)
+                        {
                             return cxx::unexpected(added.error());
+                        }
                     }
                 }
             }
             result.programs.push_back(std::move(draw));
-            if constexpr (Depth) result.programs.push_back({key("clear")});
+            if constexpr (Depth)
+            {
+                result.programs.push_back({key("clear")});
+            }
             if (config.readback)
             {
                 result.programs.push_back({key("color.read")});
@@ -87,9 +120,9 @@ namespace lux::render::vulkan
             }
             return result;
         }
-    }
+    } // namespace
 
-}
+} // namespace lux::render::vulkan
 
 namespace lux::render
 {
@@ -102,4 +135,4 @@ namespace lux::render
     {
         return {&DepthOnlyFeature::descriptor, &DepthOnlyFeature::graph, vulkan::programs<true>};
     }
-}
+} // namespace lux::render

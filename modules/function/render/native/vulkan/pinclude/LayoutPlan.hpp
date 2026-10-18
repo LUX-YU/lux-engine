@@ -27,7 +27,6 @@ namespace lux::render::vulkan
         std::vector<DescriptorUse> uses;
         std::vector<std::byte> initial_parameters;
         std::vector<ParameterUse> parameters;
-
     };
 
     // The sole cold physical placement decision. Shader relocation, native layouts and Context writes
@@ -42,16 +41,19 @@ namespace lux::render::vulkan
         ShaderBlock context_parameters;
         std::uint32_t parameter_bytes = 0;
         VkShaderStageFlags parameter_stages = 0;
-
     };
 
     [[nodiscard]] const ShaderBinding& sampledImageTableBinding() noexcept;
 
     [[nodiscard]] RenderResult<LayoutPlan> planLayouts(
-        const VulkanDevice& device, const RenderGraphDefinition& graph, const GraphAnalysis& analysis,
+        const VulkanDevice& device,
+        const RenderGraphDefinition& graph,
+        const GraphAnalysis& analysis,
         std::span<const PassProgram* const> programs
     ) noexcept;
 
-    [[nodiscard]] RenderResult<SpirvArtifact>
-    relocateShader(const SpirvArtifact& original, std::span<const ShaderBinding> locations) noexcept;
-}
+    [[nodiscard]] RenderResult<SpirvArtifact> relocateShader(
+        const SpirvArtifact& original,
+        std::span<const ShaderBinding> locations
+    ) noexcept;
+} // namespace lux::render::vulkan

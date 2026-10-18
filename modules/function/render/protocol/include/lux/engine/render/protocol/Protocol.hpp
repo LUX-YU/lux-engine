@@ -4,14 +4,14 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <lux/cxx/container/SlotMap.hpp>
+#include <lux/cxx/core/Schema.hpp>
+#include <lux/engine/render/core/CppType.hpp>
+#include <lux/engine/render/core/Error.hpp>
 #include <span>
 #include <string_view>
 #include <type_traits>
 #include <utility>
-#include <lux/engine/render/core/CppType.hpp>
-#include <lux/cxx/container/SlotMap.hpp>
-#include <lux/cxx/core/Schema.hpp>
-#include <lux/engine/render/core/Error.hpp>
 
 namespace lux::render
 {
@@ -23,23 +23,29 @@ namespace lux::render
         bool outcome_unknown = false;
     };
 
-
     struct CommandTag;
     struct HandlerTag;
     struct CommandNameTag;
     using CommandId = cxx::SlotKey<CommandTag>;
     using HandlerId = cxx::SlotKey<HandlerTag>;
     using CommandName = cxx::SchemaIdView<CommandNameTag>;
+
     // Caller-owned correlation within one source Link. Zero is invalid; IPC allocates no business identity.
     struct RequestId final
     {
         std::uint64_t value = 0;
-        [[nodiscard]] constexpr bool isNull() const noexcept { return value == 0; }
+
+        [[nodiscard]] constexpr bool isNull() const noexcept
+        {
+            return value == 0;
+        }
+
         bool operator==(const RequestId&) const noexcept = default;
     };
 
-    struct Ack final {};
-
+    struct Ack final
+    {
+    };
 
     // Cold declaration metadata; same controlled C++ build is the host precondition.
     struct CommandDescriptor final
@@ -50,11 +56,12 @@ namespace lux::render
     };
 
     template <typename C>
-    concept RenderCommand = requires {
-        typename C::Request;
-        typename C::Response;
-        std::string_view{C::name};
-    } && std::is_nothrow_move_constructible_v<typename C::Request> &&
+    concept RenderCommand =
+        requires {
+            typename C::Request;
+            typename C::Response;
+            std::string_view{C::name};
+        } && std::is_nothrow_move_constructible_v<typename C::Request> &&
         std::is_nothrow_destructible_v<typename C::Request> &&
         std::is_nothrow_move_constructible_v<typename C::Response> &&
         std::is_nothrow_destructible_v<typename C::Response>;
@@ -66,23 +73,28 @@ namespace lux::render
         cppType<typename C::Response>()
     };
 
-    template <RenderCommand C>
-    [[nodiscard]] constexpr const CommandDescriptor& commandDescriptor() noexcept
+    template <RenderCommand C> [[nodiscard]] constexpr const CommandDescriptor& commandDescriptor() noexcept
     {
         return kCommandDescriptor<C>;
     }
 
     [[nodiscard]] constexpr std::uint64_t commandTag(CommandId id) noexcept
-    { return (static_cast<std::uint64_t>(id.gen) << 32) | id.index; }
+    {
+        return (static_cast<std::uint64_t>(id.gen) << 32) | id.index;
+    }
 
     [[nodiscard]] constexpr CommandId commandIdFromTag(std::uint64_t tag) noexcept
-    { return {static_cast<std::uint32_t>(tag), static_cast<std::uint32_t>(tag >> 32)}; }
+    {
+        return {static_cast<std::uint32_t>(tag), static_cast<std::uint32_t>(tag >> 32)};
+    }
 
     inline constexpr auto kProtocolContract = error::errorId("lux.render.protocol.contract");
 
     [[nodiscard]] RenderResult<void> validateCommand(const CommandDescriptor& descriptor) noexcept;
-    [[nodiscard]] RenderResult<void>
-    compatibleCommands(const CommandDescriptor& left, const CommandDescriptor& right) noexcept;
+    [[nodiscard]] RenderResult<void> compatibleCommands(
+        const CommandDescriptor& left,
+        const CommandDescriptor& right
+    ) noexcept;
 
     [[nodiscard]] std::span<const error::ErrorDescriptor> renderProtocolErrorDescriptors() noexcept;
-}
+} // namespace lux::render

@@ -7,6 +7,33 @@
 
 using namespace std::chrono_literals;
 
+// Success establishes device dependencies; final staging pages may still await completion.
+// Retry only the explicit capacity boundary, preserving the previous public revision and source.
+template <RenderCommand C>
+TexturePublished upload(runtime_test::Peer& peer, CommandId command, const typename C::Request& input)
+{
+    const auto deadline = std::chrono::steady_clock::now() + 5s;
+    const auto* source = input.source.bytes().data();
+    for (;;)
+    {
+        auto message = call<C>(peer, command, input);
+        const auto& result = message.get<typename C::Response>();
+        if (result)
+        {
+            return *result;
+        }
+        CHECK(result.error().type == vulkan::kCapacity);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+        CHECK(input.source.bytes().data() == source);
+        if (!input.texture.isNull())
+        {
+            const auto query = take(runtime_test::find<QueryTexture>(peer));
+            const auto current = decoded<TexturePublished>(call<QueryTexture>(peer, query, input.texture));
+            CHECK(current.revision == input.expected_revision);
+        }
+    }
+}
+
 int main()
 {
     CpuFixture host;
@@ -56,14 +83,15 @@ int main()
     a.reset(); // creator is not the Global storage owner
     input.texture = texture_a.texture;
     input.expected_revision = 1;
-    texture_a = decoded<TexturePublished>(wait(*b, take(runtime_test::send<SetTexture>(*b, bound_b, input))));
+    texture_a = upload<SetTexture>(*b, bound_b, input);
     CHECK(texture_a.revision == 2);
     CHECK(wait(*b, take(runtime_test::send<SetTexture>(*b, bound_b, input))).get<SetTexture::Response>().has_value() == false);
     auto region = take(runtime_test::find<SetTextureRegion>(*b));
     auto patch = std::make_shared<const std::vector<std::byte>>(28, std::byte{92});
     std::array patch_payload{take(RenderPayload::fromVector(patch, 0, patch->size()))};
-    texture_a = decoded<TexturePublished>(wait(*b, take(runtime_test::send<SetTextureRegion>(*b, region,
-        SetTextureRegion::Request{texture_a.texture, 2, {1, 2, 1, 3, 2, 16}, patch_payload[0]}))));
+    texture_a = upload<SetTextureRegion>(
+        *b, region, {texture_a.texture, 2, {1, 2, 1, 3, 2, 16}, patch_payload[0]}
+    );
     CHECK(texture_a.revision == 3);
     auto query = take(runtime_test::find<QueryTexture>(*b));
     const auto current = decoded<TexturePublished>(wait(*b, take(runtime_test::send<QueryTexture>(*b, query, texture_a.texture))));
@@ -75,7 +103,7 @@ int main()
     CHECK(wait(*b, take(runtime_test::send<ReleaseTexture>(*b, release, texture_a))).get<ReleaseTexture::Response>().has_value() == false);
     CHECK(wait(*b, take(runtime_test::send<ReleaseTexture>(*b, release, texture_b))).get<ReleaseTexture::Response>().has_value());
     input.texture = {storage, {}}; input.expected_revision = 0;
-    const auto replacement = decoded<TexturePublished>(wait(*b, take(runtime_test::send<SetTexture>(*b, bound_b, input))));
+    const auto replacement = upload<SetTexture>(*b, bound_b, input);
     CHECK(replacement.texture != texture_a.texture && replacement.texture != texture_b.texture);
     CHECK(wait(*b, take(runtime_test::send<ReleaseTexture>(*b, release, replacement))).get<ReleaseTexture::Response>().has_value());
     asset.reset(); payload = {}; input.source = {}; malformed.source = {};

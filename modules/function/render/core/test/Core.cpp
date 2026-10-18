@@ -219,7 +219,7 @@ int errors()
     const auto descriptors = renderCoreErrorDescriptors();
     CHECK(descriptors.size() == 5);
     const lux::error::ErrorId expected[]{
-        kInvalidTargetExtent, kInvalidTargetFormat, kInvalidTargetSamples, kInvalidTargetKind, kInvalidCamera
+        kInvalidTargetExtent, kInvalidTargetFormat, kInvalidTargetSamples, kInvalidTargetKind, kInvalidViewport
     };
     for (std::size_t i = 0; i < descriptors.size(); ++i)
     {

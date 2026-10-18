@@ -40,7 +40,7 @@ extern "C" __declspec(dllexport) bool serverDllReadback(const char* name, Comman
     if (!runtime_test::refresh(**client)) return false;
     auto scene = runtime_test::coldCall<CreateScene>(**client, {});
     if (!scene) return false;
-    auto view = runtime_test::coldCall<CreateView>(**client, {scene->scene, camera_fixture::oracle({1, 0, 0, 1})});
+    auto view = runtime_test::coldCall<CreateView>(**client, {scene->scene});
     const native_fixture::Config config{32, 32, 0, 0};
     auto target = runtime_test::coldCall<CreateTarget>(**client, {native_fixture::target(config)});
     auto owned_config = ConfigValue::make(config);
@@ -51,7 +51,7 @@ extern "C" __declspec(dllexport) bool serverDllReadback(const char* name, Comman
     auto effect = runtime_test::coldCall<CreateEffect>(**client, std::move(effect_request));
     if (!effect) return false;
     const AttachmentRequest attachment{scene->scene, view->view,
-        target->target, effect->effect};
+        target->target, effect->effect, {}}; // Transfer-only graph has no context parameter block.
     const auto linked = runtime_test::coldCall<Attach>(**client, attachment);
     if (!linked) return false;
     auto result = runtime_test::coldCall<Readback>(**client, {linked->attachment, {}});

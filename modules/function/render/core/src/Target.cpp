@@ -51,7 +51,7 @@ namespace lux::render
                 error::ERecovery::PERMANENT, {error::EArgument::UNSIGNED}
             },
             {
-                "lux.render.core.invalid_camera", "Camera matrices must be finite and viewport ranges valid",
+                "lux.render.core.invalid_viewport", "Raster viewport coordinates and depth ranges must be valid",
                 error::ERecovery::PERMANENT, {}
             }
         };

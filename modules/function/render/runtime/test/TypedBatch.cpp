@@ -333,10 +333,11 @@ int main()
     for (unsigned i = 0; i < attached.size(); ++i)
     {
         const auto scene = scenes[i / 2];
-        const auto view = call<CreateView>(*a, create_view, {scene, camera_fixture::oracle(colors[i])}).get<CreateView::Response>()->view;
+        const auto view = call<CreateView>(*a, create_view, {scene}).get<CreateView::Response>()->view;
         const auto target = call<CreateTarget>(*a, create_target, {target_description}).get<CreateTarget::Response>().value();
         CHECK(target.epoch == 1);
-        attached[i] = call<Attach>(*a, attach, {scene, view, target.target, effect}).get<Attach::Response>()->attachment;
+        attached[i] = call<Attach>(*a, attach, {scene, view, target.target, effect,
+            camera_fixture::payload(camera_fixture::oracle(colors[i]))}).get<Attach::Response>()->attachment;
     }
     const auto warm_begin = server->stats();
     const auto warm_deadline = Clock::now() + 10s;

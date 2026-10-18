@@ -164,7 +164,7 @@ int main()
     {
         command.scene = scenes[i / 2];
         command.operation = ETestCommand::CREATE_VIEW;
-        command.color = colors[i];
+        command.parameters = camera_fixture::payload(camera_fixture::oracle(colors[i]));
         const auto view = call(*client, command).view;
         command.operation = ETestCommand::CREATE_TARGET;
         auto target = call(*client, command);
@@ -290,6 +290,7 @@ int main()
     command.operation = ETestCommand::DETACH;
     call(*client, command);
     command.effect = transfer_effect;
+    command.parameters = {};
     command.operation = ETestCommand::ATTACH;
     command.attachment = call(*client, command).attachment;
     attached[2].attachment = command.attachment;

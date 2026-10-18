@@ -93,3 +93,17 @@ The single RenderThread alternates bounded request, completion and response work
 There is no unconditional sleep: successful work starts the next round immediately. Only a round with no progress
 waits on IpcCore's epoch; requests, CPU completion and stop wake it. A requested 1ms idle deadline observes GPU fences
 and unvisited Links in the bounded IPC roster. This is an idle observation deadline, subject to OS scheduling, not a rendering rate limit.
+
+## View and Attachment inputs
+
+A View contains identity and scoped resources; it does not own Camera matrices. `CreateView`
+accepts a SceneId. `Attach` takes explicit `RenderPayload` parameter bytes and a normalized
+`RasterViewport`, and returns the generational `AttachmentId`. The compiled Native layout
+checks the complete parameter byte count. A graph without context parameters takes an empty
+payload. Mesh callers can construct `MeshViewParameters` and use `meshViewParameterBytes()`;
+other Features define their own layouts without changing Runtime.
+
+`UpdateAttachmentInputs` addresses that AttachmentId directly. Invalid viewport or parameter
+size leaves its prior inputs unchanged. Success commits inputs for future recording, not a
+completed GPU frame. Different Attachments of one View can have independent parameter layouts
+and values. Resize preserves each Attachment's bytes and normalized viewport.

@@ -400,10 +400,11 @@ int main(int argc, char** argv)
         for (unsigned v = 0; v < 2; ++v)
         {
             const auto view = decoded<ViewCreated>(call<CreateView>(*a,
-                {scene, camera_fixture::oracle({1, 0, 0, 1})})).view;
+                {scene})).view;
             const auto target = decoded<TargetCreated>(call<CreateTarget>(*a,
                 {native_fixture::target(graph_config)})).target;
-            groups[s * 2 + v] = call<Attach>(*a, {scene, view, target, effect}).get<Attach::Response>()->attachment;
+            groups[s * 2 + v] = call<Attach>(*a, {scene, view, target, effect,
+                camera_fixture::payload(camera_fixture::oracle({1, 0, 0, 1}))}).get<Attach::Response>()->attachment;
         }
     }
     {

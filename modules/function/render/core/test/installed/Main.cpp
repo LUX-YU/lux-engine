@@ -1,7 +1,7 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/CppType.hpp>
 #include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/core/Camera.hpp>
+#include <lux/engine/render/core/RasterViewport.hpp>
 
 int main()
 {
@@ -19,10 +19,10 @@ int main()
     const auto invalid = target.validate();
     if (invalid || invalid.error().type != kInvalidTargetExtent) return 4;
     if (renderCoreErrorDescriptors().size() != 5) return 5;
-    CameraState camera;
-    if (!camera.validate() || cameraParameters(camera).size() != 128) return 6;
-    camera.viewport.width = 0;
-    const auto bad_camera = camera.validate();
-    if (bad_camera || bad_camera.error().type != kInvalidCamera) return 7;
+    RasterViewport viewport;
+    if (!viewport.validate()) return 6;
+    viewport.width = 0;
+    const auto invalid_viewport = viewport.validate();
+    if (invalid_viewport || invalid_viewport.error().type != kInvalidViewport) return 7;
     return 0;
 }

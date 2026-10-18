@@ -89,6 +89,7 @@ static void exercise(bool close_requester)
     command.features.push_back({std::string(native_fixture::type.name()), "main", take(ConfigValue::make(config))});
     command.effect = call(*client, command).effect;
     command.features.clear();
+    command.parameters = camera_fixture::payload(camera_fixture::oracle({1, 0, 0, 1}));
     command.operation = ETestCommand::ATTACH;
     command.attachment = call(*client, command).attachment;
     const auto before = server->stats().commands;
@@ -143,6 +144,7 @@ static void retirementAtomicity()
     command.features.push_back({std::string(native_fixture::type.name()), "main", take(ConfigValue::make(config))});
     command.effect = call(*client, command).effect;
     command.features.clear();
+    command.parameters = camera_fixture::payload(camera_fixture::oracle({1, 0, 0, 1}));
     command.operation = ETestCommand::ATTACH;
     command.target = first_target;
     const auto first_attachment = call(*client, command).attachment;

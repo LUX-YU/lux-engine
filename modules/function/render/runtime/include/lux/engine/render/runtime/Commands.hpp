@@ -8,7 +8,7 @@
 #include <vector>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/core/Camera.hpp>
+#include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/core/Execution.hpp>
 #include <lux/engine/render/data/Payload.hpp>
 #include <lux/engine/render/data/ConfigValue.hpp>
@@ -26,13 +26,27 @@ namespace lux::render
 
     struct EmptyRequest final {};
     struct SceneRequest final { SceneId scene{}; };
-    struct CreateViewRequest final { SceneId scene{}; CameraState camera{}; };
-    struct UpdateCameraRequest final { SceneId scene{}; ViewId view{}; CameraState camera{}; };
+    struct CreateViewRequest final { SceneId scene{}; };
     struct ViewRequest final { SceneId scene{}; ViewId view{}; };
     struct CreateTargetRequest final { TargetDesc description{}; };
     struct ResizeTargetRequest final { TargetId target{}; TargetDesc description{}; };
     struct EffectRequest final { EffectId effect{}; };
-    struct AttachmentRequest final { SceneId scene{}; ViewId view{}; TargetId target{}; EffectId effect{}; };
+    struct AttachmentRequest final
+    {
+        SceneId scene;
+        ViewId view;
+        TargetId target;
+        EffectId effect;
+        RenderPayload parameters; // Exact bytes of the compiled context parameter block.
+        RasterViewport viewport;
+    };
+
+    struct AttachmentInputs final
+    {
+        AttachmentId attachment;
+        RenderPayload parameters;
+        RasterViewport viewport;
+    };
     struct ReadbackRequest final
     {
         AttachmentId attachment;
@@ -202,10 +216,10 @@ namespace lux::render
         using Response = RenderResult<ViewCreated>;
     };
 
-    struct UpdateCamera final
+    struct UpdateAttachmentInputs final
     {
-        static constexpr std::string_view name{"render.view.camera"};
-        using Request = UpdateCameraRequest;
+        static constexpr std::string_view name{"render.attachment.inputs"};
+        using Request = AttachmentInputs;
         using Response = RenderResult<Ack>;
     };
 

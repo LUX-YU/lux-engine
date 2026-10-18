@@ -11,24 +11,26 @@ using namespace foundation_test;
 using namespace std::chrono_literals;
 using Clock = std::chrono::steady_clock;
 
-
-
-
 static std::atomic<unsigned> rejected_programs{0};
 
 static RenderResult<void> describe(const void* value, std::string_view name, ResourceClaims& claims) noexcept
 {
     auto config = *static_cast<const native_fixture::Config*>(value);
-    if (config.graphics == 2) config.graphics = 1; // Reach the actual Runtime parameter ABI boundary.
+    if (config.graphics >= 2) config.graphics = 1; // Select a different real shader parameter contract.
     return native_fixture::describe(&config, name, claims);
 }
 
 static RenderResult<ProgramContribution> programs(const void* value, std::string_view name) noexcept
 {
     const auto config = *static_cast<const native_fixture::Config*>(value);
-    if (config.graphics == 2) ++rejected_programs;
-    return ProgramContribution{config.graphics == 2 ? native_fixture::programs(config, name) :
-        camera_fixture::programs(config, name), {}};
+    auto result = config.graphics == 2 ? native_fixture::programs(config, name) :
+        camera_fixture::programs(config, name);
+    if (config.graphics == 3)
+    {
+        ++rejected_programs;
+        result.front().parameter_values.pop_back(); // Real compiled parameter size mismatch.
+    }
+    return ProgramContribution{std::move(result), {}};
 }
 
 static void pixel(const lux::platform::ipc::IpcMessage& result, unsigned width, unsigned x, unsigned y,
@@ -44,16 +46,16 @@ static void pixel(const lux::platform::ipc::IpcMessage& result, unsigned width, 
 
 int main()
 {
-    CameraState invalid;
-    invalid.view[0] = std::numeric_limits<float>::infinity();
+    RasterViewport invalid;
+    invalid.x = std::numeric_limits<float>::infinity();
     CHECK(!invalid.validate());
     invalid = {};
-    invalid.viewport.width = 2;
+    invalid.width = 2;
     CHECK(!invalid.validate());
     invalid = {};
-    invalid.viewport.min_depth = .8f; invalid.viewport.max_depth = .2f;
+    invalid.min_depth = .8f; invalid.max_depth = .2f;
     CHECK(!invalid.validate());
-    CHECK(cameraParameters(CameraState{}).size() == 128);
+    CHECK(meshViewParameterBytes(MeshViewParameters{}).size() == 128);
     CpuFixture host;
     RenderServerConfig config{"runtime.camera", true};
     auto server = take(createTestServer(host, config));
@@ -70,7 +72,7 @@ int main()
     const auto create_target = take(runtime_test::find<CreateTarget>(*client));
     const auto create_effect = take(runtime_test::find<CreateEffect>(*client));
     const auto attach = take(runtime_test::find<Attach>(*client));
-    const auto update = take(runtime_test::find<UpdateCamera>(*client));
+    const auto update = take(runtime_test::find<UpdateAttachmentInputs>(*client));
     const auto resize = take(runtime_test::find<ResizeTarget>(*client));
     const auto read = take(runtime_test::find<Readback>(*client));
     const auto progress = take(runtime_test::find<QueryExecutionProgress>(*client));
@@ -84,12 +86,17 @@ int main()
     const auto effect = created.get<CreateEffect::Response>()->effect;
     auto a = camera_fixture::oracle({1, 0, 0, 1});
     auto b = camera_fixture::oracle({0, 1, 0, 1});
-    const auto va = call<CreateView>(*client, create_view, {scene, a}).get<CreateView::Response>()->view;
-    const auto vb = call<CreateView>(*client, create_view, {scene, b}).get<CreateView::Response>()->view;
+    const auto va = call<CreateView>(*client, create_view, {scene}).get<CreateView::Response>()->view;
+    const auto vb = call<CreateView>(*client, create_view, {scene}).get<CreateView::Response>()->view;
     const auto ta = call<CreateTarget>(*client, create_target, {target}).get<CreateTarget::Response>()->target;
     const auto tb = call<CreateTarget>(*client, create_target, {target}).get<CreateTarget::Response>()->target;
-    const auto attached_a = call<Attach>(*client, attach, {scene, va, ta, effect});
-    const auto attached_b = call<Attach>(*client, attach, {scene, vb, tb, effect});
+    const auto attached_a = call<Attach>(*client, attach, {scene, va, ta, effect, camera_fixture::payload(a)});
+    const std::array<float, 4> short_values{1, 1, 1, 1};
+    const auto short_payload = RenderPayload::copyOf(std::as_bytes(std::span(short_values)));
+    auto rejected_attach = call<Attach>(*client, attach, {scene, vb, tb, effect, short_payload});
+    CHECK(!rejected_attach.get<Attach::Response>() &&
+        rejected_attach.get<Attach::Response>().error().type == vulkan::kInvalidArgument);
+    const auto attached_b = call<Attach>(*client, attach, {scene, vb, tb, effect, camera_fixture::payload(b)});
     CHECK(attached_a.get<Attach::Response>().has_value());
     CHECK(attached_b.get<Attach::Response>().has_value());
     const auto ga = attached_a.get<Attach::Response>()->attachment;
@@ -115,9 +122,10 @@ int main()
     CHECK(call<QueryExecutionProgress>(*client, progress, gb).get<QueryExecutionProgress::Response>()->count(EExecutionOutcome::EXECUTED) > 0);
     const auto compiled = server->stats().compiled_graphs;
     b.projection[0] = .5f;
-    b.viewport = {.5f, 0, .5f, 1};
-    CHECK(call<UpdateCamera>(*client, update, {scene, vb, b}).get<UpdateCamera::Response>().has_value());
-    // Camera Ack commits CPU state, not a displayed frame. Observe a subsequent actual output.
+    const RasterViewport viewport{.5f, 0, .5f, 1};
+    CHECK(call<UpdateAttachmentInputs>(*client, update,
+        {gb, camera_fixture::payload(b), viewport}).get<UpdateAttachmentInputs::Response>().has_value());
+    // Input Ack commits CPU state, not a displayed frame. Observe a subsequent actual output.
     const auto deadline = Clock::now() + 5s;
     for (;;)
     {
@@ -131,27 +139,44 @@ int main()
     pixel(call<Readback>(*client, read, {gb, {}}), 32, 24, 16, {0, 128, 0, 128});
     pixel(call<Readback>(*client, read, {gb, {}}), 32, 8, 16, {32, 64, 128, 255});
     pixel(call<Readback>(*client, read, {ga, {}}), 32, 16, 16, {255, 0, 0, 255});
-    invalid = b; invalid.projection[15] = std::numeric_limits<float>::quiet_NaN();
-    CHECK(call<UpdateCamera>(*client, update, {scene, vb, invalid}).get<UpdateCamera::Response>().has_value() == false);
-    invalid = b; invalid.viewport.x = .75f;
-    CHECK(call<UpdateCamera>(*client, update, {scene, vb, invalid}).get<UpdateCamera::Response>().has_value() == false);
-    auto wrong = vb; ++wrong.gen;
-    CHECK(call<UpdateCamera>(*client, update, {scene, wrong, b}).get<UpdateCamera::Response>().has_value() == false);
+    auto bad_size = call<UpdateAttachmentInputs>(*client, update, {gb, short_payload, viewport});
+    CHECK(!bad_size.get<UpdateAttachmentInputs::Response>() &&
+        bad_size.get<UpdateAttachmentInputs::Response>().error().type == vulkan::kInvalidArgument);
+    invalid = viewport; invalid.x = .75f;
+    CHECK(!call<UpdateAttachmentInputs>(*client, update,
+        {gb, camera_fixture::payload(b), invalid}).get<UpdateAttachmentInputs::Response>());
+    auto wrong = gb; ++wrong.gen;
+    CHECK(!call<UpdateAttachmentInputs>(*client, update,
+        {wrong, camera_fixture::payload(b), viewport}).get<UpdateAttachmentInputs::Response>());
     pixel(call<Readback>(*client, read, {gb, {}}), 32, 24, 16, {0, 128, 0, 128});
     auto enlarged = target; enlarged.width = 64; enlarged.height = 48;
     CHECK(call<ResizeTarget>(*client, resize, {tb, enlarged}).get<ResizeTarget::Response>().has_value());
     pixel(call<Readback>(*client, read, {gb, {}}), 64, 48, 24, {0, 128, 0, 128});
     pixel(call<Readback>(*client, read, {gb, {}}), 64, 16, 24, {32, 64, 128, 255});
+    // A different shader uses 16 context bytes on the same View. Runtime must not impose matrices.
     graph.graphics = 2;
     effect_request.features[0].config = take(ConfigValue::make(graph));
+    auto compact = call<CreateEffect>(*client, create_effect, effect_request);
+    CHECK(compact.get<CreateEffect::Response>());
+    const auto tc = call<CreateTarget>(*client, create_target, {target}).get<CreateTarget::Response>()->target;
+    auto compact_attachment = call<Attach>(*client, attach,
+        {scene, va, tc, compact.get<CreateEffect::Response>()->effect, short_payload});
+    CHECK(compact_attachment.get<Attach::Response>());
+    const auto gc = compact_attachment.get<Attach::Response>()->attachment;
+    pixel(call<Readback>(*client, read, {gc, {}}), 32, 16, 16, {255, 255, 255, 255});
+    pixel(call<Readback>(*client, read, {ga, {}}), 32, 16, 16, {255, 0, 0, 255});
+    CHECK(server->stats().compiled_graphs == compiled + 1);
+    graph.graphics = 3;
+    effect_request.features[0].config = take(ConfigValue::make(graph));
     auto bad = call<CreateEffect>(*client, create_effect, std::move(effect_request));
-    CHECK(!bad.get<CreateEffect::Response>() && bad.get<CreateEffect::Response>().error().type == kFeatureContract);
+    CHECK(!bad.get<CreateEffect::Response>() && bad.get<CreateEffect::Response>().error().type == kStorageContract);
     CHECK(rejected_programs == 1);
-    CHECK(server->stats().compiled_graphs == compiled);
+    CHECK(server->stats().compiled_graphs == compiled + 1);
     pixel(call<Readback>(*client, read, {ga, {}}), 32, 16, 16, {255, 0, 0, 255});
     CHECK(call<RemoveScene>(*client, remove, {scene}).get<RemoveScene::Response>().has_value());
-    CHECK(call<UpdateCamera>(*client, update, {scene, vb, b}).get<UpdateCamera::Response>().has_value() == false);
+    CHECK(!call<UpdateAttachmentInputs>(*client, update,
+        {gb, camera_fixture::payload(b), viewport}).get<UpdateAttachmentInputs::Response>());
     server->stop(); thread.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
-    std::puts("Camera complete matrices, isolated View/viewport, resize, stale/invalid rollback: PASS");
+    std::puts("Explicit Attachment inputs: 128/16 byte layouts, shared View isolation, resize and failed-update rollback: PASS");
 }

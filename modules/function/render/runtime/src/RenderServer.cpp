@@ -10,7 +10,7 @@ namespace lux::render
         addBuiltin<CreateScene, &Impl::createScene>();
         addBuiltin<RemoveScene, &Impl::removeScene>();
         addBuiltin<CreateView, &Impl::createView>();
-        addBuiltin<UpdateCamera, &Impl::updateCamera>();
+        addBuiltin<UpdateAttachmentInputs, &Impl::updateAttachmentInputs>();
         addBuiltin<RemoveView, &Impl::removeView>();
         addBuiltin<CreateTarget, &Impl::createTarget>();
         addBuiltin<ResizeTarget, &Impl::resizeTarget>();

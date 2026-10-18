@@ -1,5 +1,5 @@
 #include <lux/engine/render/native/vulkan/features/MeshFeature.hpp>
-#include <lux/engine/render/data/Camera.hpp>
+#include <lux/engine/render/features/MeshFeature.hpp>
 #include <cstdint>
 #include "BasicMeshVertex.hpp"
 #include "DepthOnlyVertex.hpp"
@@ -28,7 +28,7 @@ namespace lux::render::vulkan
                 {3, 7, EDescriptorKind::STORAGE_BUFFER, 1, transform, "transforms", 1},
                 {2, 6, EDescriptorKind::STORAGE_BUFFER, 1, word, "members", 1}
             };
-            draw.shader.interface.parameters = draw.context_parameters = cameraParameterBlock();
+            draw.shader.interface.parameters = draw.context_parameters = meshViewParameterBlock();
             draw.shader.interface.parameter_stages = 1;
             draw.parameter_values.resize(128);
             draw.parameters = {{"view", "", "view", EParameterSource::CONTEXT},

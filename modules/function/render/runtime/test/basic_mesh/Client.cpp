@@ -249,11 +249,11 @@ namespace mesh_sample
         const auto b = coldCall<QueryInstance>(main, main_commands, main_next, right.instance);
         check(a.description.mesh == b.description.mesh && a.description.material == b.description.material);
 
-        CameraState first_camera, second_camera;
+        MeshViewParameters first_camera, second_camera;
         second_camera.projection[0] = .5f;
         second_camera.projection[12] = .2f;
-        const auto first_view = coldCall<CreateView>(main, main_commands, main_next, {scene, first_camera}).view;
-        const auto second_view = coldCall<CreateView>(main, main_commands, main_next, {scene, second_camera}).view;
+        const auto first_view = coldCall<CreateView>(main, main_commands, main_next, {scene}).view;
+        const auto second_view = coldCall<CreateView>(main, main_commands, main_next, {scene}).view;
         MeshFeatureConfig config;
         config.target = {64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
         config.mesh = {assets.mesh.mesh, assets.description};
@@ -269,8 +269,10 @@ namespace mesh_sample
             {config.target, {{depth_feature, "main", take(ConfigValue::make(config))}}}).effect;
         const auto first_target = coldCall<CreateTarget>(main, main_commands, main_next, {config.target}).target;
         const auto second_target = coldCall<CreateTarget>(main, main_commands, main_next, {config.target}).target;
-        const AttachmentRequest first{scene, first_view, first_target, first_effect};
-        const AttachmentRequest second{scene, second_view, second_target, second_effect};
+        const AttachmentRequest first{scene, first_view, first_target, first_effect,
+            RenderPayload::copyOf(meshViewParameterBytes(first_camera))};
+        const AttachmentRequest second{scene, second_view, second_target, second_effect,
+            RenderPayload::copyOf(meshViewParameterBytes(second_camera))};
         const auto first_bindings = coldCall<Attach>(main, main_commands, main_next, first);
         const auto second_bindings = coldCall<Attach>(main, main_commands, main_next, second);
         for (const auto* bindings : {&first_bindings, &second_bindings})

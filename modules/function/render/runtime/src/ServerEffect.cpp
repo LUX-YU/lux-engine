@@ -1,5 +1,4 @@
 #include "ServerImpl.hpp"
-#include <lux/engine/render/data/Camera.hpp>
 #include <exec/variant_sender.hpp>
 
 #ifdef LUX_RUNTIME_EFFECT_TEST_SEAM
@@ -57,11 +56,6 @@ namespace lux::render
             }
             for (auto& value : values->programs)
             {
-                const bool live = std::ranges::any_of(assembly->analysis.execution_order, [&](auto id) {
-                    return assembly->definition.passes()[id.index].key == value.pass_key;
-                });
-                if (live && value.context_parameters.size && value.context_parameters != cameraParameterBlock())
-                    return cxx::unexpected(RenderError{kFeatureContract});
                 programs.push_back(std::move(value));
             }
             for (auto& argument : values->arguments)

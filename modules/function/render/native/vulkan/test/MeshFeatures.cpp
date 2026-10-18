@@ -4,7 +4,7 @@
 #include <lux/engine/render/native/vulkan/instance/InstanceStorage.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshStorage.hpp>
 #include <lux/engine/render/native/vulkan/material/MaterialStorage.hpp>
-#include <lux/engine/render/data/Camera.hpp>
+#include <lux/engine/render/features/MeshFeature.hpp>
 #include <fstream>
 #include <source_location>
 
@@ -104,7 +104,7 @@ int main(int argc, char** argv)
             auto code = std::make_shared<CompiledGraph>(checked(compileGraph(*session, assembled.definition,
                 assembled.analysis, assembled.external_bindings, contribution.programs, config.target)));
             auto* context = checked(session->prepare(code, config.target, &scene, nullptr, contribution.arguments));
-            CHECK(context->setContextParameters(cameraParameters(CameraState{})));
+            CHECK(context->setContextParameters(meshViewParameterBytes(MeshViewParameters{})));
             return std::pair{context, std::move(code)};
         };
         auto [first, first_code] = compile.template operator()<BasicMeshFeature>();
@@ -136,7 +136,7 @@ int main(int argc, char** argv)
             const auto metadata = FeatureProvider<Feature>{}.definition();
             const auto contribution = checked(metadata.programs(&config, "main"));
             auto* context = checked(session->prepare(code, resized, &scene, nullptr, contribution.arguments));
-            CHECK(context->setContextParameters(cameraParameters(CameraState{})));
+            CHECK(context->setContextParameters(meshViewParameterBytes(MeshViewParameters{})));
             return context;
         };
         auto* resized_mesh = prepare_resized.template operator()<BasicMeshFeature>(first_code);

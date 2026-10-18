@@ -6,7 +6,7 @@ foreach(test schema roundtrip malformed references ownership contracts)
     add_test(NAME render.data.${test} COMMAND render_data_test ${test})
 endforeach()
 
-foreach(header Schema Encoding Payload Shader ShaderInterface ShaderBlock ConfigValue Camera)
+foreach(header Schema Encoding Payload Shader ShaderInterface ShaderBlock ConfigValue)
     string(CONCAT probe
         "#include <lux/engine/render/data/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
         "#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native header leaked into Data\n#endif\n"

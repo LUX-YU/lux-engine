@@ -12,8 +12,8 @@ and scheduling do not carry per-object module pins.
 `Client.cpp` is a separate object target linked only to builtin Command values, IPC and neutral Feature contracts. It
 has no Vulkan/Native headers and rejects accidental Native platform includes at compile time. Main and
 Asset are two long-lived Clients. Asset uploads one tetrahedron Mesh, one cooked textured Unlit Material
-and one Texture. Two Scene instances share those assets. Two Views use different Camera matrices,
-Effects and Targets; numeric color and depth readbacks verify their real GPU output.
+and one Texture. Two Scene instances share those assets. The caller supplies different MeshViewParameters to the two Attachments; Views themselves carry no Camera.
+Each Attachment selects its Effect and Target; numeric color and depth readbacks verify their real GPU output.
 
 The Host supplies the real ListCommands ID. Clients query the directory with ordinary IpcMessage values,
 assign their own RequestIds, and consume actual response messages. The example demonstrates immutable

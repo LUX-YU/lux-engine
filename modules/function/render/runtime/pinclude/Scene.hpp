@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/render/core/Camera.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
@@ -17,11 +16,10 @@ namespace lux::render::runtime_detail
 {
     struct RenderView final
     {
-        CameraState camera;
         StorageSet storages;
         std::vector<AttachmentId> attachments;
 
-        RenderView(ResourceRegistry& registry, CameraState value) noexcept : camera(value), storages(registry) {}
+        explicit RenderView(ResourceRegistry& registry) noexcept : storages(registry) {}
     };
 
     struct RenderScene final

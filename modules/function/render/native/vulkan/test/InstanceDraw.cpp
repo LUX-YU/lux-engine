@@ -1,5 +1,5 @@
 #include "TextureFixture.hpp"
-#include <lux/engine/render/data/Camera.hpp>
+#include <lux/engine/render/features/MeshFeature.hpp>
 #include <lux/engine/render/native/vulkan/instance/InstanceStorage.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshStorage.hpp>
 #include <lux/engine/render/native/vulkan/material/MaterialStorage.hpp>
@@ -125,7 +125,7 @@ int main(int argc, char** argv)
             {3, 7, EDescriptorKind::STORAGE_BUFFER, 1, transform, "transforms", 1},
             {2, 6, EDescriptorKind::STORAGE_BUFFER, 1, word, "members", 1}
         };
-        draw.shader.interface.parameters = draw.context_parameters = cameraParameterBlock();
+        draw.shader.interface.parameters = draw.context_parameters = meshViewParameterBlock();
         draw.shader.interface.parameter_stages = 1;
         draw.parameter_values.resize(128);
         draw.parameters = {{"view", "", "view", EParameterSource::CONTEXT},
@@ -159,10 +159,10 @@ int main(int argc, char** argv)
         bad_arguments[2].value = take(ConfigValue::make(InstanceBinding{2, {}, EInstanceBinding::DRAW}));
         CHECK(!session->prepare(code, target, nullptr, nullptr, bad_arguments));
         CHECK(instances.residentBytes() == resident);
-        CameraState camera;
-        CHECK(first->setContextParameters(cameraParameters(camera)));
+        MeshViewParameters camera;
+        CHECK(first->setContextParameters(meshViewParameterBytes(camera)));
         camera.view[13] = .4f;
-        CHECK(second->setContextParameters(cameraParameters(camera)));
+        CHECK(second->setContextParameters(meshViewParameterBytes(camera)));
         const auto render = [&](ExecutionContext& context) {
             CHECK(take(context.execute()) == EExecutionOutcome::EXECUTED);
             CHECK(take(session->queue().wait(*context.lastUse(), UINT64_MAX)));

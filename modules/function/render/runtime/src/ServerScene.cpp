@@ -125,7 +125,10 @@ namespace lux::render
     void RenderServer::Impl::attachEffect(const Attach::Request& _request, Attach::Response& output_response) noexcept
     {
         const auto* decoded = &_request;
-        const auto [scene_id, view_id, target_id, effect_id] = *decoded;
+        const auto& scene_id = decoded->scene;
+        const auto& view_id = decoded->view;
+        const auto& target_id = decoded->target;
+        const auto& effect_id = decoded->effect;
         auto* scene = scenes.find(scene_id);
         auto* view = scene ? scene->views.find(view_id) : nullptr;
         auto* target = targets.find(target_id);
@@ -141,6 +144,11 @@ namespace lux::render
             output_response = cxx::unexpected(RenderError{kRuntimeState});
             return;
         }
+        if (auto valid = decoded->viewport.validate(); !valid)
+        {
+            output_response = cxx::unexpected(valid.error());
+            return;
+        }
         auto prepared =
             device->prepare(effect->code, target->description, &scene->storages, &view->storages, effect->arguments);
         if (!prepared)
@@ -148,21 +156,13 @@ namespace lux::render
             output_response = cxx::unexpected(prepared.error());
             return;
         }
-        if (!(*prepared)->contextParameters().empty())
+        if (auto values = (*prepared)->setContextParameters(decoded->parameters.bytes().view()); !values)
         {
-            if (auto values = (*prepared)->setContextParameters(cameraParameters(view->camera)); !values)
-            {
-                if (!device->release(*prepared))
-                {
-                    std::terminate(); // unsubmitted candidate
-                }
-                {
-                    output_response = cxx::unexpected(values.error());
-                    return;
-                }
-            }
+            if (!device->release(*prepared)) std::terminate(); // Unsubmitted candidate.
+            output_response = cxx::unexpected(values.error());
+            return;
         }
-        (*prepared)->setViewport(view->camera.viewport);
+        (*prepared)->setViewport(decoded->viewport);
         output_response.emplace();
         (*prepared)->forEachStorage([&](std::string_view key, StorageId id) noexcept
                                     { output_response->storages.push_back({std::string(key), id}); });
@@ -268,49 +268,32 @@ namespace lux::render
             output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
             return;
         }
-        if (auto valid = input->camera.validate(); !valid)
-        {
-            output_response = cxx::unexpected(valid.error());
-            return;
-        }
-        output_response = ViewCreated{scene->views.emplace(device->resources(), input->camera)};
+        output_response = ViewCreated{scene->views.emplace(device->resources())};
     }
 
-    void RenderServer::Impl::updateCamera(
-        const UpdateCamera::Request& _request,
-        UpdateCamera::Response& output_response
+    void RenderServer::Impl::updateAttachmentInputs(
+        const UpdateAttachmentInputs::Request& input,
+        UpdateAttachmentInputs::Response& output_response
     ) noexcept
     {
-        const auto& input = _request;
-        auto* scene = scenes.find(input.scene);
-        auto* view = scene ? scene->views.find(input.view) : nullptr;
-        if (!view)
+        auto* attachment = attachments.find(input.attachment);
+        if (!attachment)
         {
             output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
             return;
         }
-        if (auto valid = input.camera.validate(); !valid)
+        if (auto valid = input.viewport.validate(); !valid)
         {
             output_response = cxx::unexpected(valid.error());
             return;
         }
-        if (view->camera == input.camera)
+        // Native validates the complete input size before changing any parameter bytes.
+        if (auto applied = attachment->context->setContextParameters(input.parameters.bytes().view()); !applied)
         {
-            output_response = Ack{};
+            output_response = cxx::unexpected(applied.error());
             return;
         }
-        // Attach proved the complete Camera parameter ABI. This owner-thread update allocates nothing.
-        for (const auto id : view->attachments)
-        {
-            auto& attachment = *attachments.find(id);
-            if (!attachment.context->contextParameters().empty() &&
-                !attachment.context->setContextParameters(cameraParameters(input.camera)))
-            {
-                std::terminate();
-            }
-            attachment.context->setViewport(input.camera.viewport);
-        }
-        view->camera = input.camera;
+        attachment->context->setViewport(input.viewport);
         output_response = Ack{};
     }
 

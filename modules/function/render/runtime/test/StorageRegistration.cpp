@@ -166,7 +166,7 @@ static int exerciseRegistration(unsigned& handler_destructions)
         const auto scene_a = runtime_test::coldCall<CreateScene>(*client, {});
         const auto scene_b = runtime_test::coldCall<CreateScene>(*client, {});
         CHECK(scene_a && scene_b);
-        const auto view_a = runtime_test::coldCall<CreateView>(*client, {scene_a->scene, {}});
+        const auto view_a = runtime_test::coldCall<CreateView>(*client, {scene_a->scene});
         CHECK(view_a);
         const std::array<VStorageOwner, 4> owners{
             GlobalStorageOwner{}, scene_a->scene, scene_b->scene, ViewRequest{scene_a->scene, view_a->view}

@@ -23,7 +23,7 @@ static void exercise(std::size_t count)
     std::array<ViewId, 7> view_ids;
     std::array<EffectId, 11> effect_ids;
     std::array<TargetId, 13> target_ids;
-    for (auto& id : view_ids) id = views.emplace(registry, CameraState{});
+    for (auto& id : view_ids) id = views.emplace(registry);
     for (auto& id : effect_ids) id = effects.emplace();
     for (auto& id : target_ids) id = targets.emplace();
     std::vector<AttachmentId> ids;

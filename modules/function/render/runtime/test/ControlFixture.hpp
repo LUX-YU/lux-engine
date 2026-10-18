@@ -25,7 +25,7 @@ struct TestCommand final
     EffectId effect;
     AttachmentId attachment;
     TargetDesc description;
-    std::array<float, 4> color{1, 0, 0, 1};
+    RenderPayload parameters;
     std::vector<FeaturePreset> features;
 };
 enum class ETestOutcome { SUCCESS, FAILED, CANCELLED, OUTCOME_UNKNOWN };
@@ -66,13 +66,13 @@ public:
         case ETestCommand::CREATE_SCENE: return send<CreateScene>({}, input.operation);
         case ETestCommand::REMOVE_SCENE: return send<RemoveScene>({input.scene}, input.operation);
         case ETestCommand::CREATE_VIEW:
-            return send<CreateView>({input.scene, camera_fixture::oracle(input.color)}, input.operation);
+            return send<CreateView>({input.scene}, input.operation);
         case ETestCommand::REMOVE_VIEW: return send<RemoveView>({input.scene, input.view}, input.operation);
         case ETestCommand::CREATE_TARGET: return send<CreateTarget>({input.description}, input.operation);
         case ETestCommand::RESIZE_TARGET: return send<ResizeTarget>({input.target, input.description}, input.operation);
         case ETestCommand::REMOVE_EFFECT: return send<RemoveEffect>({input.effect}, input.operation);
         case ETestCommand::ATTACH:
-            return send<Attach>({input.scene, input.view, input.target, input.effect}, input.operation);
+            return send<Attach>({input.scene, input.view, input.target, input.effect, input.parameters}, input.operation);
         case ETestCommand::DETACH:
             return send<Detach>(input.attachment, input.operation);
         case ETestCommand::READBACK:

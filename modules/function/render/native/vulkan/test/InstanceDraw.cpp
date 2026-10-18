@@ -70,17 +70,11 @@ int main(int argc, char** argv)
         std::memcpy(source->data() + 48, indices.data(), sizeof(indices));
         MeshWrite mesh_request{{mesh_id, {}}, 0,
             {16, 3, 48, 4, 3, {{0, 0, rdesc::ETextureFormat::RGBA32_SFLOAT}}, {{0, 3, 0}}}, payload(source)};
-        auto mesh_work = take(lux::render::upload(meshes, mesh_request));
-        complete(mesh_work.second, host, *session);
-        const auto mesh = mesh_work.first.mesh;
-        mesh_work.second.reset();
+        const auto mesh = take(runUpload(lux::render::upload(meshes, mesh_request), host, *session)).mesh;
         MaterialProgram material_program{{rdesc::EShaderType::FRAGMENT, "main", spirv(argv[3])}, {}, 1};
         auto material_config = take(ConfigValue::make(std::move(material_program)));
         MaterialWrite material_request{{material_id, {}}, 0, material_config};
-        auto material_work = take(lux::render::upload(materials, material_request));
-        complete(material_work.second, host, *session);
-        const auto material = material_work.first.material;
-        material_work.second.reset();
+        const auto material = take(runUpload(lux::render::upload(materials, material_request), host, *session)).material;
         InstanceDescription input{mesh, material};
         input.transform[12] = -.45f;
         const auto left = take(instances.create(input));

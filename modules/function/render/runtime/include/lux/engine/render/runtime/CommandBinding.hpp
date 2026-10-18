@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/core/execution/CompletionPost.hpp>
+#include <lux/engine/core/execution/RunLoop.hpp>
 #include <lux/engine/platform/ipc/IpcMessage.hpp>
 #include <lux/engine/render/protocol/CommandMethod.hpp>
 #include <lux/engine/render/runtime/Error.hpp>
@@ -17,6 +18,7 @@ namespace lux::render::runtime_detail
     platform::ipc::IpcMessage& completionResult(CommandCompletion&) noexcept;
     execution::CompletionPost<RenderError> completionPost(CommandCompletion&) noexcept;
     stdexec::counting_scope& commandScope(CommandDispatchContext&) noexcept;
+    execution::RunLoop::Scheduler renderScheduler(CommandDispatchContext&) noexcept;
     void publishCompletion(CommandCompletion&) noexcept;
 } // namespace lux::render::runtime_detail
 
@@ -33,7 +35,7 @@ namespace lux::render
         std::same_as<
             stdexec::value_types_of_t<
                 std::invoke_result_t<decltype(Method), H&, typename C::Request&&>,
-                stdexec::env<>,
+                stdexec::env<stdexec::prop<stdexec::get_scheduler_t, execution::RunLoop::Scheduler>>,
                 std::tuple,
                 std::variant>,
             std::variant<std::tuple<typename C::Response>>>;
@@ -105,7 +107,9 @@ namespace lux::render
                         stdexec::spawn(
                             std::move(normalized),
                             runtime_detail::commandScope(context).get_token(),
-                            CompletionEnvironment{runtime_detail::completionPost(completion)}
+                            CompletionEnvironment{
+                                runtime_detail::completionPost(completion), runtime_detail::renderScheduler(context)
+                            }
                         );
                     }
                 },
@@ -120,6 +124,12 @@ namespace lux::render
         struct CompletionEnvironment final
         {
             execution::CompletionPost<RenderError> post;
+            execution::RunLoop::Scheduler scheduler;
+
+            execution::RunLoop::Scheduler query(stdexec::get_scheduler_t) const noexcept
+            {
+                return scheduler;
+            }
 
             execution::CompletionPost<RenderError> query(execution::GetCompletionPost) const noexcept
             {

@@ -1,42 +1,30 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/texture/TextureCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
-#include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
 #include <lux/engine/render/resource/Texture.hpp>
 #include <lux/engine/render/resource/Upload.hpp>
 
 namespace lux::render::vulkan
 {
-    GpuWorkSender<SetTexture::Response> TextureCommandHandler::setTexture(SetTexture::Request&& input) noexcept
+    static exec::task<SetTexture::Response> rejectedTexture(RenderError error) noexcept
     {
-        auto storage = device_.resources().borrow<TextureStorage>(input.texture.storage);
-        if (!storage)
-        {
-            return GpuWorkSender<SetTexture::Response>{storage.error()};
-        }
-        auto candidate = render::upload(**storage, input);
-        if (!candidate)
-        {
-            return GpuWorkSender<SetTexture::Response>{candidate.error()};
-        }
-        return {std::move(candidate->first), std::move(candidate->second), std::move(input.source)};
+        co_return cxx::unexpected(error);
     }
 
-    GpuWorkSender<SetTextureRegion::Response> TextureCommandHandler::updateTextureRegion(
+    exec::task<SetTexture::Response> TextureCommandHandler::setTexture(SetTexture::Request&& input) noexcept
+    {
+        auto storage = device_.resources().borrow<TextureStorage>(input.texture.storage);
+        if (!storage) return rejectedTexture(storage.error());
+        return render::upload(**storage, std::move(input));
+    }
+
+    exec::task<SetTextureRegion::Response> TextureCommandHandler::updateTextureRegion(
         SetTextureRegion::Request&& input
     ) noexcept
     {
         auto storage = device_.resources().borrow<TextureStorage>(input.texture.storage);
-        if (!storage)
-        {
-            return GpuWorkSender<SetTextureRegion::Response>{storage.error()};
-        }
-        auto candidate = render::upload(**storage, input);
-        if (!candidate)
-        {
-            return GpuWorkSender<SetTextureRegion::Response>{candidate.error()};
-        }
-        return {std::move(candidate->first), std::move(candidate->second), std::move(input.source)};
+        if (!storage) return rejectedTexture(storage.error());
+        return render::upload(**storage, std::move(input));
     }
 
     void TextureCommandHandler::releaseTexture(

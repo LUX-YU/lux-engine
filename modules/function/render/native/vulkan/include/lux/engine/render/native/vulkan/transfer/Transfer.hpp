@@ -3,28 +3,12 @@
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 #include <lux/engine/render/resource/AsyncWork.hpp>
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 
 namespace lux::render::vulkan
 {
     class DeviceSession;
     class StagingPage;
-
-    struct TransferStats final
-    {
-        std::uint64_t copied_bytes = 0, chunks = 0, prepare_ns = 0, owner_ns = 0;
-        std::uint64_t staging_bytes = 0, pending_bytes = 0, pending_peak = 0;
-        std::uint64_t gpu_ns = 0, gpu_samples = 0;
-    };
-
-    // Native row-copy description. Texture format/color/revision validation belongs to its professional Storage.
-    struct ImageTransferRegion final
-    {
-        std::uint64_t source_offset = 0, source_row_pitch = 0;
-        std::uint32_t block_extent = 1, block_bytes = 4;
-        VkImageSubresourceLayers subresource{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        VkOffset3D offset{};
-        VkExtent3D extent{};
-    };
 
     // One bounded CPU/staging/GPU transfer state machine, used by both Buffer and Image storage.
     // Source bytes are borrowed from the professional operation; actual destination and Clone Images are shared.

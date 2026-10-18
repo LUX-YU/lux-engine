@@ -2,6 +2,7 @@
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <cmath>
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include <algorithm>
@@ -27,7 +28,7 @@ namespace lux::render::vulkan
             std::array<std::array<std::uint32_t, 4>, 8> textures{};
         };
         static_assert(sizeof(Record) == 416);
-        MaterialData(std::shared_ptr<Residency> owner, const MaterialWrite& input) noexcept
+        MaterialData(std::shared_ptr<Residency> owner, MaterialWrite input) noexcept
             : residency(std::move(owner)), program(input.program), textures(input.textures), bytes(sizeof(Record))
         {
             record.parameters = input.parameters;
@@ -98,14 +99,11 @@ namespace lux::render::vulkan
             if (!entry.current) storage.entries_.erase(id.local);
         }
 
-        RenderResult<void> publish(Transfer& transfer) noexcept
+        RenderResult<void> publish(const SubmissionRequirements& requirements) noexcept
         {
             if (!storage.session_.resources().native(storage.id_))
                 return cxx::unexpected(RenderError{kStorageIdentity});
-            auto buffer = transfer.takeBuffer();
-            if (!buffer) return cxx::unexpected(buffer.error());
-            backing->buffer = std::move(*buffer);
-            backing->last_use = transfer.requirements();
+            backing->last_use = requirements;
             auto& entry = *storage.entries_.find(id.local);
             entry.current = std::move(backing);
             entry.updating = false;
@@ -126,37 +124,37 @@ namespace lux::render::vulkan
 
     std::size_t MaterialStorage::residentVersions() const noexcept { return residency_->versions; }
 
-    MaterialStorage::UploadResult MaterialStorage::upload(const MaterialWrite& input) noexcept
+    MaterialStorage::UploadResult MaterialStorage::upload(MaterialWrite input) noexcept
     {
-        if (input.material.storage != id_) return cxx::unexpected(RenderError{kStorageIdentity});
+        if (input.material.storage != id_) co_return cxx::unexpected(RenderError{kStorageIdentity});
         auto* existing = input.material.isNull() ? nullptr : entries_.find(input.material.local);
-        if (!input.material.isNull() && !existing) return cxx::unexpected(RenderError{kStorageIdentity});
-        if (existing && existing->updating) return cxx::unexpected(RenderError{kBusy});
+        if (!input.material.isNull() && !existing) co_return cxx::unexpected(RenderError{kStorageIdentity});
+        if (existing && existing->updating) co_return cxx::unexpected(RenderError{kBusy});
         const auto revision = existing ? existing->current->revision : 0;
         if (input.expected_revision != revision || revision == std::numeric_limits<std::uint64_t>::max())
-            return cxx::unexpected(RenderError{kStorageContract});
+            co_return cxx::unexpected(RenderError{kStorageContract});
         const auto* program = input.program.borrow<MaterialProgram>();
         const bool invalid_program = !program || program->fragment.stage != rdesc::EShaderType::FRAGMENT ||
             program->fragment.entry.empty() || program->fragment.words.size() < 5 ||
             program->fragment.words.front() != 0x07230203 || program->parameter_count > 16 || program->texture_count > 8;
-        if (invalid_program) return cxx::unexpected(RenderError{kStorageContract});
+        if (invalid_program) co_return cxx::unexpected(RenderError{kStorageContract});
         for (std::size_t slot = program->texture_count; slot < input.textures.size(); ++slot)
             if (!input.textures[slot].texture.isNull() || input.textures[slot].revision)
-                return cxx::unexpected(RenderError{kStorageContract});
+                co_return cxx::unexpected(RenderError{kStorageContract});
         for (const auto& lane : input.parameters)
             for (const auto value : lane)
-                if (!std::isfinite(value)) return cxx::unexpected(RenderError{kStorageContract});
+                if (!std::isfinite(value)) co_return cxx::unexpected(RenderError{kStorageContract});
         // Only the cold Graph owns a Pipeline. A bound Material cannot silently replace its Shader contract.
         if (existing && !existing->uses.empty() &&
             *existing->current->program.borrow<MaterialProgram>() != *program)
-            return cxx::unexpected(RenderError{kStorageMismatch});
-        if (auto collected = session_.collect(); !collected) return cxx::unexpected(collected.error());
+            co_return cxx::unexpected(RenderError{kStorageMismatch});
+        if (auto collected = session_.collect(); !collected) co_return cxx::unexpected(collected.error());
         const auto projected = cxx::checkedAdd(residency_->bytes, std::uint64_t(sizeof(MaterialData::Record)));
         const bool over_budget = !projected ||
             (config_.resident_byte_budget && *projected > config_.resident_byte_budget);
-        if (over_budget) return cxx::unexpected(RenderError{kStorageCapacity});
+        if (over_budget) co_return cxx::unexpected(RenderError{kStorageCapacity});
         auto storage_reference = session_.resources().share(id_);
-        if (!storage_reference) return cxx::unexpected(storage_reference.error());
+        if (!storage_reference) co_return cxx::unexpected(storage_reference.error());
         auto backing = std::make_shared<MaterialData>(residency_, input);
         for (std::uint32_t slot = 0; slot < program->texture_count; ++slot)
         {
@@ -164,11 +162,11 @@ namespace lux::render::vulkan
             auto& registry = session_.resources();
             auto* owner = registry.owner(texture.texture.storage);
             const bool invalid_owner = owner != &session_.globalStorages() && owner != registry.owner(id_);
-            if (!owner || invalid_owner) return cxx::unexpected(RenderError{kStorageIdentity});
+            if (!owner || invalid_owner) co_return cxx::unexpected(RenderError{kStorageIdentity});
             auto storage = registry.borrow<TextureStorage>(texture.texture.storage);
-            if (!storage) return cxx::unexpected(storage.error());
+            if (!storage) co_return cxx::unexpected(storage.error());
             auto reference = (*storage)->pin(texture, backing->texture_bindings[slot]);
-            if (!reference) return cxx::unexpected(reference.error());
+            if (!reference) co_return cxx::unexpected(reference.error());
             backing->texture_info[slot] = reference->first;
             backing->record.textures[slot] = {0, reference->second, 0, 0};
             backing->record.header[2] |= 1u << slot;
@@ -181,21 +179,25 @@ namespace lux::render::vulkan
             const bool mismatch = previous.width != next.width || previous.height != next.height ||
                 previous.mip_count != next.mip_count || previous.layers != next.layers ||
                 previous.pixel_format != next.pixel_format;
-            if (mismatch) return cxx::unexpected(RenderError{kStorageMismatch});
+            if (mismatch) co_return cxx::unexpected(RenderError{kStorageMismatch});
         }
         const auto source = std::as_bytes(std::span(&backing->record, 1));
-        auto transfer = session_.uploadBuffer(source, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-        if (!transfer) return cxx::unexpected(transfer.error());
+        auto buffer = session_.allocator().createBuffer(source.size(),
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            EMemoryAccess::DEVICE);
+        if (!buffer) co_return cxx::unexpected(buffer.error());
+        backing->buffer = std::move(*buffer);
         backing->revision = revision + 1;
         auto id = input.material;
         if (id.isNull()) id.local = entries_.emplace();
         entries_.find(id.local)->updating = true;
         auto candidate = std::make_unique<Candidate>(*this, id, std::move(backing), std::move(*storage_reference));
-        auto work = GpuWork::pending<[](Candidate& value, Transfer& transfer, DeviceSession&) noexcept {
-            return value.publish(transfer);
-        }>(session_, *transfer, candidate);
-        if (!work) return cxx::unexpected(work.error());
-        return std::pair{MaterialPublished{id, revision + 1}, std::move(*work)};
+        auto uploaded = co_await session_.uploads().writeBuffer(candidate->backing->buffer, RenderPayload::copyOf(source));
+        if (!uploaded) co_return cxx::unexpected(uploaded.error());
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+        if (stop.stop_requested()) co_return cxx::unexpected(RenderError{kWorkStopped});
+        if (auto published = candidate->publish(*uploaded); !published) co_return cxx::unexpected(published.error());
+        co_return MaterialPublished{id, revision + 1};
     }
 
     RenderResult<MaterialInformation> MaterialStorage::query(MaterialId id) const noexcept
@@ -300,9 +302,9 @@ namespace lux::render::vulkan
 namespace lux::render
 {
     StorageTraits<vulkan::MaterialStorage>::Result StorageTraits<vulkan::MaterialStorage>::upload(
-        vulkan::MaterialStorage& storage, const MaterialWrite& input
+        vulkan::MaterialStorage& storage, MaterialWrite input
     ) noexcept
     {
-        return storage.upload(input);
+        return storage.upload(std::move(input));
     }
 }

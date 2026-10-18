@@ -1,5 +1,4 @@
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
-#include <lux/engine/render/native/vulkan/transfer/Transfer.hpp>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <bit>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
@@ -53,11 +52,10 @@ namespace lux::render::vulkan
         }
     }
 
-    RenderResult<std::unique_ptr<Transfer>> TextureStorage::prepareImage(
+    RenderResult<TextureStorage::ImagePreparation> TextureStorage::prepareImage(
         const rdesc::TextureInfo& info,
         std::span<const std::byte> source,
-        std::optional<TextureRegion> region,
-        std::shared_ptr<TextureData> base
+        std::optional<TextureRegion> region
     ) noexcept
     {
         auto& session = session_;
@@ -143,8 +141,9 @@ namespace lux::render::vulkan
                 regions.push_back({input.offset, pitch, layout.extent, layout.bytes,
                     {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, 1}, {}, {input.width, input.height, 1}});
             }
-        return session.uploadImage(description, source, regions, base ? base->image_ : nullptr,
-            region.has_value(), base ? &base->last_use_ : nullptr);
+        auto image = session.allocator().createImage(description);
+        if (!image) return cxx::unexpected(image.error());
+        return ImagePreparation{std::move(*image), std::move(regions)};
     }
 
     // Exclusive reservation of an existing Storage candidate. No transfer, queue or async phase is owned here.
@@ -332,7 +331,7 @@ namespace lux::render::vulkan
     }
 
     RenderResult<std::unique_ptr<TextureStorage::Candidate>> TextureStorage::reserve(
-        Transfer& transfer, const rdesc::TextureInfo& info, TextureId id, std::uint64_t expected) noexcept
+        std::shared_ptr<Image> image, const rdesc::TextureInfo& info, TextureId id, std::uint64_t expected) noexcept
     {
         auto reference = session_.resources().share(id_);
         if (!reference) return cxx::unexpected(reference.error());
@@ -355,13 +354,13 @@ namespace lux::render::vulkan
             if (incompatible_consumers) return cxx::unexpected(RenderError{kUnsupported});
         }
         if (auto collected = session_.collect(); !collected) return cxx::unexpected(collected.error());
-        const auto bytes = transfer.image().memoryBinding().size;
+        const auto bytes = image->memoryBinding().size;
         const bool is_byte_budget_full = config_.resident_byte_budget &&
             bytes > config_.resident_byte_budget - residency_->bytes;
         if (is_byte_budget_full) return cxx::unexpected(RenderError{kCapacity});
         auto descriptor = descriptors_->allocate();
         if (!descriptor) return cxx::unexpected(descriptor.error());
-        auto content = std::make_shared<TextureData>(residency_, transfer.imageResource(), std::move(*descriptor),
+        auto content = std::make_shared<TextureData>(residency_, std::move(image), std::move(*descriptor),
             info, expected + 1);
         auto& version = *content;
         const auto device = session_.device().native();
@@ -379,7 +378,7 @@ namespace lux::render::vulkan
         sampler.maxLod = float(version.info_.mip_count - 1);
         result = LUX_NATIVE("texture_sampler", vkCreateSampler(device, &sampler, nullptr, &version.sampler_));
         if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
-        // This unused descriptor is not reachable by any Context until publish after final Graphics completion.
+        // The descriptor becomes reachable only after the required upload submissions are accepted.
         version.descriptor_.write(version.view_, version.sampler_);
         if (id.isNull()) id = TextureId{id_, textures_.emplace()};
         record = textures_.find(id.local);
@@ -395,58 +394,62 @@ namespace lux::render::vulkan
         candidate.version.reset();
     }
 
-    TextureStorage::UploadResult TextureStorage::upload(const TextureWrite& input) noexcept
+    TextureStorage::UploadResult TextureStorage::upload(TextureWrite input) noexcept
     {
-        if (input.texture.storage != id_) return cxx::unexpected(RenderError{kStorageIdentity});
+        if (input.texture.storage != id_) co_return cxx::unexpected(RenderError{kStorageIdentity});
         const auto source = input.source.bytes().view();
         if (auto admitted = admit(source.size(), input.texture.isNull()); !admitted)
-            return cxx::unexpected(admitted.error());
-        auto transfer = prepareImage(input.info, source);
-        if (!transfer) return cxx::unexpected(transfer.error());
-        auto candidate = reserve(**transfer, input.info, input.texture, input.expected_revision);
-        if (!candidate) return cxx::unexpected(candidate.error());
+            co_return cxx::unexpected(admitted.error());
+        auto prepared = prepareImage(input.info, source);
+        if (!prepared) co_return cxx::unexpected(prepared.error());
+        auto candidate = reserve(std::move(prepared->first), input.info, input.texture, input.expected_revision);
+        if (!candidate) co_return cxx::unexpected(candidate.error());
         const TexturePublished result{(*candidate)->texture, (*candidate)->version->revision_};
-        auto work = GpuWork::pending<[](Candidate& value, Transfer& transfer, DeviceSession&) noexcept -> RenderResult<void> {
-            if (!value.storage.session_.resources().native(value.storage.id_))
-                return cxx::unexpected(RenderError{kStorageIdentity});
-            value.storage.publish(value, transfer);
-            return {};
-        }>(session_, *transfer, *candidate);
-        if (!work) return cxx::unexpected(work.error());
-        return std::pair{result, std::move(*work)};
+        auto uploaded = co_await session_.uploads().writeImage(
+            (*candidate)->version->image_, std::move(input.source), std::move(prepared->second)
+        );
+        if (!uploaded) co_return cxx::unexpected(uploaded.error());
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+        if (stop.stop_requested()) co_return cxx::unexpected(RenderError{kWorkStopped});
+        if (!session_.resources().native(id_)) co_return cxx::unexpected(RenderError{kStorageIdentity});
+        publish(**candidate, *uploaded);
+        co_return result;
     }
 
-    TextureStorage::UploadResult TextureStorage::upload(const TextureRegionWrite& input) noexcept
+    TextureStorage::UploadResult TextureStorage::upload(TextureRegionWrite input) noexcept
     {
-        if (input.texture.storage != id_) return cxx::unexpected(RenderError{kStorageIdentity});
+        if (input.texture.storage != id_) co_return cxx::unexpected(RenderError{kStorageIdentity});
         auto* record = textures_.find(input.texture.local);
-        if (!record || !record->current) return cxx::unexpected(RenderError{kWrongOwner});
+        if (!record || !record->current) co_return cxx::unexpected(RenderError{kWrongOwner});
         if (record->updating || record->current->revision_ != input.expected_revision)
-            return cxx::unexpected(RenderError{kBusy});
+            co_return cxx::unexpected(RenderError{kBusy});
         const auto& info = record->current->info_;
         const auto last = info.mip_ranges[info.mip_count - 1];
-        if (auto admitted = admit(last.offset + last.size, false); !admitted) return cxx::unexpected(admitted.error());
-        auto transfer = prepareImage(info, input.source.bytes().view(), input.region, record->current);
-        if (!transfer) return cxx::unexpected(transfer.error());
-        auto candidate = reserve(**transfer, info, input.texture, input.expected_revision);
-        if (!candidate) return cxx::unexpected(candidate.error());
+        if (auto admitted = admit(last.offset + last.size, false); !admitted)
+            co_return cxx::unexpected(admitted.error());
+        auto prepared = prepareImage(info, input.source.bytes().view(), input.region);
+        if (!prepared) co_return cxx::unexpected(prepared.error());
+        auto candidate = reserve(std::move(prepared->first), info, input.texture, input.expected_revision);
+        if (!candidate) co_return cxx::unexpected(candidate.error());
         (*candidate)->base = record->current;
         const TexturePublished result{input.texture, (*candidate)->version->revision_};
-        auto work = GpuWork::pending<[](Candidate& value, Transfer& transfer, DeviceSession&) noexcept -> RenderResult<void> {
-            if (!value.storage.session_.resources().native(value.storage.id_))
-                return cxx::unexpected(RenderError{kStorageIdentity});
-            value.storage.publish(value, transfer);
-            return {};
-        }>(session_, *transfer, *candidate);
-        if (!work) return cxx::unexpected(work.error());
-        return std::pair{result, std::move(*work)};
+        auto uploaded = co_await session_.uploads().writeImage(
+            (*candidate)->version->image_, std::move(input.source), std::move(prepared->second),
+            (*candidate)->base->image_, &(*candidate)->base->last_use_
+        );
+        if (!uploaded) co_return cxx::unexpected(uploaded.error());
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+        if (stop.stop_requested()) co_return cxx::unexpected(RenderError{kWorkStopped});
+        if (!session_.resources().native(id_)) co_return cxx::unexpected(RenderError{kStorageIdentity});
+        publish(**candidate, *uploaded);
+        co_return result;
     }
 
-    void TextureStorage::publish(Candidate& candidate, Transfer& transfer) noexcept
+    void TextureStorage::publish(Candidate& candidate, const SubmissionRequirements& submitted) noexcept
     {
         auto& record = *textures_.find(candidate.texture.local);
         auto& version = *candidate.version;
-        version.last_use_ = transfer.requirements();
+        version.last_use_ = submitted;
         record.current = std::move(candidate.version);
         record.updating = false;
         for (auto* use : record.uses) use->update(record.current);
@@ -469,15 +472,15 @@ namespace lux::render::vulkan
 namespace lux::render
 {
     StorageTraits<vulkan::TextureStorage>::Result
-    StorageTraits<vulkan::TextureStorage>::upload(vulkan::TextureStorage& storage, const TextureWrite& input) noexcept
+    StorageTraits<vulkan::TextureStorage>::upload(vulkan::TextureStorage& storage, TextureWrite input) noexcept
     {
-        return storage.upload(input);
+        return storage.upload(std::move(input));
     }
 
     StorageTraits<vulkan::TextureStorage>::Result
     StorageTraits<vulkan::TextureStorage>::upload(vulkan::TextureStorage& storage,
-        const TextureRegionWrite& input) noexcept
+        TextureRegionWrite input) noexcept
     {
-        return storage.upload(input);
+        return storage.upload(std::move(input));
     }
 }

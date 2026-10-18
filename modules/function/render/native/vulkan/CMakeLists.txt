@@ -11,7 +11,7 @@ set(LUX_NATIVE_SOURCES
     src/Error.cpp src/DeviceSession.cpp src/DescriptorArray.cpp src/device/Device.cpp src/device/Vma.cpp
     src/memory/Memory.cpp src/transfer/Submission.cpp
     src/Compile.cpp src/LayoutPlan.cpp src/Shader.cpp src/Execution.cpp src/Readback.cpp
-    src/transfer/Transfer.cpp src/transfer/StagingArena.cpp src/transfer/GpuWork.cpp
+    src/transfer/Transfer.cpp src/transfer/UploadContext.cpp src/transfer/StagingArena.cpp src/transfer/GpuWork.cpp
 )
 
 add_component(

@@ -70,15 +70,16 @@ namespace extension_test
 
                 RenderResult<void> ready() noexcept { return buffer->read(0, *output); }
             };
-        vk::GpuWorkSender<SetBuffer::Response> setBuffer(SetBuffer::Request&& input) noexcept
+        static exec::task<SetBuffer::Response> rejectedBuffer(RenderError error) noexcept
         {
-            auto& session = session_;
-            auto& registry = session.resources();
-            auto storage = registry.borrow<NativeBuffer>(input.id.storage);
-            if (!storage) return vk::GpuWorkSender<SetBuffer::Response>{storage.error()};
-            auto upload = lux::render::upload(**storage, input);
-            if (!upload) return vk::GpuWorkSender<SetBuffer::Response>{upload.error()};
-            return {std::move(upload->first), std::move(upload->second), std::move(input.source)};
+            co_return lux::cxx::unexpected(error);
+        }
+
+        exec::task<SetBuffer::Response> setBuffer(SetBuffer::Request&& input) noexcept
+        {
+            auto storage = session_.resources().borrow<NativeBuffer>(input.id.storage);
+            if (!storage) return rejectedBuffer(storage.error());
+            return lux::render::upload(**storage, std::move(input));
         }
 
         void removeBuffer(const RemoveBuffer::Request& input, RemoveBuffer::Response& response) noexcept

@@ -37,6 +37,59 @@ static void pump(CpuFixture& host, DeviceSession& session)
     session.dispatchCompletions();
 }
 
+// New upload tasks publish their typed resource result after required submissions, not final Fence completion.
+// Scope owns the connected state; this observation contains only the business result and cancellation source.
+template<class T> struct UploadCompletion final
+{
+    bool done = false;
+    RenderResult<T> result = lux::cxx::unexpected(RenderError{kBusy});
+    stdexec::counting_scope scope;
+
+    void start(exec::task<RenderResult<T>> task, CpuFixture& host) noexcept
+    {
+        auto terminal = std::move(task)
+            | stdexec::upon_error([](std::exception_ptr) noexcept -> RenderResult<T> {
+                  std::terminate();
+              })
+            | stdexec::upon_stopped([]() noexcept -> RenderResult<T> {
+                  return lux::cxx::unexpected(RenderError{kWorkStopped});
+              })
+            | stdexec::then([this](RenderResult<T> value) noexcept {
+                  CHECK(!done);
+                  result = std::move(value);
+                  done = true;
+              });
+        stdexec::spawn(std::move(terminal), scope.get_token(),
+            stdexec::env{stdexec::prop{stdexec::get_scheduler, host.scheduler()}});
+    }
+
+    void cancel() noexcept { scope.request_stop(); }
+};
+
+template<class T> static void finish(UploadCompletion<T>& completion, CpuFixture& host, DeviceSession& session)
+{
+    const auto deadline = Clock::now() + std::chrono::seconds(20);
+    while (!completion.done)
+    {
+        pump(host, session);
+        CHECK(Clock::now() < deadline);
+        std::this_thread::yield();
+    }
+    // The terminal observation is not the scope's joined state. At this point the
+    // owner callback has returned; joining only settles CPU state, never the GPU.
+    CHECK(stdexec::sync_wait(completion.scope.join()));
+}
+
+template<class T> static RenderResult<T> runUpload(
+    exec::task<RenderResult<T>> task, CpuFixture& host, DeviceSession& session
+)
+{
+    UploadCompletion<T> completion;
+    completion.start(std::move(task), host);
+    finish(completion, host, session);
+    return std::move(completion.result);
+}
+
 static void finish(WorkCompletion& completion, CpuFixture& host, DeviceSession& session)
 {
     const auto deadline = Clock::now() + std::chrono::seconds(20);

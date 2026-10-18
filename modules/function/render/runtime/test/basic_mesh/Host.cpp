@@ -31,7 +31,7 @@ namespace
         static inline unsigned calls = 0; // Written only by Render owner, observed after join.
         explicit AlternateTexture(vulkan::DeviceSession& device) noexcept : texture_(device) {}
 
-        vulkan::GpuWorkSender<SetTexture::Response> set(TextureWrite&& value) noexcept
+        exec::task<SetTexture::Response> set(TextureWrite&& value) noexcept
         {
             ++calls;
             return texture_.setTexture(std::move(value));

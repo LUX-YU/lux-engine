@@ -76,18 +76,14 @@ int main()
     const std::array<float, 4> half{0.5f, 0.5f, 0.5f, 0.5f};
     const auto half_bytes = std::as_bytes(std::span(half));
     const auto half_owner = std::make_shared<const std::vector<std::byte>>(half_bytes.begin(), half_bytes.end());
-    auto upload = take(lux::render::upload(buffer, extension_test::SetBuffer::Request{{instance_id, {}}, payload(half_owner)}));
-    const auto id = upload.first.id;
-    complete(upload.second, worker, *session);
-    upload.second.reset();
+    auto upload = take(runUpload(lux::render::upload(buffer, extension_test::SetBuffer::Request{{instance_id, {}}, payload(half_owner)}), worker, *session));
+    const auto id = upload.id;
     CHECK(take(session->resources().tryGet<TestBufferStorage>(instance_id)).exists(id));
     const auto white_owner = std::make_shared<const std::vector<std::byte>>(1024, std::byte{128});
     const auto& white = *white_owner;
-    auto image = take(lux::render::upload(*textures(*session),
-        SetTexture::Request{{textures(*session)->id(), {}}, 0, information(16, 1, false), payload(white_owner)}));
-    const auto texture = image.first.texture;
-    complete(image.second, worker, *session);
-    image.second.reset();
+    auto image = take(runUpload(lux::render::upload(*textures(*session),
+        SetTexture::Request{{textures(*session)->id(), {}}, 0, information(16, 1, false), payload(white_owner)}), worker, *session));
+    const auto texture = image.texture;
     auto config = take(ConfigValue::make(extension_test::ViewConfig{texture, id}));
     const FeatureInstanceView selected{&extension_test::definition, &extension_test::definition_graph, &config, "combined"};
     auto assembly = take(assembleFeatures({&selected, 1}, extension_test::limits.max_encoded_bytes));
@@ -140,11 +136,9 @@ int main()
             const std::array<float, 4> values{0.25f, 0.25f, 0.25f, 0.25f};
             const auto bytes = std::as_bytes(std::span(values));
             auto owner = std::make_shared<const std::vector<std::byte>>(bytes.begin(), bytes.end());
-            auto other = take(lux::render::upload(buffer,
-                extension_test::SetBuffer::Request{{instance_id, {}}, payload(owner)}));
-            const auto other_id = other.first.id;
-            complete(other.second, worker, *session);
-            other.second.reset();
+            auto other = take(runUpload(lux::render::upload(buffer,
+                extension_test::SetBuffer::Request{{instance_id, {}}, payload(owner)}), worker, *session));
+            const auto other_id = other.id;
             RenderGraphBuilder builder;
             const auto image = take(builder.declareResource({"image", GraphImageDesc{16, 16}, EGraphOrigin::IMPORTED,
                 {GraphImageRange{1, 0, 1, 0, 1}}}));
@@ -223,9 +217,7 @@ int main()
     const std::array<float, 4> quarter{0.25f, 0.25f, 0.25f, 0.25f};
     const auto quarter_bytes = std::as_bytes(std::span(quarter));
     const auto quarter_owner = std::make_shared<const std::vector<std::byte>>(quarter_bytes.begin(), quarter_bytes.end());
-    upload = take(lux::render::upload(buffer, extension_test::SetBuffer::Request{id, payload(quarter_owner)}));
-    complete(upload.second, worker, *session);
-    upload.second.reset();
+    upload = take(runUpload(lux::render::upload(buffer, extension_test::SetBuffer::Request{id, payload(quarter_owner)}), worker, *session));
     CHECK(buffer.backingCount() == 1); // Prepared users rebind at publication; completed old backing retires.
     auto* replacement = take(session->prepare(code, extension_test::target, nullptr, nullptr, arguments));
     CHECK(&replacement->code() == &context->code()); // same immutable code, distinct prepared asset bindings

@@ -1,4 +1,5 @@
 #include "StagingArena.hpp"
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include <exception>
 
 namespace lux::render::vulkan
@@ -43,7 +44,20 @@ namespace lux::render::vulkan
 
     StagingPage::~StagingPage() noexcept
     {
+        (void)finishMeasurement(); // Failure is retained in the UploadContext measurement counters.
         arena_.free_pages_.push_back(index_);
+    }
+
+    void StagingPage::markMeasurement(UploadContext& context, std::uint32_t bits) noexcept
+    {
+        measurement_ = &context;
+        timestamp_bits_ = bits;
+    }
+
+    RenderResult<void> StagingPage::finishMeasurement() noexcept
+    {
+        auto* context = std::exchange(measurement_, nullptr);
+        return context ? context->measure(index_, timestamp_bits_) : RenderResult<void>{};
     }
 
     Buffer& StagingPage::buffer() const noexcept

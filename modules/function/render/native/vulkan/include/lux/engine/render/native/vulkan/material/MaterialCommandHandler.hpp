@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include <lux/engine/render/protocol/CommandMethod.hpp>
 
 #include <lux/engine/render/resource/Factory.hpp>
@@ -18,7 +18,7 @@ namespace lux::render::vulkan
 
         explicit MaterialCommandHandler(DeviceSession& device) noexcept : device_(device) {}
 
-        GpuWorkSender<SetMaterial::Response> setMaterial(SetMaterial::Request&&) noexcept;
+        exec::task<SetMaterial::Response> setMaterial(SetMaterial::Request&&) noexcept;
         void queryMaterial(const QueryMaterial::Request&, QueryMaterial::Response&) noexcept;
         void releaseMaterial(const ReleaseMaterial::Request&, ReleaseMaterial::Response&) noexcept;
         using Bindings = std::tuple<

@@ -39,6 +39,11 @@ namespace lux::render::runtime_detail
         return context.scope_;
     }
 
+    execution::RunLoop::Scheduler renderScheduler(CommandDispatchContext& context) noexcept
+    {
+        return context.render_loop_.scheduler();
+    }
+
     void publishCompletion(CommandCompletion& record) noexcept
     {
         record.post()(nullptr, nullptr, {});

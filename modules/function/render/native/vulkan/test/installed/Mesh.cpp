@@ -20,10 +20,8 @@ int main()
     std::memcpy(bytes->data() + 48, indices.data(), sizeof(indices));
     const MeshWrite input{{id, {}}, 0, {16, 3, 48, 4, 3,
         {{0, 0, rdesc::ETextureFormat::RGBA32_SFLOAT}}, {{0, 3, 0}}}, payload(bytes)};
-    auto upload = take(lux::render::upload(storage, input));
-    complete(upload.second, host, *session);
-    const auto published = upload.first;
-    upload.second.reset();
+    auto upload = take(runUpload(lux::render::upload(storage, input), host, *session));
+    const auto published = upload;
     const auto access = take(session->resources().tryGet<lux::render::MeshStorage>(id));
     CHECK(take(access.query(published.mesh)).description == input.description);
     CHECK(storage.release(published.mesh, published.revision));

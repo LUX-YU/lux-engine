@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <stdexec/execution.hpp>
 
 namespace lux::render::vulkan
 {
@@ -147,6 +148,10 @@ namespace lux::render::vulkan
     class SubmissionQueue
     {
     public:
+        class CompletionSender;
+        // Completion is a value so a caller can preserve the actual Native failure across cancellation.
+        // The existing owner-thread dispatch delivers it; no thread or additional queue is created.
+        [[nodiscard]] CompletionSender whenComplete(SubmissionTicket ticket) noexcept;
         [[nodiscard]] static RenderResult<std::unique_ptr<SubmissionQueue>> create(
             const VulkanDevice& device,
             std::uint32_t capacity,
@@ -213,4 +218,56 @@ namespace lux::render::vulkan
 
         std::unique_ptr<Backing> backing_;
     };
+
+    class SubmissionQueue::CompletionSender final
+    {
+    public:
+        using sender_concept = stdexec::sender_t;
+        using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(RenderResult<void>)>;
+
+        template <class Receiver> class Operation final
+        {
+        public:
+            using operation_state_concept = stdexec::operation_state_t;
+
+            Operation(SubmissionQueue& queue, SubmissionTicket ticket, Receiver receiver) noexcept
+                : queue_(queue), ticket_(ticket), receiver_(std::move(receiver)) {}
+
+            void start() & noexcept
+            {
+                auto result = queue_.reserve(callback_);
+                if (result) result = queue_.onComplete(ticket_, callback_, finish, this);
+                if (!result) finish(this, std::move(result));
+            }
+
+        private:
+            static void finish(void* value, RenderResult<void> result) noexcept
+            {
+                auto& self = *static_cast<Operation*>(value);
+                self.callback_.reset();
+                stdexec::set_value(std::move(self.receiver_), std::move(result));
+            }
+
+            SubmissionQueue& queue_;
+            SubmissionTicket ticket_;
+            SubmissionCallback callback_;
+            Receiver receiver_;
+        };
+
+        template <class Receiver> [[nodiscard]] auto connect(Receiver receiver) const noexcept
+        {
+            return Operation<Receiver>{queue_, ticket_, std::move(receiver)};
+        }
+
+    private:
+        friend class SubmissionQueue;
+        CompletionSender(SubmissionQueue& queue, SubmissionTicket ticket) noexcept : queue_(queue), ticket_(ticket) {}
+        SubmissionQueue& queue_;
+        SubmissionTicket ticket_;
+    };
+
+    inline SubmissionQueue::CompletionSender SubmissionQueue::whenComplete(SubmissionTicket ticket) noexcept
+    {
+        return CompletionSender{*this, ticket};
+    }
 } // namespace lux::render::vulkan

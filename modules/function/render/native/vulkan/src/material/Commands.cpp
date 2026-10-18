@@ -1,21 +1,19 @@
 #include <lux/engine/render/native/vulkan/material/MaterialCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/material/MaterialStorage.hpp>
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 
 namespace lux::render::vulkan
 {
-    GpuWorkSender<SetMaterial::Response> MaterialCommandHandler::setMaterial(SetMaterial::Request&& input) noexcept
+    static exec::task<SetMaterial::Response> rejectedMaterial(RenderError error) noexcept
+    {
+        co_return cxx::unexpected(error);
+    }
+
+    exec::task<SetMaterial::Response> MaterialCommandHandler::setMaterial(SetMaterial::Request&& input) noexcept
     {
         auto storage = device_.resources().borrow<MaterialStorage>(input.material.storage);
-        if (!storage)
-        {
-            return GpuWorkSender<SetMaterial::Response>{storage.error()};
-        }
-        auto candidate = render::upload(**storage, input);
-        if (!candidate)
-        {
-            return GpuWorkSender<SetMaterial::Response>{candidate.error()};
-        }
-        return {std::move(candidate->first), std::move(candidate->second)};
+        if (!storage) return rejectedMaterial(storage.error());
+        return render::upload(**storage, std::move(input));
     }
 
     void MaterialCommandHandler::queryMaterial(

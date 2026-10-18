@@ -2,6 +2,7 @@
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include "Shader.hpp"
 #include <algorithm>
 #include <cstring>
@@ -74,14 +75,11 @@ namespace lux::render::vulkan
             if (!entry.current) storage.entries_.erase(id.local);
         }
 
-        RenderResult<void> publish(Transfer& transfer) noexcept
+        RenderResult<void> publish(const SubmissionRequirements& requirements) noexcept
         {
             if (!storage.session_.resources().native(storage.id_))
                 return cxx::unexpected(RenderError{kStorageIdentity});
-            auto buffer = transfer.takeBuffer();
-            if (!buffer) return cxx::unexpected(buffer.error());
-            backing->buffer = std::move(*buffer);
-            backing->last_use = transfer.requirements();
+            backing->last_use = requirements;
             auto& entry = *storage.entries_.find(id.local);
             entry.current = std::move(backing);
             entry.updating = false;
@@ -168,41 +166,44 @@ namespace lux::render::vulkan
         return {};
     }
 
-    MeshStorage::UploadResult MeshStorage::upload(const MeshWrite& input) noexcept
+    MeshStorage::UploadResult MeshStorage::upload(MeshWrite input) noexcept
     {
-        if (input.mesh.storage != id_) return cxx::unexpected(RenderError{kStorageIdentity});
+        if (input.mesh.storage != id_) co_return cxx::unexpected(RenderError{kStorageIdentity});
         auto* existing = input.mesh.isNull() ? nullptr : entries_.find(input.mesh.local);
-        if (!input.mesh.isNull() && !existing) return cxx::unexpected(RenderError{kStorageIdentity});
-        if (existing && existing->updating) return cxx::unexpected(RenderError{kBusy});
+        if (!input.mesh.isNull() && !existing) co_return cxx::unexpected(RenderError{kStorageIdentity});
+        if (existing && existing->updating) co_return cxx::unexpected(RenderError{kBusy});
         const auto revision = existing ? existing->current->revision : 0;
         if (input.expected_revision != revision || revision == std::numeric_limits<std::uint64_t>::max())
-            return cxx::unexpected(RenderError{kStorageContract});
+            co_return cxx::unexpected(RenderError{kStorageContract});
         const auto source = input.source.bytes().view();
-        if (auto valid = validate(input.description, source); !valid) return cxx::unexpected(valid.error());
+        if (auto valid = validate(input.description, source); !valid) co_return cxx::unexpected(valid.error());
         // Immutable Graph recipes own counts/offsets. A live binding cannot silently change that ABI.
         if (existing && !existing->uses.empty() && existing->current->description != input.description)
-            return cxx::unexpected(RenderError{kStorageMismatch});
-        if (auto collected = session_.collect(); !collected) return cxx::unexpected(collected.error());
+            co_return cxx::unexpected(RenderError{kStorageMismatch});
+        if (auto collected = session_.collect(); !collected) co_return cxx::unexpected(collected.error());
         const auto projected = cxx::checkedAdd(residency_->bytes, std::uint64_t(source.size()));
         const bool over_budget = !projected ||
             (config_.resident_byte_budget && *projected > config_.resident_byte_budget);
-        if (over_budget) return cxx::unexpected(RenderError{kStorageCapacity});
+        if (over_budget) co_return cxx::unexpected(RenderError{kStorageCapacity});
         auto storage_reference = session_.resources().share(id_);
-        if (!storage_reference) return cxx::unexpected(storage_reference.error());
-        auto transfer = session_.uploadBuffer(source, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-            VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-        if (!transfer) return cxx::unexpected(transfer.error());
+        if (!storage_reference) co_return cxx::unexpected(storage_reference.error());
+        auto buffer = session_.allocator().createBuffer(source.size(),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            EMemoryAccess::DEVICE);
+        if (!buffer) co_return cxx::unexpected(buffer.error());
         auto backing = std::make_shared<MeshData>(residency_, input.description, source.size());
+        backing->buffer = std::move(*buffer);
         backing->revision = revision + 1;
         auto id = input.mesh;
         if (id.isNull()) id.local = entries_.emplace();
         entries_.find(id.local)->updating = true;
         auto candidate = std::make_unique<Candidate>(*this, id, std::move(backing), std::move(*storage_reference));
-        auto work = GpuWork::pending<[](Candidate& value, Transfer& transfer, DeviceSession&) noexcept {
-            return value.publish(transfer);
-        }>(session_, *transfer, candidate);
-        if (!work) return cxx::unexpected(work.error());
-        return std::pair{MeshPublished{id, revision + 1}, std::move(*work)};
+        auto uploaded = co_await session_.uploads().writeBuffer(candidate->backing->buffer, std::move(input.source));
+        if (!uploaded) co_return cxx::unexpected(uploaded.error());
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+        if (stop.stop_requested()) co_return cxx::unexpected(RenderError{kWorkStopped});
+        if (auto published = candidate->publish(*uploaded); !published) co_return cxx::unexpected(published.error());
+        co_return MeshPublished{id, revision + 1};
     }
 
     RenderResult<MeshInformation> MeshStorage::query(MeshId id) const noexcept
@@ -287,9 +288,9 @@ namespace lux::render::vulkan
 namespace lux::render
 {
     StorageTraits<vulkan::MeshStorage>::Result StorageTraits<vulkan::MeshStorage>::upload(
-        vulkan::MeshStorage& storage, const MeshWrite& input
+        vulkan::MeshStorage& storage, MeshWrite input
     ) noexcept
     {
-        return storage.upload(input);
+        return storage.upload(std::move(input));
     }
 }

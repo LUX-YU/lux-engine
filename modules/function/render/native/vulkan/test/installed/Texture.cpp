@@ -16,9 +16,8 @@ int main()
     CHECK(configureTextures(*session, 16, 1024 * 1024));
     auto input = std::make_shared<const std::vector<std::byte>>(1024, std::byte{73});
     const SetTexture::Request request{{textures(*session)->id(), {}}, 0, information(16, 1, false), payload(input)};
-    auto upload = take(lux::render::upload(*textures(*session), request));
-    const auto texture = upload.first;
-    complete(upload.second, host, *session); upload.second.reset();
+    auto upload = take(runUpload(lux::render::upload(*textures(*session), request), host, *session));
+    const auto texture = upload;
     texture_fixture::Config config{texture.texture};
     auto assembly = take(texture_fixture::assemble(config));
     auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,

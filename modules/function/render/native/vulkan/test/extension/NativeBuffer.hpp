@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Buffer.hpp"
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
-#include <lux/engine/render/native/vulkan/transfer/Transfer.hpp>
-#include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include <lux/engine/render/resource/Upload.hpp>
 
 namespace extension_test
@@ -79,7 +79,7 @@ namespace extension_test
     private:
         friend struct lux::render::StorageTraits<NativeBuffer>;
 
-        // Only the professional transaction belongs here; generic Transfer owns asynchronous progress.
+        // Only the unpublished professional resource and its rollback belong here.
         struct Candidate final
         {
             NativeBuffer& storage;
@@ -97,14 +97,11 @@ namespace extension_test
                 }
             }
 
-            RenderResult<void> publish(vk::Transfer& transfer) noexcept
+            RenderResult<void> publish(const vk::SubmissionRequirements& submitted) noexcept
             {
                 if (!storage.session_.resources().native(storage.id_))
                     return lux::cxx::unexpected(RenderError{kStorageIdentity});
-                auto buffer = transfer.takeBuffer();
-                if (!buffer) return lux::cxx::unexpected(buffer.error());
-                backing->buffer = std::move(*buffer);
-                backing->last_use = transfer.requirements();
+                backing->last_use = submitted;
                 auto& entry = *storage.entries_.find(id.local);
                 entry.current = std::move(backing);
                 entry.updating = false;
@@ -113,30 +110,35 @@ namespace extension_test
             }
         };
 
-        using UploadResult = RenderResult<std::pair<BufferBinding, vk::GpuWork>>;
-        UploadResult upload(const SetBuffer::Request& input) noexcept
+        using UploadResult = exec::task<RenderResult<BufferBinding>>;
+        UploadResult upload(SetBuffer::Request input) noexcept
         {
             const auto source = input.source.bytes().view();
             auto id = input.id;
-            if (id.storage != id_) return lux::cxx::unexpected(RenderError{kStorageIdentity});
-            if (source.size() != config_.bytes) return lux::cxx::unexpected(RenderError{kStorageContract});
-            if (auto collected = session_.collect(); !collected) return lux::cxx::unexpected(collected.error());
+            if (id.storage != id_) co_return lux::cxx::unexpected(RenderError{kStorageIdentity});
+            if (source.size() != config_.bytes) co_return lux::cxx::unexpected(RenderError{kStorageContract});
+            if (auto collected = session_.collect(); !collected) co_return lux::cxx::unexpected(collected.error());
             if (physical_->resident == config_.capacity * 2 || (id.isNull() && entries_.size() == config_.capacity))
-                return lux::cxx::unexpected(RenderError{kStorageCapacity});
-            if (!id.isNull() && !entries_.find(id.local)) return lux::cxx::unexpected(RenderError{kStorageIdentity});
-            if (!id.isNull() && entries_.find(id.local)->updating) return lux::cxx::unexpected(RenderError{vk::kBusy});
-            auto transfer = session_.uploadBuffer(source, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-            if (!transfer) return lux::cxx::unexpected(transfer.error());
+                co_return lux::cxx::unexpected(RenderError{kStorageCapacity});
+            if (!id.isNull() && !entries_.find(id.local)) co_return lux::cxx::unexpected(RenderError{kStorageIdentity});
+            if (!id.isNull() && entries_.find(id.local)->updating) co_return lux::cxx::unexpected(RenderError{vk::kBusy});
+            auto buffer = session_.allocator().createBuffer(source.size(),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                vk::EMemoryAccess::DEVICE);
+            if (!buffer) co_return lux::cxx::unexpected(buffer.error());
             auto backing = std::make_shared<Backing>(physical_);
+            backing->buffer = std::move(*buffer);
             if (id.isNull()) id = BufferId{id_, entries_.emplace()};
             entries_.find(id.local)->updating = true;
             auto storage_reference = session_.resources().share(id_);
             auto candidate = std::make_unique<Candidate>(*this, id, std::move(backing), std::move(*storage_reference));
-            auto work = vk::GpuWork::pending<[](Candidate& value, vk::Transfer& upload, vk::DeviceSession&) noexcept {
-                return value.publish(upload);
-            }>(session_, *transfer, candidate);
-            if (!work) return lux::cxx::unexpected(work.error());
-            return std::pair{BufferBinding{id}, std::move(*work)};
+            auto uploaded = co_await session_.uploads().writeBuffer(candidate->backing->buffer, std::move(input.source));
+            if (!uploaded) co_return lux::cxx::unexpected(uploaded.error());
+            const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+            if (stop.stop_requested()) co_return lux::cxx::unexpected(RenderError{vk::kWorkStopped});
+            if (auto published = candidate->publish(*uploaded); !published)
+                co_return lux::cxx::unexpected(published.error());
+            co_return BufferBinding{id};
         }
 
     public:
@@ -231,10 +233,10 @@ namespace lux::render
     template <> struct StorageTraits<extension_test::NativeBuffer> final
     {
         static extension_test::NativeBuffer::UploadResult upload(
-            extension_test::NativeBuffer& storage, const extension_test::SetBuffer::Request& input
+            extension_test::NativeBuffer& storage, extension_test::SetBuffer::Request input
         ) noexcept
         {
-            return storage.upload(input);
+            return storage.upload(std::move(input));
         }
     };
 }

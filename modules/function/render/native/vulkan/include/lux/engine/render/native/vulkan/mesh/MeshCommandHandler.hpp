@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include <lux/engine/render/protocol/CommandMethod.hpp>
 
 #include <lux/engine/render/resource/Factory.hpp>
@@ -18,7 +18,7 @@ namespace lux::render::vulkan
 
         explicit MeshCommandHandler(DeviceSession& device) noexcept : device_(device) {}
 
-        GpuWorkSender<SetMesh::Response> setMesh(SetMesh::Request&&) noexcept;
+        exec::task<SetMesh::Response> setMesh(SetMesh::Request&&) noexcept;
         void queryMesh(const QueryMesh::Request&, QueryMesh::Response&) noexcept;
         void releaseMesh(const ReleaseMesh::Request&, ReleaseMesh::Response&) noexcept;
         using Bindings = std::tuple<

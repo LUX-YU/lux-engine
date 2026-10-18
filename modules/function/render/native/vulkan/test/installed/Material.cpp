@@ -27,10 +27,8 @@ int main(int argc, char** argv)
     const auto id = take(session->globalStorages().getOrCreate(session->resources().typeId(kMaterialStorageType), "material"));
     auto& storage = *take(session->resources().borrow<lux::render::vulkan::MaterialStorage>(id));
     const MaterialWrite request{{id, {}}, 0, program, program.borrow<MaterialProgram>()->defaults};
-    auto upload = take(lux::render::upload(storage, request));
-    complete(upload.second, host, *session);
-    const auto published = upload.first;
-    upload.second.reset();
+    auto upload = take(runUpload(lux::render::upload(storage, request), host, *session));
+    const auto published = upload;
     const auto access = take(session->resources().tryGet<lux::render::MaterialStorage>(id));
     CHECK(take(access.query(published.material)).parameters == request.parameters);
     CHECK(storage.release(published.material, published.revision));

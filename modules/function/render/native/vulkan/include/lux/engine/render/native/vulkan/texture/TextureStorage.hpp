@@ -7,7 +7,7 @@
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/Upload.hpp>
-#include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 
 namespace lux::render::vulkan
 {
@@ -74,18 +74,18 @@ namespace lux::render::vulkan
         friend StorageFactory textureStorageFactory() noexcept;
         friend struct lux::render::StorageTraits<TextureStorage>;
         struct Candidate;
-        using UploadResult = RenderResult<std::pair<TexturePublished, GpuWork>>;
-        [[nodiscard]] UploadResult upload(const TextureWrite&) noexcept;
-        [[nodiscard]] UploadResult upload(const TextureRegionWrite&) noexcept;
-        [[nodiscard]] RenderResult<std::unique_ptr<Transfer>>
+        using UploadResult = exec::task<RenderResult<TexturePublished>>;
+        [[nodiscard]] UploadResult upload(TextureWrite) noexcept;
+        [[nodiscard]] UploadResult upload(TextureRegionWrite) noexcept;
+        using ImagePreparation = std::pair<std::shared_ptr<Image>, std::vector<ImageTransferRegion>>;
+        [[nodiscard]] RenderResult<ImagePreparation>
         prepareImage(
             const rdesc::TextureInfo&,
             std::span<const std::byte>,
-            std::optional<TextureRegion> = {},
-            std::shared_ptr<TextureData> base = {}
+            std::optional<TextureRegion> = {}
         ) noexcept;
         [[nodiscard]] RenderResult<void> admit(std::uint64_t minimum_bytes, bool creates_identity) noexcept;
-        [[nodiscard]] RenderResult<std::unique_ptr<Candidate>> reserve(Transfer&, const rdesc::TextureInfo&,
+        [[nodiscard]] RenderResult<std::unique_ptr<Candidate>> reserve(std::shared_ptr<Image>, const rdesc::TextureInfo&,
             TextureId, std::uint64_t expected_revision) noexcept;
         struct Use;
         RenderResult<void> prepare(const NativeResourcePlan&, const TextureBinding&, PreparedStorageBinding&) noexcept;
@@ -100,7 +100,7 @@ namespace lux::render::vulkan
         TextureStorage(DeviceSession& session, StorageId id, TextureStorageConfig config) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         void rollback(Candidate&) noexcept;
-        void publish(Candidate&, Transfer&) noexcept;
+        void publish(Candidate&, const SubmissionRequirements&) noexcept;
         DeviceSession& session_;
         StorageId id_;
         cxx::SlotMap<TextureRecord, TextureTag> textures_;
@@ -114,8 +114,8 @@ namespace lux::render
 {
     template<> struct StorageTraits<vulkan::TextureStorage> final
     {
-        using Result = RenderResult<std::pair<TexturePublished, vulkan::GpuWork>>;
-        [[nodiscard]] static Result upload(vulkan::TextureStorage&, const TextureWrite&) noexcept;
-        [[nodiscard]] static Result upload(vulkan::TextureStorage&, const TextureRegionWrite&) noexcept;
+        using Result = exec::task<RenderResult<TexturePublished>>;
+        [[nodiscard]] static Result upload(vulkan::TextureStorage&, TextureWrite) noexcept;
+        [[nodiscard]] static Result upload(vulkan::TextureStorage&, TextureRegionWrite) noexcept;
     };
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/core/execution/RunLoop.hpp>
 #include <lux/engine/render/resource/AsyncWork.hpp>
 #include <chrono>
 #include <memory>
@@ -53,6 +54,8 @@ namespace lux::render::test
         }
 
         [[nodiscard]] execution::ExecutionRuntime& runtime() noexcept { return runtime_; }
+
+        [[nodiscard]] execution::RunLoop::Scheduler scheduler() noexcept { return loop_.scheduler(); }
 
         void reject(bool value) noexcept
         {
@@ -114,7 +117,7 @@ namespace lux::render::test
                 }
                 event.resume(event.continuation, std::move(event.result));
             }
-            return ready;
+            return ready + loop_.executeReady(notification_capacity);
         }
 
     private:
@@ -196,6 +199,7 @@ namespace lux::render::test
         }
 
         const std::thread::id owner_thread_;
+        execution::RunLoop loop_;
         execution::ExecutionRuntime runtime_;
         const std::size_t concurrency_, capacity_;
         std::atomic<bool> hold_{false};

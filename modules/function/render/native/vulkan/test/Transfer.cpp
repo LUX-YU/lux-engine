@@ -1,10 +1,133 @@
 #include "Support.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/core/execution/RunLoop.hpp>
 #include <array>
 #include <cstring>
+#include <thread>
 
 using namespace foundation_test;
+
+struct UploadReceiver final
+{
+    using receiver_concept = stdexec::receiver_t;
+    lux::execution::RunLoop& loop;
+    bool& done;
+    UploadContext::Result& result;
+
+    auto get_env() const noexcept
+    {
+        return stdexec::env{stdexec::prop{stdexec::get_scheduler, loop.scheduler()}};
+    }
+
+    void set_value(UploadContext::Result value) && noexcept
+    {
+        result = std::move(value);
+        done = true;
+    }
+
+    void set_error(std::exception_ptr) && noexcept { std::terminate(); }
+    void set_stopped() && noexcept { std::terminate(); }
+};
+
+static void submittedUpload(const InstanceContext& bootstrap, bool multiple, bool dedicated)
+{
+    DeviceOptions options;
+    options.multiple_queues = multiple;
+    options.prefer_dedicated_queues = dedicated;
+    options.host_query_reset = true;
+    auto session = take(DeviceSession::create(bootstrap, options));
+    auto created = lux::execution::ExecutionRuntime::create({2, 16, 128, {128}});
+    CHECK(created);
+    auto host = std::move(*created);
+    lux::execution::RunLoop loop;
+    CHECK(session->configureUploads({1024, 1, 4096, true}, host.cpu()));
+    // Multi-queue devices enable Timeline: hold actual GPU execution before upload.
+    // The single-queue configuration has no Timeline feature; it proves no CPU
+    // completion observation is needed, without an invalid host-set pending event.
+    VkSemaphore gate = VK_NULL_HANDLE;
+    if (multiple)
+    {
+        VkSemaphoreTypeCreateInfo type{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
+        type.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+        VkSemaphoreCreateInfo create{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, &type};
+        CHECK(vkCreateSemaphore(session->device().native(), &create, nullptr, &gate) == VK_SUCCESS);
+        VkSemaphoreSubmitInfo wait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        wait.semaphore = gate;
+        wait.value = 1;
+        wait.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        VkSubmitInfo2 block{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+        block.waitSemaphoreInfoCount = 1;
+        block.pWaitSemaphoreInfos = &wait;
+        CHECK(vkQueueSubmit2(session->queue(EQueueRole::TRANSFER).nativeQueue().handle, 1, &block, {}) == VK_SUCCESS);
+    }
+    auto source = std::make_shared<std::vector<std::byte>>(1024);
+    for (std::size_t i = 0; i < source->size(); ++i) (*source)[i] = std::byte(i % 251);
+    auto target = take(session->allocator().createBuffer(1024,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        EMemoryAccess::DEVICE));
+    auto output = take(session->allocator().createBuffer(1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
+    auto payload = take(RenderPayload::fromVector(source, 0, source->size()));
+    bool done = false;
+    UploadContext::Result result = lux::cxx::unexpected(RenderError{kBusy});
+    auto operation = stdexec::connect(session->uploads().writeBuffer(target, std::move(payload)),
+        UploadReceiver{loop, done, result});
+    stdexec::start(operation);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!done)
+    {
+        loop.executeReady(64);
+        // Deliberately do not poll the GPU: one-chunk success must not require fence observation.
+        CHECK(std::chrono::steady_clock::now() < deadline);
+        std::this_thread::yield();
+    }
+    CHECK(result);
+    auto& graphics = session->queue();
+    CHECK(graphics.submitted() > graphics.completed());
+    CHECK(session->uploadStats().pending_bytes == 0);
+    CHECK(session->uploadStats().gpu_samples == 0);
+    if (gate)
+    {
+        std::uint64_t value = UINT64_MAX;
+        CHECK(vkGetSemaphoreCounterValue(session->device().native(), gate, &value) == VK_SUCCESS && value == 0);
+        VkSemaphoreSignalInfo signal{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
+        signal.semaphore = gate;
+        signal.value = 1;
+        CHECK(vkSignalSemaphore(session->device().native(), &signal) == VK_SUCCESS);
+    }
+    std::weak_ptr<Buffer> retained = target;
+    auto batch = take(graphics.begin());
+    batch.retain(target);
+    batch.retain(output);
+    const VkBufferCopy copy{0, 0, 1024};
+    vkCmdCopyBuffer(batch.native(), target->native(), output->native(), 1, &copy);
+    VkBufferMemoryBarrier2 host_barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+    host_barrier.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+    host_barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    host_barrier.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+    host_barrier.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+    host_barrier.srcQueueFamilyIndex = host_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    host_barrier.buffer = output->native();
+    host_barrier.size = VK_WHOLE_SIZE;
+    VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    dependency.bufferMemoryBarrierCount = 1;
+    dependency.pBufferMemoryBarriers = &host_barrier;
+    vkCmdPipelineBarrier2(batch.native(), &dependency);
+    const auto ticket = take(std::move(batch).submit());
+    target.reset();
+    CHECK(!retained.expired());
+    CHECK(take(graphics.wait(ticket, UINT64_MAX)));
+    CHECK(session->drain());
+    std::array<std::byte, 1024> actual;
+    CHECK(output->read(0, actual));
+    CHECK(std::equal(actual.begin(), actual.end(), source->begin()));
+    CHECK(session->uploadStats().gpu_query_errors == 0);
+    CHECK(session->uploadStats().gpu_samples == 1);
+    if (gate) vkDestroySemaphore(session->device().native(), gate, nullptr);
+    std::printf("submitted upload multiple=%d dedicated=%d early=1 bytes=1024 samples=1\n", multiple, dedicated);
+}
 
 static void copyImage(const InstanceContext& bootstrap, bool multiple, bool dedicated)
 {
@@ -112,6 +235,9 @@ int main()
         copyImage(bootstrap, false, false);
         copyImage(bootstrap, true, false);
         copyImage(bootstrap, true, true);
+        submittedUpload(bootstrap, false, false);
+        submittedUpload(bootstrap, true, false);
+        submittedUpload(bootstrap, true, true);
     }
     std::printf("transfer pixels=1024x3 validation_errors=%u warnings=%u\n",
         validation.errors.load(), validation.warnings.load());

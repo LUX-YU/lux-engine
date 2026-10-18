@@ -42,18 +42,14 @@ int main()
     for (unsigned i = 20; i < 24; ++i) values[i] = 0.25f;
     const auto bytes = std::as_bytes(std::span(values));
     auto owner = std::make_shared<const std::vector<std::byte>>(bytes.begin(), bytes.end());
-    auto uploaded = take(lux::render::upload(storage,
-        extension_test::SetBuffer::Request{{storage_id, {}}, payload(owner)}));
-    const auto buffer = uploaded.first.id;
-    complete(uploaded.second, cpu, *session);
-    uploaded.second.reset();
+    auto uploaded = take(runUpload(lux::render::upload(storage,
+        extension_test::SetBuffer::Request{{storage_id, {}}, payload(owner)}), cpu, *session));
+    const auto buffer = uploaded.id;
     auto pixels = std::make_shared<const std::vector<std::byte>>(1024, std::byte{128});
-    auto texture_upload = take(lux::render::upload(*textures(*session), SetTexture::Request{
+    auto texture_upload = take(runUpload(lux::render::upload(*textures(*session), SetTexture::Request{
         {textures(*session)->id(), {}}, 0, information(16, 1, false), payload(pixels)
-    }));
-    const auto texture = texture_upload.first.texture;
-    complete(texture_upload.second, cpu, *session);
-    texture_upload.second.reset();
+    }), cpu, *session));
+    const auto texture = texture_upload.texture;
 
     const TargetDesc target{16, 16, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     RenderGraphBuilder builder;

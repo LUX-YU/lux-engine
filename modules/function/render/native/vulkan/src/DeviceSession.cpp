@@ -2,7 +2,7 @@
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include <algorithm>
-#include "SessionUploads.hpp"
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include "StagingArena.hpp"
 
 #include <exception>

@@ -155,18 +155,14 @@ int main(int argc, char** argv)
         std::memcpy(owner->data() + 48, indices.data(), 12);
         MeshWrite mesh_request{{mesh_storage, {}}, 0,
             {16, 3, 48, 4, 3, {{0, 0, rdesc::ETextureFormat::RGBA32_SFLOAT}}, {{0, 3, 0}}}, payload(owner)};
-        auto mesh_upload = take(lux::render::upload(meshes, mesh_request));
-        complete(mesh_upload.second, host, *session);
-        const auto mesh = mesh_upload.first.mesh;
-        mesh_upload.second.reset();
+        auto mesh_upload = take(runUpload(lux::render::upload(meshes, mesh_request), host, *session));
+        const auto mesh = mesh_upload.mesh;
         MaterialProgram program{{rdesc::EShaderType::FRAGMENT, "main", spirv(argv[1])}, {}, 1};
         program.defaults[0] = {1, 1, 1, 1};
         auto config = take(ConfigValue::make(std::move(program)));
         MaterialWrite material_request{{material_storage, {}}, 0, config, config.borrow<MaterialProgram>()->defaults};
-        auto material_upload = take(lux::render::upload(materials, material_request));
-        complete(material_upload.second, host, *session);
-        const auto material = material_upload.first.material;
-        material_upload.second.reset();
+        auto material_upload = take(runUpload(lux::render::upload(materials, material_request), host, *session));
+        const auto material = material_upload.material;
         std::vector<InstancePublished> ids;
         for (unsigned count : {1u, 100u, 1000u, 10000u})
         {

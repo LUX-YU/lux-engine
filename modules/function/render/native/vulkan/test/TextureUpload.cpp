@@ -34,20 +34,22 @@ int main()
                 SetTexture::Request request{{storage.id(), {}}, 0, info, payload(source)};
                 auto malformed = request;
                 malformed.info.mip_ranges[0].size = UINT64_MAX;
-                CHECK(!lux::render::upload(storage, malformed));
+                CHECK(!runUpload(lux::render::upload(storage, malformed), worker, *session));
                 malformed = request;
                 malformed.info.color_space = rdesc::ETextureColorSpace::UNKNOWN;
-                CHECK(!lux::render::upload(storage, malformed));
+                CHECK(!runUpload(lux::render::upload(storage, malformed), worker, *session));
                 const auto before = session->uploadStats();
                 const auto start = Clock::now();
-                auto candidate = take(lux::render::upload(storage, request));
-                CHECK(!lux::render::upload(storage, request)); // page capacity; no dedicated fallback
-                CHECK(!storage.find(candidate.first.texture));
-                complete(candidate.second, worker, *session);
-                candidate.second.reset();
-                const auto* backing = storage.find(candidate.first.texture);
+                UploadCompletion<TexturePublished> completion;
+                completion.start(lux::render::upload(storage, request), worker);
+                CHECK(!completion.done);
+                const auto full = runUpload(lux::render::upload(storage, request), worker, *session);
+                CHECK(!full && full.error().type == kCapacity); // no dedicated staging fallback
+                finish(completion, worker, *session);
+                const auto published = take(std::move(completion.result));
+                const auto* backing = storage.find(published.texture);
                 CHECK(backing && std::ranges::equal(read(*session, *backing), *source));
-                CHECK(storage.release(candidate.first.texture, candidate.first.revision));
+                CHECK(storage.release(published.texture, published.revision));
                 const auto wall = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count();
                 const auto after = session->uploadStats();
                 CHECK(after.pending_bytes == 0 && after.staging_bytes == 1024 * 1024);

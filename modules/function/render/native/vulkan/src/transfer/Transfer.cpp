@@ -2,7 +2,7 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include "Native.hpp"
-#include "SessionUploads.hpp"
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include "StagingArena.hpp"
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <algorithm>
@@ -66,54 +66,6 @@ namespace lux::render::vulkan
               ))
         {}
     };
-
-    DeviceSession::UploadState::~UploadState() noexcept
-    {
-        if (timestamps) vkDestroyQueryPool(session.device().native(), timestamps, nullptr);
-    }
-
-    RenderResult<void> DeviceSession::configureUploads(const TransferOptions& options, execution::CpuScheduler cpu) noexcept
-    {
-        const bool invalid = uploads_ || cpu == execution::CpuScheduler{} || options.chunk_bytes < 256 ||
-            options.chunk_bytes > 16 * 1024 * 1024 || options.staging_pages == 0 || options.staging_pages > 16 ||
-            options.pending_bytes < options.chunk_bytes;
-        if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
-        if (options.measure_gpu && !device_.hostQueryReset()) return cxx::unexpected(RenderError{kUnsupported});
-        auto state = std::make_unique<UploadState>(*this, options, cpu);
-        std::uint32_t family_count = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device_.physical(), &family_count, nullptr);
-        std::vector<VkQueueFamilyProperties> families_info(family_count);
-        vkGetPhysicalDeviceQueueFamilyProperties(device_.physical(), &family_count, families_info.data());
-        auto& transfer = queue(EQueueRole::TRANSFER);
-        const auto granularity = families_info[transfer.nativeQueue().family].minImageTransferGranularity;
-        // This row-chunk algorithm requires independently transferable texel/block rows. Other hardware
-        // uses the existing Graphics queue; do not emit invalid sub-image transfers on restrictive families.
-        const bool row_chunks = granularity.width == 1 && granularity.height == 1 && granularity.depth == 1;
-        state->copy_queue = row_chunks ? &transfer : &queue();
-        state->copy_timestamp_bits = families_info[state->copy_queue->nativeQueue().family].timestampValidBits;
-        state->graphics_timestamp_bits = families_info[queue().nativeQueue().family].timestampValidBits;
-        if (options.measure_gpu && (state->copy_timestamp_bits || state->graphics_timestamp_bits))
-        {
-            VkQueryPoolCreateInfo query{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
-            query.queryType = VK_QUERY_TYPE_TIMESTAMP;
-            query.queryCount = std::uint32_t(options.staging_pages * 2);
-            const auto result = vkCreateQueryPool(device_.native(), &query, nullptr, &state->timestamps);
-            if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
-        }
-        const std::array families{queue().nativeQueue().family, state->copy_queue->nativeQueue().family};
-        const auto sharing = families[0] == families[1] ? std::span<const std::uint32_t>{} : std::span(families);
-        auto arena = StagingArena::create(allocator_, options.chunk_bytes, options.staging_pages, sharing);
-        if (!arena) return cxx::unexpected(arena.error());
-        staging_arena_ = std::move(*arena);
-        state->stats.staging_bytes = options.chunk_bytes * options.staging_pages;
-        uploads_ = std::move(state);
-        return {};
-    }
-
-    TransferStats DeviceSession::uploadStats() const noexcept
-    {
-        return uploads_ ? uploads_->stats : TransferStats{};
-    }
 
     RenderResult<std::unique_ptr<Transfer>> DeviceSession::uploadImage(
         const ImageDescription& description, std::span<const std::byte> source,

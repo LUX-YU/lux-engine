@@ -3,7 +3,7 @@
 #include <lux/engine/render/resource/Material.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/Upload.hpp>
-#include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
 
 namespace lux::render::vulkan
@@ -40,8 +40,8 @@ namespace lux::render::vulkan
     private:
         friend StorageFactory materialStorageFactory() noexcept;
         friend struct lux::render::StorageTraits<MaterialStorage>;
-        using UploadResult = RenderResult<std::pair<MaterialPublished, GpuWork>>;
-        [[nodiscard]] UploadResult upload(const MaterialWrite&) noexcept;
+        using UploadResult = exec::task<RenderResult<MaterialPublished>>;
+        [[nodiscard]] UploadResult upload(MaterialWrite) noexcept;
         [[nodiscard]] RenderResult<void> prepare(const NativeResourcePlan&, const MaterialBinding&,
             PreparedStorageBinding&) noexcept;
         void unsubscribe(Use&) noexcept;
@@ -58,7 +58,7 @@ namespace lux::render
 {
     template <> struct StorageTraits<vulkan::MaterialStorage> final
     {
-        using Result = RenderResult<std::pair<MaterialPublished, vulkan::GpuWork>>;
-        [[nodiscard]] static Result upload(vulkan::MaterialStorage&, const MaterialWrite&) noexcept;
+        using Result = exec::task<RenderResult<MaterialPublished>>;
+        [[nodiscard]] static Result upload(vulkan::MaterialStorage&, MaterialWrite) noexcept;
     };
 }

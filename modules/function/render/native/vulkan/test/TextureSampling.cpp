@@ -111,11 +111,10 @@ int main()
         {
             auto ambiguous = info;
             ambiguous.flags = rdesc::toUnderlying(rdesc::ETextureAssetFlags::PREMULTIPLIED_ALPHA);
-            CHECK(!lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, ambiguous, payload(input_owner)}));
+            CHECK(!runUpload(lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, ambiguous, payload(input_owner)}), host, *session));
         }
-        auto upload = take(lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, info, payload(input_owner)}));
-        const auto published = upload.first;
-        complete(upload.second, host, *session); upload.second.reset();
+        auto upload = take(runUpload(lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, info, payload(input_owner)}), host, *session));
+        const auto published = upload;
         for (unsigned mip = 0; mip < 4; ++mip)
         {
             texture_fixture::Config config{published.texture, 16, 16, 4,
@@ -178,9 +177,8 @@ int main()
                 auto old = take(storage.acquire(published.texture));
                 std::vector<std::byte> replacement(input.size(), std::byte{64});
                 auto replacement_owner = std::make_shared<const std::vector<std::byte>>(std::move(replacement));
-                upload = take(lux::render::upload(storage,
-                    SetTexture::Request{published.texture, 1, info, payload(replacement_owner)}));
-                complete(upload.second, host, *session); upload.second.reset();
+                upload = take(runUpload(lux::render::upload(storage,
+                    SetTexture::Request{published.texture, 1, info, payload(replacement_owner)}), host, *session));
                 CHECK(old->descriptorIndex() != storage.find(published.texture)->descriptorIndex());
                 CHECK(storage.residentVersions() == 2);
                 old.reset();
@@ -191,9 +189,8 @@ int main()
                 CHECK(pipelines == old_pipelines + 1);
 
                 auto patch_owner = std::make_shared<const std::vector<std::byte>>(20, std::byte{96});
-                upload = take(lux::render::upload(storage,
-                    SetTextureRegion::Request{published.texture, 2, {3, 0, 0, 2, 2, 12}, payload(patch_owner)}));
-                complete(upload.second, host, *session); upload.second.reset();
+                upload = take(runUpload(lux::render::upload(storage,
+                    SetTextureRegion::Request{published.texture, 2, {3, 0, 0, 2, 2, 12}, payload(patch_owner)}), host, *session));
                 for (auto* view : views) CHECK(take(view->execute()) == EExecutionOutcome::EXECUTED);
                 CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
                 for (auto* view : views) pixels(take(view->readback()), oracle({96, 96, 96, 96}, space), tolerance);
@@ -218,9 +215,8 @@ int main()
         for (std::size_t i = 0; i < blocks.size(); i += 8)
         { blocks[i] = std::byte{0}; blocks[i + 1] = std::byte{0xf8}; } // RGB565 red, index zero
         auto blocks_owner = std::make_shared<const std::vector<std::byte>>(std::move(blocks));
-        auto upload = take(lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, info, payload(blocks_owner)}));
-        const auto id = upload.first.texture;
-        complete(upload.second, host, *session); upload.second.reset();
+        auto upload = take(runUpload(lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, info, payload(blocks_owner)}), host, *session));
+        const auto id = upload.texture;
         texture_fixture::Config config{id, 16, 16, 4, rdesc::ETextureFormat::BC1_RGBA_SRGB, 1};
         auto assembly = take(texture_fixture::assemble(config));
         auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
@@ -250,11 +246,9 @@ int main()
             );
             CHECK(scene_textures[i]->descriptors() == storage.descriptors());
             auto bytes = std::make_shared<const std::vector<std::byte>>(16 * 16 * 4, std::byte(i ? 96 : 32));
-            auto work = take(lux::render::upload(*scene_textures[i],
-                SetTexture::Request{{storage_ids[i], {}}, 0, info, payload(bytes)}));
-            textures[i] = work.first.texture;
-            complete(work.second, host, *session);
-            work.second.reset();
+            auto work = take(runUpload(lux::render::upload(*scene_textures[i],
+                SetTexture::Request{{storage_ids[i], {}}, 0, info, payload(bytes)}), host, *session));
+            textures[i] = work.texture;
         }
         CHECK(textures[0].storage != textures[1].storage);
         CHECK(scene_textures[0]->find(textures[0])->descriptorIndex() !=
@@ -313,10 +307,8 @@ int main()
         // No manual acquire lease, Scene owner or Storage identity is retained by retirement.
         auto info = information(16, 1, false);
         auto bytes = std::make_shared<const std::vector<std::byte>>(16 * 16 * 4, std::byte{63});
-        auto work = take(lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, info, payload(bytes)}));
-        const auto id = work.first.texture;
-        complete(work.second, host, *session);
-        work.second.reset();
+        auto work = take(runUpload(lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, info, payload(bytes)}), host, *session));
+        const auto id = work.texture;
         texture_fixture::Config config{id, 16, 16, 1, rdesc::ETextureFormat::RGBA8_UNORM, 0};
         auto assembly = take(texture_fixture::assemble(config));
         auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly.definition, assembly.analysis,

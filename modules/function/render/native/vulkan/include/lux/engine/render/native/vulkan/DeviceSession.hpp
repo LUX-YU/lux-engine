@@ -14,6 +14,7 @@ namespace lux::render::vulkan
     class DescriptorArray;
     class ExecutionContext;
     class Transfer;
+    class UploadContext;
     class StagingArena;
     struct ImageTransferRegion;
     struct TransferStats;
@@ -60,6 +61,7 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadBuffer(
             std::span<const std::byte>, VkBufferUsageFlags usage) noexcept;
         [[nodiscard]] TransferStats uploadStats() const noexcept;
+        [[nodiscard]] UploadContext& uploads() noexcept { return *uploads_; }
         [[nodiscard]] ResourceRegistry& resources() noexcept { return resources_; }
         [[nodiscard]] const ResourceRegistry& resources() const noexcept { return resources_; }
         [[nodiscard]] StorageSet& globalStorages() noexcept { return globals_; }
@@ -67,7 +69,7 @@ namespace lux::render::vulkan
     private:
         friend struct NativeMemoryAudit;
         friend class Transfer;
-        struct UploadState;
+        friend class UploadContext;
         friend class ExecutionContext;
         DeviceSession(VulkanDevice device, VulkanAllocator allocator) noexcept;
         VulkanDevice device_;
@@ -78,7 +80,7 @@ namespace lux::render::vulkan
         // Member destruction is explicitly ordered in the destructor.
         std::vector<std::unique_ptr<ExecutionContext>> contexts_;
         std::unique_ptr<StagingArena> staging_arena_;
-        std::unique_ptr<UploadState> uploads_;
+        std::unique_ptr<UploadContext> uploads_;
         ResourceRegistry resources_;
         StorageSet globals_;
         std::weak_ptr<DescriptorArray> sampled_images_;

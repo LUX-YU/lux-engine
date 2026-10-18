@@ -3,7 +3,7 @@
 #include <lux/engine/render/resource/Mesh.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/Upload.hpp>
-#include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
 
 namespace lux::render::vulkan
@@ -40,8 +40,8 @@ namespace lux::render::vulkan
     private:
         friend StorageFactory meshStorageFactory() noexcept;
         friend struct lux::render::StorageTraits<MeshStorage>;
-        using UploadResult = RenderResult<std::pair<MeshPublished, GpuWork>>;
-        [[nodiscard]] UploadResult upload(const MeshWrite&) noexcept;
+        using UploadResult = exec::task<RenderResult<MeshPublished>>;
+        [[nodiscard]] UploadResult upload(MeshWrite) noexcept;
         [[nodiscard]] RenderResult<void> validate(const MeshDescription&, std::span<const std::byte>) const noexcept;
         [[nodiscard]] RenderResult<void> prepare(const NativeResourcePlan&, const MeshBinding&,
             PreparedStorageBinding&) noexcept;
@@ -59,7 +59,7 @@ namespace lux::render
 {
     template <> struct StorageTraits<vulkan::MeshStorage> final
     {
-        using Result = RenderResult<std::pair<MeshPublished, vulkan::GpuWork>>;
-        [[nodiscard]] static Result upload(vulkan::MeshStorage&, const MeshWrite&) noexcept;
+        using Result = exec::task<RenderResult<MeshPublished>>;
+        [[nodiscard]] static Result upload(vulkan::MeshStorage&, MeshWrite) noexcept;
     };
 }

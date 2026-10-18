@@ -72,18 +72,14 @@ int main(int argc, char** argv)
             {20, 4, sizeof(vertices), 4, 12,
                 {{0, 0, rdesc::ETextureFormat::RGB32_SFLOAT}, {1, 12, rdesc::ETextureFormat::RG32_SFLOAT}},
                 {{0, 12, 0}}}, payload(source)};
-        auto mesh_work = checked(lux::render::upload(meshes, mesh_input));
-        complete(mesh_work.second, host, *session);
-        const auto mesh = mesh_work.first.mesh;
-        mesh_work.second.reset();
+        auto mesh_work = checked(runUpload(lux::render::upload(meshes, mesh_input), host, *session));
+        const auto mesh = mesh_work.mesh;
         MaterialProgram program{{rdesc::EShaderType::FRAGMENT, "main", spirv(argv[1])}, {}, 1};
         auto cooked = checked(ConfigValue::make(std::move(program)));
         MaterialWrite material_input{{material_storage, {}}, 0, cooked};
         material_input.parameters[0] = {1, 0, 0, 1};
-        auto material_work = checked(lux::render::upload(materials, material_input));
-        complete(material_work.second, host, *session);
-        auto material = material_work.first;
-        material_work.second.reset();
+        auto material_work = checked(runUpload(lux::render::upload(materials, material_input), host, *session));
+        auto material = material_work;
         InstanceDescription input{mesh, material.material};
         input.transform[12] = -.45f;
         const auto left = checked(instances.create(input));
@@ -151,10 +147,8 @@ int main(int argc, char** argv)
         material_input.material = material.material;
         material_input.expected_revision = material.revision;
         material_input.parameters[0] = {0, 1, 0, 1};
-        auto changed = checked(lux::render::upload(materials, material_input));
-        complete(changed.second, host, *session);
-        material = changed.first;
-        changed.second.reset();
+        auto changed = checked(runUpload(lux::render::upload(materials, material_input), host, *session));
+        material = changed;
         pixels = render(*first);
         pixel(pixels, 17, 30, {0, 255, 0, 255});
         CHECK(session->release(depth));

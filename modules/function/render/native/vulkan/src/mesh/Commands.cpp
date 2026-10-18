@@ -1,21 +1,19 @@
 #include <lux/engine/render/native/vulkan/mesh/MeshCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshStorage.hpp>
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 
 namespace lux::render::vulkan
 {
-    GpuWorkSender<SetMesh::Response> MeshCommandHandler::setMesh(SetMesh::Request&& input) noexcept
+    static exec::task<SetMesh::Response> rejectedMesh(RenderError error) noexcept
+    {
+        co_return cxx::unexpected(error);
+    }
+
+    exec::task<SetMesh::Response> MeshCommandHandler::setMesh(SetMesh::Request&& input) noexcept
     {
         auto storage = device_.resources().borrow<MeshStorage>(input.mesh.storage);
-        if (!storage)
-        {
-            return GpuWorkSender<SetMesh::Response>{storage.error()};
-        }
-        auto candidate = render::upload(**storage, input);
-        if (!candidate)
-        {
-            return GpuWorkSender<SetMesh::Response>{candidate.error()};
-        }
-        return {std::move(candidate->first), std::move(candidate->second), std::move(input.source)};
+        if (!storage) return rejectedMesh(storage.error());
+        return render::upload(**storage, std::move(input));
     }
 
     void MeshCommandHandler::queryMesh(const QueryMesh::Request& input, QueryMesh::Response& response) noexcept

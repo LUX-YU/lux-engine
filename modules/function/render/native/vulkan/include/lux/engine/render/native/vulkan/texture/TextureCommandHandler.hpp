@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
+#include <exec/task.hpp>
 #include <lux/engine/render/protocol/CommandMethod.hpp>
 
 #include <lux/engine/render/resource/Factory.hpp>
@@ -19,8 +19,8 @@ namespace lux::render::vulkan
 
         explicit TextureCommandHandler(DeviceSession& device) noexcept : device_(device) {}
 
-        GpuWorkSender<SetTexture::Response> setTexture(SetTexture::Request&&) noexcept;
-        GpuWorkSender<SetTextureRegion::Response> updateTextureRegion(SetTextureRegion::Request&&) noexcept;
+        exec::task<SetTexture::Response> setTexture(SetTexture::Request&&) noexcept;
+        exec::task<SetTextureRegion::Response> updateTextureRegion(SetTextureRegion::Request&&) noexcept;
         void releaseTexture(const ReleaseTexture::Request&, ReleaseTexture::Response&) noexcept;
         void queryTexture(const QueryTexture::Request&, QueryTexture::Response&) noexcept;
 

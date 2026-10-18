@@ -173,9 +173,10 @@ namespace lux::render::vulkan
         // The existing owner-thread dispatch delivers it; no thread or additional queue is created.
         [[nodiscard]] CompletionSender whenComplete(SubmissionTicket ticket) noexcept;
         [[nodiscard]] static RenderResult<std::unique_ptr<SubmissionQueue>> create(
-            const VulkanDevice& device,
+            VkDevice device,
+            NativeQueue native_queue,
+            bool timeline_enabled,
             std::uint32_t capacity,
-            EQueueRole role = EQueueRole::GRAPHICS,
             std::uint32_t callback_capacity = 128
         ) noexcept;
         ~SubmissionQueue() noexcept;

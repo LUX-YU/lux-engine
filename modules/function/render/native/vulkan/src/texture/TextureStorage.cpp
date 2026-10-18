@@ -81,7 +81,7 @@ namespace lux::render::vulkan
     {
         auto& session = session_;
         const auto layout = format(info.pixel_format);
-        const auto max_dimension = session.device().properties().limits.maxImageDimension2D;
+        const auto max_dimension = session.physicalDevice().properties().properties.limits.maxImageDimension2D;
         const bool bad_extent = info.width <= 0 || info.height <= 0 || std::uint32_t(info.width) > max_dimension ||
                                 std::uint32_t(info.height) > max_dimension;
         const bool bad_count = info.layers != 1 || info.mip_count == 0 || info.mip_count > rdesc::kTextureMaxMipCount;
@@ -102,7 +102,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        if (layout.extent == 4 && !session.device().textureCompressionBc())
+        if (layout.extent == 4 && !session.enabledFeatures().texture_compression_bc)
         {
             return cxx::unexpected(RenderError{kUnsupported});
         }
@@ -186,7 +186,7 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
         VkFormatProperties properties{};
-        vkGetPhysicalDeviceFormatProperties(session.device().physical(), layout.native, &properties);
+        vkGetPhysicalDeviceFormatProperties(session.physicalDevice().handle(), layout.native, &properties);
         constexpr auto required = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT |
                                   VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
         if ((properties.optimalTilingFeatures & required) != required)
@@ -409,7 +409,7 @@ namespace lux::render::vulkan
         const TextureStorageConfig& config
     ) noexcept
     {
-        if (!session.device().textureDescriptors())
+        if (!session.enabledFeatures().texture_descriptors)
         {
             return cxx::unexpected(RenderError{kUnsupported});
         }
@@ -570,7 +570,7 @@ namespace lux::render::vulkan
         auto content =
             std::make_shared<TextureData>(residency_, std::move(image), std::move(*descriptor), info, expected + 1);
         auto& version = *content;
-        const auto device = session_.device().native();
+        const auto device = session_.nativeDevice();
         VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
         view.image = version.image_->native();
         view.viewType = VK_IMAGE_VIEW_TYPE_2D;

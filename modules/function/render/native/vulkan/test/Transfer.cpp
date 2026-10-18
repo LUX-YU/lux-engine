@@ -53,7 +53,7 @@ static void submittedUpload(const InstanceContext& bootstrap, bool multiple, boo
         VkSemaphoreTypeCreateInfo type{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
         type.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
         VkSemaphoreCreateInfo create{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, &type};
-        CHECK(vkCreateSemaphore(session->device().native(), &create, nullptr, &gate) == VK_SUCCESS);
+        CHECK(vkCreateSemaphore(session->nativeDevice(), &create, nullptr, &gate) == VK_SUCCESS);
         VkSemaphoreSubmitInfo wait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
         wait.semaphore = gate;
         wait.value = 1;
@@ -91,11 +91,11 @@ static void submittedUpload(const InstanceContext& bootstrap, bool multiple, boo
     if (gate)
     {
         std::uint64_t value = UINT64_MAX;
-        CHECK(vkGetSemaphoreCounterValue(session->device().native(), gate, &value) == VK_SUCCESS && value == 0);
+        CHECK(vkGetSemaphoreCounterValue(session->nativeDevice(), gate, &value) == VK_SUCCESS && value == 0);
         VkSemaphoreSignalInfo signal{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
         signal.semaphore = gate;
         signal.value = 1;
-        CHECK(vkSignalSemaphore(session->device().native(), &signal) == VK_SUCCESS);
+        CHECK(vkSignalSemaphore(session->nativeDevice(), &signal) == VK_SUCCESS);
     }
     std::weak_ptr<Buffer> retained = target;
     auto batch = take(graphics.begin());
@@ -125,7 +125,7 @@ static void submittedUpload(const InstanceContext& bootstrap, bool multiple, boo
     CHECK(std::equal(actual.begin(), actual.end(), source->begin()));
     CHECK(session->uploadStats().gpu_query_errors == 0);
     CHECK(session->uploadStats().gpu_samples == 1);
-    if (gate) vkDestroySemaphore(session->device().native(), gate, nullptr);
+    if (gate) vkDestroySemaphore(session->nativeDevice(), gate, nullptr);
     std::printf("submitted upload multiple=%d dedicated=%d early=1 bytes=1024 samples=1\n", multiple, dedicated);
 }
 

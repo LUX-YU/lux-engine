@@ -144,7 +144,8 @@ namespace lux::render::vulkan
         {
             return {};
         }
-        const auto maximum = session_.device().properties().limits.maxStorageBufferRange / sizeof(TransformMatrix);
+        const auto maximum =
+            session_.physicalDevice().properties().properties.limits.maxStorageBufferRange / sizeof(TransformMatrix);
         if (count > maximum)
         {
             return cxx::unexpected(RenderError{kStorageCapacity});

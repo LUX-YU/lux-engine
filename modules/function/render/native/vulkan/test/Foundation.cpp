@@ -59,6 +59,14 @@ namespace lux::render::vulkan::test
             if (std::string_view(operation) == names[i]) --live[i];
     }
 }
+// Observe the real Vulkan destruction boundary even when the owner is an inline gapi class.
+// No production seam or additional device owner is involved.
+extern "C" VKAPI_ATTR void VKAPI_CALL vkDestroyDevice(VkDevice device, const VkAllocationCallbacks* allocator)
+{
+    const auto destroy = reinterpret_cast<PFN_vkDestroyDevice>(vkGetDeviceProcAddr(device, "vkDestroyDevice"));
+    destroy(device, allocator);
+    lux::render::vulkan::test::destroyed("device");
+}
 #endif
 
 namespace lux::render::vulkan
@@ -468,8 +476,8 @@ int main()
         {
             auto session = take(DeviceSession::create(bootstrap, options));
             std::printf("GPU=%s API=%u driver=%u Validation=enabled SyncValidation=enabled\n",
-                session->device().properties().deviceName, session->device().properties().apiVersion,
-                session->device().properties().driverVersion);
+                session->physicalDevice().properties().properties.deviceName, session->physicalDevice().properties().properties.apiVersion,
+                session->physicalDevice().properties().properties.driverVersion);
             CHECK(&session->queue() == &session->queue(EQueueRole::TRANSFER));
             submittedBufferOwnership(*session);
             sharedPhysicalQueues(*session);

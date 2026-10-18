@@ -49,15 +49,11 @@ namespace lux::render::vulkan
 
     RenderResult<std::uint32_t> DeviceSession::sampledImageCapacity() const noexcept
     {
-        if (!device_.textureDescriptors())
+        if (!enabled_features_.texture_descriptors)
         {
             return cxx::unexpected(RenderError{kUnsupported});
         }
-        VkPhysicalDeviceDescriptorIndexingProperties limits{
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES
-        };
-        VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &limits};
-        vkGetPhysicalDeviceProperties2(device_.physical(), &properties);
+        const auto& limits = physical_device_.descriptorIndexingProperties();
         const auto maximum = std::min(
             {limits.maxDescriptorSetUpdateAfterBindSamplers,
              limits.maxDescriptorSetUpdateAfterBindSampledImages,
@@ -85,7 +81,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(capacity.error());
         }
-        auto result = std::shared_ptr<DescriptorArray>(new DescriptorArray(device_, binding, *capacity));
+        auto result = std::shared_ptr<DescriptorArray>(new DescriptorArray(nativeDevice(), binding, *capacity));
         if (auto ready = result->initialize(); !ready)
         {
             return cxx::unexpected(ready.error());
@@ -108,8 +104,7 @@ namespace lux::render::vulkan
         pool.maxSets = 1;
         pool.poolSizeCount = 1;
         pool.pPoolSizes = &size;
-        auto result =
-            LUX_NATIVE("descriptor_array_pool", vkCreateDescriptorPool(device_.native(), &pool, nullptr, &pool_));
+        auto result = LUX_NATIVE("descriptor_array_pool", vkCreateDescriptorPool(device_, &pool, nullptr, &pool_));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -118,8 +113,7 @@ namespace lux::render::vulkan
         allocate.descriptorPool = pool_;
         allocate.descriptorSetCount = 1;
         allocate.pSetLayouts = &layout_;
-        result =
-            LUX_NATIVE("descriptor_array_set", vkAllocateDescriptorSets(device_.native(), &allocate, &descriptors_));
+        result = LUX_NATIVE("descriptor_array_set", vkAllocateDescriptorSets(device_, &allocate, &descriptors_));
         return result == VK_SUCCESS ? RenderResult<void>{} : cxx::unexpected(nativeError(result));
     }
 
@@ -131,11 +125,11 @@ namespace lux::render::vulkan
         }
         if (pool_)
         {
-            LUX_DESTROY("descriptor_array_pool", vkDestroyDescriptorPool(device_.native(), pool_, nullptr));
+            LUX_DESTROY("descriptor_array_pool", vkDestroyDescriptorPool(device_, pool_, nullptr));
         }
         if (layout_)
         {
-            LUX_DESTROY("descriptor_array_layout", vkDestroyDescriptorSetLayout(device_.native(), layout_, nullptr));
+            LUX_DESTROY("descriptor_array_layout", vkDestroyDescriptorSetLayout(device_, layout_, nullptr));
         }
     }
 
@@ -165,7 +159,7 @@ namespace lux::render::vulkan
         write.descriptorCount = 1;
         write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         write.pImageInfo = &info;
-        vkUpdateDescriptorSets(device_.native(), 1, &write, 0, nullptr);
+        vkUpdateDescriptorSets(device_, 1, &write, 0, nullptr);
     }
 
     void DescriptorArray::release(Slot slot) noexcept

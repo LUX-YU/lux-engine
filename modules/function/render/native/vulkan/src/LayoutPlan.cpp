@@ -14,7 +14,7 @@ namespace lux::render::vulkan
     }
 
     RenderResult<LayoutPlan> planLayouts(
-        const VulkanDevice& device,
+        const VkPhysicalDeviceLimits& limits,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
         std::span<const PassProgram* const> programs
@@ -55,10 +55,10 @@ namespace lux::render::vulkan
             }
             const auto& parameters = source->shader.interface.parameters;
             const auto stages = source->shader.interface.parameter_stages;
-            const bool invalid_parameters =
-                source->parameter_values.size() != parameters.size || (parameters.size == 0) != (stages == 0) ||
-                (stages & ~present_stages) || parameters.size % 4 ||
-                parameters.size > device.properties().limits.maxPushConstantsSize || parameters.runtime_records;
+            const bool invalid_parameters = source->parameter_values.size() != parameters.size ||
+                                            (parameters.size == 0) != (stages == 0) || (stages & ~present_stages) ||
+                                            parameters.size % 4 || parameters.size > limits.maxPushConstantsSize ||
+                                            parameters.runtime_records;
             if (invalid_parameters)
             {
                 return cxx::unexpected(RenderError{kStorageContract});
@@ -232,7 +232,6 @@ namespace lux::render::vulkan
             }
         }
         const auto set_count = unsigned(has_shared) + unsigned(private_count != 0);
-        const auto& limits = device.properties().limits;
         const bool too_many = set_count > limits.maxBoundDescriptorSets ||
                               private_count > limits.maxDescriptorSetStorageBuffers || private_count > UINT32_MAX;
         if (too_many)

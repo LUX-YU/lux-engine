@@ -135,7 +135,7 @@ namespace lux::render::vulkan
     RenderResult<void> MeshStorage::validate(const MeshDescription& description, std::span<const std::byte> source)
         const noexcept
     {
-        const auto& limits = session_.device().properties().limits;
+        const auto& limits = session_.physicalDevice().properties().properties.limits;
         const bool invalid_vertices = !description.vertex_count || !description.vertex_stride ||
                                       description.vertex_stride > limits.maxVertexInputBindingStride ||
                                       description.vertex_stride % 4;
@@ -183,7 +183,7 @@ namespace lux::render::vulkan
                 }
             }
             VkFormatProperties supported{};
-            vkGetPhysicalDeviceFormatProperties(session_.device().physical(), format.native, &supported);
+            vkGetPhysicalDeviceFormatProperties(session_.physicalDevice().handle(), format.native, &supported);
             if (!(supported.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT))
             {
                 return cxx::unexpected(RenderError{kUnsupported});

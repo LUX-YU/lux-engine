@@ -80,138 +80,16 @@ namespace lux::render::vulkan
     [[nodiscard]] RenderResult<std::uint32_t> selectQueueFamily(std::span<const VkQueueFamilyProperties> families
     ) noexcept;
 
-    // Borrows the native instance. Every child must die before its device; the
-    // device must die before its instance. Moving the wrapper preserves native identity.
-    class VulkanDevice
-    {
-    public:
-        [[nodiscard]] static RenderResult<VulkanDevice> create(
-            const InstanceContext& instance,
-            const DeviceOptions& options = {}
-        ) noexcept;
-        ~VulkanDevice() noexcept;
-        VulkanDevice(VulkanDevice&& other) noexcept;
-        VulkanDevice& operator=(VulkanDevice&& other) noexcept;
-        VulkanDevice(const VulkanDevice&) = delete;
-        VulkanDevice& operator=(const VulkanDevice&) = delete;
-
-        [[nodiscard]] VkDevice native() const noexcept
-        {
-            return device_;
-        }
-
-        [[nodiscard]] VkInstance instance() const noexcept
-        {
-            return instance_;
-        }
-
-        [[nodiscard]] VkPhysicalDevice physical() const noexcept
-        {
-            return physical_;
-        }
-
-        [[nodiscard]] VkQueue queue() const noexcept
-        {
-            return queues_[0].handle;
-        }
-
-        [[nodiscard]] std::uint32_t queueFamily() const noexcept
-        {
-            return queues_[0].family;
-        }
-
-        [[nodiscard]] const VkPhysicalDeviceProperties& properties() const noexcept
-        {
-            return properties_;
-        }
-
-        [[nodiscard]] bool dynamicRendering() const noexcept
-        {
-            return dynamic_rendering_;
-        }
-
-        [[nodiscard]] NativeQueue queue(EQueueRole role) const noexcept
-        {
-            return queues_[static_cast<std::size_t>(role)];
-        }
-
-        [[nodiscard]] bool multiview() const noexcept
-        {
-            return multiview_;
-        }
-
-        [[nodiscard]] bool localRead() const noexcept
-        {
-            return local_read_;
-        }
-
-        [[nodiscard]] bool separateDepthStencil() const noexcept
-        {
-            return separate_depth_stencil_;
-        }
-
-        [[nodiscard]] bool timelineSemaphore() const noexcept
-        {
-            return timeline_;
-        }
-
-        [[nodiscard]] bool textureCompressionBc() const noexcept
-        {
-            return texture_compression_bc_;
-        }
-
-        [[nodiscard]] bool textureDescriptors() const noexcept
-        {
-            return texture_descriptors_;
-        }
-
-        [[nodiscard]] bool hostQueryReset() const noexcept
-        {
-            return host_query_reset_;
-        }
-
-        [[nodiscard]] bool bufferDeviceAddress() const noexcept
-        {
-            return buffer_device_address_;
-        }
-
-        [[nodiscard]] bool swapchainMaintenance() const noexcept
-        {
-            return swapchain_maintenance_;
-        }
-
-    private:
-        bool texture_compression_bc_ = false;
-        bool texture_descriptors_ = false;
-        bool host_query_reset_ = false;
-        bool buffer_device_address_ = false;
-        VulkanDevice(
-            VkInstance instance,
-            VkPhysicalDevice physical,
-            VkDevice device,
-            std::array<NativeQueue, 3> queues,
-            const DeviceOptions& options
-        ) noexcept;
-        void release() noexcept;
-
-        VkInstance instance_;
-        VkPhysicalDevice physical_;
-        VkDevice device_;
-        VkPhysicalDeviceProperties properties_;
-        bool dynamic_rendering_;
-        std::array<NativeQueue, 3> queues_;
-        bool multiview_;
-        bool local_read_;
-        bool timeline_;
-        bool separate_depth_stencil_;
-        bool swapchain_maintenance_;
-    };
-
     // Borrows device/instance; allocations must be destroyed before this owner.
     class VulkanAllocator
     {
     public:
-        [[nodiscard]] static RenderResult<VulkanAllocator> create(const VulkanDevice& device) noexcept;
+        [[nodiscard]] static RenderResult<VulkanAllocator> create(
+            VkInstance instance,
+            VkPhysicalDevice physical,
+            VkDevice device,
+            bool buffer_device_address
+        ) noexcept;
         // Returned objects own their Native allocation; this allocator must outlive every reference.
         [[nodiscard]] RenderResult<std::shared_ptr<Buffer>> createBuffer(
             VkDeviceSize size,

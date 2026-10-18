@@ -95,7 +95,7 @@ namespace
         const auto previous_buffers = buffer_destructions;
         const auto previous_images = image_destructions;
         const auto previous_arrays = array_destructions;
-        const auto device = session.device().native();
+        const auto device = session.nativeDevice();
         auto& allocator = session.allocator();
         auto& queue = session.queue(EQueueRole::COMPUTE);
         auto bindings = std::make_shared<Bindings>(device);
@@ -282,7 +282,7 @@ int main(int argc, char** argv)
         options.multiple_queues = topology != 0;
         options.prefer_dedicated_queues = topology != 2;
         auto session = take(DeviceSession::create(bootstrap, options));
-        CHECK(session->device().bufferDeviceAddress());
+        CHECK(session->enabledFeatures().buffer_device_address);
         run(*session, spirv);
         std::printf("batch_resources topology=%u actual_queue=%u:%u descriptor_range_bytes=%zu output_words=32\n",
             topology, session->queue(EQueueRole::COMPUTE).nativeQueue().family,

@@ -52,6 +52,36 @@ namespace lux::render::vulkan::test
 
 namespace
 {
+    // Standalone Queue owner: no DeviceSession and no second serial domain for the same VkQueue.
+    std::pair<lux::gapi::vk::LogicalDevice, NativeQueue> createDevice(const InstanceContext& instance)
+    {
+        std::uint32_t count = 0;
+        CHECK(vkEnumeratePhysicalDevices(instance.native(), &count, nullptr) == VK_SUCCESS && count != 0);
+        std::vector<VkPhysicalDevice> handles(count);
+        CHECK(vkEnumeratePhysicalDevices(instance.native(), &count, handles.data()) == VK_SUCCESS);
+        lux::gapi::vk::PhysicalDevice physical(handles.front());
+        auto family = physical.findQueueFamilyIndexByFlags(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT);
+        CHECK(family != UINT32_MAX);
+        const float priority = 1.0f;
+        VkDeviceQueueCreateInfo queue{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+        queue.queueFamilyIndex = family;
+        queue.queueCount = 1;
+        queue.pQueuePriorities = &priority;
+        VkPhysicalDeviceVulkan13Features enabled{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+        enabled.synchronization2 = VK_TRUE;
+        VkDeviceCreateInfo info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+        info.pNext = &enabled;
+        info.queueCreateInfoCount = 1;
+        info.pQueueCreateInfos = &queue;
+        auto device = lux::gapi::vk::LogicalDevice::create(physical.handle(), info);
+        CHECK(device);
+        NativeQueue native{};
+        native.family = family;
+        native.flags = physical.queueFamilyProperties()[family].queueFamilyProperties.queueFlags;
+        vkGetDeviceQueue(device->handle(), family, 0, &native.handle);
+        return {std::move(*device), native};
+    }
+
     SubmissionTicket submit(SubmissionQueue& queue)
     {
         // An empty recorded command buffer still makes a real vkQueueSubmit2/Fence submission.
@@ -127,8 +157,8 @@ namespace
 
     void callbackCases(const InstanceContext& bootstrap)
     {
-        auto device = take(VulkanDevice::create(bootstrap));
-        auto queue = take(SubmissionQueue::create(device, 8, EQueueRole::GRAPHICS, 3));
+        auto [device, native] = createDevice(bootstrap);
+        auto queue = take(SubmissionQueue::create(device.handle(), native, false, 8, 3));
         SubmissionCallback a, b, c, spare;
         Counts a_count, b_count, c_count;
         CHECK(queue->reserve(a) && queue->reserve(b) && queue->reserve(c));
@@ -224,8 +254,8 @@ namespace
         CHECK(a_count.success == 3 && a_count.failed == 0);
         a.reset();
 
-        auto other_device = take(VulkanDevice::create(bootstrap));
-        auto other = take(SubmissionQueue::create(other_device, 2));
+        auto [other_device, other_native] = createDevice(bootstrap);
+        auto other = take(SubmissionQueue::create(other_device.handle(), other_native, false, 2));
         hold(*other, 0);
         const auto foreign = submit(*other);
         CHECK(queue->reserve(a));
@@ -301,8 +331,8 @@ namespace
 
     void deviceLostCase(const InstanceContext& bootstrap)
     {
-        auto device = take(VulkanDevice::create(bootstrap));
-        auto queue = take(SubmissionQueue::create(device, 4, EQueueRole::GRAPHICS, 2));
+        auto [device, native] = createDevice(bootstrap);
+        auto queue = take(SubmissionQueue::create(device.handle(), native, false, 4, 2));
         hold(*queue, 0);
         const auto ticket = submit(*queue);
         SubmissionCallback a, b;

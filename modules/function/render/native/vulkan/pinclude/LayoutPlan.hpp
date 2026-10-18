@@ -46,7 +46,7 @@ namespace lux::render::vulkan
     [[nodiscard]] const ShaderBinding& sampledImageTableBinding() noexcept;
 
     [[nodiscard]] RenderResult<LayoutPlan> planLayouts(
-        const VulkanDevice& device,
+        const VkPhysicalDeviceLimits& limits,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
         std::span<const PassProgram* const> programs

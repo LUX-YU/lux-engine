@@ -230,7 +230,7 @@ namespace lux::render::vulkan
 
     VkDevice Transfer::device() const noexcept
     {
-        return session_->device().native();
+        return session_->nativeDevice();
     }
 
     const Image& Transfer::image() const noexcept
@@ -433,7 +433,8 @@ namespace lux::render::vulkan
             }
             const auto mask = timestamp_bits == 64 ? UINT64_MAX : (std::uint64_t{1} << timestamp_bits) - 1;
             state.stats.gpu_ns += std::uint64_t(
-                double((stamps[1] - stamps[0]) & mask) * session_->device().properties().limits.timestampPeriod
+                double((stamps[1] - stamps[0]) & mask) *
+                session_->physicalDevice().properties().properties.limits.timestampPeriod
             );
             ++state.stats.gpu_samples;
             query_pending_ = false;

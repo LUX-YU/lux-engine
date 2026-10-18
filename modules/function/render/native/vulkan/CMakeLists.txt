@@ -33,8 +33,8 @@ component_add_internal_dependencies(render_native_vulkan lux::engine::render::re
     lux::engine::render::render_data lux::engine::render::render_resource lux::engine::render::render_graph
 )
 
-target_link_libraries(render_native_vulkan PUBLIC Vulkan::Vulkan
-    PRIVATE lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared lux::engine::platform::gapi
+target_link_libraries(render_native_vulkan PUBLIC Vulkan::Vulkan lux::engine::platform::gapi
+    PRIVATE lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared
 )
 
 component_add_transitive_commands(render_native_vulkan

@@ -114,7 +114,7 @@ namespace lux::render::vulkan
             const PassProgram& program,
             const GraphPass& pass,
             std::span<const NativeResourcePlan> resources,
-            const VulkanDevice& device,
+            const VkPhysicalDeviceLimits& limits,
             CompiledPass& result
         ) noexcept
         {
@@ -242,7 +242,7 @@ namespace lux::render::vulkan
                 }
                 // This Device currently enables single indirect indirect. Multiple commands require the
                 // actual multiDrawIndirect feature, not merely a larger author-provided count.
-                if (indirect.count > 1 || indirect.count > device.properties().limits.maxDrawIndirectCount)
+                if (indirect.count > 1 || indirect.count > limits.maxDrawIndirectCount)
                 {
                     return cxx::unexpected(RenderError{kUnsupported});
                 }
@@ -317,16 +317,18 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(result.error());
         }
-        const auto& device = session.device();
+        const auto device = session.nativeDevice();
+        const auto& physical = session.physicalDevice();
+        const auto& limits = physical.properties().properties.limits;
         const bool is_unsupported_target = target.kind != ETargetKind::OFFSCREEN || target.samples != 1 ||
                                            imageFormat(target.format).native == VK_FORMAT_UNDEFINED ||
-                                           target.width > device.properties().limits.maxImageDimension2D ||
-                                           target.height > device.properties().limits.maxImageDimension2D;
+                                           target.width > limits.maxImageDimension2D ||
+                                           target.height > limits.maxImageDimension2D;
         if (is_unsupported_target)
         {
             return cxx::unexpected(RenderError{kUnsupported});
         }
-        CompiledGraph result(device.native(), target);
+        CompiledGraph result(device, target);
         // Resolve author keys once at the cold compiler boundary, then index by GraphPassId.
         std::vector<const PassProgram*> pass_programs(graph.passes().size(), nullptr);
         for (const auto& program : programs)
@@ -501,7 +503,7 @@ namespace lux::render::vulkan
                 }
             }
         } while (changed);
-        auto planned = planLayouts(device, graph, analysis, pass_programs);
+        auto planned = planLayouts(limits, graph, analysis, pass_programs);
         if (!planned)
         {
             return cxx::unexpected(planned.error());
@@ -563,14 +565,13 @@ namespace lux::render::vulkan
             const bool compute = pass.kind == EGraphPassKind::COMPUTE;
             if (compute)
             {
-                if (!(device.queue(EQueueRole::GRAPHICS).flags & VK_QUEUE_COMPUTE_BIT))
+                if (!(session.queue().nativeQueue().flags & VK_QUEUE_COMPUTE_BIT))
                 {
                     return cxx::unexpected(RenderError{kUnsupported});
                 }
                 for (unsigned axis = 0; axis < 3; ++axis)
                 {
-                    if (!binding->dispatch[axis] ||
-                        binding->dispatch[axis] > device.properties().limits.maxComputeWorkGroupCount[axis])
+                    if (!binding->dispatch[axis] || binding->dispatch[axis] > limits.maxComputeWorkGroupCount[axis])
                     {
                         return cxx::unexpected(RenderError{kInvalidArgument});
                     }
@@ -744,7 +745,7 @@ namespace lux::render::vulkan
                 compiled.recipe = compute ? ERecipe::DISPATCH : ERecipe::DRAW;
                 if (!compute)
                 {
-                    auto lowered = lowerDraw(*binding, pass, result.resources_, device, compiled);
+                    auto lowered = lowerDraw(*binding, pass, result.resources_, limits, compiled);
                     if (!lowered)
                     {
                         return cxx::unexpected(lowered.error());
@@ -758,10 +759,8 @@ namespace lux::render::vulkan
                     info.pPushConstantRanges = &range;
                     info.setLayoutCount = std::uint32_t(result.descriptor_layouts_.size());
                     info.pSetLayouts = result.descriptor_layouts_.data();
-                    const auto created = LUX_NATIVE(
-                        "pipeline_layout",
-                        vkCreatePipelineLayout(device.native(), &info, nullptr, &result.layout_)
-                    );
+                    const auto created =
+                        LUX_NATIVE("pipeline_layout", vkCreatePipelineLayout(device, &info, nullptr, &result.layout_));
                     if (created != VK_SUCCESS)
                     {
                         return cxx::unexpected(nativeError(created));
@@ -799,9 +798,11 @@ namespace lux::render::vulkan
                 }
                 else
                 {
-                    auto pipeline = compute ? compileCompute(device, result.layout_, identity.shader)
+                    auto pipeline = compute ? compileCompute(device, limits, result.layout_, identity.shader)
                                             : compileGraphics(
                                                   device,
+                                                  physical,
+                                                  session.enabledFeatures(),
                                                   result.layout_,
                                                   identity.shader,
                                                   identity.graphics,
@@ -899,7 +900,7 @@ namespace lux::render::vulkan
             {
                 const auto format = imageFormat(std::get<GraphImageDesc>(resource.description).format).native;
                 VkFormatProperties properties{};
-                vkGetPhysicalDeviceFormatProperties(device.physical(), format, &properties);
+                vkGetPhysicalDeviceFormatProperties(physical.handle(), format, &properties);
                 VkFormatFeatureFlags required = 0;
                 if (resource.image_usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
                 {

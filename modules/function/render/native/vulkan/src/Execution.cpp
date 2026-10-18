@@ -86,8 +86,8 @@ namespace lux::render::vulkan
         std::span<const StorageArgument> arguments
     ) noexcept
     {
-        const auto max_extent = device_.properties().limits.maxImageDimension2D;
-        const bool invalid = !code || code->device() != device_.native() || !code->compatible(target) ||
+        const auto max_extent = physical_device_.properties().properties.limits.maxImageDimension2D;
+        const bool invalid = !code || code->device() != nativeDevice() || !code->compatible(target) ||
                              target.width == 0 || target.height == 0 || target.width > max_extent ||
                              target.height > max_extent;
         if (invalid)
@@ -230,7 +230,7 @@ namespace lux::render::vulkan
                 if (attachment)
                 {
                     const auto status =
-                        LUX_NATIVE("image_view", vkCreateImageView(device_.native(), &view, nullptr, &binding.view));
+                        LUX_NATIVE("image_view", vkCreateImageView(nativeDevice(), &view, nullptr, &binding.view));
                     if (status != VK_SUCCESS)
                     {
                         return cxx::unexpected(nativeError(status));

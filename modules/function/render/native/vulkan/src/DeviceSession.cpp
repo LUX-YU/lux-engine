@@ -9,9 +9,15 @@
 
 namespace lux::render::vulkan
 {
-    DeviceSession::DeviceSession(VulkanDevice native, VulkanAllocator memory) noexcept
-        : device_(std::move(native)), allocator_(std::move(memory)),
-          resources_(this, (device_.textureDescriptors() ? 1u : 0u) | (device_.textureCompressionBc() ? 2u : 0u)),
+    DeviceSession::DeviceSession(
+        gapi::vk::PhysicalDevice physical,
+        gapi::vk::LogicalDevice logical,
+        EnabledDeviceFeatures enabled,
+        VulkanAllocator memory
+    ) noexcept
+        : physical_device_(std::move(physical)), logical_device_(std::move(logical)), enabled_features_(enabled),
+          allocator_(std::move(memory)),
+          resources_(this, (enabled.texture_descriptors ? 1u : 0u) | (enabled.texture_compression_bc ? 2u : 0u)),
           global_storages_(resources_)
     {
     }
@@ -40,52 +46,6 @@ namespace lux::render::vulkan
         }
         sampled_images_.reset();
         // Queue resource sets leave before allocator and device destruction.
-    }
-
-    RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(
-        const InstanceContext& instance,
-        const DeviceOptions& options,
-        std::uint32_t slots
-    ) noexcept
-    {
-        if (slots == 0)
-        {
-            return cxx::unexpected(RenderError{kInvalidArgument});
-        }
-        auto device = VulkanDevice::create(instance, options);
-        if (!device)
-        {
-            return cxx::unexpected(device.error());
-        }
-        auto allocator = VulkanAllocator::create(*device);
-        if (!allocator)
-        {
-            return cxx::unexpected(allocator.error());
-        }
-        auto result = std::unique_ptr<DeviceSession>(new DeviceSession(std::move(*device), std::move(*allocator)));
-        result->physical_queues_.reserve(3);
-        for (std::size_t i = 0; i < 3; ++i)
-        {
-            const auto role = static_cast<EQueueRole>(i);
-            const auto handle = result->device_.queue(role).handle;
-            const auto existing = std::ranges::find_if(
-                result->physical_queues_,
-                [&](const auto& queue) { return queue->nativeQueue().handle == handle; }
-            );
-            const auto index = static_cast<std::uint8_t>(existing - result->physical_queues_.begin());
-            if (existing == result->physical_queues_.end())
-            {
-                auto queue = SubmissionQueue::create(result->device_, slots, role);
-                if (!queue)
-                {
-                    return cxx::unexpected(queue.error());
-                }
-                result->physical_queues_.push_back(std::move(*queue));
-            }
-            result->queue_roles_[i] = index;
-        }
-        result->retirement_.reset(new RetirementQueue(result->physical_queues_));
-        return result;
     }
 
     RenderResult<void> DeviceSession::drain() noexcept

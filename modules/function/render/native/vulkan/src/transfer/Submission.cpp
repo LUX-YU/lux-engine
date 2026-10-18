@@ -64,9 +64,10 @@ namespace lux::render::vulkan
     SubmissionQueue::SubmissionQueue(std::unique_ptr<Backing> backing) noexcept : backing_(std::move(backing)) {}
 
     RenderResult<std::unique_ptr<SubmissionQueue>> SubmissionQueue::create(
-        const VulkanDevice& device,
+        VkDevice device,
+        NativeQueue native_queue,
+        bool timeline_enabled,
         std::uint32_t capacity,
-        EQueueRole role,
         std::uint32_t callback_capacity
     ) noexcept
     {
@@ -74,15 +75,11 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        if (static_cast<std::uint32_t>(role) > static_cast<std::uint32_t>(EQueueRole::TRANSFER))
-        {
-            return cxx::unexpected(RenderError{kInvalidArgument});
-        }
-        auto backing = std::make_unique<Backing>(device.native(), device.queue(role), capacity, callback_capacity);
+        auto backing = std::make_unique<Backing>(device, native_queue, capacity, callback_capacity);
         VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
         pool.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         pool.queueFamilyIndex = backing->queue.family;
-        auto result = LUX_NATIVE("command_pool", vkCreateCommandPool(device.native(), &pool, nullptr, &backing->pool));
+        auto result = LUX_NATIVE("command_pool", vkCreateCommandPool(device, &pool, nullptr, &backing->pool));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -92,7 +89,7 @@ namespace lux::render::vulkan
         allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocation.commandBufferCount = capacity;
         std::vector<VkCommandBuffer> commands(capacity);
-        result = LUX_NATIVE("commands", vkAllocateCommandBuffers(device.native(), &allocation, commands.data()));
+        result = LUX_NATIVE("commands", vkAllocateCommandBuffers(device, &allocation, commands.data()));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -105,19 +102,19 @@ namespace lux::render::vulkan
             // the first recording needs no heap allocation; multi-resource upload batches may grow it.
             batch.resources.reserve(1);
             batch.command = commands[i];
-            result = LUX_NATIVE("fence", vkCreateFence(device.native(), &fence, nullptr, &batch.fence));
+            result = LUX_NATIVE("fence", vkCreateFence(device, &fence, nullptr, &batch.fence));
             if (result != VK_SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));
             }
         }
-        if (device.timelineSemaphore())
+        if (timeline_enabled)
         {
             VkSemaphoreTypeCreateInfo type{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
             type.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
             VkSemaphoreCreateInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
             info.pNext = &type;
-            result = LUX_NATIVE("timeline", vkCreateSemaphore(device.native(), &info, nullptr, &backing->timeline));
+            result = LUX_NATIVE("timeline", vkCreateSemaphore(device, &info, nullptr, &backing->timeline));
             if (result != VK_SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));

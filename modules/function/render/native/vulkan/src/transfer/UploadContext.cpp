@@ -31,7 +31,7 @@ namespace lux::render::vulkan
     {
         if (timestamps)
         {
-            vkDestroyQueryPool(session.device().native(), timestamps, nullptr);
+            vkDestroyQueryPool(session.nativeDevice(), timestamps, nullptr);
         }
     }
 
@@ -47,29 +47,29 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        if (options.measure_gpu && !device_.hostQueryReset())
+        if (options.measure_gpu && !enabled_features_.host_query_reset)
         {
             return cxx::unexpected(RenderError{kUnsupported});
         }
         auto state = std::unique_ptr<UploadContext>(new UploadContext(*this, options, cpu));
-        std::uint32_t family_count = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device_.physical(), &family_count, nullptr);
-        std::vector<VkQueueFamilyProperties> families_info(family_count);
-        vkGetPhysicalDeviceQueueFamilyProperties(device_.physical(), &family_count, families_info.data());
+        const auto& families_info = physical_device_.queueFamilyProperties();
         auto& transfer = queue(EQueueRole::TRANSFER);
-        const auto granularity = families_info[transfer.nativeQueue().family].minImageTransferGranularity;
+        const auto granularity =
+            families_info[transfer.nativeQueue().family].queueFamilyProperties.minImageTransferGranularity;
         // This row-chunk algorithm requires independently transferable texel/block rows. Other hardware
         // uses the existing Graphics queue; do not emit invalid sub-image transfers on restrictive families.
         const bool row_chunks = granularity.width == 1 && granularity.height == 1 && granularity.depth == 1;
         state->copy_queue = row_chunks ? &transfer : &queue();
-        state->copy_timestamp_bits = families_info[state->copy_queue->nativeQueue().family].timestampValidBits;
-        state->graphics_timestamp_bits = families_info[queue().nativeQueue().family].timestampValidBits;
+        state->copy_timestamp_bits =
+            families_info[state->copy_queue->nativeQueue().family].queueFamilyProperties.timestampValidBits;
+        state->graphics_timestamp_bits =
+            families_info[queue().nativeQueue().family].queueFamilyProperties.timestampValidBits;
         if (options.measure_gpu && (state->copy_timestamp_bits || state->graphics_timestamp_bits))
         {
             VkQueryPoolCreateInfo query{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
             query.queryType = VK_QUERY_TYPE_TIMESTAMP;
             query.queryCount = std::uint32_t(options.staging_pages * 2);
-            const auto result = vkCreateQueryPool(device_.native(), &query, nullptr, &state->timestamps);
+            const auto result = vkCreateQueryPool(nativeDevice(), &query, nullptr, &state->timestamps);
             if (result != VK_SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));
@@ -255,7 +255,7 @@ namespace lux::render::vulkan
     {
         std::array<std::uint64_t, 2> values{};
         const auto result = vkGetQueryPoolResults(
-            session.device().native(),
+            session.nativeDevice(),
             timestamps,
             std::uint32_t(page * 2),
             2,
@@ -271,7 +271,8 @@ namespace lux::render::vulkan
         }
         const auto mask = bits == 64 ? UINT64_MAX : (std::uint64_t{1} << bits) - 1;
         stats.gpu_ns += std::uint64_t(
-            double((values[1] - values[0]) & mask) * session.device().properties().limits.timestampPeriod
+            double((values[1] - values[0]) & mask) *
+            session.physicalDevice().properties().properties.limits.timestampPeriod
         );
         ++stats.gpu_samples;
         return {};
@@ -425,8 +426,8 @@ namespace lux::render::vulkan
         // A stop or device loss after accepted work cannot claim that the command had no side effects.
         const auto failure = [&](RenderError error) noexcept
         {
-            const bool is_device_lost = error.type == kNativeFailure &&
-                error.args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
+            const bool is_device_lost =
+                error.type == kNativeFailure && error.args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
             const bool is_unknown = ticket && (stop.stop_requested() || is_device_lost);
             return cxx::unexpected(is_unknown ? RenderError{kOutcomeUnknown} : error);
         };
@@ -547,7 +548,7 @@ namespace lux::render::vulkan
             }
             if (timestamp)
             {
-                vkResetQueryPool(session.device().native(), timestamps, std::uint32_t(page->index() * 2), 2);
+                vkResetQueryPool(session.nativeDevice(), timestamps, std::uint32_t(page->index() * 2), 2);
                 vkCmdWriteTimestamp2(
                     batch->native(),
                     VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,

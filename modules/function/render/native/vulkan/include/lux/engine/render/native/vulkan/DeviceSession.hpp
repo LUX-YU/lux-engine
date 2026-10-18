@@ -1,5 +1,7 @@
 #pragma once
 #include <lux/engine/core/execution/Scheduler.hpp>
+#include <lux/engine/gapi/vk/LogicalDevice.hpp>
+#include <lux/engine/gapi/vk/PhysicalDevice.hpp>
 
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
@@ -64,9 +66,24 @@ namespace lux::render::vulkan
             return allocator_;
         }
 
-        [[nodiscard]] const VulkanDevice& device() const noexcept
+        [[nodiscard]] const gapi::vk::PhysicalDevice& physicalDevice() const noexcept
         {
-            return device_;
+            return physical_device_;
+        }
+
+        [[nodiscard]] VkDevice nativeDevice() const noexcept
+        {
+            return logical_device_.handle();
+        }
+
+        [[nodiscard]] const EnabledDeviceFeatures& enabledFeatures() const noexcept
+        {
+            return enabled_features_;
+        }
+
+        [[nodiscard]] const SubmissionQueue& queue(EQueueRole role = EQueueRole::GRAPHICS) const noexcept
+        {
+            return *physical_queues_[queue_roles_[static_cast<std::size_t>(role)]];
         }
 
         // Boundary lookup compares stable owner identity before inspecting the ticket's queue.
@@ -112,8 +129,15 @@ namespace lux::render::vulkan
         friend class Transfer;
         friend class UploadContext;
         friend class ExecutionContext;
-        DeviceSession(VulkanDevice device, VulkanAllocator allocator) noexcept;
-        VulkanDevice device_;
+        DeviceSession(
+            gapi::vk::PhysicalDevice physical,
+            gapi::vk::LogicalDevice logical,
+            EnabledDeviceFeatures enabled,
+            VulkanAllocator allocator
+        ) noexcept;
+        gapi::vk::PhysicalDevice physical_device_;
+        gapi::vk::LogicalDevice logical_device_;
+        EnabledDeviceFeatures enabled_features_;
         VulkanAllocator allocator_;
         std::vector<std::unique_ptr<SubmissionQueue>> physical_queues_;
         std::array<std::uint8_t, 3> queue_roles_{};

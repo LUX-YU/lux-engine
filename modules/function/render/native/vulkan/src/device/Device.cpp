@@ -3,6 +3,7 @@
 #include "Native.hpp"
 #include <algorithm>
 #include <cstring>
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <utility>
 #include <vector>
 #include <vk_mem_alloc.h>
@@ -300,30 +301,16 @@ namespace lux::render::vulkan
         return result;
     }
 
-    VulkanDevice::VulkanDevice(
-        VkInstance instance,
-        VkPhysicalDevice physical,
-        VkDevice device,
-        std::array<NativeQueue, 3> queues,
-        const DeviceOptions& options
-    ) noexcept
-        : instance_(instance), physical_(physical), device_(device), dynamic_rendering_(options.dynamic_rendering),
-          queues_(queues), multiview_(options.multiview), local_read_(options.local_read),
-          timeline_(options.multiple_queues), separate_depth_stencil_(options.separate_depth_stencil),
-          swapchain_maintenance_(options.swapchain_maintenance)
-    {
-        texture_compression_bc_ = options.texture_compression_bc;
-        texture_descriptors_ = options.texture_descriptors;
-        host_query_reset_ = options.host_query_reset;
-        buffer_device_address_ = options.buffer_device_address;
-        vkGetPhysicalDeviceProperties(physical, &properties_);
-    }
-
-    RenderResult<VulkanDevice> VulkanDevice::create(
+    RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(
         const InstanceContext& instance,
-        const DeviceOptions& options
+        const DeviceOptions& options,
+        std::uint32_t slots
     ) noexcept
     {
+        if (slots == 0)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
         if (options.local_read && !options.dynamic_rendering)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
@@ -358,7 +345,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        VkPhysicalDevice selected{};
+        std::optional<gapi::vk::PhysicalDevice> selected;
         auto enabled_options = options;
         std::array<NativeQueue, 3> queues{};
         int best_score = -1;
@@ -370,9 +357,9 @@ namespace lux::render::vulkan
             {
                 continue;
             }
-            const auto physical = (*devices)[index];
-            VkPhysicalDeviceProperties properties{};
-            vkGetPhysicalDeviceProperties(physical, &properties);
+            gapi::vk::PhysicalDevice snapshot((*devices)[index]);
+            const auto physical = snapshot.handle();
+            const auto& properties = snapshot.properties().properties;
             VkPhysicalDeviceVulkan13Features supported{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
             VkPhysicalDeviceVulkan12Features supported12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
             VkPhysicalDeviceVulkan11Features supported11{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
@@ -431,11 +418,12 @@ namespace lux::render::vulkan
             {
                 continue;
             }
-            std::uint32_t count{};
-            vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, nullptr);
-            std::vector<VkQueueFamilyProperties> families(count);
-            vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, families.data());
-            families.resize(count);
+            std::vector<VkQueueFamilyProperties> families;
+            families.reserve(snapshot.queueFamilyProperties().size());
+            for (const auto& family : snapshot.queueFamilyProperties())
+            {
+                families.push_back(family.queueFamilyProperties);
+            }
             auto eligible = selectQueues(families, options.multiple_queues, options.prefer_dedicated_queues);
             if (!eligible)
             {
@@ -444,7 +432,7 @@ namespace lux::render::vulkan
             const int score = properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 1 : 0;
             if (score > best_score)
             {
-                selected = physical;
+                selected = std::move(snapshot);
                 enabled_options.texture_descriptors =
                     options.texture_descriptors || (options.optional_texture_descriptors && supports_texture_features);
                 enabled_options.texture_compression_bc =
@@ -522,66 +510,76 @@ namespace lux::render::vulkan
         info.pQueueCreateInfos = queue_infos.data();
         info.enabledExtensionCount = static_cast<std::uint32_t>(requested->size());
         info.ppEnabledExtensionNames = requested->data();
-        VkDevice device{};
-        const auto result = LUX_NATIVE("device", vkCreateDevice(selected, &info, nullptr, &device));
-        if (result != VK_SUCCESS)
+        gapi::vk::LogicalDevice device;
+        const auto created = LUX_NATIVE(
+            "device",
+            [&]() noexcept
+            {
+                auto value = gapi::vk::LogicalDevice::create(selected->handle(), info);
+                if (!value)
+                {
+                    return value.error();
+                }
+                device = std::move(*value);
+                return VK_SUCCESS;
+            }()
+        );
+        if (created != VK_SUCCESS)
         {
-            return cxx::unexpected(nativeError(result));
+            return cxx::unexpected(nativeError(created));
         }
         for (auto& queue : queues)
         {
-            vkGetDeviceQueue(device, queue.family, queue.index, &queue.handle);
+            vkGetDeviceQueue(device.handle(), queue.family, queue.index, &queue.handle);
         }
-        return VulkanDevice{instance.native(), selected, device, queues, enabled_options};
-    }
-
-    void VulkanDevice::release() noexcept
-    {
-        // Host has completed submitted work and released children. No hidden
-        // wait-idle or recovery here; this is Vulkan's ordinary parent lifetime.
-        if (device_)
+        const EnabledDeviceFeatures features{
+            bool(enabled.dynamicRendering),
+            bool(enabled12.timelineSemaphore),
+            bool(enabled11.multiview),
+            bool(enabled_local.dynamicRenderingLocalRead),
+            bool(enabled12.separateDepthStencilLayouts),
+            bool(enabled_present.swapchainMaintenance1),
+            bool(base_features.textureCompressionBC),
+            bool(enabled12.runtimeDescriptorArray),
+            bool(enabled12.hostQueryReset),
+            bool(enabled12.bufferDeviceAddress)
+        };
+        auto allocator = VulkanAllocator::create(
+            instance.native(),
+            selected->handle(),
+            device.handle(),
+            features.buffer_device_address
+        );
+        if (!allocator)
         {
-            LUX_DESTROY("device", vkDestroyDevice(device_, nullptr));
+            return cxx::unexpected(allocator.error());
         }
-    }
-
-    VulkanDevice::~VulkanDevice() noexcept
-    {
-        release();
-    }
-
-    VulkanDevice::VulkanDevice(VulkanDevice&& other) noexcept
-        : texture_compression_bc_(other.texture_compression_bc_), texture_descriptors_(other.texture_descriptors_),
-          host_query_reset_(other.host_query_reset_), buffer_device_address_(other.buffer_device_address_),
-          instance_(other.instance_), physical_(other.physical_), device_(std::exchange(other.device_, VK_NULL_HANDLE)),
-          properties_(other.properties_), dynamic_rendering_(other.dynamic_rendering_), queues_(other.queues_),
-          multiview_(other.multiview_), local_read_(other.local_read_), timeline_(other.timeline_),
-          separate_depth_stencil_(other.separate_depth_stencil_), swapchain_maintenance_(other.swapchain_maintenance_)
-    {
-    }
-
-    VulkanDevice& VulkanDevice::operator=(VulkanDevice&& other) noexcept
-    {
-        if (this != &other)
+        auto result = std::unique_ptr<DeviceSession>(
+            new DeviceSession(std::move(*selected), std::move(device), features, std::move(*allocator))
+        );
+        result->physical_queues_.reserve(3);
+        for (std::size_t i = 0; i < 3; ++i)
         {
-            release();
-            texture_compression_bc_ = other.texture_compression_bc_;
-            texture_descriptors_ = other.texture_descriptors_;
-            host_query_reset_ = other.host_query_reset_;
-            buffer_device_address_ = other.buffer_device_address_;
-            instance_ = other.instance_;
-            physical_ = other.physical_;
-            device_ = std::exchange(other.device_, VK_NULL_HANDLE);
-            properties_ = other.properties_;
-            dynamic_rendering_ = other.dynamic_rendering_;
-            queues_ = other.queues_;
-            multiview_ = other.multiview_;
-            local_read_ = other.local_read_;
-            timeline_ = other.timeline_;
-            separate_depth_stencil_ = other.separate_depth_stencil_;
-            swapchain_maintenance_ = other.swapchain_maintenance_;
+            const auto handle = queues[i].handle;
+            const auto existing = std::ranges::find_if(
+                result->physical_queues_,
+                [&](const auto& queue) { return queue->nativeQueue().handle == handle; }
+            );
+            const auto index = static_cast<std::uint8_t>(existing - result->physical_queues_.begin());
+            if (existing == result->physical_queues_.end())
+            {
+                auto queue =
+                    SubmissionQueue::create(result->nativeDevice(), queues[i], features.timeline_semaphore, slots);
+                if (!queue)
+                {
+                    return cxx::unexpected(queue.error());
+                }
+                result->physical_queues_.push_back(std::move(*queue));
+            }
+            result->queue_roles_[i] = index;
         }
-        return *this;
+        result->retirement_.reset(new RetirementQueue(result->physical_queues_));
+        return result;
     }
 
     VulkanAllocator::VulkanAllocator(VmaAllocator_T* allocator, VkDevice device, bool buffer_device_address) noexcept
@@ -589,14 +587,19 @@ namespace lux::render::vulkan
     {
     }
 
-    RenderResult<VulkanAllocator> VulkanAllocator::create(const VulkanDevice& device) noexcept
+    RenderResult<VulkanAllocator> VulkanAllocator::create(
+        VkInstance instance,
+        VkPhysicalDevice physical,
+        VkDevice device,
+        bool buffer_device_address
+    ) noexcept
     {
         VmaAllocatorCreateInfo info{};
-        info.instance = device.instance();
-        info.physicalDevice = device.physical();
-        info.device = device.native();
+        info.instance = instance;
+        info.physicalDevice = physical;
+        info.device = device;
         info.vulkanApiVersion = VK_API_VERSION_1_3;
-        if (device.bufferDeviceAddress())
+        if (buffer_device_address)
         {
             info.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
         }
@@ -606,7 +609,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(nativeError(result));
         }
-        return VulkanAllocator{allocator, device.native(), device.bufferDeviceAddress()};
+        return VulkanAllocator{allocator, device, buffer_device_address};
     }
 
     void VulkanAllocator::release() noexcept

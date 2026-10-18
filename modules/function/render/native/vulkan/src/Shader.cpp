@@ -560,7 +560,7 @@ namespace lux::render::vulkan
     } // namespace
 
     RenderResult<VkDescriptorSetLayout> createDescriptorLayout(
-        const VulkanDevice& device,
+        VkDevice device,
         std::span<const ShaderBinding> contract,
         std::uint32_t runtime_count,
         const char* fault_label
@@ -605,7 +605,7 @@ namespace lux::render::vulkan
         layout.pBindings = bindings.data();
         gapi::vk::DescriptorSetLayout handle;
         static_assert(sizeof(handle) == sizeof(VkDescriptorSetLayout));
-        const auto result = LUX_NATIVE(fault_label, handle.tryCreate(device.native(), layout));
+        const auto result = LUX_NATIVE(fault_label, handle.tryCreate(device, layout));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -614,7 +614,8 @@ namespace lux::render::vulkan
     }
 
     RenderResult<VkPipeline> compileCompute(
-        const VulkanDevice& device,
+        VkDevice device,
+        const VkPhysicalDeviceLimits& limits,
         VkPipelineLayout layout,
         const SpirvArtifact& shader
     ) noexcept
@@ -625,7 +626,7 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
         const auto& code = shader.stages[0];
-        if (!validateStage(code, SpvExecutionModelGLCompute, shader.interface, device.properties().limits))
+        if (!validateStage(code, SpvExecutionModelGLCompute, shader.interface, limits))
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
@@ -633,7 +634,7 @@ namespace lux::render::vulkan
         module.codeSize = code.words.size() * sizeof(std::uint32_t);
         module.pCode = code.words.data();
         VkShaderModule handle{};
-        const auto created = LUX_NATIVE("shader", vkCreateShaderModule(device.native(), &module, nullptr, &handle));
+        const auto created = LUX_NATIVE("shader", vkCreateShaderModule(device, &module, nullptr, &handle));
         if (created != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(created));
@@ -645,14 +646,13 @@ namespace lux::render::vulkan
         info.stage.pName = code.entry.c_str();
         info.layout = layout;
         VkPipeline pipeline{};
-        const auto result =
-            LUX_NATIVE("pipeline", vkCreateComputePipelines(device.native(), {}, 1, &info, nullptr, &pipeline));
-        LUX_DESTROY("shader", vkDestroyShaderModule(device.native(), handle, nullptr));
+        const auto result = LUX_NATIVE("pipeline", vkCreateComputePipelines(device, {}, 1, &info, nullptr, &pipeline));
+        LUX_DESTROY("shader", vkDestroyShaderModule(device, handle, nullptr));
         if (result != VK_SUCCESS)
         {
             if (pipeline)
             {
-                LUX_DESTROY("pipeline", vkDestroyPipeline(device.native(), pipeline, nullptr));
+                LUX_DESTROY("pipeline", vkDestroyPipeline(device, pipeline, nullptr));
             }
             return cxx::unexpected(nativeError(result));
         }
@@ -660,7 +660,9 @@ namespace lux::render::vulkan
     }
 
     RenderResult<VkPipeline> compileGraphics(
-        const VulkanDevice& device,
+        VkDevice device,
+        const gapi::vk::PhysicalDevice& physical,
+        const EnabledDeviceFeatures& enabled,
         VkPipelineLayout layout,
         const SpirvArtifact& shader,
         const GraphicsState& graphics,
@@ -672,7 +674,7 @@ namespace lux::render::vulkan
             shader.interface.bindings,
             [](const auto& value) { return value.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY && value.count == 0; }
         );
-        const bool is_unsupported = !device.dynamicRendering() || (needs_arrays && !device.textureDescriptors());
+        const bool is_unsupported = !enabled.dynamic_rendering || (needs_arrays && !enabled.texture_descriptors);
         if (is_unsupported)
         {
             return cxx::unexpected(RenderError{kUnsupported});
@@ -707,7 +709,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        const auto& limits = device.properties().limits;
+        const auto& limits = physical.properties().properties.limits;
         StageIo vertex_io, fragment_io;
         const bool valid_vertex =
             validateStage(*vertex_stage, SpvExecutionModelVertex, shader.interface, limits, &graphics, &vertex_io);
@@ -778,7 +780,7 @@ namespace lux::render::vulkan
                 return cxx::unexpected(RenderError{kInvalidArgument});
             }
             VkFormatProperties properties{};
-            vkGetPhysicalDeviceFormatProperties(device.physical(), format.native, &properties);
+            vkGetPhysicalDeviceFormatProperties(physical.handle(), format.native, &properties);
             if (!(properties.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT))
             {
                 return cxx::unexpected(RenderError{kUnsupported});
@@ -801,7 +803,7 @@ namespace lux::render::vulkan
                     }
                 }
             }
-        } modules{device.native()};
+        } modules{device};
 
         const std::array code{vertex_stage, fragment_stage};
         std::array<VkPipelineShaderStageCreateInfo, 2> stages{};
@@ -812,7 +814,7 @@ namespace lux::render::vulkan
             info.codeSize = code[i]->words.size() * sizeof(std::uint32_t);
             info.pCode = code[i]->words.data();
             const auto created =
-                LUX_NATIVE("shader", vkCreateShaderModule(device.native(), &info, nullptr, &modules.handles[i]));
+                LUX_NATIVE("shader", vkCreateShaderModule(device, &info, nullptr, &modules.handles[i]));
             if (created != VK_SUCCESS)
             {
                 return cxx::unexpected(nativeError(created));
@@ -869,13 +871,12 @@ namespace lux::render::vulkan
         info.pDynamicState = &dynamic;
         info.layout = layout;
         VkPipeline pipeline{};
-        const auto result =
-            LUX_NATIVE("pipeline", vkCreateGraphicsPipelines(device.native(), {}, 1, &info, nullptr, &pipeline));
+        const auto result = LUX_NATIVE("pipeline", vkCreateGraphicsPipelines(device, {}, 1, &info, nullptr, &pipeline));
         if (result != VK_SUCCESS)
         {
             if (pipeline)
             {
-                LUX_DESTROY("pipeline", vkDestroyPipeline(device.native(), pipeline, nullptr));
+                LUX_DESTROY("pipeline", vkDestroyPipeline(device, pipeline, nullptr));
             }
             return cxx::unexpected(nativeError(result));
         }

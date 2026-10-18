@@ -48,8 +48,8 @@ target_include_directories(render_native_instrumented
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../pinclude" "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude" "${LUX_VMA_INCLUDE_DIR}"
 )
 
-target_link_libraries(render_native_instrumented PUBLIC render_features render_protocol Vulkan::Vulkan
-    PRIVATE lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared lux::engine::platform::gapi
+target_link_libraries(render_native_instrumented PUBLIC render_features render_protocol Vulkan::Vulkan lux::engine::platform::gapi
+    PRIVATE lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared
 )
 
 add_executable(render_native_fault_test Foundation.cpp)

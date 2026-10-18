@@ -78,13 +78,13 @@ namespace lux::render::vulkan
         {
         };
 
-        explicit DescriptorArray(const VulkanDevice& device, ShaderBinding binding, std::uint32_t capacity) noexcept
+        explicit DescriptorArray(VkDevice device, ShaderBinding binding, std::uint32_t capacity) noexcept
             : device_(device), binding_(binding), capacity_(capacity)
         {
         }
 
         [[nodiscard]] RenderResult<void> initialize() noexcept;
-        const VulkanDevice& device_;
+        VkDevice device_;
         ShaderBinding binding_;
         std::uint32_t capacity_;
         cxx::SlotMap<Entry, DescriptorSlotTag> slots_;

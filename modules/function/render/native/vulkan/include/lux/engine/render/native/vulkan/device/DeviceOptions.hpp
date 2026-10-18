@@ -6,6 +6,21 @@
 
 namespace lux::render::vulkan
 {
+    // Features actually enabled by successful logical-device creation.
+    struct EnabledDeviceFeatures final
+    {
+        bool dynamic_rendering = false;
+        bool timeline_semaphore = false;
+        bool multiview = false;
+        bool local_read = false;
+        bool separate_depth_stencil = false;
+        bool swapchain_maintenance = false;
+        bool texture_compression_bc = false;
+        bool texture_descriptors = false;
+        bool host_query_reset = false;
+        bool buffer_device_address = false;
+    };
+
     struct DeviceOptions
     {
         std::span<const char* const> extensions{};

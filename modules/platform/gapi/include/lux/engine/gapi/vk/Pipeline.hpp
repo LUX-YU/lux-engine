@@ -1,4 +1,7 @@
 #pragma once
+#include <utility>
+#include <memory>
+#include <exception>
 #include "lux/engine/gapi/vk/Object.hpp"
 #include <vector>
 
@@ -10,7 +13,28 @@ namespace lux::gapi::vk
     public:
         using Builder = PipelineLayoutBuilder;
 
-        PipelineLayout() : layout(VK_NULL_HANDLE) {}
+        PipelineLayout() noexcept : layout(VK_NULL_HANDLE) {}
+
+        // Non-owning carrier. Its aggregate owner supplies the device at release.
+        // Creation preserves an occupied carrier and never overwrites a live handle.
+        [[nodiscard]] VkResult tryCreate(
+            VkDevice device,
+            const VkPipelineLayoutCreateInfo& info,
+            const VkAllocationCallbacks* allocator = nullptr
+        ) noexcept
+        {
+            if (layout != VK_NULL_HANDLE)
+            {
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
+            VkPipelineLayout candidate{};
+            const auto result = vkCreatePipelineLayout(device, &info, allocator, &candidate);
+            if (result == VK_SUCCESS)
+            {
+                layout = candidate;
+            }
+            return result;
+        }
 
         PipelineLayout(
             VkDevice device,
@@ -60,12 +84,18 @@ namespace lux::gapi::vk
 
         PipelineLayout& operator=(PipelineLayout&& other) noexcept
         {
-            layout = other.layout;
-            other.layout = VK_NULL_HANDLE;
+            if (this != std::addressof(other))
+            {
+                if (layout != VK_NULL_HANDLE)
+                {
+                    std::terminate(); // The aggregate owner must release the destination first.
+                }
+                layout = std::exchange(other.layout, VkPipelineLayout{});
+            }
             return *this;
         }
 
-        void release(VkDevice device, VkAllocationCallbacks* allocator = nullptr)
+        void release(VkDevice device, const VkAllocationCallbacks* allocator = nullptr) noexcept
         {
             if (layout != VK_NULL_HANDLE)
             {

@@ -1,4 +1,7 @@
 #pragma once
+#include <utility>
+#include <memory>
+#include <exception>
 #include "Object.hpp"
 #include <vector>
 
@@ -9,19 +12,30 @@ namespace lux::gapi::vk
     class DescriptorSetLayout
     {
     public:
-        DescriptorSetLayout() : descriptor_set_layout(VK_NULL_HANDLE) {}
+        DescriptorSetLayout() noexcept : descriptor_set_layout(VK_NULL_HANDLE) {}
 
-        DescriptorSetLayout(VkDescriptorSetLayout layout) : descriptor_set_layout(layout) {}
-
-        // Empty handle carrier; its consumer remains the lifetime owner. Recoverable paths use the
-        // returned VkResult and do not invoke the legacy diagnostic/assert macro.
+        // Non-owning carrier. Its aggregate owner supplies the device at release.
+        // Creation preserves an occupied carrier and never overwrites a live handle.
         [[nodiscard]] VkResult tryCreate(
-            VkDevice device, const VkDescriptorSetLayoutCreateInfo& info,
+            VkDevice device,
+            const VkDescriptorSetLayoutCreateInfo& info,
             const VkAllocationCallbacks* allocator = nullptr
         ) noexcept
         {
-            return vkCreateDescriptorSetLayout(device, &info, allocator, &descriptor_set_layout);
+            if (descriptor_set_layout != VK_NULL_HANDLE)
+            {
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
+            VkDescriptorSetLayout candidate{};
+            const auto result = vkCreateDescriptorSetLayout(device, &info, allocator, &candidate);
+            if (result == VK_SUCCESS)
+            {
+                descriptor_set_layout = candidate;
+            }
+            return result;
         }
+
+        DescriptorSetLayout(VkDescriptorSetLayout layout) : descriptor_set_layout(layout) {}
 
         DescriptorSetLayout(
             VkDevice device,
@@ -50,12 +64,18 @@ namespace lux::gapi::vk
 
         DescriptorSetLayout& operator=(DescriptorSetLayout&& other) noexcept
         {
-            descriptor_set_layout = other.descriptor_set_layout;
-            other.descriptor_set_layout = VK_NULL_HANDLE;
+            if (this != std::addressof(other))
+            {
+                if (descriptor_set_layout != VK_NULL_HANDLE)
+                {
+                    std::terminate(); // The aggregate owner must release the destination first.
+                }
+                descriptor_set_layout = std::exchange(other.descriptor_set_layout, VkDescriptorSetLayout{});
+            }
             return *this;
         }
 
-        void release(VkDevice device, VkAllocationCallbacks* allocator = nullptr)
+        void release(VkDevice device, const VkAllocationCallbacks* allocator = nullptr) noexcept
         {
             if (descriptor_set_layout != VK_NULL_HANDLE)
             {
@@ -280,7 +300,28 @@ namespace lux::gapi::vk
     public:
         using Builder = DescriptorPoolBuilder;
 
-        DescriptorPool() : descriptor_pool(VK_NULL_HANDLE) {}
+        DescriptorPool() noexcept : descriptor_pool(VK_NULL_HANDLE) {}
+
+        // Non-owning carrier. Its aggregate owner supplies the device at release.
+        // Creation preserves an occupied carrier and never overwrites a live handle.
+        [[nodiscard]] VkResult tryCreate(
+            VkDevice device,
+            const VkDescriptorPoolCreateInfo& info,
+            const VkAllocationCallbacks* allocator = nullptr
+        ) noexcept
+        {
+            if (descriptor_pool != VK_NULL_HANDLE)
+            {
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
+            VkDescriptorPool candidate{};
+            const auto result = vkCreateDescriptorPool(device, &info, allocator, &candidate);
+            if (result == VK_SUCCESS)
+            {
+                descriptor_pool = candidate;
+            }
+            return result;
+        }
 
         DescriptorPool(const VkDescriptorPoolCreateInfo& create_info, VkDevice device, VkAllocationCallbacks* allocator)
         {
@@ -305,12 +346,18 @@ namespace lux::gapi::vk
 
         DescriptorPool& operator=(DescriptorPool&& other) noexcept
         {
-            descriptor_pool = other.descriptor_pool;
-            other.descriptor_pool = VK_NULL_HANDLE;
+            if (this != std::addressof(other))
+            {
+                if (descriptor_pool != VK_NULL_HANDLE)
+                {
+                    std::terminate(); // The aggregate owner must release the destination first.
+                }
+                descriptor_pool = std::exchange(other.descriptor_pool, VkDescriptorPool{});
+            }
             return *this;
         }
 
-        void release(VkDevice device, VkAllocationCallbacks* allocator = nullptr)
+        void release(VkDevice device, const VkAllocationCallbacks* allocator = nullptr) noexcept
         {
             if (descriptor_pool != VK_NULL_HANDLE)
             {

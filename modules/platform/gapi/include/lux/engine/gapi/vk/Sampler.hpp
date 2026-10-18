@@ -1,4 +1,7 @@
 #pragma once
+#include <utility>
+#include <memory>
+#include <exception>
 #include "lux/engine/gapi/vk/Object.hpp"
 #include <vulkan/vulkan.h>
 
@@ -8,7 +11,28 @@ namespace lux::gapi::vk
     class Sampler
     {
     public:
-        Sampler() : sampler(VK_NULL_HANDLE) {}
+        Sampler() noexcept : sampler(VK_NULL_HANDLE) {}
+
+        // Non-owning carrier. Its aggregate owner supplies the device at release.
+        // Creation preserves an occupied carrier and never overwrites a live handle.
+        [[nodiscard]] VkResult tryCreate(
+            VkDevice device,
+            const VkSamplerCreateInfo& info,
+            const VkAllocationCallbacks* allocator = nullptr
+        ) noexcept
+        {
+            if (sampler != VK_NULL_HANDLE)
+            {
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
+            VkSampler candidate{};
+            const auto result = vkCreateSampler(device, &info, allocator, &candidate);
+            if (result == VK_SUCCESS)
+            {
+                sampler = candidate;
+            }
+            return result;
+        }
 
         Sampler(VkDevice device, const VkSamplerCreateInfo& info, VkAllocationCallbacks* allocator = nullptr)
         {
@@ -26,12 +50,18 @@ namespace lux::gapi::vk
 
         Sampler& operator=(Sampler&& other) noexcept
         {
-            sampler = other.sampler;
-            other.sampler = VK_NULL_HANDLE;
+            if (this != std::addressof(other))
+            {
+                if (sampler != VK_NULL_HANDLE)
+                {
+                    std::terminate(); // The aggregate owner must release the destination first.
+                }
+                sampler = std::exchange(other.sampler, VkSampler{});
+            }
             return *this;
         }
 
-        void release(VkDevice device, VkAllocationCallbacks* allocator = nullptr)
+        void release(VkDevice device, const VkAllocationCallbacks* allocator = nullptr) noexcept
         {
             if (sampler != VK_NULL_HANDLE)
             {

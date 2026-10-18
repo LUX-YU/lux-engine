@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <span>
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -199,7 +200,8 @@ namespace lux::gapi::vk
     public:
         PhysicalDevice() noexcept = default;
 
-        explicit PhysicalDevice(VkPhysicalDevice device) noexcept : _physical_device(device)
+        explicit PhysicalDevice(VkPhysicalDevice device, std::span<const VkFormat> formats = {}) noexcept
+            : _physical_device(device)
         {
             VkPhysicalDeviceDescriptorIndexingProperties indexing{
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES
@@ -221,6 +223,13 @@ namespace lux::gapi::vk
             }
             vkGetPhysicalDeviceQueueFamilyProperties2(device, &queue_family_count, _queue_family_properties.data());
             _queue_family_properties.resize(queue_family_count);
+            _format_properties.reserve(formats.size());
+            for (const auto format : formats)
+            {
+                VkFormatProperties properties{};
+                vkGetPhysicalDeviceFormatProperties(device, format, &properties);
+                _format_properties.emplace_back(format, properties);
+            }
         }
 
         /*
@@ -415,6 +424,22 @@ namespace lux::gapi::vk
             return _features;
         }
 
+        // A cold query. Formats supplied at construction are immutable cached values;
+        // additional formats query the driver without mutating shared state.
+        [[nodiscard]] VkFormatProperties formatProperties(VkFormat format) const noexcept
+        {
+            for (const auto& [key, properties] : _format_properties)
+            {
+                if (key == format)
+                {
+                    return properties;
+                }
+            }
+            VkFormatProperties properties{};
+            vkGetPhysicalDeviceFormatProperties(_physical_device, format, &properties);
+            return properties;
+        }
+
         const VkPhysicalDeviceDescriptorIndexingProperties& descriptorIndexingProperties() const noexcept
         {
             return _descriptor_index_properties;
@@ -461,5 +486,6 @@ namespace lux::gapi::vk
         VkPhysicalDeviceFeatures2 _features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
         VkPhysicalDeviceMemoryProperties2 _memory_properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2};
         std::vector<VkQueueFamilyProperties2> _queue_family_properties{};
+        std::vector<std::pair<VkFormat, VkFormatProperties>> _format_properties;
     };
 }

@@ -19,7 +19,7 @@ static void pixels(const lux::platform::ipc::IpcMessage& completion, unsigned ex
 }
 
 static void publishedPixels(runtime_test::Peer& client, CommandId read,
-    const AttachmentRequest& group, unsigned previous, unsigned expected)
+    AttachmentId group, unsigned previous, unsigned expected)
 {
     // Readback returns an already submitted frame, not an implicit render-after-update transaction.
     // A frame accepted before publication may still return the old value; future frames must converge.
@@ -102,7 +102,8 @@ int main()
     auto attach = take(runtime_test::find<Attach>(*main));
     auto detach = take(runtime_test::find<Detach>(*main));
     auto read = take(runtime_test::find<Readback>(*main));
-    std::array<AttachmentRequest, 4> groups;
+    std::array<AttachmentRequest, 4> requests;
+    std::array<AttachmentId, 4> groups;
     for (unsigned s = 0; s < 2; ++s)
     {
         const auto scene = decoded<SceneCreated>(call<CreateScene>(*main, create_scene, EmptyRequest{})).scene;
@@ -110,8 +111,9 @@ int main()
         {
             const auto view = decoded<ViewCreated>(call<CreateView>(*main, create_view, CreateViewRequest{scene})).view;
             const auto output = decoded<TargetCreated>(call<CreateTarget>(*main, create_target, CreateTargetRequest{target})).target;
-            groups[2 * s + v] = {scene, view, output, effect};
-            auto linked = call<Attach>(*main, attach, groups[2 * s + v]);
+            requests[2 * s + v] = {scene, view, output, effect};
+            auto linked = call<Attach>(*main, attach, requests[2 * s + v]);
+            groups[2 * s + v] = linked.get<Attach::Response>()->attachment;
             CHECK(linked.get<Attach::Response>()->storages.size() == 2);
             for (const auto& binding : linked.get<Attach::Response>()->storages)
             {
@@ -142,7 +144,11 @@ int main()
     call<Detach>(*main, detach, groups[0]);
     CHECK(!runtime_test::coldCall<ReleasePreparedStorage>(*main, attachment_storage));
     CHECK(!runtime_test::coldCall<FindStorage>(*main, {groups[0], buffer_type, "private"}));
-    call<Attach>(*main, attach, groups[0]);
+    const auto detached = groups[0];
+    groups[0] = call<Attach>(*main, attach, requests[0]).get<Attach::Response>()->attachment;
+    CHECK(groups[0] != detached);
+    CHECK(!runtime_test::coldCall<Detach>(*main, detached));
+    CHECK(!runtime_test::coldCall<Readback>(*main, {detached, {}}));
     pixels(call<Readback>(*main, read, {groups[0], {}}), 32);
     call<RemoveBuffer>(*upload, remove_buffer, buffer);
     CHECK(wait(*upload, take(runtime_test::send<ReadBuffer>(*upload, read_buffer, buffer))).get<ReadBuffer::Response>().has_value() == false);
@@ -157,8 +163,8 @@ int main()
     const auto image_effect = decoded<EffectCreated>(call<CreateEffect>(*main, create_effect,
         CreateEffectRequest{target, {image_selected}})).effect;
     call<Detach>(*main, detach, groups[3]);
-    groups[3].effect = image_effect;
-    call<Attach>(*main, attach, groups[3]);
+    requests[3].effect = image_effect;
+    groups[3] = call<Attach>(*main, attach, requests[3]).get<Attach::Response>()->attachment;
     pixels(call<Readback>(*main, read, {groups[3], {}}), 128);
     const auto stats = server->stats();
     CHECK(stats.validation_errors == 0);

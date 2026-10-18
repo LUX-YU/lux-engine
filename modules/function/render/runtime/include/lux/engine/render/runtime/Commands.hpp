@@ -35,14 +35,14 @@ namespace lux::render
     struct AttachmentRequest final { SceneId scene{}; ViewId view{}; TargetId target{}; EffectId effect{}; };
     struct ReadbackRequest final
     {
-        AttachmentRequest attachment;
+        AttachmentId attachment;
         std::string output; // Empty selects the explicit Target copy; otherwise an exported buffer key.
     };
 
 
 
     struct GlobalStorageOwner final {};
-    using VStorageOwner = std::variant<GlobalStorageOwner, SceneId, ViewRequest, AttachmentRequest>;
+    using VStorageOwner = std::variant<GlobalStorageOwner, SceneId, ViewRequest, AttachmentId>;
     struct StorageLocation final
     {
         VStorageOwner owner;
@@ -51,7 +51,11 @@ namespace lux::render
     };
     struct PrepareStorageRequest final { StorageLocation location; ConfigValue config; };
     struct StorageBindingInfo final { std::string resource_key; StorageId storage; };
-    struct AttachmentCreated final { std::vector<StorageBindingInfo> storages; };
+    struct AttachmentCreated final
+    {
+        AttachmentId attachment;
+        std::vector<StorageBindingInfo> storages;
+    };
 
     struct FindStorage final
     {
@@ -250,7 +254,7 @@ namespace lux::render
     struct Detach final
     {
         static constexpr std::string_view name{"render.detach"};
-        using Request = AttachmentRequest;
+        using Request = AttachmentId;
         using Response = RenderResult<Ack>;
     };
 
@@ -271,7 +275,7 @@ namespace lux::render
     struct QueryExecutionProgress final
     {
         static constexpr std::string_view name{"render.execution.progress"};
-        using Request = AttachmentRequest;
+        using Request = AttachmentId;
         using Response = RenderResult<ExecutionProgress>;
     };
 

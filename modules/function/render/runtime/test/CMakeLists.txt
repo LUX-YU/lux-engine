@@ -1,5 +1,14 @@
 add_executable(render_runtime_test Runtime.cpp)
 
+add_executable(render_attachment_indices_test AttachmentIndices.cpp)
+
+target_include_directories(render_attachment_indices_test PRIVATE ../pinclude)
+target_link_libraries(render_attachment_indices_test PRIVATE render_resource)
+
+add_test(NAME render.runtime.attachment_indices COMMAND render_attachment_indices_test)
+
+set_tests_properties(render.runtime.attachment_indices PROPERTIES TIMEOUT 30)
+
 add_executable(render_typed_client_test TypedClient.cpp ../../native/vulkan/test/Allocation.cpp ${LUX_RUNTIME_SOURCES})
 target_compile_definitions(render_typed_client_test PRIVATE LUX_RUNTIME_RESPONSE_COST_SEAM)
 target_include_directories(render_typed_client_test PRIVATE ../pinclude ../../native/vulkan/test)

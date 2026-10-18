@@ -52,8 +52,9 @@ extern "C" __declspec(dllexport) bool serverDllReadback(const char* name, Comman
     if (!effect) return false;
     const AttachmentRequest attachment{scene->scene, view->view,
         target->target, effect->effect};
-    if (!runtime_test::coldCall<Attach>(**client, attachment)) return false;
-    auto result = runtime_test::coldCall<Readback>(**client, {attachment, {}});
+    const auto linked = runtime_test::coldCall<Attach>(**client, attachment);
+    if (!linked) return false;
+    auto result = runtime_test::coldCall<Readback>(**client, {linked->attachment, {}});
     if (!result) return false;
     *output = result->pixels;
     // All completions, bound credentials and this Client die before control returns to the EXE.

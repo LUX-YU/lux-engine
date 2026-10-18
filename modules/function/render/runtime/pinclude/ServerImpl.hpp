@@ -2,6 +2,8 @@
 
 #include "CommandDispatchContext.hpp"
 #include "CommandRegistry.hpp"
+#include "Scene.hpp"
+#include <lux/cxx/container/BasicSparseSet.hpp>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -22,44 +24,6 @@ namespace lux::render
 
     namespace runtime_detail
     {
-        struct View final
-        {
-            CameraState camera;
-            StorageSet storages;
-
-            View(ResourceRegistry& registry, CameraState value) noexcept : camera(value), storages(registry) {}
-        };
-
-        struct Scene final
-        {
-            StorageSet storages;
-            cxx::StableSlotMap<View, ViewTag> views;
-
-            explicit Scene(ResourceRegistry& registry) noexcept : storages(registry) {}
-        };
-
-        struct Target final
-        {
-            TargetDesc description;
-            std::uint64_t epoch = 1;
-        };
-
-        struct ExecutionGroup final
-        {
-            SceneId scene;
-            ViewId view;
-            TargetId target;
-            vulkan::ExecutionContext* context;
-        };
-
-        struct RenderEffect final
-        {
-            std::shared_ptr<const vulkan::CompiledGraph> code;
-            std::vector<StorageArgument> arguments;
-            std::vector<ExecutionGroup> groups;
-            std::size_t next_group = 0;
-        };
-
         struct FeatureEntry final
         {
             // Stable table construction binds views only after their owned metadata exists.
@@ -98,16 +62,18 @@ namespace lux::render
         cxx::StableSlotMap<FeatureEntry, FeatureTag> features;
         std::map<std::string_view, FeatureId, std::less<>> features_by_name;
         CommandRegistry command_registry_;
-        cxx::StableSlotMap<Scene, SceneTag> scenes;
-        cxx::SlotMap<Target, TargetTag> targets;
+        cxx::StableSlotMap<RenderScene, SceneTag> scenes;
+        cxx::StableSlotMap<RenderTarget, TargetTag> targets;
         cxx::SlotMap<RenderEffect, EffectTag> effects;
+        cxx::SlotMap<EffectAttachment, AttachmentTag> attachments;
+        cxx::SlotKeySparseSet<TargetId, std::monostate> active_targets;
         std::optional<vulkan::InstanceContext> instance;
         std::unique_ptr<vulkan::DeviceSession> device;
         ResponseOutbox response_outbox_;
         stdexec::counting_scope command_scope_;
         CompletionQueue completion_events;
         std::atomic<std::size_t> completion_publishers{0};
-        std::size_t next_effect = 0;
+        std::size_t next_target = 0;
         std::atomic<bool> stop_requested{false}, started{false}, running{false};
         std::atomic<std::uint64_t> ticks{0}, commands{0}, compiled_graphs{0}, submissions{0};
         std::atomic<std::uint64_t> validation_errors{0}, validation_warnings{0};
@@ -120,7 +86,7 @@ namespace lux::render
             command_registry_.registerCommand(CommandBinding::bind<C, Method>(*this));
         }
 
-        RenderResult<void> detachExecutionGroup(RenderEffect& effect, std::size_t index) noexcept;
+        RenderResult<void> detachAttachment(AttachmentId id) noexcept;
 
         RenderResult<StorageSet*> findStorageSet(const VStorageOwner&) noexcept;
         void findStorage(const FindStorage::Request&, FindStorage::Response&) noexcept;
@@ -129,7 +95,7 @@ namespace lux::render
 
         void attachEffect(const Attach::Request&, Attach::Response&) noexcept;
 
-        RenderResult<void> resizeTargetResources(TargetId id, Target& target, const TargetDesc& description) noexcept;
+        RenderResult<void> resizeTargetResources(RenderTarget& target, const TargetDesc& description) noexcept;
 
         auto readBackOutput(Readback::Request&&) noexcept;
 

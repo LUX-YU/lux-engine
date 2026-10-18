@@ -393,7 +393,7 @@ int main(int argc, char** argv)
             rejected.get<CreateEffect::Response>().error().type == kRuntimeIdentity);
         CHECK(server->stats().compiled_graphs == 1);
     }
-    std::array<AttachmentRequest, 4> groups;
+    std::array<AttachmentId, 4> groups;
     for (unsigned s = 0; s < 2; ++s)
     {
         const auto scene = decoded<SceneCreated>(call<CreateScene>(*a, {})).scene;
@@ -403,8 +403,7 @@ int main(int argc, char** argv)
                 {scene, camera_fixture::oracle({1, 0, 0, 1})})).view;
             const auto target = decoded<TargetCreated>(call<CreateTarget>(*a,
                 {native_fixture::target(graph_config)})).target;
-            groups[s * 2 + v] = {scene, view, target, effect};
-            call<Attach>(*a, groups[s * 2 + v]);
+            groups[s * 2 + v] = call<Attach>(*a, {scene, view, target, effect}).get<Attach::Response>()->attachment;
         }
     }
     {

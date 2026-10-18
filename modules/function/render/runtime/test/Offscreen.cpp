@@ -173,7 +173,7 @@ int main()
         command.view = view;
         command.target = target.target;
         command.effect = effect;
-        call(*client, command);
+        command.attachment = call(*client, command).attachment;
         attached[i] = command;
         attached[i].operation = ETestCommand::READBACK;
     }
@@ -291,7 +291,8 @@ int main()
     call(*client, command);
     command.effect = transfer_effect;
     command.operation = ETestCommand::ATTACH;
-    call(*client, command);
+    command.attachment = call(*client, command).attachment;
+    attached[2].attachment = command.attachment;
     command.operation = ETestCommand::READBACK;
     auto held = call(*client, command);
     pixel(held, 32, 16, 16, {32, 64, 128, 255});

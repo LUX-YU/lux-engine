@@ -103,7 +103,7 @@ int main(int argc, char** argv)
     auto create_target = take(runtime_test::find<CreateTarget>(*a));
     auto attach = take(runtime_test::find<Attach>(*a));
     auto read = take(runtime_test::find<Readback>(*a));
-    std::array<AttachmentRequest, 4> attachments;
+    std::array<AttachmentId, 4> attachments;
     for (unsigned s = 0; s < 2; ++s)
     {
         const auto scene = decoded<SceneCreated>(call<CreateScene>(*a, create_scene, EmptyRequest{})).scene;
@@ -112,8 +112,8 @@ int main(int argc, char** argv)
             const auto view = decoded<ViewCreated>(call<CreateView>(*a, create_view, CreateViewRequest{scene})).view;
             const auto target = decoded<TargetCreated>(call<CreateTarget>(*a, create_target,
                 CreateTargetRequest{texture_fixture::target(sample)})).target;
-            attachments[2 * s + v] = {scene, view, target, effect};
-            call<Attach>(*a, attach, attachments[2 * s + v]);
+            attachments[2 * s + v] = call<Attach>(*a, attach, {scene, view, target, effect})
+                .get<Attach::Response>()->attachment;
         }
     }
     for (const auto& attachment : attachments) pixels(call<Readback>(*a, read, {attachment, {}}), 31);

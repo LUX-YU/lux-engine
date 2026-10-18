@@ -284,12 +284,12 @@ namespace mesh_sample
         }
         (void)coldCall<ReleasePreparedStorage>(main, main_commands, main_next, instance_storage); // Attach leases now retain it.
         const auto read = command<Readback>(main_commands);
-        const auto read_color = [&] { return call<Readback>(main, main_next, read, {first, {}}).pixels; };
+        const auto read_color = [&] { return call<Readback>(main, main_next, read, {first_bindings.attachment, {}}).pixels; };
         auto color = read_color();
         pixel(color, 17, 30, {255, 0, 0, 255});
         pixel(color, 46, 30, {255, 0, 0, 255});
         const auto depth_key = featureKey(DepthOnlyFeature::name, "main", "depth.pixels");
-        auto depths = call<Readback>(main, main_next, read, {second, depth_key}).pixels;
+        auto depths = call<Readback>(main, main_next, read, {second_bindings.attachment, depth_key}).pixels;
         depth(depths, 31, 30, .3f);
         depth(depths, 46, 30, .3f);
         depth(depths, 17, 30, 1);
@@ -339,7 +339,7 @@ namespace mesh_sample
         check(coldCall<QueryRenderStats>(main, main_commands, main_next, {}).compiled_graphs == original_compiles);
         check(coldCall<QueryMesh>(main, main_commands, main_next, assets.mesh.mesh).published.revision == 1);
 
-        (void)coldCall<Detach>(main, main_commands, main_next, second);
+        (void)coldCall<Detach>(main, main_commands, main_next, second_bindings.attachment);
         (void)coldCall<ReleaseInstance>(main, main_commands, main_next, right);
         const auto removal_deadline = Clock::now() + 10s;
         for (;;)
@@ -351,7 +351,7 @@ namespace mesh_sample
         pixel(color, 25, 30, {0, 255, 0, 255});
         pixel(color, 46, 30, {0, 0, 0, 255});
         (void)coldCall<ReleaseInstance>(main, main_commands, main_next, left);
-        (void)coldCall<Detach>(main, main_commands, main_next, first);
+        (void)coldCall<Detach>(main, main_commands, main_next, first_bindings.attachment);
         (void)coldCall<RemoveEffect>(main, main_commands, main_next, {first_effect});
         (void)coldCall<RemoveEffect>(main, main_commands, main_next, {second_effect});
         (void)coldCall<RemoveScene>(main, main_commands, main_next, {scene});

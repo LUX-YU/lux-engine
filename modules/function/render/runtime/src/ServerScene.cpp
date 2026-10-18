@@ -22,34 +22,18 @@ namespace lux::render
                     }
                     return &scene->storages;
                 }
-                else
+                else if constexpr (std::same_as<T, ViewRequest>)
                 {
                     auto* scene = scenes.find(owner.scene);
                     auto* view = scene ? scene->views.find(owner.view) : nullptr;
-                    if (!view)
-                    {
-                        return cxx::unexpected(RenderError{kRuntimeIdentity});
-                    }
-                    if constexpr (std::same_as<T, ViewRequest>)
-                    {
-                        return &view->storages;
-                    }
-                    else
-                    {
-                        auto* effect = effects.find(owner.effect);
-                        if (effect)
-                        {
-                            for (const auto& group : effect->groups)
-                            {
-                                if (group.scene == owner.scene && group.view == owner.view &&
-                                    group.target == owner.target)
-                                {
-                                    return &group.context->attachmentStorages();
-                                }
-                            }
-                        }
-                        return cxx::unexpected(RenderError{kRuntimeIdentity});
-                    }
+                    if (!view) return cxx::unexpected(RenderError{kRuntimeIdentity});
+                    return &view->storages;
+                }
+                else
+                {
+                    auto* attachment = attachments.find(owner);
+                    if (!attachment) return cxx::unexpected(RenderError{kRuntimeIdentity});
+                    return &attachment->context->attachmentStorages();
                 }
             },
             address
@@ -123,14 +107,18 @@ namespace lux::render
         output_response = Ack{};
     }
 
-    RenderResult<void> RenderServer::Impl::detachExecutionGroup(RenderEffect& effect, std::size_t index) noexcept
+    RenderResult<void> RenderServer::Impl::detachAttachment(AttachmentId id) noexcept
     {
-        auto* context = effect.groups[index].context;
-        if (auto result = device->release(context); !result)
-        {
-            return result;
-        }
-        effect.groups.erase(effect.groups.begin() + index);
+        auto& attachment = *attachments.find(id);
+        // Existing Native release validates and transfers in-flight ownership before destruction.
+        // No Runtime mutation or dispatch can re-enter during this release.
+        if (auto released = device->release(attachment.context); !released) return released;
+        auto& view = *scenes.find(attachment.scene)->views.find(attachment.view);
+        auto& effect = *effects.find(attachment.effect);
+        auto& target = *targets.find(attachment.target);
+        attachment.unlink(attachments, view, effect, target);
+        if (target.attachments.empty()) active_targets.erase(attachment.target);
+        attachments.erase(id);
         return {};
     }
 
@@ -140,7 +128,7 @@ namespace lux::render
         const auto [scene_id, view_id, target_id, effect_id] = *decoded;
         auto* scene = scenes.find(scene_id);
         auto* view = scene ? scene->views.find(view_id) : nullptr;
-        const auto* target = targets.find(target_id);
+        auto* target = targets.find(target_id);
         auto* effect = effects.find(effect_id);
         const bool invalid = !view || !target || !effect;
         if (invalid)
@@ -148,16 +136,10 @@ namespace lux::render
             output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
             return;
         }
-        for (const auto& existing : effects)
+        if (!target->attachments.empty())
         {
-            for (const auto& group : existing.groups)
-            {
-                if (group.target == target_id)
-                {
-                    output_response = cxx::unexpected(RenderError{kRuntimeState});
-                    return;
-                }
-            }
+            output_response = cxx::unexpected(RenderError{kRuntimeState});
+            return;
         }
         auto prepared =
             device->prepare(effect->code, target->description, &scene->storages, &view->storages, effect->arguments);
@@ -184,41 +166,30 @@ namespace lux::render
         output_response.emplace();
         (*prepared)->forEachStorage([&](std::string_view key, StorageId id) noexcept
                                     { output_response->storages.push_back({std::string(key), id}); });
-        effect->groups.push_back({scene_id, view_id, target_id, *prepared});
+        const auto id = attachments.emplace(EffectAttachment{effect_id, scene_id, view_id, target_id, *prepared});
+        attachments.find(id)->link(id, *view, *effect, *target);
+        output_response->attachment = id;
+        active_targets.emplace(target_id);
         scoped_buffers_created.store(device->resources().creations());
         return;
     }
 
     RenderResult<void> RenderServer::Impl::resizeTargetResources(
-        TargetId id,
-        Target& target,
+        RenderTarget& target,
         const TargetDesc& description
     ) noexcept
     {
-        ExecutionGroup* group = nullptr;
-        std::shared_ptr<const vulkan::CompiledGraph> code;
-        std::span<const StorageArgument> arguments;
-        for (auto& effect : effects)
-        {
-            for (auto& candidate : effect.groups)
-            {
-                if (candidate.target == id)
-                {
-                    group = &candidate;
-                    code = effect.code;
-                    arguments = effect.arguments;
-                }
-            }
-        }
+        auto* group = target.attachments.empty() ? nullptr : attachments.find(target.attachments.front());
         if (group)
         {
             // One Target writer, proven on attach. Resize builds one candidate without recompilation.
+            const auto& effect = *effects.find(group->effect);
             auto candidate = device->prepare(
-                std::move(code),
+                effect.code,
                 description,
                 &scenes.find(group->scene)->storages,
                 &scenes.find(group->scene)->views.find(group->view)->storages,
-                arguments
+                effect.arguments
             );
             if (!candidate)
             {
@@ -264,22 +235,20 @@ namespace lux::render
     {
         const auto* input = &_request;
         const auto scene_id = input->scene;
-        if (!scenes.find(scene_id))
+        auto* scene = scenes.find(scene_id);
+        if (!scene)
         {
             output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
             return;
         }
-        for (auto& effect : effects)
+        for (auto& view : scene->views)
         {
-            for (std::size_t i = effect.groups.size(); i-- > 0;)
+            while (!view.attachments.empty())
             {
-                if (effect.groups[i].scene == scene_id)
+                if (auto result = detachAttachment(view.attachments.back()); !result)
                 {
-                    if (auto result = detachExecutionGroup(effect, i); !result)
-                    {
-                        output_response = cxx::unexpected(result.error());
-                        return;
-                    }
+                    output_response = cxx::unexpected(result.error());
+                    return;
                 }
             }
         }
@@ -331,21 +300,15 @@ namespace lux::render
             return;
         }
         // Attach proved the complete Camera parameter ABI. This owner-thread update allocates nothing.
-        for (auto& effect : effects)
+        for (const auto id : view->attachments)
         {
-            for (const auto& group : effect.groups)
+            auto& attachment = *attachments.find(id);
+            if (!attachment.context->contextParameters().empty() &&
+                !attachment.context->setContextParameters(cameraParameters(input.camera)))
             {
-                if (group.scene != input.scene || group.view != input.view)
-                {
-                    continue;
-                }
-                if (!group.context->contextParameters().empty() &&
-                    !group.context->setContextParameters(cameraParameters(input.camera)))
-                {
-                    std::terminate();
-                }
-                group.context->setViewport(input.camera.viewport);
+                std::terminate();
             }
+            attachment.context->setViewport(input.camera.viewport);
         }
         view->camera = input.camera;
         output_response = Ack{};
@@ -358,23 +321,18 @@ namespace lux::render
     {
         const auto* input = &_request;
         auto* scene = scenes.find(input->scene);
-        if (!scene || !scene->views.find(input->view))
+        auto* view = scene ? scene->views.find(input->view) : nullptr;
+        if (!view)
         {
             output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
             return;
         }
-        for (auto& effect : effects)
+        while (!view->attachments.empty())
         {
-            for (std::size_t i = effect.groups.size(); i-- > 0;)
+            if (auto result = detachAttachment(view->attachments.back()); !result)
             {
-                if (effect.groups[i].scene == input->scene && effect.groups[i].view == input->view)
-                {
-                    if (auto result = detachExecutionGroup(effect, i); !result)
-                    {
-                        output_response = cxx::unexpected(result.error());
-                        return;
-                    }
-                }
+                output_response = cxx::unexpected(result.error());
+                return;
             }
         }
         scene->views.erase(input->view);
@@ -397,7 +355,7 @@ namespace lux::render
             output_response = cxx::unexpected(RenderError{kRuntimeUnsupported});
             return;
         }
-        output_response = TargetCreated{targets.emplace(Target{input->description}), 1};
+        output_response = TargetCreated{targets.emplace(input->description), 1};
     }
 
     void RenderServer::Impl::resizeTarget(
@@ -427,7 +385,7 @@ namespace lux::render
             output_response = cxx::unexpected(RenderError{kRuntimeCapacity});
             return;
         }
-        if (auto changed = resizeTargetResources(input->target, *target, input->description); !changed)
+        if (auto changed = resizeTargetResources(*target, input->description); !changed)
         {
             output_response = cxx::unexpected(changed.error());
             return;
@@ -437,29 +395,17 @@ namespace lux::render
 
     void RenderServer::Impl::detachEffect(const Detach::Request& _request, Detach::Response& output_response) noexcept
     {
-        const auto* input = &_request;
-        auto* effect = effects.find(input->effect);
-        if (!effect)
+        const auto* attachment = attachments.find(_request);
+        if (!attachment)
         {
             output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
             return;
         }
-        for (std::size_t i = 0; i < effect->groups.size(); ++i)
+        if (auto result = detachAttachment(_request); !result)
         {
-            const auto& group = effect->groups[i];
-            if (group.scene == input->scene && group.view == input->view && group.target == input->target)
-            {
-                if (auto result = detachExecutionGroup(*effect, i); !result)
-                {
-                    output_response = cxx::unexpected(result.error());
-                    return;
-                }
-                {
-                    output_response = Ack{};
-                    return;
-                }
-            }
+            output_response = cxx::unexpected(result.error());
+            return;
         }
-        output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+        output_response = Ack{};
     }
 } // namespace lux::render

@@ -329,15 +329,14 @@ int main()
         {0, 0, 1, 1}, {1, 1, 0, 1}}};
     const std::array<std::array<unsigned, 4>, 4> expected{{{255, 0, 0, 255}, {0, 255, 0, 255},
         {0, 0, 255, 255}, {255, 255, 0, 255}}};
-    std::array<AttachmentRequest, 4> attached;
+    std::array<AttachmentId, 4> attached;
     for (unsigned i = 0; i < attached.size(); ++i)
     {
         const auto scene = scenes[i / 2];
         const auto view = call<CreateView>(*a, create_view, {scene, camera_fixture::oracle(colors[i])}).get<CreateView::Response>()->view;
         const auto target = call<CreateTarget>(*a, create_target, {target_description}).get<CreateTarget::Response>().value();
         CHECK(target.epoch == 1);
-        attached[i] = {scene, view, target.target, effect};
-        (void)call<Attach>(*a, attach, attached[i]);
+        attached[i] = call<Attach>(*a, attach, {scene, view, target.target, effect}).get<Attach::Response>()->attachment;
     }
     const auto warm_begin = server->stats();
     const auto warm_deadline = Clock::now() + 10s;

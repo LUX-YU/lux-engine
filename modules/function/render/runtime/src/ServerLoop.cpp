@@ -4,25 +4,18 @@ namespace lux::render
 {
     RenderResult<void> RenderServer::Impl::advanceRendering() noexcept
     {
-        for (std::size_t e = 0; e < effects.size(); ++e)
+        const auto& active = active_targets.keys();
+        for (std::size_t i = 0; i < active.size(); ++i)
         {
-            auto& effect = *(effects.begin() + (next_effect + e) % effects.size());
-            for (std::size_t g = 0; g < effect.groups.size(); ++g)
+            const auto& target = *targets.find(active[(next_target + i) % active.size()]);
+            for (const auto id : target.attachments)
             {
-                auto& group = effect.groups[(effect.next_group + g) % effect.groups.size()];
-                auto result = group.context->execute();
-                if (!result)
-                {
-                    return cxx::unexpected(result.error());
-                }
-                if (*result == EExecutionOutcome::EXECUTED)
-                {
-                    ++submissions;
-                }
+                auto result = attachments.find(id)->context->execute();
+                if (!result) return cxx::unexpected(result.error());
+                if (*result == EExecutionOutcome::EXECUTED) ++submissions;
             }
-            effect.next_group = effect.groups.empty() ? 0 : (effect.next_group + 1) % effect.groups.size();
         }
-        next_effect = effects.empty() ? 0 : (next_effect + 1) % effects.size();
+        next_target = active.empty() ? 0 : (next_target + 1) % active.size();
         auto collected = device->collect();
 #ifdef LUX_RUNTIME_TEST_SEAM
         if (runtime_detail::test::observeGpuCompletion())
@@ -40,24 +33,13 @@ namespace lux::render
         QueryExecutionProgress::Response& output_response
     ) noexcept
     {
-        const auto& input = _request;
-        const auto* effect = effects.find(input.effect);
-        if (!effect)
+        const auto* attachment = attachments.find(_request);
+        if (!attachment)
         {
             output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
             return;
         }
-        const auto found = std::ranges::find_if(
-            effect->groups,
-            [&](const auto& group)
-            { return group.scene == input.scene && group.view == input.view && group.target == input.target; }
-        );
-        if (found == effect->groups.end())
-        {
-            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
-            return;
-        }
-        output_response = found->context->progress();
+        output_response = attachment->context->progress();
     }
 
     void RenderServer::Impl::queryRenderStats(
@@ -161,15 +143,10 @@ namespace lux::render
         response_outbox_.flushTo(responder, SIZE_MAX);
         response_outbox_.clear(); // Connection closes after safe operations; caller owns any unknown outcomes.
         responder.reset();
-        for (auto& effect : effects)
+        while (!active_targets.empty())
         {
-            while (!effect.groups.empty())
-            {
-                if (!detachExecutionGroup(effect, effect.groups.size() - 1))
-                {
-                    std::terminate();
-                }
-            }
+            auto& target = *targets.find(active_targets.keys().back());
+            if (!detachAttachment(target.attachments.back())) std::terminate();
         }
         effects.clear();
         scenes.clear();

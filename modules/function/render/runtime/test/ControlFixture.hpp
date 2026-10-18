@@ -23,6 +23,7 @@ struct TestCommand final
     ViewId view;
     TargetId target;
     EffectId effect;
+    AttachmentId attachment;
     TargetDesc description;
     std::array<float, 4> color{1, 0, 0, 1};
     std::vector<FeaturePreset> features;
@@ -38,6 +39,7 @@ struct TestCompletion final
     ViewId view;
     TargetId target;
     EffectId effect;
+    AttachmentId attachment;
     std::uint64_t target_epoch = 0;
     ETestCommand command = ETestCommand::CATALOG;
     bool active() const noexcept { return !owner.empty(); }
@@ -72,9 +74,9 @@ public:
         case ETestCommand::ATTACH:
             return send<Attach>({input.scene, input.view, input.target, input.effect}, input.operation);
         case ETestCommand::DETACH:
-            return send<Detach>({input.scene, input.view, input.target, input.effect}, input.operation);
+            return send<Detach>(input.attachment, input.operation);
         case ETestCommand::READBACK:
-            return send<Readback>({{input.scene, input.view, input.target, input.effect}, {}}, input.operation);
+            return send<Readback>({input.attachment, {}}, input.operation);
         case ETestCommand::STOP: return send<Stop>({}, input.operation);
         case ETestCommand::CREATE_EFFECT:
         {
@@ -163,7 +165,9 @@ public:
             if (const auto* result = read.operator()<EffectCreated>()) output.effect = result->effect;
             break;
         case ETestCommand::READBACK: (void)read.operator()<ReadbackResult>(); break;
-        case ETestCommand::ATTACH: (void)read.operator()<AttachmentCreated>(); break;
+        case ETestCommand::ATTACH:
+            if (const auto* result = read.operator()<AttachmentCreated>()) output.attachment = result->attachment;
+            break;
         default: (void)read.operator()<Ack>(); break;
         }
         return status;

@@ -90,7 +90,7 @@ static void exercise(bool close_requester)
     command.effect = call(*client, command).effect;
     command.features.clear();
     command.operation = ETestCommand::ATTACH;
-    call(*client, command);
+    command.attachment = call(*client, command).attachment;
     const auto before = server->stats().commands;
     command.operation = ETestCommand::READBACK;
     auto request = take(client->submit(command));
@@ -145,9 +145,9 @@ static void retirementAtomicity()
     command.features.clear();
     command.operation = ETestCommand::ATTACH;
     command.target = first_target;
-    call(*client, command);
+    const auto first_attachment = call(*client, command).attachment;
     command.target = second_target;
-    call(*client, command);
+    const auto second_attachment = call(*client, command).attachment;
     command.target = third_target;
     auto unprepared = wait(*client, take(client->submit(command)));
     check(unprepared.header.outcome == ETestOutcome::FAILED);
@@ -159,8 +159,10 @@ static void retirementAtomicity()
     check(server->stats().submissions == 2);
     command.operation = ETestCommand::DETACH;
     command.target = first_target;
+    command.attachment = first_attachment;
     call(*client, command); // consumes its creation-time reservation; detach cannot fail for capacity
     command.target = second_target;
+    command.attachment = second_attachment;
     command.operation = ETestCommand::READBACK;
     const auto request = take(client->submit(command));
     for (unsigned attempt = 0; attempt < 3; ++attempt)

@@ -7,24 +7,8 @@ namespace lux::render
     {
         auto prepare = [&]() noexcept -> vulkan::ReadbackSender
         {
-            const auto& attachment = input.attachment;
-            auto* effect = effects.find(attachment.effect);
-            if (!effect)
-            {
-                return vulkan::ReadbackSender{RenderError{kRuntimeIdentity}};
-            }
-            const auto found = std::ranges::find_if(
-                effect->groups,
-                [&](const auto& group)
-                {
-                    return group.scene == attachment.scene && group.view == attachment.view &&
-                           group.target == attachment.target;
-                }
-            );
-            if (found == effect->groups.end())
-            {
-                return vulkan::ReadbackSender{RenderError{kRuntimeIdentity}};
-            }
+            const auto* found = attachments.find(input.attachment);
+            if (!found) return vulkan::ReadbackSender{RenderError{kRuntimeIdentity}};
             auto resource = kGraphInvalidIndex;
             if (!input.output.empty())
             {

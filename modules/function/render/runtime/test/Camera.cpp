@@ -88,9 +88,12 @@ int main()
     const auto vb = call<CreateView>(*client, create_view, {scene, b}).get<CreateView::Response>()->view;
     const auto ta = call<CreateTarget>(*client, create_target, {target}).get<CreateTarget::Response>()->target;
     const auto tb = call<CreateTarget>(*client, create_target, {target}).get<CreateTarget::Response>()->target;
-    const AttachmentRequest ga{scene, va, ta, effect}, gb{scene, vb, tb, effect};
-    CHECK(call<Attach>(*client, attach, ga).get<Attach::Response>().has_value());
-    CHECK(call<Attach>(*client, attach, gb).get<Attach::Response>().has_value());
+    const auto attached_a = call<Attach>(*client, attach, {scene, va, ta, effect});
+    const auto attached_b = call<Attach>(*client, attach, {scene, vb, tb, effect});
+    CHECK(attached_a.get<Attach::Response>().has_value());
+    CHECK(attached_b.get<Attach::Response>().has_value());
+    const auto ga = attached_a.get<Attach::Response>()->attachment;
+    const auto gb = attached_b.get<Attach::Response>()->attachment;
     pixel(call<Readback>(*client, read, {ga, {}}), 32, 16, 16, {255, 0, 0, 255});
     pixel(call<Readback>(*client, read, {gb, {}}), 32, 16, 16, {0, 255, 0, 255});
     const auto output = featureKey(native_fixture::type, "main", "pixels");
@@ -103,7 +106,7 @@ int main()
     const auto before = call<QueryExecutionProgress>(*client, progress, ga).get<QueryExecutionProgress::Response>();
     CHECK(before->count(EExecutionOutcome::EXECUTED) > 0);
     auto wrong_group = ga;
-    wrong_group.view = {};
+    ++wrong_group.gen;
     auto wrong_progress = call<QueryExecutionProgress>(*client, progress, wrong_group);
     CHECK(!wrong_progress.get<QueryExecutionProgress::Response>() &&
         wrong_progress.get<QueryExecutionProgress::Response>().error().type == kRuntimeIdentity);

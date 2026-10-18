@@ -250,9 +250,9 @@ namespace lux::render
             output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
             return;
         }
-        while (!effect->groups.empty())
+        while (!effect->attachments.empty())
         {
-            if (auto result = detachExecutionGroup(*effect, effect->groups.size() - 1); !result)
+            if (auto result = detachAttachment(effect->attachments.back()); !result)
             {
                 output_response = cxx::unexpected(result.error());
                 return;

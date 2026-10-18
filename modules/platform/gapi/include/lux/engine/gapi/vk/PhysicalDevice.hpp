@@ -192,16 +192,39 @@ namespace lux::gapi::vk
         }
     } // namespace detail
 
-    // TODO remove redundant member
+    // Non-owning physical handle and an immutable, self-contained capability snapshot.
+    // The instance that enumerated the handle must outlive native queries through this value.
     class PhysicalDevice
     {
-        friend class Instance;
-
     public:
-        PhysicalDevice() : _physical_device(VK_NULL_HANDLE) {}
+        PhysicalDevice() noexcept = default;
+
+        explicit PhysicalDevice(VkPhysicalDevice device) noexcept : _physical_device(device)
+        {
+            VkPhysicalDeviceDescriptorIndexingProperties indexing{
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES
+            };
+            VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &indexing};
+            vkGetPhysicalDeviceProperties2(device, &properties);
+            properties.pNext = nullptr;
+            _properties = properties;
+            _descriptor_index_properties = indexing;
+            vkGetPhysicalDeviceMemoryProperties2(device, &_memory_properties);
+            vkGetPhysicalDeviceFeatures2(device, &_features);
+
+            uint32_t queue_family_count = 0;
+            vkGetPhysicalDeviceQueueFamilyProperties2(device, &queue_family_count, nullptr);
+            _queue_family_properties.resize(queue_family_count);
+            for (auto& family : _queue_family_properties)
+            {
+                family.sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
+            }
+            vkGetPhysicalDeviceQueueFamilyProperties2(device, &queue_family_count, _queue_family_properties.data());
+            _queue_family_properties.resize(queue_family_count);
+        }
 
         /*
-         * Find the queue family index that supports the requested queue flags
+         * Find the first nonempty queue family supporting all requested queue flags
          * @param flag Queue flags to find
          *  VK_QUEUE_GRAPHICS_BIT = 0x00000001,
          *	VK_QUEUE_COMPUTE_BIT = 0x00000002,
@@ -216,11 +239,13 @@ namespace lux::gapi::vk
          * @return Queue family index that supports the requested queue flags
          *		   if not found, return UINT32_MAX
          */
-        uint32_t findQueueFamilyIndexByFlags(VkQueueFlags flag)
+        uint32_t findQueueFamilyIndexByFlags(VkQueueFlags flag) const noexcept
         {
             for (uint32_t i = 0; i < _queue_family_properties.size(); i++)
             {
-                if (_queue_family_properties[i].queueFamilyProperties.queueFlags & flag)
+                const auto& family = _queue_family_properties[i].queueFamilyProperties;
+                const bool supports_flags = family.queueCount != 0 && (family.queueFlags & flag) == flag;
+                if (supports_flags)
                 {
                     return i;
                 }
@@ -229,12 +254,12 @@ namespace lux::gapi::vk
         }
 
         // return UINT32_MAX if not found
-        uint32_t findMemoryTypeIndex(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+        uint32_t findMemoryTypeIndex(uint32_t typeFilter, VkMemoryPropertyFlags properties) const noexcept
         {
             auto& memProperties = _memory_properties.memoryProperties;
             for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
             {
-                if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+                if ((typeFilter & (1u << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
                 {
                     return i;
                 }
@@ -243,12 +268,12 @@ namespace lux::gapi::vk
             return UINT32_MAX;
         }
 
-        std::string_view deviceName()
+        std::string_view deviceName() const noexcept
         {
             return _properties.properties.deviceName;
         }
 
-        EDeviceType type()
+        EDeviceType type() const noexcept
         {
             switch (_properties.properties.deviceType)
             {
@@ -398,7 +423,7 @@ namespace lux::gapi::vk
         // External-interop GPU identity. CUDA selects the SAME physical GPU by matching
         // this against cudaDeviceProp.uuid (multi-GPU boxes: the Vulkan present GPU may
         // differ from the CUDA GPU). VkPhysicalDeviceIDProperties is Vulkan 1.1+ core.
-        std::array<uint8_t, VK_UUID_SIZE> deviceUUID() const
+        std::array<uint8_t, VK_UUID_SIZE> deviceUUID() const noexcept
         {
             VkPhysicalDeviceIDProperties idp{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
             VkPhysicalDeviceProperties2 p2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
@@ -428,42 +453,13 @@ namespace lux::gapi::vk
         }
 
     private:
-        PhysicalDevice(VkPhysicalDevice device)
-        {
-            _physical_device = device;
-
-            _properties.pNext = &_descriptor_index_properties;
-            _properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-
-            _memory_properties.pNext = nullptr;
-            _memory_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
-
-            _features.pNext = nullptr;
-            _features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-
-            vkGetPhysicalDeviceProperties2(device, &_properties);
-            vkGetPhysicalDeviceMemoryProperties2(device, &_memory_properties);
-            vkGetPhysicalDeviceFeatures2(device, &_features);
-
-            uint32_t queue_family_count;
-            vkGetPhysicalDeviceQueueFamilyProperties2(device, &queue_family_count, nullptr);
-            _queue_family_properties.resize(queue_family_count);
-            for (uint32_t i = 0; i < queue_family_count; i++)
-            {
-                _queue_family_properties[i].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
-                _queue_family_properties[i].pNext = nullptr;
-            }
-
-            vkGetPhysicalDeviceQueueFamilyProperties2(device, &queue_family_count, _queue_family_properties.data());
-        }
-
         VkPhysicalDevice _physical_device{VK_NULL_HANDLE};
-        VkPhysicalDeviceProperties2 _properties{};
+        VkPhysicalDeviceProperties2 _properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
         VkPhysicalDeviceDescriptorIndexingProperties _descriptor_index_properties{
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES
         };
-        VkPhysicalDeviceFeatures2 _features{};
-        VkPhysicalDeviceMemoryProperties2 _memory_properties{};
+        VkPhysicalDeviceFeatures2 _features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+        VkPhysicalDeviceMemoryProperties2 _memory_properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2};
         std::vector<VkQueueFamilyProperties2> _queue_family_properties{};
     };
 }

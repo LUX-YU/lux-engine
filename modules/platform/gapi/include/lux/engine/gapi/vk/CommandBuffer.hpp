@@ -2,6 +2,7 @@
 #include <vulkan/vulkan.h>
 
 #include <utility>
+#include <span>
 
 namespace lux::gapi::vk
 {
@@ -49,21 +50,19 @@ namespace lux::gapi::vk
             VkPipelineBindPoint bind_point,
             VkPipelineLayout layout,
             uint32_t first_set,
-            uint32_t descriptor_set_count,
-            VkDescriptorSet descriptor_set,
-            uint32_t dynamic_offset_count,
-            const uint32_t* dynamic_offsets = nullptr
-        )
+            std::span<const VkDescriptorSet> descriptor_sets,
+            std::span<const uint32_t> dynamic_offsets = {}
+        ) noexcept
         {
             vkCmdBindDescriptorSets(
                 command_buffer,
-                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                bind_point,
                 layout,
                 first_set,
-                descriptor_set_count,
-                &descriptor_set,
-                dynamic_offset_count,
-                dynamic_offsets
+                static_cast<uint32_t>(descriptor_sets.size()),
+                descriptor_sets.data(),
+                static_cast<uint32_t>(dynamic_offsets.size()),
+                dynamic_offsets.data()
             );
         }
 

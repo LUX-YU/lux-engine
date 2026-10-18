@@ -81,7 +81,7 @@ add_test(NAME render.native.buffer_transfer COMMAND render_buffer_transfer_test)
 set_tests_properties(render.native.buffer_transfer PROPERTIES TIMEOUT 60)
 
 foreach(header Error DeviceSession DescriptorArray CompiledGraph ExecutionContext StorageBinding device/Device device/DeviceOptions memory/Memory
-    Readback transfer/Submission transfer/Transfer transfer/GpuWork
+    Readback transfer/Submission
     texture/TextureStorage texture/TextureCommandHandler mesh/MeshStorage mesh/MeshCommandHandler material/MaterialStorage material/MaterialCommandHandler instance/InstanceStorage instance/InstanceCommandHandler
 )
     string(REPLACE "/" "_" target "${header}")

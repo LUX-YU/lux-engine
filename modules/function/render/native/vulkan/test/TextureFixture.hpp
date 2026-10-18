@@ -1,34 +1,16 @@
 #pragma once
-#include "Support.hpp"
-#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
-#include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
-#include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
-#include <algorithm>
 #include "../../../resource/test/CpuFixture.hpp"
+#include "Support.hpp"
+#include <algorithm>
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include <thread>
 using namespace foundation_test;
 namespace rdesc = lux::rdesc;
 using Clock = std::chrono::steady_clock;
 
 using lux::render::test::CpuFixture;
-
-// Test observation only. Native CPU events and queue callbacks drive the work; no per-work polling driver.
-struct WorkCompletion final
-{
-    bool done = false;
-    RenderResult<void> result;
-
-    void start(GpuWork& work, CpuFixture& host) noexcept
-    {
-        CHECK(work.prepareCompletion());
-        work.start(host.post(), this, [](void* user, RenderResult<void> value) noexcept {
-            auto& completion = *static_cast<WorkCompletion*>(user);
-            CHECK(!completion.done);
-            completion.result = std::move(value);
-            completion.done = true;
-        });
-    }
-};
 
 static void pump(CpuFixture& host, DeviceSession& session)
 {
@@ -39,7 +21,7 @@ static void pump(CpuFixture& host, DeviceSession& session)
 
 // New upload tasks publish their typed resource result after required submissions, not final Fence completion.
 // Scope owns the connected state; this observation contains only the business result and cancellation source.
-template<class T> struct UploadCompletion final
+template <class T> struct UploadCompletion final
 {
     bool done = false;
     RenderResult<T> result = lux::cxx::unexpected(RenderError{kBusy});
@@ -47,26 +29,33 @@ template<class T> struct UploadCompletion final
 
     void start(exec::task<RenderResult<T>> task, CpuFixture& host) noexcept
     {
-        auto terminal = std::move(task)
-            | stdexec::upon_error([](std::exception_ptr) noexcept -> RenderResult<T> {
-                  std::terminate();
-              })
-            | stdexec::upon_stopped([]() noexcept -> RenderResult<T> {
-                  return lux::cxx::unexpected(RenderError{kWorkStopped});
-              })
-            | stdexec::then([this](RenderResult<T> value) noexcept {
-                  CHECK(!done);
-                  result = std::move(value);
-                  done = true;
-              });
-        stdexec::spawn(std::move(terminal), scope.get_token(),
-            stdexec::env{stdexec::prop{stdexec::get_scheduler, host.scheduler()}});
+        auto terminal = std::move(task) |
+                        stdexec::upon_error([](std::exception_ptr) noexcept -> RenderResult<T> { std::terminate(); }) |
+                        stdexec::upon_stopped(
+                            []() noexcept -> RenderResult<T> { return lux::cxx::unexpected(RenderError{kWorkStopped}); }
+                        ) |
+                        stdexec::then(
+                            [this](RenderResult<T> value) noexcept
+                            {
+                                CHECK(!done);
+                                result = std::move(value);
+                                done = true;
+                            }
+                        );
+        stdexec::spawn(
+            std::move(terminal),
+            scope.get_token(),
+            stdexec::env{stdexec::prop{stdexec::get_scheduler, host.scheduler()}}
+        );
     }
 
-    void cancel() noexcept { scope.request_stop(); }
+    void cancel() noexcept
+    {
+        scope.request_stop();
+    }
 };
 
-template<class T> static void finish(UploadCompletion<T>& completion, CpuFixture& host, DeviceSession& session)
+template <class T> static void finish(UploadCompletion<T>& completion, CpuFixture& host, DeviceSession& session)
 {
     const auto deadline = Clock::now() + std::chrono::seconds(20);
     while (!completion.done)
@@ -80,36 +69,13 @@ template<class T> static void finish(UploadCompletion<T>& completion, CpuFixture
     CHECK(stdexec::sync_wait(completion.scope.join()));
 }
 
-template<class T> static RenderResult<T> runUpload(
-    exec::task<RenderResult<T>> task, CpuFixture& host, DeviceSession& session
-)
+template <class T>
+static RenderResult<T> runUpload(exec::task<RenderResult<T>> task, CpuFixture& host, DeviceSession& session)
 {
     UploadCompletion<T> completion;
     completion.start(std::move(task), host);
     finish(completion, host, session);
     return std::move(completion.result);
-}
-
-static void finish(WorkCompletion& completion, CpuFixture& host, DeviceSession& session)
-{
-    const auto deadline = Clock::now() + std::chrono::seconds(20);
-    while (!completion.done)
-    {
-        pump(host, session);
-        CHECK(Clock::now() < deadline);
-        std::this_thread::yield();
-    }
-}
-
-static void complete(GpuWork& work, CpuFixture& host, DeviceSession& session)
-{
-    CHECK(!work.publish());
-    WorkCompletion completion;
-    completion.start(work, host);
-    finish(completion, host, session);
-    CHECK(completion.result);
-    CHECK(work.publish());
-    CHECK(!work.publish());
 }
 
 static RenderPayload payload(const std::shared_ptr<const std::vector<std::byte>>& owner)
@@ -130,8 +96,8 @@ static rdesc::TextureInfo information(unsigned dimension, unsigned mips, bool bc
     for (unsigned i = 0; i < mips; ++i)
     {
         const auto extent = std::max(1u, dimension >> i);
-        const std::uint64_t bytes = bc ? std::uint64_t((extent + 3) / 4) * ((extent + 3) / 4) * 8 :
-            std::uint64_t(extent) * extent * 4;
+        const std::uint64_t bytes =
+            bc ? std::uint64_t((extent + 3) / 4) * ((extent + 3) / 4) * 8 : std::uint64_t(extent) * extent * 4;
         info.mip_ranges[i] = {offset, bytes, extent, extent};
         offset += bytes;
     }
@@ -145,15 +111,26 @@ static lux::render::vulkan::TextureStorage* textures(DeviceSession& session) noe
     return static_cast<lux::render::vulkan::TextureStorage*>(registry.native(id));
 }
 
-static RenderResult<void> configureTextures(DeviceSession& session, std::uint32_t capacity, std::uint64_t bytes) noexcept
+static RenderResult<void> configureTextures(
+    DeviceSession& session,
+    std::uint32_t capacity,
+    std::uint64_t bytes
+) noexcept
 {
     auto& registry = session.resources();
     const TextureStorageConfig config{capacity, bytes};
     if (!registry.factory(lux::render::TextureStorage::description.type))
+    {
         if (auto installed = registry.installFactory(textureStorageFactory(), config); !installed)
+        {
             return lux::cxx::unexpected(installed.error());
-    auto id = session.globalStorages().getOrCreate(registry.typeId(kTextureStorageType), "default",
-        *ConfigValue::make(config));
-    if (!id) return lux::cxx::unexpected(id.error());
+        }
+    }
+    auto id = session.globalStorages()
+                  .getOrCreate(registry.typeId(kTextureStorageType), "default", *ConfigValue::make(config));
+    if (!id)
+    {
+        return lux::cxx::unexpected(id.error());
+    }
     return {};
 }

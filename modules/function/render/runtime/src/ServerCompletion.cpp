@@ -61,11 +61,6 @@ namespace lux::render
         auto* sample = test::completionPopped(slot.measurement);
         test::completionAdoptBegin(sample);
 #endif
-        if (const auto resume = std::exchange(slot.resume, nullptr))
-        {
-            resume(slot.continuation, std::move(slot.continuation_result));
-            return; // The continuation may publish its final event; no post-callback slot access.
-        }
         slot.outbox->enqueue(slot.response_route_, std::move(slot.result_message_));
         delete &slot;
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM

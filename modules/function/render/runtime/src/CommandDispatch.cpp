@@ -29,11 +29,6 @@ namespace lux::render::runtime_detail
         return record.result_message_;
     }
 
-    execution::CompletionPost<RenderError> completionPost(CommandCompletion& record) noexcept
-    {
-        return record.post();
-    }
-
     stdexec::counting_scope& commandScope(CommandDispatchContext& context) noexcept
     {
         return context.scope_;
@@ -46,6 +41,14 @@ namespace lux::render::runtime_detail
 
     void publishCompletion(CommandCompletion& record) noexcept
     {
-        record.post()(nullptr, nullptr, {});
+        auto* loop = record.loop;
+#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
+        auto* sample = test::completionPostBegin(record.measurement);
+        loop->post(record);
+        test::completionPostEnd(sample, true);
+#else
+        loop->post(record);
+#endif
+        // No record access after publication. RunLoop protects the wakeup/publisher tail.
     }
 } // namespace lux::render::runtime_detail

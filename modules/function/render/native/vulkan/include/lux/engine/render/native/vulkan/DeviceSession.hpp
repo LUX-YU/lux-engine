@@ -15,7 +15,6 @@ namespace lux::render::vulkan
     class CompiledGraph;
     class DescriptorArray;
     class ExecutionContext;
-    class Transfer;
     class UploadContext;
     class StagingArena;
     struct ImageTransferRegion;
@@ -90,18 +89,6 @@ namespace lux::render::vulkan
         [[nodiscard]] SubmissionQueue* queueFor(SubmissionTicket ticket) noexcept;
         [[nodiscard]] bool deviceLost() const noexcept;
         [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&, execution::CpuScheduler) noexcept;
-        [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadImage(
-            const ImageDescription&,
-            std::span<const std::byte>,
-            std::span<const ImageTransferRegion>,
-            std::shared_ptr<const Image> clone = {},
-            bool graphics_queue = false,
-            SubmissionRequirements* clone_last_use = nullptr
-        ) noexcept;
-        [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadBuffer(
-            std::span<const std::byte>,
-            VkBufferUsageFlags usage
-        ) noexcept;
         [[nodiscard]] TransferStats uploadStats() const noexcept;
 
         [[nodiscard]] UploadContext& uploads() noexcept
@@ -126,7 +113,6 @@ namespace lux::render::vulkan
 
     private:
         friend struct NativeMemoryAudit;
-        friend class Transfer;
         friend class UploadContext;
         friend class ExecutionContext;
         DeviceSession(

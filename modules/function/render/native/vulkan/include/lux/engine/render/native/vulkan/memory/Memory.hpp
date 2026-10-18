@@ -71,7 +71,6 @@ namespace lux::render::vulkan
 
     private:
         friend class VulkanAllocator;
-        friend class Transfer;
 
         Buffer(
             VulkanAllocator& allocator,

@@ -191,9 +191,9 @@ int main()
         CHECK(session->drain());
         CHECK(storage.residentVersions() == 0);
         std::printf(
-            "texture storage descriptors=16 resident_peak=%llu bytes; TextureData=%zu GpuWork=%zu; "
+            "texture storage descriptors=16 resident_peak=%llu bytes; TextureData=%zu UploadTask=%zu; "
             "exact last-good/generation/shared content\n",
-            storage.residentPeak(), sizeof(SampledBacking), sizeof(GpuWork)
+            storage.residentPeak(), sizeof(SampledBacking), sizeof(UploadContext::Task)
         );
     }
     {

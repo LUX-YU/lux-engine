@@ -56,8 +56,8 @@ Standard error/stopped adaptors normalize its concrete Sender to one typed Respo
 identity table or type-erased operation deleter remains.
 
 The record owns only routing, completed output and the existing completion queue node.
-Native intermediate continuations borrow the same node without transferring operation
-ownership. RenderThread alone moves finished output to Outbox and deletes the record.
+Intermediate CPU continuations use the same Core RunLoop scheduler; result records do not
+carry a second continuation protocol. RenderThread alone moves finished output to Outbox and deletes the record.
 Scope completion and IPC delivery are distinct; an operation may end before its result
 can be sent. Host scheduler/module lifetimes still cover external callback tails.
 Outbox alone publishes finished results, with bounded fair retries when a reply
@@ -75,8 +75,9 @@ request, stable Feature borrows and Device. The same Core RunLoop that delivers 
 Replies schedules candidate adoption on RenderThread, which alone allocates EffectId.
 The owner handoff cannot swallow a determined error on cancellation; successful candidates
 check stop before adoption. No private RenderScheduler or CreateEffectSender remains.
-Graph analysis/compiler and Native retirement are unchanged. GPU upload senders retain source Payload through actual Transfer completion;
-Copy/Acquire/publication determines success. Readback waits for its own GPU work.
+Graph analysis/compiler and Native retirement remain independent. Upload tasks own their input while CPU
+preparation uses it; accepted GPU submissions retain their physical destinations. Copy/Acquire admission and
+professional publication determine upload success. Readback waits for its own GPU completion.
 
 Stop closes dispatch, requests operation stops, drains accepted CPU/GPU work and
 publishes/discards ready output before resetting the Responder. Native objects retire

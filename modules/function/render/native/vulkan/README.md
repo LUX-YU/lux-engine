@@ -1,7 +1,8 @@
 # Native Vulkan ownership
 
 `InstanceContext` is owned by bootstrap, outside `DeviceSession`. A session borrows the instance and
-owns one device, VMA allocator, unique queue owners and ticket-driven retirement. Aliased queue roles
+owns one gapi LogicalDevice, one immutable gapi PhysicalDevice snapshot, actual enabled-feature facts,
+VMA allocator, unique queue owners and ticket-driven retirement. Aliased queue roles
 resolve to the same owner. No Graph, Scene or IPC object is introduced by this foundation.
 
 `Buffer` and `Image` own their actual Vulkan objects and release them in their destructors. Each borrows
@@ -17,8 +18,8 @@ the resource. The allocator and device must outlive these objects, including ref
 `CommandBatch::retain()` records actual resources or one prepared binding set. On successful Submit,
 the existing physical queue slot retains them until its fence advances the completed prefix. A failed
 or abandoned recording releases only its own set; a later Submit failure never drops an earlier accepted
-batch. Reference-array capacity is reused when slots cycle. Upload staging pages now use this path.
-Object retention does not permit rewriting a page or descriptor still in use by the GPU.
+batch. Reference-array capacity is reused when slots cycle. Upload staging pages use the separate
+unique retirement facility, with their final accepted Copy ticket. Object retention does not permit rewriting a page or descriptor still in use by the GPU.
 
 `DescriptorArray::allocate()` returns a move-only `DescriptorRange`. The range keeps the array alive,
 returns its generation slot on destruction, and writes only before publication. Texture backing owns
@@ -44,8 +45,9 @@ queue-scoped ticket and retirement algorithms are migrated from commit
 
 - `device/Device`, `device/Vma`, `memory/Memory`: actual resource factories and reverse RAII cleanup.
 - `transfer/Submission`: accepted-submission serial, fence completion, cross-queue timeline waits.
-- The former per-resource `retirement/Retirement` table is removed. The existing SubmissionQueue's
-  completed-prefix FIFO releases each accepted batch's retained resources.
+- Retirement owns only released physical objects and their actual per-queue completion conditions;
+  it is not an allocation identity table. Reserve the retirement record before publication/submission.
+  Its ready records are detached before invoking object destructors.
 - `pinclude/Native.hpp`: test-only compile-time fault hook; no production indirect call.
 
 The new path is `render/native/vulkan`; the old modules are not linked, and Legacy is read-only.
@@ -141,18 +143,21 @@ Compute/Indirect/RT remain outside this implementation.
 
 ## Current component boundary
 
-render_native_vulkan contains Device/Memory/Submission/Transfer/GpuWork/Compiler/Execution. It has no Feature include or reverse link to extensions. render_native_vulkan_extensions contains the real Texture Storage/Command implementations and GPU Command completion adapter. DirectGraph tests and the installed base-only consumer construct a G4 graph and execute real GPU readback without FeatureAssembly.
+render_native_vulkan contains Device/Memory/Submission/UploadContext/Compiler/Execution. It has no Feature include or reverse link to extensions. render_native_vulkan_extensions contains the real Texture Storage/Command implementations and GPU Command completion adapter. DirectGraph tests and the installed base-only consumer construct a G4 graph and execute real GPU readback without FeatureAssembly.
 
-Factory installation is explicit and cold. Session contains no default Texture factory. Transfer retains
-actual destination Buffers and source/destination Images in every accepted Copy/Acquire batch;
-Texture keeps the source TextureData and its real synchronization
-requirements for Clone. These requirements no longer control Texture destruction. Accepted-submit merging
-and queue callbacks are unchanged. StagingArena owns mapped buffers and an O(1) free-list. An acquired
-StagingPage is retained by CPU preparation and accepted Copy batches; only its final reference returns
-the page for reuse. Session releases queued batches before the arena, including on Device Lost.
-SessionUploads still contains transfer scheduling/statistics until the UploadContext migration; upload
-publication currently still waits for completion observation. Page retention alone does not implement
-the later submission-accepted success contract.
+Factory installation is explicit and cold. Session contains no default Texture factory. `UploadContext`
+uses the existing CPU scheduler and the caller's Owner scheduler; Native does not own threads. Its typed tasks
+own source Payload and actual destinations, perform row/chunk preparation, then record/submit Copy and required
+Acquire in one non-suspending Owner segment. Capacity waiting occurs before acquiring that recording segment.
+Success means required submissions were accepted and subsequent Graphics use is ordered, not that final fence
+observation has occurred. Professional Storage controls candidate publication and rollback.
+
+`StagingArena` owns movable mapped Buffers and an O(1) free list. A task owns one acquired `StagingPage`;
+CPU completion alone does not release it. Its final accepted Copy ticket transfers the page acquisition to
+RetirementQueue, so later completion returns the page for reuse. A failed first Submit releases immediately;
+a later failure preserves earlier accepted use. Session retires pages before destroying upload measurements
+or the arena, including the Device Lost teardown path. Texture Clone retains its actual source and merges
+the accepted Copy ticket monotonically with any newer Draw use.
 
 Mesh and Material publication visits only that resource's prepared subscriptions. Subscription removal
 uses its stored position; logical deletion disconnects subscriptions while their Storage still exists.

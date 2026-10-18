@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/core/execution/CompletionPost.hpp>
 #include <lux/engine/core/execution/RunLoop.hpp>
 #include <lux/engine/platform/ipc/IpcMessage.hpp>
 #include <lux/engine/render/protocol/CommandMethod.hpp>
@@ -16,7 +15,6 @@ namespace lux::render::runtime_detail
     platform::ipc::IpcMessage& prepareResponse(CommandDispatchContext&) noexcept;
     CommandCompletion& prepareCompletion(CommandDispatchContext&) noexcept;
     platform::ipc::IpcMessage& completionResult(CommandCompletion&) noexcept;
-    execution::CompletionPost<RenderError> completionPost(CommandCompletion&) noexcept;
     stdexec::counting_scope& commandScope(CommandDispatchContext&) noexcept;
     execution::RunLoop::Scheduler renderScheduler(CommandDispatchContext&) noexcept;
     void publishCompletion(CommandCompletion&) noexcept;
@@ -108,13 +106,11 @@ namespace lux::render
                                     runtime_detail::publishCompletion(*record);
                                 }
                             );
+                        const auto scheduler = runtime_detail::renderScheduler(context);
                         stdexec::spawn(
                             std::move(normalized),
                             runtime_detail::commandScope(context).get_token(),
-                            CompletionEnvironment{
-                                runtime_detail::completionPost(completion),
-                                runtime_detail::renderScheduler(context)
-                            }
+                            stdexec::env{stdexec::prop{stdexec::get_scheduler, scheduler}}
                         );
                     }
                 },
@@ -125,22 +121,6 @@ namespace lux::render
 
     private:
         friend class runtime_detail::CommandRegistry;
-
-        struct CompletionEnvironment final
-        {
-            execution::CompletionPost<RenderError> post;
-            execution::RunLoop::Scheduler scheduler;
-
-            execution::RunLoop::Scheduler query(stdexec::get_scheduler_t) const noexcept
-            {
-                return scheduler;
-            }
-
-            execution::CompletionPost<RenderError> query(execution::GetCompletionPost) const noexcept
-            {
-                return post;
-            }
-        };
 
         template <RenderCommand C> struct ResponseError final
         {

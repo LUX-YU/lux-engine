@@ -59,7 +59,6 @@ namespace lux::render::vulkan
     private:
         friend class DeviceSession;
         friend class StagingPage;
-        friend class Transfer;
         UploadContext(DeviceSession&, TransferOptions, execution::CpuScheduler) noexcept;
         [[nodiscard]] Task
         write(std::shared_ptr<Buffer>, std::shared_ptr<Image>, RenderPayload, std::vector<ImageTransferRegion>, std::shared_ptr<const Image>, SubmissionRequirements*) noexcept;

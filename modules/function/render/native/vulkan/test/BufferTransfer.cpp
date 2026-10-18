@@ -19,6 +19,7 @@ namespace lux::render::vulkan::test
     }
     VkResult after(const char* call, VkResult result) noexcept
     {
+        if (std::string_view(call) == "cpuPrepare") lux::render::test::CpuFixture::runBeforeWork();
         if (result == VK_SUCCESS && std::string_view(call) == "buffer") ++live_buffers;
         if (result == VK_SUCCESS && std::string_view(call) == "submit") ++submits;
         return result;

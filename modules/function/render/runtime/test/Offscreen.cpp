@@ -25,7 +25,6 @@ namespace lux::render
     };
 }
 
-namespace lux::render::runtime_cpu_test { CpuSchedule controlled_cpu; }
 
 using namespace lux::render;
 using namespace std::chrono_literals;

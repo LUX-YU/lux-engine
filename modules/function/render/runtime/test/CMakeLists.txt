@@ -95,7 +95,7 @@ add_test(NAME render.runtime.lifetime COMMAND render_runtime_lifetime_test)
 set_tests_properties(render.runtime.lifetime PROPERTIES TIMEOUT 90)
 
 add_executable(render_runtime_offscreen_test Offscreen.cpp ../../native/vulkan/test/Allocation.cpp ${LUX_RUNTIME_SOURCES})
-target_compile_definitions(render_runtime_offscreen_test PRIVATE LUX_RUNTIME_CPU_TEST_SEAM LUX_RUNTIME_EFFECT_TEST_SEAM)
+target_compile_definitions(render_runtime_offscreen_test PRIVATE LUX_RUNTIME_EFFECT_TEST_SEAM)
 target_include_directories(render_runtime_offscreen_test PRIVATE ../pinclude ../../native/vulkan/sinclude)
 target_include_directories(render_runtime_offscreen_test PRIVATE ../../native/vulkan/test)
 target_link_libraries(render_runtime_offscreen_test PRIVATE render_runtime)
@@ -189,7 +189,6 @@ add_test(NAME render.runtime.gpu_ready_same_family COMMAND render_runtime_gpu_re
 set_tests_properties(render.runtime.gpu_ready_transfer render.runtime.gpu_ready_same_family PROPERTIES TIMEOUT 120)
 
 add_executable(render_texture_progress_test TextureProgress.cpp ${LUX_RUNTIME_SOURCES})
-target_compile_definitions(render_texture_progress_test PRIVATE LUX_RUNTIME_CPU_TEST_SEAM)
 
 target_include_directories(render_texture_progress_test PRIVATE ../pinclude ../../native/vulkan/test ../../native/vulkan/sinclude)
 

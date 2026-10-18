@@ -1,4 +1,4 @@
-#include <lux/engine/core/execution/WorkSchedule.hpp>
+#include <lux/engine/core/execution/CompletionPost.hpp>
 #include <cstdlib>
 
 namespace
@@ -22,16 +22,14 @@ namespace
         [[nodiscard]] stdexec::env<> get_env() const noexcept { return {}; }
     };
 
-    constexpr auto mapError = [](auto) noexcept { return EFailure::REJECTED; };
 }
 
 int main()
 {
-    // A non-Render consumer verifies that the common adapter contains no Render result or error contract.
+    // Standard CPU composition and the independent owner-notification contract.
     stdexec::inline_scheduler scheduler;
-    auto cpu = lux::execution::CpuSchedule<EFailure>::bind<mapError>(scheduler);
     Result result;
-    auto sender = cpu.schedule([](void* value) noexcept { ++static_cast<Result*>(value)->worked; }, &result);
+    auto sender = stdexec::schedule(scheduler) | stdexec::then([&result]() noexcept { ++result.worked; });
     auto operation = stdexec::connect(std::move(sender), Receiver{&result});
     stdexec::start(operation);
     if (result.worked != 1 || result.completed != 1) std::abort();

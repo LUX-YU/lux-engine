@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/core/execution/WorkSchedule.hpp>
+#include <lux/engine/core/execution/CompletionPost.hpp>
 #include <lux/engine/platform/ipc/IpcMessage.hpp>
 #include <lux/engine/render/protocol/CommandMethod.hpp>
 #include <lux/engine/render/runtime/Error.hpp>

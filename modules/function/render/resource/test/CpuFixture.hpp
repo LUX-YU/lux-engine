@@ -2,7 +2,9 @@
 
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/resource/AsyncWork.hpp>
-#include <exec/variant_sender.hpp>
+#include <chrono>
+#include <memory>
+#include <vector>
 
 #include <array>
 #include <atomic>
@@ -16,7 +18,7 @@
 
 namespace lux::render::test
 {
-    // Test host only. Production Render borrows CpuSchedule and never links Engine.
+    // Test host only. Production Render borrows CpuScheduler and never links Engine.
     // Accepted continuations must be drained before their native owners are destroyed.
     class CpuFixture final
     {
@@ -26,14 +28,16 @@ namespace lux::render::test
 
         explicit CpuFixture(std::size_t concurrency = 2, std::size_t capacity = 128) noexcept
             : owner_thread_(std::this_thread::get_id()), runtime_(create(concurrency, capacity)),
-              scheduler_{runtime_.cpu(), &control_}
+              concurrency_(concurrency), capacity_(capacity)
         {}
 
         ~CpuFixture() noexcept
         {
             requireOwner();
+            reject(false);
             runtime_.requestStop();
             if (!runtime_.join()) fail("ExecutionRuntime join failed");
+            if (hook_fixture_ == this) hook_fixture_ = nullptr;
             std::lock_guard lock(mutex_);
             if (count_ != 0) fail("undrained continuation at CpuFixture destruction");
         }
@@ -43,24 +47,42 @@ namespace lux::render::test
         CpuFixture(CpuFixture&&) = delete;
         CpuFixture& operator=(CpuFixture&&) = delete;
 
-        [[nodiscard]] CpuSchedule cpu() noexcept
+        [[nodiscard]] execution::CpuScheduler cpu() noexcept
         {
-            return CpuSchedule::bind<mapError>(scheduler_);
+            return runtime_.cpu();
         }
 
         [[nodiscard]] execution::ExecutionRuntime& runtime() noexcept { return runtime_; }
 
         void reject(bool value) noexcept
         {
-            control_.reject.store(value, std::memory_order_release);
+            if (!value)
+            {
+                hold_.store(false, std::memory_order_release);
+                waitFor([&] { return completed_.load(std::memory_order_acquire) == blockers_.size(); });
+                return;
+            }
+            if (hold_.exchange(true)) fail("overlapping rejection window");
+            const auto previous = blockers_.size();
+            for (std::size_t i = 0; i < concurrency_; ++i) blockWorker();
+            waitFor([&] { return started_.load(std::memory_order_acquire) == previous + concurrency_; });
+            for (std::size_t i = 0; i < capacity_; ++i) blockWorker();
         }
 
         // Install only while no CPU job is in flight. The hook runs on the real
         // ExecutionRuntime worker immediately before the requested CPU work.
         void setBeforeWork(void* owner, BeforeWork hook) noexcept
         {
-            control_.hook_owner = owner;
-            control_.hook = hook;
+            hook_owner_ = owner;
+            hook_ = hook;
+            hook_fixture_ = this;
+        }
+
+        // Called only by the existing instrumented Native preparation seam.
+        static void runBeforeWork() noexcept
+        {
+            auto* fixture = hook_fixture_;
+            if (fixture && fixture->hook_) fixture->hook_(fixture->hook_owner_);
         }
 
         [[nodiscard]] CompletionPost post() noexcept
@@ -96,34 +118,47 @@ namespace lux::render::test
         }
 
     private:
-        struct Control final
+        struct BlockReceiver final
         {
-            std::atomic<bool> reject{false};
-            void* hook_owner = nullptr;
-            BeforeWork hook = nullptr;
-        };
+            using receiver_concept = stdexec::receiver_t;
+            CpuFixture* owner;
 
-        struct Scheduler final
-        {
-            execution::CpuScheduler real;
-            Control* control;
+            [[nodiscard]] stdexec::env<> get_env() const noexcept { return {}; }
 
-            [[nodiscard]] auto schedule() const noexcept
+            void set_value() && noexcept
             {
-                auto normal = stdexec::then(stdexec::schedule(real), [control = control]() noexcept {
-                    if (control->hook) control->hook(control->hook_owner);
-                });
-                auto rejected = stdexec::just_error(execution::EExecutionError::CAPACITY_EXCEEDED);
-                using VSchedule = exec::variant_sender<decltype(normal), decltype(rejected)>;
-                // Controlled rejection is an explicit test branch. Normal work
-                // always uses the actual Engine scheduler, including its genuine
-                // queue-capacity and stopped errors; there is no second worker.
-                if (control->reject.load(std::memory_order_acquire)) return VSchedule{std::move(rejected)};
-                return VSchedule{std::move(normal)};
+                owner->started_.fetch_add(1, std::memory_order_release);
+                waitFor([&] { return !owner->hold_.load(std::memory_order_acquire); });
+                owner->completed_.fetch_add(1, std::memory_order_release);
             }
 
-            [[nodiscard]] bool operator==(const Scheduler&) const noexcept = default;
+            void set_error(execution::EExecutionError) && noexcept { fail("capacity blocker rejected"); }
+            void set_stopped() && noexcept { fail("capacity blocker stopped"); }
         };
+
+        using BlockOperation = stdexec::connect_result_t<
+            decltype(stdexec::schedule(execution::CpuScheduler{})), BlockReceiver
+        >;
+
+        void blockWorker() noexcept
+        {
+            auto operation = std::unique_ptr<BlockOperation>(new BlockOperation(
+                stdexec::connect(stdexec::schedule(runtime_.cpu()), BlockReceiver{this})
+            ));
+            auto* stable = operation.get();
+            blockers_.push_back(std::move(operation));
+            stdexec::start(*stable);
+        }
+
+        template<class Predicate> static void waitFor(Predicate predicate) noexcept
+        {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+            while (!predicate())
+            {
+                if (std::chrono::steady_clock::now() >= deadline) fail("CPU control timeout");
+                std::this_thread::yield();
+            }
+        }
 
         struct Event final
         {
@@ -131,11 +166,6 @@ namespace lux::render::test
             CpuResume resume = nullptr;
             RenderResult<void> result;
         };
-
-        [[nodiscard]] static RenderError mapError(execution::EExecutionError error) noexcept
-        {
-            return {kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}};
-        }
 
         [[nodiscard]] static execution::ExecutionRuntime create(std::size_t concurrency, std::size_t capacity) noexcept
         {
@@ -167,8 +197,14 @@ namespace lux::render::test
 
         const std::thread::id owner_thread_;
         execution::ExecutionRuntime runtime_;
-        Control control_;
-        Scheduler scheduler_;
+        const std::size_t concurrency_, capacity_;
+        std::atomic<bool> hold_{false};
+        std::atomic<std::size_t> started_{0}, completed_{0};
+        // Retain connected states until Host join, including the receiver tail.
+        std::vector<std::unique_ptr<BlockOperation>> blockers_;
+        void* hook_owner_ = nullptr;
+        BeforeWork hook_ = nullptr;
+        inline static CpuFixture* hook_fixture_ = nullptr;
         std::mutex mutex_;
         std::array<Event, notification_capacity> events_;
         std::size_t head_ = 0;

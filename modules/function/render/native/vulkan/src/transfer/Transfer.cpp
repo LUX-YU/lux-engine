@@ -35,9 +35,13 @@ namespace lux::render::vulkan
                 transfer->completion_post_(transfer, Transfer::resumeCpu, {});
             }
 
-            void set_error(RenderError error) && noexcept
+            void set_error(execution::EExecutionError error) && noexcept
             {
-                transfer->completion_post_(transfer, Transfer::resumeCpu, cxx::unexpected(error));
+                transfer->completion_post_(
+                    transfer,
+                    Transfer::resumeCpu,
+                    cxx::unexpected(RenderError{kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}})
+                );
             }
 
             void set_stopped() && noexcept
@@ -46,11 +50,21 @@ namespace lux::render::vulkan
             }
         };
 
-        using Operation = stdexec::connect_result_t<CpuSender, Receiver>;
+        struct Prepare final
+        {
+            Transfer* transfer;
+            void operator()() const noexcept { Transfer::prepare(transfer); }
+        };
+        using Sender = decltype(stdexec::then(stdexec::schedule(execution::CpuScheduler{}), Prepare{}));
+        using Operation = stdexec::connect_result_t<Sender, Receiver>;
         Operation operation;
 
         explicit CpuPreparation(Transfer& transfer)
-            : operation(stdexec::connect(transfer.session_->uploads_->cpu.schedule(Transfer::prepare, &transfer), Receiver{&transfer})) {}
+            : operation(stdexec::connect(
+                  stdexec::then(stdexec::schedule(transfer.session_->uploads_->cpu), Prepare{&transfer}),
+                  Receiver{&transfer}
+              ))
+        {}
     };
 
     DeviceSession::UploadState::~UploadState() noexcept
@@ -64,9 +78,9 @@ namespace lux::render::vulkan
         if (timestamps) vkDestroyQueryPool(session.device().native(), timestamps, nullptr);
     }
 
-    RenderResult<void> DeviceSession::configureUploads(const TransferOptions& options, CpuSchedule cpu) noexcept
+    RenderResult<void> DeviceSession::configureUploads(const TransferOptions& options, execution::CpuScheduler cpu) noexcept
     {
-        const bool invalid = uploads_ || !cpu || options.chunk_bytes < 256 ||
+        const bool invalid = uploads_ || cpu == execution::CpuScheduler{} || options.chunk_bytes < 256 ||
             options.chunk_bytes > 16 * 1024 * 1024 || options.staging_pages == 0 || options.staging_pages > 16 ||
             options.pending_bytes < options.chunk_bytes;
         if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
@@ -310,6 +324,7 @@ namespace lux::render::vulkan
     void Transfer::prepare(void* pointer) noexcept
     {
         auto& transfer = *static_cast<Transfer*>(pointer);
+        LUX_RECORD("cpuPrepare", (void)0);
         const auto start = Clock::now();
         if (transfer.regions_.empty())
             std::memcpy(transfer.mapped_, transfer.source_.data() + transfer.offset_, transfer.chunk_size_);

@@ -15,7 +15,6 @@
 #include <fstream>
 #include <latch>
 
-namespace lux::render::runtime_cpu_test { CpuSchedule controlled_cpu; }
 
 using namespace foundation_test;
 using namespace std::chrono_literals;
@@ -40,7 +39,11 @@ namespace lux::render::vulkan::test
         if (name == "fence_status" && hold.load()) return VK_NOT_READY;
         return VK_SUCCESS;
     }
-    VkResult after(const char*, VkResult result) noexcept { return result; }
+    VkResult after(const char* call, VkResult result) noexcept
+    {
+        if (std::string_view(call) == "cpuPrepare") lux::render::test::CpuFixture::runBeforeWork();
+        return result;
+    }
     void destroyed(const char*) noexcept {}
 }
 

@@ -498,3 +498,19 @@ target_link_libraries(render_execution_outcomes_test PRIVATE render_native_instr
 add_test(NAME render.native.execution_outcomes COMMAND render_execution_outcomes_test)
 
 set_tests_properties(render.native.execution_outcomes PROPERTIES TIMEOUT 60)
+
+# Concrete CpuScheduler adds a real DLL dependency to standalone Native consumers.
+# Deploy the linked runtime closure beside each executable, including outside bootstrap's ipc/bin.
+if(WIN32)
+    get_property(native_test_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(target IN LISTS native_test_targets)
+        get_target_property(target_type ${target} TYPE)
+        if(target_type STREQUAL "EXECUTABLE" AND NOT target MATCHES "_asset_tool$")
+            add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    $<TARGET_RUNTIME_DLLS:${target}> "$<TARGET_FILE_DIR:${target}>"
+                COMMAND_EXPAND_LISTS
+            )
+        endif()
+    endforeach()
+endif()

@@ -1,3 +1,4 @@
+#include <lux/engine/core/execution/Scheduler.hpp>
 #pragma once
 
 #include <lux/engine/render/features/Registration.hpp>
@@ -34,7 +35,7 @@ namespace async_tail_test
 
     struct Host final
     {
-        lux::render::CpuSchedule cpu;
+        lux::execution::CpuScheduler cpu;
         Gate* gate;
     };
 

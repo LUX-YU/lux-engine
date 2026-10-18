@@ -1,4 +1,5 @@
 #include "ServerFixture.hpp"
+#include <exec/variant_sender.hpp>
 #include "Discovery.hpp"
 #include "FeatureFixture.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -137,7 +138,7 @@ namespace
 
     struct State final
     {
-        CpuSchedule cpu;
+        lux::execution::CpuScheduler cpu;
         std::atomic<Batch*> active{};
         // StableSlotMap reserves complete 256-slot pages and first allocates index 255, even though
         // Runtime admits at most 136 live records. This is an observation index, not extra admission.
@@ -185,12 +186,16 @@ namespace
         auto& record = batch->records[input.index];
         record.handler_begin = now();
         record.register_end = now();
-        CpuSender source = batch->mode == EMode::SYNCHRONOUS ? CpuSender{stdexec::just()} :
-            state->cpu.schedule(work, &record);
+        auto asynchronous = stdexec::schedule(state->cpu) | stdexec::then([&record]() noexcept { work(&record); });
+        using VSource = exec::variant_sender<decltype(stdexec::just()), decltype(asynchronous)>;
+        VSource source = batch->mode == EMode::SYNCHRONOUS ? VSource{stdexec::just()} :
+            VSource{std::move(asynchronous)};
         if (batch->mode == EMode::SYNCHRONOUS) work(&record);
         record.handler_end = now();
         return stdexec::then(std::move(source), [&record]() noexcept -> CpuOperation::Response {
             return CpuOperation::ResponseValue{record.index, record.result};
+        }) | stdexec::upon_error([](lux::execution::EExecutionError error) noexcept -> CpuOperation::Response {
+            return lux::cxx::unexpected(RenderError{kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}});
         });
     }
 

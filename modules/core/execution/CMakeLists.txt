@@ -56,7 +56,7 @@ lux_engine_install_components(
 )
 
 if(BUILD_TESTING)
-    foreach(header CompletionWork ExecutionError ExecutionRuntime PortSender Scheduler Task TaskInfo TaskScope Timer WorkSchedule)
+    foreach(header CompletionPost CompletionWork ExecutionError ExecutionRuntime PortSender Scheduler Task TaskInfo TaskScope Timer)
         file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${header}.cpp" CONTENT
             "#include <lux/engine/core/execution/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
         )

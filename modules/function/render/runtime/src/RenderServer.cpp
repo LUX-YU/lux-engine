@@ -1,30 +1,12 @@
 #include "ServerImpl.hpp"
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 
-#ifdef LUX_RUNTIME_CPU_TEST_SEAM
-namespace lux::render::runtime_cpu_test
-{
-    extern CpuSchedule controlled_cpu;
-}
-#endif
-
 namespace lux::render
 {
-    namespace
-    {
-        RenderError mapCpuError(execution::EExecutionError error) noexcept
-        {
-            return {kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}};
-        }
-    } // namespace
-
     RenderServer::Impl::Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler host_scheduler)
         : config(std::move(value)), scheduler(std::move(host_scheduler)),
-          cpu(CpuSchedule::bind<mapCpuError>(scheduler)), responder(std::move(input))
+          responder(std::move(input))
     {
-#ifdef LUX_RUNTIME_CPU_TEST_SEAM
-        cpu = runtime_cpu_test::controlled_cpu;
-#endif
         addBuiltin<CreateScene, &Impl::createScene>();
         addBuiltin<RemoveScene, &Impl::removeScene>();
         addBuiltin<CreateView, &Impl::createView>();
@@ -86,7 +68,7 @@ namespace lux::render
         s.device = std::move(*device);
         if (s.config.uploads)
         {
-            auto uploads = s.device->configureUploads(*s.config.uploads, s.cpu);
+            auto uploads = s.device->configureUploads(*s.config.uploads, s.scheduler);
             if (!uploads)
             {
                 return cxx::unexpected(uploads.error());

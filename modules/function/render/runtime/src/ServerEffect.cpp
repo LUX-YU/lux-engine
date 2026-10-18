@@ -136,9 +136,13 @@ namespace lux::render
                     operation->completionPost()(operation, adopt, {});
                 }
 
-                void set_error(RenderError error) && noexcept
+                void set_error(execution::EExecutionError error) && noexcept
                 {
-                    operation->completionPost()(operation, adopt, cxx::unexpected(error));
+                    operation->completionPost()(
+                        operation,
+                        adopt,
+                        cxx::unexpected(RenderError{kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}})
+                    );
                 }
 
                 void set_stopped() && noexcept
@@ -146,6 +150,17 @@ namespace lux::render
                     operation->completionPost()(operation, adopt, cxx::unexpected(RenderError{kCommandCancelled}));
                 }
             };
+
+            struct Compile final
+            {
+                Operation* operation;
+                void operator()() const noexcept
+                {
+                    auto& self = *operation;
+                    self.candidate_ = compileEffect(self.device_, self.request_, self.features_, self.max_config_bytes_);
+                }
+            };
+            using Sender = decltype(stdexec::then(stdexec::schedule(execution::CpuScheduler{}), Compile{}));
 
         public:
             using operation_state_concept = stdexec::operation_state_t;
@@ -155,15 +170,7 @@ namespace lux::render
                   features_(std::move(input.features)), max_config_bytes_(input.owner->config.max_config_bytes),
                   initial_error_(input.initial_error), receiver_(std::move(receiver)),
                   cpu_operation_(stdexec::connect(
-                      input.owner->cpu.schedule(
-                          [](void* value) noexcept
-                          {
-                              auto& self = *static_cast<Operation*>(value);
-                              self.candidate_ =
-                                  compileEffect(self.device_, self.request_, self.features_, self.max_config_bytes_);
-                          },
-                          this
-                      ),
+                      stdexec::then(stdexec::schedule(input.owner->scheduler), Compile{this}),
                       CpuReceiver{this}
                   ))
             {
@@ -223,7 +230,7 @@ namespace lux::render
             RenderError initial_error_;
             RenderResult<RenderEffect> candidate_ = cxx::unexpected(RenderError{kRuntimeState});
             Receiver receiver_;
-            stdexec::connect_result_t<CpuSender, CpuReceiver> cpu_operation_;
+            stdexec::connect_result_t<Sender, CpuReceiver> cpu_operation_;
         };
 
         template <class Receiver> Operation<std::decay_t<Receiver>> connect(Receiver&& receiver) && noexcept

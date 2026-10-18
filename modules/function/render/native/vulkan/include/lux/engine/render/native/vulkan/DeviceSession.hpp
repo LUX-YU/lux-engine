@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/core/execution/Scheduler.hpp>
 
 #include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
@@ -55,7 +56,7 @@ namespace lux::render::vulkan
         // Boundary lookup compares stable owner identity before inspecting the ticket's queue.
         [[nodiscard]] SubmissionQueue* queueFor(SubmissionTicket ticket) noexcept;
         [[nodiscard]] bool deviceLost() const noexcept;
-        [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&, CpuSchedule) noexcept;
+        [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&, execution::CpuScheduler) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadImage(
             const ImageDescription&, std::span<const std::byte>, std::span<const ImageTransferRegion>,
             const ImageAllocation* clone = nullptr, bool graphics_queue = false,

@@ -18,7 +18,9 @@ namespace async_tail_test
             stdexec::set_stopped_t()
         >;
 
-        TailSender(CpuSender source, Gate& gate, std::uint32_t value) noexcept
+        using CpuSource = decltype(stdexec::schedule(lux::execution::CpuScheduler{}));
+
+        TailSender(CpuSource source, Gate& gate, std::uint32_t value) noexcept
             : source_(std::move(source)), gate_(&gate), value_(value)
         {}
 
@@ -60,9 +62,9 @@ namespace async_tail_test
                     std::move(*this).deliver(terminal, RenderError{kProtocolContract, {73}});
                 }
 
-                void set_error(RenderError error) && noexcept
+                void set_error(lux::execution::EExecutionError error) && noexcept
                 {
-                    std::move(*this).deliver(ETerminal::FAILURE, error);
+                    std::move(*this).deliver(ETerminal::FAILURE, RenderError{kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}});
                 }
 
                 void set_stopped() && noexcept
@@ -71,7 +73,7 @@ namespace async_tail_test
                 }
             };
 
-            using SourceOperation = stdexec::connect_result_t<CpuSender, Scheduled>;
+            using SourceOperation = stdexec::connect_result_t<CpuSource, Scheduled>;
 
         public:
             using operation_state_concept = stdexec::operation_state_t;
@@ -107,7 +109,7 @@ namespace async_tail_test
         }
 
     private:
-        CpuSender source_;
+        CpuSource source_;
         Gate* gate_;
         std::uint32_t value_;
     };
@@ -115,7 +117,7 @@ namespace async_tail_test
     static TailSender invoke(Host& host, Command::Request&& value) noexcept
     {
         // The Host joins its worker before unloading this callback code.
-        auto source = host.cpu.schedule([](void*) noexcept {}, nullptr);
+        auto source = stdexec::schedule(host.cpu);
         return TailSender{std::move(source), *host.gate, value};
     }
 }

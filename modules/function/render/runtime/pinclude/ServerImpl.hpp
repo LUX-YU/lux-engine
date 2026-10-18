@@ -94,7 +94,6 @@ namespace lux::render
 
         RenderServerConfig config;
         execution::CpuScheduler scheduler; // Borrowed from the Host runtime.
-        CpuSchedule cpu;
         ipc::IpcResponder responder;
         cxx::StableSlotMap<FeatureEntry, FeatureTag> features;
         CommandRegistry command_registry_;

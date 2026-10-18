@@ -61,6 +61,7 @@ namespace lux::render::vulkan::test
 
     VkResult after(const char* call, VkResult result) noexcept
     {
+        if (std::string_view(call) == "cpuPrepare") lux::render::test::CpuFixture::runBeforeWork();
         if (std::string_view(call) == "submit" && active_timeline)
         {
             auto& submission = active_timeline->submissions[active_timeline->count++];

@@ -4,7 +4,7 @@
 #include <lux/engine/render/native/vulkan/transfer/Transfer.hpp>
 #include <lux/engine/render/protocol/Protocol.hpp>
 #include <lux/engine/render/data/Payload.hpp>
-#include <lux/engine/core/execution/WorkSchedule.hpp>
+#include <lux/engine/core/execution/CompletionPost.hpp>
 #include <stdexec/execution.hpp>
 #include <optional>
 #include <utility>

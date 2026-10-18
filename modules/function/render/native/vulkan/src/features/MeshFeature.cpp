@@ -1,6 +1,8 @@
+#include <cstdint>
+
+// glslang's --vn output uses uint32_t without including its declaration.
 #include "BasicMeshVertex.hpp"
 #include "DepthOnlyVertex.hpp"
-#include <cstdint>
 #include <lux/engine/render/features/MeshFeature.hpp>
 #include <lux/engine/render/native/vulkan/features/MeshFeature.hpp>
 

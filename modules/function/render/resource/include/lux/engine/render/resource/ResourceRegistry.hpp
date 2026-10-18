@@ -90,7 +90,6 @@ namespace lux::render
         }
 
         [[nodiscard]] void* native(StorageId id) const noexcept;
-        [[nodiscard]] RenderResult<std::shared_ptr<void>> share(StorageId id) noexcept;
         [[nodiscard]] StorageSet* owner(StorageId id) const noexcept;
 
         [[nodiscard]] std::size_t size() const noexcept

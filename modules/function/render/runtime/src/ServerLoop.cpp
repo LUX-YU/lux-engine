@@ -8,29 +8,19 @@ namespace lux::render
         for (std::size_t i = 0; i < active.size(); ++i)
         {
             const auto& target = *targets.find(active[(next_target + i) % active.size()]);
-            for (const auto id : target.attachments)
+            auto result = attachments.find(target.attachment)->context->execute();
+            if (!result)
             {
-                auto result = attachments.find(id)->context->execute();
-                if (!result)
-                {
-                    return cxx::unexpected(result.error());
-                }
-                if (*result == EExecutionOutcome::EXECUTED)
-                {
-                    ++submissions;
-                }
+                return cxx::unexpected(result.error());
+            }
+            if (*result == EExecutionOutcome::EXECUTED)
+            {
+                ++submissions;
             }
         }
         next_target = active.empty() ? 0 : (next_target + 1) % active.size();
         auto collected = device->collect();
-#ifdef LUX_RUNTIME_TEST_SEAM
-        if (runtime_detail::test::observeGpuCompletion())
-        {
-            device->dispatchCompletions();
-        }
-#else
         device->dispatchCompletions();
-#endif
         return collected;
     }
 
@@ -69,11 +59,11 @@ namespace lux::render
         const auto* entry = command_registry_.findCommand(commandIdFromTag(received.tag()));
         if (!entry || route.request_id.isNull())
         {
-            response_outbox_.emplaceResponse<RenderError>(route, RenderError{kProtocolContract});
+            response_outbox_.emplaceResponse<RenderError>(route, RenderError{kCommandContract});
         }
         else if (received.message().typeHash() != entry->description->request.token.hash())
         {
-            response_outbox_.emplaceResponse<RenderError>(route, RenderError{kProtocolContract});
+            response_outbox_.emplaceResponse<RenderError>(route, RenderError{kCommandContract});
         }
         else if (!entry->selectedBinding())
         {
@@ -114,16 +104,7 @@ namespace lux::render
         auto join = stdexec::connect(command_scope_.join(), Joined{&joined});
         stdexec::start(join);
         response_outbox_.flushTo(responder, config.request_work_budget);
-        // Only shutdown waits. Scope retains connected CPU/source states; cancellation prevents
-        // their eventual CPU event from submitting another GPU chunk.
-        if (device)
-        {
-            auto drained = device->drain();
-            if (!drained && !device->deviceLost())
-            {
-                std::terminate();
-            }
-        }
+        // Keep the Owner and GPU completion paths advancing until every accepted Sender settles.
         while (!joined.load(std::memory_order_acquire) || !render_loop_.empty())
         {
             drainCompletions();
@@ -152,7 +133,17 @@ namespace lux::render
         while (!active_targets.empty())
         {
             auto& target = *targets.find(active_targets.keys().back());
-            if (!detachAttachment(target.attachments.back()))
+            if (!detachAttachment(target.attachment))
+            {
+                std::terminate();
+            }
+        }
+        // A Sender may ignore cancellation and accept more GPU work while it settles.
+        // Only final shutdown waits: Contexts are detached, and their plans still own every Pipeline.
+        if (device)
+        {
+            auto drained = device->drain();
+            if (!drained && !device->deviceLost())
             {
                 std::terminate();
             }
@@ -187,9 +178,6 @@ namespace lux::render
             const auto observed = notifications.workEpoch();
             const auto submitted_before = s.submissions.load();
             bool progressed = s.drainCompletions() != 0;
-#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
-            test::beforeDispatch();
-#endif
             for (std::uint32_t i = 0; i < s.config.request_work_budget && !s.stop_requested.load(); ++i)
             {
                 ipc::ReceivedRequest request;

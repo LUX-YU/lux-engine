@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/description/MaterialEnums.hpp>
-#include <lux/engine/description/Texture.hpp>
+#include <lux/engine/description/TextureInfo.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
 
 #include <Eigen/Core>

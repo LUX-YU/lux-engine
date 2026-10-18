@@ -27,6 +27,7 @@ lux_engine_install_components(
         async_port
         semantic
         error
+        error_values
         type_info
         meta
         object

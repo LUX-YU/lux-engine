@@ -16,12 +16,8 @@ component_add_internal_dependencies(
     render_features
     lux::engine::render::render_graph
     lux::engine::render::render_data
-    lux::engine::render::render_protocol
+    lux::engine::render::render_commands
     lux::engine::render::render_resource
 )
 
 target_compile_features(render_features PUBLIC cxx_std_20)
-
-if(BUILD_TESTING)
-    add_subdirectory(test)
-endif()

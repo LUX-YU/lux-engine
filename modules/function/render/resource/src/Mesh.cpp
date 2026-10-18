@@ -11,17 +11,17 @@ namespace lux::render
             const auto submeshes = cxx::checkedMul(description.submeshes.capacity(), sizeof(MeshSubmesh));
             if (!attributes || !submeshes)
             {
-                return cxx::unexpected(RenderError{kProtocolContract});
+                return cxx::unexpected(RenderError{kCommandContract});
             }
             const auto first = cxx::checkedAdd(bytes, *attributes);
             if (!first)
             {
-                return cxx::unexpected(RenderError{kProtocolContract});
+                return cxx::unexpected(RenderError{kCommandContract});
             }
             const auto total = cxx::checkedAdd(*first, *submeshes);
             if (!total)
             {
-                return cxx::unexpected(RenderError{kProtocolContract});
+                return cxx::unexpected(RenderError{kCommandContract});
             }
             return *total;
         }

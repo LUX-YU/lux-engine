@@ -22,8 +22,7 @@ namespace lux::render::vulkan
     [[nodiscard]] RenderResult<VkDescriptorSetLayout> createDescriptorLayout(
         VkDevice,
         std::span<const ShaderBinding>,
-        std::uint32_t runtime_count,
-        const char* fault_label
+        std::uint32_t runtime_count
     ) noexcept;
     [[nodiscard]] RenderResult<VkPipeline> compileCompute(
         VkDevice device,

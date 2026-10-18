@@ -1,10 +1,10 @@
-#include "Native.hpp"
 #include "Shader.hpp"
 #include <algorithm>
 #include <bit>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/native/vulkan/Error.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 
@@ -20,7 +20,7 @@ namespace lux::render::vulkan
 
     TextureStorage::TextureData::TextureData(
         std::shared_ptr<Residency> residency,
-        std::shared_ptr<Image> image,
+        std::unique_ptr<Image> image,
         DescriptorRange descriptor,
         const rdesc::TextureInfo& info,
         std::uint64_t revision
@@ -38,11 +38,11 @@ namespace lux::render::vulkan
         const auto device = image_->device();
         if (view_)
         {
-            LUX_DESTROY("image_view", vkDestroyImageView(device, view_, nullptr));
+            vkDestroyImageView(device, view_, nullptr);
         }
         if (sampler_)
         {
-            LUX_DESTROY("texture_sampler", sampler_.release(device));
+            sampler_.release(device);
         }
         --residency_->versions;
         residency_->bytes -= bytes_;
@@ -242,10 +242,9 @@ namespace lux::render::vulkan
     struct TextureStorage::Candidate final
     {
         TextureStorage& storage;
-        std::shared_ptr<TextureData> version;
+        std::unique_ptr<TextureData> version;
         TextureId texture;
-        std::shared_ptr<TextureData> base;
-        std::shared_ptr<void> storage_reference;
+        const TextureData* base = nullptr;
 
         ~Candidate() noexcept
         {
@@ -265,12 +264,14 @@ namespace lux::render::vulkan
         std::size_t position;
         std::array<float, 4> parameters{};
 
-        void update(const std::shared_ptr<TextureData>& value) noexcept
+        void update(const TextureData* value) noexcept
         {
-            binding->resources = value;
-            parameters = {float(value->descriptorIndex()), float(value->info().color_space), float(lod), 0};
+            parameters = value
+                             ? std::array<
+                                   float,
+                                   4>{float(value->descriptorIndex()), float(value->info().color_space), float(lod), 0}
+                             : std::array<float, 4>{0, 0, 0, 0};
             binding->parameters = std::as_bytes(std::span(parameters));
-            binding->last_use = &value->last_use_;
             binding->publishUpdate();
         }
 
@@ -296,25 +297,26 @@ namespace lux::render::vulkan
         for (auto* use : record.uses)
         {
             use->storage = nullptr;
+            use->update(nullptr);
         }
         record.uses.clear();
     }
 
-    RenderResult<std::pair<rdesc::TextureInfo, std::uint32_t>> TextureStorage::pin(
-        TexturePublished expected,
+    RenderResult<std::pair<rdesc::TextureInfo, std::uint32_t>> TextureStorage::bind(
+        TextureId id,
         PreparedStorageBinding& binding
     ) noexcept
     {
-        const auto* record = expected.texture.storage == id_ ? textures_.find(expected.texture.local) : nullptr;
-        if (!record || !record->current || record->current->revision_ != expected.revision)
+        auto* record = id.storage == id_ ? textures_.find(id.local) : nullptr;
+        if (!record || !record->current)
         {
-            return cxx::unexpected(RenderError{kStorageIdentity});
+            return std::pair{rdesc::TextureInfo{}, 0u};
         }
-        auto& backing = *record->current;
-        binding.resources = record->current;
-        binding.last_use = &backing.last_use_;
-        binding.descriptors = descriptors_->descriptors();
-        return std::pair{backing.info(), backing.descriptorIndex()};
+        auto use = std::make_unique<Use>(this, id, &binding, 0, record->uses.size());
+        record->uses.push_back(use.get());
+        use->update(record->current.get());
+        binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};
+        return std::pair{record->current->info(), record->current->descriptorIndex()};
     }
 
     RenderResult<void> TextureStorage::prepare(
@@ -351,8 +353,7 @@ namespace lux::render::vulkan
         }
         auto use = std::make_unique<Use>(this, argument.texture, &binding, argument.lod, record->uses.size());
         record->uses.push_back(use.get());
-        use->update(record->current);
-        binding.descriptors = descriptors_->descriptors();
+        use->update(record->current.get());
         static const ShaderBlock parameters = []
         {
             static constexpr rdesc::DataGpuField fields[]{{"control", rdesc::EDataScalar::FLOAT, 0, 4, 1, 0, 0}};
@@ -436,17 +437,13 @@ namespace lux::render::vulkan
         for (auto& record : textures_)
         {
             disconnect(record);
+            retire(record.current);
         }
     }
 
     VkDescriptorSetLayout TextureStorage::layout() const noexcept
     {
         return descriptors_->layout();
-    }
-
-    VkDescriptorSet TextureStorage::descriptors() const noexcept
-    {
-        return descriptors_->descriptors();
     }
 
     std::size_t TextureStorage::residentVersions() const noexcept
@@ -474,7 +471,7 @@ namespace lux::render::vulkan
         return record ? record->current.get() : nullptr;
     }
 
-    RenderResult<std::shared_ptr<const TextureStorage::TextureData>> TextureStorage::acquire(TextureId id) noexcept
+    RenderResult<const TextureStorage::TextureData*> TextureStorage::acquire(TextureId id) noexcept
     {
         if (id.storage != id_)
         {
@@ -485,7 +482,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kWrongOwner});
         }
-        return record->current;
+        return record->current.get();
     }
 
     RenderResult<void> TextureStorage::admit(std::uint64_t minimum_bytes, bool) noexcept
@@ -508,17 +505,12 @@ namespace lux::render::vulkan
     }
 
     RenderResult<std::unique_ptr<TextureStorage::Candidate>> TextureStorage::reserve(
-        std::shared_ptr<Image> image,
+        std::unique_ptr<Image> image,
         const rdesc::TextureInfo& info,
         TextureId id,
         std::uint64_t expected
     ) noexcept
     {
-        auto reference = session_.resources().share(id_);
-        if (!reference)
-        {
-            return cxx::unexpected(reference.error());
-        }
         auto* record = textures_.find(id.local);
         if (id.isNull())
         {
@@ -567,15 +559,16 @@ namespace lux::render::vulkan
             return cxx::unexpected(descriptor.error());
         }
         auto content =
-            std::make_shared<TextureData>(residency_, std::move(image), std::move(*descriptor), info, expected + 1);
+            std::make_unique<TextureData>(residency_, std::move(image), std::move(*descriptor), info, expected + 1);
         auto& version = *content;
+        version.retirement_ = session_.retirement().reserve();
         const auto device = session_.nativeDevice();
         VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
         view.image = version.image_->native();
         view.viewType = VK_IMAGE_VIEW_TYPE_2D;
         view.format = version.image_->format();
         view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, version.info_.mip_count, 0, 1};
-        auto result = LUX_NATIVE("image_view", vkCreateImageView(device, &view, nullptr, &version.view_));
+        auto result = vkCreateImageView(device, &view, nullptr, &version.view_);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -585,7 +578,7 @@ namespace lux::render::vulkan
         sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
         sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         sampler.maxLod = float(version.info_.mip_count - 1);
-        result = LUX_NATIVE("texture_sampler", version.sampler_.tryCreate(device, sampler));
+        result = version.sampler_.tryCreate(device, sampler);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -598,7 +591,7 @@ namespace lux::render::vulkan
         }
         record = textures_.find(id.local);
         record->updating = true;
-        return std::make_unique<Candidate>(*this, std::move(content), id, nullptr, std::move(*reference));
+        return std::make_unique<Candidate>(*this, std::move(content), id, nullptr);
     }
 
     void TextureStorage::rollback(Candidate& candidate) noexcept
@@ -609,7 +602,7 @@ namespace lux::render::vulkan
         {
             textures_.erase(candidate.texture.local);
         }
-        candidate.version.reset();
+        retire(candidate.version);
     }
 
     TextureStorage::UploadResult TextureStorage::upload(TextureWrite input) noexcept
@@ -635,7 +628,7 @@ namespace lux::render::vulkan
         }
         const TexturePublished result{(*candidate)->texture, (*candidate)->version->revision_};
         auto uploaded = co_await session_.uploads().writeImage(
-            (*candidate)->version->image_,
+            *(*candidate)->version->image_,
             std::move(input.source),
             std::move(prepared->second)
         );
@@ -648,11 +641,7 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(RenderError{kOutcomeUnknown});
         }
-        if (!session_.resources().native(id_))
-        {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        publish(**candidate, *uploaded);
+        publish(**candidate);
         co_return result;
     }
 
@@ -687,14 +676,13 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(candidate.error());
         }
-        (*candidate)->base = record->current;
+        (*candidate)->base = record->current.get();
         const TexturePublished result{input.texture, (*candidate)->version->revision_};
         auto uploaded = co_await session_.uploads().writeImage(
-            (*candidate)->version->image_,
+            *(*candidate)->version->image_,
             std::move(input.source),
             std::move(prepared->second),
-            (*candidate)->base->image_,
-            &(*candidate)->base->last_use_
+            (*candidate)->base->image_.get()
         );
         if (!uploaded)
         {
@@ -705,24 +693,27 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(RenderError{kOutcomeUnknown});
         }
-        if (!session_.resources().native(id_))
-        {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        publish(**candidate, *uploaded);
+        publish(**candidate);
         co_return result;
     }
 
-    void TextureStorage::publish(Candidate& candidate, const SubmissionRequirements& submitted) noexcept
+    void TextureStorage::retire(std::unique_ptr<TextureData>& value) noexcept
+    {
+        if (value && !session_.retirement().retire(value->retirement_, value))
+        {
+            std::terminate(); // This physical candidate reserved its own retirement entry before submission.
+        }
+    }
+
+    void TextureStorage::publish(Candidate& candidate) noexcept
     {
         auto& record = *textures_.find(candidate.texture.local);
-        auto& version = *candidate.version;
-        version.last_use_ = submitted;
+        retire(record.current);
         record.current = std::move(candidate.version);
         record.updating = false;
         for (auto* use : record.uses)
         {
-            use->update(record.current);
+            use->update(record.current.get());
         }
     }
 
@@ -742,6 +733,7 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kBusy});
         }
         disconnect(*record);
+        retire(record->current);
         textures_.erase(id.local);
         return {};
     }

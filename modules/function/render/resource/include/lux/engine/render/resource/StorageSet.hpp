@@ -11,7 +11,7 @@ namespace lux::render
 {
     class ResourceRegistry;
 
-    // The actual Device/Scene/View/Attachment owns this set. Accepted uses may share its instances.
+    // The Device/Scene/View/Attachment exclusively owns this set. Accepted operations borrow its instances.
     class StorageSet final
     {
     public:
@@ -41,7 +41,7 @@ namespace lux::render
             ConfigValue config = {}
         ) noexcept;
 
-        // Revokes the ID before releasing this set's reference. Already accepted uses remain valid.
+        // Caller finishes dependent operations before removal. The ID is revoked before destruction.
         [[nodiscard]] RenderResult<void> remove(StorageId id) noexcept;
         [[nodiscard]] StorageId find(StorageTypeId type, std::string_view key) const noexcept;
 
@@ -66,7 +66,8 @@ namespace lux::render
         {
             StorageId id;
             NameIndex::iterator name;
-            std::shared_ptr<void> native;
+            ConfigValue configuration;
+            NativeStorage native;
         };
 
         [[nodiscard]] RenderResult<StorageId> getOrCreateImpl(

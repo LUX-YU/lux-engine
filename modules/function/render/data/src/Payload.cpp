@@ -1,9 +1,18 @@
 #include <lux/engine/render/data/Payload.hpp>
-#include <lux/engine/render/data/Schema.hpp>
+
 #include <utility>
 
 namespace lux::render
 {
+    std::span<const error::ErrorDescriptor> renderDataErrorDescriptors() noexcept
+    {
+        static constexpr error::ErrorDescriptor descriptors[]{
+            {"lux.render.data.invalid_reference", "Invalid owned byte range", error::ERecovery::PERMANENT},
+            {"lux.render.data.invalid_config", "Invalid immutable configuration", error::ERecovery::PERMANENT}
+        };
+        return descriptors;
+    }
+
     RenderPayload& RenderPayload::operator=(const RenderPayload& other) noexcept
     {
         if (this != &other)

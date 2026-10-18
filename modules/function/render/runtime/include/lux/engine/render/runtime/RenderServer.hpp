@@ -1,11 +1,11 @@
 #pragma once
 
+#include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/data/ConfigValue.hpp>
 #include <lux/engine/render/features/Registration.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/runtime/CommandBinding.hpp>
-#include <lux/engine/render/runtime/Error.hpp>
 #include <map>
 #include <optional>
 
@@ -210,7 +210,7 @@ namespace lux::render
             {
                 if (batch.handlers[found->second].record->type != type)
                 {
-                    return cxx::unexpected(RenderError{kProtocolContract});
+                    return cxx::unexpected(RenderError{kCommandContract});
                 }
                 return {};
             }

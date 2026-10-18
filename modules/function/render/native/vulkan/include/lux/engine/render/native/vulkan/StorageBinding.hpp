@@ -10,18 +10,18 @@ namespace lux::render::vulkan
     class DeviceSession;
 
     // Stable Context-owned binding. Resources hold physical content; reference owns an update subscription.
-    // Native dependencies are merged after submit without Storage lookup or per-draw dynamic dispatch.
+    // Publication marks its Context dirty; the Owner prepares changed bindings before recording.
     struct PreparedStorageBinding final
     {
         Buffer* buffer = nullptr;
-        VkDescriptorSet descriptors = VK_NULL_HANDLE;
+        VkDeviceSize buffer_offset = 0;
         std::span<const std::byte> parameters;
         const ShaderBlock* parameter_layout = nullptr; // Stable professional value layout, not physical placement.
 
-        // Immutable physical content retained by submitted snapshots, independent of the update subscription below.
-        std::shared_ptr<const void> resources;
+        // Changed CPU data consumed at the next recording safe point. Empty on unchanged frames.
+        // The Storage owns these bytes; native recording copies them into the command buffer.
+        std::span<const std::byte> pending_bytes;
 
-        SubmissionRequirements* last_use = nullptr;
         void* update_context = nullptr;
         void (*updated)(void*) noexcept = nullptr; // Owner publication only; not a per-frame callback
 

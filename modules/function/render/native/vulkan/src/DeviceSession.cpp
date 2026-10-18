@@ -32,20 +32,13 @@ namespace lux::render::vulkan
             std::terminate();
         }
         // Logical subscriptions/actual Sets end while Native retirement and Queue owners still exist.
-        contexts_.clear();
         global_storages_.clear();
-        // On Device Lost, batches retain resources until queue teardown instead of a completed fence.
-        // Release them while the allocator/device and descriptor-table lifetime check still exist.
+        // Retired physical sets leave before their device-level descriptor allocation.
         retirement_.reset();
         physical_queues_.clear();
         uploads_.reset();
         staging_arena_.reset();
-        if (!sampled_images_.expired())
-        {
-            std::terminate();
-        }
         sampled_images_.reset();
-        // Queue resource sets leave before allocator and device destruction.
     }
 
     RenderResult<void> DeviceSession::drain() noexcept
@@ -53,32 +46,19 @@ namespace lux::render::vulkan
         std::optional<RenderError> failure;
         for (const auto& queue : physical_queues_)
         {
-            if (auto ticket = queue->lastSubmitted())
+            auto result = queue->waitIdle(UINT64_MAX);
+            if (!result && !failure)
             {
-                auto result = queue->wait(*ticket, UINT64_MAX);
-                if (!result && !failure)
-                {
-                    failure = result.error();
-                }
+                failure = result.error();
             }
         }
         if (failure)
         {
             return cxx::unexpected(*failure);
         }
-        return collect();
-    }
-
-    SubmissionQueue* DeviceSession::queueFor(SubmissionTicket ticket) noexcept
-    {
-        for (const auto& owner : physical_queues_)
-        {
-            if (owner.get() == &ticket.owner() && owner->owns(ticket))
-            {
-                return owner.get();
-            }
-        }
-        return nullptr;
+        auto collected = collect();
+        dispatchCompletions();
+        return collected;
     }
 
     bool DeviceSession::deviceLost() const noexcept
@@ -103,10 +83,6 @@ namespace lux::render::vulkan
                 failure = result.error();
             }
         }
-        if (retirement_)
-        {
-            retirement_->collectReady();
-        }
         if (failure)
         {
             return cxx::unexpected(*failure);
@@ -119,6 +95,10 @@ namespace lux::render::vulkan
         for (auto& queue : physical_queues_)
         {
             queue->dispatchCompleted();
+        }
+        if (retirement_)
+        {
+            retirement_->collectReady();
         }
     }
 

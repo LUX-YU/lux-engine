@@ -1,8 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/data/Shader.hpp>
-#include <lux/engine/render/protocol/Protocol.hpp>
 #include <lux/engine/render/resource/Texture.hpp>
 
 namespace lux::render
@@ -10,19 +11,29 @@ namespace lux::render
     struct MaterialTag;
     using MaterialId = StorageResourceId<MaterialTag>;
     inline constexpr StorageNameView kMaterialStorageType("lux.render.MaterialStorage");
-    using MaterialParameters = std::array<std::array<float, 4>, 16>;
+    using MaterialParameters = std::vector<std::array<float, 4>>;
 
     // Immutable runtime projection of existing cooked MaterialGraph output. No author graph or compiler.
-    // Sixteen parameter lanes are the existing GraphMaterialGPU asset ABI, not a new Graph limitation.
     struct MaterialProgram final
     {
         SpirvStage fragment;
         MaterialParameters defaults{};
-        std::uint32_t parameter_count = 0, texture_count = 0;
+        std::uint32_t texture_count = 0;
+
+        [[nodiscard]] std::uint32_t parameterCount() const noexcept
+        {
+            return static_cast<std::uint32_t>(defaults.size());
+        }
+
+        [[nodiscard]] std::uint32_t recordSize() const noexcept
+        {
+            return 16 * std::max(1u, parameterCount()) + 16 * std::max(1u, texture_count);
+        }
+
         bool operator==(const MaterialProgram&) const noexcept = default;
     };
 
-    [[nodiscard]] const ShaderBlock& materialParameterBlock() noexcept;
+    [[nodiscard]] ShaderBlock materialParameterBlock(const MaterialProgram&) noexcept;
 
     struct MaterialPublished final
     {
@@ -44,9 +55,8 @@ namespace lux::render
         std::uint64_t expected_revision = 0;
         ConfigValue program;
         MaterialParameters parameters{};
-        // Material contents pin explicit published Texture versions. SetMaterial selects replacement versions;
-        // changing a Texture alone cannot silently mutate this immutable material content snapshot.
-        std::array<TexturePublished, 8> textures{};
+        // Logical references resolve to the current image; stale or missing references select white.
+        std::vector<TextureId> textures;
     };
 
     struct MaterialInformation final
@@ -54,9 +64,8 @@ namespace lux::render
         MaterialPublished published;
         ConfigValue program;
         MaterialParameters parameters{};
-        // Material contents pin explicit published Texture versions. SetMaterial selects replacement versions;
-        // changing a Texture alone cannot silently mutate this immutable material content snapshot.
-        std::array<TexturePublished, 8> textures{};
+        // Logical references resolve to the current image; stale or missing references select white.
+        std::vector<TextureId> textures;
     };
 
     struct SetMaterial final

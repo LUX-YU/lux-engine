@@ -2,8 +2,8 @@
 
 #include <lux/engine/core/execution/RunLoop.hpp>
 #include <lux/engine/platform/ipc/IpcMessage.hpp>
-#include <lux/engine/render/protocol/CommandMethod.hpp>
-#include <lux/engine/render/runtime/Error.hpp>
+#include <lux/engine/render/commands/CommandMethod.hpp>
+#include <lux/engine/render/commands/Error.hpp>
 #include <stdexec/execution.hpp>
 
 namespace lux::render::runtime_detail

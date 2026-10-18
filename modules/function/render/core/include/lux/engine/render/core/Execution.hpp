@@ -10,7 +10,6 @@ namespace lux::render
     {
         EXECUTED,
         PREVIOUS_SUBMISSION_PENDING,
-        READBACK_HELD,
         QUEUE_FULL,
         RECORDING_BUSY
     };
@@ -19,7 +18,7 @@ namespace lux::render
     // Native failures remain errors; these counters describe only successful decisions.
     struct ExecutionProgress final
     {
-        std::array<std::uint64_t, 5> counts{};
+        std::array<std::uint64_t, 4> counts{};
 
         [[nodiscard]] std::uint64_t count(EExecutionOutcome outcome) const noexcept
         {

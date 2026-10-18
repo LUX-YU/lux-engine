@@ -1,8 +1,8 @@
 #pragma once
 
 #include <lux/engine/description/Image.hpp>
+#include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/data/Payload.hpp>
-#include <lux/engine/render/protocol/Protocol.hpp>
 #include <lux/engine/render/resource/Storage.hpp>
 #include <vector>
 

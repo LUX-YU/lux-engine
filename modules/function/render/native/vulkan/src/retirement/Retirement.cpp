@@ -62,38 +62,27 @@ namespace lux::render::vulkan
         entries_.erase(key);
     }
 
-    bool RetirementQueue::accepts(const RetirementReservation& reservation, const SubmissionRequirements& requirements)
-        const noexcept
+    bool RetirementQueue::accepts(const RetirementReservation& reservation, const SubmissionQueue* queue) const noexcept
     {
         const auto* entry = reservation.owner_ == this ? entries_.find(reservation.key_) : nullptr;
-        if (!entry || entry->backing)
-        {
-            return false;
-        }
-        for (const auto& use : requirements.uses())
-        {
-            if (!use.queue)
-            {
-                continue;
-            }
-            const auto found =
-                std::ranges::find_if(queues_, [&](const auto& queue) { return queue.get() == use.queue; });
-            if (found == queues_.end() || use.serial > (*found)->submitted())
-            {
-                return false;
-            }
-        }
-        return true;
+        const bool known_queue =
+            !queue || std::ranges::any_of(queues_, [queue](const auto& owned) { return owned.get() == queue; });
+        return entry && !entry->backing && known_queue;
     }
 
     void RetirementQueue::commit(
         RetirementReservation& reservation,
-        const SubmissionRequirements& requirements,
+        const SubmissionQueue* queue,
         Backing backing
     ) noexcept
     {
         auto& entry = *entries_.find(reservation.key_);
-        entry.requirements = requirements;
+        // Capture once, after future recording references have been withdrawn. Later submissions
+        // cannot postpone this retirement. Staging can select its actual completion queue.
+        for (std::size_t i = 0; i < queues_.size(); ++i)
+        {
+            entry.submitted[i] = !queue || queue == queues_[i].get() ? queues_[i]->submitted() : 0;
+        }
         entry.backing = std::move(backing);
         reservation.owner_ = nullptr;
         reservation.key_ = {};
@@ -114,16 +103,16 @@ namespace lux::render::vulkan
 
     bool RetirementQueue::enqueue(Entry& entry) noexcept
     {
-        for (const auto& use : entry.requirements.uses())
+        for (std::size_t i = 0; i < queues_.size(); ++i)
         {
-            if (!use.queue || use.queue->completed() >= use.serial || use.queue->deviceLost())
+            const auto& queue = *queues_[i];
+            const auto serial = entry.submitted[i];
+            if (queue.completed() >= serial || queue.deviceLost())
             {
                 continue;
             }
-            const auto found =
-                std::ranges::find_if(queues_, [&](const auto& queue) { return queue.get() == use.queue; });
-            auto& list = waiting_[static_cast<std::size_t>(found - queues_.begin())];
-            entry.serial = use.serial;
+            auto& list = waiting_[i];
+            entry.serial = serial;
             entry.next = nullptr;
             if (!list.tail || list.tail->serial <= entry.serial)
             {

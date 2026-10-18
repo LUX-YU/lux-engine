@@ -17,8 +17,8 @@ namespace lux::asset
 {
     namespace
     {
-        inline constexpr std::uint32_t kMaterialVersion = 4U;
-        inline constexpr std::uint32_t kMaterialInstanceVersion = 1U;
+        inline constexpr std::uint32_t kMaterialVersion = 5U;
+        inline constexpr std::uint32_t kMaterialInstanceVersion = 2U;
 
         [[nodiscard]] AssetDecodeFailure decodeFailure(EAssetDecodeError code) noexcept
         {
@@ -32,50 +32,76 @@ namespace lux::asset
 
         [[nodiscard]] bool canonicalize(std::vector<AssetAuxiliaryPayload>& values) noexcept
         {
-            std::sort(values.begin(), values.end(), [](const auto& left, const auto& right) noexcept {
-                return left.tag < right.tag;
-            });
+            std::sort(
+                values.begin(),
+                values.end(),
+                [](const auto& left, const auto& right) noexcept { return left.tag < right.tag; }
+            );
             for (std::size_t index = 0U; index < values.size(); ++index)
+            {
                 if (values[index].tag == 0U || values[index].bytes.empty() ||
                     (index != 0U && values[index - 1U].tag == values[index].tag))
+                {
                     return false;
+                }
+            }
             return true;
         }
 
         [[nodiscard]] bool validMaterial(const lux::rdesc::MaterialDescription& data) noexcept
         {
             const auto alpha_mode = static_cast<std::uint8_t>(data.alpha_mode);
-            if (data.parameter_count > lux::rdesc::MaterialDescription::kMaxParams ||
+            if (data.parameter_defaults.size() > UINT32_MAX || data.texture_slot_ids.size() > UINT32_MAX ||
                 alpha_mode > static_cast<std::uint8_t>(lux::rdesc::EAlphaMode::BLEND) ||
                 !detail::validSpirvWords(data.gbuffer_spirv) || !detail::validSpirvWords(data.forward_spirv))
+            {
                 return false;
-            for (std::size_t parameter = 0U; parameter < data.parameter_count; ++parameter)
+            }
+            for (std::size_t parameter = 0U; parameter < data.parameter_defaults.size(); ++parameter)
+            {
                 for (const float value : data.parameter_defaults[parameter])
+                {
                     if (!std::isfinite(value))
+                    {
                         return false;
+                    }
+                }
+            }
             return true;
         }
 
         [[nodiscard]] bool validMaterialInstance(const lux::rdesc::MaterialInstanceDescription& data) noexcept
         {
-            constexpr std::uint32_t param_mask = (1U << lux::rdesc::MaterialInstanceDescription::kMaxParams) - 1U;
-            constexpr std::uint32_t texture_mask = (1U << lux::rdesc::MaterialInstanceDescription::kMaxTextures) - 1U;
             const auto alpha_mode = static_cast<std::uint8_t>(data.alpha_mode);
-            if (data.parent_material_id.isNull() || (data.param_override_mask & ~param_mask) != 0U ||
-                (data.tex_override_mask & ~texture_mask) != 0U || data.render_state_override > 1U ||
-                alpha_mode > static_cast<std::uint8_t>(lux::rdesc::EAlphaMode::BLEND))
-                return false;
-            for (std::uint32_t parameter = 0U; parameter < lux::rdesc::MaterialInstanceDescription::kMaxParams;
-                 ++parameter)
-                if ((data.param_override_mask & (1U << parameter)) != 0U)
-                    for (const float value : data.params[parameter])
-                        if (!std::isfinite(value))
-                            return false;
-            for (std::uint32_t slot = 0U; slot < lux::rdesc::MaterialInstanceDescription::kMaxTextures; ++slot)
+            const bool invalid_count = data.parameters.size() > UINT32_MAX || data.textures.size() > UINT32_MAX;
+            const bool invalid_state = data.parent_material_id.isNull() || data.render_state_override > 1U ||
+                                       alpha_mode > static_cast<std::uint8_t>(lux::rdesc::EAlphaMode::BLEND);
+            if (invalid_count || invalid_state)
             {
-                const bool is_overridden = (data.tex_override_mask & (1U << slot)) != 0U;
-                if (is_overridden == data.texture_slot_ids[slot].isNull())
+                return false;
+            }
+            for (std::size_t i = 0; i < data.parameters.size(); ++i)
+            {
+                const auto& entry = data.parameters[i];
+                if (i && data.parameters[i - 1].slot >= entry.slot)
+                {
                     return false;
+                }
+                for (float value : entry.value)
+                {
+                    if (!std::isfinite(value))
+                    {
+                        return false;
+                    }
+                }
+            }
+            for (std::size_t i = 0; i < data.textures.size(); ++i)
+            {
+                const auto& entry = data.textures[i];
+                if (i && data.textures[i - 1].slot >= entry.slot)
+                {
+                    return false;
+                }
             }
             return true;
         }
@@ -94,7 +120,9 @@ namespace lux::asset
             void raw(const void* source, std::size_t size)
             {
                 if (size == 0U)
+                {
                     return;
+                }
                 const auto* first = static_cast<const std::byte*>(source);
                 bytes.insert(bytes.end(), first, first + size);
             }
@@ -119,7 +147,9 @@ namespace lux::asset
             template <class Type> [[nodiscard]] bool pod(Type& value) noexcept
             {
                 if (sizeof(Type) > bytes.size() - offset)
+                {
                     return false;
+                }
                 std::memcpy(&value, bytes.data() + offset, sizeof(Type));
                 offset += sizeof(Type);
                 return true;
@@ -128,10 +158,14 @@ namespace lux::asset
             [[nodiscard]] bool id(AssetId& value) noexcept
             {
                 if (16U > bytes.size() - offset)
+                {
                     return false;
+                }
                 std::array<std::uint8_t, 16U> raw{};
                 for (std::size_t index = 0U; index < raw.size(); ++index)
+                {
                     raw[index] = std::to_integer<std::uint8_t>(bytes[offset + index]);
+                }
                 offset += raw.size();
                 value = AssetId{raw};
                 return true;
@@ -141,11 +175,15 @@ namespace lux::asset
             {
                 std::uint32_t count{};
                 if (!pod(count) || count > (bytes.size() - offset) / sizeof(std::uint32_t))
+                {
                     return false;
+                }
                 values.resize(count);
                 const auto size = static_cast<std::size_t>(count) * sizeof(std::uint32_t);
                 if (size != 0U)
+                {
                     std::memcpy(values.data(), bytes.data() + offset, size);
+                }
                 offset += size;
                 return true;
             }
@@ -154,7 +192,9 @@ namespace lux::asset
             {
                 std::uint32_t size{};
                 if (!pod(size) || size > bytes.size() - offset)
+                {
                     return false;
+                }
                 values.assign(bytes.begin() + offset, bytes.begin() + offset + size);
                 offset += size;
                 return true;
@@ -170,13 +210,21 @@ namespace lux::asset
         {
             auto image = inspectCookedAssetImage(requested, std::move(bytes), limits);
             if (!image)
+            {
                 return lux::cxx::unexpected(image.error());
+            }
             if (image->magic() != Asset::primary_magic)
+            {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_MAGIC));
+            }
             if (image->metadata().legacy_type_tag != Asset::legacy_type_tag)
+            {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_TYPE));
+            }
             if (!image->data().empty() || image->information().empty())
+            {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_LAYOUT));
+            }
             return image;
         }
 
@@ -207,7 +255,8 @@ namespace lux::asset
         std::vector<AssetAuxiliaryPayload> auxiliary
     ) noexcept
         : TAsset(std::move(info), std::move(data), std::move(auxiliary))
-    {}
+    {
+    }
 
     lux::cxx::expected<std::shared_ptr<const MaterialAsset>, AssetDecodeFailure> MaterialAsset::create(
         AssetInfo info,
@@ -216,7 +265,9 @@ namespace lux::asset
     ) noexcept
     {
         if (info.id.isNull() || !data || !validMaterial(*data) || !canonicalize(auxiliary))
+        {
             return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+        }
         info.type = asset_type;
         {
             return std::shared_ptr<const MaterialAsset>(
@@ -231,7 +282,8 @@ namespace lux::asset
         std::vector<AssetAuxiliaryPayload> auxiliary
     ) noexcept
         : TAsset(std::move(info), std::move(data), std::move(auxiliary))
-    {}
+    {
+    }
 
     lux::cxx::expected<std::shared_ptr<const MaterialInstanceAsset>, AssetDecodeFailure> MaterialInstanceAsset::create(
         AssetInfo info,
@@ -240,7 +292,9 @@ namespace lux::asset
     ) noexcept
     {
         if (info.id.isNull() || !data || !validMaterialInstance(*data) || !canonicalize(auxiliary))
+        {
             return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+        }
         info.type = asset_type;
         {
             return std::shared_ptr<const MaterialInstanceAsset>(
@@ -257,35 +311,45 @@ namespace lux::asset
     {
         auto image = inspect<MaterialAsset>(requested, std::move(bytes), limits);
         if (!image)
+        {
             return lux::cxx::unexpected(image.error());
+        }
         {
             Reader reader{image->information().view()};
             auto data = std::make_shared<lux::rdesc::MaterialDescription>();
-            std::uint32_t version{}, texture_count{}, alpha_mode{};
+            std::uint32_t version{}, parameter_count{}, texture_count{}, alpha_mode{};
             std::uint8_t double_sided{};
-            if (!reader.pod(version) || version != kMaterialVersion || !reader.pod(data->parameter_count) ||
-                data->parameter_count > lux::rdesc::MaterialDescription::kMaxParams)
+            if (!reader.pod(version) || version != kMaterialVersion || !reader.pod(parameter_count) ||
+                parameter_count > (reader.bytes.size() - reader.offset) / sizeof(std::array<float, 4>))
+            {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
-            for (std::size_t parameter = 0U; parameter < data->parameter_count; ++parameter)
-                for (auto& value : data->parameter_defaults[parameter])
+            }
+            data->parameter_defaults.resize(parameter_count);
+            for (auto& parameter : data->parameter_defaults)
+            {
+                for (auto& value : parameter)
+                {
                     if (!reader.pod(value))
+                    {
                         return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+                    }
+                }
+            }
             if (!reader.pod(alpha_mode) || alpha_mode > static_cast<std::uint32_t>(lux::rdesc::EAlphaMode::BLEND) ||
                 !reader.pod(double_sided) || double_sided > 1U || !reader.pod(texture_count) ||
-                texture_count > lux::rdesc::MaterialDescription::kMaxTextures)
+                texture_count > (reader.bytes.size() - reader.offset) / 16)
+            {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+            }
             data->alpha_mode = static_cast<lux::rdesc::EAlphaMode>(alpha_mode);
             data->double_sided = double_sided != 0U;
-            std::uint32_t previous_slot{};
-            for (std::uint32_t item = 0U; item < texture_count; ++item)
+            data->texture_slot_ids.resize(texture_count);
+            for (auto& id : data->texture_slot_ids)
             {
-                std::uint32_t slot{};
-                AssetId id;
-                if (!reader.pod(slot) || !reader.id(id) || id.isNull() ||
-                    slot >= lux::rdesc::MaterialDescription::kMaxTextures || (item != 0U && slot <= previous_slot))
+                if (!reader.id(id))
+                {
                     return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
-                data->texture_slot_ids[slot] = id;
-                previous_slot = slot;
+                }
             }
             std::vector<std::byte> gbuffer_info;
             std::vector<std::byte> forward_info;
@@ -325,29 +389,28 @@ namespace lux::asset
     ) noexcept
     {
         if (!validMaterial(asset.data()))
+        {
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
+        }
         {
             const auto gbuffer_info = lux::rdesc::ShaderInfo::serialize(asset.data().gbuffer_info);
             const auto forward_info = lux::rdesc::ShaderInfo::serialize(asset.data().forward_info);
             Writer writer;
             writer.pod(kMaterialVersion);
-            writer.pod(asset.data().parameter_count);
-            for (std::size_t parameter = 0U; parameter < asset.data().parameter_count; ++parameter)
+            writer.pod(static_cast<std::uint32_t>(asset.data().parameter_defaults.size()));
+            for (std::size_t parameter = 0U; parameter < asset.data().parameter_defaults.size(); ++parameter)
+            {
                 for (const float value : asset.data().parameter_defaults[parameter])
+                {
                     writer.pod(value);
+                }
+            }
             writer.pod(static_cast<std::uint32_t>(asset.data().alpha_mode));
             writer.pod(static_cast<std::uint8_t>(asset.data().double_sided ? 1U : 0U));
-            std::uint32_t texture_count{};
+            writer.pod(static_cast<std::uint32_t>(asset.data().texture_slot_ids.size()));
             for (const auto id : asset.data().texture_slot_ids)
-                if (!id.isNull())
-                    ++texture_count;
-            writer.pod(texture_count);
-            for (std::uint32_t slot = 0U; slot < lux::rdesc::MaterialDescription::kMaxTextures; ++slot)
             {
-                if (asset.data().texture_slot_ids[slot].isNull())
-                    continue;
-                writer.pod(slot);
-                writer.id(asset.data().texture_slot_ids[slot]);
+                writer.id(id);
             }
             writer.pod(static_cast<std::uint32_t>(asset.data().gbuffer_spirv.size()));
             writer.raw(asset.data().gbuffer_spirv.data(), asset.data().gbuffer_spirv.size() * sizeof(std::uint32_t));
@@ -367,33 +430,57 @@ namespace lux::asset
     {
         auto image = inspect<MaterialInstanceAsset>(requested, std::move(bytes), limits);
         if (!image)
+        {
             return lux::cxx::unexpected(image.error());
+        }
         {
             Reader reader{image->information().view()};
             auto data = std::make_shared<lux::rdesc::MaterialInstanceDescription>();
-            std::uint32_t version{}, double_sided{}, alpha_mode{};
-            if (!reader.pod(version) || version > kMaterialInstanceVersion || !reader.id(data->parent_material_id) ||
-                !reader.pod(data->param_override_mask))
+            std::uint32_t version{}, double_sided{}, alpha_mode{}, count{};
+            if (!reader.pod(version) || version != kMaterialInstanceVersion || !reader.id(data->parent_material_id) ||
+                !reader.pod(count) || count > (reader.bytes.size() - reader.offset) / 20)
+            {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
-            for (std::uint32_t parameter = 0U; parameter < lux::rdesc::MaterialInstanceDescription::kMaxParams;
-                 ++parameter)
-                if ((data->param_override_mask & (1U << parameter)) != 0U)
-                    for (auto& value : data->params[parameter])
-                        if (!reader.pod(value))
-                            return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
-            if (!reader.pod(data->tex_override_mask))
-                return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
-            for (std::uint32_t slot = 0U; slot < lux::rdesc::MaterialInstanceDescription::kMaxTextures; ++slot)
-                if ((data->tex_override_mask & (1U << slot)) != 0U && !reader.id(data->texture_slot_ids[slot]))
+            }
+            data->parameters.resize(count);
+            for (auto& entry : data->parameters)
+            {
+                if (!reader.pod(entry.slot))
+                {
                     return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+                }
+                for (auto& value : entry.value)
+                {
+                    if (!reader.pod(value))
+                    {
+                        return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+                    }
+                }
+            }
+            if (!reader.pod(count) || count > (reader.bytes.size() - reader.offset) / 20)
+            {
+                return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+            }
+            data->textures.resize(count);
+            for (auto& entry : data->textures)
+            {
+                if (!reader.pod(entry.slot) || !reader.id(entry.texture))
+                {
+                    return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+                }
+            }
             if (!reader.pod(data->render_state_override) || !reader.pod(alpha_mode) ||
                 alpha_mode > static_cast<std::uint32_t>(lux::rdesc::EAlphaMode::BLEND) || !reader.pod(double_sided) ||
                 double_sided > 1U || reader.offset != reader.bytes.size())
+            {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+            }
             data->alpha_mode = static_cast<lux::rdesc::EAlphaMode>(alpha_mode);
             data->double_sided = double_sided != 0U;
             if (!validMaterialInstance(*data))
+            {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+            }
             std::vector<AssetAuxiliaryPayload> auxiliary(
                 image->auxiliaryPayloads().begin(),
                 image->auxiliaryPayloads().end()
@@ -419,21 +506,28 @@ namespace lux::asset
     ) noexcept
     {
         if (!validMaterialInstance(asset.data()))
+        {
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
+        }
         {
             Writer writer;
             writer.pod(kMaterialInstanceVersion);
             writer.id(asset.data().parent_material_id);
-            writer.pod(asset.data().param_override_mask);
-            for (std::uint32_t parameter = 0U; parameter < lux::rdesc::MaterialInstanceDescription::kMaxParams;
-                 ++parameter)
-                if ((asset.data().param_override_mask & (1U << parameter)) != 0U)
-                    for (const float value : asset.data().params[parameter])
-                        writer.pod(value);
-            writer.pod(asset.data().tex_override_mask);
-            for (std::uint32_t slot = 0U; slot < lux::rdesc::MaterialInstanceDescription::kMaxTextures; ++slot)
-                if ((asset.data().tex_override_mask & (1U << slot)) != 0U)
-                    writer.id(asset.data().texture_slot_ids[slot]);
+            writer.pod(static_cast<std::uint32_t>(asset.data().parameters.size()));
+            for (const auto& entry : asset.data().parameters)
+            {
+                writer.pod(entry.slot);
+                for (float value : entry.value)
+                {
+                    writer.pod(value);
+                }
+            }
+            writer.pod(static_cast<std::uint32_t>(asset.data().textures.size()));
+            for (const auto& entry : asset.data().textures)
+            {
+                writer.pod(entry.slot);
+                writer.id(entry.texture);
+            }
             writer.pod(asset.data().render_state_override);
             writer.pod(static_cast<std::uint32_t>(asset.data().alpha_mode));
             writer.pod(static_cast<std::uint32_t>(asset.data().double_sided ? 1U : 0U));

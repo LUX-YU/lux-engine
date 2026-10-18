@@ -1,7 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/commands/CommandMethod.hpp>
 #include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
-#include <lux/engine/render/protocol/CommandMethod.hpp>
 
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/Mesh.hpp>

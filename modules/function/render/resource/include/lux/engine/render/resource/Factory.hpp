@@ -10,11 +10,6 @@ namespace lux::render
     // One owned native instance. The factory's matching Ops are separate immutable metadata.
     using NativeStorage = std::unique_ptr<void, void (*)(void*) noexcept>;
 
-    namespace resource_detail
-    {
-        struct StorageFactoryAudit;
-    }
-
     struct StorageFactory final
     {
         const StorageDescriptor* const description;
@@ -27,7 +22,6 @@ namespace lux::render
         const CppType native_type;
 
     private:
-        friend struct resource_detail::StorageFactoryAudit;
         template <class Declaration, class Native, class Device, auto Create, auto Compatible>
             requires std::same_as<
                          decltype(Create),

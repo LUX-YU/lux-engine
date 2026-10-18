@@ -28,27 +28,27 @@ namespace lux::render::vulkan
         VkExtent3D extent{};
     };
 
-    // One device's upload facilities. Tasks own their source and real target references; this object
+    // One device's upload facilities. Tasks own their source and borrow their operation-owned targets; this object
     // owns neither professional candidates nor running tasks. Start with the RenderThread scheduler.
     class UploadContext final
     {
     public:
-        using Result = RenderResult<SubmissionRequirements>;
+        using Result = RenderResult<void>;
         using Task = exec::task<Result>;
 
         ~UploadContext() noexcept;
         UploadContext(const UploadContext&) = delete;
         UploadContext& operator=(const UploadContext&) = delete;
 
-        // Success means all required Copy/Acquire submissions were accepted. Their batches retain
-        // resources through actual completion; success does not wait for the final fence observation.
-        [[nodiscard]] Task writeBuffer(std::shared_ptr<Buffer> target, RenderPayload source) noexcept;
+        // Success means all required Copy/Acquire submissions were accepted. The caller retains targets or retires
+        // failed candidates; success does not wait for the final fence observation.
+        [[nodiscard]] Task writeBuffer(Buffer& target, RenderPayload source) noexcept;
+        [[nodiscard]] Task writeBufferRange(Buffer& target, VkDeviceSize offset, RenderPayload source) noexcept;
         [[nodiscard]] Task writeImage(
-            std::shared_ptr<Image> target,
+            Image& target,
             RenderPayload source,
             std::vector<ImageTransferRegion> regions,
-            std::shared_ptr<const Image> clone = {},
-            SubmissionRequirements* clone_use = nullptr
+            const Image* clone = nullptr
         ) noexcept;
 
         [[nodiscard]] TransferStats statistics() const noexcept
@@ -60,8 +60,15 @@ namespace lux::render::vulkan
         friend class DeviceSession;
         friend class StagingPage;
         UploadContext(DeviceSession&, TransferOptions, execution::CpuScheduler) noexcept;
-        [[nodiscard]] Task
-        write(std::shared_ptr<Buffer>, std::shared_ptr<Image>, RenderPayload, std::vector<ImageTransferRegion>, std::shared_ptr<const Image>, SubmissionRequirements*) noexcept;
+        [[nodiscard]] Task write(
+            Buffer*,
+            Image*,
+            RenderPayload,
+            std::vector<ImageTransferRegion>,
+            const Image*,
+            VkDeviceSize = 0,
+            bool = false
+        ) noexcept;
         [[nodiscard]] RenderResult<void> measure(std::size_t page, std::uint32_t bits) noexcept;
 
         DeviceSession& session;

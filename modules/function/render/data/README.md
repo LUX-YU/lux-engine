@@ -1,13 +1,16 @@
-# Encoded data, immutable payload ownership and cooked Shader contracts
+# Render values
 
-DataSchema<T> describes an explicit serialized format, never a C++ object layout. Stable identity uses lux-cxx SchemaId. Compatibility compares the full canonical name, exact schema/encoding versions, ordered fields, scalar kinds, array counts, enum domains, fixed size and alignment. Static descriptors and their borrowed strings/arrays must have static lifetime.
+`RenderPayload` retains immutable bytes and accounts for the complete source vector capacity,
+including when only a subrange is exposed. `fromVector` does not deep-copy the asset. The host keeps
+foreign owner/deleter code loaded until the final byte owner is released. `copyOf` is an explicit copy.
 
-Encoding.hpp supplies EncodedDataLimits, EncodedDataView (raw span borrow), RetainableEncodedDataView (borrow of existing SharedBytes owners), EncodableData and explicit encodeData/decodeData entry points. Each specialization provides encodedSize/encode/decode; there is no memcpy fallback. Encoding remains little-endian, canonical scalar/boolean, padding-free and bounded. Renaming Wire did not change byte order, widths, range/alignment validation or golden bytes. Stable error ID strings remain unchanged.
+`ConfigValue` holds immutable typed configuration and any code pin needed by its destructor. Cold
+comparison uses the complete C++ type and value contract. Dynamic configurations supply retained-byte
+accounting for all backing capacity; they are not serialized through a Render-specific wire schema.
 
-BlobRef addresses a packet range; ExternalDataRef addresses an explicitly supplied attachment owner. Every index/range is checked before a subspan can clamp anything. resolveBlob/resolveExternal retain an existing owner. Views never extend lifetime themselves. encodeData returns a SharedBytes-owned packet but does not retain the separately supplied attachment collection. Callers must retain those owners until decoding ends. Limits are explicit, not a global upload budget.
+Shader contracts own Stage, Entry, SPIR-V and field/layout descriptions. Native checks the actual
+binary against this declaration. These values contain no Vulkan handles and create no Shader compiler.
+`description_types` installs canonical Shader/Image metadata; Render does not copy another module's headers.
 
-Payload.hpp includes SharedBytes and RenderError only. RenderPayload retains the complete backing charge and a source-code pin; its byte owner is destroyed before that pin. Copying just its SharedBytes is insufficient to retain a foreign module's deleter. Source buffers remain immutable/stable during use. Typed IPC Command transport moves the actual Payload object; it does not encode it through this API.
-
-ShaderInterface.hpp defines the currently supported Shader descriptor/push-constant ABI, independently of config serialization. SpirvArtifact in Shader.hpp owns a list of SpirvStage values (existing rdesc stage kind, actual entry name and SPIR-V words) and that interface, without Vulkan handles. Native validates the declared stage and entry against the binary. The current graphics compiler accepts one Vertex and one Fragment; expressing other stages is not execution support. These contracts do not define business resource authority or scope, and do not introduce a Shader compiler/parser.
-
-In-process Feature, Storage and Attach configuration uses ConfigValue, not these codecs. ConfigValue retains immutable typed data, its complete backing charge and code pin; cold equality compares qualified values where a noexcept equality operation exists. Distinct non-comparable values conflict rather than compare object padding. Explicit serialized formats remain available for persistent/encoded consumers. Session-local resource IDs are not persistent cooked assets. G2 golden/negative/ownership tests preserve their historical names and assertions. Encoding is cold, with real backing allocations; no full-request zero-allocation claim is made.
+Commands transfer C++ values through Platform IPC. Persistent asset encoding belongs to the existing
+resource/asset codecs. The former unused Render Schema/Encoding implementation is not an installed API.

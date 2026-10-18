@@ -10,7 +10,7 @@ find_path(LUX_VMA_INCLUDE_DIR vk_mem_alloc.h
 set(LUX_NATIVE_SOURCES
     src/Error.cpp src/DeviceSession.cpp src/DescriptorArray.cpp src/device/Device.cpp src/device/Vma.cpp
     src/memory/Memory.cpp src/transfer/Submission.cpp src/retirement/Retirement.cpp
-    src/Compile.cpp src/LayoutPlan.cpp src/Shader.cpp src/Execution.cpp src/Readback.cpp
+    src/Compile.cpp src/LayoutPlan.cpp src/Shader.cpp src/Execution.cpp
     src/transfer/UploadContext.cpp src/transfer/StagingArena.cpp
 )
 
@@ -33,11 +33,14 @@ component_add_internal_dependencies(render_native_vulkan lux::engine::render::re
     lux::engine::render::render_data lux::engine::render::render_resource lux::engine::render::render_graph
 )
 
-target_link_libraries(render_native_vulkan PUBLIC Vulkan::Vulkan lux::engine::platform::gapi
+target_link_libraries(render_native_vulkan PUBLIC
+    Vulkan::Vulkan lux::engine::platform::gapi STDEXEC::stdexec lux::engine::core::core_execution
     PRIVATE lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared
 )
 
 component_add_transitive_commands(render_native_vulkan
+    "find_package(stdexec CONFIG REQUIRED)"
+    "find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)"
     [=[find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS gapi
         HINTS "${CMAKE_CURRENT_LIST_DIR}/../../lux-engine-platform")]=]
     [=[include("${CMAKE_CURRENT_LIST_DIR}/ShaderTools.cmake")]=]
@@ -48,9 +51,10 @@ install(FILES cmake/ShaderTools.cmake DESTINATION share/lux-engine-render/render
 target_compile_features(render_native_vulkan PUBLIC cxx_std_20)
 
 set(LUX_NATIVE_EXTENSION_SOURCES
+    src/memory/BufferArena.cpp src/features/MeshDraws.cpp
     src/texture/TextureStorage.cpp src/texture/Commands.cpp
     src/material/MaterialStorage.cpp src/material/Commands.cpp
-    src/instance/InstanceStorage.cpp src/instance/Commands.cpp
+    src/mesh/MeshInstanceStorage.cpp src/mesh/InstanceCommands.cpp
     src/mesh/MeshStorage.cpp src/mesh/Commands.cpp
 )
 
@@ -64,12 +68,12 @@ add_component(
 
 component_include_directories(render_native_vulkan_extensions
     BUILD_TIME_EXPORT "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pinclude" "${CMAKE_CURRENT_SOURCE_DIR}/sinclude"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pinclude" "${CMAKE_CURRENT_SOURCE_DIR}/sinclude" "${LUX_VMA_INCLUDE_DIR}"
     INSTALL_TIME include
 )
 
 component_add_internal_dependencies(render_native_vulkan_extensions
-    lux::engine::render::render_native_vulkan lux::engine::render::render_protocol
+    lux::engine::render::render_native_vulkan lux::engine::render::render_commands
 )
 
 target_compile_features(render_native_vulkan_extensions PUBLIC cxx_std_20)
@@ -116,7 +120,3 @@ component_add_internal_dependencies(render_native_vulkan_features
 )
 
 target_compile_features(render_native_vulkan_features PUBLIC cxx_std_20)
-
-if(BUILD_TESTING)
-    add_subdirectory(test)
-endif()

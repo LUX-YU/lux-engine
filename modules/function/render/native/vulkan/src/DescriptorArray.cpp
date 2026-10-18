@@ -1,18 +1,16 @@
 #include "LayoutPlan.hpp"
-#include "Native.hpp"
 #include "Shader.hpp"
 #include <algorithm>
 #include <lux/engine/gapi/vk/Descriptor.hpp>
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/native/vulkan/Error.hpp>
+#include <utility>
 
 namespace lux::render::vulkan
 {
-    DescriptorRange::DescriptorRange(
-        std::shared_ptr<DescriptorArray> array,
-        cxx::SlotKey<DescriptorSlotTag> slot
-    ) noexcept
-        : array_(std::move(array)), slot_(slot)
+    DescriptorRange::DescriptorRange(DescriptorArray& array, cxx::SlotKey<DescriptorSlotTag> slot) noexcept
+        : array_(&array), slot_(slot)
     {
     }
 
@@ -25,7 +23,7 @@ namespace lux::render::vulkan
     }
 
     DescriptorRange::DescriptorRange(DescriptorRange&& other) noexcept
-        : array_(std::move(other.array_)), slot_(other.slot_)
+        : array_(std::exchange(other.array_, nullptr)), slot_(other.slot_)
     {
     }
 
@@ -37,7 +35,7 @@ namespace lux::render::vulkan
             {
                 array_->release(slot_);
             }
-            array_ = std::move(other.array_);
+            array_ = std::exchange(other.array_, nullptr);
             slot_ = other.slot_;
         }
         return *this;
@@ -69,31 +67,34 @@ namespace lux::render::vulkan
         return maximum;
     }
 
-    RenderResult<std::shared_ptr<DescriptorArray>> DeviceSession::sampledImageArray() noexcept
+    RenderResult<DescriptorArray*> DeviceSession::sampledImageArray() noexcept
     {
         const auto& binding = sampledImageTableBinding();
-        // Exactly one complete device table shape; its last actual user controls reclamation.
-        if (auto existing = sampled_images_.lock())
+        if (sampled_images_)
         {
-            return existing;
+            return sampled_images_.get();
         }
         auto capacity = sampledImageCapacity();
         if (!capacity)
         {
             return cxx::unexpected(capacity.error());
         }
-        auto result = std::shared_ptr<DescriptorArray>(new DescriptorArray(nativeDevice(), binding, *capacity));
+        auto result = std::unique_ptr<DescriptorArray>(new DescriptorArray(nativeDevice(), binding, *capacity));
         if (auto ready = result->initialize(); !ready)
         {
             return cxx::unexpected(ready.error());
         }
-        sampled_images_ = result;
-        return result;
+        if (auto ready = result->initializeDefault(*this); !ready)
+        {
+            return cxx::unexpected(ready.error());
+        }
+        sampled_images_ = std::move(result);
+        return sampled_images_.get();
     }
 
     RenderResult<void> DescriptorArray::initialize() noexcept
     {
-        auto layout = createDescriptorLayout(device_, std::span(&binding_, 1), capacity_, "descriptor_array_layout");
+        auto layout = createDescriptorLayout(device_, std::span(&binding_, 1), capacity_);
         if (!layout)
         {
             return cxx::unexpected(layout.error());
@@ -106,7 +107,7 @@ namespace lux::render::vulkan
         pool.poolSizeCount = 1;
         pool.pPoolSizes = &size;
         gapi::vk::DescriptorPool handle;
-        auto result = LUX_NATIVE("descriptor_array_pool", handle.tryCreate(device_, pool));
+        auto result = handle.tryCreate(device_, pool);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -116,24 +117,96 @@ namespace lux::render::vulkan
         allocate.descriptorPool = pool_;
         allocate.descriptorSetCount = 1;
         allocate.pSetLayouts = &layout_;
-        result = LUX_NATIVE("descriptor_array_set", vkAllocateDescriptorSets(device_, &allocate, &descriptors_));
+        result = vkAllocateDescriptorSets(device_, &allocate, &descriptors_);
         return result == VK_SUCCESS ? RenderResult<void>{} : cxx::unexpected(nativeError(result));
     }
 
     DescriptorArray::~DescriptorArray() noexcept
     {
+        if (!white_slot_.isNull())
+        {
+            slots_.erase(white_slot_);
+        }
         if (!slots_.empty())
         {
             std::terminate();
         }
         if (pool_)
         {
-            LUX_DESTROY("descriptor_array_pool", vkDestroyDescriptorPool(device_, pool_, nullptr));
+            vkDestroyDescriptorPool(device_, pool_, nullptr);
         }
         if (layout_)
         {
-            LUX_DESTROY("descriptor_array_layout", vkDestroyDescriptorSetLayout(device_, layout_, nullptr));
+            vkDestroyDescriptorSetLayout(device_, layout_, nullptr);
         }
+        if (white_view_)
+        {
+            vkDestroyImageView(device_, white_view_, nullptr);
+        }
+        if (white_sampler_)
+        {
+            white_sampler_.release(device_);
+        }
+    }
+
+    RenderResult<void> DescriptorArray::initializeDefault(DeviceSession& session) noexcept
+    {
+        auto image = session.allocator().createImage(
+            {{1, 1}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT}
+        );
+        if (!image)
+        {
+            return cxx::unexpected(image.error());
+        }
+        white_image_ = std::move(*image);
+        VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+        view.image = white_image_->native();
+        view.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view.format = white_image_->format();
+        view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        auto status = vkCreateImageView(device_, &view, nullptr, &white_view_);
+        if (status != VK_SUCCESS)
+        {
+            return cxx::unexpected(nativeError(status));
+        }
+        VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+        sampler.magFilter = sampler.minFilter = VK_FILTER_NEAREST;
+        sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        status = white_sampler_.tryCreate(device_, sampler);
+        if (status != VK_SUCCESS)
+        {
+            return cxx::unexpected(nativeError(status));
+        }
+        white_slot_ = slots_.emplace(); // Slot zero is reserved for this Session's fallback texture.
+        write(white_slot_, white_view_, white_sampler_);
+        auto batch = session.queue().begin();
+        if (!batch)
+        {
+            return cxx::unexpected(batch.error());
+        }
+        VkImageMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT;
+        barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = white_image_->native();
+        barrier.subresourceRange = view.subresourceRange;
+        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        dependency.imageMemoryBarrierCount = 1;
+        dependency.pImageMemoryBarriers = &barrier;
+        vkCmdPipelineBarrier2(batch->native(), &dependency);
+        const VkClearColorValue white{{1, 1, 1, 1}};
+        vkCmdClearColorImage(batch->native(), barrier.image, barrier.newLayout, &white, 1, &barrier.subresourceRange);
+        barrier.srcStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT;
+        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        barrier.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+        barrier.oldLayout = barrier.newLayout;
+        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        vkCmdPipelineBarrier2(batch->native(), &dependency);
+        return std::move(*batch).submit();
     }
 
     RenderResult<DescriptorRange> DescriptorArray::allocate() noexcept
@@ -149,7 +222,7 @@ namespace lux::render::vulkan
             slots_.erase(slot);
             return cxx::unexpected(RenderError{kCapacity});
         }
-        return DescriptorRange{shared_from_this(), slot};
+        return DescriptorRange{*this, slot};
     }
 
     void DescriptorArray::write(Slot slot, VkImageView image, VkSampler sampler) noexcept

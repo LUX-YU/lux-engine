@@ -1,6 +1,5 @@
 #pragma once
 
-#include <list>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/core/Ids.hpp>
@@ -38,7 +37,7 @@ namespace lux::render::runtime_detail
     {
         TargetDesc description;
         std::uint64_t epoch = 1;
-        std::list<AttachmentId> attachments;
+        AttachmentId attachment;
 
         explicit RenderTarget(TargetDesc value = {}) noexcept : description(value) {}
 
@@ -48,7 +47,7 @@ namespace lux::render::runtime_detail
 
     struct RenderEffect final
     {
-        std::shared_ptr<const vulkan::CompiledGraph> code;
+        std::unique_ptr<vulkan::CompiledGraph> code;
         std::vector<StorageArgument> arguments;
         std::vector<AttachmentId> attachments;
     };
@@ -59,11 +58,9 @@ namespace lux::render::runtime_detail
         SceneId scene;
         ViewId view;
         TargetId target;
-        // DeviceSession currently retains execution storage through its real GPU retirement path.
-        vulkan::ExecutionContext* context;
+        std::unique_ptr<vulkan::ExecutionContext> context;
         std::size_t view_position = 0;
         std::size_t effect_position = 0;
-        std::list<AttachmentId>::iterator target_position;
 
         void link(AttachmentId id, RenderView& render_view, RenderEffect& render_effect, RenderTarget& output) noexcept
         {
@@ -71,7 +68,7 @@ namespace lux::render::runtime_detail
             effect_position = render_effect.attachments.size();
             render_view.attachments.push_back(id);
             render_effect.attachments.push_back(id);
-            target_position = output.attachments.insert(output.attachments.end(), id);
+            output.attachment = id;
         }
 
         void unlink(
@@ -90,7 +87,7 @@ namespace lux::render::runtime_detail
             render_effect.attachments[effect_position] = last_effect;
             attachments.find(last_effect)->effect_position = effect_position;
             render_effect.attachments.pop_back();
-            output.attachments.erase(target_position);
+            output.attachment = {};
         }
     };
 } // namespace lux::render::runtime_detail

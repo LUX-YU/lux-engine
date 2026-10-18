@@ -4,7 +4,7 @@
 #include <lux/engine/gapi/vk/Sampler.hpp>
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
-#include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
+#include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
 #include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/Texture.hpp>
@@ -27,7 +27,7 @@ namespace lux::render::vulkan
         public:
             TextureData(
                 std::shared_ptr<Residency>,
-                std::shared_ptr<Image>,
+                std::unique_ptr<Image>,
                 DescriptorRange,
                 const rdesc::TextureInfo&,
                 std::uint64_t revision
@@ -59,13 +59,12 @@ namespace lux::render::vulkan
         private:
             friend class TextureStorage;
             std::shared_ptr<Residency> residency_;
-            std::shared_ptr<Image> image_;
+            std::unique_ptr<Image> image_;
             DescriptorRange descriptor_;
             rdesc::TextureInfo info_{};
             VkImageView view_ = VK_NULL_HANDLE;
             gapi::vk::Sampler sampler_;
-            // Clone layout transitions must still order against prior Draws. This is not a retirement right.
-            SubmissionRequirements last_use_;
+            RetirementReservation retirement_;
             std::uint64_t bytes_ = 0, revision_ = 0;
         };
 
@@ -90,14 +89,12 @@ namespace lux::render::vulkan
         TextureStorage(const TextureStorage&) = delete;
         TextureStorage& operator=(const TextureStorage&) = delete;
         [[nodiscard]] RenderResult<void> release(TextureId, std::uint64_t expected_revision) noexcept;
-        [[nodiscard]] RenderResult<std::shared_ptr<const TextureData>> acquire(TextureId) noexcept;
+        [[nodiscard]] RenderResult<const TextureData*> acquire(TextureId) noexcept;
         [[nodiscard]] const TextureData* find(TextureId) const noexcept;
-        // Physical content reference independent of the logical Storage lifetime.
-        // The returned reference does not follow later publications of the same logical TextureId.
+        // Owner-thread binding preparation; no independently owned Texture version is returned.
         [[nodiscard]] RenderResult<std::pair<rdesc::TextureInfo, std::uint32_t>>
-        pin(TexturePublished, PreparedStorageBinding&) noexcept;
+        bind(TextureId, PreparedStorageBinding&) noexcept;
         [[nodiscard]] VkDescriptorSetLayout layout() const noexcept;
-        [[nodiscard]] VkDescriptorSet descriptors() const noexcept;
         [[nodiscard]] std::size_t residentVersions() const noexcept;
         [[nodiscard]] std::uint64_t residentBytes() const noexcept;
         [[nodiscard]] std::uint64_t residentPeak() const noexcept;
@@ -110,7 +107,7 @@ namespace lux::render::vulkan
         using UploadResult = exec::task<RenderResult<TexturePublished>>;
         [[nodiscard]] UploadResult upload(TextureWrite) noexcept;
         [[nodiscard]] UploadResult upload(TextureRegionWrite) noexcept;
-        using ImagePreparation = std::pair<std::shared_ptr<Image>, std::vector<ImageTransferRegion>>;
+        using ImagePreparation = std::pair<std::unique_ptr<Image>, std::vector<ImageTransferRegion>>;
         [[nodiscard]] RenderResult<ImagePreparation> prepareImage(
             const rdesc::TextureInfo&,
             std::span<const std::byte>,
@@ -118,7 +115,7 @@ namespace lux::render::vulkan
         ) noexcept;
         [[nodiscard]] RenderResult<void> admit(std::uint64_t minimum_bytes, bool creates_identity) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Candidate>> reserve(
-            std::shared_ptr<Image>,
+            std::unique_ptr<Image>,
             const rdesc::TextureInfo&,
             TextureId,
             std::uint64_t expected_revision
@@ -128,7 +125,7 @@ namespace lux::render::vulkan
 
         struct TextureRecord final
         {
-            std::shared_ptr<TextureData> current;
+            std::unique_ptr<TextureData> current;
             std::vector<Use*> uses;
             bool updating = false;
         };
@@ -138,12 +135,13 @@ namespace lux::render::vulkan
         TextureStorage(DeviceSession& session, StorageId id, TextureStorageConfig config) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         void rollback(Candidate&) noexcept;
-        void publish(Candidate&, const SubmissionRequirements&) noexcept;
+        void retire(std::unique_ptr<TextureData>&) noexcept;
+        void publish(Candidate&) noexcept;
         DeviceSession& session_;
         StorageId id_;
         cxx::SlotMap<TextureRecord, TextureTag> textures_;
         std::shared_ptr<Residency> residency_;
-        std::shared_ptr<DescriptorArray> descriptors_;
+        DescriptorArray* descriptors_ = nullptr;
         TextureStorageConfig config_;
     };
 } // namespace lux::render::vulkan

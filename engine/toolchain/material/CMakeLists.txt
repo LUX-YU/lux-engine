@@ -1,5 +1,6 @@
 find_package(lux-cxx REQUIRED COMPONENTS compile_time core)
 find_package(spirv_cross_core CONFIG REQUIRED)
+find_package(Eigen3 CONFIG REQUIRED)
 find_package(Vulkan QUIET COMPONENTS shaderc_combined)
 find_package(unofficial-shaderc CONFIG QUIET)
 find_package(shaderc CONFIG QUIET)
@@ -28,7 +29,7 @@ generate_visibility_header(
 )
 
 set(lux_material_shader_source_dir
-    "${CMAKE_SOURCE_DIR}/modules/function/render/features/assets/shaders"
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
 )
 set(lux_material_shader_emitted_dir "${CMAKE_BINARY_DIR}/material_lglsl_emitted")
 set(lux_material_lighting_source "${lux_material_shader_source_dir}/lighting_common.lglslh")
@@ -163,11 +164,13 @@ target_link_libraries(
     PUBLIC
         lux::engine::toolchain::toolchain_material_compiler
         lux::engine::resource::asset
+        Eigen3::Eigen
 )
 component_add_transitive_commands(
     toolchain_material_cooker
     "find_package(lux-engine-toolchain-material REQUIRED COMPONENTS toolchain_material_compiler)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
+    "find_package(Eigen3 CONFIG REQUIRED)"
 )
 
 if(LUX_PROFILE_HAS_TOOLCHAIN)

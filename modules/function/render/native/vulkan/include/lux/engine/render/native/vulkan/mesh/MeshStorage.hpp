@@ -8,20 +8,20 @@
 
 namespace lux::render::vulkan
 {
+    class BufferArena;
     struct NativeResourcePlan;
     struct PreparedStorageBinding;
     [[nodiscard]] StorageFactory meshStorageFactory() noexcept;
 
     class MeshStorage final
     {
-        struct Residency;
         struct MeshData;
         struct Candidate;
         struct Use;
 
         struct Entry final
         {
-            std::shared_ptr<MeshData> current;
+            std::unique_ptr<MeshData> current;
             std::vector<Use*> uses;
             bool updating = false;
         };
@@ -45,7 +45,7 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<MeshInformation> query(MeshId) const noexcept;
         [[nodiscard]] RenderResult<void> release(MeshId, std::uint64_t expected_revision) noexcept;
         [[nodiscard]] std::uint64_t residentBytes() const noexcept;
-        [[nodiscard]] std::size_t residentVersions() const noexcept;
+        [[nodiscard]] std::size_t recordCount() const noexcept;
 
     private:
         friend StorageFactory meshStorageFactory() noexcept;
@@ -55,13 +55,14 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> validate(const MeshDescription&, std::span<const std::byte>) const noexcept;
         [[nodiscard]] RenderResult<void>
         prepare(const NativeResourcePlan&, const MeshBinding&, PreparedStorageBinding&) noexcept;
+        void retire(std::unique_ptr<MeshData>&) noexcept;
         void unsubscribe(Use&) noexcept;
         static void disconnect(Entry&) noexcept;
         DeviceSession& session_;
         StorageId id_;
         MeshStorageConfig config_;
         cxx::SlotMap<Entry, MeshTag> entries_;
-        std::shared_ptr<Residency> residency_;
+        std::unique_ptr<BufferArena> arena_;
     };
 } // namespace lux::render::vulkan
 

@@ -2,7 +2,7 @@ add_subdirectory(core)
 
 add_subdirectory(data)
 
-add_subdirectory(protocol)
+add_subdirectory(commands)
 
 if(LUX_RENDER_CLIENT_ONLY)
     add_subdirectory(runtime)
@@ -11,8 +11,11 @@ if(LUX_RENDER_CLIENT_ONLY)
         PROJECT_NAME lux-engine-render
         VERSION 0.0.1
         NAMESPACE lux::engine::render
-        COMPONENTS render_core render_data render_protocol render_commands
+        COMPONENTS render_core render_data render_commands
     )
+    if(BUILD_TESTING)
+        add_subdirectory(test)
+    endif()
     return()
 endif()
 
@@ -37,6 +40,10 @@ lux_engine_install_components(
     PROJECT_NAME lux-engine-render
     VERSION 0.0.1
     NAMESPACE lux::engine::render
-    COMPONENTS render_core render_data render_protocol   render_resource render_graph render_features render_native_vulkan
-        render_native_vulkan_extensions render_native_vulkan_features render_commands render_runtime
+    COMPONENTS render_core render_data render_commands render_resource render_graph render_features render_native_vulkan
+        render_native_vulkan_extensions render_native_vulkan_features render_runtime
 )
+
+if(BUILD_TESTING)
+    add_subdirectory(test)
+endif()

@@ -1,4 +1,3 @@
-#include <lux/engine/render/data/Encoding.hpp>
 #include <lux/engine/render/features/Assembly.hpp>
 
 #include <algorithm>
@@ -125,7 +124,7 @@ namespace lux::render
                     }
                     if (s.config->retainedBytes() > config_byte_limit)
                     {
-                        return cxx::unexpected(failure(kEncodingLimit, i));
+                        return cxx::unexpected(failure(kInvalidConfig, i));
                     }
                 }
             }

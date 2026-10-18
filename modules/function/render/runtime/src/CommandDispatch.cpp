@@ -18,9 +18,6 @@ namespace lux::render::runtime_detail
         record->response_route_ = context.response_route_;
         record->loop = &context.render_loop_;
         record->outbox = &context.response_outbox_;
-#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
-        record->measurement = test::completionRegistered(record, record->response_route_.request_id);
-#endif
         return *record;
     }
 
@@ -42,13 +39,7 @@ namespace lux::render::runtime_detail
     void publishCompletion(CommandCompletion& record) noexcept
     {
         auto* loop = record.loop;
-#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
-        auto* sample = test::completionPostBegin(record.measurement);
         loop->post(record);
-        test::completionPostEnd(sample, true);
-#else
-        loop->post(record);
-#endif
         // No record access after publication. RunLoop protects the wakeup/publisher tail.
     }
 } // namespace lux::render::runtime_detail

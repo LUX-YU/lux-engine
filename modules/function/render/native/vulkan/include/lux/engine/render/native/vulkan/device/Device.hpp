@@ -91,14 +91,14 @@ namespace lux::render::vulkan
             bool buffer_device_address
         ) noexcept;
         // Returned objects own their Native allocation; this allocator must outlive every reference.
-        [[nodiscard]] RenderResult<std::shared_ptr<Buffer>> createBuffer(
+        [[nodiscard]] RenderResult<std::unique_ptr<Buffer>> createBuffer(
             VkDeviceSize size,
             VkBufferUsageFlags usage,
             EMemoryAccess access,
             std::span<const std::uint32_t> families = {}
         ) noexcept;
-        [[nodiscard]] RenderResult<std::shared_ptr<Image>> createImage(const ImageDescription& description) noexcept;
-        [[nodiscard]] RenderResult<std::shared_ptr<Image>> aliasImage(const Image& source) noexcept;
+        [[nodiscard]] RenderResult<std::unique_ptr<Image>> createImage(const ImageDescription& description) noexcept;
+        [[nodiscard]] RenderResult<std::unique_ptr<Image>> aliasImage(const Image& source) noexcept;
         ~VulkanAllocator() noexcept;
         VulkanAllocator(VulkanAllocator&& other) noexcept;
         VulkanAllocator& operator=(VulkanAllocator&& other) noexcept;

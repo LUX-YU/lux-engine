@@ -7,6 +7,9 @@
 
 namespace lux::render
 {
+    inline constexpr auto kInvalidDataReference = error::errorId("lux.render.data.invalid_reference");
+    [[nodiscard]] std::span<const error::ErrorDescriptor> renderDataErrorDescriptors() noexcept;
+
     // Zero-copy asset retention. Charge the complete original capacity, even when
     // only a small range is exposed. There is no second reference-counted owner.
     class RenderPayload final

@@ -23,16 +23,32 @@ include("${CMAKE_CURRENT_LIST_DIR}/../InstallComponents.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../TargetClassification.cmake")
 find_package(lux-cxx CONFIG REQUIRED COMPONENTS compile_time)
 
+include("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description/cmake/ValueTypes.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/error/cmake/Values.cmake")
+
 if(LUX_RENDER_CLIENT_ONLY)
     # This is a real source build of the synchronous SDK, with no Native or async component selected.
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/ipc" ipc)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render" render)
 
     lux_engine_install_components(
+        PROJECT_NAME lux-engine-resource
+        VERSION ${PROJECT_VERSION}
+        NAMESPACE lux::engine::resource
+        COMPONENTS description_types
+    )
+
+    lux_engine_install_components(
         PROJECT_NAME lux-engine-platform
         VERSION ${PROJECT_VERSION}
         NAMESPACE lux::engine::platform
         COMPONENTS platform_ipc
+    )
+    lux_engine_install_components(
+        PROJECT_NAME lux-engine-core
+        VERSION ${PROJECT_VERSION}
+        NAMESPACE lux::engine::core
+        COMPONENTS error_values
     )
     return()
 endif()
@@ -71,7 +87,7 @@ endif()
 
 # Existing authoring/lowering algorithms are only build-time asset dependencies.
 if(BUILD_TESTING)
-    include("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description/cmake/ShaderMetadata.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description/cmake/ValueTypes.cmake")
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/object" core-object)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/identity" resource-identity)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/graph" function-graph)
@@ -92,13 +108,6 @@ if(BUILD_TESTING)
         NAMESPACE lux::engine::function
         COMPONENTS graph material_graph
     )
-
-    lux_engine_install_components(
-        PROJECT_NAME lux-engine-resource
-        VERSION ${PROJECT_VERSION}
-        NAMESPACE lux::engine::resource
-        COMPONENTS identity
-    )
 endif()
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render" render)
@@ -107,6 +116,18 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/ipc" ipc)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/gapi" gapi)
 
+set(resource_components description_types)
+if(BUILD_TESTING)
+    list(APPEND resource_components identity)
+endif()
+
+lux_engine_install_components(
+    PROJECT_NAME lux-engine-resource
+    VERSION ${PROJECT_VERSION}
+    NAMESPACE lux::engine::resource
+    COMPONENTS ${resource_components}
+)
+
 lux_engine_install_components(
     PROJECT_NAME lux-engine-platform
     VERSION 0.0.1
@@ -114,7 +135,7 @@ lux_engine_install_components(
     COMPONENTS ${platform_components}
 )
 
-set(core_components async_port error)
+set(core_components async_port error error_values)
 if(BUILD_TESTING)
     list(APPEND core_components object)
 endif()

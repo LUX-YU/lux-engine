@@ -1,6 +1,6 @@
 #include "TestHooks.hpp"
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/data/Encoding.hpp>
+#include <lux/cxx/memory/SharedBytes.hpp>
 #include <array>
 #include <algorithm>
 #include <cstdio>
@@ -125,15 +125,13 @@ int main()
     check(!requester.trySend(0, 0, second));
     check(assetRequest(second).source.data() == second_pointer && destroyed == 0);
     auto work = std::make_shared<ReceivedRequest>(receive(responder));
-    // Author-format G2 resolution remains a test-only consumer of the same real source owner.
-    // Scoped async work borrows or copies the explicit owner; no byte deep copy or hidden attachment channel.
+    // The concrete request retains its real byte owner; IPC has no attachment or codec protocol.
     {
         const auto& request = assetRequest(work->message());
         check(request.revision == 19);
-        std::array owners{request.source};
-        auto resolved = lux::render::resolveExternal(owners, {0, 19, 3}, 1024 * 1024);
-        check(resolved && resolved->data() == pointer + 19);
-        check(resolved->view()[0] == std::byte{42});
+        const auto resolved = request.source.view().subspan(19, 3);
+        check(resolved.data() == pointer + 19 && resolved.size() == 3);
+        check(resolved[0] == std::byte{42});
     }
     IpcMessage reply;
     reply.emplace<std::uint64_t>(19);

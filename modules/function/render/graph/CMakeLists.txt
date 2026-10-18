@@ -19,7 +19,3 @@ component_add_internal_dependencies(render_graph
 )
 
 target_compile_features(render_graph PUBLIC cxx_std_20)
-
-if(BUILD_TESTING)
-    add_subdirectory(test)
-endif()

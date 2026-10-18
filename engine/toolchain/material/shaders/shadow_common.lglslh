@@ -1,0 +1,48 @@
+#ifndef SHADOW_COMMON_GLSL
+#define SHADOW_COMMON_GLSL
+// =========================================================================
+//  shadow_common.lglslh — the per-slice shadow record, shared by every shader
+//  that indexes the shadow slice SSBO.
+//
+//  Must match C++ ShadowSliceGPU in resources/lighting/ShadowMapTypes.hpp
+//  (160 B, std430), pinned there by static_assert(sizeof == 160).
+//
+//  This used to be hand-copied into five shaders, and one of them had already
+//  drifted: shadow/forward_mesh_shadow.vert was missing the last three fields
+//  (shadow_near / shadow_far / depth_is_perspective). It happened to still
+//  work — the truncated struct ends at 116 B and std430 rounds it back up to
+//  128 for the array stride, so indexing stayed correct and the shader simply
+//  could not see three fields it did not use. One more tail field would have
+//  broken that coincidence: 132 rounds to 144 while 120 rounds to 128, and
+//  every slice after the first would read shifted data. The C++
+//  static_assert(sizeof == 128) would not have caught it — it only pins the
+//  C++ side.
+//
+//  ⚠️ 与 view_common.glsl 同款告警:C++↔GLSL 之间没有任何自动校验。
+//  改 ShadowSliceGPU 时这里必须同步改,反之亦然。
+//
+//  Only the TYPE lives here. The `uSlices` buffer declaration stays local to
+//  each shader, for the same reason view_common.glsl leaves `uViews` to its
+//  callers: the set/binding differs between the emitter-driven .lglsl path and
+//  the hand-written variants.
+// =========================================================================
+
+struct ShadowSliceGPU {
+    mat4  light_vp;             // Light-space view-projection matrix
+    float bias;                 // Depth bias
+    float slope_bias;           // Raster slope bias
+    float normal_bias;          // Ortho world-texel size (perspective: unused)
+    float texel_size;           // 1.0 / tile shadow_map_size
+    vec2  atlas_uv_scale;       // Tile scale in atlas page UV
+    vec2  atlas_uv_bias;        // Tile origin in atlas page UV
+    vec2  atlas_inner_uv_min;   // Inner sampling bounds in atlas UV
+    vec2  atlas_inner_uv_max;
+    uint  atlas_layer;          // Atlas page (2D array layer)
+    float shadow_near;          // Light projection near plane (perspective slices)
+    float shadow_far;           // Light projection far plane (perspective slices)
+    uint  depth_is_perspective; // 1 = point/spot perspective slice, 0 = ortho cascade
+    ivec4 origin_page;
+    vec4  origin_local_page_size;
+};                              // = 160 B (std430)
+
+#endif // SHADOW_COMMON_GLSL

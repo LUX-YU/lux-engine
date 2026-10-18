@@ -1,3 +1,4 @@
+#include "BufferArena.hpp"
 #include "Shader.hpp"
 #include <algorithm>
 #include <cstring>
@@ -10,39 +11,11 @@
 
 namespace lux::render::vulkan
 {
-    struct MeshStorage::Residency final
-    {
-        ~Residency() noexcept
-        {
-            if (versions || bytes)
-            {
-                std::terminate();
-            }
-        }
-
-        std::size_t versions = 0;
-        std::uint64_t bytes = 0;
-    };
-
     struct MeshStorage::MeshData final
     {
-        MeshData(std::shared_ptr<Residency> owner, const MeshDescription& input, std::uint64_t size) noexcept
-            : residency(std::move(owner)), description(input), bytes(size)
-        {
-            ++residency->versions;
-            residency->bytes += bytes;
-        }
-
-        ~MeshData() noexcept
-        {
-            --residency->versions;
-            residency->bytes -= bytes;
-        }
-
-        std::shared_ptr<Residency> residency;
         MeshDescription description;
-        std::shared_ptr<Buffer> buffer;
-        SubmissionRequirements last_use;
+        BufferArena::Range range;
+        RetirementReservation retirement;
         std::uint64_t bytes = 0, revision = 0;
     };
 
@@ -53,11 +26,10 @@ namespace lux::render::vulkan
         PreparedStorageBinding& binding;
         std::size_t position;
 
-        void update(const std::shared_ptr<MeshData>& value) noexcept
+        void update(const std::unique_ptr<MeshData>& value) noexcept
         {
-            binding.resources = value;
-            binding.buffer = value->buffer.get();
-            binding.last_use = &value->last_use;
+            binding.buffer = value->range.buffer;
+            binding.buffer_offset = value->range.offset;
             binding.publishUpdate();
         }
 
@@ -74,8 +46,7 @@ namespace lux::render::vulkan
     {
         MeshStorage& storage;
         MeshId id;
-        std::shared_ptr<MeshData> backing;
-        std::shared_ptr<void> storage_reference;
+        std::unique_ptr<MeshData> backing;
 
         ~Candidate() noexcept
         {
@@ -89,28 +60,29 @@ namespace lux::render::vulkan
             {
                 storage.entries_.erase(id.local);
             }
+            storage.retire(backing);
         }
 
-        RenderResult<void> publish(const SubmissionRequirements& requirements) noexcept
+        void publish() noexcept
         {
-            if (!storage.session_.resources().native(storage.id_))
-            {
-                return cxx::unexpected(RenderError{kStorageIdentity});
-            }
-            backing->last_use = requirements;
             auto& entry = *storage.entries_.find(id.local);
+            storage.retire(entry.current);
             entry.current = std::move(backing);
             entry.updating = false;
             for (auto* use : entry.uses)
             {
                 use->update(entry.current);
             }
-            return {};
         }
     };
 
     MeshStorage::MeshStorage(DeviceSession& session, StorageId id, MeshStorageConfig config) noexcept
-        : session_(session), id_(id), config_(config), residency_(std::make_shared<Residency>())
+        : session_(session), id_(id), config_(config),
+          arena_(std::make_unique<BufferArena>(
+              session,
+              VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+              config.resident_byte_budget
+          ))
     {
     }
 
@@ -119,17 +91,18 @@ namespace lux::render::vulkan
         for (auto& entry : entries_)
         {
             disconnect(entry);
+            retire(entry.current);
         }
     }
 
     std::uint64_t MeshStorage::residentBytes() const noexcept
     {
-        return residency_->bytes;
+        return arena_->capacity();
     }
 
-    std::size_t MeshStorage::residentVersions() const noexcept
+    std::size_t MeshStorage::recordCount() const noexcept
     {
-        return residency_->versions;
+        return entries_.size();
     }
 
     RenderResult<void> MeshStorage::validate(const MeshDescription& description, std::span<const std::byte> source)
@@ -256,39 +229,34 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(collected.error());
         }
-        const auto projected = cxx::checkedAdd(residency_->bytes, std::uint64_t(source.size()));
-        const bool over_budget =
-            !projected || (config_.resident_byte_budget && *projected > config_.resident_byte_budget);
-        if (over_budget)
-        {
-            co_return cxx::unexpected(RenderError{kStorageCapacity});
-        }
-        auto storage_reference = session_.resources().share(id_);
-        if (!storage_reference)
-        {
-            co_return cxx::unexpected(storage_reference.error());
-        }
-        auto buffer = session_.allocator().createBuffer(
-            source.size(),
-            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            EMemoryAccess::DEVICE
+        const auto alignment = std::max<VkDeviceSize>(
+            4,
+            session_.physicalDevice().properties().properties.limits.minStorageBufferOffsetAlignment
         );
-        if (!buffer)
+        auto range = arena_->allocate(source.size(), alignment);
+        if (!range)
         {
-            co_return cxx::unexpected(buffer.error());
+            co_return cxx::unexpected(range.error());
         }
-        auto backing = std::make_shared<MeshData>(residency_, input.description, source.size());
-        backing->buffer = std::move(*buffer);
-        backing->revision = revision + 1;
+        auto backing = std::make_unique<MeshData>(
+            input.description,
+            std::move(*range),
+            session_.retirement().reserve(),
+            source.size(),
+            revision + 1
+        );
         auto id = input.mesh;
         if (id.isNull())
         {
             id.local = entries_.emplace();
         }
         entries_.find(id.local)->updating = true;
-        auto candidate = std::make_unique<Candidate>(*this, id, std::move(backing), std::move(*storage_reference));
-        auto uploaded = co_await session_.uploads().writeBuffer(candidate->backing->buffer, std::move(input.source));
+        auto candidate = std::make_unique<Candidate>(*this, id, std::move(backing));
+        auto uploaded = co_await session_.uploads().writeBufferRange(
+            *candidate->backing->range.buffer,
+            candidate->backing->range.offset,
+            std::move(input.source)
+        );
         if (!uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
@@ -298,10 +266,7 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(RenderError{kOutcomeUnknown});
         }
-        if (auto published = candidate->publish(*uploaded); !published)
-        {
-            co_return cxx::unexpected(published.error());
-        }
+        candidate->publish();
         co_return MeshPublished{id, revision + 1};
     }
 
@@ -336,6 +301,7 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kStorageContract});
         }
         disconnect(*entry);
+        retire(entry->current);
         entries_.erase(id.local);
         return {};
     }
@@ -363,6 +329,14 @@ namespace lux::render::vulkan
         use->update(entry->current);
         binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};
         return {};
+    }
+
+    void MeshStorage::retire(std::unique_ptr<MeshData>& value) noexcept
+    {
+        if (value && !session_.retirement().retire(value->retirement, value))
+        {
+            std::terminate(); // The reservation was acquired with this physical candidate.
+        }
     }
 
     void MeshStorage::unsubscribe(Use& use) noexcept

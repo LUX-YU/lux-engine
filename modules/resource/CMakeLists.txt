@@ -8,6 +8,7 @@ generate_visibility_header(
 
 # Resource identity is the leaf shared by descriptions and Asset storage.
 add_subdirectory(identity)
+include(description/cmake/ValueTypes.cmake)
 add_subdirectory(description)
 add_subdirectory(asset)
 
@@ -15,7 +16,7 @@ lux_engine_install_components(
 	PROJECT_NAME	lux-engine-resource
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::resource
-	COMPONENTS		identity
+	COMPONENTS		identity description_types
                     description
                     asset
 )

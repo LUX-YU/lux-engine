@@ -75,7 +75,7 @@ namespace lux::render::vulkan
                 return cxx::unexpected(added.error());
             }
             auto members = config.instances;
-            members.role = EInstanceBinding::DRAW;
+            members.role = EMeshInstanceBinding::DRAW;
             if (auto added = argument("members", members); !added)
             {
                 return cxx::unexpected(added.error());
@@ -86,7 +86,7 @@ namespace lux::render::vulkan
                 const auto& material = *static_cast<const MaterialProgram*>(config.material.program.data());
                 draw.shader.stages.push_back(material.fragment);
                 draw.shader.interface.bindings.push_back(
-                    {4, 4, EDescriptorKind::STORAGE_BUFFER, 1, materialParameterBlock(), "uMats", 2}
+                    {4, 4, EDescriptorKind::STORAGE_BUFFER, 1, materialParameterBlock(material), "uMats", 2}
                 );
                 draw.resources.push_back({"uMats", resource("material")});
                 if (auto added = argument("material", config.material); !added)
@@ -114,11 +114,6 @@ namespace lux::render::vulkan
             if constexpr (Depth)
             {
                 result.programs.push_back({key("clear")});
-            }
-            if (config.readback)
-            {
-                result.programs.push_back({key("color.read")});
-                result.programs.push_back({key("depth.read")});
             }
             return result;
         }

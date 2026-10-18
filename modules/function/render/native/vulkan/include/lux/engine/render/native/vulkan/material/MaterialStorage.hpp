@@ -8,20 +8,21 @@
 
 namespace lux::render::vulkan
 {
+    class BufferArena;
     struct NativeResourcePlan;
     struct PreparedStorageBinding;
     [[nodiscard]] StorageFactory materialStorageFactory() noexcept;
 
     class MaterialStorage final
     {
-        struct Residency;
+        struct Table;
         struct MaterialData;
         struct Candidate;
         struct Use;
 
         struct Entry final
         {
-            std::shared_ptr<MaterialData> current;
+            std::unique_ptr<MaterialData> current;
             std::vector<Use*> uses;
             bool updating = false;
         };
@@ -45,7 +46,7 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<MaterialInformation> query(MaterialId) const noexcept;
         [[nodiscard]] RenderResult<void> release(MaterialId, std::uint64_t expected_revision) noexcept;
         [[nodiscard]] std::uint64_t residentBytes() const noexcept;
-        [[nodiscard]] std::size_t residentVersions() const noexcept;
+        [[nodiscard]] std::size_t recordCount() const noexcept;
 
     private:
         friend StorageFactory materialStorageFactory() noexcept;
@@ -54,13 +55,15 @@ namespace lux::render::vulkan
         [[nodiscard]] UploadResult upload(MaterialWrite) noexcept;
         [[nodiscard]] RenderResult<void>
         prepare(const NativeResourcePlan&, const MaterialBinding&, PreparedStorageBinding&) noexcept;
+        void retire(std::unique_ptr<MaterialData>&) noexcept;
+        void refreshTextures(MaterialData&) noexcept;
         void unsubscribe(Use&) noexcept;
         static void disconnect(Entry&) noexcept;
         DeviceSession& session_;
         StorageId id_;
         MaterialStorageConfig config_;
         cxx::SlotMap<Entry, MaterialTag> entries_;
-        std::shared_ptr<Residency> residency_;
+        std::vector<std::unique_ptr<Table>> tables_;
     };
 } // namespace lux::render::vulkan
 

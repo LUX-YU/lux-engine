@@ -2,18 +2,11 @@
 
 #include <algorithm>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/render/commands/Command.hpp>
 #include <vector>
 
 namespace lux::render::runtime_detail
 {
-#ifdef LUX_RUNTIME_RESPONSE_COST_SEAM
-    namespace test
-    {
-        void* beforeResponsePublication(std::uint64_t, const platform::ipc::IpcMessage&) noexcept;
-        void afterResponsePublication(void*) noexcept;
-    } // namespace test
-#endif
 
     struct ResponseRoute final
     {
@@ -79,17 +72,8 @@ namespace lux::render::runtime_detail
             {
                 const auto index = head_;
                 auto& record = responses_[index];
-#ifdef LUX_RUNTIME_RESPONSE_COST_SEAM
-                auto* sample = test::beforeResponsePublication(record.route.request_id.value, record.payload);
-#endif
                 const auto result =
                     responder.trySendResponse(record.route.requester_id, record.route.request_id.value, record.payload);
-#ifdef LUX_RUNTIME_RESPONSE_COST_SEAM
-                if (result)
-                {
-                    test::afterResponsePublication(sample);
-                }
-#endif
                 head_ = record.next;
                 if (head_ == SIZE_MAX)
                 {

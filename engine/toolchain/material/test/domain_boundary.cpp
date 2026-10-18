@@ -82,7 +82,7 @@ int main(int argc, char** argv)
         write(output, result->gbuffer_spirv);
         write(output, result->forward_spirv);
         require(result->double_sided == graph.render_state.double_sided);
-        require(result->parameter_count == graph.param_slots.size());
+        require(result->parameter_defaults.size() == graph.param_slots.size());
     }
     const auto invalid_id = material_test::add(graph, MaterialSampleTexture{});
     auto failure = compileMaterial(graph);

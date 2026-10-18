@@ -1,0 +1,107 @@
+#ifndef LIGHTING_COMMON_GLSL
+#define LIGHTING_COMMON_GLSL
+// =========================================================================
+//  lighting_common.lglslh — shared declarations for all forward fragment shaders
+//
+//  Provides: View SSBO, bindless textures, light SSBOs, FS input varyings,
+//            lighting functions, and helper utilities.
+//  Resource declarations omit set/binding — the slots are injected by
+//  lux_shader_emitter per LayoutContract (the emitted artifact is still named
+//  lighting_common.glsl, so include statements don't need to change).
+//
+//  Usage: #include "lighting_common.glsl" at the top of each per-material frag.
+//  Requires: #version 450 and GL_EXT_nonuniform_qualifier declared BEFORE this include.
+// =========================================================================
+
+// ========== View (contract: uViews, GLOBAL) ==========
+#include "view_common.glsl"
+layout(std430) readonly buffer ViewBuffer {
+    ViewGpuData views[];
+} uViews;
+
+// ====== Shared Push Constants (scene/view indices, offset 0) ======
+#include "view_pc_prefix.glsl"
+layout(push_constant) uniform SharedPC {
+    LUX_VIEW_PC_PREFIX      // uint scene_index (0); uint view_index (4)
+} uPC;
+
+// ========== FS Input ==========
+layout(location = 0) in vec3 vWorldPos;
+layout(location = 1) in vec3 vWorldNormal;
+layout(location = 2) in vec3 vViewDir;
+layout(location = 3) in vec2 vUV;
+layout(location = 4) in flat uint vMatIndex;
+layout(location = 5) in vec3 vWorldTangent;
+layout(location = 6) in vec3 vWorldBitangent;
+layout(location = 7) in flat float vTransitionCoverage;
+layout(location = 8) in flat uint vTransitionSeed;
+layout(location = 9) in flat uint vTransitionFadeOut;
+layout(location = 10) in flat vec4 vInstanceTint;
+
+#include "transition_dither.glsl"
+
+// ========== Output ==========
+layout(location = 0) out vec4 outColor;
+
+// ========== Bindless texture array (contract: uTex, BINDLESS) ==========
+uniform sampler2D uTex[];
+
+// ========== Light SSBOs (contract: uSpotLights…, FEATURE) ==========
+#include "light_types.glsl"
+
+layout(std430) readonly buffer SpotLightBuf {
+    SpotLightGPU lights[];
+} uSpotLights;
+
+layout(std430) readonly buffer DirectionalLightBuf {
+    DirectionalLightGPU lights[];
+} uDirectionalLights;
+
+layout(std430) readonly buffer PointLightBuf {
+    PointLightGPU lights[];
+} uPointLights;
+
+layout(std430) readonly buffer AreaLightBuf {
+    AreaLightGPU lights[];
+} uAreaLights;
+
+vec3 luxPointLightViewPosition(uint light_index)
+{
+    ViewGpuData view_data = uViews.views[uPC.view_index];
+    return luxLightViewPosition(
+        uPointLights.lights[light_index],
+        view_data.camera_page.xyz,
+        view_data.camera_local_page_size.xyz,
+        view_data.camera_local_page_size.w);
+}
+
+vec3 luxSpotLightViewPosition(uint light_index)
+{
+    ViewGpuData view_data = uViews.views[uPC.view_index];
+    return luxLightViewPosition(
+        uSpotLights.lights[light_index],
+        view_data.camera_page.xyz,
+        view_data.camera_local_page_size.xyz,
+        view_data.camera_local_page_size.w);
+}
+
+// ========== Common material helper structs ==========
+#include "material_types.glsl"
+#include "texture_sampling.glsl"
+
+// ========== Ambient Light Parameters ==========
+// SSOT for the ambient term across all lit paths. Must match
+// deferred_lighting.frag and the material-graph forward emitter (both 0.03);
+// the builtin forward path previously diverged at 0.3 (10x), so the same
+// material rendered 10x brighter ambient in forward (thumbnails/preview) than
+// in deferred (main view) — breaking the forward/deferred parity the
+// material-graph unification guarantees. (medium, ambient-parity)
+const float kAmbient = 0.03;
+
+// ========== Utilities ==========
+bool hasBit(uint m, uint b) { return (m & (1u << b)) != 0u; }
+
+// Tangent-space normal mapping (shared SSOT; uTex declared above is in scope).
+#include "lighting_tbn.glsl"
+
+#endif // LIGHTING_COMMON_GLSL

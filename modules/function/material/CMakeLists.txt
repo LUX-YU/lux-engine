@@ -7,7 +7,7 @@ generate_visibility_header(
 
 find_package(tomlplusplus CONFIG REQUIRED)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../resource/description/cmake/ShaderMetadata.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../resource/description/cmake/ValueTypes.cmake")
 
 add_component(
     COMPONENT_NAME material_graph
@@ -50,7 +50,7 @@ target_link_libraries(
     material_graph
     PUBLIC
         lux::engine::function::graph
-        $<BUILD_INTERFACE:lux::engine::resource::shader_metadata>
+        lux::engine::resource::description_types
         lux::engine::resource::identity
         lux::engine::core::object
 )
@@ -58,7 +58,7 @@ target_link_libraries(
 component_add_transitive_commands(
     material_graph
     "find_package(lux-engine-function REQUIRED COMPONENTS graph)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS identity description_types)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object)"
 )
 
@@ -129,10 +129,3 @@ if(BUILD_TESTING)
 
     add_test(NAME material.node_plugin COMMAND material_node_plugin_test $<TARGET_FILE:material_node_plugin>)
 endif()
-
-# The graph consumes neutral values, never Script/Asset implementation. Keep its installed
-# data contracts available without importing the implementation-only Description target.
-install(FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../resource/description/include/lux/engine/description/MaterialEnums.hpp"
-    DESTINATION include/lux/engine/description
-)

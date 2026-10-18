@@ -11,9 +11,9 @@
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
+#include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
-#include <lux/engine/render/runtime/Commands.hpp>
-#include <lux/engine/render/runtime/Error.hpp>
 #include <lux/engine/render/runtime/VulkanServer.hpp>
 #include <thread>
 
@@ -96,8 +96,6 @@ namespace lux::render
 
         RenderResult<void> resizeTargetResources(RenderTarget& target, const TargetDesc& description) noexcept;
 
-        auto readBackOutput(Readback::Request&&) noexcept;
-
         RenderResult<void> advanceRendering() noexcept;
 
         static VKAPI_ATTR VkBool32 VKAPI_CALL diagnostic(
@@ -122,7 +120,6 @@ namespace lux::render
 
         auto createEffect(CreateEffect::Request&&) noexcept;
         void installAsyncBuiltins() noexcept;
-        void installReadbackCommand() noexcept;
 
         std::size_t drainCompletions(std::size_t budget = 128) noexcept;
 

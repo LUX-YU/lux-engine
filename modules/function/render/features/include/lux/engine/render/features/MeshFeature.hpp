@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <lux/engine/render/data/ShaderBlock.hpp>
 #include <lux/engine/render/features/Assembly.hpp>
-#include <lux/engine/render/resource/Instance.hpp>
+#include <lux/engine/render/resource/MeshInstance.hpp>
 #include <span>
 #include <type_traits>
 
@@ -48,12 +48,11 @@ namespace lux::render
         TargetDesc target;
         MeshBinding mesh;
         MaterialBinding material;
-        InstanceBinding instances;
+        MeshInstanceBinding instances;
         std::string mesh_storage = "meshes";
         std::string material_storage = "materials";
         std::string instance_storage = "instances";
         std::vector<GraphImageDesc> textures;
-        bool readback = false; // Explicit color/depth Copy outputs for consumers that request them.
         bool operator==(const MeshFeatureConfig&) const noexcept = default;
     };
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 
@@ -49,20 +50,16 @@ namespace lux::render::vulkan
         template <class T>
         [[nodiscard]] RenderResult<void> retire(
             RetirementReservation& reservation,
-            const SubmissionRequirements& requirements,
-            std::unique_ptr<T>& object
+            std::unique_ptr<T>& object,
+            const SubmissionQueue* queue = nullptr
         ) noexcept
         {
             static_assert(std::is_nothrow_destructible_v<T>);
-            if (!object || !accepts(reservation, requirements))
+            if (!object || !accepts(reservation, queue))
             {
                 return cxx::unexpected(RenderError{kWrongOwner});
             }
-            commit(
-                reservation,
-                requirements,
-                {object.release(), [](void* value) noexcept { delete static_cast<T*>(value); }}
-            );
+            commit(reservation, queue, {object.release(), [](void* value) noexcept { delete static_cast<T*>(value); }});
             return {};
         }
 
@@ -79,7 +76,7 @@ namespace lux::render::vulkan
         struct Entry final
         {
             cxx::SlotKey<RetirementTag> key{};
-            SubmissionRequirements requirements;
+            std::array<std::uint64_t, 3> submitted{};
             Backing backing{nullptr, [](void*) noexcept {}};
             Entry* next = nullptr;
             std::uint64_t serial = 0;
@@ -93,8 +90,8 @@ namespace lux::render::vulkan
 
         explicit RetirementQueue(std::span<const std::unique_ptr<SubmissionQueue>> queues) noexcept;
         void cancel(cxx::SlotKey<RetirementTag>) noexcept;
-        [[nodiscard]] bool accepts(const RetirementReservation&, const SubmissionRequirements&) const noexcept;
-        void commit(RetirementReservation&, const SubmissionRequirements&, Backing) noexcept;
+        [[nodiscard]] bool accepts(const RetirementReservation&, const SubmissionQueue*) const noexcept;
+        void commit(RetirementReservation&, const SubmissionQueue*, Backing) noexcept;
         [[nodiscard]] bool enqueue(Entry&) noexcept;
         void collectReady() noexcept;
         void destroy(Entry&) noexcept;

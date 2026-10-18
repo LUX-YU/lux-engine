@@ -18,6 +18,7 @@
 
 #include <lux/engine/material/compiler/Backend.hpp>
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <map>
@@ -75,7 +76,9 @@ namespace lux::shadergen::glsl
             if (s.find('.') == std::string::npos && s.find('e') == std::string::npos &&
                 s.find('E') == std::string::npos && s.find("inf") == std::string::npos &&
                 s.find("nan") == std::string::npos)
+            {
                 s += ".0";
+            }
             return s;
         }
 
@@ -83,13 +86,17 @@ namespace lux::shadergen::glsl
         {
             const int n = arity(t);
             if (n == 1)
+            {
                 return fmtF(c[0]);
+            }
             std::string s = glslType(t);
             s += "(";
             for (int i = 0; i < n; ++i)
             {
                 if (i)
+                {
                     s += ", ";
+                }
                 s += fmtF(c[i]);
             }
             s += ")";
@@ -106,13 +113,21 @@ namespace lux::shadergen::glsl
         std::string interpName(const std::string& glsl_name)
         {
             if (glsl_name == "world_position")
+            {
                 return "vWorldPos";
+            }
             if (glsl_name == "world_normal")
+            {
                 return "vWorldNormal";
+            }
             if (glsl_name == "uv0")
+            {
                 return "vUV";
+            }
             if (glsl_name == "world_tangent")
+            {
                 return "vWorldTangent";
+            }
             return glsl_name;
         }
 
@@ -122,7 +137,7 @@ namespace lux::shadergen::glsl
             std::string* error;
             bool ok = true;
             bool tex_mode = false; // Set when there's a SampleTexture: needs set-2 uTex[] + nonuniform
-            bool need_mat = false; // Set when there's tex/param: needs the set-4 GraphMaterialGPU SSBO + vMatIndex
+            bool need_mat = false; // Set when there's tex/param: needs the cooked material record and vMatIndex
             std::ostringstream body;
             // Shading inputs actually used: location -> (glslType, name). Using a
             // map guarantees declared_in iterates in ascending location order.
@@ -133,7 +148,9 @@ namespace lux::shadergen::glsl
             bool fail(std::string m)
             {
                 if (error && ok)
+                {
                     *error = std::move(m);
+                }
                 ok = false;
                 return false;
             }
@@ -157,7 +174,9 @@ namespace lux::shadergen::glsl
             void useInput(const InputSlot& s)
             {
                 if (s.location < 0)
+                {
                     return;
+                }
                 // WorldTangent special case: the contract type is Vec4 (including the
                 // handedness w), but the engine material vertex shader's interpolant
                 // is vec3 (the old emitter also used vec3@5). Declare it as vec3 to
@@ -180,12 +199,12 @@ namespace lux::shadergen::glsl
             bool emitValues()
             {
                 // Per-material data (textures/params) is fetched from the set-4
-                // GraphMaterialGPU SSBO, indexed by the flat vMatIndex
+                // Cooked material record, indexed by the flat vMatIndex
                 // interpolant (matching gbuffer_pbr.frag).
                 if (need_mat)
                 {
                     declared_in[4] = {"flat uint", "vMatIndex"};
-                    body << "    GraphMaterialGPU _mat = uMats.mats[vMatIndex];\n";
+                    body << "    GraphMaterialRecord _mat = uMats.mats[vMatIndex];\n";
                 }
                 for (size_t i = 0; i < ir.values.size(); ++i)
                 {
@@ -196,7 +215,8 @@ namespace lux::shadergen::glsl
                     case EOp::CONSTANT:
                         rhs = literal(v.type, v.constant);
                         break;
-                    case EOp::INPUT: {
+                    case EOp::INPUT:
+                    {
                         if (v.slot >= ir.inputs.size())
                         {
                             fail("shadergen: Input slot out of range");
@@ -282,22 +302,30 @@ namespace lux::shadergen::glsl
                     case EOp::DECODE_NORMAL:
                         rhs = "normalize(" + operand(v, 0) + ".xyz * 2.0 - 1.0)";
                         break;
-                    case EOp::SWIZZLE: {
+                    case EOp::SWIZZLE:
+                    {
                         std::string sw;
                         for (int k = 0; k < arity(v.type); ++k)
+                        {
                             sw += "xyzw"[v.swizzle[k] & 3u];
+                        }
                         rhs = operand(v, 0) + "." + sw;
                         break;
                     }
-                    case EOp::CONSTRUCT: {
+                    case EOp::CONSTRUCT:
+                    {
                         rhs = std::string(glslType(v.type)) + "(";
                         bool first = true;
                         for (int k = 0; k < 4; ++k)
                         {
                             if (v.operands[k] == kNoValue)
+                            {
                                 break;
+                            }
                             if (!first)
+                            {
                                 rhs += ", ";
+                            }
                             rhs += operand(v, k);
                             first = false;
                         }
@@ -312,7 +340,8 @@ namespace lux::shadergen::glsl
                         // second graph-only field convention.
                         rhs = "luxSampleTexture(_mat.tex[" + std::to_string(v.slot) + "], " + operand(v, 0) + ")";
                         break;
-                    case EOp::PARAM: {
+                    case EOp::PARAM:
+                    {
                         // Reads one param lane from the Graph-family SSBO
                         // (slot i -> params[i]), then swizzles it down to the
                         // declared arity.
@@ -321,7 +350,8 @@ namespace lux::shadergen::glsl
                         rhs = "_mat.params[" + std::to_string(v.slot) + "]." + sw;
                         break;
                     }
-                    case EOp::TBN_NORMAL: {
+                    case EOp::TBN_NORMAL:
+                    {
                         // Tangent-space normal -> world (mat3(T,B,N) * n), using the
                         // interpolated T/B/N (mirroring the engine's
                         // calculateWorldNormal). Declares the interpolant directly:
@@ -347,7 +377,9 @@ namespace lux::shadergen::glsl
                         return fail("shadergen: unsupported ShaderIR op");
                     }
                     if (!ok)
+                    {
                         return false;
+                    }
                     body << "    " << glslType(v.type) << " " << vname(static_cast<uint32_t>(i)) << " = " << rhs
                          << ";\n";
                 }
@@ -361,9 +393,13 @@ namespace lux::shadergen::glsl
                 for (const auto& o : ir.outputs)
                 {
                     if (o.name != name)
+                    {
                         continue;
+                    }
                     if (o.value_id != kNoValue && o.value_id < ir.values.size())
+                    {
                         return vname(o.value_id);
+                    }
                     return literal(o.type, o.dflt);
                 }
                 return "0.0"; // outputs always contains every material property; this should be unreachable in practice
@@ -372,8 +408,12 @@ namespace lux::shadergen::glsl
             bool hasBoundOutput(const char* name) const
             {
                 for (const auto& o : ir.outputs)
+                {
                     if (o.name == name)
+                    {
                         return o.value_id != kNoValue && o.value_id < ir.values.size();
+                    }
+                }
                 return false;
             }
         };
@@ -384,7 +424,9 @@ namespace lux::shadergen::glsl
         std::string error;
 
         if (p.pass == EMaterialPass::SHADOW || p.pass == EMaterialPass::VIS_BUFFER)
+        {
             return lux::cxx::unexpected(std::string("shadergen: Shadow/VisBuffer passes not supported yet"));
+        }
 
         const bool gbuffer = p.pass == EMaterialPass::GBUFFER;
         const bool unlit = p.shading_model == rdesc::ELightingTechnique::UNLIT;
@@ -395,16 +437,22 @@ namespace lux::shadergen::glsl
         for (const auto& v : ir.values)
         {
             if (v.op == EOp::SAMPLE_TEXTURE)
+            {
                 tex_mode = true;
+            }
             if (v.op == EOp::PARAM)
+            {
                 param_mode = true;
+            }
         }
 
         Emitter em{ir, &error};
         em.tex_mode = tex_mode;
         em.need_mat = tex_mode || param_mode; // Any per-material data -> Graph family
         if (!em.emitValues())
+        {
             return lux::cxx::unexpected(error.empty() ? std::string("shadergen: emitValues failed") : std::move(error));
+        }
 
         // Normal: GBuffer/Forward-lit use the graph's NormalTS (if bound),
         // otherwise the interpolated world normal; Unlit uses the world normal.
@@ -435,7 +483,16 @@ namespace lux::shadergen::glsl
         out << "#version 450\n";
         if (em.tex_mode ||
             forward_lit) // forward's lighting_common always needs this extension for the unbounded uTex[]
+        {
             out << "#extension GL_EXT_nonuniform_qualifier : require\n";
+        }
+
+        const auto material_record = [&]()
+        {
+            out << "struct GraphMaterialRecord {\n"
+                << " vec4 params[" << std::max<std::size_t>(1, ir.params.size()) << "];\n"
+                << " TextureRefGPU tex[" << std::max<std::size_t>(1, ir.textures.size()) << "];\n};\n";
+        };
 
         if (forward_lit)
         {
@@ -454,14 +511,19 @@ namespace lux::shadergen::glsl
             out << "#include \"brdf/brdf_common.glsl\"\n";
             out << (forward_toon ? "#include \"brdf/brdf_toon.glsl\"\n" : "#include \"brdf/brdf_ggx.glsl\"\n");
             if (em.need_mat)
+            {
+                material_record();
                 out << "layout(set = 4, binding = 4, std430) readonly buffer MatBuf {\n"
-                    << "    GraphMaterialGPU mats[];\n"
+                    << "    GraphMaterialRecord mats[];\n"
                     << "} uMats;\n";
+            }
         }
         else // GBuffer / Forward-Unlit: declares its own input + out + resource blocks.
         {
             for (const auto& [loc, tn] : em.declared_in)
+            {
                 out << "layout(location = " << loc << ") in " << tn.first << " " << tn.second << ";\n";
+            }
 
             if (gbuffer)
             {
@@ -476,19 +538,19 @@ namespace lux::shadergen::glsl
 
             out << "#include \"transition_dither.glsl\"\n";
 
-            // Per-material data (Graph family): #include the real single-source-of-truth
-            // material_types.glsl to get GraphMaterialGPU, then declare the set-2
-            // bindless sampler plus the set-4 SSBO (binding 4).
+            // The record shape comes from this IR. Only the texture reference
+            // representation and sampling implementation are shared includes.
             if (em.need_mat)
             {
                 out << "#include \"material_types.glsl\"\n";
+                material_record();
                 if (em.tex_mode)
                 {
                     out << "layout(set = 2, binding = 0) uniform sampler2D uTex[];\n";
                     out << "#include \"texture_sampling.glsl\"\n";
                 }
                 out << "layout(set = 4, binding = 4, std430) readonly buffer MatBuf {\n"
-                    << "    GraphMaterialGPU mats[];\n"
+                    << "    GraphMaterialRecord mats[];\n"
                     << "} uMats;\n";
             }
             if (gbuffer)
@@ -504,14 +566,18 @@ namespace lux::shadergen::glsl
         out << em.body.str();
 
         if (p.alpha_mode == rdesc::EAlphaMode::MASK)
+        {
             out << "    if (" << em.attr("opacity") << " < " << fmtF(p.alpha_cutoff) << ") discard;\n";
+        }
         else if (p.alpha_mode == rdesc::EAlphaMode::BLEND)
+        {
             // The deferred renderer has no transparent pass yet, so a Blend material
             // would otherwise write a SOLID opaque block. Fall back to an alpha-test
             // CUTOUT (hard edges, but the silhouette is correct + visible) so blended
             // hair/eyelash cards show up. A future transparent forward pass replaces
             // this with real back-to-front blending.
             out << "    if (" << em.attr("opacity") << " < 0.5) discard;\n";
+        }
 
         if (gbuffer)
         {

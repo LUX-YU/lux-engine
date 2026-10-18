@@ -1,5 +1,4 @@
 #include "ServerImpl.hpp"
-#include <lux/engine/render/data/Encoding.hpp>
 
 namespace lux::render
 {
@@ -116,17 +115,12 @@ namespace lux::render
     RenderResult<void> RenderServer::Impl::detachAttachment(AttachmentId id) noexcept
     {
         auto& attachment = *attachments.find(id);
-        // Existing Native release validates and transfers in-flight ownership before destruction.
-        // No Runtime mutation or dispatch can re-enter during this release.
-        if (auto released = device->release(attachment.context); !released)
-        {
-            return released;
-        }
+        attachment.context.reset();
         auto& view = *scenes.find(attachment.scene)->views.find(attachment.view);
         auto& effect = *effects.find(attachment.effect);
         auto& target = *targets.find(attachment.target);
         attachment.unlink(attachments, view, effect, target);
-        if (target.attachments.empty())
+        if (target.attachment.isNull())
         {
             active_targets.erase(attachment.target);
         }
@@ -151,7 +145,7 @@ namespace lux::render
             output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
             return;
         }
-        if (!target->attachments.empty())
+        if (!target->attachment.isNull())
         {
             output_response = cxx::unexpected(RenderError{kRuntimeState});
             return;
@@ -162,7 +156,7 @@ namespace lux::render
             return;
         }
         auto prepared =
-            device->prepare(effect->code, target->description, &scene->storages, &view->storages, effect->arguments);
+            device->prepare(*effect->code, target->description, &scene->storages, &view->storages, effect->arguments);
         if (!prepared)
         {
             output_response = cxx::unexpected(prepared.error());
@@ -170,10 +164,6 @@ namespace lux::render
         }
         if (auto values = (*prepared)->setContextParameters(decoded->parameters.bytes().view()); !values)
         {
-            if (!device->release(*prepared))
-            {
-                std::terminate(); // Unsubmitted candidate.
-            }
             output_response = cxx::unexpected(values.error());
             return;
         }
@@ -181,7 +171,8 @@ namespace lux::render
         output_response.emplace();
         (*prepared)->forEachStorage([&](std::string_view key, StorageId id) noexcept
                                     { output_response->storages.push_back({std::string(key), id}); });
-        const auto id = attachments.emplace(EffectAttachment{effect_id, scene_id, view_id, target_id, *prepared});
+        const auto id =
+            attachments.emplace(EffectAttachment{effect_id, scene_id, view_id, target_id, std::move(*prepared)});
         attachments.find(id)->link(id, *view, *effect, *target);
         output_response->attachment = id;
         active_targets.emplace(target_id);
@@ -194,13 +185,13 @@ namespace lux::render
         const TargetDesc& description
     ) noexcept
     {
-        auto* group = target.attachments.empty() ? nullptr : attachments.find(target.attachments.front());
+        auto* group = target.attachment.isNull() ? nullptr : attachments.find(target.attachment);
         if (group)
         {
             // One Target writer, proven on attach. Resize builds one candidate without recompilation.
             const auto& effect = *effects.find(group->effect);
             auto candidate = device->prepare(
-                effect.code,
+                *effect.code,
                 description,
                 &scenes.find(group->scene)->storages,
                 &scenes.find(group->scene)->views.find(group->view)->storages,
@@ -212,22 +203,10 @@ namespace lux::render
             }
             if (auto values = (*candidate)->setContextParameters(group->context->contextParameters()); !values)
             {
-                if (!device->release(*candidate))
-                {
-                    std::terminate(); // unsubmitted candidate
-                }
                 return cxx::unexpected(values.error());
             }
             (*candidate)->setViewport(group->context->viewport());
-            if (auto result = device->release(group->context); !result)
-            {
-                if (!device->release(*candidate))
-                {
-                    std::terminate(); // never submitted
-                }
-                return result;
-            }
-            group->context = *candidate;
+            group->context = std::move(*candidate);
         }
         target.description = description;
         ++target.epoch;

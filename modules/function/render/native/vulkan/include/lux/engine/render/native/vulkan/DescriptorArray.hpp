@@ -1,8 +1,10 @@
 #pragma once
 
 #include <lux/cxx/container/SlotMap.hpp>
+#include <lux/engine/gapi/vk/Sampler.hpp>
 #include <lux/engine/render/data/ShaderInterface.hpp>
 #include <lux/engine/render/native/vulkan/device/Device.hpp>
+#include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <memory>
 
 namespace lux::render::vulkan
@@ -11,7 +13,7 @@ namespace lux::render::vulkan
     class DescriptorArray;
     struct DescriptorSlotTag;
 
-    // Owns one allocated descriptor and keeps its array alive. GPU users retain its enclosing binding set.
+    // Owns one allocated descriptor slot; the Session-owned array outlives all active and retired slots.
     // Allocation, writes and final range destruction occur on the Native owner thread.
     class DescriptorRange final
     {
@@ -33,13 +35,13 @@ namespace lux::render::vulkan
 
     private:
         friend class DescriptorArray;
-        DescriptorRange(std::shared_ptr<DescriptorArray> array, cxx::SlotKey<DescriptorSlotTag> slot) noexcept;
-        std::shared_ptr<DescriptorArray> array_;
+        DescriptorRange(DescriptorArray& array, cxx::SlotKey<DescriptorSlotTag> slot) noexcept;
+        DescriptorArray* array_ = nullptr;
         cxx::SlotKey<DescriptorSlotTag> slot_{};
     };
 
-    // Shared Native allocation, not a business Storage. A slot is returned only after its actual GPU use ends.
-    class DescriptorArray final : public std::enable_shared_from_this<DescriptorArray>
+    // Session-owned Native allocation, not a business Storage. A slot is returned only after its actual GPU use ends.
+    class DescriptorArray final
     {
     public:
         ~DescriptorArray() noexcept;
@@ -84,6 +86,7 @@ namespace lux::render::vulkan
         }
 
         [[nodiscard]] RenderResult<void> initialize() noexcept;
+        [[nodiscard]] RenderResult<void> initializeDefault(DeviceSession&) noexcept;
         VkDevice device_;
         ShaderBinding binding_;
         std::uint32_t capacity_;
@@ -91,5 +94,9 @@ namespace lux::render::vulkan
         VkDescriptorSetLayout layout_ = VK_NULL_HANDLE;
         VkDescriptorPool pool_ = VK_NULL_HANDLE;
         VkDescriptorSet descriptors_ = VK_NULL_HANDLE;
+        std::unique_ptr<Image> white_image_;
+        VkImageView white_view_ = VK_NULL_HANDLE;
+        gapi::vk::Sampler white_sampler_;
+        Slot white_slot_{};
     };
 } // namespace lux::render::vulkan

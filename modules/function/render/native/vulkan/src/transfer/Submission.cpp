@@ -1,23 +1,22 @@
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 
-#include "Native.hpp"
 #include <algorithm>
+#include <array>
 #include <exception>
 #include <limits>
 #include <lux/engine/gapi/vk/Semaphore.hpp>
+#include <lux/engine/render/native/vulkan/Error.hpp>
 #include <optional>
 #include <utility>
 #include <vector>
 
 namespace lux::render::vulkan
 {
-    // Physical queue slots are the sole owners of recorded/submitted resource sets.
-    // Their existing fence/serial FIFO determines when those references can leave.
+    // Physical submission slots own command buffers and fences, not business resources.
     struct SubmittedBatch final
     {
         VkCommandBuffer command{};
         VkFence fence{};
-        std::vector<std::shared_ptr<const void>> resources;
     };
 
     struct SubmissionQueue::Backing
@@ -45,19 +44,18 @@ namespace lux::render::vulkan
         {
             if (timeline)
             {
-                LUX_DESTROY("timeline", timeline.reset());
+                timeline.reset();
             }
             for (auto& batch : batches)
             {
-                batch.resources.clear();
                 if (batch.fence)
                 {
-                    LUX_DESTROY("fence", vkDestroyFence(device, batch.fence, nullptr));
+                    vkDestroyFence(device, batch.fence, nullptr);
                 }
             }
             if (pool)
             {
-                LUX_DESTROY("command_pool", vkDestroyCommandPool(device, pool, nullptr));
+                vkDestroyCommandPool(device, pool, nullptr);
             }
         }
     };
@@ -80,7 +78,7 @@ namespace lux::render::vulkan
         VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
         pool.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         pool.queueFamilyIndex = backing->queue.family;
-        auto result = LUX_NATIVE("command_pool", vkCreateCommandPool(device, &pool, nullptr, &backing->pool));
+        auto result = vkCreateCommandPool(device, &pool, nullptr, &backing->pool);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -90,7 +88,7 @@ namespace lux::render::vulkan
         allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocation.commandBufferCount = capacity;
         std::vector<VkCommandBuffer> commands(capacity);
-        result = LUX_NATIVE("commands", vkAllocateCommandBuffers(device, &allocation, commands.data()));
+        result = vkAllocateCommandBuffers(device, &allocation, commands.data());
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -99,11 +97,8 @@ namespace lux::render::vulkan
         for (std::size_t i = 0; i < backing->batches.size(); ++i)
         {
             auto& batch = backing->batches[i];
-            // Graph execution retains one prepared set. Reserve it at Queue construction so even
-            // the first recording needs no heap allocation; multi-resource upload batches may grow it.
-            batch.resources.reserve(1);
             batch.command = commands[i];
-            result = LUX_NATIVE("fence", vkCreateFence(device, &fence, nullptr, &batch.fence));
+            result = vkCreateFence(device, &fence, nullptr, &batch.fence);
             if (result != VK_SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));
@@ -116,7 +111,7 @@ namespace lux::render::vulkan
             VkSemaphoreCreateInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
             info.pNext = &type;
             VkSemaphore timeline{};
-            result = LUX_NATIVE("timeline", vkCreateSemaphore(device, &info, nullptr, &timeline));
+            result = vkCreateSemaphore(device, &info, nullptr, &timeline);
             if (result != VK_SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));
@@ -134,37 +129,6 @@ namespace lux::render::vulkan
             std::terminate();
         }
         completePending();
-    }
-
-    void SubmissionRequirements::merge(SubmissionTicket ticket) noexcept
-    {
-        for (auto& use : uses_)
-        {
-            if (use.queue == &ticket.owner())
-            {
-                use.serial = std::max(use.serial, ticket.serial());
-                return;
-            }
-            if (!use.queue)
-            {
-                use = {&ticket.owner(), ticket.serial()};
-                return;
-            }
-        }
-        // DeviceSession has at most three physical queue owners. No unbounded spill storage.
-        std::terminate();
-    }
-
-    bool SubmissionRequirements::completed() const noexcept
-    {
-        for (const auto& use : uses_)
-        {
-            if (use.queue && use.queue->completed() < use.serial && !use.queue->deviceLost())
-            {
-                return false;
-            }
-        }
-        return true;
     }
 
     SubmissionCallback::~SubmissionCallback() noexcept
@@ -209,30 +173,24 @@ namespace lux::render::vulkan
         callback.queue_ = nullptr;
     }
 
-    RenderResult<void> SubmissionQueue::onComplete(
-        SubmissionTicket ticket,
+    void SubmissionQueue::arm(
+        std::uint64_t serial,
         SubmissionCallback& callback,
         SubmissionCallbackFn function,
         void* user
     ) noexcept
     {
-        const bool is_invalid_subscription = callback.queue_ != this || callback.armed_ || !function || !owns(ticket);
-        if (is_invalid_subscription)
-        {
-            return cxx::unexpected(RenderError{kWrongOwner});
-        }
         callback.callback_ = function;
         callback.user_ = user;
-        callback.serial_ = ticket.serial();
+        callback.serial_ = serial;
         callback.armed_ = true;
         auto** link = &backing_->callbacks;
-        while (*link && (*link)->serial_ <= ticket.serial())
+        while (*link && (*link)->serial_ <= serial)
         {
             link = &(*link)->next_;
         }
         callback.next_ = *link;
         *link = &callback;
-        return {};
     }
 
     void SubmissionQueue::dispatchCompleted() noexcept
@@ -287,7 +245,7 @@ namespace lux::render::vulkan
         const bool has_pending = backing_->submitted != backing_->completed;
         if (!deviceLost() && has_pending)
         {
-            auto result = wait(SubmissionTicket{*this, backing_->submitted}, UINT64_MAX);
+            auto result = waitIdle(UINT64_MAX);
             const bool cannot_teardown = !deviceLost() && (!result || !*result);
             if (cannot_teardown)
             {
@@ -335,14 +293,14 @@ namespace lux::render::vulkan
         }
         const auto slot = static_cast<std::uint32_t>(backing_->submitted % capacity());
         const auto command = backing_->batches[slot].command;
-        auto result = LUX_NATIVE("reset_command", vkResetCommandBuffer(command, 0));
+        auto result = vkResetCommandBuffer(command, 0);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(failure(result));
         }
         VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        result = LUX_NATIVE("begin", vkBeginCommandBuffer(command, &begin));
+        result = vkBeginCommandBuffer(command, &begin);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(failure(result));
@@ -352,66 +310,23 @@ namespace lux::render::vulkan
         return CommandBatch{*this, command, slot, backing_->recording_id};
     }
 
-    RenderResult<SubmissionTicket> SubmissionQueue::submit(
-        std::span<const SubmissionWait> waits,
+    RenderResult<void> SubmissionQueue::submit(
+        std::span<const VkSemaphoreSubmitInfo> waits,
         VkSemaphore acquired,
-        VkSemaphore present
+        VkSemaphore present,
+        SubmissionCallback* completion,
+        SubmissionCallbackFn function,
+        void* user
     ) noexcept
     {
-        // Three actual queue roles; no per-submit allocation. Waits refer only
-        // to already-admitted work, so this interface cannot create a future cycle.
+        // Admission owns all mutation; no callback can change the prepared recording here.
+        const bool invalid_completion = completion && (completion->queue_ != this || completion->armed_ || !function);
+        if (invalid_completion || waits.size() > 3)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
         std::array<VkSemaphoreSubmitInfo, 4> native_waits{};
-        if (waits.size() > 3)
-        {
-            return cxx::unexpected(RenderError{kCapacity});
-        }
-        for (std::size_t i = 0; i < waits.size(); ++i)
-        {
-            const auto& wait = waits[i];
-            const auto& source = wait.ticket.owner();
-            // Only stages from explicitly enabled Foundation features are admitted.
-            // Unknown extension bits cannot silently become a valid queue wait.
-            VkPipelineStageFlags2 allowed =
-                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT | VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT |
-                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT | VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT |
-                VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT;
-            const auto flags = nativeQueue().flags;
-            if ((flags & VK_QUEUE_GRAPHICS_BIT) != 0)
-            {
-                allowed |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT |
-                           VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT | VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
-                           VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
-                           VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT |
-                           VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT |
-                           VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT | VK_PIPELINE_STAGE_2_BLIT_BIT |
-                           VK_PIPELINE_STAGE_2_RESOLVE_BIT;
-            }
-            if ((flags & VK_QUEUE_COMPUTE_BIT) != 0)
-            {
-                allowed |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
-            }
-            const bool invalid = source.device() != device() || !source.owns(wait.ticket) || wait.stages == 0 ||
-                                 (wait.stages & ~allowed) != 0;
-            if (invalid)
-            {
-                return cxx::unexpected(RenderError{kInvalidArgument});
-            }
-            if (!source.backing_->timeline)
-            {
-                return cxx::unexpected(RenderError{kUnsupported});
-            }
-            for (std::size_t j = 0; j < i; ++j)
-            {
-                if (&waits[j].ticket.owner() == &source)
-                {
-                    return cxx::unexpected(RenderError{kInvalidArgument});
-                }
-            }
-            native_waits[i] = {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-            native_waits[i].semaphore = source.backing_->timeline;
-            native_waits[i].value = wait.ticket.serial();
-            native_waits[i].stageMask = wait.stages;
-        }
+        std::ranges::copy(waits, native_waits.begin());
         const bool incomplete_wsi = (acquired == VK_NULL_HANDLE) != (present == VK_NULL_HANDLE);
         if (incomplete_wsi || (acquired && acquired == present))
         {
@@ -425,12 +340,12 @@ namespace lux::render::vulkan
             wait.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
         }
         const auto slot = static_cast<std::uint32_t>(backing_->submitted % capacity());
-        auto result = LUX_NATIVE("end", vkEndCommandBuffer(backing_->batches[slot].command));
+        auto result = vkEndCommandBuffer(backing_->batches[slot].command);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(failure(result));
         }
-        result = LUX_NATIVE("reset_fence", vkResetFences(backing_->device, 1, &backing_->batches[slot].fence));
+        result = vkResetFences(backing_->device, 1, &backing_->batches[slot].fence);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(failure(result));
@@ -459,24 +374,26 @@ namespace lux::render::vulkan
         info.pWaitSemaphoreInfos = native_waits.data();
         info.signalSemaphoreInfoCount = signal_count;
         info.pSignalSemaphoreInfos = signals.data();
-        result = LUX_NATIVE("submit", vkQueueSubmit2(backing_->queue.handle, 1, &info, backing_->batches[slot].fence));
+        result = vkQueueSubmit2(backing_->queue.handle, 1, &info, backing_->batches[slot].fence);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(failure(result));
         }
         ++backing_->submitted;
         backing_->recording = false;
-        return SubmissionTicket{*this, backing_->submitted};
+        if (completion)
+        {
+            arm(backing_->submitted, *completion, function, user);
+        }
+        return {};
     }
 
     void SubmissionQueue::cancel() noexcept
     {
-        const auto slot = static_cast<std::uint32_t>(backing_->submitted % capacity());
         backing_->recording = false;
-        backing_->batches[slot].resources.clear();
     }
 
-    RenderResult<std::uint64_t> SubmissionQueue::poll() noexcept
+    RenderResult<void> SubmissionQueue::poll() noexcept
     {
         if (backing_->terminal)
         {
@@ -485,8 +402,7 @@ namespace lux::render::vulkan
         while (backing_->completed != backing_->submitted)
         {
             const auto slot = static_cast<std::uint32_t>(backing_->completed % capacity());
-            const auto result =
-                LUX_NATIVE("fence_status", vkGetFenceStatus(backing_->device, backing_->batches[slot].fence));
+            const auto result = vkGetFenceStatus(backing_->device, backing_->batches[slot].fence);
             if (result == VK_NOT_READY)
             {
                 break;
@@ -496,30 +412,22 @@ namespace lux::render::vulkan
                 return cxx::unexpected(failure(result));
             }
             ++backing_->completed;
-            backing_->batches[slot].resources.clear();
         }
-        return backing_->completed;
+        return {};
     }
 
-    RenderResult<bool> SubmissionQueue::wait(SubmissionTicket ticket, std::uint64_t timeout_ns) noexcept
+    RenderResult<bool> SubmissionQueue::wait(std::uint64_t serial, std::uint64_t timeout_ns) noexcept
     {
-        if (!owns(ticket))
-        {
-            return cxx::unexpected(RenderError{kWrongOwner});
-        }
         if (backing_->terminal)
         {
             return cxx::unexpected(*backing_->terminal);
         }
-        if (ticket.serial() <= backing_->completed)
+        if (serial <= backing_->completed)
         {
             return true;
         }
-        const auto slot = static_cast<std::uint32_t>((ticket.serial() - 1) % capacity());
-        const auto result = LUX_NATIVE(
-            "wait",
-            vkWaitForFences(backing_->device, 1, &backing_->batches[slot].fence, VK_TRUE, timeout_ns)
-        );
+        const auto slot = static_cast<std::uint32_t>((serial - 1) % capacity());
+        const auto result = vkWaitForFences(backing_->device, 1, &backing_->batches[slot].fence, VK_TRUE, timeout_ns);
         if (result == VK_TIMEOUT)
         {
             return false;
@@ -533,12 +441,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(completion.error());
         }
-        return *completion >= ticket.serial();
-    }
-
-    bool SubmissionQueue::owns(SubmissionTicket ticket) const noexcept
-    {
-        return &ticket.owner() == this && ticket.serial() <= backing_->submitted;
+        return backing_->completed >= serial;
     }
 
     std::uint64_t SubmissionQueue::completed() const noexcept
@@ -564,6 +467,11 @@ namespace lux::render::vulkan
     bool SubmissionQueue::recording() const noexcept
     {
         return backing_->recording;
+    }
+
+    bool SubmissionQueue::idle() const noexcept
+    {
+        return backing_->completed == backing_->submitted;
     }
 
     bool SubmissionQueue::deviceLost() const noexcept
@@ -600,39 +508,113 @@ namespace lux::render::vulkan
     {
     }
 
-    void CommandBatch::retain(std::shared_ptr<const void> resource) noexcept
+    RenderResult<void> CommandBatch::submit() && noexcept
     {
-        owner_->backing_->batches[slot_].resources.push_back(std::move(resource));
+        return std::move(*this).submit(VK_NULL_HANDLE, VK_NULL_HANDLE);
     }
 
-    RenderResult<SubmissionTicket> CommandBatch::submit() && noexcept
-    {
-        return std::move(*this).submit({});
-    }
-
-    RenderResult<SubmissionTicket> CommandBatch::submit(std::span<const SubmissionWait> waits) && noexcept
-    {
-        auto result = owner_->submit(waits);
-        if (!result)
-        {
-            owner_->cancel();
-        }
-        owner_ = nullptr;
-        return result;
-    }
-
-    RenderResult<SubmissionTicket> CommandBatch::submit(
-        std::span<const SubmissionWait> waits,
-        VkSemaphore acquired,
-        VkSemaphore present
+    RenderResult<void> CommandBatch::submit(
+        SubmissionCallback& completion,
+        SubmissionCallbackFn function,
+        void* user
     ) && noexcept
     {
-        auto result = owner_->submit(waits, acquired, present);
+        auto result = owner_->submit({}, {}, {}, &completion, function, user);
         if (!result)
         {
             owner_->cancel();
         }
         owner_ = nullptr;
         return result;
+    }
+
+    RenderResult<void> CommandBatch::submitAfter(
+        const SubmissionQueue& source,
+        VkPipelineStageFlags2 stages
+    ) && noexcept
+    {
+        if (&source == owner_)
+        {
+            return std::move(*this).submit();
+        }
+        if (source.device() != owner_->device())
+        {
+            return cxx::unexpected(RenderError{kWrongOwner});
+        }
+        VkPipelineStageFlags2 allowed = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT | VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT |
+                                        VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT | VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT |
+                                        VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT;
+        const auto flags = owner_->nativeQueue().flags;
+        if ((flags & VK_QUEUE_GRAPHICS_BIT) != 0)
+        {
+            allowed |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT |
+                       VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT | VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
+                       VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+                       VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT |
+                       VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT |
+                       VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT | VK_PIPELINE_STAGE_2_BLIT_BIT |
+                       VK_PIPELINE_STAGE_2_RESOLVE_BIT;
+        }
+        if ((flags & VK_QUEUE_COMPUTE_BIT) != 0)
+        {
+            allowed |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+        }
+        const bool invalid_stages = !stages || (stages & ~allowed) != 0;
+        if (invalid_stages)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        auto wait = source.dependency(stages);
+        if (!wait)
+        {
+            return cxx::unexpected(wait.error());
+        }
+        auto result = owner_->submit(std::span(&*wait, 1));
+        if (!result)
+        {
+            owner_->cancel();
+        }
+        owner_ = nullptr;
+        return result;
+    }
+
+    RenderResult<void> CommandBatch::submit(VkSemaphore acquired, VkSemaphore present) && noexcept
+    {
+        auto result = owner_->submit({}, acquired, present);
+        if (!result)
+        {
+            owner_->cancel();
+        }
+        owner_ = nullptr;
+        return result;
+    }
+
+    RenderResult<VkSemaphoreSubmitInfo> SubmissionQueue::dependency(VkPipelineStageFlags2 stages) const noexcept
+    {
+        if (!backing_->timeline)
+        {
+            return cxx::unexpected(RenderError{kUnsupported});
+        }
+        VkSemaphoreSubmitInfo result{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        result.semaphore = backing_->timeline;
+        result.value = backing_->submitted;
+        result.stageMask = stages;
+        return result;
+    }
+
+    RenderResult<bool> SubmissionQueue::waitIdle(std::uint64_t timeout_ns) noexcept
+    {
+        return wait(backing_->submitted, timeout_ns);
+    }
+
+    SubmissionQueue::CompletionSender SubmissionQueue::whenIdle() noexcept
+    {
+        return CompletionSender{*this, backing_->submitted};
+    }
+
+    SubmissionQueue::CompletionSender SubmissionQueue::whenAvailable() noexcept
+    {
+        const bool full = backing_->submitted - backing_->completed == capacity();
+        return CompletionSender{*this, backing_->completed + std::uint64_t(full)};
     }
 } // namespace lux::render::vulkan

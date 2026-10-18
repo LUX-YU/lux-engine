@@ -1,9 +1,9 @@
 #include <lux/engine/render/native/vulkan/device/Device.hpp>
 
-#include "Native.hpp"
 #include <algorithm>
 #include <cstring>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/native/vulkan/Error.hpp>
 #include <utility>
 #include <vector>
 #include <vk_mem_alloc.h>
@@ -194,7 +194,7 @@ namespace lux::render::vulkan
         info.ppEnabledLayerNames = options.validation ? &layer : nullptr;
         info.pNext = options.validation ? &validation : nullptr;
         VkInstance instance{};
-        result = LUX_NATIVE("instance", vkCreateInstance(&info, nullptr, &instance));
+        result = vkCreateInstance(&info, nullptr, &instance);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -209,7 +209,7 @@ namespace lux::render::vulkan
             {
                 return cxx::unexpected(RenderError{kUnsupported});
             }
-            result = LUX_NATIVE("messenger", create(instance, &debug, nullptr, &owner.messenger_));
+            result = create(instance, &debug, nullptr, &owner.messenger_);
             if (result != VK_SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));
@@ -225,11 +225,11 @@ namespace lux::render::vulkan
             auto destroy = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
                 vkGetInstanceProcAddr(instance_, "vkDestroyDebugUtilsMessengerEXT")
             );
-            LUX_DESTROY("messenger", destroy(instance_, messenger_, nullptr));
+            destroy(instance_, messenger_, nullptr);
         }
         if (instance_)
         {
-            LUX_DESTROY("instance", vkDestroyInstance(instance_, nullptr));
+            vkDestroyInstance(instance_, nullptr);
         }
     }
 
@@ -536,19 +536,16 @@ namespace lux::render::vulkan
         info.enabledExtensionCount = static_cast<std::uint32_t>(requested->size());
         info.ppEnabledExtensionNames = requested->data();
         gapi::vk::LogicalDevice device;
-        const auto created = LUX_NATIVE(
-            "device",
-            [&]() noexcept
+        const auto created = [&]() noexcept
+        {
+            auto value = gapi::vk::LogicalDevice::create(selected->handle(), info);
+            if (!value)
             {
-                auto value = gapi::vk::LogicalDevice::create(selected->handle(), info);
-                if (!value)
-                {
-                    return value.error();
-                }
-                device = std::move(*value);
-                return VK_SUCCESS;
-            }()
-        );
+                return value.error();
+            }
+            device = std::move(*value);
+            return VK_SUCCESS;
+        }();
         if (created != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(created));
@@ -629,7 +626,7 @@ namespace lux::render::vulkan
             info.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
         }
         VmaAllocator allocator{};
-        const auto result = LUX_NATIVE("allocator", vmaCreateAllocator(&info, &allocator));
+        const auto result = vmaCreateAllocator(&info, &allocator);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -641,7 +638,7 @@ namespace lux::render::vulkan
     {
         if (allocator_)
         {
-            LUX_DESTROY("allocator", vmaDestroyAllocator(allocator_));
+            vmaDestroyAllocator(allocator_);
         }
     }
 

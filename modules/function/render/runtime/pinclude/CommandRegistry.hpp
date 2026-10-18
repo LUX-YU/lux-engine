@@ -1,7 +1,7 @@
 #pragma once
 
 #include <limits>
-#include <lux/engine/render/runtime/Commands.hpp>
+#include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <map>
 

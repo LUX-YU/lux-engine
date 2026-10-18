@@ -74,17 +74,8 @@ namespace lux::render
         // Native creation may grow another Set. Reacquire the index entry after the callback.
         auto& entry = *registry_.entries_.find(id);
         entry.position = records_.size();
-        const auto destroy = native->get_deleter();
-        std::shared_ptr<void> instance(
-            native->release(),
-            [configuration = std::move(config), destroy](void* value) mutable noexcept
-            {
-                destroy(value);
-                configuration = {}; // Includes configuration code pins, released after the Native deleter returns.
-            }
-        );
         const auto name = instances_by_name_.emplace(NameKey{type.index, type.gen, std::string(key)}, id).first;
-        records_.push_back(Record{id, name, std::move(instance)});
+        records_.push_back(Record{id, name, std::move(config), std::move(*native)});
         entry.native = records_.back().native.get();
         ++registry_.creations_;
         return id;
@@ -136,6 +127,8 @@ namespace lux::render
         const auto& record = records_[position];
         instances_by_name_.erase(record.name);
         registry_.entries_.erase(record.id);
+        // Keep configuration/module code alive until the actual Native destructor returns.
+        auto configuration = std::move(records_[position].configuration);
         auto native = std::move(records_[position].native);
         if (position + 1 != records_.size())
         {
@@ -156,6 +149,7 @@ namespace lux::render
         // Revoke the entire set before any destructor runs. No temporary container or allocation is needed.
         while (!records_.empty())
         {
+            auto configuration = std::move(records_.back().configuration);
             auto native = std::move(records_.back().native);
             records_.pop_back();
         }

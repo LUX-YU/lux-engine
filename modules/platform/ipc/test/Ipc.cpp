@@ -1,6 +1,6 @@
 #include "TestHooks.hpp"
 #include "Allocation.hpp"
-#include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/render/commands/Command.hpp>
 #include <lux/cxx/memory/SharedBytes.hpp>
 #include <array>
 #include <barrier>

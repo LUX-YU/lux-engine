@@ -80,8 +80,9 @@ namespace lux::material
             }
 
             rdesc::MaterialDescription description;
-            description.parameter_count = static_cast<std::uint32_t>(graph.param_slots.size());
-            for (std::uint32_t parameter = 0U; parameter < description.parameter_count; ++parameter)
+            description.parameter_defaults.resize(graph.param_slots.size());
+            description.texture_slot_ids.resize(graph.texture_slots.size());
+            for (std::uint32_t parameter = 0U; parameter < description.parameter_defaults.size(); ++parameter)
             {
                 std::copy_n(
                     graph.param_slots[parameter].dflt,

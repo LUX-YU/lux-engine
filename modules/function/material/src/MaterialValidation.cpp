@@ -1,4 +1,3 @@
-#include <lux/engine/description/Material.hpp>
 #include <lux/engine/material/detail/MaterialValidation.hpp>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
 
@@ -29,8 +28,8 @@ namespace lux::material::detail
     ) noexcept
     {
         const bool has_nodes = !graph.nodes().empty();
-        const bool exceeds_parameters = graph.param_slots.size() > rdesc::MaterialDescription::kMaxParams;
-        const bool exceeds_textures = graph.texture_slots.size() > rdesc::MaterialDescription::kMaxTextures;
+        const bool exceeds_parameters = graph.param_slots.size() > UINT32_MAX;
+        const bool exceeds_textures = graph.texture_slots.size() > UINT32_MAX;
         const bool is_invalid_capacity = !has_nodes || exceeds_parameters || exceeds_textures;
         if (is_invalid_capacity)
         {

@@ -131,13 +131,4 @@ namespace lux::render
         return entry && entry->native ? entry->owner : nullptr;
     }
 
-    RenderResult<std::shared_ptr<void>> ResourceRegistry::share(StorageId id) noexcept
-    {
-        auto* entry = entries_.find(id);
-        if (!entry || !entry->native)
-        {
-            return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        return entry->owner->records_[entry->position].native;
-    }
 } // namespace lux::render

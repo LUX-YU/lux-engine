@@ -63,7 +63,7 @@ can be sent. Host scheduler/module lifetimes still cover external callback tails
 Outbox alone publishes finished results, with bounded fair retries when a reply
 segment cannot grow. A closed requester cannot hold ready output indefinitely.
 The source route is independent of input ownership. Invalid CommandId or wrong
-request type produces one raw RenderError(kProtocolContract); known commands
+request type produces one raw RenderError(kCommandContract); known commands
 produce only their declared Response. Accepted uncertain effects use kOutcomeUnknown,
 never a guaranteed cancellation.
 
@@ -76,12 +76,12 @@ Replies schedules candidate adoption on RenderThread, which alone allocates Effe
 The owner handoff cannot swallow a determined error on cancellation; successful candidates
 check stop before adoption. No private RenderScheduler or CreateEffectSender remains.
 Graph analysis/compiler and Native retirement remain independent. Upload tasks own their input while CPU
-preparation uses it; accepted GPU submissions retain their physical destinations. Copy/Acquire admission and
-professional publication determine upload success. Readback waits for its own GPU completion.
+preparation uses it; unpublished candidates remain operation-owned and released physical objects move into retirement. Copy/Acquire admission and
+professional publication determine upload success. There is no production Readback command.
 
 Stop closes dispatch, requests operation stops, drains accepted CPU/GPU work and
 publishes/discards ready output before resetting the Responder. Native objects retire
-by real LastUse tickets before Device/Instance destruction. The host must stop and
+by Native queue completion before Device/Instance destruction. The host must stop and
 join run before destroying Server, and keep its ExecutionRuntime and code modules alive
 through accepted callback tails. Disconnection is not GPU cancellation.
 
@@ -114,7 +114,10 @@ and values. Resize preserves each Attachment's bytes and normalized viewport.
 `PrepareStorage` resolves the actual Global/Scene/View/Attachment StorageSet and idempotently creates
 its type/name/configuration instance. `FindStorage` returns the corresponding identity. `RemoveStorage`
 revokes that identity immediately; it is not a decrement of a hidden preload count. A new request using
-the old ID fails. Attachments and accepted asynchronous operations can retain the actual Storage with
-standard shared references. Pending uploads revalidate their StorageId before publishing a new result.
-Scene/View destruction clears their Sets without waiting for or counting these accepted references;
-Server shutdown still settles accepted operations before destroying the DeviceSession.
+the old ID fails. StorageSet is the unique instance owner. The caller must finish related uploads and
+detach its consumers before removing Storage. Normal Server shutdown settles accepted operations
+before destroying scoped Storage and DeviceSession; arbitrary early removal is not a cancellation API.
+
+Each Target has one Attachment. Feature composition and pass order are fixed by its compiled graph;
+Runtime does not coordinate multiple independent Effects writing the same Target. Resize prepares a
+replacement Context before publishing it and preserves the old association on failure.

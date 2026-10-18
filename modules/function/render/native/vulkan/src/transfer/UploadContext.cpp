@@ -1,4 +1,3 @@
-#include "Native.hpp"
 #include "StagingArena.hpp"
 #include <algorithm>
 #include <bit>
@@ -7,6 +6,7 @@
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/native/vulkan/Error.hpp>
 #include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 
 namespace lux::render::vulkan
@@ -169,7 +169,8 @@ namespace lux::render::vulkan
                 {
                     auto original = barrier;
                     original.image = clone->native();
-                    original.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                    // The device sampled-image table is visible to every supported shader stage.
+                    original.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
                     original.srcAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
                     original.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
                     original.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
@@ -199,7 +200,7 @@ namespace lux::render::vulkan
                     }
                     original.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
                     original.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
-                    original.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                    original.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
                     original.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
                     original.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
                     original.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -237,7 +238,7 @@ namespace lux::render::vulkan
             barrier.srcStageMask = acquiring ? VK_PIPELINE_STAGE_2_NONE : VK_PIPELINE_STAGE_2_COPY_BIT;
             barrier.srcAccessMask = acquiring ? VK_ACCESS_2_NONE : VK_ACCESS_2_TRANSFER_WRITE_BIT;
             barrier.dstStageMask =
-                !distinct || acquiring ? VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_2_NONE;
+                !distinct || acquiring ? VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_2_NONE;
             barrier.dstAccessMask = !distinct || acquiring ? VK_ACCESS_2_SHADER_SAMPLED_READ_BIT : VK_ACCESS_2_NONE;
             barrier.oldLayout = acquiring && !cross_family ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                                                            : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -278,29 +279,38 @@ namespace lux::render::vulkan
         return {};
     }
 
-    UploadContext::Task UploadContext::writeBuffer(std::shared_ptr<Buffer> target, RenderPayload source) noexcept
+    UploadContext::Task UploadContext::writeBuffer(Buffer& target, RenderPayload source) noexcept
     {
-        return write(std::move(target), {}, std::move(source), {}, {}, nullptr);
+        return write(&target, nullptr, std::move(source), {}, nullptr);
+    }
+
+    UploadContext::Task UploadContext::writeBufferRange(
+        Buffer& target,
+        VkDeviceSize offset,
+        RenderPayload source
+    ) noexcept
+    {
+        return write(&target, nullptr, std::move(source), {}, nullptr, offset, true);
     }
 
     UploadContext::Task UploadContext::writeImage(
-        std::shared_ptr<Image> target,
+        Image& target,
         RenderPayload source,
         std::vector<ImageTransferRegion> regions,
-        std::shared_ptr<const Image> clone,
-        SubmissionRequirements* clone_use
+        const Image* clone
     ) noexcept
     {
-        return write({}, std::move(target), std::move(source), std::move(regions), std::move(clone), clone_use);
+        return write(nullptr, &target, std::move(source), std::move(regions), clone);
     }
 
     UploadContext::Task UploadContext::write(
-        std::shared_ptr<Buffer> buffer,
-        std::shared_ptr<Image> image,
+        Buffer* buffer,
+        Image* image,
         RenderPayload payload,
         std::vector<ImageTransferRegion> regions,
-        std::shared_ptr<const Image> clone,
-        SubmissionRequirements* clone_use
+        const Image* clone,
+        VkDeviceSize target_offset,
+        bool graphics_range
     ) noexcept
     {
         const auto source = payload.bytes().view();
@@ -310,7 +320,8 @@ namespace lux::render::vulkan
         }
         if (buffer)
         {
-            const bool invalid_buffer = source.size() % 4 || source.size() > buffer->size() ||
+            const bool invalid_buffer = source.size() % 4 || target_offset % 4 || target_offset > buffer->size() ||
+                                        source.size() > buffer->size() - target_offset ||
                                         !(buffer->usage() & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
             if (invalid_buffer)
             {
@@ -319,7 +330,7 @@ namespace lux::render::vulkan
         }
         else
         {
-            if (!image || regions.empty() || (bool(clone) != bool(clone_use)))
+            if (!image || regions.empty())
             {
                 co_return cxx::unexpected(RenderError{kInvalidArgument});
             }
@@ -393,17 +404,17 @@ namespace lux::render::vulkan
         }
         auto page = std::move(*acquired);
         auto retirement = session.retirement().reserve();
-        std::optional<SubmissionTicket> ticket;
+        auto& graphics = session.queue();
+        auto& copy = clone || graphics_range ? graphics : *copy_queue;
+        bool submitted_copy = false;
         cxx::scope_exit release_page(
             [&]() noexcept
             {
-                if (ticket)
+                if (submitted_copy)
                 {
-                    SubmissionRequirements use;
-                    use.merge(*ticket);
-                    if (!session.retirement().retire(retirement, use, page))
+                    if (!session.retirement().retire(retirement, page, &copy))
                     {
-                        std::terminate(); // This Owner acquired both the reservation and the actual Copy ticket.
+                        std::terminate(); // Reservation and page belong to this Session.
                     }
                 }
             }
@@ -418,8 +429,6 @@ namespace lux::render::vulkan
             }
         );
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        auto& graphics = session.queue();
-        auto& copy = clone ? graphics : *copy_queue;
         const bool distinct = &copy != &graphics;
         const auto timestamp_bits = &copy == &graphics ? graphics_timestamp_bits : copy_timestamp_bits;
         const bool timestamp = timestamps && timestamp_bits;
@@ -428,10 +437,9 @@ namespace lux::render::vulkan
         {
             const bool is_device_lost =
                 error.type == kNativeFailure && error.args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
-            const bool is_unknown = ticket && (stop.stop_requested() || is_device_lost);
+            const bool is_unknown = submitted_copy && (stop.stop_requested() || is_device_lost);
             return cxx::unexpected(is_unknown ? RenderError{kOutcomeUnknown} : error);
         };
-        SubmissionRequirements accepted;
         std::size_t offset = 0;
         std::size_t region_index = 0;
         std::uint32_t row = 0;
@@ -459,7 +467,7 @@ namespace lux::render::vulkan
                 stdexec::then(
                     [&]() noexcept -> RenderResult<std::uint64_t>
                     {
-                        LUX_RECORD("cpuPrepare", (void)0);
+                        (void)0;
                         const auto started = UploadClock::now();
                         auto* destination = page->buffer().mappedBytes().data();
                         const auto* input =
@@ -513,12 +521,7 @@ namespace lux::render::vulkan
                 {
                     co_return failure(available.error());
                 }
-                const auto pending = copy.oldestPending();
-                if (!pending)
-                {
-                    co_return failure(available.error());
-                }
-                auto completed = co_await copy.whenComplete(*pending);
+                auto completed = co_await copy.whenAvailable();
                 if (!completed)
                 {
                     co_return failure(completed.error());
@@ -534,18 +537,6 @@ namespace lux::render::vulkan
             {
                 co_return failure(flushed.error());
             }
-            if (buffer)
-            {
-                batch->retain(buffer);
-            }
-            else
-            {
-                batch->retain(image);
-            }
-            if (!ticket && clone)
-            {
-                batch->retain(clone);
-            }
             if (timestamp)
             {
                 vkResetQueryPool(session.nativeDevice(), timestamps, std::uint32_t(page->index() * 2), 2);
@@ -558,7 +549,35 @@ namespace lux::render::vulkan
             }
             if (buffer)
             {
-                recordBuffer(batch->native(), *buffer, *page, offset, chunk_size, copy, graphics, false, final);
+                if (graphics_range)
+                {
+                    // Reusing an arena range needs an explicit memory dependency even after its prior fence
+                    // has completed. The allocation is unpublished, so no later draw can reference this range.
+                    VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+                    barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+                    barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+                    barrier.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+                    barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+                    barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    barrier.buffer = buffer->native();
+                    barrier.offset = target_offset + offset;
+                    barrier.size = chunk_size;
+                    VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+                    dependency.bufferMemoryBarrierCount = 1;
+                    dependency.pBufferMemoryBarriers = &barrier;
+                    vkCmdPipelineBarrier2(batch->native(), &dependency);
+                }
+                recordBuffer(
+                    batch->native(),
+                    *buffer,
+                    *page,
+                    target_offset + offset,
+                    chunk_size,
+                    copy,
+                    graphics,
+                    false,
+                    final
+                );
             }
             else
             {
@@ -567,10 +586,10 @@ namespace lux::render::vulkan
                     *image,
                     *page,
                     *region,
-                    clone.get(),
+                    clone,
                     row,
                     rows,
-                    !ticket,
+                    !submitted_copy,
                     copy,
                     graphics,
                     false,
@@ -592,12 +611,7 @@ namespace lux::render::vulkan
             {
                 co_return failure(submitted.error());
             }
-            accepted.merge(*submitted);
-            if (!ticket && clone_use)
-            {
-                clone_use->merge(*submitted);
-            }
-            ticket = *submitted;
+            submitted_copy = true;
             if (timestamp)
             {
                 page->markMeasurement(*this, timestamp_bits);
@@ -608,7 +622,7 @@ namespace lux::render::vulkan
                 break;
             }
             // Reuse only after actual Copy completion. On exit the page moves to the unique retirement facility.
-            auto completed = co_await copy.whenComplete(*ticket);
+            auto completed = co_await copy.whenIdle();
             if (!completed)
             {
                 co_return failure(completed.error());
@@ -643,12 +657,7 @@ namespace lux::render::vulkan
                 {
                     co_return failure(available.error());
                 }
-                const auto pending = graphics.oldestPending();
-                if (!pending)
-                {
-                    co_return failure(available.error());
-                }
-                auto completed = co_await graphics.whenComplete(*pending);
+                auto completed = co_await graphics.whenAvailable();
                 if (!completed)
                 {
                     co_return failure(completed.error());
@@ -661,12 +670,10 @@ namespace lux::render::vulkan
             const auto recording_started = UploadClock::now();
             if (buffer)
             {
-                batch->retain(buffer);
                 recordBuffer(batch->native(), *buffer, *page, 0, 0, copy, graphics, true, true);
             }
             else
             {
-                batch->retain(image);
                 recordImage(
                     batch->native(),
                     *image,
@@ -682,15 +689,13 @@ namespace lux::render::vulkan
                     true
                 );
             }
-            const SubmissionWait wait{*ticket, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT};
-            auto submitted = std::move(*batch).submit(std::span(&wait, 1));
+            auto submitted = std::move(*batch).submitAfter(copy, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
             stats.owner_ns += elapsed(recording_started);
             if (!submitted)
             {
                 co_return failure(submitted.error());
             }
-            accepted.merge(*submitted);
         }
-        co_return accepted;
+        co_return RenderResult<void>{};
     }
 } // namespace lux::render::vulkan

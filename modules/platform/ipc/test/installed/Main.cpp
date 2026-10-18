@@ -1,7 +1,7 @@
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <vector>
 #ifdef IPC_PROTOCOL_CONSUMER
-#include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/render/commands/Command.hpp>
 #endif
 using namespace lux::platform::ipc;
 int main()

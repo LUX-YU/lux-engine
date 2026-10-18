@@ -1,13 +1,6 @@
 #include "ServerImpl.hpp"
 #include <exec/variant_sender.hpp>
 
-#ifdef LUX_RUNTIME_EFFECT_TEST_SEAM
-namespace lux::render::runtime_cpu_test
-{
-    void effectAdopted() noexcept;
-}
-#endif
-
 namespace lux::render
 {
     static RenderResult<RenderEffect> compileEffect(
@@ -151,7 +144,7 @@ namespace lux::render
         {
             return cxx::unexpected(compiled.error());
         }
-        return RenderEffect{std::make_shared<const vulkan::CompiledGraph>(std::move(*compiled)), std::move(arguments)};
+        return RenderEffect{std::make_unique<vulkan::CompiledGraph>(std::move(*compiled)), std::move(arguments)};
     }
 
     auto RenderServer::Impl::createEffect(CreateEffect::Request&& input) noexcept
@@ -203,9 +196,6 @@ namespace lux::render
                                    {
                                        return cxx::unexpected(RenderError{kCommandCancelled});
                                    }
-#ifdef LUX_RUNTIME_EFFECT_TEST_SEAM
-                                   runtime_cpu_test::effectAdopted();
-#endif
                                    const auto effect = server->effects.emplace(std::move(*candidate));
                                    ++server->compiled_graphs;
                                    return EffectCreated{effect};
@@ -221,7 +211,6 @@ namespace lux::render
     void RenderServer::Impl::installAsyncBuiltins() noexcept
     {
         addBuiltin<CreateEffect, &Impl::createEffect>();
-        installReadbackCommand();
     }
 
     void RenderServer::Impl::removeEffect(
@@ -243,6 +232,12 @@ namespace lux::render
                 output_response = cxx::unexpected(result.error());
                 return;
             }
+        }
+        auto retirement = device->retirement().reserve();
+        if (auto retired = device->retirement().retire(retirement, effect->code); !retired)
+        {
+            output_response = cxx::unexpected(retired.error());
+            return;
         }
         effects.erase(input->effect);
         output_response = Ack{};

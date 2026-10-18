@@ -1,9 +1,10 @@
 #include "ImageFormat.hpp"
 #include "LayoutPlan.hpp"
-#include "Native.hpp"
 #include "Shader.hpp"
 #include <lux/engine/gapi/vk/Pipeline.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/native/vulkan/Error.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 
 #include <algorithm>
@@ -22,15 +23,15 @@ namespace lux::render::vulkan
         }
         for (auto pipeline : pipelines_)
         {
-            LUX_DESTROY("pipeline", vkDestroyPipeline(device_, pipeline, nullptr));
+            vkDestroyPipeline(device_, pipeline, nullptr);
         }
         if (layout_)
         {
-            LUX_DESTROY("pipeline_layout", vkDestroyPipelineLayout(device_, layout_, nullptr));
+            vkDestroyPipelineLayout(device_, layout_, nullptr);
         }
         for (const auto layout : descriptor_layouts_)
         {
-            LUX_DESTROY("shader_layout", vkDestroyDescriptorSetLayout(device_, layout, nullptr));
+            vkDestroyDescriptorSetLayout(device_, layout, nullptr);
         }
     }
 
@@ -38,7 +39,7 @@ namespace lux::render::vulkan
         : descriptor_plan_(std::move(other.descriptor_plan_)), device_(std::exchange(other.device_, VK_NULL_HANDLE)),
           target_(other.target_), layout_(other.layout_), resources_(std::move(other.resources_)),
           storage_groups_(std::move(other.storage_groups_)), passes_(std::move(other.passes_)),
-          host_barriers_(std::move(other.host_barriers_)), shader_identities_(std::move(other.shader_identities_)),
+          pass_indices_(std::move(other.pass_indices_)), shader_identities_(std::move(other.shader_identities_)),
           pipelines_(std::move(other.pipelines_)), descriptor_layouts_(std::move(other.descriptor_layouts_)),
           output_(other.output_)
     {
@@ -46,7 +47,26 @@ namespace lux::render::vulkan
 
     bool CompiledGraph::compatible(const TargetDesc& target) const noexcept
     {
-        return target.kind == target_.kind && target.format == target_.format && target.samples == target_.samples;
+        const bool same_type =
+            target.kind == target_.kind && target.format == target_.format && target.samples == target_.samples;
+        if (!same_type)
+        {
+            return false;
+        }
+        const bool resized = target.width != target_.width || target.height != target_.height;
+        if (resized)
+        {
+            for (const auto& pass : passes_)
+            {
+                // An explicit image-to-buffer Copy retains its declared byte extent. There is no
+                // implicit readback allocation to resize behind the author's resource description.
+                if (pass.recipe == ERecipe::COPY_IMAGE_BUFFER && resources_[pass.source].target_sized)
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     namespace
@@ -438,10 +458,6 @@ namespace lux::render::vulkan
         for (const auto& output : graph.outputs())
         {
             auto& plan = result.resources_[output.version.resource.index];
-            if (std::holds_alternative<GraphBufferDesc>(plan.description))
-            {
-                plan.readback = true;
-            }
             if (!output.target)
             {
                 continue;
@@ -518,7 +534,7 @@ namespace lux::render::vulkan
             {
                 return cxx::unexpected(capacity.error());
             }
-            auto layout = createDescriptorLayout(device, layout_plan.shared_bindings, *capacity, "shader_layout");
+            auto layout = createDescriptorLayout(device, layout_plan.shared_bindings, *capacity);
             if (!layout)
             {
                 return cxx::unexpected(layout.error());
@@ -527,7 +543,7 @@ namespace lux::render::vulkan
         }
         if (!layout_plan.private_bindings.empty())
         {
-            auto layout = createDescriptorLayout(device, layout_plan.private_bindings, 0, "shader_layout");
+            auto layout = createDescriptorLayout(device, layout_plan.private_bindings, 0);
             if (!layout)
             {
                 return cxx::unexpected(layout.error());
@@ -761,7 +777,7 @@ namespace lux::render::vulkan
                     info.setLayoutCount = std::uint32_t(result.descriptor_layouts_.size());
                     info.pSetLayouts = result.descriptor_layouts_.data();
                     gapi::vk::PipelineLayout layout;
-                    const auto created = LUX_NATIVE("pipeline_layout", layout.tryCreate(device, info));
+                    const auto created = layout.tryCreate(device, info);
                     if (created != VK_SUCCESS)
                     {
                         return cxx::unexpected(nativeError(created));
@@ -845,8 +861,6 @@ namespace lux::render::vulkan
                         return cxx::unexpected(RenderError{kInvalidArgument});
                     }
                     compiled.recipe = ERecipe::COPY_IMAGE_BUFFER;
-                    destination.target_sized = source.target_sized;
-                    destination.target_pixel_bytes = imageFormat(image->format).bytes;
                 }
                 else
                 {
@@ -857,6 +871,11 @@ namespace lux::render::vulkan
                     compiled.recipe = ERecipe::COPY_BUFFER;
                 }
             }
+            if (result.pass_indices_.size() <= id.index)
+            {
+                result.pass_indices_.resize(std::size_t(id.index) + 1, kGraphInvalidIndex);
+            }
+            result.pass_indices_[id.index] = static_cast<std::uint32_t>(result.passes_.size());
             result.passes_.push_back(std::move(compiled));
         }
         // Lower the fixed legal execution order to static record decisions. No Pass reordering.
@@ -924,18 +943,6 @@ namespace lux::render::vulkan
                     return cxx::unexpected(RenderError{kUnsupported});
                 }
             }
-            if (!used[i] || !resource.readback)
-            {
-                continue;
-            }
-            VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
-            barrier.srcStageMask = previous[i].stage;
-            barrier.srcAccessMask = previous[i].access;
-            barrier.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
-            barrier.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
-            barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.size = VK_WHOLE_SIZE;
-            result.host_barriers_.push_back({i, barrier});
         }
         return result;
     }

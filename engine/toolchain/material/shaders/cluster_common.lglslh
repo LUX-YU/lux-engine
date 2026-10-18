@@ -1,0 +1,43 @@
+#ifndef CLUSTER_COMMON_GLSL
+#define CLUSTER_COMMON_GLSL
+// =========================================================================
+//  cluster_common.lglslh — the clustered-lighting parameter block, shared by
+//  the four cluster compute passes and the deferred lighting fragment shader.
+//
+//  Must match C++ ClusterParamsGPU in
+//  renderer/features/deferred/DeferredLightingFeature.hpp (208 B, std140),
+//  which is pinned by static_assert(sizeof(ClusterParamsGPU) == 208).
+//
+//  Why FIELDS-as-a-macro rather than a struct type (the shape view_common.glsl
+//  uses): the five consumers wrap these fields in a UBO block at DIFFERENT
+//  set/binding slots and under different instance names (uParams in the compute
+//  passes, uClusterParams in the fragment shader), so the block itself has to
+//  stay local — same reason view_common.glsl leaves the `uViews` declaration to
+//  each shader. But unlike ViewGpuData, these fields are the block's members
+//  directly, not an array element: introducing a named struct member would
+//  change every accessor from uParams.grid to uParams.p.grid and change the
+//  emitted SPIR-V type graph. Textual expansion keeps both untouched.
+//
+//  Usage:
+//      #include "cluster_common.glsl"
+//      layout(set = 0, binding = 0, std140) uniform ClusterParamsUBO {
+//          LUX_CLUSTER_PARAMS_FIELDS
+//      } uParams;
+//
+//  ⚠️ 与 view_common.glsl 同款告警:C++↔GLSL 之间没有任何自动校验。
+//  改 ClusterParamsGPU 时这里必须同步改,反之亦然。
+// =========================================================================
+
+/// view/proj: the clustering camera; viewport: width, height, near, far;
+/// grid: x, y, z, enable_clustered;
+/// limits: cluster_count, max_indices, point_count, spot_count.
+#define LUX_CLUSTER_PARAMS_FIELDS \
+    mat4  view;                   \
+    mat4  proj;                   \
+    vec4  viewport;               \
+    uvec4 grid;                   \
+    uvec4 limits;                 \
+    ivec4 camera_page;            \
+    vec4  camera_local_page_size;
+
+#endif // CLUSTER_COMMON_GLSL

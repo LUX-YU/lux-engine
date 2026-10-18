@@ -2,12 +2,14 @@
 
 #include <lux/engine/render/graph/Analysis.hpp>
 #include <lux/engine/render/graph/Program.hpp>
-#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
+#include <memory>
+#include <vulkan/vulkan.h>
 
 namespace lux::render::vulkan
 {
     struct LayoutPlan;
+    class DeviceSession;
 
     struct NativeResourcePlan final
     {
@@ -17,9 +19,7 @@ namespace lux::render::vulkan
         std::optional<StorageRequirement> storage;
         VkImageUsageFlags image_usage = 0;
         VkBufferUsageFlags buffer_usage = 0;
-        bool readback = false;
         bool target_sized = false;
-        std::uint32_t target_pixel_bytes = 0; // Explicit target readback Buffer stride, not every Buffer.
     };
 
     enum class ERecipe : std::uint8_t
@@ -85,7 +85,7 @@ namespace lux::render::vulkan
         std::uint32_t layout_program = kGraphInvalidIndex; // cold LayoutPlan entry, not a second graph
     };
 
-    // The Effect owns this move-only immutable result; execution contexts borrow/pin that one result.
+    // The Effect owns this immutable result; execution contexts borrow it within the Effect lifetime.
     class CompiledGraph final
     {
     public:
@@ -125,11 +125,6 @@ namespace lux::render::vulkan
             return passes_;
         }
 
-        [[nodiscard]] std::span<const BufferBarrier> hostBarriers() const noexcept
-        {
-            return host_barriers_;
-        }
-
         [[nodiscard]] std::uint32_t output() const noexcept
         {
             return output_;
@@ -150,7 +145,7 @@ namespace lux::render::vulkan
         std::vector<NativeResourcePlan> resources_;
         StorageGroups<std::uint32_t> storage_groups_;
         std::vector<CompiledPass> passes_;
-        std::vector<BufferBarrier> host_barriers_;
+        std::vector<std::uint32_t> pass_indices_;
 
         struct PipelineIdentity final
         {

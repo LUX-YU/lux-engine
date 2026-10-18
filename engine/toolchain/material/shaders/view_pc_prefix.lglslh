@@ -1,0 +1,35 @@
+#ifndef VIEW_PC_PREFIX_GLSL
+#define VIEW_PC_PREFIX_GLSL
+// =========================================================================
+//  view_pc_prefix.lglslh — the 8-byte push-constant prefix that every
+//  view-scoped shader starts with.
+//
+//  Engine-wide invariant: the recorder writes {scene_index, view_index} at
+//  push-constant offset 0, and a feature's own push constants start at
+//  offset 8. The C++ half of the same contract is ViewPushPrefix /
+//  kViewPushPrefixSize in graph/PassRecordContext.hpp.
+//
+//  Why a MACRO and not a struct (the shape view_common.glsl uses):
+//  a nested `ViewPcPrefix prefix;` member would change the accessor spelling
+//  to uPC.prefix.scene_index in every shader body, and it would change the
+//  emitted SPIR-V type graph. Textual expansion keeps the generated code
+//  byte-identical while collapsing 19 hand-copies into one declaration —
+//  which is the whole point: this was a silent-corruption hazard, not a
+//  line-count one. Get the prefix wrong in ONE shader and there is no
+//  validation error; the feature's own push constants simply read shifted.
+//
+//  Usage — the prefix always comes FIRST in the block, feature fields after:
+//      #include "view_pc_prefix.glsl"
+//      layout(push_constant) uniform GridPC {
+//          LUX_VIEW_PC_PREFIX      // uint scene_index (0); uint view_index (4)
+//          float planeY;           // ...feature fields start at offset 8
+//      } uPC;
+//
+//  ⚠️ 与 view_common.glsl 同款告警:C++↔GLSL 之间没有任何自动校验。
+//  改 ViewPushPrefix 时这里必须同步改,反之亦然。
+// =========================================================================
+
+/// scene_index → SceneGlobalBuffer slot; view_index → ViewBuffer slot.
+#define LUX_VIEW_PC_PREFIX uint scene_index; uint view_index;
+
+#endif // VIEW_PC_PREFIX_GLSL

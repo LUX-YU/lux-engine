@@ -5,10 +5,11 @@
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
+#include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
+#include <lux/engine/render/resource/StorageSet.hpp>
 
 namespace lux::render::vulkan
 {
-    class ReadbackOperation;
 
     class ExecutionContext final
     {
@@ -30,11 +31,6 @@ namespace lux::render::vulkan
         [[nodiscard]] const TargetDesc& target() const noexcept
         {
             return target_;
-        }
-
-        [[nodiscard]] std::optional<SubmissionTicket> lastUse() const noexcept
-        {
-            return last_use_;
         }
 
         [[nodiscard]] RenderResult<void> setContextParameters(std::span<const std::byte> bytes) noexcept;
@@ -65,22 +61,6 @@ namespace lux::render::vulkan
             return progress_;
         }
 
-        [[nodiscard]] RenderResult<bool> completed() noexcept;
-        [[nodiscard]] RenderResult<std::vector<std::byte>> readback(
-            std::uint32_t resource = kGraphInvalidIndex
-        ) noexcept;
-
-        // Zero means no such explicit exported readback buffer. Drawing does not require one.
-        [[nodiscard]] std::size_t readbackBytes(std::uint32_t resource = kGraphInvalidIndex) const noexcept
-        {
-            if (resource == kGraphInvalidIndex)
-            {
-                resource = readback_;
-            }
-            const bool is_readback = resource < bindings_.size() && code_->resources()[resource].readback;
-            return is_readback && bindings_[resource].buffer ? bindings_[resource].buffer->size() : 0;
-        }
-
         [[nodiscard]] StorageSet& attachmentStorages() noexcept
         {
             return storages_;
@@ -101,20 +81,17 @@ namespace lux::render::vulkan
         }
 
     private:
-        friend struct NativeMemoryAudit;
         friend class DeviceSession;
-        friend class ReadbackOperation;
-        void cancelReadbacks() noexcept;
         void withdraw() noexcept;
         [[nodiscard]] RenderResult<void> prepareDescriptors() noexcept;
         void rebind() noexcept;
-        ReadbackOperation* readbacks_ = nullptr;
 
         struct Binding final
         {
             Image* image = nullptr;
             VkImageView view{};
             Buffer* buffer = nullptr;
+            VkDeviceSize buffer_offset = 0;
         };
 
         struct Pass final
@@ -123,7 +100,7 @@ namespace lux::render::vulkan
             std::vector<VkImageMemoryBarrier2> images;
             std::vector<VkBufferMemoryBarrier2> buffers;
             std::vector<VkDescriptorSet> descriptors;
-            std::array<VkDescriptorSet, 2> private_descriptors{};
+            VkDescriptorSet private_descriptors = VK_NULL_HANDLE;
             std::vector<std::byte> parameters;
 
             struct ParameterCopy final
@@ -138,15 +115,15 @@ namespace lux::render::vulkan
         ExecutionContext(
             DeviceSession& owner,
             SubmissionQueue& queue,
-            std::shared_ptr<const CompiledGraph> code,
+            const CompiledGraph& code,
             TargetDesc target
         ) noexcept;
         DeviceSession* owner_;
         SubmissionQueue* queue_;
         struct FrameResources;
-        struct PreparedBindings;
-        std::shared_ptr<FrameResources> frame_resources_;
-        std::shared_ptr<const PreparedBindings> prepared_;
+        std::unique_ptr<FrameResources> frame_resources_;
+        RetirementReservation retirement_;
+        bool bindings_dirty_ = false;
         const CompiledGraph* code_;
         TargetDesc target_;
         RasterViewport viewport_;
@@ -155,24 +132,18 @@ namespace lux::render::vulkan
         struct StorageUse final
         {
             StorageId storage_id;
-            std::shared_ptr<void> storage_reference;
             PreparedStorageBinding binding;
             std::uint32_t resource;
         };
 
         StorageSet storages_;
         std::vector<StorageUse> storage_uses_;
+        std::vector<std::uint32_t> pending_updates_;
 
         std::vector<Pass> passes_;
         std::vector<std::byte> context_values_;
         std::span<const std::byte> context_view_; // Stable range after prepare, used by compiled parameter copies.
 
-        unsigned descriptor_bank_ = 0;
-        unsigned submitted_bank_ = 0;
-        std::vector<VkBufferMemoryBarrier2> host_barriers_;
-        std::optional<SubmissionTicket> last_use_;
         ExecutionProgress progress_;
-        std::uint32_t readback_ = kGraphInvalidIndex;
-        std::uint32_t readers_ = 0;
     };
 } // namespace lux::render::vulkan

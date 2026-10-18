@@ -1,4 +1,4 @@
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/resource/description/cmake/ShaderMetadata.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/resource/description/cmake/ValueTypes.cmake")
 
 find_package(spirv_cross_core CONFIG REQUIRED)
 
@@ -31,7 +31,7 @@ target_include_directories(
 target_link_libraries(
     toolchain_shader_reflection
     PRIVATE
-        lux::engine::resource::shader_metadata
+        lux::engine::resource::description_types
         spirv-cross-core
         lux::cxx::compile_time
         "${LUX_SPIRV_TOOLS_SHARED}"
@@ -54,13 +54,13 @@ target_link_libraries(
     toolchain_shader_emitter
     PUBLIC
         lux::cxx::compile_time
-        lux::engine::resource::shader_metadata
+        lux::engine::resource::description_types
     PRIVATE lux::cxx::core
 )
 component_add_transitive_commands(
     toolchain_shader_emitter
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time core)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS shader_metadata)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS description_types)"
 )
 
 add_executable(
@@ -96,6 +96,6 @@ if(BUILD_TESTING)
 
         target_include_directories(toolchain_shader_header_${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-        target_link_libraries(toolchain_shader_header_${name} PRIVATE shader_metadata lux::cxx::compile_time)
+        target_link_libraries(toolchain_shader_header_${name} PRIVATE description_types lux::cxx::compile_time)
     endforeach()
 endif()

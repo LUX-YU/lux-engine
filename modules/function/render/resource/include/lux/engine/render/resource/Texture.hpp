@@ -2,8 +2,8 @@
 
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/description/TextureInfo.hpp>
+#include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/data/Payload.hpp>
-#include <lux/engine/render/protocol/Protocol.hpp>
 #include <lux/engine/render/resource/Storage.hpp>
 
 namespace lux::render

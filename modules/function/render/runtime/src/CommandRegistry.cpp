@@ -120,7 +120,7 @@ namespace lux::render::runtime_detail
         const auto& entry = **handlers_.find(found->second);
         if (entry.type != type)
         {
-            return cxx::unexpected(RenderError{kProtocolContract});
+            return cxx::unexpected(RenderError{kCommandContract});
         }
         return found->second;
     }

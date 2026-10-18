@@ -1,8 +1,8 @@
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 
-#include "Native.hpp"
 #include <algorithm>
 #include <cstring>
+#include <lux/engine/render/native/vulkan/Error.hpp>
 #include <utility>
 #include <vk_mem_alloc.h>
 
@@ -41,13 +41,13 @@ namespace lux::render::vulkan
     {
         if (buffer_)
         {
-            LUX_DESTROY("buffer", vmaDestroyBuffer(allocator_->native(), buffer_, allocation_));
+            vmaDestroyBuffer(allocator_->native(), buffer_, allocation_);
         }
     }
 
     ImageMemory::~ImageMemory() noexcept
     {
-        LUX_DESTROY("image_memory", vmaFreeMemory(allocator_->native(), allocation_));
+        vmaFreeMemory(allocator_->native(), allocation_);
     }
 
     Image::~Image() noexcept
@@ -77,13 +77,13 @@ namespace lux::render::vulkan
     {
         if (image_)
         {
-            LUX_DESTROY("image", vkDestroyImage(memory_->allocator_->device(), image_, nullptr));
+            vkDestroyImage(memory_->allocator_->device(), image_, nullptr);
         }
         // Release the image before its allocation; aliases only share the actual memory.
         memory_.reset();
     }
 
-    RenderResult<std::shared_ptr<Buffer>> VulkanAllocator::createBuffer(
+    RenderResult<std::unique_ptr<Buffer>> VulkanAllocator::createBuffer(
         VkDeviceSize size,
         VkBufferUsageFlags usage,
         EMemoryAccess access,
@@ -125,22 +125,21 @@ namespace lux::render::vulkan
         VkBuffer buffer{};
         VmaAllocation allocation{};
         VmaAllocationInfo mapped{};
-        const auto result =
-            LUX_NATIVE("buffer", vmaCreateBuffer(native(), &info, &memory, &buffer, &allocation, &mapped));
+        const auto result = vmaCreateBuffer(native(), &info, &memory, &buffer, &allocation, &mapped);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
         }
         if (access != EMemoryAccess::DEVICE)
         {
-            const auto mapping = LUX_NATIVE("mapping", mapped.pMappedData ? VK_SUCCESS : VK_ERROR_MEMORY_MAP_FAILED);
+            const auto mapping = mapped.pMappedData ? VK_SUCCESS : VK_ERROR_MEMORY_MAP_FAILED;
             if (mapping != VK_SUCCESS)
             {
-                LUX_DESTROY("buffer", vmaDestroyBuffer(native(), buffer, allocation));
+                vmaDestroyBuffer(native(), buffer, allocation);
                 return cxx::unexpected(nativeError(mapping));
             }
         }
-        return std::shared_ptr<Buffer>(new Buffer(*this, buffer, allocation, mapped.pMappedData, size, usage, access));
+        return std::unique_ptr<Buffer>(new Buffer(*this, buffer, allocation, mapped.pMappedData, size, usage, access));
     }
 
     RenderResult<void> Buffer::write(VkDeviceSize offset, std::span<const std::byte> bytes) noexcept
@@ -156,8 +155,7 @@ namespace lux::render::vulkan
             return {};
         }
         std::memcpy(static_cast<std::byte*>(mapped_) + offset, bytes.data(), bytes.size());
-        const auto result =
-            LUX_NATIVE("flush", vmaFlushAllocation(allocator_->native(), allocation_, offset, bytes.size()));
+        const auto result = vmaFlushAllocation(allocator_->native(), allocation_, offset, bytes.size());
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -177,7 +175,7 @@ namespace lux::render::vulkan
         {
             return {};
         }
-        const auto result = LUX_NATIVE("flush", vmaFlushAllocation(allocator_->native(), allocation_, offset, size));
+        const auto result = vmaFlushAllocation(allocator_->native(), allocation_, offset, size);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -197,8 +195,7 @@ namespace lux::render::vulkan
         {
             return {};
         }
-        const auto result =
-            LUX_NATIVE("invalidate", vmaInvalidateAllocation(allocator_->native(), allocation_, offset, bytes.size()));
+        const auto result = vmaInvalidateAllocation(allocator_->native(), allocation_, offset, bytes.size());
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
@@ -207,7 +204,7 @@ namespace lux::render::vulkan
         return {};
     }
 
-    RenderResult<std::shared_ptr<Image>> VulkanAllocator::createImage(const ImageDescription& description) noexcept
+    RenderResult<std::unique_ptr<Image>> VulkanAllocator::createImage(const ImageDescription& description) noexcept
     {
         const auto extent = description.extent;
         const auto format = description.format;
@@ -270,17 +267,16 @@ namespace lux::render::vulkan
         memory.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         VkImage image{};
         VmaAllocation allocation{};
-        const auto result = LUX_NATIVE("image", vmaCreateImage(native(), &info, &memory, &image, &allocation, nullptr));
+        const auto result = vmaCreateImage(native(), &info, &memory, &image, &allocation, nullptr);
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
         }
-        LUX_RECORD("image_memory", (void)0);
         auto backing = std::make_shared<ImageMemory>(*this, allocation);
-        return std::shared_ptr<Image>(new Image(image, std::move(backing), description));
+        return std::unique_ptr<Image>(new Image(image, std::move(backing), description));
     }
 
-    RenderResult<std::shared_ptr<Image>> VulkanAllocator::aliasImage(const Image& source) noexcept
+    RenderResult<std::unique_ptr<Image>> VulkanAllocator::aliasImage(const Image& source) noexcept
     {
         if (!source.image_)
         {
@@ -308,7 +304,7 @@ namespace lux::render::vulkan
         info.usage = description.usage;
         info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         VkImage image{};
-        auto created = LUX_NATIVE("image_alias", vkCreateImage(device(), &info, nullptr, &image));
+        auto created = vkCreateImage(device(), &info, nullptr, &image);
         if (created != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(created));
@@ -327,17 +323,16 @@ namespace lux::render::vulkan
                                   binding.offset % required.alignment != 0;
         if (incompatible)
         {
-            LUX_DESTROY("image_alias", vkDestroyImage(device(), image, nullptr));
+            vkDestroyImage(device(), image, nullptr);
             return cxx::unexpected(RenderError{kUnsupported});
         }
-        created = LUX_NATIVE("image_alias_bind", vmaBindImageMemory(native(), source.memory_->allocation_, image));
+        created = vmaBindImageMemory(native(), source.memory_->allocation_, image);
         if (created != VK_SUCCESS)
         {
-            LUX_DESTROY("image_alias", vkDestroyImage(device(), image, nullptr));
+            vkDestroyImage(device(), image, nullptr);
             return cxx::unexpected(nativeError(created));
         }
-        LUX_RECORD("image", (void)0);
-        return std::shared_ptr<Image>(new Image(image, source.memory_, description));
+        return std::unique_ptr<Image>(new Image(image, source.memory_, description));
     }
 
     BufferMemoryBinding Buffer::memoryBinding() const noexcept

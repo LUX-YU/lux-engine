@@ -3,9 +3,9 @@
 #include <lux/engine/gapi/vk/LogicalDevice.hpp>
 #include <lux/engine/gapi/vk/PhysicalDevice.hpp>
 
+#include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
-#include <lux/engine/render/resource/AsyncWork.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
@@ -38,14 +38,13 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> collect() noexcept;
         // Explicit RenderThread safe point, separate from polling and resource admission/collection.
         void dispatchCompletions() noexcept;
-        [[nodiscard]] RenderResult<ExecutionContext*> prepare(
-            std::shared_ptr<const CompiledGraph> code,
+        [[nodiscard]] RenderResult<std::unique_ptr<ExecutionContext>> prepare(
+            const CompiledGraph& code,
             const TargetDesc& target,
             StorageSet* scene = nullptr,
             StorageSet* view = nullptr,
             std::span<const StorageArgument> arguments = {}
         ) noexcept;
-        [[nodiscard]] RenderResult<void> release(ExecutionContext* context) noexcept;
 
         [[nodiscard]] SubmissionQueue& queue(EQueueRole role = EQueueRole::GRAPHICS) noexcept
         {
@@ -58,7 +57,7 @@ namespace lux::render::vulkan
         }
 
         [[nodiscard]] RenderResult<std::uint32_t> sampledImageCapacity() const noexcept;
-        [[nodiscard]] RenderResult<std::shared_ptr<DescriptorArray>> sampledImageArray() noexcept;
+        [[nodiscard]] RenderResult<DescriptorArray*> sampledImageArray() noexcept;
 
         [[nodiscard]] VulkanAllocator& allocator() noexcept
         {
@@ -85,8 +84,6 @@ namespace lux::render::vulkan
             return *physical_queues_[queue_roles_[static_cast<std::size_t>(role)]];
         }
 
-        // Boundary lookup compares stable owner identity before inspecting the ticket's queue.
-        [[nodiscard]] SubmissionQueue* queueFor(SubmissionTicket ticket) noexcept;
         [[nodiscard]] bool deviceLost() const noexcept;
         [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&, execution::CpuScheduler) noexcept;
         [[nodiscard]] TransferStats uploadStats() const noexcept;
@@ -112,7 +109,6 @@ namespace lux::render::vulkan
         }
 
     private:
-        friend struct NativeMemoryAudit;
         friend class UploadContext;
         friend class ExecutionContext;
         DeviceSession(
@@ -128,13 +124,10 @@ namespace lux::render::vulkan
         std::vector<std::unique_ptr<SubmissionQueue>> physical_queues_;
         std::array<std::uint8_t, 3> queue_roles_{};
         std::unique_ptr<RetirementQueue> retirement_;
-        // CPU Context owners; accepted batches independently retain their physical resource sets.
-        // Member destruction is explicitly ordered in the destructor.
-        std::vector<std::unique_ptr<ExecutionContext>> contexts_;
         std::unique_ptr<StagingArena> staging_arena_;
         std::unique_ptr<UploadContext> uploads_;
         ResourceRegistry resources_;
         StorageSet global_storages_;
-        std::weak_ptr<DescriptorArray> sampled_images_;
+        std::unique_ptr<DescriptorArray> sampled_images_;
     };
 } // namespace lux::render::vulkan

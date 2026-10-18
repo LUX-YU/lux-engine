@@ -58,7 +58,7 @@ namespace lux::render
             const auto* program = config.material.program.borrow<MaterialProgram>();
             const bool has_group = config.instances.group.has_value();
             const bool is_invalid_group = !has_group || !config.instances.record_count ||
-                                          config.instances.role != EInstanceBinding::MATRICES ||
+                                          config.instances.role != EMeshInstanceBinding::MATRICES ||
                                           (has_group && (config.instances.group->mesh != config.mesh.mesh ||
                                                          config.instances.group->material != config.material.material ||
                                                          config.instances.group->submesh >= mesh.submeshes.size()));
@@ -108,14 +108,14 @@ namespace lux::render
                 claims.storage.scene,
                 "matrices",
                 std::uint64_t(config.instances.record_count) * 64,
-                kInstanceStorageType,
+                kMeshInstanceStorageType,
                 config.instance_storage
             );
             buffer(
                 claims.storage.scene,
                 "members",
                 20 + std::uint64_t(config.instances.record_count) * 4,
-                kInstanceStorageType,
+                kMeshInstanceStorageType,
                 config.instance_storage
             );
             const GraphImageDesc color{config.target.width, config.target.height, 1, 1, config.target.format};
@@ -128,7 +128,7 @@ namespace lux::render
                 buffer(
                     claims.storage.global,
                     "material",
-                    materialParameterBlock().size,
+                    materialParameterBlock(*program).size,
                     kMaterialStorageType,
                     config.material_storage
                 );
@@ -203,34 +203,6 @@ namespace lux::render
             if (auto output = builder.exportOutput({resource("depth")}); !output)
             {
                 return output;
-            }
-            if (config.readback)
-            {
-                for (const auto* local : {"color", "depth"})
-                {
-                    auto output = builder.declareResource(
-                        {key(std::string(local) + ".pixels"),
-                         GraphBufferDesc{std::uint64_t(config.target.width) * config.target.height * 4}}
-                    );
-                    if (!output)
-                    {
-                        return cxx::unexpected(output.error());
-                    }
-                    if (auto copied = builder.addPass(
-                            {key(std::string(local) + ".read"),
-                             EGraphPassKind::TRANSFER,
-                             {{resource(local), {}, EGraphAccess::READ, 0, {}, EGraphUse::TRANSFER_SOURCE},
-                              {{*output, 1}, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::TRANSFER_DESTINATION}}}
-                        );
-                        !copied)
-                    {
-                        return cxx::unexpected(copied.error());
-                    }
-                    if (auto exported = builder.exportOutput({{*output, 1}}); !exported)
-                    {
-                        return exported;
-                    }
-                }
             }
             return {};
         }

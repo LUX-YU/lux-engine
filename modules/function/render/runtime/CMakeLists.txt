@@ -32,6 +32,7 @@ find_package(stdexec CONFIG REQUIRED)
 
 set(LUX_RUNTIME_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderServer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/CommandRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ServerRegistration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ServerScene.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ServerEffect.cpp

@@ -13,9 +13,17 @@ SceneId, ViewId, TargetId and ExecutionContext pointer.
 
 ## Registration and dispatch
 
-CommandRegistry owns the CommandId table and HandlerId owner table. Each Handler
-object is destroyed once; active command routes contain just `{invoke, object}`.
-Cold registration compares complete declarations and installs typed member thunks.
+CommandRegistry owns the CommandId records and stable HandlerId objects. Each command
+has one declaration, a binding array and one selected array index; it does not cache
+a second selected HandlerId or active call. Dispatch resolves CommandId and that index
+directly, copying the selected `{invoke, object}` before invoking the Handler. This
+also permits installation to grow the directory during a Handler call.
+
+Full-name command discovery and Handler type/instance discovery use ordered indices.
+Handler selection uses the ordered, append-only HandlerId bindings and verifies the
+full generation. Individual Handler unloading is not supported; clear removes all
+indices before destroying Handler objects. Built-in control calls remain unselectable.
+Registration compares complete declarations before publishing typed member thunks.
 Clients explicitly query ListCommands/ListCommandBindings and may select a binding.
 Selection affects future dispatch, never an already-started operation.
 

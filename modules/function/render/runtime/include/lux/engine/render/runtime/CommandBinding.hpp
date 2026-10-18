@@ -8,6 +8,7 @@
 
 namespace lux::render::runtime_detail
 {
+    class CommandRegistry;
     struct CommandDispatchContext;
     struct CommandCompletion;
     platform::ipc::IpcMessage& requestMessage(CommandDispatchContext&) noexcept;
@@ -114,6 +115,8 @@ namespace lux::render
         }
 
     private:
+        friend class runtime_detail::CommandRegistry;
+
         struct CompletionEnvironment final
         {
             execution::CompletionPost<RenderError> post;

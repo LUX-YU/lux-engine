@@ -86,12 +86,11 @@ namespace lux::render
         friend struct runtime_detail::ServerBootstrap;
         friend class runtime_detail::CommandRegistry;
 
-        struct HandlerEntry final
+        struct HandlerRecord final
         {
-            HandlerId id;
             CommandValueType type;
             std::string name;
-            std::string key;
+            std::string instance_name;
             std::unique_ptr<void, void (*)(void*) noexcept> object{nullptr, [](void*) noexcept {}};
         };
 
@@ -100,8 +99,8 @@ namespace lux::render
         {
             StorageFactory factory;
             ConfigValue config;
-            HandlerEntry* handler = nullptr;
-            std::unique_ptr<HandlerEntry> owner;
+            HandlerRecord* handler = nullptr;
+            std::unique_ptr<HandlerRecord> owner;
             std::vector<CommandBinding> calls;
             std::vector<CommandId> commands;
         };
@@ -111,32 +110,32 @@ namespace lux::render
             std::span<const StorageInstall> previous) noexcept;
 
         template <class H, class... Args>
-        static std::unique_ptr<HandlerEntry> makeHandler(
+        static std::unique_ptr<HandlerRecord> makeHandler(
             std::string_view key, Args&&... args
         ) noexcept
         {
             static_assert(std::is_nothrow_constructible_v<H, Args...> && std::is_nothrow_destructible_v<H>);
-            auto owner = std::make_unique<HandlerEntry>();
+            auto owner = std::make_unique<HandlerRecord>();
             owner->type = {cxx::typeToken<H>(), sizeof(H), alignof(H)};
             owner->name = H::name;
-            owner->key = key;
+            owner->instance_name = key;
             owner->object = {new H(std::forward<Args>(args)...), [](void* value) noexcept { delete static_cast<H*>(value); }};
             return owner;
         }
 
         [[nodiscard]] RenderResult<HandlerId> findHandler(CommandValueType, std::string_view) const noexcept;
         [[nodiscard]] RenderResult<CommandId> findCommand(const CommandDescriptor&) const noexcept;
-        [[nodiscard]] HandlerEntry* handlerEntry(HandlerId) noexcept;
-        [[nodiscard]] RenderResult<std::vector<CommandId>> prepareHandler(const HandlerEntry&,
+        [[nodiscard]] HandlerRecord* handlerRecord(HandlerId) noexcept;
+        [[nodiscard]] RenderResult<std::vector<CommandId>> prepareHandler(const HandlerRecord&,
             std::span<const CommandBinding>) const noexcept;
-        HandlerId publishHandler(std::unique_ptr<HandlerEntry>, std::span<const CommandBinding>,
+        HandlerId publishHandler(std::unique_ptr<HandlerRecord>, std::span<const CommandBinding>,
             std::vector<CommandId>) noexcept;
         [[nodiscard]] RenderResult<StorageTypeId> prepareStorage(const StorageInstall&, bool ensure) const noexcept;
         [[nodiscard]] RenderResult<StorageTypeId> installStorage(StorageInstall) noexcept;
-        [[nodiscard]] RenderResult<HandlerId> installHandler(std::unique_ptr<HandlerEntry>,
+        [[nodiscard]] RenderResult<HandlerId> installHandler(std::unique_ptr<HandlerRecord>,
             std::span<const CommandBinding>) noexcept;
         [[nodiscard]] RenderResult<FeatureId> installFeature(feature_detail::Implementation,
-            HandlerEntry*, std::unique_ptr<HandlerEntry>,
+            HandlerRecord*, std::unique_ptr<HandlerRecord>,
             std::span<const CommandBinding>,
             std::vector<StorageInstall> dependencies = {}) noexcept;
         struct Impl;

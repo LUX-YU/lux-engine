@@ -83,13 +83,13 @@ namespace lux::render
         {
             response_outbox_.emplaceResponse<RenderError>(route, RenderError{kProtocolContract});
         }
-        else if (received.message().typeHash() != entry->cold->binding.descriptor()->request.type.hash())
+        else if (received.message().typeHash() != entry->description->request.type.hash())
         {
             response_outbox_.emplaceResponse<RenderError>(route, RenderError{kProtocolContract});
         }
-        else if (!entry->active.invoke)
+        else if (!entry->selectedBinding())
         {
-            entry->cold->binding.makeError(response_outbox_.prepare(route), RenderError{kRuntimeUnsupported});
+            entry->make_error(response_outbox_.prepare(route), RenderError{kRuntimeUnsupported});
         }
         else
         {
@@ -101,7 +101,7 @@ namespace lux::render
                 completion_events,
                 completion_publishers
             };
-            const auto active = entry->active;
+            const auto active = entry->selectedBinding()->call;
             active.invoke(active.object, context);
         }
         ++commands;

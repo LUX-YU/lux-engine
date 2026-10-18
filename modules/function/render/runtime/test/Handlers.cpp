@@ -94,6 +94,14 @@ private:
     Counts& counts_;
 };
 
+class BuiltinReplacement final
+{
+public:
+    static constexpr std::string_view name = "test.owner.builtin-replacement";
+    void list(const ListCommands::Request&, ListCommands::Response&) noexcept { std::abort(); }
+    using Bindings = std::tuple<CommandMethod<ListCommands, &BuiltinReplacement::list>>;
+};
+
 class LateHandler final
 {
 public:
@@ -177,7 +185,7 @@ static void verifyInPlaceResponse()
 int main()
 {
     verifyInPlaceResponse();
-    Counts counts, rejected, late_counts;
+    Counts counts, rejected, late_counts, growing_counts;
     auto server = take(createTestServer({"runtime.handlers", true}));
     const auto directory_id = take(server->commandId<ListCommands>());
     check(!directory_id.isNull());
@@ -187,6 +195,16 @@ int main()
     auto second = take(server->emplaceHandler<Handler>("B", counts, 200));
     check(first == duplicate && first != second && counts.created == 2 && counts.destroyed == 0);
     const auto first_command_id = take(server->commandId<First>());
+    std::array<HandlerId, 64> extra_handlers;
+    for (std::size_t i = 0; i < extra_handlers.size(); ++i)
+    {
+        const auto name = std::string("extra-") + std::to_string(i);
+        extra_handlers[i] = take(server->emplaceHandler<Handler>(name, growing_counts, 1000 + unsigned(i)));
+        check(take(server->emplaceHandler<Handler>(name, growing_counts, 999)) == extra_handlers[i]);
+    }
+    check(growing_counts.created == extra_handlers.size());
+    const auto builtin_replacement = server->emplaceHandler<BuiltinReplacement>("");
+    check(!builtin_replacement && builtin_replacement.error().type == kRuntimeUnsupported);
     check(server->commandId<Mismatch>().error().type == kProtocolContract);
     auto invalid = server->emplaceHandler<InvalidHandler>("bad", rejected);
     check(!invalid && invalid.error().type == kProtocolContract);
@@ -207,7 +225,7 @@ int main()
     const auto bound = take(runtime_test::find<First>(*a));
     check(bound == first_command_id);
     const auto bindings = call<ListCommandBindings>(*a, bound);
-    check(bindings.get<ListCommandBindings::Response>()->selected == first && bindings.get<ListCommandBindings::Response>()->handlers.size() == 2);
+    check(bindings.get<ListCommandBindings::Response>()->selected == first && bindings.get<ListCommandBindings::Response>()->handlers.size() == 2 + extra_handlers.size());
     check(call<First>(*a, 7).get<First::Response>() == 107);
     check(call<Second>(*a, 8).get<Second::Response>() == 108);
     check(call<Third>(*a, 9).get<Third::Response>() == 109);
@@ -233,7 +251,7 @@ int main()
     check(!unbound.get<First::Response>() &&
         unbound.get<First::Response>().error().type == kRuntimeUnsupported); // A new supporter does not steal an unbound command.
     check(bool(runtime_test::refresh(*a)) && call<Late>(*a, 9).get<Late::Response>() == 309);
-    check(call<ListCommandBindings>(*a, bound).get<ListCommandBindings::Response>()->handlers.size() == 3);
+    check(call<ListCommandBindings>(*a, bound).get<ListCommandBindings::Response>()->handlers.size() == 3 + extra_handlers.size());
     check(call<SelectCommandBinding>(*a, {bound, second}).get<SelectCommandBinding::Response>().has_value());
 
     // A later Client explicitly discovers the live table, not a startup-only snapshot.
@@ -245,6 +263,9 @@ int main()
     auto bad = call<SelectCommandBinding>(*a, {bound, HandlerId{first.index, first.gen + 1}});
     check(!bad.get<SelectCommandBinding::Response>() && bad.get<SelectCommandBinding::Response>().error().type == kRuntimeIdentity);
     check(call<First>(*a, 13).get<First::Response>() == 213);
+    check(call<SelectCommandBinding>(*a, {bound, extra_handlers.back()}).get<SelectCommandBinding::Response>().has_value());
+    check(call<First>(*a, 1).get<First::Response>() == 1001 + unsigned(extra_handlers.size() - 1));
+    check(call<SelectCommandBinding>(*a, {bound, second}).get<SelectCommandBinding::Response>().has_value());
     check(call<Second>(*a, 14).get<Second::Response>() == 114); // Selection is per command, not per object.
     const auto commands = call<ListCommands>(*a);
     unsigned selected_count = 0;
@@ -257,7 +278,7 @@ int main()
     server->stop();
     thread.join();
     check(bool(run) && server->stats().validation_errors == 0 && counts.destroyed == 2);
-    check(late_counts.destroyed == 1);
+    check(late_counts.destroyed == 1 && growing_counts.destroyed == extra_handlers.size());
     server.reset();
     check(counts.destroyed == 2 && bindings.get<ListCommandBindings::Response>()->handlers[0].instance == "A");
     std::puts("Handler ownership: exact destruction, rollback, FIFO selection, unbind, dynamic install/refresh and late catalog discovery PASS");

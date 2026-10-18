@@ -392,9 +392,9 @@ struct CpuCommands final
 
 int main()
 {
-    std::printf("Route layout: call=%zu/%zu entry=%zu/%zu metadata=%zu request=%zu\n",
-        sizeof(HandlerCall), alignof(HandlerCall), sizeof(runtime_detail::CommandEntry),
-        alignof(runtime_detail::CommandEntry), sizeof(runtime_detail::CommandMetadata), sizeof(runtime_detail::CommandCompletion));
+    std::printf("Route layout: call=%zu/%zu record=%zu/%zu binding=%zu request=%zu\n",
+        sizeof(HandlerCall), alignof(HandlerCall), sizeof(runtime_detail::CommandRecord),
+        alignof(runtime_detail::CommandRecord), sizeof(runtime_detail::HandlerBinding), sizeof(runtime_detail::CommandCompletion));
     auto control = std::make_unique<State>();
     state = control.get();
     lux::render::test::CpuFixture host(2, 128);

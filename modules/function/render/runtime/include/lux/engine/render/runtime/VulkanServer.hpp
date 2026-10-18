@@ -70,13 +70,13 @@ namespace lux::render
             const CommandValueType type{cxx::typeToken<H>(), sizeof(H), alignof(H)};
             auto existing = findHandler(type, handler_key);
             if (!existing) return cxx::unexpected(existing.error());
-            std::unique_ptr<HandlerEntry> owner;
-            auto* entry = existing->isNull() ? nullptr : handlerEntry(*existing);
+            std::unique_ptr<HandlerRecord> owner;
+            auto* entry = existing->isNull() ? nullptr : handlerRecord(*existing);
             if (!entry)
                 for (const auto& dependency : dependencies)
                 {
                     auto* old = dependency.handler;
-                    if (!old || old->type.type.name() != type.type.name() || old->key != handler_key) continue;
+                    if (!old || old->type.type.name() != type.type.name() || old->instance_name != handler_key) continue;
                     if (old->type != type) return cxx::unexpected(RenderError{kProtocolContract});
                     entry = old;
                     break;
@@ -121,12 +121,12 @@ namespace lux::render
             const CommandValueType type{cxx::typeToken<H>(), sizeof(H), alignof(H)};
             auto existing = findHandler(type, key);
             if (!existing) return cxx::unexpected(existing.error());
-            result.handler = existing->isNull() ? nullptr : handlerEntry(*existing);
+            result.handler = existing->isNull() ? nullptr : handlerRecord(*existing);
             if (!result.handler)
                 for (const auto& candidate : previous)
                 {
                     const auto* old = candidate.handler;
-                    if (!old || old->type.type.name() != type.type.name() || old->key != key) continue;
+                    if (!old || old->type.type.name() != type.type.name() || old->instance_name != key) continue;
                     if (old->type != type) return cxx::unexpected(RenderError{kProtocolContract});
                     result.handler = candidate.handler;
                     break;

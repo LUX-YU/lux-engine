@@ -112,8 +112,9 @@ static void stagingLifetime(DeviceSession& session)
         std::memcpy(mapped.data(), source.data(), source.size());
         CHECK(page->buffer().flush(0, source.size()));
         CHECK(!page->buffer().flush(source.size(), 1));
+        auto reservation = session.retirement().reserve();
+        const auto pending_before = session.retirement().pending();
         auto batch = take(queue.begin());
-        batch.retain(page);
         batch.retain(output);
         const VkBufferCopy copy{0, 0, source.size()};
         vkCmdCopyBuffer(batch.native(), page->buffer().native(), output->native(), 1, &copy);
@@ -131,26 +132,28 @@ static void stagingLifetime(DeviceSession& session)
         vkCmdPipelineBarrier2(batch.native(), &dependency);
         hold_completion = true;
         const auto accepted = take(std::move(batch).submit());
-        const std::weak_ptr<StagingPage> retained = page;
-        page.reset();
-        CHECK(queue.poll() && !retained.expired() && arena->available() == 0);
+        SubmissionRequirements use;
+        use.merge(accepted);
+        CHECK(session.retirement().retire(reservation, use, page));
+        CHECK(!page && session.collect() && arena->available() == 0);
+        CHECK(session.retirement().pending() == pending_before + 1);
 
         // A rejected later submission returns only its own page, never the earlier accepted page.
         const auto other_index = other->index();
         {
             auto rejected = take(queue.begin());
-            rejected.retain(other);
-            other.reset();
             fail_submit = 1;
             const auto failure = std::move(rejected).submit();
             CHECK(!failure && failure.error().type == kNativeFailure && fail_submit == 0);
+            other.reset(); // Rejected work has no GPU use and releases directly.
         }
-        CHECK(arena->available() == 1 && !retained.expired());
+        CHECK(arena->available() == 1 && session.retirement().pending() == pending_before + 1);
         auto reused = take(arena->acquire());
         CHECK(reused->index() == other_index && !arena->acquire());
         hold_completion = false;
         CHECK(take(queue.wait(accepted, UINT64_MAX)));
-        CHECK(retained.expired() && arena->available() == 1);
+        CHECK(session.collect());
+        CHECK(session.retirement().pending() == pending_before && arena->available() == 1);
         auto completed = take(arena->acquire());
         CHECK(completed->index() == first_index);
         std::array<std::byte, 256> readback{};

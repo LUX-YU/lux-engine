@@ -141,10 +141,9 @@ namespace
     TexturePublished createTexture(NativeTexture& storage, const SetTexture::Request& input,
         DeviceSession& session, CpuFixture& host)
     {
-        auto prepared = take(lux::render::upload(storage, input));
-        complete(prepared.second, host, session);
-        prepared.second.reset();
-        return prepared.first;
+        auto result = take(runUpload(lux::render::upload(storage, input), host, session));
+        CHECK(session.drain()); // Setup resources are complete before the controlled T1/T2 interval.
+        return result;
     }
 
     void report(std::ofstream& csv, unsigned topology, bool multiple_chunks, std::string_view stage,
@@ -191,7 +190,7 @@ namespace
         options.multiple_queues = topology != 0;
         options.prefer_dedicated_queues = topology == 2;
         auto session = take(DeviceSession::create(bootstrap, options, 8));
-        const std::size_t chunk_bytes = multiple_chunks ? 256 : 1024;
+        const std::size_t chunk_bytes = multiple_chunks ? 256 : 512;
         CHECK(session->configureUploads({chunk_bytes, 1, 65536}, host.cpu()));
         CHECK(configureTextures(*session, 16, 1024 * 1024));
         auto& storage = *textures(*session);
@@ -236,8 +235,8 @@ namespace
         SetTextureRegion::Request patch{published.texture, published.revision,
             {0, 0, 0, 16, 16, 64}, payload(patch_bytes)};
         patch_bytes.reset(); // The real request alone retains the source through all CPU/GPU use.
-        auto replacement = take(lux::render::upload(storage, patch));
-        CHECK(replacement.first.texture == published.texture && replacement.first.revision == 2);
+        // The ID/revision are returned only after adoption. Both cases suspend after the first Copy;
+        // the two-chunk case then publishes, and the four-chunk case cancels before the second Copy.
         const auto destroyed_before = destroyed;
         const auto chunks_before = session->uploadStats().chunks;
         const auto submissions_before = graphics.submitted();
@@ -245,9 +244,9 @@ namespace
         observed_limit = graphics.completed();
         active_timeline = &timeline;
         SecondPreparation cpu_gate;
-        if (multiple_chunks) host.setBeforeWork(&cpu_gate, SecondPreparation::before);
-        WorkCompletion completion;
-        completion.start(replacement.second, host);
+        host.setBeforeWork(&cpu_gate, SecondPreparation::before);
+        UploadCompletion<TexturePublished> completion;
+        completion.start(lux::render::upload(storage, patch), host);
         const auto first_deadline = Clock::now() + std::chrono::seconds(10);
         while (graphics.submitted() == submissions_before)
         {
@@ -278,28 +277,33 @@ namespace
         if (completion.done) timeline.terminal_observed = monotonicNs();
         contains(NativeMemoryAudit::textureRequirements(*context, storage.descriptors()), draw);
 
+        const auto preparation_deadline = Clock::now() + std::chrono::seconds(10);
+        while (!cpu_gate.entered.try_acquire())
+        {
+            (void)host.drain(); // The task returns to its Owner scheduler after the GPU await.
+            CHECK(!completion.done && Clock::now() < preparation_deadline);
+            std::this_thread::yield();
+        }
+        CHECK(cpu_gate.calls.load(std::memory_order_acquire) == 2 && !completion.done);
         if (multiple_chunks)
         {
-            CHECK(cpu_gate.entered.try_acquire_for(std::chrono::seconds(10)));
-            CHECK(cpu_gate.calls.load(std::memory_order_acquire) == 2 && !completion.done);
             CHECK(graphics.submitted() == draw.serial());
             contains(NativeMemoryAudit::textureRequirements(*context, storage.descriptors()), draw);
             report(csv, topology, true, "T1-observed-CPU2-held-T2-preserved", graphics, storage,
                 first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
-            replacement.second.cancel();
+            completion.cancel();
             CHECK(!completion.done && graphics.submitted() == draw.serial());
             cpu_gate.released.release();
             finish(completion, host, *session);
             timeline.terminal_observed = monotonicNs();
             host.setBeforeWork(nullptr, nullptr);
-            CHECK(!completion.result && completion.result.error().type == kWorkStopped);
-            CHECK(!replacement.second.publish());
-            CHECK(timeline.source_destroys == 0 && session->uploadStats().pending_bytes == 1024);
-            report(csv, topology, true, "cancel-terminal-source-and-staging-still-retained", graphics, storage,
-                first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
-            replacement.second.reset();
+            CHECK(!completion.result && completion.result.error().type == kOutcomeUnknown);
+            CHECK(timeline.source_destroys == 0 && session->uploadStats().pending_bytes == 0);
+            // The task has relinquished Source ownership. The caller's original Request still owns it.
+            CHECK(session->collect());
             timeline.staging_lease_released_observed = monotonicNs();
-            CHECK(session->uploadStats().pending_bytes == 0 && timeline.source_destroys == 0);
+            report(csv, topology, true, "cancel-terminal-request-source-retained", graphics, storage,
+                first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
             patch.source = {};
             CHECK(timeline.source_destroys == 1);
             CHECK(graphics.submitted() == draw.serial()); // There must be no T3 hiding the stale T1 overwrite.
@@ -327,26 +331,33 @@ namespace
         }
         else
         {
-            CHECK(completion.done && completion.result);
-            CHECK(replacement.second.publish());
-            timeline.publish_returned = monotonicNs();
-            CHECK(!replacement.second.publish());
-            CHECK(timeline.source_destroys == 0 && session->uploadStats().pending_bytes == 1024);
-            report(csv, topology, false, "T1-terminal-published-source-and-staging-still-retained", graphics, storage,
-                first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
-            replacement.second.reset();
-            timeline.staging_lease_released_observed = monotonicNs();
+            CHECK(graphics.completed() == first.serial() && graphics.completed() < draw.serial());
+            contains(NativeMemoryAudit::textureRequirements(*context, storage.descriptors()), draw);
+            cpu_gate.released.release();
+            finish(completion, host, *session);
+            host.setBeforeWork(nullptr, nullptr);
+            CHECK(completion.result && completion.result->texture == published.texture &&
+                completion.result->revision == 2);
+            timeline.terminal_observed = timeline.publish_returned = monotonicNs();
+            const auto final_copy = *graphics.lastSubmitted();
+            CHECK(final_copy.serial() == draw.serial() + 1);
+            CHECK(session->uploadStats().chunks - chunks_before == 2);
+            CHECK(graphics.completed() < draw.serial());
             CHECK(session->uploadStats().pending_bytes == 0 && timeline.source_destroys == 0);
+            // Publication is not final Copy completion: the page is still retired behind final_copy.
+            CHECK(session->retirement().pending() > 0);
+            report(csv, topology, false, "published-T2-and-final-copy-unobserved", graphics, storage,
+                first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
             patch.source = {};
             CHECK(timeline.source_destroys == 1);
             CHECK(storage.find(published.texture)->revision() == 2);
             CHECK(storage.find(published.texture)->descriptorIndex() != old_descriptor);
             CHECK(storage.residentVersions() == 16 && session->collect());
             CHECK(destroyed == destroyed_before); // No manual old lease conceals a missing T2 requirement.
-            const auto no_capacity = lux::render::upload(storage, create);
+            const auto no_capacity = runUpload(lux::render::upload(storage, create), host, *session);
             CHECK(!no_capacity && no_capacity.error().type == kCapacity);
             CHECK(create.source.bytes().data() == original->data());
-            CHECK(graphics.submitted() == draw.serial());
+            CHECK(graphics.submitted() == final_copy.serial());
             CHECK(storage.release(published.texture, 2));
             CHECK(storage.residentVersions() == 16 && graphics.completed() < draw.serial());
             CHECK(destroyed == destroyed_before);
@@ -361,10 +372,18 @@ namespace
             CHECK(destroyed[2] == destroyed_before[2] + 1);
             report(csv, topology, false, "T2-observed-collect-returned-old-physically-destroyed", graphics, storage,
                 first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
-            auto capacity_recovered = take(lux::render::upload(storage, create));
-            CHECK(graphics.submitted() == draw.serial()); // Cold reservation did not submit work.
-            capacity_recovered.second.reset();
+            {
+                auto unstarted = lux::render::upload(storage, create);
+                CHECK(graphics.submitted() == final_copy.serial()); // A lazy task does not reserve or submit.
+            }
             observed_limit = UINT64_MAX;
+            CHECK(take(graphics.wait(final_copy, UINT64_MAX)));
+            CHECK(session->collect());
+            CHECK(session->retirement().pending() == 0);
+            timeline.staging_lease_released_observed = monotonicNs();
+            const auto capacity_recovered = createTexture(storage, create, *session, host);
+            CHECK(storage.release(capacity_recovered.texture, capacity_recovered.revision));
+            CHECK(session->drain());
             CHECK(take(context->execute()) == EExecutionOutcome::EXECUTED);
             CHECK(take(graphics.wait(*context->lastUse(), UINT64_MAX)));
             pixels(*context, 96); // The same compiled program now reads the published replacement.
@@ -376,17 +395,18 @@ namespace
         observed_graphics = nullptr;
         active_timeline = nullptr;
         CHECK(timeline.source_destroys == 1 && timeline.terminal_observed >= timeline.submissions[0].end);
-        CHECK(timeline.source_destroyed >= timeline.staging_lease_released_observed &&
-            timeline.staging_lease_released_observed >= timeline.terminal_observed);
+        CHECK(timeline.source_destroyed >= timeline.terminal_observed);
+        CHECK(timeline.staging_lease_released_observed >= timeline.terminal_observed);
+        // Source is no longer needed after CPU copy; unlike the Staging page it need not await final GPU completion.
         CHECK(pipelines == pipelines_before + 1);
         CHECK(session->uploadStats().pending_bytes == 0);
         CHECK(session->drain());
         graph.reset();
         std::printf("LastUse topology=%u graphics=%u:%u transfer=%u:%u region_queue=graphics planned_chunks=%u "
-            "accepted_copy_chunks=1 "
+            "accepted_copy_chunks=%u "
             "T1=%llu T2=%llu; old_descriptor=%u memory_offset=%llu bytes=%llu PASS\n", topology,
             graphics.nativeQueue().family, graphics.nativeQueue().index, transfer.nativeQueue().family,
-            transfer.nativeQueue().index, multiple_chunks ? 4u : 1u,
+            transfer.nativeQueue().index, multiple_chunks ? 4u : 2u, multiple_chunks ? 1u : 2u,
             static_cast<unsigned long long>(first.serial()), static_cast<unsigned long long>(draw.serial()),
             old_descriptor, static_cast<unsigned long long>(old_memory.offset),
             static_cast<unsigned long long>(old_memory.size));
@@ -417,6 +437,6 @@ int main()
     CHECK(validation.errors == 0);
     std::printf("LastUse real clone/draw: 3 topologies x normal replacement + multichunk cancellation; "
         "Validation=0 warnings=%u; VMA ranges measured, no separate Arena implementation; GPU timestamp NOT_MEASURED; "
-        "staging lease observation is after Work reset, allocated page remains resident; zero time means not yet observed\n",
+        "staging return observed through retirement collection, allocated page remains resident; zero time means not yet observed\n",
         validation.warnings.load());
 }

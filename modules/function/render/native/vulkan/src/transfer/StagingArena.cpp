@@ -27,7 +27,7 @@ namespace lux::render::vulkan
             {
                 return cxx::unexpected(buffer.error());
             }
-            arena->pages_.push_back(std::move(*buffer));
+            arena->pages_.push_back(std::move(**buffer));
             arena->free_pages_.push_back(i);
         }
         return arena;
@@ -42,13 +42,13 @@ namespace lux::render::vulkan
         }
     }
 
-    RenderResult<std::shared_ptr<StagingPage>> StagingArena::acquire() noexcept
+    RenderResult<std::unique_ptr<StagingPage>> StagingArena::acquire() noexcept
     {
         if (free_pages_.empty())
         {
             return cxx::unexpected(RenderError{kCapacity});
         }
-        auto page = std::shared_ptr<StagingPage>(new StagingPage(*this, free_pages_.back()));
+        auto page = std::unique_ptr<StagingPage>(new StagingPage(*this, free_pages_.back()));
         free_pages_.pop_back();
         return page;
     }
@@ -73,6 +73,6 @@ namespace lux::render::vulkan
 
     Buffer& StagingPage::buffer() const noexcept
     {
-        return *arena_.pages_[index_];
+        return arena_.pages_[index_];
     }
 } // namespace lux::render::vulkan

@@ -12,7 +12,7 @@ namespace lux::render::vulkan
     DeviceSession::DeviceSession(VulkanDevice native, VulkanAllocator memory) noexcept
         : device_(std::move(native)), allocator_(std::move(memory)),
           resources_(this, (device_.textureDescriptors() ? 1u : 0u) | (device_.textureCompressionBc() ? 2u : 0u)),
-          globals_(resources_)
+          global_storages_(resources_)
     {
     }
 
@@ -27,13 +27,11 @@ namespace lux::render::vulkan
         }
         // Logical subscriptions/actual Sets end while Native retirement and Queue owners still exist.
         contexts_.clear();
-        globals_.clear();
+        global_storages_.clear();
         // On Device Lost, batches retain resources until queue teardown instead of a completed fence.
         // Release them while the allocator/device and descriptor-table lifetime check still exist.
-        for (auto& queue : queue_owners_)
-        {
-            queue.reset();
-        }
+        retirement_.reset();
+        physical_queues_.clear();
         uploads_.reset();
         staging_arena_.reset();
         if (!sampled_images_.expired())
@@ -65,41 +63,36 @@ namespace lux::render::vulkan
             return cxx::unexpected(allocator.error());
         }
         auto result = std::unique_ptr<DeviceSession>(new DeviceSession(std::move(*device), std::move(*allocator)));
+        result->physical_queues_.reserve(3);
         for (std::size_t i = 0; i < 3; ++i)
         {
             const auto role = static_cast<EQueueRole>(i);
-            for (std::size_t j = 0; j < i; ++j)
+            const auto handle = result->device_.queue(role).handle;
+            const auto existing = std::ranges::find_if(
+                result->physical_queues_,
+                [&](const auto& queue) { return queue->nativeQueue().handle == handle; }
+            );
+            const auto index = static_cast<std::uint8_t>(existing - result->physical_queues_.begin());
+            if (existing == result->physical_queues_.end())
             {
-                if (result->device_.queue(role).handle == result->queues_[j]->nativeQueue().handle)
+                auto queue = SubmissionQueue::create(result->device_, slots, role);
+                if (!queue)
                 {
-                    result->queues_[i] = result->queues_[j];
-                    break;
+                    return cxx::unexpected(queue.error());
                 }
+                result->physical_queues_.push_back(std::move(*queue));
             }
-            if (result->queues_[i])
-            {
-                continue;
-            }
-            auto queue = SubmissionQueue::create(result->device_, slots, role);
-            if (!queue)
-            {
-                return cxx::unexpected(queue.error());
-            }
-            result->queue_owners_[i] = std::move(*queue);
-            result->queues_[i] = result->queue_owners_[i].get();
+            result->queue_roles_[i] = index;
         }
+        result->retirement_.reset(new RetirementQueue(result->physical_queues_));
         return result;
     }
 
     RenderResult<void> DeviceSession::drain() noexcept
     {
         std::optional<RenderError> failure;
-        for (const auto& queue : queue_owners_)
+        for (const auto& queue : physical_queues_)
         {
-            if (!queue)
-            {
-                continue; // Cold construction/teardown, including partially initialized owners.
-            }
             if (auto ticket = queue->lastSubmitted())
             {
                 auto result = queue->wait(*ticket, UINT64_MAX);
@@ -118,11 +111,11 @@ namespace lux::render::vulkan
 
     SubmissionQueue* DeviceSession::queueFor(SubmissionTicket ticket) noexcept
     {
-        for (auto* owner : queues_)
+        for (const auto& owner : physical_queues_)
         {
-            if (owner == &ticket.owner() && owner->owns(ticket))
+            if (owner.get() == &ticket.owner() && owner->owns(ticket))
             {
-                return owner;
+                return owner.get();
             }
         }
         return nullptr;
@@ -130,9 +123,9 @@ namespace lux::render::vulkan
 
     bool DeviceSession::deviceLost() const noexcept
     {
-        for (const auto& owner : queue_owners_)
+        for (const auto& owner : physical_queues_)
         {
-            if (owner && owner->deviceLost())
+            if (owner->deviceLost())
             {
                 return true;
             }
@@ -143,15 +136,16 @@ namespace lux::render::vulkan
     RenderResult<void> DeviceSession::collect() noexcept
     {
         std::optional<RenderError> failure;
-        for (auto& queue : queue_owners_)
+        for (auto& queue : physical_queues_)
         {
-            if (queue)
+            if (auto result = queue->poll(); !result && !failure)
             {
-                if (auto result = queue->poll(); !result && !failure)
-                {
-                    failure = result.error();
-                }
+                failure = result.error();
             }
+        }
+        if (retirement_)
+        {
+            retirement_->collectReady();
         }
         if (failure)
         {
@@ -162,12 +156,9 @@ namespace lux::render::vulkan
 
     void DeviceSession::dispatchCompletions() noexcept
     {
-        for (auto& queue : queue_owners_)
+        for (auto& queue : physical_queues_)
         {
-            if (queue)
-            {
-                queue->dispatchCompleted();
-            }
+            queue->dispatchCompleted();
         }
     }
 

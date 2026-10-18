@@ -30,10 +30,8 @@ int main(int argc, char** argv)
     const auto id = take(session->globalStorages().getOrCreate(session->resources().typeId(kMaterialStorageType), "material"));
     auto& storage = *take(session->resources().borrow<lux::render::vulkan::MaterialStorage>(id));
     const MaterialWrite request{{id, {}}, 0, program, program.borrow<MaterialProgram>()->defaults};
-    auto upload = take(lux::render::upload(storage, request));
-    complete(upload.second, host, *session);
-    const auto published = upload.first;
-    upload.second.reset();
+    const auto published = take(runUpload(lux::render::upload(storage, request), host, *session));
+    CHECK(session->drain());
     const auto access = take(session->resources().tryGet<lux::render::MaterialStorage>(id));
     CHECK(take(access.query(published.material)).parameters == request.parameters);
     CHECK(session->resources().installFactory(meshStorageFactory(), MeshStorageConfig{}));
@@ -47,10 +45,7 @@ int main(int argc, char** argv)
     std::memcpy(owner->data() + 48, indices.data(), 12);
     MeshWrite mesh_input{{mesh_id, {}}, 0,
         {16, 3, 48, 4, 3, {{0, 0, rdesc::ETextureFormat::RGBA32_SFLOAT}}, {{0, 3, 0}}}, payload(owner)};
-    auto mesh_upload = take(lux::render::upload(meshes, mesh_input));
-    complete(mesh_upload.second, host, *session);
-    const auto mesh = mesh_upload.first;
-    mesh_upload.second.reset();
+    const auto mesh = take(runUpload(lux::render::upload(meshes, mesh_input), host, *session));
     auto record = take(instances.create({mesh.mesh, published.material}));
     TransformBatch update{instance_id, 51, {{record.instance, record.revision, kIdentityTransform}}};
     update.updates[0].transform[12] = .75f;

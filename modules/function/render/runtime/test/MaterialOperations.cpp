@@ -72,7 +72,19 @@ int main(int argc, char** argv)
     input.material = material_a.material;
     input.expected_revision = material_a.revision;
     input.parameters[0] = {.75f, .75f, .75f, 1};
+    // Successful upload replies establish GPU dependencies; staging may still be in flight.
+    const auto deadline = Clock::now() + 5s;
     std::optional replaced{call<SetMaterial>(*b, set_b, input)};
+    while (!replaced->get<SetMaterial::Response>())
+    {
+        CHECK(replaced->get<SetMaterial::Response>().error().type == lux::render::vulkan::kCapacity);
+        CHECK(Clock::now() < deadline);
+        auto unchanged = call<QueryMaterial>(*b, query, material_a.material);
+        CHECK(unchanged.get<QueryMaterial::Response>().has_value());
+        CHECK(unchanged.get<QueryMaterial::Response>()->parameters[0][0] == .25f);
+        CHECK(input.program.borrow<MaterialProgram>()->fragment.words.data() == original_words);
+        replaced = call<SetMaterial>(*b, set_b, input);
+    }
     CHECK(replaced->get<SetMaterial::Response>().has_value() && replaced->get<RenderResult<MaterialPublished>>().value().revision == 2);
     {
         // A Query explicitly returns the real immutable program Owner.

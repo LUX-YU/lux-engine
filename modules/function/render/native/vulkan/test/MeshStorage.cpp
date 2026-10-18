@@ -68,10 +68,7 @@ static void snapshotLifetime(DeviceSession& session, CpuFixture& host)
     const auto id = take(session.globalStorages().getOrCreate(session.resources().typeId(kMeshStorageType), "snapshot"));
     auto& storage = *take(session.resources().borrow<lux::render::vulkan::MeshStorage>(id));
     auto input = request(id, 4, .25f);
-    auto upload = take(lux::render::upload(storage, input));
-    complete(upload.second, host, session);
-    const auto published = upload.first;
-    upload.second.reset();
+    const auto published = take(runUpload(lux::render::upload(storage, input), host, session));
     const auto factory = meshStorageFactory();
     const auto& ops = *static_cast<const StorageBindingOps*>(factory.binding_ops);
     NativeResourcePlan plan{"mesh", GraphBufferDesc{input.source.bytes().view().size()}, EGraphOrigin::IMPORTED};
@@ -165,19 +162,27 @@ int main(int argc, char** argv)
                 if (fault == 5) bad.description.attributes.push_back(bad.description.attributes[0]);
                 if (fault == 6) bad.expected_revision = 1;
                 const auto before = live_buffers;
-                CHECK(!lux::render::upload(storage, bad));
+                CHECK(!runUpload(lux::render::upload(storage, bad), host, *session));
                 CHECK(live_buffers == before && storage.residentVersions() == 0);
             }
-            auto candidate = take(lux::render::upload(storage, input));
-            auto published = candidate.first;
-            CHECK(!storage.query(published.mesh));
-            candidate.second.reset();
-            CHECK(storage.residentVersions() == 0 && !storage.query(published.mesh));
-            candidate = take(lux::render::upload(storage, input));
-            CHECK(candidate.first.mesh != published.mesh);
-            published = candidate.first;
-            complete(candidate.second, host, *session);
-            candidate.second.reset();
+            {
+                auto unstarted = lux::render::upload(storage, input);
+                CHECK(storage.residentVersions() == 0);
+            }
+            CHECK(storage.residentVersions() == 0);
+            UploadCompletion<MeshPublished> cancelled;
+            cancelled.cancel();
+            cancelled.start(lux::render::upload(storage, input), host);
+            finish(cancelled, host, *session);
+            CHECK(!cancelled.result && cancelled.result.error().type == kWorkStopped);
+            CHECK(storage.residentVersions() == 0);
+            auto published = take(runUpload(lux::render::upload(storage, input), host, *session));
+            const auto stale = published.mesh;
+            CHECK(storage.release(stale, published.revision));
+            CHECK(session->drain());
+            CHECK(!storage.query(stale) && storage.residentVersions() == 0);
+            published = take(runUpload(lux::render::upload(storage, input), host, *session));
+            CHECK(published.mesh != stale);
             CHECK(take(storage.query(published.mesh)).description == input.description);
 
             RenderGraphBuilder builder;
@@ -227,15 +232,15 @@ int main(int argc, char** argv)
             wrong.mesh = published.mesh;
             wrong.expected_revision = 1;
             wrong.description.attributes[0].format = rdesc::ETextureFormat::RGBA32_UINT;
-            CHECK(!lux::render::upload(storage, wrong)); // incompatible immutable Draw ABI
+            CHECK(!runUpload(lux::render::upload(storage, wrong), host, *session)); // incompatible immutable Draw ABI
             auto replacement = request(storage_id, stride, .75f);
             replacement.mesh = published.mesh;
             replacement.expected_revision = published.revision;
-            auto replace = take(lux::render::upload(storage, replacement));
+            UploadCompletion<MeshPublished> replace;
+            replace.start(lux::render::upload(storage, replacement), host);
             CHECK(!storage.release(published.mesh, published.revision));
-            complete(replace.second, host, *session);
-            published = replace.first;
-            replace.second.reset();
+            finish(replace, host, *session);
+            published = take(std::move(replace.result));
             CHECK(published.revision == 2);
             pixels(*first, *session, 191);
             CHECK(session->release(first));
@@ -255,22 +260,15 @@ int main(int argc, char** argv)
         }
         // A successful earlier chunk followed by failed submission preserves the published last-good Mesh.
         auto large = request(storage_id, 4, .25f, 10000);
-        auto original = take(lux::render::upload(storage, large));
-        complete(original.second, host, *session);
-        const auto last_good = original.first;
-        original.second.reset();
+        const auto last_good = take(runUpload(lux::render::upload(storage, large), host, *session));
         large.mesh = last_good.mesh;
         large.expected_revision = 1;
-        auto upload = take(lux::render::upload(storage, large));
         const auto before = accepted_submits;
         fail_submit = 2;
-        WorkCompletion completion;
-        completion.start(upload.second, host);
-        finish(completion, host, *session);
-        CHECK(!completion.result && accepted_submits == before + 1);
-        CHECK(!upload.second.publish());
+        const auto failed = runUpload(lux::render::upload(storage, large), host, *session);
+        CHECK(!failed && accepted_submits == before + 1);
         CHECK(take(storage.query(last_good.mesh)).published.revision == 1);
-        upload.second.reset();
+        CHECK(session->drain());
         CHECK(storage.residentVersions() == 1);
         CHECK(storage.release(last_good.mesh, 1));
         CHECK(storage.residentVersions() == 0);
@@ -281,10 +279,10 @@ int main(int argc, char** argv)
             auto small = request(storage_id, 4, .25f);
             for (unsigned i = 0; i < 130; ++i)
             {
-                auto created = take(lux::render::upload(storage, small));
-                complete(created.second, host, *session);
-                records.push_back(created.first);
+                records.push_back(take(runUpload(lux::render::upload(storage, small), host, *session)));
+                CHECK(session->drain()); // Live-record growth is independent of bounded staging occupancy.
             }
+            CHECK(session->drain());
             CHECK(storage.residentVersions() == records.size());
             for (auto value : records) CHECK(storage.release(value.mesh, value.revision));
             CHECK(storage.residentVersions() == 0);
@@ -293,19 +291,16 @@ int main(int argc, char** argv)
             ));
             auto& limited = *take(session->resources().borrow<lux::render::vulkan::MeshStorage>(limited_id));
             auto limited_input = request(limited_id, 4, .25f);
-            auto created = take(lux::render::upload(limited, limited_input));
-            complete(created.second, host, *session);
-            const auto live = created.first;
-            created.second.reset();
+            const auto live = take(runUpload(lux::render::upload(limited, limited_input), host, *session));
+            CHECK(session->drain());
             const auto before_submit = accepted_submits;
-            const auto rejected = lux::render::upload(limited, limited_input);
+            const auto rejected = runUpload(lux::render::upload(limited, limited_input), host, *session);
             CHECK(!rejected && rejected.error().type == kStorageCapacity);
             CHECK(accepted_submits == before_submit && limited.residentBytes() == 60);
             CHECK(limited.release(live.mesh, 1));
             CHECK(limited.residentBytes() == 0);
-            auto retry = take(lux::render::upload(limited, limited_input));
-            complete(retry.second, host, *session);
-            CHECK(limited.release(retry.first.mesh, 1));
+            const auto retry = take(runUpload(lux::render::upload(limited, limited_input), host, *session));
+            CHECK(limited.release(retry.mesh, 1));
         }
         snapshotLifetime(*session, host);
         CHECK(session->drain());

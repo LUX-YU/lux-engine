@@ -2,7 +2,7 @@
 #include <lux/engine/core/execution/Scheduler.hpp>
 
 #include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
+#include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
 #include <lux/engine/render/resource/AsyncWork.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
@@ -48,7 +48,12 @@ namespace lux::render::vulkan
 
         [[nodiscard]] SubmissionQueue& queue(EQueueRole role = EQueueRole::GRAPHICS) noexcept
         {
-            return *queues_[static_cast<std::size_t>(role)];
+            return *physical_queues_[queue_roles_[static_cast<std::size_t>(role)]];
+        }
+
+        [[nodiscard]] RetirementQueue& retirement() noexcept
+        {
+            return *retirement_;
         }
 
         [[nodiscard]] RenderResult<std::uint32_t> sampledImageCapacity() const noexcept;
@@ -99,7 +104,7 @@ namespace lux::render::vulkan
 
         [[nodiscard]] StorageSet& globalStorages() noexcept
         {
-            return globals_;
+            return global_storages_;
         }
 
     private:
@@ -110,15 +115,16 @@ namespace lux::render::vulkan
         DeviceSession(VulkanDevice device, VulkanAllocator allocator) noexcept;
         VulkanDevice device_;
         VulkanAllocator allocator_;
-        std::array<std::unique_ptr<SubmissionQueue>, 3> queue_owners_;
-        std::array<SubmissionQueue*, 3> queues_{};
+        std::vector<std::unique_ptr<SubmissionQueue>> physical_queues_;
+        std::array<std::uint8_t, 3> queue_roles_{};
+        std::unique_ptr<RetirementQueue> retirement_;
         // CPU Context owners; accepted batches independently retain their physical resource sets.
         // Member destruction is explicitly ordered in the destructor.
         std::vector<std::unique_ptr<ExecutionContext>> contexts_;
         std::unique_ptr<StagingArena> staging_arena_;
         std::unique_ptr<UploadContext> uploads_;
         ResourceRegistry resources_;
-        StorageSet globals_;
+        StorageSet global_storages_;
         std::weak_ptr<DescriptorArray> sampled_images_;
     };
 } // namespace lux::render::vulkan

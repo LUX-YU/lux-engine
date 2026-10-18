@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <utility>
+#include <source_location>
 #include <lux/engine/render/native/vulkan/device/Device.hpp>
 
 namespace foundation_test
@@ -22,13 +23,15 @@ namespace foundation_test
 
 #define CHECK(condition) ::foundation_test::require(static_cast<bool>(condition), __LINE__)
 
-    template <typename T> T take(RenderResult<T> result)
+    template <typename T> T take(RenderResult<T> result, std::source_location location = std::source_location::current())
     {
         if (!result)
         {
             std::fprintf(
                 stderr,
-                "Native result error=%llu args=%llu,%llu,%llu\n",
+                "Native result at %s:%u error=%llu args=%llu,%llu,%llu\n",
+                location.file_name(),
+                location.line(),
                 static_cast<unsigned long long>(result.error().type),
                 static_cast<unsigned long long>(result.error().args[0]),
                 static_cast<unsigned long long>(result.error().args[1]),

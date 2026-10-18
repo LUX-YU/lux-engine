@@ -297,7 +297,7 @@ namespace lux::render::vulkan
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested())
         {
-            co_return cxx::unexpected(RenderError{kWorkStopped});
+            co_return cxx::unexpected(RenderError{kOutcomeUnknown});
         }
         if (auto published = candidate->publish(*uploaded); !published)
         {

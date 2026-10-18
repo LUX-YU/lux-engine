@@ -8,7 +8,7 @@ namespace lux::render::vulkan
     class StagingArena;
     class UploadContext;
 
-    // One acquired mapped page. CPU preparation and accepted GPU batches share this same use.
+    // One acquired mapped page. Its owner transfers it to retirement after the last accepted Copy.
     // The arena outlives all acquisitions; its free-list is accessed only on the RenderThread.
     class StagingPage final
     {
@@ -23,7 +23,7 @@ namespace lux::render::vulkan
             return index_;
         }
 
-        // Set only after timestamp-writing commands were accepted. The final batch retains this page.
+        // Set only after timestamp-writing commands were accepted. Retirement retains the final page.
         void markMeasurement(UploadContext& context, std::uint32_t bits) noexcept;
         [[nodiscard]] RenderResult<void> finishMeasurement() noexcept;
 
@@ -51,7 +51,7 @@ namespace lux::render::vulkan
         ~StagingArena() noexcept;
         StagingArena(const StagingArena&) = delete;
         StagingArena& operator=(const StagingArena&) = delete;
-        [[nodiscard]] RenderResult<std::shared_ptr<StagingPage>> acquire() noexcept;
+        [[nodiscard]] RenderResult<std::unique_ptr<StagingPage>> acquire() noexcept;
 
         [[nodiscard]] std::size_t available() const noexcept
         {
@@ -61,7 +61,7 @@ namespace lux::render::vulkan
     private:
         friend class StagingPage;
         StagingArena() noexcept = default;
-        std::vector<std::shared_ptr<Buffer>> pages_;
+        std::vector<Buffer> pages_;
         std::vector<std::size_t> free_pages_;
     };
 } // namespace lux::render::vulkan

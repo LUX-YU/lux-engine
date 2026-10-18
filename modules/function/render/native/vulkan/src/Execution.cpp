@@ -182,7 +182,7 @@ namespace lux::render::vulkan
             return {};
         };
         const auto& groups = context->code_->storageGroups();
-        if (auto r = prepareGroup(groups.global, &globals_); !r)
+        if (auto r = prepareGroup(groups.global, &global_storages_); !r)
         {
             return cxx::unexpected(r.error());
         }

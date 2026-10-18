@@ -86,36 +86,45 @@ int main(int argc, char** argv)
             CHECK(configureTextures(*session, 0, 0));
             texture_storage = textures(*session)->id();
             auto bytes = std::make_shared<const std::vector<std::byte>>(1024, std::byte{255});
-            auto upload = take(lux::render::upload(*textures(*session), TextureWrite{
+            texture = take(runUpload(lux::render::upload(*textures(*session), TextureWrite{
                 {textures(*session)->id(), {}}, 0, information(16, 1, false), payload(bytes)
-            }));
-            complete(upload.second, host, *session);
-            texture = upload.first;
+            }), host, *session));
         }
         MaterialWrite input{{storage_id, {}}, 0, cooked, cooked.borrow<MaterialProgram>()->defaults};
         input.textures[0] = texture;
         auto bad = input;
         bad.program = take(ConfigValue::make(42));
-        CHECK(!lux::render::upload(storage, bad));
+        CHECK(!runUpload(lux::render::upload(storage, bad), host, *session));
         bad = input;
         bad.parameters[0][0] = std::numeric_limits<float>::infinity();
-        CHECK(!lux::render::upload(storage, bad));
+        CHECK(!runUpload(lux::render::upload(storage, bad), host, *session));
         if (textured)
         {
             auto wrong_texture = input;
             ++wrong_texture.textures[0].revision;
-            CHECK(!lux::render::upload(storage, wrong_texture));
+            CHECK(!runUpload(lux::render::upload(storage, wrong_texture), host, *session));
             CHECK(storage.residentVersions() == 0 && textures(*session)->residentVersions() == 1);
         }
-        auto cancelled = take(lux::render::upload(storage, input));
-        const auto stale = cancelled.first.material;
-        cancelled.second.reset();
+        {
+            // Constructing/destroying a lazy task must not allocate a resource identity or publish data.
+            auto unstarted = lux::render::upload(storage, input);
+            CHECK(storage.residentVersions() == 0);
+        }
+        CHECK(storage.residentVersions() == 0);
+        UploadCompletion<MaterialPublished> cancelled;
+        cancelled.cancel();
+        cancelled.start(lux::render::upload(storage, input), host);
+        finish(cancelled, host, *session);
+        CHECK(!cancelled.result && cancelled.result.error().type == kWorkStopped);
+        CHECK(storage.residentVersions() == 0);
+        auto published = take(runUpload(lux::render::upload(storage, input), host, *session));
+        // IDs are public only after adoption. Release/recreate exercises actual generation invalidation.
+        const auto stale = published.material;
+        CHECK(storage.release(stale, published.revision));
+        CHECK(session->drain());
         CHECK(!storage.query(stale) && storage.residentVersions() == 0);
-        auto candidate = take(lux::render::upload(storage, input));
-        auto published = candidate.first;
+        published = take(runUpload(lux::render::upload(storage, input), host, *session));
         CHECK(published.material != stale);
-        complete(candidate.second, host, *session);
-        candidate.second.reset();
         CHECK(take(storage.query(published.material)).parameters == input.parameters);
 
         const TargetDesc target{16, 16, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
@@ -176,25 +185,21 @@ int main(int argc, char** argv)
         wrong.material = published.material;
         wrong.expected_revision = 1;
         wrong.program = take(ConfigValue::make(std::move(changed)));
-        CHECK(!lux::render::upload(storage, wrong));
+        CHECK(!runUpload(lux::render::upload(storage, wrong), host, *session));
         CHECK(take(storage.query(published.material)).published.revision == 1);
         input.material = published.material;
         input.expected_revision = 1;
         input.parameters[0] = {.75f, .75f, .75f, 1};
-        auto rejected = take(lux::render::upload(storage, input));
         fail_submit = true;
-        WorkCompletion failure;
-        failure.start(rejected.second, host);
-        finish(failure, host, *session);
-        CHECK(!failure.result && !rejected.second.publish());
-        rejected.second.reset();
+        const auto failure = runUpload(lux::render::upload(storage, input), host, *session);
+        CHECK(!failure);
         CHECK(take(storage.query(published.material)).published.revision == 1);
         pixels(*second, *session, 64);
-        auto replacement = take(lux::render::upload(storage, input));
+        UploadCompletion<MaterialPublished> replacement;
+        replacement.start(lux::render::upload(storage, input), host);
         CHECK(!storage.release(published.material, 1));
-        complete(replacement.second, host, *session);
-        published = replacement.first;
-        replacement.second.reset();
+        finish(replacement, host, *session);
+        published = take(std::move(replacement.result));
         CHECK(pipelines == pipeline_count);
         pixels(*first, *session, 191);
         CHECK(session->release(first));
@@ -203,20 +208,14 @@ int main(int argc, char** argv)
         if (textured)
         {
             auto bytes = std::make_shared<const std::vector<std::byte>>(1024, std::byte{128});
-            auto changed_texture = take(lux::render::upload(*textures(*session), TextureWrite{
+            const auto next = take(runUpload(lux::render::upload(*textures(*session), TextureWrite{
                 texture.texture, texture.revision, information(16, 1, false), payload(bytes)
-            }));
-            complete(changed_texture.second, host, *session);
-            const auto next = changed_texture.first;
-            changed_texture.second.reset();
+            }), host, *session));
             pixels(*second, *session, 191); // Original material snapshot pins the earlier published version.
             CHECK(textures(*session)->residentVersions() == 2);
             input.expected_revision = published.revision;
             input.textures[0] = next;
-            auto material = take(lux::render::upload(storage, input));
-            complete(material.second, host, *session);
-            published = material.first;
-            material.second.reset();
+            published = take(runUpload(lux::render::upload(storage, input), host, *session));
             pixels(*second, *session, 96);
             CHECK(textures(*session)->residentVersions() == 1);
             CHECK(pipelines == pipeline_count);

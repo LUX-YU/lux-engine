@@ -53,7 +53,8 @@ namespace lux::render
             {"lux.render.core.invalid_viewport",
              "Raster viewport coordinates and depth ranges must be valid",
              error::ERecovery::PERMANENT,
-             {}}
+             {}},
+            {"lux.render.runtime.outcome_unknown", "Accepted side effects have an unknown outcome"}
         };
         return descriptors;
     }

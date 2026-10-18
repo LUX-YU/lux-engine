@@ -18,7 +18,7 @@ int main()
     target.width = 0;
     const auto invalid = target.validate();
     if (invalid || invalid.error().type != kInvalidTargetExtent) return 4;
-    if (renderCoreErrorDescriptors().size() != 5) return 5;
+    if (renderCoreErrorDescriptors().size() != 6) return 5;
     RasterViewport viewport;
     if (!viewport.validate()) return 6;
     viewport.width = 0;

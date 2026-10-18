@@ -60,31 +60,35 @@ int main()
         {
             const auto previous = live;
             fail_call = name;
-            CHECK(!lux::render::upload(storage, create));
+            CHECK(!runUpload(lux::render::upload(storage, create), host, *session));
             CHECK(fail_call.empty() && live == previous && storage.residentVersions() == 0);
         }
-        auto upload = take(lux::render::upload(storage, create));
-        auto published = upload.first;
-        CHECK(!storage.find(published.texture));
-        CHECK(!lux::render::upload(storage, SetTexture::Request{published.texture, 1, info, payload(bytes)}));
-        CHECK(!upload.second.publish());
-        complete(upload.second, host, *session);
-        upload.second.reset();
+        {
+            auto unstarted = lux::render::upload(storage, create);
+            CHECK(storage.residentVersions() == 0);
+        }
+        auto published = take(runUpload(lux::render::upload(storage, create), host, *session));
+        CHECK(session->drain());
         auto old = take(storage.acquire(published.texture));
         CHECK(old->revision() == 1 && storage.residentVersions() == 1);
         const auto old_slot = old->descriptorIndex();
-        CHECK(!lux::render::upload(storage, SetTexture::Request{published.texture, 0, info, payload(bytes)}));
-        upload = take(lux::render::upload(storage, SetTexture::Request{published.texture, 1, info, payload(bytes)}));
-        const auto replacement = upload.first;
-        CHECK(replacement.texture == published.texture && replacement.revision == 2);
+        CHECK(!runUpload(lux::render::upload(storage, SetTexture::Request{published.texture, 0, info, payload(bytes)}), host, *session));
+        UploadCompletion<TexturePublished> cancelled;
+        cancelled.start(lux::render::upload(storage,
+            SetTexture::Request{published.texture, 1, info, payload(bytes)}), host);
         CHECK(storage.find(published.texture) == old.get());
-        CHECK(!storage.release(published.texture, 1)); // writer reservation remains unique
-        upload.second.reset(); // unsubmitted candidate rolls back without changing last-good
+        CHECK(!storage.release(published.texture, 1)); // active writer remains unique
+        CHECK(!runUpload(lux::render::upload(storage,
+            SetTexture::Request{published.texture, 1, info, payload(bytes)}), host, *session));
+        cancelled.cancel();
+        finish(cancelled, host, *session);
+        CHECK(!cancelled.result && cancelled.result.error().type == kWorkStopped);
         CHECK(storage.find(published.texture) == old.get() && storage.residentVersions() == 1);
-        upload = take(lux::render::upload(storage, SetTexture::Request{published.texture, 1, info, payload(bytes)}));
-        published = upload.first;
-        complete(upload.second, host, *session);
-        upload.second.reset();
+        const auto replacement = take(runUpload(lux::render::upload(storage,
+            SetTexture::Request{published.texture, 1, info, payload(bytes)}), host, *session));
+        CHECK(replacement.texture == published.texture && replacement.revision == 2);
+        published = replacement;
+        CHECK(session->drain());
         CHECK(storage.find(published.texture) != old.get() && old->revision() == 1);
         CHECK(storage.find(published.texture)->descriptorIndex() != old_slot);
         auto current = take(storage.acquire(published.texture));
@@ -95,27 +99,25 @@ int main()
         current.reset();
         CHECK(session->collect());
         CHECK(storage.residentVersions() == 0 && storage.residentBytes() == 0);
-        upload = take(lux::render::upload(storage, create));
-        const auto next = upload.first;
+        const auto next = take(runUpload(lux::render::upload(storage, create), host, *session));
         CHECK(next.texture.local.index == published.texture.local.index && next.texture.local.gen != published.texture.local.gen);
-        complete(upload.second, host, *session); upload.second.reset();
+        CHECK(session->drain());
         CHECK(!storage.acquire(published.texture));
         CHECK(storage.release(next.texture, 1));
         // A real accepted first chunk followed by a failed submit cannot publish over last-good.
         {
             auto large_info = information(1024, 1, false);
             const auto large = std::make_shared<const std::vector<std::byte>>(4 * 1024 * 1024, std::byte{13});
-            upload = take(lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, large_info, payload(large)}));
-            const auto id = upload.first.texture;
-            complete(upload.second, host, *session);
-            upload.second.reset();
+            const auto id = take(runUpload(lux::render::upload(storage,
+                SetTexture::Request{{storage.id(), {}}, 0, large_info, payload(large)}), host, *session)).texture;
+            CHECK(session->drain());
             const auto* last_good = storage.find(id);
-            upload = take(lux::render::upload(storage, SetTexture::Request{id, 1, large_info, payload(large)}));
             auto& queue = session->queue(EQueueRole::TRANSFER);
             const auto before_submit = queue.submitted();
-            WorkCompletion completion;
+            UploadCompletion<TexturePublished> completion;
             hold_completion = true;
-            completion.start(upload.second, host);
+            completion.start(lux::render::upload(storage,
+                SetTexture::Request{id, 1, large_info, payload(large)}), host);
             const auto end = Clock::now() + std::chrono::seconds(10);
             while (queue.submitted() == before_submit)
             {
@@ -128,9 +130,7 @@ int main()
             finish(completion, host, *session);
             CHECK(!completion.result && fail_call.empty() && queue.submitted() == first.serial());
             CHECK(storage.find(id) == last_good && last_good->revision() == 1);
-            upload.second.cancel();
-            CHECK(!upload.second.publish());
-            upload.second.reset();
+            CHECK(session->drain());
             CHECK(storage.find(id) == last_good && storage.residentVersions() == 1);
             CHECK(storage.release(id, 1));
         }
@@ -140,28 +140,32 @@ int main()
             const auto end = mip_info.mip_ranges[3];
             const auto original_owner = std::make_shared<const std::vector<std::byte>>(end.offset + end.size, std::byte{27});
             const auto& original = *original_owner;
-            upload = take(lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, mip_info, payload(original_owner)}));
-            const auto id = upload.first.texture;
-            complete(upload.second, host, *session); upload.second.reset();
+            const auto id = take(runUpload(lux::render::upload(storage,
+                SetTexture::Request{{storage.id(), {}}, 0, mip_info, payload(original_owner)}), host, *session)).texture;
+            CHECK(session->drain());
             auto previous = take(storage.acquire(id));
             const TextureRegion region = bc ? TextureRegion{1, 4, 4, 4, 4, 8} : TextureRegion{1, 2, 1, 3, 2, 16};
             const auto patch = std::make_shared<const std::vector<std::byte>>(bc ? 8 : 28, std::byte{73});
             auto invalid = region;
             invalid.row_pitch = UINT64_MAX;
-            CHECK(!lux::render::upload(storage, SetTextureRegion::Request{id, 1, invalid, payload(patch)}));
+            CHECK(!runUpload(lux::render::upload(storage, SetTextureRegion::Request{id, 1, invalid, payload(patch)}), host, *session));
             invalid = region;
             invalid.x = mip_info.mip_ranges[1].width;
-            CHECK(!lux::render::upload(storage, SetTextureRegion::Request{id, 1, invalid, payload(patch)}));
+            CHECK(!runUpload(lux::render::upload(storage, SetTextureRegion::Request{id, 1, invalid, payload(patch)}), host, *session));
             if (bc)
             {
                 invalid = region;
                 invalid.x = 1;
-                CHECK(!lux::render::upload(storage, SetTextureRegion::Request{id, 1, invalid, payload(patch)}));
+                CHECK(!runUpload(lux::render::upload(storage, SetTextureRegion::Request{id, 1, invalid, payload(patch)}), host, *session));
             }
             CHECK(storage.find(id)->revision() == 1);
-            upload = take(lux::render::upload(storage, SetTextureRegion::Request{id, 1, region, payload(patch)}));
-            CHECK(!lux::render::upload(storage, SetTextureRegion::Request{id, 1, region, payload(patch)}));
-            complete(upload.second, host, *session); upload.second.reset();
+            UploadCompletion<TexturePublished> patch_completion;
+            patch_completion.start(lux::render::upload(storage,
+                SetTextureRegion::Request{id, 1, region, payload(patch)}), host);
+            CHECK(!runUpload(lux::render::upload(storage,
+                SetTextureRegion::Request{id, 1, region, payload(patch)}), host, *session));
+            finish(patch_completion, host, *session);
+            CHECK(patch_completion.result);
             auto expected = original;
             if (bc)
                 std::fill_n(expected.begin() + mip_info.mip_ranges[1].offset + 24, 8, std::byte{73});
@@ -179,13 +183,12 @@ int main()
         std::vector<TexturePublished> full;
         for (unsigned i = 0; i < 16; ++i)
         {
-            upload = take(lux::render::upload(storage, create));
-            full.push_back(upload.first);
-            complete(upload.second, host, *session); upload.second.reset();
+            full.push_back(take(runUpload(lux::render::upload(storage, create), host, *session)));
         }
-        CHECK(!lux::render::upload(storage, create));
+        CHECK(!runUpload(lux::render::upload(storage, create), host, *session));
         CHECK(storage.residentVersions() == 16);
         for (auto value : full) CHECK(storage.release(value.texture, value.revision));
+        CHECK(session->drain());
         CHECK(storage.residentVersions() == 0);
         std::printf(
             "texture storage descriptors=16 resident_peak=%llu bytes; TextureData=%zu GpuWork=%zu; "
@@ -202,8 +205,8 @@ int main()
         CHECK(configureTextures(*session, 16, 1));
         const auto source = std::make_shared<const std::vector<std::byte>>(1024);
         const auto submitted = session->queue().submitted();
-        auto failed = lux::render::upload(*textures(*session),
-            SetTexture::Request{{textures(*session)->id(), {}}, 0, information(16, 1, false), payload(source)});
+        auto failed = runUpload(lux::render::upload(*textures(*session),
+            SetTexture::Request{{textures(*session)->id(), {}}, 0, information(16, 1, false), payload(source)}), host, *session);
         CHECK(!failed && failed.error().type == kCapacity);
         CHECK(session->queue().submitted() == submitted && textures(*session)->residentBytes() == 0);
     }
@@ -212,20 +215,19 @@ int main()
         DeviceOptions options;
         options.texture_descriptors = true;
         auto session = take(DeviceSession::create(bootstrap, options));
-        CHECK(session->configureUploads({1024 * 1024, 1, 1024 * 1024}, host.cpu()));
-        CHECK(configureTextures(*session, 16, 1024 * 1024));
+        CHECK(session->configureUploads({1024 * 1024, 1, 8 * 1024 * 1024}, host.cpu()));
+        CHECK(configureTextures(*session, 16, 8 * 1024 * 1024));
         CHECK(session->globalStorages().remove(textures(*session)->id()));
         auto scene = std::make_unique<StorageSet>(session->resources());
         const auto storage_id = take(scene->getOrCreate(session->resources().typeId(kTextureStorageType), "scene"));
         auto* storage = take(session->resources().borrow<lux::render::vulkan::TextureStorage>(storage_id));
         std::weak_ptr<void> storage_lifetime = take(session->resources().share(storage_id));
-        const auto source = std::make_shared<const std::vector<std::byte>>(1024, std::byte{71});
-        auto upload = take(lux::render::upload(*storage,
-            SetTexture::Request{{storage_id, {}}, 0, information(16, 1, false), payload(source)}));
+        const auto source = std::make_shared<const std::vector<std::byte>>(4 * 1024 * 1024, std::byte{71});
         hold_completion = true;
         const auto before_submit = session->queue().submitted();
-        WorkCompletion completion;
-        completion.start(upload.second, host);
+        UploadCompletion<TexturePublished> completion;
+        completion.start(lux::render::upload(*storage,
+            SetTexture::Request{{storage_id, {}}, 0, information(1024, 1, false), payload(source)}), host);
         const auto deadline = Clock::now() + std::chrono::seconds(10);
         while (session->queue().submitted() == before_submit)
         {
@@ -241,10 +243,8 @@ int main()
         CHECK(!completion.done && live == held);
         hold_completion = false;
         finish(completion, host, *session);
-        CHECK(completion.result);
-        const auto publication = upload.second.publish();
-        CHECK(!publication && publication.error().type == kStorageIdentity);
-        upload.second.reset();
+        CHECK(!completion.result && completion.result.error().type == kStorageIdentity);
+        CHECK(session->drain());
         CHECK(storage_lifetime.expired());
         CHECK(session->resources().size() == 0 && live[0] == 0 && live[1] == 0 && live[2] == 0);
     }
@@ -260,16 +260,15 @@ int main()
         std::vector<TexturePublished> values;
         for (unsigned i = 0; i < 129; ++i)
         {
-            auto work = take(lux::render::upload(storage,
-                SetTexture::Request{{storage.id(), {}}, 0, information(1, 1, false), payload(source)}));
-            values.push_back(work.first);
-            complete(work.second, host, *session);
-            work.second.reset();
+            values.push_back(take(runUpload(lux::render::upload(storage,
+                SetTexture::Request{{storage.id(), {}}, 0, information(1, 1, false), payload(source)}), host, *session)));
+            CHECK(session->drain()); // Reuse the single staging page; retain every logical Texture.
         }
         CHECK(storage.residentVersions() == 129);
         CHECK(read(*session, *storage.find(values.front().texture)) == *source);
         CHECK(read(*session, *storage.find(values.back().texture)) == *source);
         for (const auto& value : values) CHECK(storage.release(value.texture, value.revision));
+        CHECK(session->drain());
         CHECK(storage.residentVersions() == 0 && storage.residentBytes() == 0);
         std::printf("dynamic Texture growth: 129 real uploads, first/last readback, device descriptor limit=%u\n",
             take(session->sampledImageCapacity()));

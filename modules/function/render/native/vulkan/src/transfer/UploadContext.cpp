@@ -391,6 +391,22 @@ namespace lux::render::vulkan
             co_return cxx::unexpected(acquired.error());
         }
         auto page = std::move(*acquired);
+        auto retirement = session.retirement().reserve();
+        std::optional<SubmissionTicket> ticket;
+        cxx::scope_exit release_page(
+            [&]() noexcept
+            {
+                if (ticket)
+                {
+                    SubmissionRequirements use;
+                    use.merge(*ticket);
+                    if (!session.retirement().retire(retirement, use, page))
+                    {
+                        std::terminate(); // This Owner acquired both the reservation and the actual Copy ticket.
+                    }
+                }
+            }
+        );
         stats.pending_bytes += retained;
         stats.pending_peak = std::max(stats.pending_peak, stats.pending_bytes);
         cxx::scope_exit budget(
@@ -406,8 +422,15 @@ namespace lux::render::vulkan
         const bool distinct = &copy != &graphics;
         const auto timestamp_bits = &copy == &graphics ? graphics_timestamp_bits : copy_timestamp_bits;
         const bool timestamp = timestamps && timestamp_bits;
+        // A stop or device loss after accepted work cannot claim that the command had no side effects.
+        const auto failure = [&](RenderError error) noexcept
+        {
+            const bool is_device_lost = error.type == kNativeFailure &&
+                error.args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
+            const bool is_unknown = ticket && (stop.stop_requested() || is_device_lost);
+            return cxx::unexpected(is_unknown ? RenderError{kOutcomeUnknown} : error);
+        };
         SubmissionRequirements accepted;
-        std::optional<SubmissionTicket> ticket;
         std::size_t offset = 0;
         std::size_t region_index = 0;
         std::uint32_t row = 0;
@@ -415,7 +438,7 @@ namespace lux::render::vulkan
         {
             if (stop.stop_requested())
             {
-                co_return cxx::unexpected(RenderError{kWorkStopped});
+                co_return failure(RenderError{kWorkStopped});
             }
             const auto* region = image ? &regions[region_index] : nullptr;
             const auto row_bytes =
@@ -468,13 +491,13 @@ namespace lux::render::vulkan
             );
             if (!prepared)
             {
-                co_return cxx::unexpected(prepared.error());
+                co_return failure(prepared.error());
             }
             stats.prepare_ns += *prepared;
             stats.copied_bytes += chunk_size;
             if (stop.stop_requested())
             {
-                co_return cxx::unexpected(RenderError{kWorkStopped});
+                co_return failure(RenderError{kWorkStopped});
             }
             std::optional<CommandBatch> batch;
             for (;;)
@@ -487,30 +510,29 @@ namespace lux::render::vulkan
                 }
                 if (available.error().type != kCapacity)
                 {
-                    co_return cxx::unexpected(available.error());
+                    co_return failure(available.error());
                 }
                 const auto pending = copy.oldestPending();
                 if (!pending)
                 {
-                    co_return cxx::unexpected(available.error());
+                    co_return failure(available.error());
                 }
                 auto completed = co_await copy.whenComplete(*pending);
                 if (!completed)
                 {
-                    co_return cxx::unexpected(completed.error());
+                    co_return failure(completed.error());
                 }
                 if (stop.stop_requested())
                 {
-                    co_return cxx::unexpected(RenderError{kWorkStopped});
+                    co_return failure(RenderError{kWorkStopped});
                 }
             }
             const auto recording_started = UploadClock::now();
             const auto flushed = page->buffer().flush(0, chunk_size);
             if (!flushed)
             {
-                co_return cxx::unexpected(flushed.error());
+                co_return failure(flushed.error());
             }
-            batch->retain(page);
             if (buffer)
             {
                 batch->retain(buffer);
@@ -567,7 +589,7 @@ namespace lux::render::vulkan
             stats.owner_ns += elapsed(recording_started);
             if (!submitted)
             {
-                co_return cxx::unexpected(submitted.error());
+                co_return failure(submitted.error());
             }
             accepted.merge(*submitted);
             if (!ticket && clone_use)
@@ -584,15 +606,15 @@ namespace lux::render::vulkan
             {
                 break;
             }
-            // This page is reused only after its actual Copy completes. The final page stays in the batch.
+            // Reuse only after actual Copy completion. On exit the page moves to the unique retirement facility.
             auto completed = co_await copy.whenComplete(*ticket);
             if (!completed)
             {
-                co_return cxx::unexpected(completed.error());
+                co_return failure(completed.error());
             }
             if (auto measured = page->finishMeasurement(); !measured)
             {
-                co_return cxx::unexpected(measured.error());
+                co_return failure(measured.error());
             }
             offset += chunk_size;
             if (region)
@@ -618,21 +640,21 @@ namespace lux::render::vulkan
                 }
                 if (available.error().type != kCapacity)
                 {
-                    co_return cxx::unexpected(available.error());
+                    co_return failure(available.error());
                 }
                 const auto pending = graphics.oldestPending();
                 if (!pending)
                 {
-                    co_return cxx::unexpected(available.error());
+                    co_return failure(available.error());
                 }
                 auto completed = co_await graphics.whenComplete(*pending);
                 if (!completed)
                 {
-                    co_return cxx::unexpected(completed.error());
+                    co_return failure(completed.error());
                 }
                 if (stop.stop_requested())
                 {
-                    co_return cxx::unexpected(RenderError{kWorkStopped});
+                    co_return failure(RenderError{kWorkStopped});
                 }
             }
             const auto recording_started = UploadClock::now();
@@ -664,7 +686,7 @@ namespace lux::render::vulkan
             stats.owner_ns += elapsed(recording_started);
             if (!submitted)
             {
-                co_return cxx::unexpected(submitted.error());
+                co_return failure(submitted.error());
             }
             accepted.merge(*submitted);
         }

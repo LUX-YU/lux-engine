@@ -10,6 +10,9 @@ namespace lux::render
 
     template <typename T> using RenderResult = cxx::expected<T, RenderError>;
 
+    // Shared by Native submissions and Runtime delivery; preserve the existing public error identity.
+    inline constexpr auto kOutcomeUnknown = error::errorId("lux.render.runtime.outcome_unknown");
+
     inline constexpr auto kInvalidTargetExtent = error::errorId("lux.render.core.invalid_target_extent");
     inline constexpr auto kInvalidTargetFormat = error::errorId("lux.render.core.invalid_target_format");
     inline constexpr auto kInvalidTargetSamples = error::errorId("lux.render.core.invalid_target_samples");

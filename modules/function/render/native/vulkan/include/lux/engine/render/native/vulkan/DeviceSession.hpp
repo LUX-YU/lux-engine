@@ -52,6 +52,7 @@ namespace lux::render::vulkan
 
         [[nodiscard]] RenderResult<std::uint32_t> sampledImageCapacity() const noexcept;
         [[nodiscard]] RenderResult<std::shared_ptr<DescriptorArray>> sampledImageArray() noexcept;
+        [[nodiscard]] VulkanAllocator& allocator() noexcept { return allocator_; }
         [[nodiscard]] const VulkanDevice& device() const noexcept { return device_; }
         // Boundary lookup compares stable owner identity before inspecting the ticket's queue.
         [[nodiscard]] SubmissionQueue* queueFor(SubmissionTicket ticket) noexcept;
@@ -74,12 +75,6 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<ImagePermit> createImage(VkExtent2D extent, VkFormat format,
             VkImageUsageFlags usage, VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT) noexcept;
         [[nodiscard]] RenderResult<ImagePermit> aliasImage(const ImagePermit& source) noexcept;
-        [[nodiscard]] RenderResult<void> write(Buffer& buffer, VkDeviceSize offset,
-            std::span<const std::byte> bytes) noexcept;
-        [[nodiscard]] RenderResult<void> read(const Buffer& buffer, VkDeviceSize offset,
-            std::span<std::byte> bytes) const noexcept;
-        [[nodiscard]] BufferMemoryBinding memoryBinding(const Buffer& buffer) const noexcept;
-        [[nodiscard]] ImageMemoryBinding memoryBinding(const Image& image) const noexcept;
         // Synchronous cold borrow. No stale pointer is read during identity validation.
         [[nodiscard]] Buffer* borrow(const BufferPermit& permit) const noexcept;
         [[nodiscard]] Image* borrow(const ImagePermit& permit) const noexcept;
@@ -111,8 +106,8 @@ namespace lux::render::vulkan
         DeviceSession(VulkanDevice device, VulkanAllocator allocator) noexcept;
         VulkanDevice device_;
         VulkanAllocator allocator_;
-        cxx::StableSlotMap<Buffer, BufferAllocationTag> buffers_;
-        cxx::StableSlotMap<Image, ImageAllocationTag> images_;
+        cxx::StableSlotMap<std::shared_ptr<Buffer>, BufferAllocationTag> buffers_;
+        cxx::StableSlotMap<std::shared_ptr<Image>, ImageAllocationTag> images_;
         std::array<std::unique_ptr<SubmissionQueue>, 3> queue_owners_;
         std::array<SubmissionQueue*, 3> queues_{};
         std::array<std::optional<RetirementQueue>, 3> retirement_owners_;

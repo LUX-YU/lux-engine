@@ -130,7 +130,7 @@ namespace lux::render::vulkan
             physical_->bytes += bytes;
             value->dirty.resize(capacity);
             value->pending.reserve(capacity);
-            auto result = session_.write(*session_.borrow(value->buffer), 0, std::as_bytes(std::span(shadow)));
+            auto result = session_.borrow(value->buffer)->write(0, std::as_bytes(std::span(shadow)));
             if (!result) return result;
             written_records_ += capacity;
         }
@@ -155,7 +155,7 @@ namespace lux::render::vulkan
     {
         // Mark before write: even a failed flush is repaired from CPU authority on the next attempt.
         backing.mark(index);
-        auto result = session_.write(*session_.borrow(backing.buffer), std::uint64_t(index) * sizeof(transform),
+        auto result = session_.borrow(backing.buffer)->write(std::uint64_t(index) * sizeof(transform),
             std::as_bytes(std::span(&transform, 1)));
         if (result) ++written_records_;
         return result;
@@ -259,7 +259,7 @@ namespace lux::render::vulkan
         // Dirty indices are unique and bounded by allocated slots. No live-record walk on sparse updates.
         for (auto index : backing.pending)
         {
-            auto result = session_.write(*session_.borrow(backing.buffer), std::uint64_t(index) * sizeof(TransformMatrix),
+            auto result = session_.borrow(backing.buffer)->write(std::uint64_t(index) * sizeof(TransformMatrix),
                 std::as_bytes(std::span(&shadow_[index], 1)));
             if (!result) return cxx::unexpected(result.error());
             ++written_records_;
@@ -400,7 +400,7 @@ namespace lux::render::vulkan
             bank->buffer = std::move(*buffer);
             bank->bytes = bytes;
             physical_->bytes += bytes;
-            auto written = session_.write(*session_.borrow(bank->buffer), 0, std::as_bytes(std::span(group->words)));
+            auto written = session_.borrow(bank->buffer)->write(0, std::as_bytes(std::span(group->words)));
             if (!written) return cxx::unexpected(written.error());
         }
         group->current = group->banks.front().get();
@@ -418,7 +418,7 @@ namespace lux::render::vulkan
             if (bank.get() != group.current && bank->last_use.completed())
             {
                 // Structural membership update; no matrix-table scan or Graph compilation.
-                auto written = session_.write(*session_.borrow(bank->buffer), 0, std::as_bytes(words));
+                auto written = session_.borrow(bank->buffer)->write(0, std::as_bytes(words));
                 if (!written) return cxx::unexpected(written.error());
                 return bank.get();
             }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <memory>
 #include <lux/engine/render/native/vulkan/device/DeviceOptions.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/native/vulkan/Error.hpp>
@@ -9,6 +10,11 @@ struct VmaAllocator_T;
 
 namespace lux::render::vulkan
 {
+    class Buffer;
+    class Image;
+    struct ImageDescription;
+    enum class EMemoryAccess;
+
     struct InstanceOptions
     {
         std::span<const char* const> extensions{};
@@ -189,6 +195,13 @@ namespace lux::render::vulkan
     {
     public:
         [[nodiscard]] static RenderResult<VulkanAllocator> create(const VulkanDevice& device) noexcept;
+        // Returned objects own their Native allocation; this allocator must outlive every reference.
+        [[nodiscard]] RenderResult<std::shared_ptr<Buffer>> createBuffer(
+            VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access,
+            std::span<const std::uint32_t> families = {}
+        ) noexcept;
+        [[nodiscard]] RenderResult<std::shared_ptr<Image>> createImage(const ImageDescription& description) noexcept;
+        [[nodiscard]] RenderResult<std::shared_ptr<Image>> aliasImage(const Image& source) noexcept;
         ~VulkanAllocator() noexcept;
         VulkanAllocator(VulkanAllocator&& other) noexcept;
         VulkanAllocator& operator=(VulkanAllocator&& other) noexcept;

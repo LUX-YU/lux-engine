@@ -531,7 +531,7 @@ namespace lux::render::vulkan
         if (!*ready) return cxx::unexpected(RenderError{kBusy});
         const auto* buffer = bindings_[resource].buffer;
         std::vector<std::byte> result(static_cast<std::size_t>(buffer->size()));
-        if (auto read = owner_->read(*buffer, 0, result); !read) return cxx::unexpected(read.error());
+        if (auto read = buffer->read(0, result); !read) return cxx::unexpected(read.error());
         return result;
     }
 }

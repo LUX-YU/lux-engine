@@ -18,12 +18,13 @@ namespace lux::render::vulkan
             render_allocation::calls = 0;
             render_allocation::window = true;
             // Host metadata only: no fake allocation is published to a DeviceSession or GPU.
-            cxx::StableSlotMap<Buffer, BufferAllocationTag> buffers;
-            cxx::StableSlotMap<Image, ImageAllocationTag> images;
+            cxx::StableSlotMap<std::shared_ptr<Buffer>, BufferAllocationTag> buffers;
+            cxx::StableSlotMap<std::shared_ptr<Image>, ImageAllocationTag> images;
             buffers.reserve(count / 2);
             images.reserve(count / 2);
             std::vector<ExecutionContext::Binding> bindings(count);
             // Reserve physical metadata pages without fabricating Native objects with null owners.
+            // Shared control blocks and actual Buffer/Image objects are not included here.
             // Real VkBuffer instances are separately measured by zeroRetirement().
             render_allocation::window = false;
             const auto bytes = buffers.storageBytes() + images.storageBytes() + sizeof(bindings) +

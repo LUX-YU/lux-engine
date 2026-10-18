@@ -366,7 +366,7 @@ namespace lux::render::vulkan
             if (incompatible_consumers) return cxx::unexpected(RenderError{kUnsupported});
         }
         if (auto collected = session_.collect(); !collected) return cxx::unexpected(collected.error());
-        const auto bytes = session_.memoryBinding(transfer.image()).size;
+        const auto bytes = transfer.image().memoryBinding().size;
         const bool is_byte_budget_full = config_.resident_byte_budget && bytes > config_.resident_byte_budget - physical_->bytes;
         if (is_byte_budget_full) return cxx::unexpected(RenderError{kCapacity});
         auto retirement = session_.retirement().reserve();

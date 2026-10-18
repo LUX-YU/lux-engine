@@ -210,7 +210,7 @@ namespace
             for (unsigned i = 0; i < 14; ++i) fillers.push_back(createTexture(storage, create, *session, host));
         const auto published = createTexture(storage, create, *session, host);
         const auto old_descriptor = storage.find(published.texture)->descriptorIndex();
-        const auto old_memory = session->memoryBinding(storage.find(published.texture)->image());
+        const auto old_memory = storage.find(published.texture)->image().memoryBinding();
         const auto old_image = storage.find(published.texture)->image().native();
 
         const texture_fixture::Config config{published.texture, 16, 16, 1,

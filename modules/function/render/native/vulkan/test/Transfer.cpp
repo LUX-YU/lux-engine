@@ -29,7 +29,7 @@ static void copyImage(const InstanceContext& bootstrap, bool multiple, bool dedi
     auto readback = take(session->createBuffer(pixels.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
     auto image = take(session->createImage({16, 16}, VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT));
-    CHECK(session->write(*session->borrow(upload), 0, pixels));
+    CHECK(session->borrow(upload)->write(0, pixels));
     auto batch = take(transfer.begin());
     VkImageMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
     barrier.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
@@ -87,7 +87,7 @@ static void copyImage(const InstanceContext& bootstrap, bool multiple, bool dedi
     const SubmissionWait wait{producer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT};
     const auto final = take(std::move(consumer).submit(distinct ? std::span(&wait, 1) : std::span<const SubmissionWait>{}));
     CHECK(take(graphics.wait(final, UINT64_MAX)));
-    CHECK(session->read(*session->borrow(readback), 0, result));
+    CHECK(session->borrow(readback)->read(0, result));
     CHECK(result == pixels);
     CHECK(session->releaseCompleted(upload, final));
     CHECK(session->releaseCompleted(readback, final));

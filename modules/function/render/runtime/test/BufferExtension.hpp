@@ -71,7 +71,7 @@ namespace extension_test
                     return *submitted;
                 }
 
-                RenderResult<void> ready() noexcept { return session.read(*session.borrow(buffer), 0, *output); }
+                RenderResult<void> ready() noexcept { return session.borrow(buffer)->read(0, *output); }
             };
         vk::GpuWorkSender<SetBuffer::Response> setBuffer(SetBuffer::Request&& input) noexcept
         {

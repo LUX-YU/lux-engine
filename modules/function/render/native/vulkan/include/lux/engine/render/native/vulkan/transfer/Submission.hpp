@@ -107,6 +107,11 @@ namespace lux::render::vulkan
             return recording_id_;
         }
 
+        // Retain an actual resource or an immutable prepared binding set once per recording.
+        // Successful submission keeps it through completion; abandoned/failed recording releases it.
+        // Slot storage is reused on later recordings without recreating shared control blocks.
+        void retain(std::shared_ptr<const void> resource) noexcept;
+
         [[nodiscard]] RenderResult<SubmissionTicket> submit() && noexcept;
         [[nodiscard]] RenderResult<SubmissionTicket> submit(std::span<const struct SubmissionWait> waits) && noexcept;
         // Synchronous native WSI borrows. Caller retains semaphores until actual

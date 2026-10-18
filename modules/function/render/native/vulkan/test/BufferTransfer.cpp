@@ -80,7 +80,7 @@ static std::vector<std::byte> read(DeviceSession& session, BufferPermit& buffer)
     const auto ticket = take(std::move(batch).submit());
     CHECK(take(session.queue().wait(ticket, UINT64_MAX)));
     std::vector<std::byte> bytes(source->size());
-    CHECK(session.read(*session.borrow(destination), 0, bytes));
+    CHECK(session.borrow(destination)->read(0, bytes));
     CHECK(session.releaseCompleted(destination, ticket));
     CHECK(session.releaseCompleted(buffer, ticket));
     return bytes;
@@ -270,7 +270,7 @@ int main()
         CHECK(&graphics != &transfer && graphics.nativeQueue().family == transfer.nativeQueue().family);
         const std::array<std::byte, 16> input{std::byte{73}};
         auto source = take(session->createBuffer(input.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD));
-        CHECK(session->write(*session->borrow(source), 0, input));
+        CHECK(session->borrow(source)->write(0, input));
         auto output_a = take(session->createBuffer(input.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
         auto output_b = take(session->createBuffer(input.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
         const auto copy = [&](SubmissionQueue& queue, BufferPermit& output) {
@@ -300,8 +300,8 @@ int main()
         hold_completion = false;
         CHECK(take(transfer.wait(b, UINT64_MAX)) && take(session->retirement().collect()) == 1);
         std::array<std::byte, 16> a_bytes{}, b_bytes{};
-        CHECK(session->read(*session->borrow(output_a), 0, a_bytes));
-        CHECK(session->read(*session->borrow(output_b), 0, b_bytes));
+        CHECK(session->borrow(output_a)->read(0, a_bytes));
+        CHECK(session->borrow(output_b)->read(0, b_bytes));
         CHECK(a_bytes == input && b_bytes == input);
         CHECK(session->releaseCompleted(output_a, a) && session->releaseCompleted(output_b, b));
         std::printf("independent queue uses retained until BOTH observed tickets; same serial=%d\n", a.serial() == b.serial());

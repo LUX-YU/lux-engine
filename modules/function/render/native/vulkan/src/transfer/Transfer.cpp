@@ -73,7 +73,6 @@ namespace lux::render::vulkan
         for (auto& page : pages)
         {
             if (page.leased) std::terminate();
-            if (page.buffer) session.destroyFinished(page.buffer);
         }
         if (timestamps) vkDestroyQueryPool(session.device().native(), timestamps, nullptr);
     }
@@ -111,12 +110,11 @@ namespace lux::render::vulkan
         const auto sharing = families[0] == families[1] ? std::span<const std::uint32_t>{} : std::span(families);
         for (auto& page : state->pages)
         {
-            auto buffer = createBufferRecord(options.chunk_bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            auto buffer = allocator_.createBuffer(options.chunk_bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                 EMemoryAccess::UPLOAD, sharing);
             if (!buffer) return cxx::unexpected(buffer.error());
-            page.buffer = *buffer;
-            page.permit = BufferPermit{*this, (*buffer)->key_};
-            page.mapped = static_cast<std::byte*>((*buffer)->mapped_);
+            page.buffer = std::move(*buffer);
+            page.mapped = static_cast<std::byte*>(page.buffer->mapped_);
         }
         state->stats.staging_bytes = options.chunk_bytes * options.staging_pages;
         uploads_ = std::move(state);
@@ -426,6 +424,7 @@ namespace lux::render::vulkan
         if (!acquiring)
         {
             const auto& page = state.pages[page_];
+            batch->retain(page.buffer);
             const auto flushed = LUX_NATIVE("flush", vmaFlushAllocation(session_->allocator_.native(),
                 page.buffer->allocation_, 0, chunk_size_));
             if (flushed != VK_SUCCESS) { failure_ = nativeError(flushed); finish(); return; }

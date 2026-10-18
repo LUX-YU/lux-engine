@@ -156,7 +156,7 @@ vulkan::SubmissionQueue& ProbeOwner::queue() noexcept
 RenderResult<void> ProbeOwner::ready() noexcept
 {
     samples[sample].fence = now();
-    auto read = session.read(*session.borrow(destination), 0, *output);
+    auto read = session.borrow(destination)->read(0, *output);
     if (!read) return read;
     if (!std::ranges::equal(*output, source)) return lux::cxx::unexpected(RenderError{kInvalidEncoding});
     if (mode == 5) return lux::cxx::unexpected(RenderError{kStorageContract});
@@ -241,7 +241,7 @@ upload(vulkan::DeviceSession& session, UploadProbe::Request&& input) noexcept
     auto destination = session.createBuffer(source.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, vulkan::EMemoryAccess::READBACK);
     if (!destination) return native_test::SubmissionSender<UploadProbe::Response, ProbeOwner>{destination.error()};
     owner->destination = std::move(*destination);
-    if (auto written = session.write(*session.borrow(owner->staging), 0, source); !written)
+    if (auto written = session.borrow(owner->staging)->write(0, source); !written)
         return native_test::SubmissionSender<UploadProbe::Response, ProbeOwner>{written.error()};
     return {std::move(response), std::move(owner)};
 }

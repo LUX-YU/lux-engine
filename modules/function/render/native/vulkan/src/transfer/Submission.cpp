@@ -10,14 +10,22 @@
 
 namespace lux::render::vulkan
 {
+    // Physical queue slots are the sole owners of recorded/submitted resource sets.
+    // Their existing fence/serial FIFO determines when those references can leave.
+    struct SubmittedBatch final
+    {
+        VkCommandBuffer command{};
+        VkFence fence{};
+        std::vector<std::shared_ptr<const void>> resources;
+    };
+
     struct SubmissionQueue::Backing
     {
         VkDevice device;
         NativeQueue queue;
         VkSemaphore timeline{};
         VkCommandPool pool{};
-        std::vector<VkCommandBuffer> commands;
-        std::vector<VkFence> fences;
+        std::vector<SubmittedBatch> batches;
         std::uint64_t submitted{};
         std::uint64_t completed{};
         std::uint64_t recording_id{};
@@ -28,7 +36,7 @@ namespace lux::render::vulkan
         std::size_t callback_capacity;
 
         Backing(VkDevice device, NativeQueue queue, std::uint32_t capacity, std::uint32_t callbacks)
-            : device(device), queue(queue), commands(capacity), fences(capacity), callback_capacity(callbacks)
+            : device(device), queue(queue), batches(capacity), callback_capacity(callbacks)
         {
         }
 
@@ -38,11 +46,12 @@ namespace lux::render::vulkan
             {
                 LUX_DESTROY("timeline", vkDestroySemaphore(device, timeline, nullptr));
             }
-            for (auto fence : fences)
+            for (auto& batch : batches)
             {
-                if (fence)
+                batch.resources.clear();
+                if (batch.fence)
                 {
-                    LUX_DESTROY("fence", vkDestroyFence(device, fence, nullptr));
+                    LUX_DESTROY("fence", vkDestroyFence(device, batch.fence, nullptr));
                 }
             }
             if (pool)
@@ -82,16 +91,18 @@ namespace lux::render::vulkan
         allocation.commandPool = backing->pool;
         allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocation.commandBufferCount = capacity;
-        result =
-            LUX_NATIVE("commands", vkAllocateCommandBuffers(device.native(), &allocation, backing->commands.data()));
+        std::vector<VkCommandBuffer> commands(capacity);
+        result = LUX_NATIVE("commands", vkAllocateCommandBuffers(device.native(), &allocation, commands.data()));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
         }
         const VkFenceCreateInfo fence{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-        for (auto& handle : backing->fences)
+        for (std::size_t i = 0; i < backing->batches.size(); ++i)
         {
-            result = LUX_NATIVE("fence", vkCreateFence(device.native(), &fence, nullptr, &handle));
+            auto& batch = backing->batches[i];
+            batch.command = commands[i];
+            result = LUX_NATIVE("fence", vkCreateFence(device.native(), &fence, nullptr, &batch.fence));
             if (result != VK_SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));
@@ -273,7 +284,7 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kCapacity});
         }
         const auto slot = static_cast<std::uint32_t>(backing_->submitted % capacity());
-        const auto command = backing_->commands[slot];
+        const auto command = backing_->batches[slot].command;
         auto result = LUX_NATIVE("reset_command", vkResetCommandBuffer(command, 0));
         if (result != VK_SUCCESS)
         {
@@ -364,18 +375,18 @@ namespace lux::render::vulkan
             wait.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
         }
         const auto slot = static_cast<std::uint32_t>(backing_->submitted % capacity());
-        auto result = LUX_NATIVE("end", vkEndCommandBuffer(backing_->commands[slot]));
+        auto result = LUX_NATIVE("end", vkEndCommandBuffer(backing_->batches[slot].command));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(failure(result));
         }
-        result = LUX_NATIVE("reset_fence", vkResetFences(backing_->device, 1, &backing_->fences[slot]));
+        result = LUX_NATIVE("reset_fence", vkResetFences(backing_->device, 1, &backing_->batches[slot].fence));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(failure(result));
         }
         VkCommandBufferSubmitInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
-        command.commandBuffer = backing_->commands[slot];
+        command.commandBuffer = backing_->batches[slot].command;
         std::array<VkSemaphoreSubmitInfo, 2> signals{};
         auto& signal = signals[0];
         signal = {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
@@ -398,18 +409,21 @@ namespace lux::render::vulkan
         info.pWaitSemaphoreInfos = native_waits.data();
         info.signalSemaphoreInfoCount = signal_count;
         info.pSignalSemaphoreInfos = signals.data();
-        result = LUX_NATIVE("submit", vkQueueSubmit2(backing_->queue.handle, 1, &info, backing_->fences[slot]));
+        result = LUX_NATIVE("submit", vkQueueSubmit2(backing_->queue.handle, 1, &info, backing_->batches[slot].fence));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(failure(result));
         }
         ++backing_->submitted;
+        backing_->recording = false;
         return SubmissionTicket{*this, backing_->submitted};
     }
 
     void SubmissionQueue::cancel() noexcept
     {
+        const auto slot = static_cast<std::uint32_t>(backing_->submitted % capacity());
         backing_->recording = false;
+        backing_->batches[slot].resources.clear();
     }
 
     RenderResult<std::uint64_t> SubmissionQueue::poll() noexcept
@@ -421,7 +435,7 @@ namespace lux::render::vulkan
         while (backing_->completed != backing_->submitted)
         {
             const auto slot = static_cast<std::uint32_t>(backing_->completed % capacity());
-            const auto result = LUX_NATIVE("fence_status", vkGetFenceStatus(backing_->device, backing_->fences[slot]));
+            const auto result = LUX_NATIVE("fence_status", vkGetFenceStatus(backing_->device, backing_->batches[slot].fence));
             if (result == VK_NOT_READY)
             {
                 break;
@@ -431,6 +445,7 @@ namespace lux::render::vulkan
                 return cxx::unexpected(failure(result));
             }
             ++backing_->completed;
+            backing_->batches[slot].resources.clear();
         }
         return backing_->completed;
     }
@@ -451,7 +466,7 @@ namespace lux::render::vulkan
         }
         const auto slot = static_cast<std::uint32_t>((ticket.serial() - 1) % capacity());
         const auto result =
-            LUX_NATIVE("wait", vkWaitForFences(backing_->device, 1, &backing_->fences[slot], VK_TRUE, timeout_ns));
+            LUX_NATIVE("wait", vkWaitForFences(backing_->device, 1, &backing_->batches[slot].fence, VK_TRUE, timeout_ns));
         if (result == VK_TIMEOUT)
         {
             return false;
@@ -485,7 +500,7 @@ namespace lux::render::vulkan
 
     std::uint32_t SubmissionQueue::capacity() const noexcept
     {
-        return static_cast<std::uint32_t>(backing_->fences.size());
+        return static_cast<std::uint32_t>(backing_->batches.size());
     }
 
     VkDevice SubmissionQueue::device() const noexcept
@@ -532,6 +547,11 @@ namespace lux::render::vulkan
     {
     }
 
+    void CommandBatch::retain(std::shared_ptr<const void> resource) noexcept
+    {
+        owner_->backing_->batches[slot_].resources.push_back(std::move(resource));
+    }
+
     RenderResult<SubmissionTicket> CommandBatch::submit() && noexcept
     {
         return std::move(*this).submit({});
@@ -540,7 +560,7 @@ namespace lux::render::vulkan
     RenderResult<SubmissionTicket> CommandBatch::submit(std::span<const SubmissionWait> waits) && noexcept
     {
         auto result = owner_->submit(waits);
-        owner_->cancel();
+        if (!result) owner_->cancel();
         owner_ = nullptr;
         return result;
     }
@@ -552,7 +572,7 @@ namespace lux::render::vulkan
     ) && noexcept
     {
         auto result = owner_->submit(waits, acquired, present);
-        owner_->cancel();
+        if (!result) owner_->cancel();
         owner_ = nullptr;
         return result;
     }

@@ -52,7 +52,7 @@ static std::vector<std::byte> read(DeviceSession& session, const auto& version)
     const auto ticket = take(std::move(batch).submit());
     CHECK(take(session.queue().wait(ticket, UINT64_MAX)));
     std::vector<std::byte> bytes(last.offset + last.size);
-    CHECK(session.read(*session.borrow(output), 0, bytes));
+    CHECK(session.borrow(output)->read(0, bytes));
     CHECK(session.releaseCompleted(output, ticket));
     return bytes;
 }

@@ -61,7 +61,7 @@ namespace buffer_fixture
             if (!buffer) return lux::cxx::unexpected(buffer.error());
             candidate->permit = std::move(*buffer);
             const std::vector<std::byte> zero(value.size);
-            if (auto written = session.write(*session.borrow(candidate->permit), 0, zero); !written)
+            if (auto written = session.borrow(candidate->permit)->write(0, zero); !written)
                 return lux::cxx::unexpected(written.error());
             return candidate;
         };

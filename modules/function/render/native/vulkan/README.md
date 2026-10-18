@@ -10,12 +10,21 @@ image destroys its VkImage immediately without releasing memory still used by an
 releases the VMA allocation after destroying its VkImage. Alias synchronization remains the caller's
 responsibility.
 
-DeviceSession currently retains these objects in stable tables and controls their GPU-safe destruction
-through the existing permit/retirement interface. This is not yet submission-batch resource ownership.
-Code/context owners will be composed under the session lifetime; an outstanding ticket is queue-scoped
-evidence of actual accepted work, never a frame index. Failure of a subsequent submit cannot erase
-`lastSubmitted()`. Retirement transfers ownership only on success and destroys it only after completion.
-Final teardown drains all queue owners before allocator/device release; no individual resource waits idle.
+`VulkanAllocator::createBuffer/createImage/aliasImage` return shared actual resource objects.
+`Buffer::write/read` performs bounded mapped access and flush/invalidate; `memoryBinding()` belongs to
+the resource. The allocator and device must outlive these objects, including references in queue slots.
+
+`CommandBatch::retain()` records actual resources or one prepared binding set. On successful Submit,
+the existing physical queue slot retains them until its fence advances the completed prefix. A failed
+or abandoned recording releases only its own set; a later Submit failure never drops an earlier accepted
+batch. Reference-array capacity is reused when slots cycle. Upload staging pages now use this path.
+Object retention does not permit rewriting a page or descriptor still in use by the GPU.
+
+Professional destinations and execution contexts are still being migrated from Session tables and
+permit/retirement ownership. Their existing safety checks remain until all indirect bindings and actual
+GPU uses have batch owners. Primitive Copy/Alias tests are not proof of complete graph resource coverage.
+An outstanding ticket remains queue-scoped evidence of accepted work, never a frame index. Final teardown
+drains queue owners before allocator/device release; individual resources never wait idle.
 
 ## Algorithm provenance
 

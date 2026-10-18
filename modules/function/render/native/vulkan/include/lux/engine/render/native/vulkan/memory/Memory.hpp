@@ -104,10 +104,15 @@ namespace lux::render::vulkan
 
         ~Buffer() noexcept;
 
+        [[nodiscard]] RenderResult<void> write(VkDeviceSize offset, std::span<const std::byte> bytes) noexcept;
+        [[nodiscard]] RenderResult<void> read(VkDeviceSize offset, std::span<std::byte> bytes) const noexcept;
+        [[nodiscard]] BufferMemoryBinding memoryBinding() const noexcept;
+
         Buffer(const Buffer&) = delete;
         Buffer& operator=(const Buffer&) = delete;
 
     private:
+        friend class VulkanAllocator;
         friend class DeviceSession;
         friend class RetirementQueue;
         cxx::SlotKey<BufferAllocationTag> key_;
@@ -154,6 +159,7 @@ namespace lux::render::vulkan
         ImageMemory& operator=(const ImageMemory&) = delete;
 
     private:
+        friend class VulkanAllocator;
         friend class DeviceSession;
         friend class Image;
         VulkanAllocator* allocator_;
@@ -202,10 +208,13 @@ namespace lux::render::vulkan
 
         ~Image() noexcept;
 
+        [[nodiscard]] ImageMemoryBinding memoryBinding() const noexcept;
+
         Image(const Image&) = delete;
         Image& operator=(const Image&) = delete;
 
     private:
+        friend class VulkanAllocator;
         friend class DeviceSession;
         friend class RetirementQueue;
         cxx::SlotKey<ImageAllocationTag> key_;

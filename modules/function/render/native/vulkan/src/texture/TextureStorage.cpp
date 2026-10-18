@@ -11,33 +11,32 @@
 
 namespace lux::render::vulkan
 {
-    // Physical versions and their descriptor allocation can outlive the logical Storage identity.
-    // No Scene/View/configuration/subscription is retained by an accepted GPU use.
-    struct TextureStorage::Physical final
+    // Budget accounting follows physical content, including snapshots held after logical deletion.
+    // It owns no device, resource or identity table.
+    struct TextureStorage::Residency final
     {
-        explicit Physical(DeviceSession& owner) noexcept : session(owner) {}
-        ~Physical() noexcept;
-        void destroy(Backing&) noexcept;
-        DeviceSession& session;
-        cxx::StableSlotMap<Backing, TextureDescriptorTag, cxx::NoAux, 16> versions;
-        std::shared_ptr<DescriptorArray> descriptors;
+        std::size_t versions = 0;
         std::uint64_t bytes = 0, peak = 0;
     };
 
-    // Allocated with the candidate, before submission/publication. Only retirement fills its custody.
-    struct TextureStorage::RetiredBacking final
+    TextureStorage::TextureData::TextureData(std::shared_ptr<Residency> residency, std::shared_ptr<Image> image,
+        DescriptorRange descriptor, const rdesc::TextureInfo& info, std::uint64_t revision) noexcept
+        : residency_(std::move(residency)), image_(std::move(image)), descriptor_(std::move(descriptor)),
+          info_(info), bytes_(image_->memoryBinding().size), revision_(revision)
     {
-        std::shared_ptr<Physical> physical;
-        cxx::SlotKey<TextureDescriptorTag> key;
-        [[nodiscard]] VkDevice device() const noexcept { return physical->session.device().native(); }
-        ~RetiredBacking() noexcept
-        {
-            if (physical) physical->destroy(*physical->versions.find(key));
-        }
-    };
+        ++residency_->versions;
+        residency_->bytes += bytes_;
+        residency_->peak = std::max(residency_->peak, residency_->bytes);
+    }
 
-    TextureStorage::Backing::Backing() noexcept = default;
-    TextureStorage::Backing::~Backing() noexcept = default;
+    TextureStorage::TextureData::~TextureData() noexcept
+    {
+        const auto device = image_->device();
+        if (view_) LUX_DESTROY("image_view", vkDestroyImageView(device, view_, nullptr));
+        if (sampler_) LUX_DESTROY("texture_sampler", vkDestroySampler(device, sampler_, nullptr));
+        --residency_->versions;
+        residency_->bytes -= bytes_;
+    }
 
     namespace
     {
@@ -55,7 +54,10 @@ namespace lux::render::vulkan
     }
 
     RenderResult<std::unique_ptr<Transfer>> TextureStorage::prepareImage(
-        const rdesc::TextureInfo& info, std::span<const std::byte> source, std::optional<TextureRegion> region, Backing* base
+        const rdesc::TextureInfo& info,
+        std::span<const std::byte> source,
+        std::optional<TextureRegion> region,
+        std::shared_ptr<TextureData> base
     ) noexcept
     {
         auto& session = session_;
@@ -149,15 +151,14 @@ namespace lux::render::vulkan
     struct TextureStorage::Candidate final
     {
         TextureStorage& storage;
-        Backing* version;
+        std::shared_ptr<TextureData> version;
         TextureId texture;
-        Backing* base = nullptr;
+        std::shared_ptr<TextureData> base;
         StorageLease lease;
 
         ~Candidate() noexcept
         {
             if (version) storage.rollback(*this);
-            if (base) storage.releaseLease(*base);
         }
     };
 
@@ -165,29 +166,39 @@ namespace lux::render::vulkan
     {
         TextureStorage* storage;
         TextureId id;
-        TextureStorage::Backing* backing;
         PreparedStorageBinding* binding;
         std::uint32_t lod;
+        std::size_t position;
         std::array<float, 4> parameters{};
 
-
-        void update(TextureStorage::Backing& value) noexcept
+        void update(const std::shared_ptr<TextureData>& value) noexcept
         {
-            if (backing) storage->releaseLease(*backing);
-            backing = &value;
-            ++backing->leases_;
-            parameters = {float(value.descriptorIndex()), float(value.info().color_space), float(lod), 0};
+            binding->resources = value;
+            parameters = {float(value->descriptorIndex()), float(value->info().color_space), float(lod), 0};
             binding->parameters = std::as_bytes(std::span(parameters));
-            binding->last_use = &value.last_use_;
+            binding->last_use = &value->last_use_;
             binding->publishUpdate();
         }
 
         ~Use() noexcept
         {
-            storage->releaseLease(*backing);
-            std::erase(storage->uses_, this);
+            if (storage) storage->unsubscribe(*this);
         }
     };
+
+    void TextureStorage::unsubscribe(Use& use) noexcept
+    {
+        auto& subscriptions = textures_.find(use.id.local)->uses;
+        subscriptions[use.position] = subscriptions.back();
+        subscriptions[use.position]->position = use.position;
+        subscriptions.pop_back();
+    }
+
+    void TextureStorage::disconnect(TextureRecord& record) noexcept
+    {
+        for (auto* use : record.uses) use->storage = nullptr;
+        record.uses.clear();
+    }
 
     RenderResult<std::pair<rdesc::TextureInfo, std::uint32_t>> TextureStorage::pin(
         TexturePublished expected, PreparedStorageBinding& binding
@@ -197,10 +208,9 @@ namespace lux::render::vulkan
         if (!record || !record->current || record->current->revision_ != expected.revision)
             return cxx::unexpected(RenderError{kStorageIdentity});
         auto& backing = *record->current;
-        auto use = std::make_unique<Use>(this, expected.texture, nullptr, &binding, 0);
-        use->update(backing);
-        binding.descriptors = physical_->descriptors->descriptors();
-        binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};
+        binding.resources = record->current;
+        binding.last_use = &backing.last_use_;
+        binding.descriptors = descriptors_->descriptors();
         return std::pair{backing.info(), backing.descriptorIndex()};
     }
 
@@ -220,9 +230,10 @@ namespace lux::render::vulkan
             expected->mips != actual.mip_count || expected->layers != actual.layers || format != backing.image().format() ||
             argument.lod >= actual.mip_count;
         if (mismatch) return cxx::unexpected(RenderError{kStorageMismatch});
-        auto use = std::make_unique<Use>(this, argument.texture, nullptr, &binding, argument.lod);
-        use->update(backing);
-        binding.descriptors = physical_->descriptors->descriptors();
+        auto use = std::make_unique<Use>(this, argument.texture, &binding, argument.lod, record->uses.size());
+        record->uses.push_back(use.get());
+        use->update(record->current);
+        binding.descriptors = descriptors_->descriptors();
         static const ShaderBlock parameters = [] {
             static constexpr rdesc::DataGpuField fields[]{
                 {"control", rdesc::EDataScalar::FLOAT, 0, 4, 1, 0, 0}
@@ -230,13 +241,12 @@ namespace lux::render::vulkan
             return ShaderBlock::from({rdesc::EDataLayout::STD430, 16, 16, fields, {}, {}, 0});
         }();
         binding.parameter_layout = &parameters;
-        uses_.push_back(use.get());
         binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};
         return {};
     }
 
     TextureStorage::TextureStorage(DeviceSession& session, StorageId id, TextureStorageConfig config) noexcept
-        : session_(session), id_(id), physical_(std::make_shared<Physical>(session)), config_(config) {}
+        : session_(session), id_(id), residency_(std::make_shared<Residency>()), config_(config) {}
 
     StorageFactory textureStorageFactory() noexcept
     {
@@ -278,56 +288,33 @@ namespace lux::render::vulkan
     {
         auto table = session_.sampledImageArray();
         if (!table) return cxx::unexpected(table.error());
-        physical_->descriptors = std::move(*table);
+        descriptors_ = std::move(*table);
         return {};
     }
 
     TextureStorage::~TextureStorage() noexcept
     {
-        if (!uses_.empty()) std::terminate();
-        // Cold logical teardown; active GPU resources transfer to already-reserved retirement records.
-        // Retired versions remain in the physical table solely until their real completion conditions hold.
-        for (auto it = physical_->versions.begin(); it != physical_->versions.end();)
-        {
-            auto& version = *it;
-            if (version.leases_ || version.reserved_) std::terminate();
-            version.live_ = false;
-            const bool destroys_now = version.retired_ && version.last_use_.completed();
-            retireUnused(version);
-            if (!destroys_now) ++it;
-        }
+        for (auto& record : textures_) disconnect(record);
     }
 
-    TextureStorage::Physical::~Physical() noexcept
-    {
-        if (!versions.empty()) std::terminate();
-    }
+    VkDescriptorSetLayout TextureStorage::layout() const noexcept { return descriptors_->layout(); }
+    VkDescriptorSet TextureStorage::descriptors() const noexcept { return descriptors_->descriptors(); }
+    std::size_t TextureStorage::residentVersions() const noexcept { return residency_->versions; }
+    std::uint64_t TextureStorage::residentBytes() const noexcept { return residency_->bytes; }
+    std::uint64_t TextureStorage::residentPeak() const noexcept { return residency_->peak; }
 
-    VkDescriptorSetLayout TextureStorage::layout() const noexcept { return physical_->descriptors->layout(); }
-    VkDescriptorSet TextureStorage::descriptors() const noexcept { return physical_->descriptors->descriptors(); }
-    std::size_t TextureStorage::residentVersions() const noexcept { return physical_->versions.size(); }
-    std::uint64_t TextureStorage::residentBytes() const noexcept { return physical_->bytes; }
-    std::uint64_t TextureStorage::residentPeak() const noexcept { return physical_->peak; }
-
-    void TextureStorage::releaseLease(Backing& version) noexcept
-    {
-        --version.leases_;
-        retireUnused(version);
-    }
-
-    const TextureStorage::Backing* TextureStorage::find(TextureId id) const noexcept
+    const TextureStorage::TextureData* TextureStorage::find(TextureId id) const noexcept
     {
         if (id.storage != id_) return nullptr;
         const auto* record = textures_.find(id.local);
-        return record ? record->current : nullptr;
+        return record ? record->current.get() : nullptr;
     }
 
-    RenderResult<TextureStorage::Backing*> TextureStorage::acquire(TextureId id) noexcept
+    RenderResult<std::shared_ptr<const TextureStorage::TextureData>> TextureStorage::acquire(TextureId id) noexcept
     {
         if (id.storage != id_) return cxx::unexpected(RenderError{kStorageIdentity});
         auto* record = textures_.find(id.local);
         if (!record || !record->current) return cxx::unexpected(RenderError{kWrongOwner});
-        ++record->current->leases_;
         return record->current;
     }
 
@@ -335,11 +322,11 @@ namespace lux::render::vulkan
     {
         if (auto collected = session_.collect(); !collected) return cxx::unexpected(collected.error());
         const bool is_version_budget_full = config_.resident_versions_budget &&
-            physical_->versions.size() >= config_.resident_versions_budget;
+            residency_->versions >= config_.resident_versions_budget;
         const bool is_byte_budget_full = config_.resident_byte_budget &&
-            minimum_bytes > config_.resident_byte_budget - physical_->bytes;
+            minimum_bytes > config_.resident_byte_budget - residency_->bytes;
         const bool full = is_version_budget_full || is_byte_budget_full ||
-            physical_->descriptors->occupied() == physical_->descriptors->capacity();
+            descriptors_->occupied() == descriptors_->capacity();
         if (full) return cxx::unexpected(RenderError{kCapacity});
         return {};
     }
@@ -359,7 +346,7 @@ namespace lux::render::vulkan
             if (conflict) return cxx::unexpected(RenderError{kBusy});
             const auto& previous = record->current->info_;
             const auto& candidate = info;
-            const bool incompatible_consumers = record->current->leases_ &&
+            const bool incompatible_consumers = !record->uses.empty() &&
                 (previous.width != candidate.width || previous.height != candidate.height ||
                  previous.mip_count != candidate.mip_count || previous.pixel_format != candidate.pixel_format ||
                  previous.layers != candidate.layers);
@@ -367,24 +354,14 @@ namespace lux::render::vulkan
         }
         if (auto collected = session_.collect(); !collected) return cxx::unexpected(collected.error());
         const auto bytes = transfer.image().memoryBinding().size;
-        const bool is_byte_budget_full = config_.resident_byte_budget && bytes > config_.resident_byte_budget - physical_->bytes;
+        const bool is_byte_budget_full = config_.resident_byte_budget &&
+            bytes > config_.resident_byte_budget - residency_->bytes;
         if (is_byte_budget_full) return cxx::unexpected(RenderError{kCapacity});
-        auto retirement = session_.retirement().reserve();
-        if (!retirement) return cxx::unexpected(retirement.error());
-        auto descriptor = physical_->descriptors->allocate();
+        auto descriptor = descriptors_->allocate();
         if (!descriptor) return cxx::unexpected(descriptor.error());
-        const auto slot = physical_->versions.emplace();
-        auto& version = *physical_->versions.find(slot);
-        version.key_ = slot;
-        version.descriptor_ = std::move(*descriptor);
-        version.retirement_ = std::move(*retirement);
-        version.retired_ = std::make_unique<RetiredBacking>();
-        version.info_ = info;
-        version.image_ = &transfer.image();
-        version.bytes_ = bytes;
-        version.revision_ = expected + 1;
-        physical_->bytes += bytes;
-        physical_->peak = std::max(physical_->peak, physical_->bytes);
+        auto content = std::make_shared<TextureData>(residency_, transfer.imageResource(), std::move(*descriptor),
+            info, expected + 1);
+        auto& version = *content;
         const auto device = session_.device().native();
         VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
         view.image = version.image_->native();
@@ -392,21 +369,21 @@ namespace lux::render::vulkan
         view.format = version.image_->format();
         view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, version.info_.mip_count, 0, 1};
         auto result = LUX_NATIVE("image_view", vkCreateImageView(device, &view, nullptr, &version.view_));
-        if (result != VK_SUCCESS) { destroy(version); return cxx::unexpected(nativeError(result)); }
+        if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
         VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
         sampler.magFilter = sampler.minFilter = VK_FILTER_NEAREST;
         sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
         sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         sampler.maxLod = float(version.info_.mip_count - 1);
         result = LUX_NATIVE("texture_sampler", vkCreateSampler(device, &sampler, nullptr, &version.sampler_));
-        if (result != VK_SUCCESS) { destroy(version); return cxx::unexpected(nativeError(result)); }
+        if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
         // This unused descriptor is not reachable by any Context until publish after final Graphics completion.
         version.descriptor_.write(version.view_, version.sampler_);
         if (id.isNull()) id = TextureId{id_, textures_.emplace()};
         record = textures_.find(id.local);
         record->updating = true;
         auto lease = session_.resources().lease(id_); // this live factory-created object proves the identity
-        return std::make_unique<Candidate>(*this, &version, id, nullptr, std::move(*lease));
+        return std::make_unique<Candidate>(*this, std::move(content), id, nullptr, std::move(*lease));
     }
 
     void TextureStorage::rollback(Candidate& candidate) noexcept
@@ -414,8 +391,7 @@ namespace lux::render::vulkan
         auto& record = *textures_.find(candidate.texture.local);
         record.updating = false;
         if (!record.current) textures_.erase(candidate.texture.local);
-        destroy(*candidate.version); // descriptors/views before the Transfer-owned image
-        candidate.version = nullptr;
+        candidate.version.reset();
     }
 
     TextureStorage::UploadResult TextureStorage::upload(const TextureWrite& input) noexcept
@@ -452,7 +428,6 @@ namespace lux::render::vulkan
         auto candidate = reserve(**transfer, info, input.texture, input.expected_revision);
         if (!candidate) return cxx::unexpected(candidate.error());
         (*candidate)->base = record->current;
-        ++record->current->leases_;
         const TexturePublished result{input.texture, (*candidate)->version->revision_};
         auto work = GpuWork::pending<[](Candidate& value, Transfer& transfer, DeviceSession&) noexcept -> RenderResult<void> {
             value.storage.publish(value, transfer);
@@ -466,20 +441,10 @@ namespace lux::render::vulkan
     {
         auto& record = *textures_.find(candidate.texture.local);
         auto& version = *candidate.version;
-        version.permit_ = std::move(*transfer.takeImage());
         version.last_use_ = transfer.requirements();
-        version.reserved_ = false;
-        version.live_ = true;
-        auto* previous = record.current;
-        record.current = &version;
+        record.current = std::move(candidate.version);
         record.updating = false;
-        for (auto* use : uses_) if (use->id == candidate.texture) use->update(version);
-        if (previous)
-        {
-            previous->live_ = false;
-            retireUnused(*previous);
-        }
-        candidate.version = nullptr;
+        for (auto* use : record.uses) use->update(record.current);
     }
 
     RenderResult<void> TextureStorage::release(TextureId id, std::uint64_t expected) noexcept
@@ -488,46 +453,11 @@ namespace lux::render::vulkan
         auto* record = textures_.find(id.local);
         if (!record || !record->current) return cxx::unexpected(RenderError{kWrongOwner});
         if (record->updating || record->current->revision_ != expected) return cxx::unexpected(RenderError{kBusy});
-        auto* version = record->current;
-        version->live_ = false;
+        disconnect(*record);
         textures_.erase(id.local);
-        retireUnused(*version);
         return {};
     }
 
-    void TextureStorage::retireUnused(Backing& version) noexcept
-    {
-        if (version.live_ || version.reserved_ || version.leases_ || !version.retired_) return;
-        if (version.last_use_.completed())
-        {
-            destroy(version);
-            return;
-        }
-        auto owned = std::move(version.retired_);
-        owned->physical = physical_;
-        owned->key = version.key_;
-        auto result = session_.retirement().retire(version.retirement_, version.last_use_, owned);
-        if (!result) std::terminate(); // prepared right and accepted local Tickets are internal invariants
-    }
-
-    void TextureStorage::destroy(Backing& version) noexcept
-    {
-        physical_->destroy(version);
-    }
-
-    void TextureStorage::Physical::destroy(Backing& version) noexcept
-    {
-        const auto device = session.device().native();
-        if (version.view_) LUX_DESTROY("image_view", vkDestroyImageView(device, version.view_, nullptr));
-        if (version.sampler_) LUX_DESTROY("texture_sampler", vkDestroySampler(device, version.sampler_, nullptr));
-        if (version.permit_)
-        {
-            auto result = session.releaseCompleted(version.permit_, version.last_use_);
-            if (!result) std::terminate();
-        }
-        bytes -= version.bytes_;
-        versions.erase(version.key_);
-    }
 
 }
 

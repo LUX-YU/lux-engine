@@ -176,6 +176,8 @@ namespace lux::render::vulkan
             return image_;
         }
 
+        [[nodiscard]] VkDevice device() const noexcept { return memory_->allocator_->device(); }
+
         [[nodiscard]] VkExtent2D extent() const noexcept
         {
             return description_.extent;

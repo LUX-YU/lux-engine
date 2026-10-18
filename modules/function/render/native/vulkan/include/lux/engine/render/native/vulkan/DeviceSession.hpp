@@ -60,7 +60,7 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&, execution::CpuScheduler) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadImage(
             const ImageDescription&, std::span<const std::byte>, std::span<const ImageTransferRegion>,
-            const Image* clone = nullptr, bool graphics_queue = false,
+            std::shared_ptr<const Image> clone = {}, bool graphics_queue = false,
             SubmissionRequirements* clone_last_use = nullptr) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadBuffer(
             std::span<const std::byte>, VkBufferUsageFlags usage) noexcept;

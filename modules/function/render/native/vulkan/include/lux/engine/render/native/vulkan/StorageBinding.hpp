@@ -9,14 +9,17 @@ namespace lux::render::vulkan
     struct NativeResourcePlan;
     class DeviceSession;
 
-    // Stable Context-owned binding. The professional reference protects future uses; its last-use
-    // field is written directly after submit. No Storage lookup or dynamic dispatch occurs per draw.
+    // Stable Context-owned binding. Resources hold physical content; reference owns an update subscription.
+    // Native dependencies are merged after submit without Storage lookup or per-draw dynamic dispatch.
     struct PreparedStorageBinding final
     {
         Buffer* buffer = nullptr;
         VkDescriptorSet descriptors = VK_NULL_HANDLE;
         std::span<const std::byte> parameters;
         const ShaderBlock* parameter_layout = nullptr; // Stable professional value layout, not physical placement.
+
+        // Immutable physical content retained by submitted snapshots, independent of the update subscription below.
+        std::shared_ptr<const void> resources;
 
         SubmissionRequirements* last_use = nullptr;
         void* update_context = nullptr;

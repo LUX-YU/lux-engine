@@ -175,7 +175,7 @@ int main()
             {
                 // Accepted draws pin the old physical slot, publication refreshes only prepared borrows.
                 for (auto* view : views) CHECK(take(view->execute()) == EExecutionOutcome::EXECUTED);
-                auto* old = take(storage.acquire(published.texture));
+                auto old = take(storage.acquire(published.texture));
                 std::vector<std::byte> replacement(input.size(), std::byte{64});
                 auto replacement_owner = std::make_shared<const std::vector<std::byte>>(std::move(replacement));
                 upload = take(lux::render::upload(storage,
@@ -183,7 +183,7 @@ int main()
                 complete(upload.second, host, *session); upload.second.reset();
                 CHECK(old->descriptorIndex() != storage.find(published.texture)->descriptorIndex());
                 CHECK(storage.residentVersions() == 2);
-                storage.releaseLease(*old);
+                old.reset();
                 CHECK(session->collect());
                 for (auto* view : views) CHECK(take(view->execute()) == EExecutionOutcome::EXECUTED);
                 CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
@@ -323,9 +323,18 @@ int main()
             assembly.external_bindings, texture_fixture::programs(config), texture_fixture::target(config))));
         auto* context = take(session->prepare(code, texture_fixture::target(config), nullptr, nullptr,
             texture_fixture::arguments(config)));
+        std::weak_ptr content = take(storage.acquire(id));
+        const auto descriptor_index = storage.find(id)->descriptorIndex();
         hold_observation = true;
         CHECK(take(context->execute()) == EExecutionOutcome::EXECUTED);
         const auto ticket = *context->lastUse();
+        CHECK(storage.release(id, 1));
+        CHECK(!storage.find(id) && !content.expired());
+        {
+            auto descriptors = take(session->sampledImageArray());
+            auto available = take(descriptors->allocate());
+            CHECK(available.index() != descriptor_index); // accepted Draw owns the old slot
+        }
         const auto samplers = destroyed_samplers;
         const auto pools = destroyed_texture_pools;
         render_allocation::calls = 0;
@@ -337,13 +346,14 @@ int main()
         std::printf("final logical owner release allocations: context=%zu storage=%zu\n", context_release_calls,
             render_allocation::calls.load() - context_release_calls);
         CHECK(render_allocation::calls == 0);
-        CHECK(!session->resources().native(id.storage));
+        CHECK(!session->resources().native(id.storage) && !content.expired());
         CHECK(session->collect());
         CHECK(destroyed_samplers == samplers && destroyed_texture_pools == pools);
         CHECK(session->queue().completed() < ticket.serial());
         hold_observation = false;
         CHECK(take(session->queue().wait(ticket, UINT64_MAX)));
         CHECK(session->collect());
+        CHECK(content.expired());
         CHECK(destroyed_samplers == samplers + 1 && destroyed_texture_pools == pools + 1);
     }
     CHECK(session->drain());

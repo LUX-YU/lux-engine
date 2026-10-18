@@ -10,11 +10,11 @@ namespace lux::render::vulkan
 {
     // These are physical GPU objects, independent of the Context's subscriptions and CPU recipes.
     // Stable descriptor banks are never rewritten while their prior submission is in flight.
-    struct ExecutionContext::PreparedBindings final
+    struct ExecutionContext::FrameResources final
     {
-        explicit PreparedBindings(std::shared_ptr<const CompiledGraph> value) noexcept : code(std::move(value)) {}
+        explicit FrameResources(std::shared_ptr<const CompiledGraph> value) noexcept : code(std::move(value)) {}
 
-        ~PreparedBindings() noexcept
+        ~FrameResources() noexcept
         {
             if (descriptor_pool)
                 LUX_DESTROY("context_descriptor_pool", vkDestroyDescriptorPool(
@@ -32,10 +32,16 @@ namespace lux::render::vulkan
         VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
     };
 
+    struct ExecutionContext::PreparedBindings final
+    {
+        std::shared_ptr<const FrameResources> frame;
+        std::vector<std::shared_ptr<const void>> resources;
+    };
+
     ExecutionContext::ExecutionContext(DeviceSession& owner, SubmissionQueue& queue,
         std::shared_ptr<const CompiledGraph> code, TargetDesc target) noexcept
-        : owner_(&owner), queue_(&queue), prepared_(std::make_shared<PreparedBindings>(std::move(code))),
-          code_(prepared_->code.get()), target_(target),
+        : owner_(&owner), queue_(&queue), frame_resources_(std::make_shared<FrameResources>(std::move(code))),
+          code_(frame_resources_->code.get()), target_(target),
           bindings_(code_->resources().size()), storages_(owner.resources())
     {
         leases_.reserve(bindings_.size());
@@ -52,7 +58,7 @@ namespace lux::render::vulkan
     {
         cancelReadbacks();
         // All future-use subscriptions end while the actual Storage owners still exist. Physical
-        // backing retirement is the professional Native object's responsibility, using submitted LastUse.
+        // contents remain owned by already submitted immutable snapshots.
         for (auto& use : leases_)
         {
             use.binding.updated = nullptr;
@@ -129,7 +135,7 @@ namespace lux::render::vulkan
                 auto backing = allocator_.createImage({extent, format.native, plan.image_usage});
                 if (!backing) return cxx::unexpected(backing.error());
                 binding.image = backing->get();
-                context->prepared_->images.push_back(std::move(*backing));
+                context->frame_resources_->images.push_back(std::move(*backing));
                 VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
                 view.image = binding.image->native();
                 view.viewType = VK_IMAGE_VIEW_TYPE_2D;
@@ -142,7 +148,7 @@ namespace lux::render::vulkan
                     const auto status = LUX_NATIVE("image_view", vkCreateImageView(device_.native(), &view,
                         nullptr, &binding.view));
                     if (status != VK_SUCCESS) return cxx::unexpected(nativeError(status));
-                    context->prepared_->views.push_back(binding.view);
+                    context->frame_resources_->views.push_back(binding.view);
                 }
             }
             else
@@ -154,7 +160,7 @@ namespace lux::render::vulkan
                     plan.readback ? EMemoryAccess::READBACK : EMemoryAccess::DEVICE);
                 if (!buffer) return cxx::unexpected(buffer.error());
                 binding.buffer = buffer->get();
-                context->prepared_->buffers.push_back(std::move(*buffer));
+                context->frame_resources_->buffers.push_back(std::move(*buffer));
                 if (plan.readback)
                     for (const auto& pass : context->code_->passes())
                         if (pass.recipe == ERecipe::COPY_IMAGE_BUFFER && pass.source == context->code_->output() &&
@@ -210,7 +216,7 @@ namespace lux::render::vulkan
         {
             auto table = owner_->sampledImageArray();
             if (!table) return cxx::unexpected(table.error());
-            prepared_->shared_descriptors = std::move(*table);
+            frame_resources_->shared_descriptors = std::move(*table);
         }
         const auto draws = std::ranges::count_if(passes_, [](const auto& pass) {
             return pass.recipe->recipe == ERecipe::DRAW || pass.recipe->recipe == ERecipe::DISPATCH;
@@ -227,21 +233,21 @@ namespace lux::render::vulkan
             pool.poolSizeCount = 1;
             pool.pPoolSizes = &size;
             const auto result = LUX_NATIVE("context_descriptor_pool", vkCreateDescriptorPool(device(), &pool,
-                nullptr, &prepared_->descriptor_pool));
+                nullptr, &frame_resources_->descriptor_pool));
             if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
         }
         for (auto& pass : passes_)
         {
             if (pass.recipe->recipe != ERecipe::DRAW && pass.recipe->recipe != ERecipe::DISPATCH) continue;
             pass.descriptors.resize(code_->descriptor_layouts_.size());
-            if (prepared_->shared_descriptors)
-                pass.descriptors[layout.shared_set] = prepared_->shared_descriptors->descriptors();
-            if (prepared_->descriptor_pool)
+            if (frame_resources_->shared_descriptors)
+                pass.descriptors[layout.shared_set] = frame_resources_->shared_descriptors->descriptors();
+            if (frame_resources_->descriptor_pool)
             {
                 const std::array native_layouts{code_->descriptor_layouts_[layout.private_set],
                     code_->descriptor_layouts_[layout.private_set]};
                 VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-                allocate.descriptorPool = prepared_->descriptor_pool;
+                allocate.descriptorPool = frame_resources_->descriptor_pool;
                 allocate.descriptorSetCount = 2;
                 allocate.pSetLayouts = native_layouts.data();
                 const auto result = LUX_NATIVE("context_descriptor_set", vkAllocateDescriptorSets(device(), &allocate,
@@ -284,6 +290,12 @@ namespace lux::render::vulkan
     {
         // Owner safety point. At most one Execute of this Context can be in flight. Never rewrite its bank.
         if (last_use_ && queue_->completed() < last_use_->serial()) descriptor_bank_ = 1u - submitted_bank_;
+        auto snapshot = std::make_shared<PreparedBindings>();
+        snapshot->frame = frame_resources_;
+        snapshot->resources.reserve(leases_.size());
+        for (const auto& lease : leases_)
+            if (lease.binding.resources) snapshot->resources.push_back(lease.binding.resources);
+        prepared_ = std::move(snapshot);
         const auto& layout = *code_->descriptor_plan_;
         for (const auto& lease : leases_) bindings_[lease.resource].buffer = lease.binding.buffer;
         for (auto& pass : passes_)
@@ -294,7 +306,7 @@ namespace lux::render::vulkan
             for (std::size_t i = 0; i < pass.buffers.size(); ++i)
                 pass.buffers[i].buffer = bindings_[pass.recipe->buffers[i].resource].buffer->native();
             if ((pass.recipe->recipe != ERecipe::DRAW && pass.recipe->recipe != ERecipe::DISPATCH) ||
-                !prepared_->descriptor_pool) continue;
+                !frame_resources_->descriptor_pool) continue;
             const auto descriptors = pass.private_descriptors[descriptor_bank_];
             pass.descriptors[layout.private_set] = descriptors;
             for (const auto& use : layout.programs[pass.recipe->layout_program].uses)

@@ -2,7 +2,10 @@
 #include "TextureReadback.hpp"
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 
-using SampledBacking = std::remove_pointer_t<std::remove_cvref_t<decltype(std::declval<lux::render::vulkan::TextureStorage>().acquire({}).value())>>;
+using TextureReference = std::remove_cvref_t<decltype(
+    std::declval<lux::render::vulkan::TextureStorage>().acquire({}).value()
+)>;
+using SampledBacking = TextureReference::element_type;
 static_assert(!std::is_copy_constructible_v<SampledBacking> && !std::is_move_constructible_v<SampledBacking>);
 
 static std::string_view fail_call;
@@ -67,28 +70,29 @@ int main()
         CHECK(!upload.second.publish());
         complete(upload.second, host, *session);
         upload.second.reset();
-        auto* old = take(storage.acquire(published.texture));
+        auto old = take(storage.acquire(published.texture));
         CHECK(old->revision() == 1 && storage.residentVersions() == 1);
         const auto old_slot = old->descriptorIndex();
         CHECK(!lux::render::upload(storage, SetTexture::Request{published.texture, 0, info, payload(bytes)}));
         upload = take(lux::render::upload(storage, SetTexture::Request{published.texture, 1, info, payload(bytes)}));
         const auto replacement = upload.first;
         CHECK(replacement.texture == published.texture && replacement.revision == 2);
-        CHECK(storage.find(published.texture) == old);
+        CHECK(storage.find(published.texture) == old.get());
         CHECK(!storage.release(published.texture, 1)); // writer reservation remains unique
         upload.second.reset(); // unsubmitted candidate rolls back without changing last-good
-        CHECK(storage.find(published.texture) == old && storage.residentVersions() == 1);
+        CHECK(storage.find(published.texture) == old.get() && storage.residentVersions() == 1);
         upload = take(lux::render::upload(storage, SetTexture::Request{published.texture, 1, info, payload(bytes)}));
         published = upload.first;
         complete(upload.second, host, *session);
         upload.second.reset();
-        CHECK(storage.find(published.texture) != old && old->revision() == 1);
+        CHECK(storage.find(published.texture) != old.get() && old->revision() == 1);
         CHECK(storage.find(published.texture)->descriptorIndex() != old_slot);
-        auto* current = take(storage.acquire(published.texture));
+        auto current = take(storage.acquire(published.texture));
         CHECK(storage.release(published.texture, 2));
         CHECK(!storage.release(published.texture, 2) && !storage.acquire(published.texture));
         CHECK(storage.residentVersions() == 2); // both physical generations pinned independently
-        storage.releaseLease(*old); storage.releaseLease(*current);
+        old.reset();
+        current.reset();
         CHECK(session->collect());
         CHECK(storage.residentVersions() == 0 && storage.residentBytes() == 0);
         upload = take(lux::render::upload(storage, create));
@@ -139,7 +143,7 @@ int main()
             upload = take(lux::render::upload(storage, SetTexture::Request{{storage.id(), {}}, 0, mip_info, payload(original_owner)}));
             const auto id = upload.first.texture;
             complete(upload.second, host, *session); upload.second.reset();
-            auto* previous = take(storage.acquire(id));
+            auto previous = take(storage.acquire(id));
             const TextureRegion region = bc ? TextureRegion{1, 4, 4, 4, 4, 8} : TextureRegion{1, 2, 1, 3, 2, 16};
             const auto patch = std::make_shared<const std::vector<std::byte>>(bc ? 8 : 28, std::byte{73});
             auto invalid = region;
@@ -168,7 +172,7 @@ int main()
             CHECK(read(*session, *previous) == original);
             CHECK(read(*session, *storage.find(id)) == expected);
             CHECK(storage.find(id)->revision() == 2);
-            storage.releaseLease(*previous);
+            previous.reset();
             CHECK(storage.release(id, 2));
             CHECK(storage.residentVersions() == 0);
         }
@@ -183,8 +187,11 @@ int main()
         CHECK(storage.residentVersions() == 16);
         for (auto value : full) CHECK(storage.release(value.texture, value.revision));
         CHECK(storage.residentVersions() == 0);
-        std::printf("texture storage descriptors=16 resident_peak=%llu bytes; PrivateBacking=%zu GpuWork=%zu; "
-            "exact last-good/generation/leases\n", storage.residentPeak(), sizeof(std::remove_reference_t<decltype(*storage.find({}))>), sizeof(GpuWork));
+        std::printf(
+            "texture storage descriptors=16 resident_peak=%llu bytes; TextureData=%zu GpuWork=%zu; "
+            "exact last-good/generation/shared content\n",
+            storage.residentPeak(), sizeof(SampledBacking), sizeof(GpuWork)
+        );
     }
     {
         auto bootstrap = instance(validation);

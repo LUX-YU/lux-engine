@@ -4,11 +4,10 @@
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
-#include <lux/cxx/container/StableSlotMap.hpp>
+#include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/Upload.hpp>
 #include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
-#include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
 
 namespace lux::render::vulkan
 {
@@ -17,41 +16,33 @@ namespace lux::render::vulkan
     struct NativeResourcePlan;
     class TextureStorage;
     class ExecutionContext;
-    struct TextureDescriptorTag;
 
     class TextureStorage final
     {
-        struct Physical;
-        struct RetiredBacking;
-        class Backing final
+        struct Residency;
+        class TextureData final
         {
         public:
-            Backing() noexcept;
-            ~Backing() noexcept;
-            Backing(const Backing&) = delete;
-            Backing& operator=(const Backing&) = delete;
+            TextureData(std::shared_ptr<Residency>, std::shared_ptr<Image>, DescriptorRange,
+                const rdesc::TextureInfo&, std::uint64_t revision) noexcept;
+            ~TextureData() noexcept;
+            TextureData(const TextureData&) = delete;
+            TextureData& operator=(const TextureData&) = delete;
             [[nodiscard]] const rdesc::TextureInfo& info() const noexcept { return info_; }
             [[nodiscard]] std::uint32_t descriptorIndex() const noexcept { return descriptor_.index(); }
             [[nodiscard]] const Image& image() const noexcept { return *image_; }
             [[nodiscard]] std::uint64_t revision() const noexcept { return revision_; }
         private:
             friend class TextureStorage;
-            friend struct Physical;
-            friend class DeviceSession;
-            friend class ExecutionContext;
-            cxx::SlotKey<TextureDescriptorTag> key_;
+            std::shared_ptr<Residency> residency_;
+            std::shared_ptr<Image> image_;
             DescriptorRange descriptor_;
             rdesc::TextureInfo info_{};
-            ImagePermit permit_;
-            const Image* image_ = nullptr;
             VkImageView view_ = VK_NULL_HANDLE;
             VkSampler sampler_ = VK_NULL_HANDLE;
+            // Clone layout transitions must still order against prior Draws. This is not a retirement right.
             SubmissionRequirements last_use_;
             std::uint64_t bytes_ = 0, revision_ = 0;
-            std::uint32_t leases_ = 0;
-            bool live_ = false, reserved_ = true;
-            RetirementReservation retirement_;
-            std::unique_ptr<RetiredBacking> retired_;
         };
 
     public:
@@ -67,10 +58,9 @@ namespace lux::render::vulkan
         TextureStorage(const TextureStorage&) = delete;
         TextureStorage& operator=(const TextureStorage&) = delete;
         [[nodiscard]] RenderResult<void> release(TextureId, std::uint64_t expected_revision) noexcept;
-        [[nodiscard]] RenderResult<Backing*> acquire(TextureId) noexcept;
-        void releaseLease(Backing& version) noexcept;
-        [[nodiscard]] const Backing* find(TextureId) const noexcept;
-        // Professional immutable content reference. Caller holds this Storage's existing StorageLease.
+        [[nodiscard]] RenderResult<std::shared_ptr<const TextureData>> acquire(TextureId) noexcept;
+        [[nodiscard]] const TextureData* find(TextureId) const noexcept;
+        // Physical content reference independent of the logical Storage lifetime.
         // The returned reference does not follow later publications of the same logical TextureId.
         [[nodiscard]] RenderResult<std::pair<rdesc::TextureInfo, std::uint32_t>>
         pin(TexturePublished, PreparedStorageBinding&) noexcept;
@@ -87,25 +77,35 @@ namespace lux::render::vulkan
         using UploadResult = RenderResult<std::pair<TexturePublished, GpuWork>>;
         [[nodiscard]] UploadResult upload(const TextureWrite&) noexcept;
         [[nodiscard]] UploadResult upload(const TextureRegionWrite&) noexcept;
-        [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> prepareImage(const rdesc::TextureInfo&,
-            std::span<const std::byte>, std::optional<TextureRegion> = {}, Backing* base = nullptr) noexcept;
+        [[nodiscard]] RenderResult<std::unique_ptr<Transfer>>
+        prepareImage(
+            const rdesc::TextureInfo&,
+            std::span<const std::byte>,
+            std::optional<TextureRegion> = {},
+            std::shared_ptr<TextureData> base = {}
+        ) noexcept;
         [[nodiscard]] RenderResult<void> admit(std::uint64_t minimum_bytes, bool creates_identity) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Candidate>> reserve(Transfer&, const rdesc::TextureInfo&,
             TextureId, std::uint64_t expected_revision) noexcept;
         struct Use;
         RenderResult<void> prepare(const NativeResourcePlan&, const TextureBinding&, PreparedStorageBinding&) noexcept;
-        std::vector<Use*> uses_; // non-owning subscriptions, changed only at Attach/publication/detach
-        struct Record final { Backing* current = nullptr; bool updating = false; };
+        struct TextureRecord final
+        {
+            std::shared_ptr<TextureData> current;
+            std::vector<Use*> uses;
+            bool updating = false;
+        };
+        void unsubscribe(Use&) noexcept;
+        void disconnect(TextureRecord&) noexcept;
         TextureStorage(DeviceSession& session, StorageId id, TextureStorageConfig config) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         void rollback(Candidate&) noexcept;
         void publish(Candidate&, Transfer&) noexcept;
-        void retireUnused(Backing&) noexcept;
-        void destroy(Backing&) noexcept;
         DeviceSession& session_;
         StorageId id_;
-        cxx::SlotMap<Record, TextureTag> textures_;
-        std::shared_ptr<Physical> physical_;
+        cxx::SlotMap<TextureRecord, TextureTag> textures_;
+        std::shared_ptr<Residency> residency_;
+        std::shared_ptr<DescriptorArray> descriptors_;
         TextureStorageConfig config_;
     };
 }

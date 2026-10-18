@@ -83,8 +83,10 @@ namespace lux::render::vulkan
         ExecutionContext(DeviceSession& owner, SubmissionQueue& queue, std::shared_ptr<const CompiledGraph> code, TargetDesc target) noexcept;
         DeviceSession* owner_;
         SubmissionQueue* queue_;
+        struct FrameResources;
         struct PreparedBindings;
-        std::shared_ptr<PreparedBindings> prepared_;
+        std::shared_ptr<FrameResources> frame_resources_;
+        std::shared_ptr<const PreparedBindings> prepared_;
         const CompiledGraph* code_;
         TargetDesc target_;
         RasterViewport viewport_;

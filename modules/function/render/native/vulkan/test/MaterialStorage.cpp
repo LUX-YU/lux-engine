@@ -80,9 +80,11 @@ int main(int argc, char** argv)
             session->resources().typeId(kMaterialStorageType), "material"));
         auto& storage = *take(session->resources().borrow<lux::render::vulkan::MaterialStorage>(storage_id));
         TexturePublished texture{};
+        StorageId texture_storage;
         if (textured)
         {
             CHECK(configureTextures(*session, 0, 0));
+            texture_storage = textures(*session)->id();
             auto bytes = std::make_shared<const std::vector<std::byte>>(1024, std::byte{255});
             auto upload = take(lux::render::upload(*textures(*session), TextureWrite{
                 {textures(*session)->id(), {}}, 0, information(16, 1, false), payload(bytes)
@@ -219,7 +221,9 @@ int main(int argc, char** argv)
             CHECK(textures(*session)->residentVersions() == 1);
             CHECK(pipelines == pipeline_count);
             CHECK(textures(*session)->release(next.texture, next.revision));
-            pixels(*second, *session, 96); // Material version still owns the physical Texture lease.
+            CHECK(session->globalStorages().releasePrepared(texture_storage));
+            CHECK(!session->resources().native(texture_storage));
+            pixels(*second, *session, 96); // Material pins physical content after the Texture Storage is gone.
         }
         CHECK(take(second->execute()) == EExecutionOutcome::EXECUTED);
         hold_completion = true;
@@ -228,9 +232,7 @@ int main(int argc, char** argv)
         CHECK(storage.residentVersions() == 1);
         if (textured)
         {
-            const auto texture_storage = textures(*session)->id();
             CHECK(session->globalStorages().releasePrepared(storage_id));
-            CHECK(session->globalStorages().releasePrepared(texture_storage));
             CHECK(!session->resources().native(storage_id) && !session->resources().native(texture_storage));
             CHECK(live_buffers > 0); // Both logical owners ended while actual Draw completion is unobserved.
         }

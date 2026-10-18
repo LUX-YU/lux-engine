@@ -273,20 +273,18 @@ int main()
     CHECK(session->collect());
     CHECK(live_descriptor_pools == descriptor_pools_before - 2);
     CHECK(destroyed_buffers == destroyed_before + 3); // current professional version + two Context readback buffers
-    // Minimal indirect Material-like owner: a stored Texture reference survives both its creator
-    // and its preload. It is the sole future user, and keeps the backing through a REAL copy ticket.
+    // An immutable content reference outlives the logical Texture AND its Storage.
+    // It is the sole future user, and keeps the backing through a REAL copy ticket.
     auto& registry = session->resources();
     auto texture_instance = textures(*session)->id();
     auto* storage = textures(*session);
-    auto* indirect = take(storage->acquire(texture));
-    auto indirect_storage = take(registry.lease(texture_instance));
+    auto indirect = take(storage->acquire(texture));
     CHECK(storage->release(texture, 1));
     CHECK(session->globalStorages().releasePrepared(texture_instance));
-    CHECK(registry.native(texture_instance) == storage);
+    CHECK(!registry.native(texture_instance)); // physical content needs no logical Storage owner
     const auto copied = read(*session, *indirect);
     CHECK(std::ranges::equal(copied, white));
-    storage->releaseLease(*indirect); // read() waited the actual accepted copy ticket
-    indirect_storage.reset();
+    indirect.reset(); // read() waited the actual accepted copy ticket
     CHECK(!registry.native(texture_instance));
     CHECK(session->drain());
     code.reset();

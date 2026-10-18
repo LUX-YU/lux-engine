@@ -128,7 +128,7 @@ namespace lux::render::vulkan
 
     RenderResult<std::unique_ptr<Transfer>> DeviceSession::uploadImage(
         const ImageDescription& description, std::span<const std::byte> source,
-        std::span<const ImageTransferRegion> regions, const Image* clone, bool graphics_queue,
+        std::span<const ImageTransferRegion> regions, std::shared_ptr<const Image> clone, bool graphics_queue,
         SubmissionRequirements* clone_last_use
     ) noexcept
     {
@@ -174,12 +174,12 @@ namespace lux::render::vulkan
         auto page = std::find_if(state.pages.begin(), state.pages.end(), [](const auto& value) { return !value.leased; });
         if (page == state.pages.end() || source.size() > state.options.pending_bytes - state.stats.pending_bytes)
             return cxx::unexpected(RenderError{kCapacity});
-        auto image = createImage(description);
+        auto image = allocator_.createImage(description);
         if (!image) return cxx::unexpected(image.error());
         auto result = std::unique_ptr<Transfer>(new Transfer(*this, source, std::size_t(page - state.pages.begin())));
         result->image_ = std::move(*image);
         result->regions_.assign(regions.begin(), regions.end());
-        result->clone_ = clone;
+        result->clone_ = std::move(clone);
         result->clone_last_use_ = clone_last_use;
         result->copy_queue_ = graphics_queue ? &queue() : state.copy_queue;
         return result;
@@ -215,11 +215,6 @@ namespace lux::render::vulkan
     Transfer::~Transfer() noexcept
     {
         if (cpu_preparation_ || copy_callback_.armed() || graphics_callback_.armed()) std::terminate();
-        if (image_)
-        {
-            auto result = !requirements_.empty() ? session_->releaseCompleted(image_, requirements_) : session_->destroyUnsubmitted(image_);
-            if (!result) std::terminate();
-        }
         if (buffer_)
         {
             auto result = !requirements_.empty() ? session_->releaseCompleted(buffer_, requirements_) : session_->destroyUnsubmitted(buffer_);
@@ -231,15 +226,9 @@ namespace lux::render::vulkan
 
     VkDevice Transfer::device() const noexcept { return session_->device().native(); }
 
-    const Image& Transfer::image() const noexcept { return *session_->borrow(image_); }
+    const Image& Transfer::image() const noexcept { return *image_; }
 
     const Buffer& Transfer::buffer() const noexcept { return *session_->borrow(buffer_); }
-
-    RenderResult<ImagePermit> Transfer::takeImage() noexcept
-    {
-        if (!result() || !image_) return cxx::unexpected(RenderError{kBusy});
-        return std::move(image_);
-    }
 
     RenderResult<BufferPermit> Transfer::takeBuffer() noexcept
     {
@@ -429,6 +418,8 @@ namespace lux::render::vulkan
                 page.buffer->allocation_, 0, chunk_size_));
             if (flushed != VK_SUCCESS) { failure_ = nativeError(flushed); finish(); return; }
         }
+        if (image_) batch->retain(image_);
+        if (!initialized_ && clone_) batch->retain(clone_);
         bool final = acquiring;
         if (!acquiring)
         {

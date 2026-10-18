@@ -49,8 +49,6 @@ namespace lux::render::vulkan
         ConfigValue program;
         std::array<TexturePublished, 8> textures;
         std::array<rdesc::TextureInfo, 8> texture_info;
-        // Declaration order: Native texture references die before their logical Storage leases.
-        std::array<StorageLease, 8> texture_leases;
         std::array<PreparedStorageBinding, 8> texture_bindings;
         Record record;
         BufferPermit buffer;
@@ -81,6 +79,7 @@ namespace lux::render::vulkan
             }
             else
             {
+                binding.resources = value.texture_bindings[texture_slot].resources;
                 binding.descriptors = value.texture_bindings[texture_slot].descriptors;
                 binding.last_use = value.texture_bindings[texture_slot].last_use;
             }
@@ -190,9 +189,6 @@ namespace lux::render::vulkan
             if (!owner || invalid_owner) return cxx::unexpected(RenderError{kStorageIdentity});
             auto storage = registry.borrow<TextureStorage>(texture.texture.storage);
             if (!storage) return cxx::unexpected(storage.error());
-            auto texture_lease = registry.lease(texture.texture.storage);
-            if (!texture_lease) return cxx::unexpected(texture_lease.error());
-            backing->texture_leases[slot] = std::move(*texture_lease);
             auto reference = (*storage)->pin(texture, backing->texture_bindings[slot]);
             if (!reference) return cxx::unexpected(reference.error());
             backing->texture_info[slot] = reference->first;
@@ -310,10 +306,7 @@ namespace lux::render::vulkan
             backings_[position]->position = position;
         }
         backings_.pop_back();
-        // Future material uses have ended. Texture's own LastUse keeps its physical backing safe;
-        // do not keep logical Scene/View Storage leases inside the GPU retirement owner.
-        for (auto& texture : owned->texture_bindings) texture.reference.reset();
-        for (auto& lease : owned->texture_leases) lease.reset();
+        // Immutable TextureData pins remain part of this physical material until its accepted uses finish.
         if (owned->last_use.completed()) return;
         auto result = session_.retirement().retire(owned->retirement, owned->last_use, owned);
         if (!result) std::terminate();

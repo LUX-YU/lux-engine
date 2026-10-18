@@ -24,7 +24,7 @@ namespace lux::render::vulkan
     };
 
     // One bounded CPU/staging/GPU transfer state machine, used by both Buffer and Image storage.
-    // Source and optional clone are borrowed; the professional work owner keeps them alive through completion.
+    // Source bytes are borrowed from the professional operation; actual destination and Clone Images are shared.
     class Transfer final
     {
     public:
@@ -46,7 +46,7 @@ namespace lux::render::vulkan
         }
         [[nodiscard]] const Image& image() const noexcept;
         [[nodiscard]] const Buffer& buffer() const noexcept;
-        [[nodiscard]] RenderResult<ImagePermit> takeImage() noexcept;
+        [[nodiscard]] const std::shared_ptr<Image>& imageResource() const noexcept { return image_; }
         [[nodiscard]] RenderResult<BufferPermit> takeBuffer() noexcept;
         [[nodiscard]] std::uint64_t prepareNs() const noexcept { return prepare_ns_; }
 
@@ -65,9 +65,9 @@ namespace lux::render::vulkan
         DeviceSession* session_;
         std::span<const std::byte> source_;
         std::byte* mapped_;
-        ImagePermit image_;
+        std::shared_ptr<Image> image_;
         BufferPermit buffer_;
-        const Image* clone_ = nullptr;
+        std::shared_ptr<const Image> clone_;
         SubmissionRequirements* clone_last_use_ = nullptr;
         std::vector<ImageTransferRegion> regions_;
         std::size_t page_, region_ = 0, offset_ = 0;

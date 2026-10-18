@@ -100,9 +100,10 @@ carries that inter-execution dependency. Unsupported graph semantics remain comp
 
 Release destroys the CPU Context immediately, cancels Readback subscriptions and releases its Storage
 leases. It neither reserves nor appends a Context retirement record. Submitted batches retain the graph
-physical binding set until actual fence completion. Professional Storage versions still use their existing
-LastUse retirement path while they are migrated; retaining a descriptor array alone is not proof that all
-bindless targets are retained. There is no parallel ResourceDomain owner.
+physical binding set until actual fence completion. TextureData directly owns Image, View, Sampler and
+DescriptorRange. Publication creates an immutable prepared snapshot; accepted batches keep the old snapshot through completion. Material pins keep actual
+TextureData without keeping the logical Texture Storage. Mesh/Material Buffer versions still use their
+existing LastUse retirement path until those consumers migrate. There is no parallel ResourceDomain owner.
 Shutdown drains queues and destroys contexts and scoped backing. Queue teardown releases any terminal
 Device Lost batch references before allocator/device destruction.
 Fault tests hold completion observation after a real submit to prove failed later submits and IPC stop
@@ -138,4 +139,8 @@ Compute/Indirect/RT remain outside this implementation.
 
 render_native_vulkan contains Device/Memory/Submission/Transfer/GpuWork/Retirement/Compiler/Execution. It has no Feature include or reverse link to extensions. render_native_vulkan_extensions contains the real Texture Storage/Command implementations and GPU Command completion adapter. DirectGraph tests and the installed base-only consumer construct a G4 graph and execute real GPU readback without FeatureAssembly.
 
-Factory installation is explicit and cold. Session contains no default Texture factory. Transfer receives a source allocation and LastUse borrow for Clone; Texture retains the source lease but never edits Transfer internals. Accepted-submit merging, queue callbacks and retirement are unchanged. SessionUploads is a component-private definition; DeviceSession.cpp owns construction/destruction in the original order.
+Factory installation is explicit and cold. Session contains no default Texture factory. Transfer retains
+actual source/destination Image objects; Texture keeps the source TextureData and its real synchronization
+requirements for Clone. These requirements no longer control Texture destruction. Accepted-submit merging
+and queue callbacks are unchanged. SessionUploads is a component-private definition; DeviceSession.cpp owns
+construction/destruction in the original order.

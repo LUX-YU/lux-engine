@@ -53,7 +53,6 @@ namespace lux::render::runtime_detail
     } // namespace test
 #endif
 
-
     // Owns only routing and completed output. Native continuations borrow this landing place;
     // connected OperationState ownership belongs exclusively to stdexec::spawn.
     struct CommandCompletion final
@@ -93,7 +92,7 @@ namespace lux::render::runtime_detail
 #else
                     events->push(slot); // The result record is its own already-acquired notification landing place.
 #endif
-                // No access to slot after publication: the consumer may immediately destroy it.
+                    // No access to slot after publication: the consumer may immediately destroy it.
 #ifdef LUX_RUNTIME_ASYNC_TEST_SEAM
                     test::completionPublished();
 #endif

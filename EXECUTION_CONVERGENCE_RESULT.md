@@ -43,3 +43,11 @@ ASan flags `/fsanitize=address /Zi`；`ASAN_OPTIONS=alloc_dealloc_mismatch=1`。
 删除 PendingOperation 的 connected state 指针/删除器、PendingSlots、CompletionId、每请求停止源与 shutdown 快照。结果记录为 224 B（旧 Pending 272 B），不代表总请求内存下降；spawn 状态及分配仍需实测。同步终态测试改为允许标准协议规定的 inline 析构，并继续断言精确析构、Producer 不再读取状态和 Host/DLL 尾栈安全。
 
 证据：`evidence/c/`、`evidence/c-asan/`。唯一 CompletionQueue、ResponseOutbox、Native CompletionPost、Transfer 状态机及 GPU 退休算法保留。当前没有 Scope 的生产性能 PASS 声明。
+
+## Scope S 对照与最终选择
+
+S 补丁由 C 检查点生成，仅替换为 simple_counting_scope 加一个 Server stop source，并显式转发 token。all、第二轮 no-work、全量 Release 146/146（153.58 秒）通过；S 的独立 Debug/ASan 不另授资格。补丁和六个原文件快照保存在 `evidence/s-candidate.patch`、`evidence/s-candidate-files.json`。S 没有进入提交历史，已完整恢复 C。
+
+最终选择 C；它已证明同一组 Native stop/unknown 行为，且少一个自管 stop source 和相关传递接口。没有采用 E0-C 原型里双 stop source 的方案。最终生产仅有一个 Scope、一个 CompletionQueue、一个 ResponseOutbox；同步 Handler 不使用 spawn。
+
+后续独立验证从最终精确 I 的无 alternates clean clone 执行。当前性能与独立 Debug/no-exceptions 尚待完成，不能预填 PASS。

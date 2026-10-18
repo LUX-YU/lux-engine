@@ -44,3 +44,9 @@
 - `modules/function/render/resource/include/lux/engine/render/resource/Factory.hpp`、`ResourceRegistry.hpp`、`StorageSet.hpp` 的擦除对象是专业 GPU Storage 实例，不是 Execution 操作。`modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/ExecutionContext.hpp` 中 `StorageUse` 的订阅与资源替换重绑定依赖真实 Storage/Graph 生命周期，不能改成 scope association。保留这些唯一资源权威及 Native 退休路径，净改动为零。
 
 本轮没有发现另一项可在不扩大业务范围、且不丢失上述合同的条件下安全删除的独立长期组件。结论不是“Core 已经没有冗余”，而是额外删除尚缺跨业务消费者验证；不以另造适配层替换现有适配层。
+
+`modules/core/execution/include/lux/engine/core/execution/Timer.hpp` 与 `src/Timer.cpp` 归为 KEEP：TimerSender 已经是标准 Sender，其底层有界 deadline heap、取消队列和实际计时线程提供执行资源。消费者包括 `engine/scene/composition/src/SceneRuntime.cpp` 和 ScriptRealDelayProvider 的真实延时路径。scope 不提供计时设施；本轮不替换计时线程或改变 Script 行为，净改动零。
+
+## 已落地的删除
+
+上表 PendingOperation/PendingSlots/CompletionId 与 CommandBinding Receiver 已从候选变为实际 DELETE/MERGE。CommandCompletion 只保留路由、结果、非拥有 continuation 与原队列节点；没有 operation 指针、操作删除器、请求 stop source 或 SlotMap 身份。CommandDispatch.cpp 继续承担公开模板访问私有实现的窄接缝，删除 ownOperation/operationStopToken 等旧 Owner 辅助函数，但不为减少一个文件把 ServerImpl 泄漏到公共头。其余 KEEP/FUTURE 不改变生产路径。

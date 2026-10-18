@@ -10,11 +10,11 @@
 
 Native `resumeCpu()` 继续在原 Owner 完成通知消费点回收 CpuPreparation。CPU Prepare 不访问可变 Server 目录；CreateEffect 候选仍只由 RenderThread 采用。没有新增 Scheduler、线程或队列。
 
-## B/C 的候选与必须保持的不变量
+## B/C 的选择与必须保持的不变量
 
-比较 S（simple_counting_scope + 一个 Server stop source）和 C（counting_scope 内置 stop）。候选统一使用：
+实际比较 S（simple_counting_scope + 一个 Server stop source）和 C（counting_scope 内置 stop）。两者均完成真实生产 Release 146/146；C 另完成施工 ASan 146/146。最终选择 C，仅保留 counting_scope。它把关联计数和停止源保持在一个库对象中，删除 S 额外需要的 Server stop source、CommandDispatchContext stop 引用、commandStopToken 转发和 CompletionEnvironment stop 字段。决定依据是完整 Native stop/unknown、同步终态及回调尾栈行为，不是声称状态尺寸必然更小。S 对照补丁及全部日志外置保留，生产不提供双策略开关。
 
-锁定版本 `__stop_when.hpp::__make_token_fn` 在 Receiver 环境不可停止时直接返回 scope token，只有两个可停止 token 才创建 fused token。生产 C 候选因此不再在 CompletionEnvironment 里额外提供 stop source/token；不能把 E0-C 同时注入两源的原型成本直接当成该候选成本。最终仍需真实 Native 停止验证。
+锁定版本 `__stop_when.hpp::__make_token_fn` 在 Receiver 环境不可停止时直接返回 scope token，只有两个可停止 token 才创建 fused token。生产 C 因此不在 CompletionEnvironment 里额外提供 stop source/token；不能把 E0-C 同时注入两源的原型成本直接当成生产成本。Native 实际收到现有 inplace stop token，三种 Queue 拓扑及部分提交/停止/DeviceLost 用例已完成施工回归；最终资格仍以独立 V 为准。
 
 ```text
 Owner dispatch

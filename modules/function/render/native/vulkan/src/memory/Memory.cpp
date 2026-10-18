@@ -10,7 +10,39 @@ namespace lux::render::vulkan
 {
     Buffer::~Buffer() noexcept
     {
-        LUX_DESTROY("buffer", vmaDestroyBuffer(allocator_->native(), buffer_, allocation_));
+        release();
+    }
+
+    Buffer::Buffer(Buffer&& other) noexcept
+        : allocator_(std::exchange(other.allocator_, nullptr)), buffer_(std::exchange(other.buffer_, VK_NULL_HANDLE)),
+          allocation_(std::exchange(other.allocation_, nullptr)), mapped_(std::exchange(other.mapped_, nullptr)),
+          size_(std::exchange(other.size_, 0)), usage_(std::exchange(other.usage_, 0)),
+          access_(std::exchange(other.access_, EMemoryAccess::DEVICE))
+    {
+    }
+
+    Buffer& Buffer::operator=(Buffer&& other) noexcept
+    {
+        if (this != &other)
+        {
+            release();
+            allocator_ = std::exchange(other.allocator_, nullptr);
+            buffer_ = std::exchange(other.buffer_, VK_NULL_HANDLE);
+            allocation_ = std::exchange(other.allocation_, nullptr);
+            mapped_ = std::exchange(other.mapped_, nullptr);
+            size_ = std::exchange(other.size_, 0);
+            usage_ = std::exchange(other.usage_, 0);
+            access_ = std::exchange(other.access_, EMemoryAccess::DEVICE);
+        }
+        return *this;
+    }
+
+    void Buffer::release() noexcept
+    {
+        if (buffer_)
+        {
+            LUX_DESTROY("buffer", vmaDestroyBuffer(allocator_->native(), buffer_, allocation_));
+        }
     }
 
     ImageMemory::~ImageMemory() noexcept
@@ -20,8 +52,35 @@ namespace lux::render::vulkan
 
     Image::~Image() noexcept
     {
-        LUX_DESTROY("image", vkDestroyImage(memory_->allocator_->device(), image_, nullptr));
-        // memory_ releases after VkImage; the last alias releases the allocation.
+        release();
+    }
+
+    Image::Image(Image&& other) noexcept
+        : image_(std::exchange(other.image_, VK_NULL_HANDLE)), memory_(std::move(other.memory_)),
+          description_(std::exchange(other.description_, {}))
+    {
+    }
+
+    Image& Image::operator=(Image&& other) noexcept
+    {
+        if (this != &other)
+        {
+            release();
+            image_ = std::exchange(other.image_, VK_NULL_HANDLE);
+            memory_ = std::move(other.memory_);
+            description_ = std::exchange(other.description_, {});
+        }
+        return *this;
+    }
+
+    void Image::release() noexcept
+    {
+        if (image_)
+        {
+            LUX_DESTROY("image", vkDestroyImage(memory_->allocator_->device(), image_, nullptr));
+        }
+        // Release the image before its allocation; aliases only share the actual memory.
+        memory_.reset();
     }
 
     RenderResult<std::shared_ptr<Buffer>> VulkanAllocator::createBuffer(
@@ -81,7 +140,7 @@ namespace lux::render::vulkan
                 return cxx::unexpected(nativeError(mapping));
             }
         }
-        return std::make_shared<Buffer>(*this, buffer, allocation, mapped.pMappedData, size, usage, access);
+        return std::shared_ptr<Buffer>(new Buffer(*this, buffer, allocation, mapped.pMappedData, size, usage, access));
     }
 
     RenderResult<void> Buffer::write(VkDeviceSize offset, std::span<const std::byte> bytes) noexcept
@@ -218,11 +277,15 @@ namespace lux::render::vulkan
         }
         LUX_RECORD("image_memory", (void)0);
         auto backing = std::make_shared<ImageMemory>(*this, allocation);
-        return std::make_shared<Image>(image, std::move(backing), description);
+        return std::shared_ptr<Image>(new Image(image, std::move(backing), description));
     }
 
     RenderResult<std::shared_ptr<Image>> VulkanAllocator::aliasImage(const Image& source) noexcept
     {
+        if (!source.image_)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
         if (source.memory_->allocator_ != this)
         {
             return cxx::unexpected(RenderError{kWrongOwner});
@@ -274,11 +337,15 @@ namespace lux::render::vulkan
             return cxx::unexpected(nativeError(created));
         }
         LUX_RECORD("image", (void)0);
-        return std::make_shared<Image>(image, source.memory_, description);
+        return std::shared_ptr<Image>(new Image(image, source.memory_, description));
     }
 
     BufferMemoryBinding Buffer::memoryBinding() const noexcept
     {
+        if (!buffer_)
+        {
+            return {};
+        }
         VmaAllocationInfo info{};
         vmaGetAllocationInfo(allocator_->native(), allocation_, &info);
         return {info.deviceMemory, info.offset, info.size};
@@ -286,6 +353,10 @@ namespace lux::render::vulkan
 
     ImageMemoryBinding Image::memoryBinding() const noexcept
     {
+        if (!image_)
+        {
+            return {};
+        }
         VmaAllocationInfo info{};
         vmaGetAllocationInfo(memory_->allocator_->native(), memory_->allocation_, &info);
         return {info.deviceMemory, info.offset, info.size, info.memoryType};

@@ -23,9 +23,15 @@ namespace lux::render::vulkan
         VkDeviceSize offset, size;
     };
 
+    // Owns one allocation; moving transfers it without changing Native identity.
+    // Borrowed GPU uses must end before destruction or move assignment; the allocator outlives this value.
     class Buffer
     {
     public:
+        Buffer() noexcept = default;
+        Buffer(Buffer&& other) noexcept;
+        Buffer& operator=(Buffer&& other) noexcept;
+
         [[nodiscard]] VkBuffer native() const noexcept
         {
             return buffer_;
@@ -44,21 +50,6 @@ namespace lux::render::vulkan
         [[nodiscard]] VkBufferUsageFlags usage() const noexcept
         {
             return usage_;
-        }
-
-        // Owns VkBuffer and its allocation. The allocator outlives this object; GPU users retain it.
-        Buffer(
-            VulkanAllocator& allocator,
-            VkBuffer buffer,
-            VmaAllocation_T* allocation,
-            void* mapped,
-            VkDeviceSize size,
-            VkBufferUsageFlags usage,
-            EMemoryAccess access
-        ) noexcept
-            : allocator_(&allocator), buffer_(buffer), allocation_(allocation), mapped_(mapped), size_(size),
-              usage_(usage), access_(access)
-        {
         }
 
         ~Buffer() noexcept;
@@ -81,13 +72,29 @@ namespace lux::render::vulkan
     private:
         friend class VulkanAllocator;
         friend class Transfer;
-        VulkanAllocator* allocator_;
-        VkBuffer buffer_;
-        VmaAllocation_T* allocation_;
-        void* mapped_;
-        VkDeviceSize size_;
-        VkBufferUsageFlags usage_;
-        EMemoryAccess access_;
+
+        Buffer(
+            VulkanAllocator& allocator,
+            VkBuffer buffer,
+            VmaAllocation_T* allocation,
+            void* mapped,
+            VkDeviceSize size,
+            VkBufferUsageFlags usage,
+            EMemoryAccess access
+        ) noexcept
+            : allocator_(&allocator), buffer_(buffer), allocation_(allocation), mapped_(mapped), size_(size),
+              usage_(usage), access_(access)
+        {
+        }
+
+        void release() noexcept;
+        VulkanAllocator* allocator_ = nullptr;
+        VkBuffer buffer_ = VK_NULL_HANDLE;
+        VmaAllocation_T* allocation_ = nullptr;
+        void* mapped_ = nullptr;
+        VkDeviceSize size_ = 0;
+        VkBufferUsageFlags usage_ = 0;
+        EMemoryAccess access_ = EMemoryAccess::DEVICE;
     };
 
     struct ImageDescription
@@ -133,6 +140,10 @@ namespace lux::render::vulkan
     class Image
     {
     public:
+        Image() noexcept = default;
+        Image(Image&& other) noexcept;
+        Image& operator=(Image&& other) noexcept;
+
         [[nodiscard]] VkImage native() const noexcept
         {
             return image_;
@@ -140,7 +151,7 @@ namespace lux::render::vulkan
 
         [[nodiscard]] VkDevice device() const noexcept
         {
-            return memory_->allocator_->device();
+            return memory_ ? memory_->allocator_->device() : VK_NULL_HANDLE;
         }
 
         [[nodiscard]] VkExtent2D extent() const noexcept
@@ -168,11 +179,6 @@ namespace lux::render::vulkan
             return description_;
         }
 
-        Image(VkImage image, std::shared_ptr<ImageMemory> memory, ImageDescription description) noexcept
-            : image_(image), memory_(std::move(memory)), description_(description)
-        {
-        }
-
         ~Image() noexcept;
 
         [[nodiscard]] ImageMemoryBinding memoryBinding() const noexcept;
@@ -182,8 +188,15 @@ namespace lux::render::vulkan
 
     private:
         friend class VulkanAllocator;
-        VkImage image_;
+
+        Image(VkImage image, std::shared_ptr<ImageMemory> memory, ImageDescription description) noexcept
+            : image_(image), memory_(std::move(memory)), description_(description)
+        {
+        }
+
+        void release() noexcept;
+        VkImage image_ = VK_NULL_HANDLE;
         std::shared_ptr<ImageMemory> memory_;
-        ImageDescription description_;
+        ImageDescription description_{};
     };
 } // namespace lux::render::vulkan

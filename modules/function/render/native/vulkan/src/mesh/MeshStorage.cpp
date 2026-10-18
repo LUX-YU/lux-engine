@@ -182,8 +182,7 @@ namespace lux::render::vulkan
                     return cxx::unexpected(RenderError{kStorageContract});
                 }
             }
-            VkFormatProperties supported{};
-            vkGetPhysicalDeviceFormatProperties(session_.physicalDevice().handle(), format.native, &supported);
+            const auto supported = session_.physicalDevice().formatProperties(format.native);
             if (!(supported.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT))
             {
                 return cxx::unexpected(RenderError{kUnsupported});

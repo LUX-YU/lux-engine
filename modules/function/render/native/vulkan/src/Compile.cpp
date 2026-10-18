@@ -2,6 +2,7 @@
 #include "LayoutPlan.hpp"
 #include "Native.hpp"
 #include "Shader.hpp"
+#include <lux/engine/gapi/vk/Pipeline.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 
@@ -759,12 +760,13 @@ namespace lux::render::vulkan
                     info.pPushConstantRanges = &range;
                     info.setLayoutCount = std::uint32_t(result.descriptor_layouts_.size());
                     info.pSetLayouts = result.descriptor_layouts_.data();
-                    const auto created =
-                        LUX_NATIVE("pipeline_layout", vkCreatePipelineLayout(device, &info, nullptr, &result.layout_));
+                    gapi::vk::PipelineLayout layout;
+                    const auto created = LUX_NATIVE("pipeline_layout", layout.tryCreate(device, info));
                     if (created != VK_SUCCESS)
                     {
                         return cxx::unexpected(nativeError(created));
                     }
+                    result.layout_ = layout.handle(); // CompiledGraph is the aggregate lifetime owner.
                 }
                 // The Graph owns one compatible physical descriptor/parameter layout. Compare complete
                 // stage bytes + ABI; draw count and clear color are not Pipeline identity.
@@ -899,8 +901,7 @@ namespace lux::render::vulkan
             if (used[i] && resource.image_usage)
             {
                 const auto format = imageFormat(std::get<GraphImageDesc>(resource.description).format).native;
-                VkFormatProperties properties{};
-                vkGetPhysicalDeviceFormatProperties(physical.handle(), format, &properties);
+                const auto properties = physical.formatProperties(format);
                 VkFormatFeatureFlags required = 0;
                 if (resource.image_usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
                 {

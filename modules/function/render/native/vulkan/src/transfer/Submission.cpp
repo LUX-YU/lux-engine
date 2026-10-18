@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <exception>
 #include <limits>
+#include <lux/engine/gapi/vk/Semaphore.hpp>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -23,7 +24,7 @@ namespace lux::render::vulkan
     {
         VkDevice device;
         NativeQueue queue;
-        VkSemaphore timeline{};
+        gapi::vk::Semaphore timeline;
         VkCommandPool pool{};
         std::vector<SubmittedBatch> batches;
         std::uint64_t submitted{};
@@ -44,7 +45,7 @@ namespace lux::render::vulkan
         {
             if (timeline)
             {
-                LUX_DESTROY("timeline", vkDestroySemaphore(device, timeline, nullptr));
+                LUX_DESTROY("timeline", timeline.reset());
             }
             for (auto& batch : batches)
             {
@@ -114,11 +115,13 @@ namespace lux::render::vulkan
             type.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
             VkSemaphoreCreateInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
             info.pNext = &type;
-            result = LUX_NATIVE("timeline", vkCreateSemaphore(device, &info, nullptr, &backing->timeline));
+            VkSemaphore timeline{};
+            result = LUX_NATIVE("timeline", vkCreateSemaphore(device, &info, nullptr, &timeline));
             if (result != VK_SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));
             }
+            backing->timeline = gapi::vk::Semaphore::adopt(device, timeline);
         }
         return std::unique_ptr<SubmissionQueue>{new SubmissionQueue(std::move(backing))};
     }

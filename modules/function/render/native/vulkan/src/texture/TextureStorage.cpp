@@ -42,7 +42,7 @@ namespace lux::render::vulkan
         }
         if (sampler_)
         {
-            LUX_DESTROY("texture_sampler", vkDestroySampler(device, sampler_, nullptr));
+            LUX_DESTROY("texture_sampler", sampler_.release(device));
         }
         --residency_->versions;
         residency_->bytes -= bytes_;
@@ -185,8 +185,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        VkFormatProperties properties{};
-        vkGetPhysicalDeviceFormatProperties(session.physicalDevice().handle(), layout.native, &properties);
+        const auto properties = session.physicalDevice().formatProperties(layout.native);
         constexpr auto required = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT |
                                   VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
         if ((properties.optimalTilingFeatures & required) != required)
@@ -586,7 +585,7 @@ namespace lux::render::vulkan
         sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
         sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         sampler.maxLod = float(version.info_.mip_count - 1);
-        result = LUX_NATIVE("texture_sampler", vkCreateSampler(device, &sampler, nullptr, &version.sampler_));
+        result = LUX_NATIVE("texture_sampler", version.sampler_.tryCreate(device, sampler));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));

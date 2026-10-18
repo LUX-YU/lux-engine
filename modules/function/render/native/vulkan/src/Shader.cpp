@@ -1,5 +1,6 @@
 #include "Shader.hpp"
 #include "Native.hpp"
+#include <lux/engine/gapi/vk/ShaderModule.hpp>
 #include <lux/engine/render/resource/Storage.hpp>
 
 #include <algorithm>
@@ -633,8 +634,8 @@ namespace lux::render::vulkan
         VkShaderModuleCreateInfo module{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
         module.codeSize = code.words.size() * sizeof(std::uint32_t);
         module.pCode = code.words.data();
-        VkShaderModule handle{};
-        const auto created = LUX_NATIVE("shader", vkCreateShaderModule(device, &module, nullptr, &handle));
+        gapi::vk::ShaderModule handle;
+        const auto created = LUX_NATIVE("shader", handle.tryCreate(device, module));
         if (created != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(created));
@@ -647,7 +648,7 @@ namespace lux::render::vulkan
         info.layout = layout;
         VkPipeline pipeline{};
         const auto result = LUX_NATIVE("pipeline", vkCreateComputePipelines(device, {}, 1, &info, nullptr, &pipeline));
-        LUX_DESTROY("shader", vkDestroyShaderModule(device, handle, nullptr));
+        LUX_DESTROY("shader", handle.release(device));
         if (result != VK_SUCCESS)
         {
             if (pipeline)
@@ -779,8 +780,7 @@ namespace lux::render::vulkan
             {
                 return cxx::unexpected(RenderError{kInvalidArgument});
             }
-            VkFormatProperties properties{};
-            vkGetPhysicalDeviceFormatProperties(physical.handle(), format.native, &properties);
+            const auto properties = physical.formatProperties(format.native);
             if (!(properties.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT))
             {
                 return cxx::unexpected(RenderError{kUnsupported});
@@ -791,15 +791,15 @@ namespace lux::render::vulkan
         struct Modules final
         {
             VkDevice device;
-            std::array<VkShaderModule, 2> handles{};
+            std::array<gapi::vk::ShaderModule, 2> handles;
 
             ~Modules() noexcept
             {
-                for (auto shader : handles)
+                for (auto& shader : handles)
                 {
                     if (shader)
                     {
-                        LUX_DESTROY("shader", vkDestroyShaderModule(device, shader, nullptr));
+                        LUX_DESTROY("shader", shader.release(device));
                     }
                 }
             }
@@ -813,8 +813,7 @@ namespace lux::render::vulkan
             VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
             info.codeSize = code[i]->words.size() * sizeof(std::uint32_t);
             info.pCode = code[i]->words.data();
-            const auto created =
-                LUX_NATIVE("shader", vkCreateShaderModule(device, &info, nullptr, &modules.handles[i]));
+            const auto created = LUX_NATIVE("shader", modules.handles[i].tryCreate(device, info));
             if (created != VK_SUCCESS)
             {
                 return cxx::unexpected(nativeError(created));

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/cxx/container/SlotMap.hpp>
+#include <lux/engine/gapi/vk/Sampler.hpp>
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
@@ -62,7 +63,7 @@ namespace lux::render::vulkan
             DescriptorRange descriptor_;
             rdesc::TextureInfo info_{};
             VkImageView view_ = VK_NULL_HANDLE;
-            VkSampler sampler_ = VK_NULL_HANDLE;
+            gapi::vk::Sampler sampler_;
             // Clone layout transitions must still order against prior Draws. This is not a retirement right.
             SubmissionRequirements last_use_;
             std::uint64_t bytes_ = 0, revision_ = 0;

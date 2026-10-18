@@ -12,6 +12,31 @@ namespace lux::render::vulkan
 {
     namespace
     {
+        // The finite Image/Vertex formats understood by this Native compiler.
+        // Query once before publication; compilation only reads the physical snapshot.
+        constexpr std::array native_formats{
+            VK_FORMAT_R8G8B8A8_UNORM,
+            VK_FORMAT_R8G8B8A8_SRGB,
+            VK_FORMAT_B8G8R8A8_UNORM,
+            VK_FORMAT_B8G8R8A8_SRGB,
+            VK_FORMAT_R16G16B16A16_SFLOAT,
+            VK_FORMAT_D32_SFLOAT,
+            VK_FORMAT_D16_UNORM,
+            VK_FORMAT_BC1_RGBA_SRGB_BLOCK,
+            VK_FORMAT_R32_SFLOAT,
+            VK_FORMAT_R32G32_SFLOAT,
+            VK_FORMAT_R32G32B32_SFLOAT,
+            VK_FORMAT_R32G32B32A32_SFLOAT,
+            VK_FORMAT_R32_UINT,
+            VK_FORMAT_R32G32_UINT,
+            VK_FORMAT_R32G32B32_UINT,
+            VK_FORMAT_R32G32B32A32_UINT,
+            VK_FORMAT_R32_SINT,
+            VK_FORMAT_R32G32_SINT,
+            VK_FORMAT_R32G32B32_SINT,
+            VK_FORMAT_R32G32B32A32_SINT
+        };
+
         template <typename T, typename F> RenderResult<std::vector<T>> enumerate(F&& function) noexcept
         {
             for (unsigned attempt = 0; attempt < 4; ++attempt)
@@ -357,7 +382,7 @@ namespace lux::render::vulkan
             {
                 continue;
             }
-            gapi::vk::PhysicalDevice snapshot((*devices)[index]);
+            gapi::vk::PhysicalDevice snapshot((*devices)[index], native_formats);
             const auto physical = snapshot.handle();
             const auto& properties = snapshot.properties().properties;
             VkPhysicalDeviceVulkan13Features supported{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};

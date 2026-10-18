@@ -2,6 +2,7 @@
 #include "Native.hpp"
 #include "Shader.hpp"
 #include <algorithm>
+#include <lux/engine/gapi/vk/Descriptor.hpp>
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 
@@ -104,11 +105,13 @@ namespace lux::render::vulkan
         pool.maxSets = 1;
         pool.poolSizeCount = 1;
         pool.pPoolSizes = &size;
-        auto result = LUX_NATIVE("descriptor_array_pool", vkCreateDescriptorPool(device_, &pool, nullptr, &pool_));
+        gapi::vk::DescriptorPool handle;
+        auto result = LUX_NATIVE("descriptor_array_pool", handle.tryCreate(device_, pool));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
         }
+        pool_ = handle.handle(); // The array owns the complete pool and its allocated set.
         VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
         allocate.descriptorPool = pool_;
         allocate.descriptorSetCount = 1;

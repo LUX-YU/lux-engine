@@ -81,9 +81,8 @@ namespace lux::render
                 break;
             }
             ++consumed;
-            const auto id = slot->id;
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM
-            auto* sample = test::completionPopped(id);
+            auto* sample = test::completionPopped(slot->measurement);
             test::completionAdoptBegin(sample);
 #endif
             if (const auto resume = std::exchange(slot->resume, nullptr))
@@ -92,7 +91,7 @@ namespace lux::render
                 continue; // The continuation may publish its final event; no post-callback slot access.
             }
             response_outbox_.enqueue(slot->response_route_, std::move(slot->result_message_));
-            pending_operations_.erase(id);
+            delete slot;
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM
             test::completionAdoptEnd(sample);
 #endif

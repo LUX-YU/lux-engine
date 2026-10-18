@@ -162,13 +162,15 @@ static void verifyInPlaceResponse()
     lux::platform::ipc::IpcMessage input;
     input.emplace<unsigned>(42);
     ResponseOutbox outbox;
-    PendingSlots pending;
+    stdexec::counting_scope scope;
     CompletionQueue events;
     std::atomic<std::size_t> publishers{0};
-    CommandDispatchContext context{input, {{}, {1}}, outbox, pending, events, publishers};
+    CommandDispatchContext context{input, {{}, {1}}, outbox, scope, events, publishers};
     auto binding = CommandBinding::bind<InPlaceCommand, &InPlaceHandler::apply>(handler);
     binding.call().invoke(binding.call().object, context);
-    check(InPlaceValue::moves == 0 && pending.empty() && !outbox.empty());
+    check(InPlaceValue::moves == 0 && events.size() == 0 && !outbox.empty());
+    scope.close();
+    (void)stdexec::sync_wait(scope.join());
     static_assert(sizeof(HandlerCall) == 2 * sizeof(void*));
 }
 

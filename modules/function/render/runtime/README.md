@@ -6,8 +6,8 @@ a typed Request and receive its declared typed Response. There is no RenderClien
 client pending registry or Command wire codec. Pure command consumers need neither
 Vulkan nor stdexec. Server-only installation uses the selected Native provider.
 
-`RenderServer::Impl` owns one `CommandRegistry`, `ResponseOutbox`, stable pending
-operation table, completion queue, Responder and DeviceSession. Scene owns View.
+`RenderServer::Impl` owns one `CommandRegistry`, `ResponseOutbox`, counting scope,
+completion queue, Responder and DeviceSession. Scene owns View.
 Effect owns its immutable CompiledGraph and four-field execution groups:
 SceneId, ViewId, TargetId and ExecutionContext pointer.
 
@@ -28,17 +28,20 @@ ConcreteSender H::method(C::Request&&) noexcept;
 
 Responses use `RenderResult<Success>`. Synchronous dispatch creates an error-initialized
 Response directly in an Outbox message before entering the Handler. No temporary
-Response or PendingOperation is needed. Dispatch is not reentrant: a Handler may
+Response or asynchronous state is needed. Dispatch is not reentrant: a Handler may
 install declarations but must not recursively dispatch or flush the Outbox.
 
-An asynchronous thunk first creates a stable PendingOperation, then invokes the
-Handler, connects its concrete Sender and starts the operation owned by that slot.
-The Sender moves every source owner needed after the Handler returns. Its generic
-Receiver maps value, RenderError, CommandFailure and stopped into one typed result
-and publishes the existing completion event. RenderThread moves ready results to
-Outbox, then releases the ended operation. Publication is the producer's final
-state access; host scheduler/module lifetimes cover callback tails.
+An asynchronous thunk acquires a result delivery record before invoking the Handler.
+Standard error/stopped adaptors normalize its concrete Sender to one typed Response;
+`stdexec::spawn` alone owns and destroys the connected OperationState. The Server's
+`counting_scope` supplies one shared stop token. No per-request stop source, Pending
+identity table or type-erased operation deleter remains.
 
+The record owns only routing, completed output and the existing completion queue node.
+Native intermediate continuations borrow the same node without transferring operation
+ownership. RenderThread alone moves finished output to Outbox and deletes the record.
+Scope completion and IPC delivery are distinct; an operation may end before its result
+can be sent. Host scheduler/module lifetimes still cover external callback tails.
 Outbox alone publishes finished results, with bounded fair retries when a reply
 segment cannot grow. A closed requester cannot hold ready output indefinitely.
 The source route is independent of input ownership. Invalid CommandId or wrong

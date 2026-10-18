@@ -9,7 +9,7 @@ namespace lux::render::runtime_detail
         platform::ipc::IpcMessage& request_message_;
         ResponseRoute response_route_;
         ResponseOutbox& response_outbox_;
-        PendingSlots& pending_operations_;
+        stdexec::counting_scope& scope_;
         CompletionQueue& completion_queue_;
         std::atomic<std::size_t>& publishers_;
     };

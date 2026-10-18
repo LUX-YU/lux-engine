@@ -90,7 +90,7 @@ struct State final
         void (*finish)(void*) noexcept = nullptr;
     };
     std::array<Gate, 129> gates;
-    std::atomic<unsigned> started{0}, destroyed{0}, premature_destroy{0};
+    std::atomic<unsigned> started{0}, destroyed{0}, inline_destroy{0};
     std::atomic<unsigned> stop_notifications{0}, committed{0};
     std::atomic<bool> synchronous_start{false};
 
@@ -135,7 +135,7 @@ struct GateSender final
 
         ~Operation() noexcept
         {
-            if (state->synchronous_start.load()) ++state->premature_destroy;
+            if (state->synchronous_start.load()) ++state->inline_destroy;
             ++state->destroyed;
         }
 
@@ -200,30 +200,24 @@ static RequestId submit(runtime_test::Peer& client, CommandId binding, Input inp
     return take(runtime_test::send<Async>(client, binding, std::move(input)));
 }
 
-static void eventIdentities()
+static void deliveryAddresses()
 {
     using namespace runtime_detail;
-    PendingSlots slots;
     CompletionQueue queue;
     check(queue.tryPop() == nullptr);
-    const auto old = slots.emplace();
-    check(slots.erase(old));
-    const auto fresh = slots.emplace();
-    check(fresh != old && slots.find(old) == nullptr);
-    auto* first = slots.find(fresh);
-    queue.push(*first);
-    // Growth cannot move a published notification node; its owner is the existing stable Pending slot.
-    std::vector<CompletionId> ids;
-    for (unsigned i = 0; i < 4096; ++i)
+    std::vector<std::unique_ptr<CommandCompletion>> records;
+    for (unsigned i = 0; i < 4097; ++i)
     {
-        const auto id = slots.emplace();
-        ids.push_back(id);
-        queue.push(*slots.find(id));
+        records.push_back(std::make_unique<CommandCompletion>());
+        queue.push(*records.back());
     }
-    check(queue.size() == 4097 && queue.tryPop() == first);
-    check(slots.erase(fresh));
-    for (auto id : ids) { check(queue.tryPop() == slots.find(id)); check(slots.erase(id)); }
-    check(queue.tryPop() == nullptr && slots.empty());
+    check(queue.size() == records.size());
+    for (auto& record : records)
+    {
+        check(queue.tryPop() == record.get());
+        record.reset();
+    }
+    check(queue.tryPop() == nullptr);
 }
 
 struct AsyncCommands final
@@ -253,7 +247,7 @@ static_assert(!AsyncCommandHandlerFor<Async, InvalidAsyncHandler, &InvalidAsyncH
 
 int main()
 {
-    eventIdentities();
+    deliveryAddresses();
     State state, alternate;
     static const std::array descriptors{commandDescriptor<Async>()};
     const FeatureDescriptor definition{FeatureName("test.async.feature"), {}};
@@ -312,7 +306,7 @@ int main()
         else if (mode == 2) check(!result.get<Async::Response>() && result.get<Async::Response>().error().type == kCommandCancelled);
         else check(std::move(result).get<Async::Response>()->value == 73);
     }
-    check(state.premature_destroy.load() == 0);
+    check(state.inline_destroy.load() == 6); // spawn may destroy at terminal; start only touches external control.
 
     // The concrete Sender owns the moved source; no request wrapper retains another copy.
     // Only the explicit Output owns its source after success. Cancellation/unknown do not return an input.
@@ -387,8 +381,9 @@ int main()
     runtime_detail::test::hold_publication.store(true, std::memory_order_release);
     std::thread final_producer([&] { state.finish(0); });
     until([&] { return runtime_detail::test::publication_held.load(std::memory_order_acquire); });
-    until([&] { return state.destroyed.load() == before + 1; });
-    // The final slot is gone, but the publisher still occupies the queue's post-publication tail.
+    // The final normalization is still in publication. Scope must retain its operation until
+    // that call returns, even after the Owner consumed and deleted the independent result record.
+    check(state.destroyed.load() == before);
     check(!run_returned.load(std::memory_order_acquire));
     runtime_detail::test::hold_publication.store(false, std::memory_order_release);
     final_producer.join();
@@ -396,6 +391,6 @@ int main()
     check(bool(run) && server->stats().validation_errors == 0);
     server.reset();
     b.reset();
-    check(final_destroyed.load() == 1 && state.premature_destroy.load() == 0);
-    std::puts("async: 0/1/16/129 pending; synchronous/error/stopped; reverse burst; dynamic stable slots; shutdown ownership PASS");
+    check(final_destroyed.load() == 1 && state.destroyed.load() == before + 1);
+    std::puts("async: 0/1/16/129 pending; synchronous/error/stopped; reverse burst; independent delivery records; scope shutdown ownership PASS");
 }

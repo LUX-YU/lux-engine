@@ -99,7 +99,7 @@ namespace
         Batch* batch = nullptr;
         unsigned index = 0;
         RequestId request;
-        runtime_detail_alias::CompletionId completion;
+        const runtime_detail_alias::CommandCompletion* completion = nullptr;
         std::uint64_t submit_begin = 0, submit_end = 0, handler_begin = 0, handler_end = 0, registered = 0;
         std::uint64_t register_begin = 0, register_end = 0;
         std::uint64_t worker_arrived = 0, work_begin = 0, work_end = 0;
@@ -140,9 +140,6 @@ namespace
     {
         lux::execution::CpuScheduler cpu;
         std::atomic<Batch*> active{};
-        // StableSlotMap reserves complete 256-slot pages and first allocates index 255, even though
-        // Runtime admits at most 136 live records. This is an observation index, not extra admission.
-        std::array<Record*, 256> slots{};
         // Test-only sample storage, allocated before starting the RenderThread. No statistics or
         // sample array is added to production Pending, the CPU queue, or IPC.
         std::vector<Drain> drains{200000};
@@ -215,7 +212,7 @@ namespace
     {
         std::ofstream events("async-cost-events.csv"), drains("async-cost-drains.csv"), summary("async-cost-summary.csv");
         check(bool(events) && bool(drains) && bool(summary));
-        events << "mode,N,iteration,warmup,index,request_value,slot_index,slot_generation,"
+        events << "mode,N,iteration,warmup,index,request_value,delivery_address,"
             "submit_begin_ns,submit_end_ns,handler_begin_ns,register_begin_ns,registered_ns,register_end_ns,"
             "handler_end_ns,worker_arrived_ns,"
             "work_begin_ns,work_end_ns,post_begin_ns,post_end_ns,pop_ns,adopt_begin_ns,adopt_end_ns,client_consume_ns\n";
@@ -226,8 +223,7 @@ namespace
             {
                 const auto& r = batch->records[i];
                 events << name(batch->mode) << ',' << batch->count << ',' << batch->iteration << ',' << batch->warmup
-                    << ',' << i << ',' << r.request.value << ',' << r.completion.index << ','
-                    << r.completion.gen << ',' << r.submit_begin << ',' << r.submit_end << ',' << r.handler_begin << ','
+                    << ',' << i << ',' << r.request.value << ',' << reinterpret_cast<std::uintptr_t>(r.completion) << ',' << r.submit_begin << ',' << r.submit_end << ',' << r.handler_begin << ','
                     << r.register_begin << ',' << r.registered << ',' << r.register_end << ',' << r.handler_end << ','
                     << r.worker_arrived << ',' << r.work_begin << ','
                     << r.work_end << ',' << r.post_begin << ',' << r.post_end << ',' << r.popped << ',' << r.adopt_begin
@@ -302,23 +298,21 @@ namespace lux::render::runtime_detail::test
         until([&] { return batch->allow_dispatch.load(std::memory_order_acquire); });
     }
 
-    void completionRegistered(CompletionId id, RequestId request) noexcept
+    void* completionRegistered(const CommandCompletion* identity, RequestId request) noexcept
     {
         auto* batch = state->active.load(std::memory_order_acquire);
-        check(batch && batch->registered < batch->count && id.index < state->slots.size());
+        check(batch && batch->registered < batch->count);
         auto& record = batch->records[batch->registered++];
         check(record.request == request);
         record.register_begin = now();
         record.registered = now();
-        record.completion = id;
-        state->slots[id.index] = &record;
+        record.completion = identity;
+        return &record;
     }
 
-    void* completionPostBegin(CompletionId id) noexcept
+    void* completionPostBegin(void* measurement) noexcept
     {
-        check(id.index < state->slots.size());
-        auto* record = state->slots[id.index];
-        check(record && record->completion == id);
+        auto* record = static_cast<Record*>(measurement);
         record->post_begin = now();
         return record;
     }
@@ -329,7 +323,7 @@ namespace lux::render::runtime_detail::test
         record.post_end = now();
         if (!accepted) record.batch->dropped.fetch_add(1, std::memory_order_relaxed);
         record.batch->posted.fetch_add(1, std::memory_order_release);
-        // The record belongs to the benchmark, not a Pending slot that may already have been erased.
+        // The record belongs to the benchmark, not a delivery record that may already have been erased.
     }
 
     void* completionDrainBegin(const CompletionQueue& queue) noexcept
@@ -351,11 +345,10 @@ namespace lux::render::runtime_detail::test
         return &sample;
     }
 
-    void* completionPopped(CompletionId id) noexcept
+    void* completionPopped(void* measurement) noexcept
     {
-        check(id.index < state->slots.size());
-        auto* record = state->slots[id.index];
-        check(record && record->completion == id && record->popped == 0);
+        auto* record = static_cast<Record*>(measurement);
+        check(record->popped == 0);
         record->popped = now();
         return record;
     }
@@ -401,7 +394,7 @@ int main()
 {
     std::printf("Route layout: call=%zu/%zu entry=%zu/%zu metadata=%zu request=%zu\n",
         sizeof(HandlerCall), alignof(HandlerCall), sizeof(runtime_detail::CommandEntry),
-        alignof(runtime_detail::CommandEntry), sizeof(runtime_detail::CommandMetadata), sizeof(runtime_detail::PendingOperation));
+        alignof(runtime_detail::CommandEntry), sizeof(runtime_detail::CommandMetadata), sizeof(runtime_detail::CommandCompletion));
     auto control = std::make_unique<State>();
     state = control.get();
     lux::render::test::CpuFixture host(2, 128);

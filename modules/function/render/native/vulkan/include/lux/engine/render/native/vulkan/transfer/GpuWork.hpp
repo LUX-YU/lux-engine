@@ -77,7 +77,7 @@ namespace lux::render::vulkan
     };
     // Finite Native sender around the existing Transfer. It retains the moved upload payload until
     // Transfer ends; no additional queue, Device or request wrapper is created.
-    // Runtime acquires its PendingOperation before the Handler prepares this owned Native work.
+    // Runtime acquires its result delivery record before the Handler prepares this owned Native work.
     template <class Response> class GpuWorkSender final
     {
     public:

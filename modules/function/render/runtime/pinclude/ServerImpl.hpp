@@ -103,7 +103,7 @@ namespace lux::render
         std::optional<vulkan::InstanceContext> instance;
         std::unique_ptr<vulkan::DeviceSession> device;
         ResponseOutbox response_outbox_;
-        PendingSlots pending_operations_;
+        stdexec::counting_scope command_scope_;
         CompletionQueue completion_events;
         std::atomic<std::size_t> completion_publishers{0};
         std::size_t next_effect = 0;

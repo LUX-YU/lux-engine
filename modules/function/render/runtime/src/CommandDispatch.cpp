@@ -12,43 +12,35 @@ namespace lux::render::runtime_detail
         return context.response_outbox_.prepare(context.response_route_);
     }
 
-    PendingOperation& createPendingOperation(CommandDispatchContext& context) noexcept
+    CommandCompletion& prepareCompletion(CommandDispatchContext& context) noexcept
     {
-        const auto id = context.pending_operations_.emplace();
-        auto& slot = *context.pending_operations_.find(id);
-        slot.id = id;
-        slot.response_route_ = context.response_route_;
-        slot.events = &context.completion_queue_;
-        slot.publishers = &context.publishers_;
+        auto* record = new CommandCompletion;
+        record->response_route_ = context.response_route_;
+        record->events = &context.completion_queue_;
+        record->publishers = &context.publishers_;
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM
-        test::completionRegistered(id, slot.response_route_.request_id);
+        record->measurement = test::completionRegistered(record, record->response_route_.request_id);
 #endif
-        return slot;
+        return *record;
     }
 
-    platform::ipc::IpcMessage& operationResult(PendingOperation& slot) noexcept
+    platform::ipc::IpcMessage& completionResult(CommandCompletion& record) noexcept
     {
-        return slot.result_message_;
+        return record.result_message_;
     }
 
-    stdexec::inplace_stop_token operationStopToken(PendingOperation& slot) noexcept
+    execution::CompletionPost<RenderError> completionPost(CommandCompletion& record) noexcept
     {
-        return slot.stop.get_token();
+        return record.post();
     }
 
-    execution::CompletionPost<RenderError> operationPost(PendingOperation& slot) noexcept
+    stdexec::counting_scope& commandScope(CommandDispatchContext& context) noexcept
     {
-        return slot.post();
+        return context.scope_;
     }
 
-    void ownOperation(PendingOperation& slot, void* operation, void (*destroy)(void*) noexcept) noexcept
+    void publishCompletion(CommandCompletion& record) noexcept
     {
-        slot.operation_state_ = operation;
-        slot.destroy_operation_ = destroy;
-    }
-
-    void publishOperation(PendingOperation& slot) noexcept
-    {
-        slot.post()(nullptr, nullptr, {});
+        record.post()(nullptr, nullptr, {});
     }
 } // namespace lux::render::runtime_detail

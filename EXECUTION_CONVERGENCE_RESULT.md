@@ -35,3 +35,11 @@ ASan flags `/fsanitize=address /Zi`；`ASAN_OPTIONS=alloc_dealloc_mismatch=1`。
 719 Legacy blobs 及主工作树 settings、Graph.hpp、另一 V12 工作树用户 RenderServer.hpp 的三个 SHA 均一致，见 `evidence/protection-a.json`。仅在隔离分支施工，未触碰原工作树；E0/E0-B/E0-C 报告不改。
 
 旧 C1–C5 性能 PARTIAL、历史 Debug graph.edit 失败及 Root TOOLCHAIN BLOCKED 保持原判。当前未完成 Scope S/C 真实 Native 对比、最终独立 Debug/ASan/no-exceptions/GPU 矩阵及性能配对，均不得标 PASS。
+
+## Scope C 候选检查点
+
+`counting_scope` 内置停止源、spawn 状态所有权与独立 CommandCompletion 已接通所有异步 Command，包括真实 CreateEffect、GPU 上传和 Readback。施工 Release 与 ASan 均完成 all、第二轮 no-work 和全量 146/146 测试；ASan 214.18 秒。该结果尚非独立 V，S 方案仍待实际对照。
+
+删除 PendingOperation 的 connected state 指针/删除器、PendingSlots、CompletionId、每请求停止源与 shutdown 快照。结果记录为 224 B（旧 Pending 272 B），不代表总请求内存下降；spawn 状态及分配仍需实测。同步终态测试改为允许标准协议规定的 inline 析构，并继续断言精确析构、Producer 不再读取状态和 Host/DLL 尾栈安全。
+
+证据：`evidence/c/`、`evidence/c-asan/`。唯一 CompletionQueue、ResponseOutbox、Native CompletionPost、Transfer 状态机及 GPU 退休算法保留。当前没有 Scope 的生产性能 PASS 声明。

@@ -9,15 +9,14 @@
 namespace lux::render::runtime_detail
 {
     struct CommandDispatchContext;
-    struct PendingOperation;
+    struct CommandCompletion;
     platform::ipc::IpcMessage& requestMessage(CommandDispatchContext&) noexcept;
     platform::ipc::IpcMessage& prepareResponse(CommandDispatchContext&) noexcept;
-    PendingOperation& createPendingOperation(CommandDispatchContext&) noexcept;
-    platform::ipc::IpcMessage& operationResult(PendingOperation&) noexcept;
-    stdexec::inplace_stop_token operationStopToken(PendingOperation&) noexcept;
-    execution::CompletionPost<RenderError> operationPost(PendingOperation&) noexcept;
-    void ownOperation(PendingOperation&, void*, void (*)(void*) noexcept) noexcept;
-    void publishOperation(PendingOperation&) noexcept;
+    CommandCompletion& prepareCompletion(CommandDispatchContext&) noexcept;
+    platform::ipc::IpcMessage& completionResult(CommandCompletion&) noexcept;
+    execution::CompletionPost<RenderError> completionPost(CommandCompletion&) noexcept;
+    stdexec::counting_scope& commandScope(CommandDispatchContext&) noexcept;
+    void publishCompletion(CommandCompletion&) noexcept;
 } // namespace lux::render::runtime_detail
 
 namespace lux::render
@@ -88,18 +87,25 @@ namespace lux::render
                     }
                     else
                     {
-                        // Acquire the stable completion landing place before invoking business work.
-                        auto& slot = runtime_detail::createPendingOperation(context);
+                        // Admission is serialized with scope close on the RenderThread.
+                        auto& completion = runtime_detail::prepareCompletion(context);
                         auto sender = (static_cast<H*>(object)->*Method)(std::move(input));
-                        using Operation = stdexec::connect_result_t<decltype(sender), Receiver<C>>;
-                        auto* operation = new Operation(stdexec::connect(std::move(sender), Receiver<C>{&slot}));
-                        runtime_detail::ownOperation(
-                            slot,
-                            operation,
-                            [](void* value) noexcept { delete static_cast<Operation*>(value); }
+                        auto normalized = std::move(sender)
+                            | stdexec::upon_error(ResponseError<C>{})
+                            | stdexec::upon_stopped([]() noexcept -> typename C::Response {
+                                  return cxx::unexpected(RenderError{kCommandCancelled});
+                              })
+                            | stdexec::then([record = &completion](typename C::Response response) noexcept {
+                                  runtime_detail::completionResult(*record).emplace<typename C::Response>(
+                                      std::move(response)
+                                  );
+                                  runtime_detail::publishCompletion(*record);
+                              });
+                        stdexec::spawn(
+                            std::move(normalized),
+                            runtime_detail::commandScope(context).get_token(),
+                            CompletionEnvironment{runtime_detail::completionPost(completion)}
                         );
-                        stdexec::start(*operation);
-                        // A synchronous terminal only queues an event; it never drains on this call stack.
                     }
                 },
                 &handler
@@ -108,56 +114,31 @@ namespace lux::render
         }
 
     private:
-        template <RenderCommand C> struct Receiver final
+        struct CompletionEnvironment final
         {
-            using receiver_concept = stdexec::receiver_t;
-            runtime_detail::PendingOperation* slot;
+            execution::CompletionPost<RenderError> post;
 
-            struct Env final
+            execution::CompletionPost<RenderError> query(execution::GetCompletionPost) const noexcept
             {
-                runtime_detail::PendingOperation* slot;
+                return post;
+            }
+        };
 
-                stdexec::inplace_stop_token query(stdexec::get_stop_token_t) const noexcept
-                {
-                    return runtime_detail::operationStopToken(*slot);
-                }
-
-                execution::CompletionPost<RenderError> query(execution::GetCompletionPost) const noexcept
-                {
-                    return runtime_detail::operationPost(*slot);
-                }
-            };
-
-            Env get_env() const noexcept
+        template <RenderCommand C> struct ResponseError final
+        {
+            typename C::Response operator()(RenderError error) const noexcept
             {
-                return {slot};
+                return cxx::unexpected(error);
             }
 
-            void set_value(typename C::Response response) && noexcept
+            typename C::Response operator()(CommandFailure failure) const noexcept
             {
-                runtime_detail::operationResult(*slot).emplace<typename C::Response>(std::move(response));
-                runtime_detail::publishOperation(*slot);
+                return cxx::unexpected(failure.outcome_unknown ? RenderError{kOutcomeUnknown} : failure.error);
             }
 
-            void set_error(RenderError error) && noexcept
-            {
-                runtime_detail::operationResult(*slot).emplace<typename C::Response>(cxx::unexpected(error));
-                runtime_detail::publishOperation(*slot);
-            }
-
-            void set_error(CommandFailure failure) && noexcept
-            {
-                std::move(*this).set_error(failure.outcome_unknown ? RenderError{kOutcomeUnknown} : failure.error);
-            }
-
-            void set_error(std::exception_ptr) && noexcept
+            [[noreturn]] typename C::Response operator()(std::exception_ptr) const noexcept
             {
                 std::terminate();
-            }
-
-            void set_stopped() && noexcept
-            {
-                std::move(*this).set_error(RenderError{kCommandCancelled});
             }
         };
 

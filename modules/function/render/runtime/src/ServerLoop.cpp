@@ -97,7 +97,7 @@ namespace lux::render
                 received.message(),
                 route,
                 response_outbox_,
-                pending_operations_,
+                command_scope_,
                 completion_events,
                 completion_publishers
             };
@@ -110,22 +110,23 @@ namespace lux::render
     void RenderServer::Impl::shutdown() noexcept
     {
         stop_requested.store(true);
-        // Snapshot identities because stop callbacks may complete synchronously.
-        std::vector<CompletionId> pending;
-        pending.reserve(pending_operations_.size());
-        for (const auto& slot : pending_operations_)
+        command_scope_.close();
+        command_scope_.request_stop();
+        std::atomic<bool> joined{false};
+        struct Joined final
         {
-            pending.push_back(slot.id);
-        }
-        for (const auto id : pending)
-        {
-            if (auto* slot = pending_operations_.find(id))
+            using receiver_concept = stdexec::receiver_t;
+            std::atomic<bool>* done;
+            auto get_env() const noexcept
             {
-                slot->stop.request_stop();
+                return stdexec::env{stdexec::prop{stdexec::get_scheduler, stdexec::inline_scheduler{}}};
             }
-        }
+            void set_value() && noexcept { done->store(true, std::memory_order_release); }
+        };
+        auto join = stdexec::connect(command_scope_.join(), Joined{&joined});
+        stdexec::start(join);
         response_outbox_.flushTo(responder, config.request_work_budget);
-        // Only shutdown waits. CPU/source owners remain in the same slots; cancellation prevents
+        // Only shutdown waits. Scope retains connected CPU/source states; cancellation prevents
         // their eventual CPU event from submitting another GPU chunk.
         if (device)
         {
@@ -135,7 +136,7 @@ namespace lux::render
                 std::terminate();
             }
         }
-        while (!pending_operations_.empty())
+        while (!joined.load(std::memory_order_acquire) || completion_events.size() != 0)
         {
             drainCompletions();
             response_outbox_.flushTo(responder, config.request_work_budget);
@@ -148,7 +149,7 @@ namespace lux::render
                     std::terminate();
                 }
             }
-            if (!pending_operations_.empty())
+            if (!joined.load(std::memory_order_acquire))
             {
                 std::this_thread::yield();
             }

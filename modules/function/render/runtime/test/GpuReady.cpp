@@ -618,9 +618,9 @@ int main(int argc, char** argv)
     CHECK(source_destroyed == 2 && late_reply.get<UploadProbe::Response>()->pixels.bytes().view()[63] == std::byte{37});
     late_reply = {};
     CHECK(source_destroyed == 2 && owners_created == owners_destroyed && native_created == native_destroyed);
-    std::printf("sizes IpcMessage=%zu ResponseRoute=%zu PendingOperation=%zu SubmissionNode=%zu Context=%zu Permit=%zu; Native buffers created/destroyed=%u/%u\n",
+    std::printf("sizes IpcMessage=%zu ResponseRoute=%zu CommandCompletion=%zu SubmissionNode=%zu Context=%zu Permit=%zu; Native buffers created/destroyed=%u/%u\n",
         sizeof(lux::platform::ipc::IpcMessage), sizeof(runtime_detail::ResponseRoute),
-        sizeof(runtime_detail::PendingOperation), sizeof(vulkan::SubmissionCallback), sizeof(runtime_detail::CommandDispatchContext),
+        sizeof(runtime_detail::CommandCompletion), sizeof(vulkan::SubmissionCallback), sizeof(runtime_detail::CommandDispatchContext),
         sizeof(vulkan::BufferPermit), native_created.load(), native_destroyed.load());
     // An open Client must receive UNKNOWN, never a guaranteed cancellation, for accepted uncommitted GPU work.
     hold_fences.store(false);

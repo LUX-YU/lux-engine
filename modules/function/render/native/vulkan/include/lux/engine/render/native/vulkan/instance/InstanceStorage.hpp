@@ -16,7 +16,7 @@ namespace lux::render::vulkan
     {
         struct Backing;
         struct Use;
-        struct Physical;
+        struct Residency;
         struct Group;
         struct Entry final
         {
@@ -24,7 +24,7 @@ namespace lux::render::vulkan
             std::uint64_t revision = 1;
             cxx::SlotKey<InstanceTag> key;
         };
-        using Banks = std::array<std::unique_ptr<Backing>, 3>;
+        using Banks = std::array<std::shared_ptr<Backing>, 3>;
 
     public:
         InstanceStorage(DeviceSession&, StorageId, InstanceStorageConfig) noexcept;
@@ -46,24 +46,24 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> prepare(const NativeResourcePlan&, const InstanceBinding&,
             PreparedStorageBinding&) noexcept;
         [[nodiscard]] RenderResult<void> grow(std::size_t) noexcept;
-        [[nodiscard]] RenderResult<Backing*> writable() noexcept;
+        [[nodiscard]] RenderResult<std::shared_ptr<Backing>> writable() noexcept;
         [[nodiscard]] RenderResult<void> write(Backing&, std::uint32_t, const TransformMatrix&) noexcept;
         [[nodiscard]] RenderResult<Group*> prepareGroup(const InstanceBinding&) noexcept;
-        [[nodiscard]] RenderResult<Backing*> stageGroup(Group&, std::span<const std::uint32_t>) noexcept;
+        [[nodiscard]] RenderResult<std::shared_ptr<Backing>> stageGroup(Group&, std::span<const std::uint32_t>) noexcept;
         [[nodiscard]] Group* findGroup(const InstanceDescription&) noexcept;
-        void publishGroup(Group&, Backing&, std::vector<std::uint32_t>) noexcept;
-        void publish(Backing&) noexcept;
-        void retire(std::unique_ptr<Backing>&) noexcept;
+        void publishGroup(Group&, const std::shared_ptr<Backing>&, std::vector<std::uint32_t>) noexcept;
+        void publish(const std::shared_ptr<Backing>&) noexcept;
+        void unsubscribe(Use&) noexcept;
         DeviceSession& session_;
         StorageId id_;
         InstanceStorageConfig config_;
         cxx::SlotMap<Entry, InstanceTag> entries_;
         std::vector<TransformMatrix> shadow_;
         Banks banks_;
-        Backing* current_ = nullptr;
+        std::shared_ptr<Backing> current_;
         std::vector<Use*> uses_;
         std::vector<std::unique_ptr<Group>> groups_;
-        std::shared_ptr<Physical> physical_;
+        std::shared_ptr<Residency> residency_;
         std::uint64_t written_records_ = 0, checked_updates_ = 0;
     };
 }

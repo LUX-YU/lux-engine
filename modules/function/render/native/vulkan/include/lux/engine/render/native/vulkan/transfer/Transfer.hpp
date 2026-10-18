@@ -49,7 +49,7 @@ namespace lux::render::vulkan
         [[nodiscard]] const Image& image() const noexcept;
         [[nodiscard]] const Buffer& buffer() const noexcept;
         [[nodiscard]] const std::shared_ptr<Image>& imageResource() const noexcept { return image_; }
-        [[nodiscard]] RenderResult<BufferPermit> takeBuffer() noexcept;
+        [[nodiscard]] RenderResult<std::shared_ptr<Buffer>> takeBuffer() noexcept;
         [[nodiscard]] std::uint64_t prepareNs() const noexcept { return prepare_ns_; }
 
     private:
@@ -68,7 +68,7 @@ namespace lux::render::vulkan
         std::span<const std::byte> source_;
         std::byte* mapped_;
         std::shared_ptr<Image> image_;
-        BufferPermit buffer_;
+        std::shared_ptr<Buffer> buffer_;
         std::shared_ptr<const Image> clone_;
         SubmissionRequirements* clone_last_use_ = nullptr;
         std::vector<ImageTransferRegion> regions_;

@@ -186,7 +186,7 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kCapacity});
         auto page = staging_arena_->acquire();
         if (!page) return cxx::unexpected(page.error());
-        auto buffer = createBuffer(source.size(), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE);
+        auto buffer = allocator_.createBuffer(source.size(), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE);
         if (!buffer) return cxx::unexpected(buffer.error());
         auto result = std::unique_ptr<Transfer>(new Transfer(*this, source, std::move(*page)));
         result->buffer_ = std::move(*buffer);
@@ -207,11 +207,6 @@ namespace lux::render::vulkan
     Transfer::~Transfer() noexcept
     {
         if (cpu_preparation_ || copy_callback_.armed() || graphics_callback_.armed()) std::terminate();
-        if (buffer_)
-        {
-            auto result = !requirements_.empty() ? session_->releaseCompleted(buffer_, requirements_) : session_->destroyUnsubmitted(buffer_);
-            if (!result) std::terminate();
-        }
         session_->uploads_->stats.pending_bytes -= source_.size();
     }
 
@@ -219,9 +214,9 @@ namespace lux::render::vulkan
 
     const Image& Transfer::image() const noexcept { return *image_; }
 
-    const Buffer& Transfer::buffer() const noexcept { return *session_->borrow(buffer_); }
+    const Buffer& Transfer::buffer() const noexcept { return *buffer_; }
 
-    RenderResult<BufferPermit> Transfer::takeBuffer() noexcept
+    RenderResult<std::shared_ptr<Buffer>> Transfer::takeBuffer() noexcept
     {
         if (!result() || !buffer_) return cxx::unexpected(RenderError{kBusy});
         return std::move(buffer_);
@@ -409,6 +404,7 @@ namespace lux::render::vulkan
             const auto flushed = staging_page_->buffer().flush(0, chunk_size_);
             if (!flushed) { failure_ = flushed.error(); finish(); return; }
         }
+        if (buffer_) batch->retain(buffer_);
         if (image_) batch->retain(image_);
         if (!initialized_ && clone_) batch->retain(clone_);
         bool final = acquiring;

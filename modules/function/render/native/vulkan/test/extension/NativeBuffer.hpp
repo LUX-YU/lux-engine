@@ -16,12 +16,10 @@ namespace extension_test
     {
         struct Physical final
         {
-            explicit Physical(vk::DeviceSession& value) noexcept : session(value) {}
             ~Physical() noexcept
             {
                 if (resident) std::terminate();
             }
-            vk::DeviceSession& session;
             std::size_t resident = 0;
         };
         struct Backing final
@@ -32,48 +30,44 @@ namespace extension_test
             }
             ~Backing() noexcept
             {
-                if (buffer && !physical->session.releaseCompleted(buffer, last_use)) std::terminate();
                 --physical->resident;
             }
-            [[nodiscard]] VkDevice device() const noexcept { return physical->session.device().native(); }
             std::shared_ptr<Physical> physical;
-            vk::RetirementReservation retirement;
-            std::size_t position = 0;
-            vk::BufferPermit buffer;
+            std::shared_ptr<vk::Buffer> buffer;
             vk::SubmissionRequirements last_use;
-            unsigned references = 0;
-            bool live = false;
         };
-        struct Entry final { Backing* current = nullptr; bool updating = false; };
+        struct Use;
+        struct Entry final
+        {
+            std::shared_ptr<Backing> current;
+            std::vector<Use*> uses;
+            bool updating = false;
+        };
         struct Use final
         {
-            NativeBuffer& storage;
+            NativeBuffer* storage;
             BufferId id;
-            Backing* backing = nullptr;
+            std::size_t position;
             vk::PreparedStorageBinding& binding;
             std::array<float, 4> gain{};
-            void update(Backing& value) noexcept
+            void update(const std::shared_ptr<Backing>& value) noexcept
             {
-                if (backing) storage.releaseReference(*backing);
-                backing = &value;
-                ++backing->references;
-                binding.buffer = storage.session_.borrow(value.buffer);
-                binding.last_use = &value.last_use;
+                binding.resources = value;
+                binding.buffer = value->buffer.get();
+                binding.last_use = &value->last_use;
                 binding.publishUpdate();
             }
-            ~Use() noexcept { storage.releaseReference(*backing); std::erase(storage.uses_, this); }
+            ~Use() noexcept { if (storage) storage->unsubscribe(*this); }
         };
     public:
         NativeBuffer(vk::DeviceSession& session, StorageId id, TestBufferStorage::Config config)
-            : session_(session), id_(id), config_(config), physical_(std::make_shared<Physical>(session))
+            : session_(session), id_(id), config_(config), physical_(std::make_shared<Physical>())
         {
             entries_.reserve(config.capacity);
-            backings_.reserve(config.capacity * 2);
         }
         ~NativeBuffer() noexcept
         {
-            if (!uses_.empty()) std::terminate();
-            while (!backings_.empty()) erase(backings_.back().get());
+            for (auto& entry : entries_) disconnect(entry);
         }
 
         RenderResult<void> initialize() noexcept
@@ -90,18 +84,16 @@ namespace extension_test
         {
             NativeBuffer& storage;
             BufferId id;
-            Backing* backing;
+            std::shared_ptr<Backing> backing;
             StorageLease lease;
-            bool published = false;
 
             ~Candidate() noexcept
             {
-                if (!published)
+                if (backing)
                 {
                     auto& entry = *storage.entries_.find(id.local);
                     entry.updating = false;
                     if (!entry.current) storage.entries_.erase(id.local);
-                    storage.erase(backing);
                 }
             }
 
@@ -112,17 +104,9 @@ namespace extension_test
                 backing->buffer = std::move(*buffer);
                 backing->last_use = transfer.requirements();
                 auto& entry = *storage.entries_.find(id.local);
-                auto* previous = entry.current;
-                entry.current = backing;
+                entry.current = std::move(backing);
                 entry.updating = false;
-                backing->live = true;
-                if (previous)
-                {
-                    previous->live = false;
-                    storage.retireUnused(*previous);
-                }
-                for (auto* use : storage.uses_) if (use->id == id) use->update(*backing);
-                published = true;
+                for (auto* use : entry.uses) use->update(entry.current);
                 return {};
             }
         };
@@ -141,17 +125,11 @@ namespace extension_test
             if (!id.isNull() && entries_.find(id.local)->updating) return lux::cxx::unexpected(RenderError{vk::kBusy});
             auto transfer = session_.uploadBuffer(source, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
             if (!transfer) return lux::cxx::unexpected(transfer.error());
-            auto retirement = session_.retirement().reserve();
-            if (!retirement) return lux::cxx::unexpected(retirement.error());
-            auto backing = std::make_unique<Backing>(physical_);
-            backing->retirement = std::move(*retirement);
-            backing->position = backings_.size();
+            auto backing = std::make_shared<Backing>(physical_);
             if (id.isNull()) id = BufferId{id_, entries_.emplace()};
             entries_.find(id.local)->updating = true;
-            auto* value = backing.get();
-            backings_.push_back(std::move(backing));
             auto lease = session_.resources().lease(id_);
-            auto candidate = std::make_unique<Candidate>(*this, id, value, std::move(*lease));
+            auto candidate = std::make_unique<Candidate>(*this, id, std::move(backing), std::move(*lease));
             auto work = vk::GpuWork::pending<[](Candidate& value, vk::Transfer& upload, vk::DeviceSession&) noexcept {
                 return value.publish(upload);
             }>(session_, *transfer, candidate);
@@ -166,10 +144,8 @@ namespace extension_test
             auto* entry = entries_.find(id.local);
             if (!entry) return lux::cxx::unexpected(RenderError{kStorageIdentity});
             if (entry->updating) return lux::cxx::unexpected(RenderError{vk::kBusy});
-            auto* value = entry->current;
-            value->live = false;
+            disconnect(*entry);
             entries_.erase(id.local);
-            retireUnused(*value);
             return {};
         }
         bool exists(BufferId id) const noexcept
@@ -187,7 +163,7 @@ namespace extension_test
             if (argument.id.storage != id_) return lux::cxx::unexpected(RenderError{kStorageIdentity});
             auto* entry = entries_.find(argument.id.local);
             if (!entry || !entry->current) return lux::cxx::unexpected(RenderError{kStorageIdentity});
-            auto use = std::make_unique<Use>(*this, argument.id, nullptr, binding, argument.gain);
+            auto use = std::make_unique<Use>(this, argument.id, entry->uses.size(), binding, argument.gain);
             static const ShaderBlock layout = [] {
                 static constexpr lux::rdesc::DataGpuField fields[]{
                     {"gain", lux::rdesc::EDataScalar::FLOAT, 0, 4, 1, 0, 0}
@@ -196,42 +172,30 @@ namespace extension_test
             }();
             binding.parameters = std::as_bytes(std::span(use->gain));
             binding.parameter_layout = &layout;
-            use->update(*entry->current);
-            uses_.push_back(use.get());
+            entry->uses.push_back(use.get());
+            use->update(entry->current);
             binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};
             return {};
         }
     private:
-        void releaseReference(Backing& value) noexcept
+        void unsubscribe(Use& use) noexcept
         {
-            --value.references;
-            retireUnused(value);
+            auto& subscriptions = entries_.find(use.id.local)->uses;
+            subscriptions[use.position] = subscriptions.back();
+            subscriptions[use.position]->position = use.position;
+            subscriptions.pop_back();
         }
-        void retireUnused(Backing& value) noexcept
+
+        static void disconnect(Entry& entry) noexcept
         {
-            if (!value.live && !value.references) erase(&value);
+            for (auto* use : entry.uses) use->storage = nullptr;
+            entry.uses.clear();
         }
-        void erase(Backing* value) noexcept
-        {
-            if (value->references) std::terminate();
-            const auto position = value->position;
-            auto owned = std::move(backings_[position]);
-            if (position + 1 != backings_.size())
-            {
-                backings_[position] = std::move(backings_.back());
-                backings_[position]->position = position;
-            }
-            backings_.pop_back();
-            if (owned->last_use.completed()) return;
-            auto result = session_.retirement().retire(owned->retirement, owned->last_use, owned);
-            if (!result) std::terminate();
-        }
+
         vk::DeviceSession& session_;
         StorageId id_;
         TestBufferStorage::Config config_;
         lux::cxx::SlotMap<Entry, BufferTag> entries_;
-        std::vector<std::unique_ptr<Backing>> backings_;
-        std::vector<Use*> uses_;
         std::shared_ptr<Physical> physical_;
     };
 

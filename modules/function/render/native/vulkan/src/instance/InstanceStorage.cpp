@@ -11,37 +11,28 @@ namespace lux::render::vulkan
 {
     static_assert(sizeof(VkDrawIndexedIndirectCommand) == 5 * sizeof(std::uint32_t));
 
-    struct InstanceStorage::Physical final
+    struct InstanceStorage::Residency final
     {
-        DeviceSession& session;
         std::uint64_t bytes = 0;
-        ~Physical() noexcept { if (bytes) std::terminate(); }
+        ~Residency() noexcept { if (bytes) std::terminate(); }
     };
 
     struct InstanceStorage::Backing final
     {
-        explicit Backing(std::shared_ptr<Physical> value) noexcept : physical(std::move(value)) {}
+        explicit Backing(std::shared_ptr<Residency> value) noexcept : residency(std::move(value)) {}
         ~Backing() noexcept
         {
-            if (buffer)
-            {
-                const auto released = last_use.empty() ? physical->session.destroyUnsubmitted(buffer) :
-                    physical->session.releaseCompleted(buffer, last_use);
-                if (!released) std::terminate();
-            }
-            physical->bytes -= bytes;
+            residency->bytes -= bytes;
         }
 
-        [[nodiscard]] VkDevice device() const noexcept { return physical->session.device().native(); }
         void mark(std::uint32_t index) noexcept
         {
             if (!dirty[index]) { dirty[index] = true; pending.push_back(index); }
         }
 
-        std::shared_ptr<Physical> physical;
-        BufferPermit buffer;
+        std::shared_ptr<Residency> residency;
+        std::shared_ptr<Buffer> buffer;
         SubmissionRequirements last_use;
-        RetirementReservation retirement;
         std::vector<bool> dirty;
         std::vector<std::uint32_t> pending;
         std::uint64_t bytes = 0;
@@ -49,57 +40,74 @@ namespace lux::render::vulkan
 
     struct InstanceStorage::Group final
     {
-        InstanceStorage& storage;
         InstanceDrawGroup key;
         std::uint32_t capacity;
         std::vector<std::uint32_t> words; // five indirect words, followed by dense stable-slot indices
         Banks banks;
-        Backing* current = nullptr;
+        std::shared_ptr<Backing> current;
         std::vector<Use*> uses;
-        ~Group() noexcept { for (auto& bank : banks) storage.retire(bank); }
+        std::size_t position = 0;
     };
 
     struct InstanceStorage::Use final
     {
-        InstanceStorage& storage;
+        InstanceStorage* storage;
         PreparedStorageBinding& binding;
         std::uint32_t record_count;
         Group* group = nullptr;
         bool indirect = false;
+        std::size_t position = 0, group_position = 0;
+
         ~Use() noexcept
         {
-            if (!indirect) std::erase(storage.uses_, this);
-            if (group)
-            {
-                std::erase(group->uses, this);
-                if (group->uses.empty())
-                    std::erase_if(storage.groups_, [&](const auto& value) { return value.get() == group; });
-            }
+            if (storage) storage->unsubscribe(*this);
         }
-        void update(Backing& value) noexcept
+
+        void update(const std::shared_ptr<Backing>& value) noexcept
         {
-            binding.buffer = storage.session_.borrow(value.buffer);
-            binding.last_use = &value.last_use;
+            binding.resources = value;
+            binding.buffer = value->buffer.get();
+            binding.last_use = &value->last_use;
             binding.publishUpdate();
         }
     };
 
     InstanceStorage::InstanceStorage(DeviceSession& session, StorageId id, InstanceStorageConfig config) noexcept
-        : session_(session), id_(id), config_(config), physical_(std::make_shared<Physical>(session)) {}
+        : session_(session), id_(id), config_(config), residency_(std::make_shared<Residency>()) {}
 
     InstanceStorage::~InstanceStorage() noexcept
     {
-        if (!uses_.empty() || !groups_.empty()) std::terminate();
-        for (auto& backing : banks_) retire(backing);
+        for (auto* use : uses_) use->storage = nullptr;
+        for (auto& group : groups_)
+            for (auto* use : group->uses) use->storage = nullptr;
     }
 
-    std::uint64_t InstanceStorage::residentBytes() const noexcept { return physical_->bytes; }
+    std::uint64_t InstanceStorage::residentBytes() const noexcept { return residency_->bytes; }
 
-    void InstanceStorage::retire(std::unique_ptr<Backing>& value) noexcept
+    void InstanceStorage::unsubscribe(Use& use) noexcept
     {
-        if (!value) return;
-        if (value->last_use.completed()) value.reset();
-        else if (!session_.retirement().retire(value->retirement, value->last_use, value)) std::terminate();
+        if (!use.indirect)
+        {
+            uses_[use.position] = uses_.back();
+            uses_[use.position]->position = use.position;
+            uses_.pop_back();
+        }
+        if (auto* group = use.group)
+        {
+            group->uses[use.group_position] = group->uses.back();
+            group->uses[use.group_position]->group_position = use.group_position;
+            group->uses.pop_back();
+            if (group->uses.empty())
+            {
+                const auto position = group->position;
+                if (position + 1 != groups_.size())
+                {
+                    groups_[position] = std::move(groups_.back());
+                    groups_[position]->position = position;
+                }
+                groups_.pop_back();
+            }
+        }
     }
 
     RenderResult<void> InstanceStorage::grow(std::size_t count) noexcept
@@ -111,42 +119,38 @@ namespace lux::render::vulkan
         const auto bytes = capacity * sizeof(TransformMatrix);
         const bool exceeds_budget = config_.resident_byte_budget &&
             (bytes * banks_.size() > config_.resident_byte_budget ||
-                physical_->bytes > config_.resident_byte_budget - bytes * banks_.size());
+                residency_->bytes > config_.resident_byte_budget - bytes * banks_.size());
         if (exceeds_budget) return cxx::unexpected(RenderError{kStorageCapacity});
         auto shadow = shadow_;
         shadow.resize(capacity);
         Banks candidate;
         for (auto& value : candidate)
         {
-            auto reservation = session_.retirement().reserve();
-            if (!reservation) return cxx::unexpected(reservation.error());
-            value = std::make_unique<Backing>(physical_);
-            value->retirement = std::move(*reservation);
-            auto buffer = session_.createBuffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+            value = std::make_shared<Backing>(residency_);
+            auto buffer = session_.allocator().createBuffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD);
             if (!buffer) return cxx::unexpected(buffer.error());
             value->buffer = std::move(*buffer);
             value->bytes = bytes;
-            physical_->bytes += bytes;
+            residency_->bytes += bytes;
             value->dirty.resize(capacity);
             value->pending.reserve(capacity);
-            auto result = session_.borrow(value->buffer)->write(0, std::as_bytes(std::span(shadow)));
+            auto result = value->buffer->write(0, std::as_bytes(std::span(shadow)));
             if (!result) return result;
             written_records_ += capacity;
         }
         shadow_ = std::move(shadow);
-        // Rebind before retiring old pointers. Their recorded GPU tickets remain in the old backing.
-        publish(*candidate.front());
-        for (auto& value : banks_) retire(value);
+        // Accepted batches retain old snapshots; these owners only control future bindings.
+        publish(candidate.front());
         banks_ = std::move(candidate);
         return {};
     }
 
-    RenderResult<InstanceStorage::Backing*> InstanceStorage::writable() noexcept
+    RenderResult<std::shared_ptr<InstanceStorage::Backing>> InstanceStorage::writable() noexcept
     {
         if (auto collected = session_.collect(); !collected) return cxx::unexpected(collected.error());
         for (auto& value : banks_)
-            if (value && value.get() != current_ && value->last_use.completed()) return value.get();
+            if (value && value != current_ && value->last_use.completed()) return value;
         return cxx::unexpected(RenderError{kBusy});
     }
 
@@ -155,15 +159,15 @@ namespace lux::render::vulkan
     {
         // Mark before write: even a failed flush is repaired from CPU authority on the next attempt.
         backing.mark(index);
-        auto result = session_.borrow(backing.buffer)->write(std::uint64_t(index) * sizeof(transform),
+        auto result = backing.buffer->write(std::uint64_t(index) * sizeof(transform),
             std::as_bytes(std::span(&transform, 1)));
         if (result) ++written_records_;
         return result;
     }
 
-    void InstanceStorage::publish(Backing& value) noexcept
+    void InstanceStorage::publish(const std::shared_ptr<Backing>& value) noexcept
     {
-        current_ = &value;
+        current_ = value;
         for (auto* use : uses_) use->update(value);
     }
 
@@ -201,7 +205,7 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kStorageCapacity});
         }
         std::vector<std::uint32_t> membership;
-        Backing* staged = nullptr;
+        std::shared_ptr<Backing> staged;
         if (group)
         {
             membership = group->words;
@@ -226,7 +230,7 @@ namespace lux::render::vulkan
             entries_.erase(key);
             return cxx::unexpected(result.error());
         }
-        if (group) publishGroup(*group, *staged, std::move(membership));
+        if (group) publishGroup(*group, staged, std::move(membership));
         return InstancePublished{{id_, key}, 1};
     }
 
@@ -259,7 +263,7 @@ namespace lux::render::vulkan
         // Dirty indices are unique and bounded by allocated slots. No live-record walk on sparse updates.
         for (auto index : backing.pending)
         {
-            auto result = session_.borrow(backing.buffer)->write(std::uint64_t(index) * sizeof(TransformMatrix),
+            auto result = backing.buffer->write(std::uint64_t(index) * sizeof(TransformMatrix),
                 std::as_bytes(std::span(&shadow_[index], 1)));
             if (!result) return cxx::unexpected(result.error());
             ++written_records_;
@@ -281,7 +285,7 @@ namespace lux::render::vulkan
         }
         for (auto index : backing.pending) backing.dirty[index] = false;
         backing.pending.clear();
-        publish(backing);
+        publish(*selected);
         return TransformApplied{input.sequence, static_cast<std::uint32_t>(order.size())};
     }
 
@@ -311,7 +315,7 @@ namespace lux::render::vulkan
             --membership[1];
             auto prepared = stageGroup(*group, membership);
             if (!prepared) return cxx::unexpected(prepared.error());
-            publishGroup(*group, **prepared, std::move(membership));
+            publishGroup(*group, *prepared, std::move(membership));
         }
         entries_.erase(input.instance.local);
         return {};
@@ -336,10 +340,18 @@ namespace lux::render::vulkan
             if (!prepared) return cxx::unexpected(prepared.error());
             group = *prepared;
         }
-        auto use = std::make_unique<Use>(*this, binding, input.record_count, group, indirect);
-        use->update(indirect ? *group->current : *current_);
-        if (!indirect) uses_.push_back(use.get());
-        if (group) group->uses.push_back(use.get());
+        auto use = std::make_unique<Use>(this, binding, input.record_count, group, indirect);
+        if (!indirect)
+        {
+            use->position = uses_.size();
+            uses_.push_back(use.get());
+        }
+        if (group)
+        {
+            use->group_position = group->uses.size();
+            group->uses.push_back(use.get());
+        }
+        use->update(indirect ? group->current : current_);
         binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};
         return {};
     }
@@ -369,7 +381,7 @@ namespace lux::render::vulkan
         auto material = session_.resources().tryGet<render::MaterialStorage>(input.group->material.storage);
         if (!material) return cxx::unexpected(material.error());
         if (auto valid = material->query(input.group->material); !valid) return cxx::unexpected(valid.error());
-        auto group = std::make_unique<Group>(*this, *input.group, input.record_count);
+        auto group = std::make_unique<Group>(*input.group, input.record_count);
         group->words.resize(std::size_t(input.record_count) + 5);
         const auto& submesh = description->description.submeshes[input.group->submesh];
         group->words[0] = submesh.index_count;
@@ -386,49 +398,49 @@ namespace lux::render::vulkan
         const auto bytes = std::uint64_t(group->words.size()) * sizeof(std::uint32_t);
         const bool exceeds_budget = config_.resident_byte_budget &&
             (bytes * group->banks.size() > config_.resident_byte_budget ||
-                physical_->bytes > config_.resident_byte_budget - bytes * group->banks.size());
+                residency_->bytes > config_.resident_byte_budget - bytes * group->banks.size());
         if (exceeds_budget) return cxx::unexpected(RenderError{kStorageCapacity});
         for (auto& bank : group->banks)
         {
-            auto reservation = session_.retirement().reserve();
-            if (!reservation) return cxx::unexpected(reservation.error());
-            bank = std::make_unique<Backing>(physical_);
-            bank->retirement = std::move(*reservation);
-            auto buffer = session_.createBuffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+            bank = std::make_shared<Backing>(residency_);
+            auto buffer = session_.allocator().createBuffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
                 VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD);
             if (!buffer) return cxx::unexpected(buffer.error());
             bank->buffer = std::move(*buffer);
             bank->bytes = bytes;
-            physical_->bytes += bytes;
-            auto written = session_.borrow(bank->buffer)->write(0, std::as_bytes(std::span(group->words)));
+            residency_->bytes += bytes;
+            auto written = bank->buffer->write(0, std::as_bytes(std::span(group->words)));
             if (!written) return cxx::unexpected(written.error());
         }
-        group->current = group->banks.front().get();
+        group->current = group->banks.front();
+        group->position = groups_.size();
         auto* result = group.get();
         groups_.push_back(std::move(group));
         return result;
     }
 
-    RenderResult<InstanceStorage::Backing*> InstanceStorage::stageGroup(
+    RenderResult<std::shared_ptr<InstanceStorage::Backing>> InstanceStorage::stageGroup(
         Group& group, std::span<const std::uint32_t> words
     ) noexcept
     {
         if (auto collected = session_.collect(); !collected) return cxx::unexpected(collected.error());
         for (auto& bank : group.banks)
-            if (bank.get() != group.current && bank->last_use.completed())
+            if (bank != group.current && bank->last_use.completed())
             {
                 // Structural membership update; no matrix-table scan or Graph compilation.
-                auto written = session_.borrow(bank->buffer)->write(0, std::as_bytes(words));
+                auto written = bank->buffer->write(0, std::as_bytes(words));
                 if (!written) return cxx::unexpected(written.error());
-                return bank.get();
+                return bank;
             }
         return cxx::unexpected(RenderError{kBusy});
     }
 
-    void InstanceStorage::publishGroup(Group& group, Backing& bank, std::vector<std::uint32_t> words) noexcept
+    void InstanceStorage::publishGroup(
+        Group& group, const std::shared_ptr<Backing>& bank, std::vector<std::uint32_t> words
+    ) noexcept
     {
         group.words = std::move(words);
-        group.current = &bank;
+        group.current = bank;
         for (auto* use : group.uses)
             if (use->indirect) use->update(bank);
     }

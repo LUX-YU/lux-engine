@@ -60,20 +60,22 @@ concept NativePendingTransfer = requires(DeviceSession& session, std::unique_ptr
 struct InvalidProof final { std::optional<SubmissionTicket> old; };
 static_assert(NativePendingTransfer<Transfer> && !NativePendingTransfer<InvalidProof>);
 
-static std::vector<std::byte> read(DeviceSession& session, BufferPermit& buffer)
+static std::vector<std::byte> read(DeviceSession& session, std::shared_ptr<Buffer>& buffer)
 {
-    const auto* source = session.borrow(buffer);
-    auto destination = take(session.createBuffer(source->size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
+    const auto* source = buffer.get();
+    auto destination = take(session.allocator().createBuffer(source->size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
     auto batch = take(session.queue().begin());
+    batch.retain(buffer);
+    batch.retain(destination);
     const VkBufferCopy copy{0, 0, source->size()};
-    vkCmdCopyBuffer(batch.native(), source->native(), session.borrow(destination)->native(), 1, &copy);
+    vkCmdCopyBuffer(batch.native(), source->native(), destination->native(), 1, &copy);
     VkBufferMemoryBarrier2 host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
     host.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
     host.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
     host.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
     host.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
     host.srcQueueFamilyIndex = host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    host.buffer = session.borrow(destination)->native();
+    host.buffer = destination->native();
     host.size = VK_WHOLE_SIZE;
     VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
     dependency.bufferMemoryBarrierCount = 1;
@@ -82,9 +84,9 @@ static std::vector<std::byte> read(DeviceSession& session, BufferPermit& buffer)
     const auto ticket = take(std::move(batch).submit());
     CHECK(take(session.queue().wait(ticket, UINT64_MAX)));
     std::vector<std::byte> bytes(source->size());
-    CHECK(session.borrow(destination)->read(0, bytes));
-    CHECK(session.releaseCompleted(destination, ticket));
-    CHECK(session.releaseCompleted(buffer, ticket));
+    CHECK(destination->read(0, bytes));
+    destination.reset();
+    buffer.reset();
     return bytes;
 }
 

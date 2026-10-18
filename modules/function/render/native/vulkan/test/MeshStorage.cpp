@@ -2,6 +2,7 @@
 #include "Allocation.hpp"
 #include <lux/engine/render/native/vulkan/mesh/MeshStorage.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
+#include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 #include <lux/engine/render/graph/Builder.hpp>
 #include <fstream>
 
@@ -60,6 +61,73 @@ static void pixels(ExecutionContext& context, DeviceSession& session, unsigned v
     render_allocation::window = false;
     CHECK(render_allocation::calls == 0);
     for (auto byte : take(context.readback())) CHECK(std::to_integer<unsigned>(byte) == value);
+}
+
+static void snapshotLifetime(DeviceSession& session, CpuFixture& host)
+{
+    const auto id = take(session.globalStorages().prepare(session.resources().typeId(kMeshStorageType), "snapshot"));
+    auto& storage = *take(session.resources().borrow<lux::render::vulkan::MeshStorage>(id));
+    auto input = request(id, 4, .25f);
+    auto upload = take(lux::render::upload(storage, input));
+    complete(upload.second, host, session);
+    const auto published = upload.first;
+    upload.second.reset();
+    const auto factory = meshStorageFactory();
+    const auto& ops = *static_cast<const StorageBindingOps*>(factory.binding_ops);
+    NativeResourcePlan plan{"mesh", GraphBufferDesc{input.source.bytes().view().size()}, EGraphOrigin::IMPORTED};
+    const MeshBinding argument{published.mesh, input.description};
+    PreparedStorageBinding first, second, third;
+    CHECK(ops.prepare(&storage, plan, &argument, first));
+    CHECK(ops.prepare(&storage, plan, &argument, second));
+    CHECK(ops.prepare(&storage, plan, &argument, third));
+    first = {}; // Swap removal must preserve the remaining subscription positions.
+    second = {};
+    std::weak_ptr old = third.resources;
+    auto destination = take(session.allocator().createBuffer(
+        third.buffer->size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK
+    ));
+    auto batch = take(session.queue().begin());
+    batch.retain(third.resources);
+    batch.retain(destination);
+    const VkBufferCopy copy{0, 0, third.buffer->size()};
+    vkCmdCopyBuffer(batch.native(), third.buffer->native(), destination->native(), 1, &copy);
+    VkBufferMemoryBarrier2 host_barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+    host_barrier.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+    host_barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    host_barrier.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+    host_barrier.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+    host_barrier.srcQueueFamilyIndex = host_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    host_barrier.buffer = destination->native();
+    host_barrier.size = VK_WHOLE_SIZE;
+    VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    dependency.bufferMemoryBarrierCount = 1;
+    dependency.pBufferMemoryBarriers = &host_barrier;
+    vkCmdPipelineBarrier2(batch.native(), &dependency);
+    const auto ticket = take(std::move(batch).submit());
+    hold_completion = true;
+    CHECK(storage.release(published.mesh, published.revision));
+    CHECK(session.globalStorages().releasePrepared(id));
+    CHECK(!session.resources().native(id));
+    third = {}; // Late subscription destruction cannot touch the now-destroyed logical Storage.
+    CHECK(!old.expired());
+    {
+        auto rejected = take(session.queue().begin());
+        auto unrelated = take(session.allocator().createBuffer(16, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
+        std::weak_ptr rejected_owner = unrelated;
+        rejected.retain(unrelated);
+        unrelated.reset();
+        fail_submit = 1;
+        CHECK(!std::move(rejected).submit());
+        CHECK(rejected_owner.expired() && !old.expired());
+    }
+    CHECK(session.collect());
+    CHECK(!old.expired());
+    hold_completion = false;
+    CHECK(take(session.queue().wait(ticket, UINT64_MAX)));
+    CHECK(old.expired());
+    std::vector<std::byte> result(destination->size());
+    CHECK(destination->read(0, result));
+    CHECK(std::ranges::equal(result, input.source.bytes().view()));
 }
 
 int main(int argc, char** argv)
@@ -239,6 +307,7 @@ int main(int argc, char** argv)
             complete(retry.second, host, *session);
             CHECK(limited.release(retry.first.mesh, 1));
         }
+        snapshotLifetime(*session, host);
         CHECK(session->drain());
         session.reset();
         CHECK(live_buffers == 0);

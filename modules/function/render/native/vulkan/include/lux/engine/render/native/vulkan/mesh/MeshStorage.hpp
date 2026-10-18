@@ -14,11 +14,16 @@ namespace lux::render::vulkan
 
     class MeshStorage final
     {
-        struct Physical;
-        struct Backing;
+        struct Residency;
+        struct MeshData;
         struct Candidate;
         struct Use;
-        struct Entry final { Backing* current = nullptr; bool updating = false; };
+        struct Entry final
+        {
+            std::shared_ptr<MeshData> current;
+            std::vector<Use*> uses;
+            bool updating = false;
+        };
 
     public:
         MeshStorage(DeviceSession&, StorageId, MeshStorageConfig) noexcept;
@@ -40,16 +45,13 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> validate(const MeshDescription&, std::span<const std::byte>) const noexcept;
         [[nodiscard]] RenderResult<void> prepare(const NativeResourcePlan&, const MeshBinding&,
             PreparedStorageBinding&) noexcept;
-        void releaseReference(Backing&) noexcept;
-        void retireUnused(Backing&) noexcept;
-        void erase(Backing&) noexcept;
+        void unsubscribe(Use&) noexcept;
+        static void disconnect(Entry&) noexcept;
         DeviceSession& session_;
         StorageId id_;
         MeshStorageConfig config_;
         cxx::SlotMap<Entry, MeshTag> entries_;
-        std::vector<std::unique_ptr<Backing>> backings_;
-        std::vector<Use*> uses_;
-        std::shared_ptr<Physical> physical_;
+        std::shared_ptr<Residency> residency_;
     };
 }
 

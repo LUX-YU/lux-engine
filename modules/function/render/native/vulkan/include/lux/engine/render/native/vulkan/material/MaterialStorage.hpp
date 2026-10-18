@@ -14,11 +14,16 @@ namespace lux::render::vulkan
 
     class MaterialStorage final
     {
-        struct Physical;
-        struct Backing;
+        struct Residency;
+        struct MaterialData;
         struct Candidate;
         struct Use;
-        struct Entry final { Backing* current = nullptr; bool updating = false; };
+        struct Entry final
+        {
+            std::shared_ptr<MaterialData> current;
+            std::vector<Use*> uses;
+            bool updating = false;
+        };
 
     public:
         MaterialStorage(DeviceSession&, StorageId, MaterialStorageConfig) noexcept;
@@ -39,16 +44,13 @@ namespace lux::render::vulkan
         [[nodiscard]] UploadResult upload(const MaterialWrite&) noexcept;
         [[nodiscard]] RenderResult<void> prepare(const NativeResourcePlan&, const MaterialBinding&,
             PreparedStorageBinding&) noexcept;
-        void releaseReference(Backing&) noexcept;
-        void retireUnused(Backing&) noexcept;
-        void erase(Backing&) noexcept;
+        void unsubscribe(Use&) noexcept;
+        static void disconnect(Entry&) noexcept;
         DeviceSession& session_;
         StorageId id_;
         MaterialStorageConfig config_;
         cxx::SlotMap<Entry, MaterialTag> entries_;
-        std::vector<std::unique_ptr<Backing>> backings_;
-        std::vector<Use*> uses_;
-        std::shared_ptr<Physical> physical_;
+        std::shared_ptr<Residency> residency_;
     };
 }
 

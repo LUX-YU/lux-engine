@@ -102,8 +102,11 @@ Release destroys the CPU Context immediately, cancels Readback subscriptions and
 leases. It neither reserves nor appends a Context retirement record. Submitted batches retain the graph
 physical binding set until actual fence completion. TextureData directly owns Image, View, Sampler and
 DescriptorRange. Publication creates an immutable prepared snapshot; accepted batches keep the old snapshot through completion. Material pins keep actual
-TextureData without keeping the logical Texture Storage. Mesh/Material Buffer versions still use their
-existing LastUse retirement path until those consumers migrate. There is no parallel ResourceDomain owner.
+TextureData without keeping the logical Texture Storage. MeshData and MaterialData own actual Buffers;
+the latter also retains its immutable TextureData pins. Instance banks own mapped Buffers and keep their
+actual LastUse write-hazard checks. Submitted prepared snapshots retain these physical contents, including
+indirect draw data, independently of logical Storage lifetime. None of these Storage contents reserves a
+per-resource retirement record. There is no parallel ResourceDomain owner.
 Shutdown drains queues and destroys contexts and scoped backing. Queue teardown releases any terminal
 Device Lost batch references before allocator/device destruction.
 Fault tests hold completion observation after a real submit to prove failed later submits and IPC stop
@@ -140,7 +143,8 @@ Compute/Indirect/RT remain outside this implementation.
 render_native_vulkan contains Device/Memory/Submission/Transfer/GpuWork/Retirement/Compiler/Execution. It has no Feature include or reverse link to extensions. render_native_vulkan_extensions contains the real Texture Storage/Command implementations and GPU Command completion adapter. DirectGraph tests and the installed base-only consumer construct a G4 graph and execute real GPU readback without FeatureAssembly.
 
 Factory installation is explicit and cold. Session contains no default Texture factory. Transfer retains
-actual source/destination Image objects; Texture keeps the source TextureData and its real synchronization
+actual destination Buffers and source/destination Images in every accepted Copy/Acquire batch;
+Texture keeps the source TextureData and its real synchronization
 requirements for Clone. These requirements no longer control Texture destruction. Accepted-submit merging
 and queue callbacks are unchanged. StagingArena owns mapped buffers and an O(1) free-list. An acquired
 StagingPage is retained by CPU preparation and accepted Copy batches; only its final reference returns
@@ -148,3 +152,8 @@ the page for reuse. Session releases queued batches before the arena, including 
 SessionUploads still contains transfer scheduling/statistics until the UploadContext migration; upload
 publication currently still waits for completion observation. Page retention alone does not implement
 the later submission-accepted success contract.
+
+Mesh and Material publication visits only that resource's prepared subscriptions. Subscription removal
+uses its stored position; logical deletion disconnects subscriptions while their Storage still exists.
+A later binding destructor does not call a dead Storage. Buffer, Image and descriptor lifetime comes
+from the submitted physical snapshot, not from keeping that logical subscription alive.

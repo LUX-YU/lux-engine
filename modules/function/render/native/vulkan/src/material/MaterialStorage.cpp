@@ -10,16 +10,14 @@
 
 namespace lux::render::vulkan
 {
-    struct MaterialStorage::Physical final
+    struct MaterialStorage::Residency final
     {
-        explicit Physical(DeviceSession& value) noexcept : session(value) {}
-        ~Physical() noexcept { if (versions || bytes) std::terminate(); }
-        DeviceSession& session;
+        ~Residency() noexcept { if (versions || bytes) std::terminate(); }
         std::size_t versions = 0;
         std::uint64_t bytes = 0;
     };
 
-    struct MaterialStorage::Backing final
+    struct MaterialStorage::MaterialData final
     {
         // Existing Cooked GraphMaterialGPU ABI: 32-byte header, sixteen vec4 parameters, eight texture refs.
         struct alignas(16) Record final
@@ -29,67 +27,59 @@ namespace lux::render::vulkan
             std::array<std::array<std::uint32_t, 4>, 8> textures{};
         };
         static_assert(sizeof(Record) == 416);
-        Backing(std::shared_ptr<Physical> owner, const MaterialWrite& input) noexcept
-            : physical(std::move(owner)), program(input.program), textures(input.textures), bytes(sizeof(Record))
+        MaterialData(std::shared_ptr<Residency> owner, const MaterialWrite& input) noexcept
+            : residency(std::move(owner)), program(input.program), textures(input.textures), bytes(sizeof(Record))
         {
             record.parameters = input.parameters;
-            ++physical->versions;
-            physical->bytes += bytes;
+            ++residency->versions;
+            residency->bytes += bytes;
         }
 
-        ~Backing() noexcept
+        ~MaterialData() noexcept
         {
-            if (buffer && !physical->session.releaseCompleted(buffer, last_use)) std::terminate();
-            --physical->versions;
-            physical->bytes -= bytes;
+            --residency->versions;
+            residency->bytes -= bytes;
         }
 
-        [[nodiscard]] VkDevice device() const noexcept { return physical->session.device().native(); }
-        std::shared_ptr<Physical> physical;
+        std::shared_ptr<Residency> residency;
         ConfigValue program;
         std::array<TexturePublished, 8> textures;
         std::array<rdesc::TextureInfo, 8> texture_info;
         std::array<PreparedStorageBinding, 8> texture_bindings;
         Record record;
-        BufferPermit buffer;
+        std::shared_ptr<Buffer> buffer;
         SubmissionRequirements last_use;
-        RetirementReservation retirement;
         std::uint64_t bytes = 0, revision = 0;
-        std::size_t position = 0, references = 0;
-        bool live = false;
     };
 
     struct MaterialStorage::Use final
     {
-        MaterialStorage& storage;
+        MaterialStorage* storage;
         MaterialId id;
-        Backing* backing;
         PreparedStorageBinding& binding;
+        std::size_t position;
         std::uint32_t texture_slot;
 
-        void update(Backing& value) noexcept
+        void update(const std::shared_ptr<MaterialData>& value) noexcept
         {
-            if (backing) storage.releaseReference(*backing);
-            backing = &value;
-            ++backing->references;
             if (texture_slot == UINT32_MAX)
             {
-                binding.buffer = storage.session_.borrow(value.buffer);
-                binding.last_use = &value.last_use;
+                binding.resources = value;
+                binding.buffer = value->buffer.get();
+                binding.last_use = &value->last_use;
             }
             else
             {
-                binding.resources = value.texture_bindings[texture_slot].resources;
-                binding.descriptors = value.texture_bindings[texture_slot].descriptors;
-                binding.last_use = value.texture_bindings[texture_slot].last_use;
+                binding.resources = value->texture_bindings[texture_slot].resources;
+                binding.descriptors = value->texture_bindings[texture_slot].descriptors;
+                binding.last_use = value->texture_bindings[texture_slot].last_use;
             }
             binding.publishUpdate();
         }
 
         ~Use() noexcept
         {
-            storage.releaseReference(*backing);
-            std::erase(storage.uses_, this);
+            if (storage) storage->unsubscribe(*this);
         }
     };
 
@@ -97,17 +87,15 @@ namespace lux::render::vulkan
     {
         MaterialStorage& storage;
         MaterialId id;
-        Backing* backing;
+        std::shared_ptr<MaterialData> backing;
         StorageLease lease;
-        bool published = false;
 
         ~Candidate() noexcept
         {
-            if (published) return;
+            if (!backing) return;
             auto& entry = *storage.entries_.find(id.local);
             entry.updating = false;
             if (!entry.current) storage.entries_.erase(id.local);
-            storage.erase(*backing);
         }
 
         RenderResult<void> publish(Transfer& transfer) noexcept
@@ -117,34 +105,24 @@ namespace lux::render::vulkan
             backing->buffer = std::move(*buffer);
             backing->last_use = transfer.requirements();
             auto& entry = *storage.entries_.find(id.local);
-            auto* previous = entry.current;
-            entry.current = backing;
+            entry.current = std::move(backing);
             entry.updating = false;
-            backing->live = true;
-            if (previous)
-            {
-                previous->live = false;
-                storage.retireUnused(*previous);
-            }
-            for (auto* use : storage.uses_)
-                if (use->id == id) use->update(*backing);
-            published = true;
+            for (auto* use : entry.uses) use->update(entry.current);
             return {};
         }
     };
 
     MaterialStorage::MaterialStorage(DeviceSession& session, StorageId id, MaterialStorageConfig config) noexcept
-        : session_(session), id_(id), config_(config), physical_(std::make_shared<Physical>(session)) {}
+        : session_(session), id_(id), config_(config), residency_(std::make_shared<Residency>()) {}
 
     MaterialStorage::~MaterialStorage() noexcept
     {
-        if (!uses_.empty()) std::terminate();
-        while (!backings_.empty()) erase(*backings_.back());
+        for (auto& entry : entries_) disconnect(entry);
     }
 
-    std::uint64_t MaterialStorage::residentBytes() const noexcept { return physical_->bytes; }
+    std::uint64_t MaterialStorage::residentBytes() const noexcept { return residency_->bytes; }
 
-    std::size_t MaterialStorage::residentVersions() const noexcept { return physical_->versions; }
+    std::size_t MaterialStorage::residentVersions() const noexcept { return residency_->versions; }
 
     MaterialStorage::UploadResult MaterialStorage::upload(const MaterialWrite& input) noexcept
     {
@@ -167,19 +145,17 @@ namespace lux::render::vulkan
             for (const auto value : lane)
                 if (!std::isfinite(value)) return cxx::unexpected(RenderError{kStorageContract});
         // Only the cold Graph owns a Pipeline. A bound Material cannot silently replace its Shader contract.
-        if (existing && existing->current->references &&
+        if (existing && !existing->uses.empty() &&
             *existing->current->program.borrow<MaterialProgram>() != *program)
             return cxx::unexpected(RenderError{kStorageMismatch});
         if (auto collected = session_.collect(); !collected) return cxx::unexpected(collected.error());
-        const auto projected = cxx::checkedAdd(physical_->bytes, std::uint64_t(sizeof(Backing::Record)));
+        const auto projected = cxx::checkedAdd(residency_->bytes, std::uint64_t(sizeof(MaterialData::Record)));
         const bool over_budget = !projected ||
             (config_.resident_byte_budget && *projected > config_.resident_byte_budget);
         if (over_budget) return cxx::unexpected(RenderError{kStorageCapacity});
-        auto retirement = session_.retirement().reserve();
-        if (!retirement) return cxx::unexpected(retirement.error());
         auto lease = session_.resources().lease(id_);
         if (!lease) return cxx::unexpected(lease.error());
-        auto backing = std::make_unique<Backing>(physical_, input);
+        auto backing = std::make_shared<MaterialData>(residency_, input);
         for (std::uint32_t slot = 0; slot < program->texture_count; ++slot)
         {
             const auto texture = input.textures[slot];
@@ -195,10 +171,10 @@ namespace lux::render::vulkan
             backing->record.textures[slot] = {0, reference->second, 0, 0};
             backing->record.header[2] |= 1u << slot;
         }
-        for (auto* use : uses_)
+        if (existing) for (auto* use : existing->uses)
         {
-            if (use->id != input.material || use->texture_slot == UINT32_MAX) continue;
-            const auto& previous = use->backing->texture_info[use->texture_slot];
+            if (use->texture_slot == UINT32_MAX) continue;
+            const auto& previous = existing->current->texture_info[use->texture_slot];
             const auto& next = backing->texture_info[use->texture_slot];
             const bool mismatch = previous.width != next.width || previous.height != next.height ||
                 previous.mip_count != next.mip_count || previous.layers != next.layers ||
@@ -208,15 +184,11 @@ namespace lux::render::vulkan
         const auto source = std::as_bytes(std::span(&backing->record, 1));
         auto transfer = session_.uploadBuffer(source, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
         if (!transfer) return cxx::unexpected(transfer.error());
-        backing->retirement = std::move(*retirement);
-        backing->position = backings_.size();
         backing->revision = revision + 1;
         auto id = input.material;
         if (id.isNull()) id.local = entries_.emplace();
         entries_.find(id.local)->updating = true;
-        auto* value = backing.get();
-        backings_.push_back(std::move(backing));
-        auto candidate = std::make_unique<Candidate>(*this, id, value, std::move(*lease));
+        auto candidate = std::make_unique<Candidate>(*this, id, std::move(backing), std::move(*lease));
         auto work = GpuWork::pending<[](Candidate& value, Transfer& transfer, DeviceSession&) noexcept {
             return value.publish(transfer);
         }>(session_, *transfer, candidate);
@@ -239,10 +211,8 @@ namespace lux::render::vulkan
         if (!entry || !entry->current) return cxx::unexpected(RenderError{kStorageIdentity});
         if (entry->updating) return cxx::unexpected(RenderError{kBusy});
         if (revision != entry->current->revision) return cxx::unexpected(RenderError{kStorageContract});
-        auto* value = entry->current;
-        value->live = false;
+        disconnect(*entry);
         entries_.erase(id.local);
-        retireUnused(*value);
         return {};
     }
 
@@ -250,7 +220,7 @@ namespace lux::render::vulkan
         const NativeResourcePlan& plan, const MaterialBinding& argument, PreparedStorageBinding& binding
     ) noexcept
     {
-        const auto* entry = argument.material.storage == id_ ? entries_.find(argument.material.local) : nullptr;
+        auto* entry = argument.material.storage == id_ ? entries_.find(argument.material.local) : nullptr;
         if (!entry || !entry->current) return cxx::unexpected(RenderError{kStorageIdentity});
         const auto& current = *entry->current;
         const auto* program = argument.program.borrow<MaterialProgram>();
@@ -276,40 +246,26 @@ namespace lux::render::vulkan
                 description->layers != actual.layers || description->format != format;
             if (mismatch) return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        auto use = std::make_unique<Use>(*this, argument.material, nullptr, binding,
+        auto use = std::make_unique<Use>(this, argument.material, binding, entry->uses.size(),
             argument.texture_slot);
-        use->update(*entry->current);
-        uses_.push_back(use.get());
+        entry->uses.push_back(use.get());
+        use->update(entry->current);
         binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};
         return {};
     }
 
-    void MaterialStorage::releaseReference(Backing& value) noexcept
+    void MaterialStorage::unsubscribe(Use& use) noexcept
     {
-        --value.references;
-        retireUnused(value);
+        auto& subscriptions = entries_.find(use.id.local)->uses;
+        subscriptions[use.position] = subscriptions.back();
+        subscriptions[use.position]->position = use.position;
+        subscriptions.pop_back();
     }
 
-    void MaterialStorage::retireUnused(Backing& value) noexcept
+    void MaterialStorage::disconnect(Entry& entry) noexcept
     {
-        if (!value.live && !value.references) erase(value);
-    }
-
-    void MaterialStorage::erase(Backing& value) noexcept
-    {
-        if (value.references) std::terminate();
-        const auto position = value.position;
-        auto owned = std::move(backings_[position]);
-        if (position + 1 != backings_.size())
-        {
-            backings_[position] = std::move(backings_.back());
-            backings_[position]->position = position;
-        }
-        backings_.pop_back();
-        // Immutable TextureData pins remain part of this physical material until its accepted uses finish.
-        if (owned->last_use.completed()) return;
-        auto result = session_.retirement().retire(owned->retirement, owned->last_use, owned);
-        if (!result) std::terminate();
+        for (auto* use : entry.uses) use->storage = nullptr;
+        entry.uses.clear();
     }
 
     StorageFactory materialStorageFactory() noexcept

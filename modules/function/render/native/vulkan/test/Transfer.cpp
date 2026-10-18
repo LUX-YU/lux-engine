@@ -1,5 +1,6 @@
 #include "Support.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <array>
 #include <cstring>
 
@@ -25,19 +26,21 @@ static void copyImage(const InstanceContext& bootstrap, bool multiple, bool dedi
     if (!dedicated) CHECK(!cross_family);
     std::array<std::byte, 16 * 16 * 4> pixels, result;
     for (std::size_t i = 0; i < pixels.size(); ++i) pixels[i] = std::byte(i % 251);
-    auto upload = take(session->createBuffer(pixels.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD));
-    auto readback = take(session->createBuffer(pixels.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
-    auto image = take(session->createImage({16, 16}, VK_FORMAT_R8G8B8A8_UNORM,
-        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT));
-    CHECK(session->borrow(upload)->write(0, pixels));
+    auto upload = take(session->allocator().createBuffer(pixels.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD));
+    auto readback = take(session->allocator().createBuffer(pixels.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
+    auto image = take(session->allocator().createImage(ImageDescription{{16, 16}, VK_FORMAT_R8G8B8A8_UNORM,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT}));
+    CHECK(upload->write(0, pixels));
     auto batch = take(transfer.begin());
+    batch.retain(upload);
+    batch.retain(image);
     VkImageMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
     barrier.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
     barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
     barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = session->borrow(image)->native();
+    barrier.image = image->native();
     barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
     dependency.imageMemoryBarrierCount = 1;
@@ -46,7 +49,7 @@ static void copyImage(const InstanceContext& bootstrap, bool multiple, bool dedi
     VkBufferImageCopy region{};
     region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
     region.imageExtent = {16, 16, 1};
-    vkCmdCopyBufferToImage(batch.native(), session->borrow(upload)->native(), barrier.image,
+    vkCmdCopyBufferToImage(batch.native(), upload->native(), barrier.image,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
     barrier.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
     barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
@@ -59,8 +62,12 @@ static void copyImage(const InstanceContext& bootstrap, bool multiple, bool dedi
     const auto producer = take(std::move(batch).submit());
     CHECK(session->queueFor(producer) == &transfer && !foreign->queueFor(producer));
     if (distinct) CHECK(!graphics.owns(producer));
-    CHECK(!session->releaseCompleted(image, producer) && image); // not observed complete yet
+    std::weak_ptr<Buffer> retained_upload = upload;
+    upload.reset();
+    CHECK(!retained_upload.expired());
     auto consumer = take(graphics.begin());
+    consumer.retain(image);
+    consumer.retain(readback);
     if (distinct)
     {
         barrier.srcStageMask = VK_PIPELINE_STAGE_2_NONE;
@@ -71,14 +78,14 @@ static void copyImage(const InstanceContext& bootstrap, bool multiple, bool dedi
         vkCmdPipelineBarrier2(consumer.native(), &dependency);
     }
     vkCmdCopyImageToBuffer(consumer.native(), barrier.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        session->borrow(readback)->native(), 1, &region);
+        readback->native(), 1, &region);
     VkBufferMemoryBarrier2 host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
     host.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
     host.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
     host.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
     host.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
     host.srcQueueFamilyIndex = host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    host.buffer = session->borrow(readback)->native();
+    host.buffer = readback->native();
     host.size = VK_WHOLE_SIZE;
     dependency.imageMemoryBarrierCount = 0;
     dependency.bufferMemoryBarrierCount = 1;
@@ -86,13 +93,15 @@ static void copyImage(const InstanceContext& bootstrap, bool multiple, bool dedi
     vkCmdPipelineBarrier2(consumer.native(), &dependency);
     const SubmissionWait wait{producer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT};
     const auto final = take(std::move(consumer).submit(distinct ? std::span(&wait, 1) : std::span<const SubmissionWait>{}));
+    std::weak_ptr<Image> retained_image = image;
+    image.reset();
+    CHECK(!retained_image.expired());
     CHECK(take(graphics.wait(final, UINT64_MAX)));
-    CHECK(session->borrow(readback)->read(0, result));
+    CHECK(take(transfer.wait(producer, UINT64_MAX)));
+    CHECK(retained_upload.expired() && retained_image.expired());
+    CHECK(readback->read(0, result));
     CHECK(result == pixels);
-    CHECK(session->releaseCompleted(upload, final));
-    CHECK(session->releaseCompleted(readback, final));
-    CHECK(session->releaseCompleted(image, final));
-    CHECK(!session->releaseCompleted(image, final));
+
 }
 
 int main()

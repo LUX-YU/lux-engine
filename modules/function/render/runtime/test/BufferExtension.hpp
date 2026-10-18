@@ -23,17 +23,12 @@ namespace extension_test
                 vk::DeviceSession& session;
                 StorageLease storage;
                 vk::PreparedStorageBinding source;
-                vk::BufferPermit buffer;
+                std::shared_ptr<vk::Buffer> buffer;
                 std::optional<vk::SubmissionTicket> ticket;
                 std::shared_ptr<std::vector<std::byte>> output;
 
                 ~Read() noexcept
                 {
-                    if (buffer)
-                    {
-                        const auto result = ticket ? session.releaseCompleted(buffer, *ticket) : session.destroyUnsubmitted(buffer);
-                        if (!result) std::terminate();
-                    }
                     source.reference.reset();
                     storage.reset();
                 }
@@ -44,6 +39,8 @@ namespace extension_test
                 {
                     auto commands = queue().begin();
                     if (!commands) return lux::cxx::unexpected(commands.error());
+                    commands->retain(buffer);
+                    commands->retain(source.resources);
                     VkBufferMemoryBarrier2 before{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
                     before.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
                     before.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
@@ -57,12 +54,12 @@ namespace extension_test
                     dependency.pBufferMemoryBarriers = &before;
                     vkCmdPipelineBarrier2(commands->native(), &dependency);
                     const VkBufferCopy region{0, 0, 16};
-                    vkCmdCopyBuffer(commands->native(), source.buffer->native(), session.borrow(buffer)->native(), 1, &region);
+                    vkCmdCopyBuffer(commands->native(), source.buffer->native(), buffer->native(), 1, &region);
                     before.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
                     before.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
                     before.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
                     before.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
-                    before.buffer = session.borrow(buffer)->native();
+                    before.buffer = buffer->native();
                     vkCmdPipelineBarrier2(commands->native(), &dependency);
                     auto submitted = std::move(*commands).submit();
                     if (!submitted) return lux::cxx::unexpected(submitted.error());
@@ -71,7 +68,7 @@ namespace extension_test
                     return *submitted;
                 }
 
-                RenderResult<void> ready() noexcept { return session.borrow(buffer)->read(0, *output); }
+                RenderResult<void> ready() noexcept { return buffer->read(0, *output); }
             };
         vk::GpuWorkSender<SetBuffer::Response> setBuffer(SetBuffer::Request&& input) noexcept
         {
@@ -107,12 +104,12 @@ namespace extension_test
             ReadBuffer::Response response{ReadBuffer::ResponseValue{std::move(*payload)}};
             auto lease = registry.lease(input.id.storage);
             if (!lease) return native_test::SubmissionSender<ReadBuffer::Response, Read>{lease.error()};
-            auto owner = std::make_unique<Read>(session, std::move(*lease), vk::PreparedStorageBinding{}, vk::BufferPermit{},
+            auto owner = std::make_unique<Read>(session, std::move(*lease), vk::PreparedStorageBinding{}, std::shared_ptr<vk::Buffer>{},
                 std::optional<vk::SubmissionTicket>{}, output);
             vk::NativeResourcePlan plan{"values", GraphBufferDesc{16}, EGraphOrigin::IMPORTED};
             auto prepared = (*storage)->prepare(plan, input, owner->source);
             if (!prepared) return native_test::SubmissionSender<ReadBuffer::Response, Read>{prepared.error()};
-            auto buffer = session.createBuffer(16, VK_BUFFER_USAGE_TRANSFER_DST_BIT, vk::EMemoryAccess::READBACK);
+            auto buffer = session.allocator().createBuffer(16, VK_BUFFER_USAGE_TRANSFER_DST_BIT, vk::EMemoryAccess::READBACK);
             if (!buffer) return native_test::SubmissionSender<ReadBuffer::Response, Read>{buffer.error()};
             owner->buffer = std::move(*buffer);
             return {std::move(response), std::move(owner)};

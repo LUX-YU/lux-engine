@@ -1,4 +1,4 @@
-#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 
 #include "Native.hpp"
 #include <algorithm>
@@ -146,16 +146,6 @@ namespace lux::render::vulkan
         return {};
     }
 
-    RenderResult<ImagePermit> DeviceSession::createImage(
-        VkExtent2D extent,
-        VkFormat format,
-        VkImageUsageFlags usage,
-        VkSampleCountFlagBits samples
-    ) noexcept
-    {
-        return createImage(ImageDescription{extent, format, usage, samples});
-    }
-
     RenderResult<std::shared_ptr<Image>> VulkanAllocator::createImage(const ImageDescription& description) noexcept
     {
         const auto extent = description.extent;
@@ -286,154 +276,6 @@ namespace lux::render::vulkan
         return std::make_shared<Image>(image, source.memory_, description);
     }
 
-    RenderResult<Buffer*> DeviceSession::createBufferRecord(
-        VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access,
-        std::span<const std::uint32_t> families
-    ) noexcept
-    {
-        auto buffer = allocator_.createBuffer(size, usage, access, families);
-        if (!buffer) return cxx::unexpected(buffer.error());
-        const auto key = buffers_.emplace(std::move(*buffer));
-        auto* record = buffers_.find(key)->get();
-        record->key_ = key;
-        return record;
-    }
-
-    RenderResult<Image*> DeviceSession::createImageRecord(const ImageDescription& description) noexcept
-    {
-        auto image = allocator_.createImage(description);
-        if (!image) return cxx::unexpected(image.error());
-        const auto key = images_.emplace(std::move(*image));
-        auto* record = images_.find(key)->get();
-        record->key_ = key;
-        return record;
-    }
-
-    RenderResult<ImagePermit> DeviceSession::aliasImage(const ImagePermit& permit) noexcept
-    {
-        auto* source = borrow(permit);
-        if (!source) return cxx::unexpected(RenderError{kWrongOwner});
-        auto image = allocator_.aliasImage(*source);
-        if (!image) return cxx::unexpected(image.error());
-        const auto key = images_.emplace(std::move(*image));
-        images_.find(key)->get()->key_ = key;
-        return ImagePermit{*this, key};
-    }
-
-    RenderResult<BufferPermit> DeviceSession::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access) noexcept
-    {
-        auto record = createBufferRecord(size, usage, access);
-        if (!record) return cxx::unexpected(record.error());
-        return BufferPermit{*this, (*record)->key_};
-    }
-
-    Buffer* DeviceSession::borrow(const BufferPermit& permit) const noexcept
-    {
-        if (permit.owner_ != this) return nullptr;
-        auto* value = const_cast<DeviceSession*>(this)->buffers_.find(permit.key_);
-        return value && !(*value)->retired_ ? value->get() : nullptr;
-    }
-
-    RenderResult<void> DeviceSession::destroyUnsubmitted(BufferPermit& permit) noexcept
-    {
-        auto* value = borrow(permit);
-        if (!value) return cxx::unexpected(RenderError{kWrongOwner});
-        permit.owner_ = nullptr;
-        permit.key_ = {};
-        destroyFinished(value);
-        return {};
-    }
-
-    RenderResult<ImagePermit> DeviceSession::createImage(const ImageDescription& description) noexcept
-    {
-        auto record = createImageRecord(description);
-        if (!record) return cxx::unexpected(record.error());
-        return ImagePermit{*this, (*record)->key_};
-    }
-
-    Image* DeviceSession::borrow(const ImagePermit& permit) const noexcept
-    {
-        if (permit.owner_ != this) return nullptr;
-        auto* value = const_cast<DeviceSession*>(this)->images_.find(permit.key_);
-        return value && !(*value)->retired_ ? value->get() : nullptr;
-    }
-
-    RenderResult<void> DeviceSession::destroyUnsubmitted(ImagePermit& permit) noexcept
-    {
-        auto* value = borrow(permit);
-        if (!value) return cxx::unexpected(RenderError{kWrongOwner});
-        permit.owner_ = nullptr;
-        permit.key_ = {};
-        destroyFinished(value);
-        return {};
-    }
-
-    RenderResult<void> DeviceSession::releaseCompleted(BufferPermit& permit, SubmissionTicket ticket) noexcept
-    {
-        SubmissionRequirements uses;
-        uses.merge(ticket);
-        return releaseCompleted(permit, uses);
-    }
-
-    RenderResult<void> DeviceSession::releaseCompleted(ImagePermit& permit, SubmissionTicket ticket) noexcept
-    {
-        SubmissionRequirements uses;
-        uses.merge(ticket);
-        return releaseCompleted(permit, uses);
-    }
-
-    bool DeviceSession::owns(const SubmissionRequirements& uses) const noexcept
-    {
-        if (uses.empty()) return false;
-        for (const auto& use : uses.uses())
-        {
-            if (!use.queue) continue;
-            const auto owner = std::find_if(queue_owners_.begin(), queue_owners_.end(), [&](const auto& queue) {
-                return queue.get() == use.queue;
-            });
-            if (owner == queue_owners_.end() || use.serial == 0 || use.serial > (*owner)->submitted()) return false;
-        }
-        return true;
-    }
-
-    RenderResult<void> DeviceSession::releaseCompleted(BufferPermit& permit, const SubmissionRequirements& uses) noexcept
-    {
-        auto* value = borrow(permit);
-        const bool is_wrong_owner = !value || !owns(uses);
-        if (is_wrong_owner) return cxx::unexpected(RenderError{kWrongOwner});
-        if (!uses.completed()) return cxx::unexpected(RenderError{kBusy});
-        value->retired_ = true;
-        permit.owner_ = nullptr;
-        permit.key_ = {};
-        destroyFinished(value);
-        return {};
-    }
-
-    RenderResult<void> DeviceSession::releaseCompleted(ImagePermit& permit, const SubmissionRequirements& uses) noexcept
-    {
-        auto* value = borrow(permit);
-        const bool is_wrong_owner = !value || !owns(uses);
-        if (is_wrong_owner) return cxx::unexpected(RenderError{kWrongOwner});
-        if (!uses.completed()) return cxx::unexpected(RenderError{kBusy});
-        value->retired_ = true;
-        permit.owner_ = nullptr;
-        permit.key_ = {};
-        destroyFinished(value);
-        return {};
-    }
-
-    bool DeviceSession::owns(const Buffer* value) const noexcept
-    {
-        const auto* entry = value ? buffers_.find(value->key_) : nullptr;
-        return entry && entry->get() == value;
-    }
-
-    bool DeviceSession::owns(const Image* value) const noexcept
-    {
-        const auto* entry = value ? images_.find(value->key_) : nullptr;
-        return entry && entry->get() == value;
-    }
-
     BufferMemoryBinding Buffer::memoryBinding() const noexcept
     {
         VmaAllocationInfo info{};
@@ -446,16 +288,6 @@ namespace lux::render::vulkan
         VmaAllocationInfo info{};
         vmaGetAllocationInfo(memory_->allocator_->native(), memory_->allocation_, &info);
         return {info.deviceMemory, info.offset, info.size, info.memoryType};
-    }
-
-    void DeviceSession::destroyFinished(Buffer* buffer) noexcept
-    {
-        buffers_.erase(buffer->key_);
-    }
-
-    void DeviceSession::destroyFinished(Image* image) noexcept
-    {
-        images_.erase(image->key_);
     }
 
 } // namespace lux::render::vulkan

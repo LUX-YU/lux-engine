@@ -198,7 +198,6 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<CommandBatch> beginAfterPoll() noexcept;
         friend class SubmissionCallback;
         friend class StagingArena;
-        friend class RetirementQueue;
         struct Backing;
         explicit SubmissionQueue(std::unique_ptr<Backing> backing) noexcept;
         [[nodiscard]] RenderResult<SubmissionTicket> submit(

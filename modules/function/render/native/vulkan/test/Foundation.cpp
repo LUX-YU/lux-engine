@@ -61,18 +61,10 @@ namespace lux::render::vulkan::test
 }
 #endif
 
-// Test-only forged credentials exercise the boundary without ever dereferencing a dead record.
 namespace lux::render::vulkan
 {
     struct NativeMemoryAudit final
     {
-        template <class Tag> static AllocationPermit<Tag> duplicate(const AllocationPermit<Tag>& value)
-        {
-            return AllocationPermit<Tag>{*value.owner_, value.key_};
-        }
-        template <class Tag> static auto key(const AllocationPermit<Tag>& value) { return value.key_; }
-        static std::size_t images(const DeviceSession& session) noexcept { return session.images_.size(); }
-        static std::size_t buffers(const DeviceSession& session) noexcept { return session.buffers_.size(); }
         static std::size_t contexts(const DeviceSession& session) noexcept { return session.contexts_.size(); }
     };
 }
@@ -196,119 +188,88 @@ static void sharedPhysicalQueues(DeviceSession& session)
         unsigned(&graphics != &compute));
 }
 
-static void exclusiveRetirement(const InstanceContext& bootstrap)
+static void batchCapacityAndAlias(const InstanceContext& bootstrap)
 {
-    auto a = take(DeviceSession::create(bootstrap, {}, 3, 1));
-    auto b = take(DeviceSession::create(bootstrap, {}, 3, 1));
+    auto a = take(DeviceSession::create(bootstrap, {}, 1));
+    auto b = take(DeviceSession::create(bootstrap));
     CHECK(a->resources().factory(StorageNameView("lux.render.TextureStorage")) == nullptr);
     CHECK(a->resources().size() == 0);
-    auto first = take(a->createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
-    auto second = take(a->createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
-    auto foreign = take(b->createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
-    CHECK(NativeMemoryAudit::key(first) == NativeMemoryAudit::key(foreign));
-    CHECK(!a->borrow(foreign) && !a->destroyUnsubmitted(foreign) && foreign);
-    auto stale = NativeMemoryAudit::duplicate(first);
+    auto first = take(a->allocator().createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
+    auto second = take(a->allocator().createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
+    std::weak_ptr<Buffer> retained = first;
     auto batch = take(a->queue().begin());
-    vkCmdFillBuffer(batch.native(), a->borrow(first)->native(), 0, 64, 17);
-    vkCmdFillBuffer(batch.native(), a->borrow(second)->native(), 0, 64, 19);
-    auto ticket = take(std::move(batch).submit());
-    CHECK(!b->retirement().retire(ticket, first) && first);
-    CHECK(!a->retirement().retire(ticket, foreign) && foreign);
-    CHECK(a->retirement().retire(ticket, first) && !first);
-    CHECK(!a->retirement().retire(ticket, first));
-    CHECK(!a->retirement().retire(ticket, stale));
-    CHECK(!a->destroyUnsubmitted(stale) && stale);
-    CHECK(!a->borrow(stale));
-    auto full = a->retirement().retire(ticket, second);
-    CHECK(!full && full.error().type == kCapacity && second && a->borrow(second));
-    CHECK(take(a->queue().wait(ticket, UINT64_MAX)));
-    CHECK(take(a->retirement().collect()) == 1);
-    auto replacement = take(a->createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
-    CHECK(NativeMemoryAudit::key(replacement).index == NativeMemoryAudit::key(stale).index);
-    CHECK(NativeMemoryAudit::key(replacement).gen != NativeMemoryAudit::key(stale).gen);
-    CHECK(!a->destroyUnsubmitted(stale) && !a->retirement().retire(ticket, stale));
-    CHECK(a->retirement().retire(ticket, second));
-    CHECK(take(a->retirement().collect()) == 1);
-    CHECK(a->destroyUnsubmitted(replacement));
-    CHECK(b->destroyUnsubmitted(foreign));
+    batch.retain(first);
+    vkCmdFillBuffer(batch.native(), first->native(), 0, 64, 17);
+    const auto ticket = take(std::move(batch).submit());
+    CHECK(a->queueFor(ticket) == &a->queue() && b->queueFor(ticket) == nullptr);
+    CHECK(!b->queue().wait(ticket, 0));
+    first.reset();
+    CHECK(!retained.expired());
+#ifdef LUX_VULKAN_TEST_SEAM
+    hold_fences = true;
+    const auto owners = live;
+    auto full = a->queue().begin();
+    CHECK(!full && full.error().type == kCapacity && second);
+    CHECK(a->collect() && live == owners && !retained.expired());
+    hold_fences = false;
+#endif
+    CHECK(take(a->queue().wait(ticket, UINT64_MAX)) && retained.expired());
+    auto retry = take(a->queue().begin());
+    retry.retain(second);
+    vkCmdFillBuffer(retry.native(), second->native(), 0, 64, 19);
+    const auto retried = take(std::move(retry).submit());
+    std::weak_ptr<Buffer> second_retained = second;
+    second.reset();
+    CHECK(!second_retained.expired());
+    CHECK(take(a->queue().wait(retried, UINT64_MAX)) && second_retained.expired());
 
     ImageDescription description{{16, 16}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_TRANSFER_DST_BIT};
     description.aliasable = true;
-    auto original = take(a->createImage(description));
-    auto alias = take(a->aliasImage(original));
-    auto stale_image = NativeMemoryAudit::duplicate(alias);
-    auto nested_alias = take(a->aliasImage(alias));
-    CHECK(a->destroyUnsubmitted(nested_alias));
-    auto plain = description;
-    plain.aliasable = false;
-    auto not_aliasable = take(a->createImage(plain));
-    CHECK(!a->aliasImage(not_aliasable));
-    CHECK(a->destroyUnsubmitted(not_aliasable));
-    CHECK(!b->aliasImage(original));
-    CHECK(a->retirement().retire(ticket, alias));
-    CHECK(!a->retirement().retire(ticket, stale_image));
-    CHECK(!a->destroyUnsubmitted(stale_image));
-    CHECK(take(a->retirement().collect()) == 1); // alias first, source remains valid
-    CHECK(a->borrow(original));
-    CHECK(!a->borrow(stale_image));
-    CHECK(a->destroyUnsubmitted(original));
-    auto new_image = take(a->createImage(description));
-    CHECK(!a->destroyUnsubmitted(stale_image));
-    CHECK(a->destroyUnsubmitted(new_image));
-    std::printf("exclusive retirement: duplicate/stale/cross-session/full retry/alias memory sharing PASS\n");
+    auto original = take(a->allocator().createImage(description));
+    auto alias = take(a->allocator().aliasImage(*original));
+    auto nested = take(a->allocator().aliasImage(*alias));
+    const auto memory = original->memoryBinding();
+    CHECK(alias->memoryBinding().memory == memory.memory && nested->memoryBinding().memory == memory.memory);
+    std::weak_ptr<Image> alias_lifetime = alias, nested_lifetime = nested;
+    alias.reset();
+    CHECK(alias_lifetime.expired() && original->memoryBinding().memory == memory.memory);
+    nested.reset();
+    CHECK(nested_lifetime.expired() && original->memoryBinding().memory == memory.memory);
+    CHECK(!b->allocator().aliasImage(*original));
+    description.aliasable = false;
+    auto plain = take(a->allocator().createImage(description));
+    CHECK(!a->allocator().aliasImage(*plain));
+    std::puts("batch capacity retry, foreign Ticket rejection, nested/alias-first memory sharing PASS");
 }
 
-static void preparedRetirement(const InstanceContext& bootstrap)
+static void compositeBatchLifetime(const InstanceContext& bootstrap)
 {
-    auto session = take(DeviceSession::create(bootstrap, {}, 3, 2));
-    auto foreign = take(DeviceSession::create(bootstrap, {}, 3, 2));
-    auto first = take(session->retirement().reserve());
-    auto second = take(session->retirement().reserve());
-    CHECK(session->retirement().reservations() == 2 && !session->retirement().reserve());
-    auto moved = std::move(first);
-    CHECK(!first && moved);
-    auto buffer = take(session->createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
-    auto batch = take(session->queue().begin());
-    vkCmdFillBuffer(batch.native(), session->borrow(buffer)->native(), 0, 64, 23);
-    const auto ticket = take(std::move(batch).submit());
-    SubmissionRequirements requirements;
-    requirements.merge(ticket);
-    CHECK(!foreign->retirement().retire(moved, requirements, buffer) && moved && buffer);
-    CHECK(session->retirement().retire(moved, requirements, buffer) && !moved && !buffer);
-    CHECK(session->retirement().reservations() == 1 && session->retirement().pending() == 1);
-    second.reset();
-    CHECK(session->retirement().reservations() == 0);
-    CHECK(take(session->queue().wait(ticket, UINT64_MAX)));
-    CHECK(take(session->retirement().collect()) == 1);
-
-    // An owned composite can retire another resource from its deleter. Its old entry must be erased first.
+    auto session = take(DeviceSession::create(bootstrap));
     struct Composite final
     {
-        DeviceSession& session;
-        RetirementReservation child;
-        BufferPermit buffer;
-        SubmissionRequirements requirements;
+        std::shared_ptr<Buffer> child;
         unsigned& destroyed;
-        VkDevice device() const noexcept { return session.device().native(); }
-        ~Composite() noexcept
-        {
-            CHECK(session.retirement().retire(child, requirements, buffer));
-            ++destroyed;
-        }
+        ~Composite() noexcept { ++destroyed; }
     };
     unsigned destroyed = 0;
-    auto outer = take(session->retirement().reserve());
-    auto child = take(session->retirement().reserve());
-    auto owned_buffer = take(session->createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
-    auto submitted = take(session->queue().begin());
-    vkCmdFillBuffer(submitted.native(), session->borrow(owned_buffer)->native(), 0, 64, 29);
-    SubmissionRequirements uses;
-    uses.merge(take(std::move(submitted).submit()));
-    auto composite = std::make_unique<Composite>(*session, std::move(child), std::move(owned_buffer), uses, destroyed);
-    CHECK(session->retirement().retire(outer, uses, composite) && !outer && !composite);
-    CHECK(session->drain());
-    CHECK(destroyed == 1 && session->retirement().pending() == 0 && session->retirement().reservations() == 0);
-    std::printf("prepared retirement: capacity before submit, move, wrong owner, nested release PASS\n");
+    auto buffer = take(session->allocator().createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
+    std::weak_ptr<Buffer> child = buffer;
+    auto composite = std::make_shared<Composite>(std::move(buffer), destroyed);
+    auto batch = take(session->queue().begin());
+    batch.retain(composite);
+    vkCmdFillBuffer(batch.native(), composite->child->native(), 0, 64, 29);
+    const auto ticket = take(std::move(batch).submit());
+    composite.reset();
+    CHECK(destroyed == 0 && !child.expired());
+#ifdef LUX_VULKAN_TEST_SEAM
+    hold_fences = true;
+    CHECK(session->collect() && destroyed == 0 && !child.expired());
+    hold_fences = false;
+#endif
+    CHECK(take(session->queue().wait(ticket, UINT64_MAX)));
+    CHECK(destroyed == 1 && child.expired());
+    CHECK(session->collect() && destroyed == 1);
+    std::puts("submitted composite releases its actual child exactly once, without retirement admission");
 }
 
 static void allocationRecords(DeviceSession& session)
@@ -326,8 +287,8 @@ static void allocationRecords(DeviceSession& session)
         {16, 16}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
     };
     description.aliasable = true;
-    const auto original_count = NativeMemoryAudit::images(session);
     auto original = take(session.allocator().createImage(description));
+    std::weak_ptr<Image> weak_original = original;
 #ifdef LUX_VULKAN_TEST_SEAM
     fails("image_alias", [&] { return session.allocator().aliasImage(*original); });
     fails("image_alias_bind", [&] { return session.allocator().aliasImage(*original); });
@@ -341,7 +302,7 @@ static void allocationRecords(DeviceSession& session)
     const auto before_original_drop = live;
 #endif
     original.reset();
-    CHECK(NativeMemoryAudit::images(session) == original_count); // Source VkImage is really gone.
+    CHECK(weak_original.expired()); // Source VkImage is really gone.
 #ifdef LUX_VULKAN_TEST_SEAM
     CHECK(live[5] == before_original_drop[5] - 1);
     CHECK(live[13] == before_original_drop[13]); // Allocation survives the original VkImage.
@@ -408,7 +369,7 @@ static void allocationRecords(DeviceSession& session)
         CHECK(readback[i] == std::byte(i % 4 == 0 || i % 4 == 3 ? 255 : 0));
     }
     pixels.reset();
-    CHECK(NativeMemoryAudit::images(session) == original_count);
+    CHECK(weak_original.expired());
 #ifdef LUX_VULKAN_TEST_SEAM
     CHECK(live[5] == before_original_drop[5] - 2);
     CHECK(live[13] == before_original_drop[13] - 1); // Exactly one shared allocation released.
@@ -418,34 +379,33 @@ static void allocationRecords(DeviceSession& session)
 static void actualFenceTimeout(DeviceSession& session)
 {
     constexpr VkDeviceSize bytes = 64 * 1024 * 1024;
-    auto permit = take(session.createBuffer(bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
-    auto* buffer = session.borrow(permit);
+    auto buffer = take(session.allocator().createBuffer(bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
+    std::weak_ptr<Buffer> retained = buffer;
     bool observed_timeout = false;
     for (unsigned attempt = 0; attempt < 8 && !observed_timeout; ++attempt)
     {
         auto batch = take(session.queue().begin());
+        batch.retain(buffer);
         // A real bounded GPU workload, not a mocked fence status or synthetic completion flag.
         vkCmdFillBuffer(batch.native(), buffer->native(), 0, bytes, attempt);
         const auto ticket = take(std::move(batch).submit());
         observed_timeout = !take(session.queue().wait(ticket, 0));
-        CHECK(permit && session.borrow(permit) == buffer);
+        CHECK(!retained.expired());
         CHECK(take(session.queue().wait(ticket, UINT64_MAX)));
     }
     CHECK(observed_timeout);
-    CHECK(session.retirement().retire(*session.queue().lastSubmitted(), permit));
-    CHECK(take(session.retirement().collect()) == 1);
+    buffer.reset();
+    CHECK(retained.expired());
     std::puts("real zero-deadline Fence timeout observed; backing retained until actual completion");
 }
 
 static void exercise(DeviceSession& session)
 {
     auto& queue = session.queue();
-    auto buffer_permit = take(session.createBuffer( 256, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+    auto buffer = take(session.allocator().createBuffer(256, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         EMemoryAccess::READBACK));
-    auto* buffer = session.borrow(buffer_permit);
-    auto image_permit = take(session.createImage( {32, 32}, VK_FORMAT_R8G8B8A8_UNORM,
-        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT));
     auto batch = take(queue.begin());
+    batch.retain(buffer);
     vkCmdFillBuffer(batch.native(), buffer->native(), 0, buffer->size(), 0x12345678);
     VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
     barrier.srcStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT;
@@ -475,23 +435,20 @@ static void exercise(DeviceSession& session)
     });
     CHECK(queue.lastSubmitted()->serial() == ticket.serial());
     auto next = take(queue.begin());
+    next.retain(buffer);
     const auto pending = take(std::move(next).submit());
     const auto owners = live;
     hold_fences = true;
-    CHECK(session.retirement().retire(pending, buffer_permit));
-    CHECK(!buffer_permit && session.retirement().pending() == 1);
-    CHECK(take(session.retirement().collect()) == 0 && live == owners);
+    std::weak_ptr<Buffer> retained = buffer;
+    buffer.reset();
+    CHECK(!retained.expired());
+    CHECK(session.collect() && live == owners && !retained.expired());
     hold_fences = false;
     CHECK(take(queue.wait(pending, UINT64_MAX)));
-    CHECK(take(session.retirement().collect()) == 1);
-    CHECK(live[4] == owners[4] - 1);
+    CHECK(retained.expired() && live[4] == owners[4] - 1);
 #else
-    CHECK(session.retirement().retire(ticket, buffer_permit));
-    CHECK(take(session.retirement().collect()) == 1);
+    buffer.reset();
 #endif
-    CHECK(!session.retirement().retire(ticket, buffer_permit));
-    CHECK(!session.destroyUnsubmitted(buffer_permit));
-    CHECK(session.destroyUnsubmitted(image_permit));
     CHECK(session.drain());
 }
 
@@ -504,8 +461,8 @@ int main()
         fails("messenger", [&] { return InstanceContext::create({{}, true, diagnostic, &validation}); });
 #endif
         auto bootstrap = instance(validation);
-        exclusiveRetirement(bootstrap);
-        preparedRetirement(bootstrap);
+        batchCapacityAndAlias(bootstrap);
+        compositeBatchLifetime(bootstrap);
         DeviceOptions options;
         options.dynamic_rendering = true;
         {
@@ -520,12 +477,12 @@ int main()
             exercise(*session);
             allocationRecords(*session);
 #ifdef LUX_VULKAN_TEST_SEAM
-            fails("buffer", [&] { return session->createBuffer( 256,
+            fails("buffer", [&] { return session->allocator().createBuffer( 256,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK); });
-            fails("mapping", [&] { return session->createBuffer( 256,
+            fails("mapping", [&] { return session->allocator().createBuffer( 256,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK); });
-            fails("image", [&] { return session->createImage( {16, 16}, VK_FORMAT_R8G8B8A8_UNORM,
-                VK_IMAGE_USAGE_TRANSFER_DST_BIT); });
+            fails("image", [&] { return session->allocator().createImage(ImageDescription{{16, 16}, VK_FORMAT_R8G8B8A8_UNORM,
+                VK_IMAGE_USAGE_TRANSFER_DST_BIT}); });
             CHECK(buffer_fixture::install(*session));
             const native_fixture::Config config{32, 32, 1, 1};
             auto assembly = take(native_fixture::assemble(config));
@@ -546,13 +503,9 @@ int main()
                 native_fixture::programs(execution_config), native_fixture::target(execution_config))));
             for (auto name : {"image", "image_view", "buffer", "mapping"})
                 fails(name, [&] { return session->prepare(code, native_fixture::target(execution_config), {}); });
-            const auto image_records = NativeMemoryAudit::images(*session);
-            const auto buffer_records = NativeMemoryAudit::buffers(*session);
             const auto context_records = NativeMemoryAudit::contexts(*session);
             auto* first = take(session->prepare(code, native_fixture::target(execution_config), {}));
             auto* second = take(session->prepare(code, native_fixture::target(execution_config), {}));
-            CHECK(NativeMemoryAudit::images(*session) == image_records);
-            CHECK(NativeMemoryAudit::buffers(*session) == buffer_records);
             CHECK(NativeMemoryAudit::contexts(*session) == context_records + 2);
             const auto creations = created;
             CHECK(take(first->execute()) == EExecutionOutcome::EXECUTED);
@@ -564,8 +517,7 @@ int main()
             const auto owners = live;
             CHECK(session->release(first));
             CHECK(NativeMemoryAudit::contexts(*session) == context_records + 1);
-            CHECK(session->retirement().pending() == 0); // No Context retirement owner remains.
-            CHECK(take(session->retirement().collect()) == 0 && live == owners);
+            CHECK(session->collect() && live == owners); // Only accepted batches own these physical resources.
             CHECK(session->release(second)); // Failed submission retains no physical resource set.
             CHECK(NativeMemoryAudit::contexts(*session) == context_records);
             std::weak_ptr<const CompiledGraph> retained_code = code;

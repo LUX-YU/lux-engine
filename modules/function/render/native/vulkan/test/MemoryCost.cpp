@@ -6,6 +6,33 @@
 #include <fstream>
 #include <cstdio>
 #include <cstdlib>
+#include <string_view>
+
+namespace
+{
+    unsigned live_buffers = 0;
+    std::uint64_t fence_queries = 0;
+}
+
+namespace lux::render::vulkan::test
+{
+    VkResult before(const char* operation) noexcept
+    {
+        if (std::string_view(operation) == "fence_status") ++fence_queries;
+        return VK_SUCCESS;
+    }
+
+    VkResult after(const char* operation, VkResult result) noexcept
+    {
+        if (result == VK_SUCCESS && std::string_view(operation) == "buffer") ++live_buffers;
+        return result;
+    }
+
+    void destroyed(const char* operation) noexcept
+    {
+        if (std::string_view(operation) == "buffer") --live_buffers;
+    }
+}
 
 namespace lux::render::vulkan
 {
@@ -17,22 +44,14 @@ namespace lux::render::vulkan
             render_allocation::participate = true;
             render_allocation::calls = 0;
             render_allocation::window = true;
-            // Host metadata only: no fake allocation is published to a DeviceSession or GPU.
-            cxx::StableSlotMap<std::shared_ptr<Buffer>, BufferAllocationTag> buffers;
-            cxx::StableSlotMap<std::shared_ptr<Image>, ImageAllocationTag> images;
-            buffers.reserve(count / 2);
-            images.reserve(count / 2);
+            // Actual binding storage only. Session no longer allocates a Buffer/Image identity ledger.
             std::vector<ExecutionContext::Binding> bindings(count);
-            // Reserve physical metadata pages without fabricating Native objects with null owners.
-            // Shared control blocks and actual Buffer/Image objects are not included here.
-            // Real VkBuffer instances are separately measured by zeroRetirement().
             render_allocation::window = false;
-            const auto bytes = buffers.storageBytes() + images.storageBytes() + sizeof(bindings) +
-                bindings.capacity() * sizeof(ExecutionContext::Binding);
+            const auto bytes = sizeof(bindings) + bindings.capacity() * sizeof(ExecutionContext::Binding);
             std::printf("VkBuffer=%zu VkImage=%zu Buffer=%zu Image=%zu Binding=%zu "
-                "Context=%zu RetirementEntry=%zu reserved_host_records=%zu ledger_and_bindings_bytes=%zu new_calls=%llu\n",
+                "Context=%zu binding_records=%zu bindings_bytes=%zu new_calls=%llu\n",
                 sizeof(VkBuffer), sizeof(VkImage), sizeof(Buffer), sizeof(Image),
-                sizeof(ExecutionContext::Binding), sizeof(ExecutionContext), sizeof(RetirementQueue::Entry),
+                sizeof(ExecutionContext::Binding), sizeof(ExecutionContext),
                 count, bytes, render_allocation::calls.load());
             std::printf("PreparedBinding=%zu StorageUse=%zu Registry=%zu StorageSet=%zu Factory=%zu\n",
                 sizeof(PreparedStorageBinding), sizeof(ExecutionContext::StorageUse), sizeof(ResourceRegistry),
@@ -76,27 +95,22 @@ namespace lux::render::vulkan
             auto session = take(DeviceSession::create(bootstrap, {}));
             struct LiveBuffer final
             {
-                DeviceSession& session;
-                RetirementReservation retirement;
-                BufferPermit buffer;
-                ~LiveBuffer() noexcept { CHECK(session.destroyUnsubmitted(buffer)); }
+                std::shared_ptr<Buffer> buffer;
             };
             static const StorageDescriptor description{StorageNameView("test.cost.live-buffer")};
             static const unsigned ops = 0;
             auto factory = resource_detail::StorageFactoryAudit::make(&description, &ops,
                 [](void* context, StorageId, const void*) noexcept -> RenderResult<NativeStorage> {
                     auto& session = *static_cast<DeviceSession*>(context);
-                    auto reservation = session.retirement().reserve();
-                    if (!reservation) return cxx::unexpected(reservation.error());
-                    auto buffer = session.createBuffer(16, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE);
+                    auto buffer = session.allocator().createBuffer(16, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE);
                     if (!buffer) return cxx::unexpected(buffer.error());
-                    return NativeStorage{new LiveBuffer{session, std::move(*reservation), std::move(*buffer)},
+                    return NativeStorage{new LiveBuffer{std::move(*buffer)},
                         [](void* value) noexcept { delete static_cast<LiveBuffer*>(value); }};
                 }, [](const void*, const void*) noexcept { return true; }, nullptr,
                 cppType<unsigned>(), cppType<unsigned>());
             const auto type = take(session->resources().installFactory(std::move(factory), 0u));
             std::ofstream raw("zero-retirement.csv");
-            raw << "live_buffers,live_storages,reservations,sample,collect_ns,candidate_visits,new_calls\n";
+            raw << "live_buffers,live_storages,sample,collect_ns,fence_queries,new_calls\n";
             std::vector<std::unique_ptr<StorageSet>> owners;
             for (const auto count : {1u, 100u, 1000u, 10000u})
             {
@@ -105,31 +119,29 @@ namespace lux::render::vulkan
                     auto& owner = owners.emplace_back(std::make_unique<StorageSet>(session->resources()));
                     CHECK(owner->prepare(type, "live"));
                 }
-                CHECK(session->buffers_.size() == count && session->resources().size() == count);
-                std::printf("real_buffer_records=%u ledger_storage_bytes=%zu sizeof_Buffer=%zu\n",
-                    count, session->buffers_.storageBytes(), sizeof(Buffer));
-                CHECK(session->retirement().reservations() == count && session->retirement().pending() == 0);
+                CHECK(live_buffers == count && session->resources().size() == count);
+                std::printf("real_live_buffers=%u sizeof_Buffer=%zu; Session allocation ledger removed\n", count, sizeof(Buffer));
                 for (unsigned warm = 0; warm < 20; ++warm) CHECK(session->collect());
                 for (unsigned sample = 0; sample < 1000; ++sample)
                 {
-                    const auto before = session->retirement().inspected_;
+                    const auto before = fence_queries;
                     render_allocation::calls = 0;
                     render_allocation::window = true;
                     const auto start = Clock::now();
                     CHECK(session->collect());
                     const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count();
                     render_allocation::window = false;
-                    const auto visits = session->retirement().inspected_ - before;
+                    const auto visits = fence_queries - before;
                     CHECK(visits == 0 && render_allocation::calls == 0);
-                    raw << count << ',' << count << ',' << count << ',' << sample << ',' << ns << ','
+                    raw << count << ',' << count << ',' << sample << ',' << ns << ','
                         << visits << ',' << render_allocation::calls.load() << '\n';
                 }
-                std::printf("zero retirement: real VkBuffers/StorageSets/reservations=%u; 1000 polls, visits=0 new=0\n",
+                std::printf("zero retirement: real VkBuffers/StorageSets=%u; 1000 polls, native fence queries=0 new=0\n",
                     count);
             }
             owners.clear();
-            CHECK(session->buffers_.empty() && session->resources().size() == 0);
-            CHECK(session->retirement().reservations() == 0 && validation.errors == 0);
+            CHECK(live_buffers == 0 && session->resources().size() == 0);
+            CHECK(validation.errors == 0);
         }
     };
 }

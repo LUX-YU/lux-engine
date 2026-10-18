@@ -6,6 +6,7 @@
 
 namespace lux::render::vulkan
 {
+    class DeviceSession;
     class StagingPage;
 
     struct TransferStats final

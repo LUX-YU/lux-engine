@@ -11,20 +11,16 @@ namespace buffer_fixture
     struct Config final { std::uint32_t size = 16; bool operator==(const Config&) const noexcept = default; };
     inline constexpr StorageDescriptor description{StorageNameView("test.zero_buffer")};
 
+    struct BufferData final
+    {
+        std::shared_ptr<native::Buffer> buffer;
+        native::SubmissionRequirements last_use;
+    };
+
     struct Native final
     {
-        native::DeviceSession& device;
         Config config;
-        native::BufferPermit permit;
-        native::RetirementReservation retirement;
-        native::SubmissionRequirements last_use;
-
-        ~Native() noexcept
-        {
-            if (!device.borrow(permit)) return;
-            const auto result = last_use.empty() ? device.destroyUnsubmitted(permit) : device.retirement().retire(retirement, last_use, permit);
-            if (!result) std::terminate();
-        }
+        std::shared_ptr<BufferData> data;
     };
 
     struct Declaration final
@@ -41,27 +37,25 @@ namespace buffer_fixture
             [](void* object, const native::NativeResourcePlan& plan, const void*,
                 native::PreparedStorageBinding& binding) noexcept -> RenderResult<void> {
                 auto& value = *static_cast<Native*>(object);
-                auto* buffer = value.device.borrow(value.permit);
+                auto* buffer = value.data->buffer.get();
                 const auto size = std::get<GraphBufferDesc>(plan.description).size;
                 const bool mismatch = buffer->size() != size || (buffer->usage() & plan.buffer_usage) != plan.buffer_usage;
                 if (mismatch) return lux::cxx::unexpected(RenderError{kStorageMismatch});
                 binding.buffer = buffer;
-                binding.last_use = &value.last_use;
+                binding.last_use = &value.data->last_use;
+                binding.resources = value.data;
                 return {};
             }
         };
         static const auto create = +[](native::DeviceSession& session, StorageId, const Config& value) noexcept
             -> RenderResult<std::unique_ptr<Native>> {
-            auto reservation = session.retirement().reserve();
-            if (!reservation) return lux::cxx::unexpected(reservation.error());
-            auto candidate = std::make_unique<Native>(session, value);
-            candidate->retirement = std::move(*reservation);
-            auto buffer = session.createBuffer(value.size,
+            auto buffer = session.allocator().createBuffer(value.size,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, native::EMemoryAccess::UPLOAD);
             if (!buffer) return lux::cxx::unexpected(buffer.error());
-            candidate->permit = std::move(*buffer);
+            auto candidate = std::make_unique<Native>(value,
+                std::make_shared<BufferData>(std::move(*buffer)));
             const std::vector<std::byte> zero(value.size);
-            if (auto written = session.borrow(candidate->permit)->write(0, zero); !written)
+            if (auto written = candidate->data->buffer->write(0, zero); !written)
                 return lux::cxx::unexpected(written.error());
             return candidate;
         };

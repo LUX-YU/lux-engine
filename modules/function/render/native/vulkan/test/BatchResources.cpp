@@ -1,6 +1,7 @@
 #include "Support.hpp"
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <array>
 #include <fstream>
 #include <string_view>

@@ -347,21 +347,23 @@ int main()
         auto& transfer = session->queue(EQueueRole::TRANSFER);
         CHECK(&graphics != &transfer && graphics.nativeQueue().family == transfer.nativeQueue().family);
         const std::array<std::byte, 16> input{std::byte{73}};
-        auto source = take(session->createBuffer(input.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD));
-        CHECK(session->borrow(source)->write(0, input));
-        auto output_a = take(session->createBuffer(input.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
-        auto output_b = take(session->createBuffer(input.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
-        const auto copy = [&](SubmissionQueue& queue, BufferPermit& output) {
+        auto source = take(session->allocator().createBuffer(input.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD));
+        CHECK(source->write(0, input));
+        auto output_a = take(session->allocator().createBuffer(input.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
+        auto output_b = take(session->allocator().createBuffer(input.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
+        const auto copy = [&](SubmissionQueue& queue, const std::shared_ptr<Buffer>& output) {
             auto batch = take(queue.begin());
+            batch.retain(source);
+            batch.retain(output);
             const VkBufferCopy region{0, 0, input.size()};
-            vkCmdCopyBuffer(batch.native(), session->borrow(source)->native(), session->borrow(output)->native(), 1, &region);
+            vkCmdCopyBuffer(batch.native(), source->native(), output->native(), 1, &region);
             VkBufferMemoryBarrier2 host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
             host.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
             host.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
             host.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
             host.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
             host.srcQueueFamilyIndex = host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            host.buffer = session->borrow(output)->native();
+            host.buffer = output->native();
             host.size = VK_WHOLE_SIZE;
             VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
             dependency.bufferMemoryBarrierCount = 1;
@@ -372,16 +374,19 @@ int main()
         const auto a = copy(graphics, output_a), b = copy(transfer, output_b);
         CHECK(take(graphics.wait(a, UINT64_MAX)));
         hold_completion = true;
-        const std::array tickets{a, b};
-        CHECK(session->retirement().retire(tickets, source) && !source);
-        CHECK(take(session->retirement().collect()) == 0 && live_buffers == 3);
+        std::weak_ptr<Buffer> retained_source = source;
+        source.reset();
+        CHECK(session->collect());
+        CHECK(!retained_source.expired() && live_buffers == 3);
         hold_completion = false;
-        CHECK(take(transfer.wait(b, UINT64_MAX)) && take(session->retirement().collect()) == 1);
+        CHECK(take(transfer.wait(b, UINT64_MAX)));
+        CHECK(retained_source.expired());
         std::array<std::byte, 16> a_bytes{}, b_bytes{};
-        CHECK(session->borrow(output_a)->read(0, a_bytes));
-        CHECK(session->borrow(output_b)->read(0, b_bytes));
+        CHECK(output_a->read(0, a_bytes));
+        CHECK(output_b->read(0, b_bytes));
         CHECK(a_bytes == input && b_bytes == input);
-        CHECK(session->releaseCompleted(output_a, a) && session->releaseCompleted(output_b, b));
+        output_a.reset();
+        output_b.reset();
         std::printf("independent queue uses retained until BOTH observed tickets; same serial=%d\n", a.serial() == b.serial());
     }
     CHECK(live_buffers == 0 && validation.errors == 0);

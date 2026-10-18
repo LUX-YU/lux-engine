@@ -30,8 +30,9 @@ checking the physical-device feature. VMA receives the matching allocation flag;
 buffer without that capability returns `kUnsupported`. Any submitted BDA pointer must be accompanied
 by its actual Buffer owner in the retained binding set.
 
-Professional destinations are still being migrated from Session tables and permit/retirement ownership. Their existing safety checks remain until all indirect bindings and actual
-GPU uses have batch owners. Primitive Copy/Alias tests are not proof of complete graph resource coverage.
+The Session has no Buffer/Image identity tables or release permits. Professional snapshots and submitted
+batches own the actual objects; releasing a logical resource drops its current snapshot without cancelling
+accepted GPU use. There is no separate per-resource retirement admission or manual release API.
 An outstanding ticket remains queue-scoped evidence of accepted work, never a frame index. Final teardown
 drains queue owners before allocator/device release; individual resources never wait idle.
 
@@ -43,13 +44,13 @@ queue-scoped ticket and retirement algorithms are migrated from commit
 
 - `device/Device`, `device/Vma`, `memory/Memory`: actual resource factories and reverse RAII cleanup.
 - `transfer/Submission`: accepted-submission serial, fence completion, cross-queue timeline waits.
-- `retirement/Retirement`: fixed-capacity owner transfer and ticket-gated destruction.
+- The former per-resource `retirement/Retirement` table is removed. The existing SubmissionQueue's
+  completed-prefix FIFO releases each accepted batch's retained resources.
 - `pinclude/Native.hpp`: test-only compile-time fault hook; no production indirect call.
 
 The new path is `render/native/vulkan`; the old modules are not linked, and Legacy is read-only.
-The old `DeviceCaps` bridge was removed, `VulkanInstance` became `InstanceContext`, and the retirement
-variant includes only Buffer/Image and an already-owned composite. Descriptor/Graph implementations
-are not restored. `DeviceSession` consolidates real aliased queues instead of adding another queue system.
+The old `DeviceCaps` bridge was removed and `VulkanInstance` became `InstanceContext`.
+`DeviceSession` consolidates real aliased queues instead of adding another queue system.
 
 BOUNDARY checks cover cold factory arguments and external ticket/owner inputs. STATE-CHANGE checks
 cover all native results and fence completion. Successful construction establishes the internal INVARIANT
@@ -140,7 +141,7 @@ Compute/Indirect/RT remain outside this implementation.
 
 ## Current component boundary
 
-render_native_vulkan contains Device/Memory/Submission/Transfer/GpuWork/Retirement/Compiler/Execution. It has no Feature include or reverse link to extensions. render_native_vulkan_extensions contains the real Texture Storage/Command implementations and GPU Command completion adapter. DirectGraph tests and the installed base-only consumer construct a G4 graph and execute real GPU readback without FeatureAssembly.
+render_native_vulkan contains Device/Memory/Submission/Transfer/GpuWork/Compiler/Execution. It has no Feature include or reverse link to extensions. render_native_vulkan_extensions contains the real Texture Storage/Command implementations and GPU Command completion adapter. DirectGraph tests and the installed base-only consumer construct a G4 graph and execute real GPU readback without FeatureAssembly.
 
 Factory installation is explicit and cold. Session contains no default Texture factory. Transfer retains
 actual destination Buffers and source/destination Images in every accepted Copy/Acquire batch;

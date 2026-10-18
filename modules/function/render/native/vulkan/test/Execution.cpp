@@ -91,8 +91,6 @@ static void readbackOperations(DeviceSession& session, const std::shared_ptr<Com
     // it cancels an active Readback while the real submission keeps physical resources alive.
     context = take(session.prepare(code, target));
     {
-        std::vector<RetirementReservation> reservations;
-        for (unsigned i = 0; i < 128; ++i) reservations.push_back(take(session.retirement().reserve()));
         Result result;
         ReadbackOperation pending{*context, &result, Result::complete, nullptr, nullptr};
         pending.start();
@@ -108,8 +106,8 @@ static void readbackOperations(DeviceSession& session, const std::shared_ptr<Com
         CHECK(result.count == 1 && !result.value && result.value.error().type == kWorkStopped);
         session.dispatchCompletions();
         CHECK(result.count == 1); // Cancelled terminal cannot be completed twice.
-        CHECK(session.retirement().collect());
-        CHECK(session.retirement().pending() == 0);
+        CHECK(session.collect());
+        CHECK(session.queue().completed() >= ticket.serial());
     }
     std::puts("Native Readback: shared output, explicit callback dispatch, Context detach, capacity and pre-start stop");
 }
@@ -191,8 +189,9 @@ int main()
             CHECK(data.size() == 16 && std::ranges::all_of(data, [](auto byte) { return byte == std::byte{0}; }));
         }
     CHECK(take(a->execute()) == EExecutionOutcome::EXECUTED);
+    const auto detached_submission = *a->lastUse();
     CHECK(session->release(a));
-    CHECK(session->retirement().pending() >= 1); // Context plus any last-use private backing
+    CHECK(session->queue().completed() < detached_submission.serial()); // Accepted batch retains its physical set.
     CHECK(take(b->execute()) == EExecutionOutcome::EXECUTED);
     CHECK(take(session->queue().wait(*b->lastUse(), UINT64_MAX)));
     pixel(take(b->readback()), 32, 16, 16, {0, 255, 0, 255});

@@ -123,7 +123,6 @@ static void preparationAtomicity()
     hold.store(true);
     waited.store(false);
     RenderServerConfig options{"runtime.retirement.atomic", true};
-    options.retirement_capacity = 2;
     auto server = take(createTestServer(options));
     check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs})));
     auto client = take(TestClient::create(options.channel_name, take(server->commandId<ListCommands>())));
@@ -159,7 +158,7 @@ static void preparationAtomicity()
     check(unprepared.error.type == vulkan::kNativeFailure && !fail_image);
     check(backing == 6 && !waited); // Native preparation failure cannot publish a partial Attachment.
     const auto third_attachment = call(*client, command).attachment;
-    check(backing == 9); // Three Contexts do not consume the two legacy resource-retirement slots.
+    check(backing == 9); // Three independently prepared physical sets; no per-resource retirement capacity.
     const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (server->stats().submissions < 3 && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(1ms);

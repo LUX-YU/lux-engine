@@ -65,7 +65,7 @@ namespace lux::render
         }
         s.instance.emplace(std::move(*instance));
         options.host_query_reset |= s.config.uploads && s.config.uploads->measure_gpu;
-        auto device = vulkan::DeviceSession::create(*s.instance, options, 3, s.config.retirement_capacity);
+        auto device = vulkan::DeviceSession::create(*s.instance, options);
         if (!device)
         {
             return cxx::unexpected(device.error());

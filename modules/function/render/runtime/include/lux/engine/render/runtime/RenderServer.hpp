@@ -21,7 +21,6 @@ namespace lux::render
         bool validation = false;
         std::uint32_t request_work_budget = 8;
         std::size_t max_config_bytes = 1024 * 1024;
-        std::size_t retirement_capacity = 0; // Optional explicit record budget; zero grows on cold publication.
         // Scheduler availability does not imply a persistent staging allocation.
         std::optional<TransferOptions> uploads;
     };

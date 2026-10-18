@@ -23,7 +23,6 @@ namespace lux::render::vulkan
         // Logical subscriptions/actual Sets end while Native retirement and Queue owners still exist.
         contexts_.clear();
         globals_.clear();
-        for (auto& retirement : retirement_owners_) retirement.reset();
         // On Device Lost, batches retain resources until queue teardown instead of a completed fence.
         // Release them while the allocator/device and descriptor-table lifetime check still exist.
         for (auto& queue : queue_owners_) queue.reset();
@@ -31,16 +30,13 @@ namespace lux::render::vulkan
         staging_arena_.reset();
         if (!sampled_images_.expired()) std::terminate();
         sampled_images_.reset();
-        buffers_.clear();
-        images_.clear(); // Each VkImage releases independently; shared ImageMemory determines allocation lifetime.
-        // Retirement owners, queue owners, allocator, device: reverse member destruction order.
+        // Queue resource sets leave before allocator and device destruction.
     }
 
     RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(
         const InstanceContext& instance,
         const DeviceOptions& options,
-        std::uint32_t slots,
-        std::size_t retirement_capacity
+        std::uint32_t slots
     ) noexcept
     {
         if (slots == 0) return cxx::unexpected(RenderError{kInvalidArgument});
@@ -57,7 +53,6 @@ namespace lux::render::vulkan
                 if (result->device_.queue(role).handle == result->queues_[j]->nativeQueue().handle)
                 {
                     result->queues_[i] = result->queues_[j];
-                    result->retirements_[i] = result->retirements_[j];
                     break;
                 }
             }
@@ -66,8 +61,6 @@ namespace lux::render::vulkan
             if (!queue) return cxx::unexpected(queue.error());
             result->queue_owners_[i] = std::move(*queue);
             result->queues_[i] = result->queue_owners_[i].get();
-            result->retirement_owners_[i].emplace(*result, *result->queues_[i], retirement_capacity);
-            result->retirements_[i] = &*result->retirement_owners_[i];
         }
         return result;
     }
@@ -108,11 +101,6 @@ namespace lux::render::vulkan
         for (auto& queue : queue_owners_)
             if (queue)
                 if (auto result = queue->poll(); !result && !failure) failure = result.error();
-        for (auto& retirement : retirement_owners_)
-        {
-            if (!retirement) continue;
-            (void)retirement->collectReady();
-        }
         if (failure) return cxx::unexpected(*failure);
         return {};
     }

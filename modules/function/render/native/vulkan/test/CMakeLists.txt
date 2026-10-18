@@ -82,7 +82,7 @@ set_tests_properties(render.native.buffer_transfer PROPERTIES TIMEOUT 60)
 
 foreach(header Error DeviceSession DescriptorArray CompiledGraph ExecutionContext StorageBinding device/Device device/DeviceOptions memory/Memory
     Readback transfer/Submission transfer/Transfer transfer/GpuWork
-    texture/TextureStorage texture/TextureCommandHandler mesh/MeshStorage mesh/MeshCommandHandler material/MaterialStorage material/MaterialCommandHandler instance/InstanceStorage instance/InstanceCommandHandler retirement/Retirement
+    texture/TextureStorage texture/TextureCommandHandler mesh/MeshStorage mesh/MeshCommandHandler material/MaterialStorage material/MaterialCommandHandler instance/InstanceStorage instance/InstanceCommandHandler
 )
     string(REPLACE "/" "_" target "${header}")
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp"
@@ -116,7 +116,7 @@ set_tests_properties(render.native.last_use PROPERTIES TIMEOUT 90)
 
 add_executable(render_memory_cost MemoryCost.cpp Allocation.cpp)
 
-target_link_libraries(render_memory_cost PRIVATE render_native_vulkan)
+target_link_libraries(render_memory_cost PRIVATE render_native_instrumented)
 add_test(NAME render.native.memory_cost COMMAND render_memory_cost)
 set_tests_properties(render.native.memory_cost PROPERTIES TIMEOUT 60)
 

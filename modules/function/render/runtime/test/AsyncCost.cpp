@@ -326,7 +326,7 @@ namespace lux::render::runtime_detail::test
         // The record belongs to the benchmark, not a delivery record that may already have been erased.
     }
 
-    void* completionDrainBegin(const CompletionQueue& queue) noexcept
+    void* completionDrainBegin(const execution::RunLoop& queue) noexcept
     {
         auto* batch = state->active.load(std::memory_order_acquire);
         if (!batch || batch->finished.load(std::memory_order_acquire) ||

@@ -80,8 +80,7 @@ namespace lux::render
                 route,
                 response_outbox_,
                 command_scope_,
-                completion_events,
-                completion_publishers
+                render_loop_
             };
             const auto active = entry->selectedBinding()->call;
             active.invoke(active.object, context);
@@ -118,7 +117,7 @@ namespace lux::render
                 std::terminate();
             }
         }
-        while (!joined.load(std::memory_order_acquire) || completion_events.size() != 0)
+        while (!joined.load(std::memory_order_acquire) || !render_loop_.empty())
         {
             drainCompletions();
             response_outbox_.flushTo(responder, config.request_work_budget);
@@ -136,7 +135,7 @@ namespace lux::render
                 std::this_thread::yield();
             }
         }
-        while (completion_publishers.load(std::memory_order_acquire) != 0)
+        while (render_loop_.activePublishers() != 0)
         {
             std::this_thread::yield();
         }

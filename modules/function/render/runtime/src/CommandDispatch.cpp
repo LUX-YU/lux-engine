@@ -16,8 +16,8 @@ namespace lux::render::runtime_detail
     {
         auto* record = new CommandCompletion;
         record->response_route_ = context.response_route_;
-        record->events = &context.completion_queue_;
-        record->publishers = &context.publishers_;
+        record->loop = &context.render_loop_;
+        record->outbox = &context.response_outbox_;
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM
         record->measurement = test::completionRegistered(record, record->response_route_.request_id);
 #endif

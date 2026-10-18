@@ -171,9 +171,8 @@ static void verifyInPlaceResponse()
     input.emplace<unsigned>(42);
     ResponseOutbox outbox;
     stdexec::counting_scope scope;
-    CompletionQueue events;
-    std::atomic<std::size_t> publishers{0};
-    CommandDispatchContext context{input, {{}, {1}}, outbox, scope, events, publishers};
+    lux::execution::RunLoop events;
+    CommandDispatchContext context{input, {{}, {1}}, outbox, scope, events};
     auto binding = CommandBinding::bind<InPlaceCommand, &InPlaceHandler::apply>(handler);
     binding.call().invoke(binding.call().object, context);
     check(InPlaceValue::moves == 0 && events.size() == 0 && !outbox.empty());

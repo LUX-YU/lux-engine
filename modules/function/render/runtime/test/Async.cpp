@@ -203,21 +203,33 @@ static RequestId submit(runtime_test::Peer& client, CommandId binding, Input inp
 static void deliveryAddresses()
 {
     using namespace runtime_detail;
-    CompletionQueue queue;
-    check(queue.tryPop() == nullptr);
-    std::vector<std::unique_ptr<CommandCompletion>> records;
+    lux::execution::RunLoop queue;
+    check(queue.executeReady(1) == 0);
+    struct Record final : lux::execution::RunLoop::Work
+    {
+        unsigned index;
+        unsigned& consumed;
+        Record(unsigned value, unsigned& count) noexcept
+            : Work([](Work& work) noexcept {
+                  auto& record = static_cast<Record&>(work);
+                  check(record.index == record.consumed++);
+              }), index(value), consumed(count)
+        {}
+    };
+    unsigned consumed = 0;
+    std::vector<std::unique_ptr<Record>> records;
     for (unsigned i = 0; i < 4097; ++i)
     {
-        records.push_back(std::make_unique<CommandCompletion>());
-        queue.push(*records.back());
+        records.push_back(std::make_unique<Record>(i, consumed));
+        queue.post(*records.back());
     }
     check(queue.size() == records.size());
     for (auto& record : records)
     {
-        check(queue.tryPop() == record.get());
+        check(queue.executeReady(1) == 1);
         record.reset();
     }
-    check(queue.tryPop() == nullptr);
+    check(consumed == 4097 && queue.executeReady(1) == 0);
 }
 
 struct AsyncCommands final

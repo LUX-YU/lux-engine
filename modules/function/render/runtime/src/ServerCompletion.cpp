@@ -51,35 +51,31 @@ namespace lux::render
         addBuiltin<Readback, &Impl::readBackOutput>();
     }
 
+    void runtime_detail::CommandCompletion::deliver(execution::RunLoop::Work& work) noexcept
+    {
+        auto& slot = static_cast<CommandCompletion&>(work);
+#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
+        auto* sample = test::completionPopped(slot.measurement);
+        test::completionAdoptBegin(sample);
+#endif
+        if (const auto resume = std::exchange(slot.resume, nullptr))
+        {
+            resume(slot.continuation, std::move(slot.continuation_result));
+            return; // The continuation may publish its final event; no post-callback slot access.
+        }
+        slot.outbox->enqueue(slot.response_route_, std::move(slot.result_message_));
+        delete &slot;
+#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
+        test::completionAdoptEnd(sample);
+#endif
+    }
+
     std::size_t RenderServer::Impl::drainCompletions(std::size_t budget) noexcept
     {
-        std::size_t consumed = 0;
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM
-        auto* drain_sample = test::completionDrainBegin(completion_events);
+        auto* drain_sample = test::completionDrainBegin(render_loop_);
 #endif
-        for (std::size_t i = 0; i < budget; ++i)
-        {
-            auto* slot = completion_events.tryPop();
-            if (!slot)
-            {
-                break;
-            }
-            ++consumed;
-#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
-            auto* sample = test::completionPopped(slot->measurement);
-            test::completionAdoptBegin(sample);
-#endif
-            if (const auto resume = std::exchange(slot->resume, nullptr))
-            {
-                resume(slot->continuation, std::move(slot->continuation_result));
-                continue; // The continuation may publish its final event; no post-callback slot access.
-            }
-            response_outbox_.enqueue(slot->response_route_, std::move(slot->result_message_));
-            delete slot;
-#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
-            test::completionAdoptEnd(sample);
-#endif
-        }
+        const auto consumed = render_loop_.executeReady(budget);
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM
         test::completionDrainEnd(drain_sample, consumed);
 #endif

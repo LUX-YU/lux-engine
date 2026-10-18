@@ -60,7 +60,7 @@ if(BUILD_TESTING)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/dynamic_library" dynamic-library)
 
     foreach(target dynamic_library error core_execution error_registry_test execution_error_test
-        task_scope_test port_sender_test
+        task_scope_test port_sender_test execution_run_loop_test
     )
         set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
     endforeach()

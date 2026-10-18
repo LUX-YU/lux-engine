@@ -71,8 +71,7 @@ namespace lux::render
         std::unique_ptr<vulkan::DeviceSession> device;
         ResponseOutbox response_outbox_;
         stdexec::counting_scope command_scope_;
-        CompletionQueue completion_events;
-        std::atomic<std::size_t> completion_publishers{0};
+        execution::RunLoop render_loop_;
         std::size_t next_target = 0;
         std::atomic<bool> stop_requested{false}, started{false}, running{false};
         std::atomic<std::uint64_t> ticks{0}, commands{0}, compiled_graphs{0}, submissions{0};
@@ -121,8 +120,7 @@ namespace lux::render
 
         void resizeTarget(const ResizeTarget::Request&, ResizeTarget::Response&) noexcept;
 
-        struct CreateEffectSender;
-        CreateEffectSender createEffect(CreateEffect::Request&&) noexcept;
+        auto createEffect(CreateEffect::Request&&) noexcept;
         void installAsyncBuiltins() noexcept;
         void installReadbackCommand() noexcept;
 

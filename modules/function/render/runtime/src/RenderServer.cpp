@@ -5,7 +5,12 @@ namespace lux::render
 {
     RenderServer::Impl::Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler host_scheduler)
         : config(std::move(value)), scheduler(std::move(host_scheduler)),
-          responder(std::move(input))
+          responder(std::move(input)), render_loop_([](void*) noexcept {
+              ipc::IpcCore::instance().notifyWork();
+#ifdef LUX_RUNTIME_ASYNC_TEST_SEAM
+              runtime_detail::test::completionPublished();
+#endif
+          })
     {
         addBuiltin<CreateScene, &Impl::createScene>();
         addBuiltin<RemoveScene, &Impl::removeScene>();

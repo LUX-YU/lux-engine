@@ -102,128 +102,51 @@ namespace lux::render
         return RenderEffect{std::make_shared<const vulkan::CompiledGraph>(std::move(*compiled)), std::move(arguments)};
     }
 
-    namespace
+    auto RenderServer::Impl::createEffect(CreateEffect::Request&& input) noexcept
     {
-        // A borrowed RenderThread scheduling target using the Command's existing completion landing place.
-        // It neither owns a queue nor extends the lifetime of Impl. Scope/Host shutdown owns that guarantee.
-        struct RenderScheduler final
-        {
-            CompletionPost post;
-
-            bool operator==(const RenderScheduler& other) const noexcept
-            {
-                return post.owner == other.post.owner && post.publish == other.post.publish;
-            }
-
-            template <class Tag> RenderScheduler query(stdexec::get_completion_scheduler_t<Tag>) const noexcept
-            {
-                return *this;
-            }
-
-            struct Sender final
-            {
-                using sender_concept = stdexec::sender_t;
-                using completion_signatures = stdexec::completion_signatures<
-                    stdexec::set_value_t(), stdexec::set_stopped_t()
-                >;
-                CompletionPost post;
-
-                RenderScheduler get_env() const noexcept { return {post}; }
-
-                template <class Receiver> struct Operation final
-                {
-                    using operation_state_concept = stdexec::operation_state_t;
-                    CompletionPost post;
-                    Receiver receiver;
-
-                    void start() & noexcept
-                    {
-                        // Copy the borrowed publisher before publication; the consumer may destroy this state.
-                        const auto publish = post;
-                        publish(this, [](void* value, RenderResult<void>) noexcept {
-                            auto& self = *static_cast<Operation*>(value);
-                            if (stdexec::get_stop_token(stdexec::get_env(self.receiver)).stop_requested())
-                                stdexec::set_stopped(std::move(self.receiver));
-                            else
-                                stdexec::set_value(std::move(self.receiver));
-                            // Terminal delivery may destroy the connected state. No access to self afterwards.
-                        }, {});
-                    }
-                };
-
-                template <class Receiver> auto connect(Receiver&& receiver) const noexcept
-                {
-                    return Operation<std::decay_t<Receiver>>{post, std::forward<Receiver>(receiver)};
-                }
-            };
-
-            Sender schedule() const noexcept { return {post}; }
-        };
-        static_assert(stdexec::scheduler<RenderScheduler>);
-
-    } // namespace
-
-    struct RenderServer::Impl::CreateEffectSender final
-    {
-        using sender_concept = stdexec::sender_t;
-        using completion_signatures = stdexec::completion_signatures<
-            stdexec::set_value_t(CreateEffect::Response), stdexec::set_stopped_t()
-        >;
-        Impl* owner;
-        CreateEffect::Request request;
-        std::vector<const FeatureEntry*> features;
         RenderError initial_error;
-
-        template <class Receiver> auto connect(Receiver&& receiver) && noexcept
-        {
-            // Only this CPU closure goes to the Worker; no mutable Impl or registry is borrowed there.
-            auto compiled = stdexec::schedule(owner->scheduler)
-                | stdexec::then([
-                    device = owner->device.get(), input = std::move(request), registrations = std::move(features),
-                    limit = owner->config.max_config_bytes
-                ]() noexcept { return compileEffect(*device, input, registrations, limit); })
-                | stdexec::upon_error([](execution::EExecutionError error) noexcept -> RenderResult<RenderEffect> {
-                    return cxx::unexpected(RenderError{kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}});
-                })
-                | stdexec::continues_on(RenderScheduler{execution::getCompletionPost(stdexec::get_env(receiver))})
-                | stdexec::then(
-                    [server = owner](RenderResult<RenderEffect> candidate) noexcept -> CreateEffect::Response {
-                        if (!candidate) return cxx::unexpected(candidate.error());
-#ifdef LUX_RUNTIME_EFFECT_TEST_SEAM
-                        runtime_cpu_test::effectAdopted();
-#endif
-                        const auto effect = server->effects.emplace(std::move(*candidate));
-                        ++server->compiled_graphs;
-                        return EffectCreated{effect};
-                    }
-                );
-            auto invalid = stdexec::just(CreateEffect::Response{cxx::unexpected(initial_error)});
-            using VSource = exec::variant_sender<decltype(invalid), decltype(compiled)>;
-            auto source = initial_error.type != error::ErrorId{} ? VSource{std::move(invalid)} :
-                VSource{std::move(compiled)};
-            return stdexec::connect(std::move(source), std::forward<Receiver>(receiver));
-        }
-    };
-
-    RenderServer::Impl::CreateEffectSender RenderServer::Impl::createEffect(CreateEffect::Request&& input) noexcept
-    {
-        CreateEffectSender sender{this, std::move(input)};
-        if (sender.request.features.empty())
-        {
-            sender.initial_error = {kFeatureContract};
-        }
-        sender.features.reserve(sender.request.features.size());
-        for (const auto& selection : sender.request.features)
+        std::vector<const FeatureEntry*> registrations;
+        if (input.features.empty()) initial_error = {kFeatureContract};
+        registrations.reserve(input.features.size());
+        for (const auto& selection : input.features)
         {
             const auto* found = features.find(selection.feature);
             if (!found)
             {
-                sender.initial_error = {kRuntimeIdentity};
+                initial_error = {kRuntimeIdentity};
                 break;
             }
-            sender.features.push_back(found);
+            registrations.push_back(found);
         }
-        return sender;
+
+        // Workers receive only immutable feature entries, the request and the actual device borrow.
+        // The final continuation is the sole place that adopts a candidate into the owner table.
+        auto compiled = stdexec::schedule(scheduler)
+            | stdexec::then([
+                  native = device.get(), request = std::move(input), entries = std::move(registrations),
+                  limit = config.max_config_bytes
+              ]() noexcept { return compileEffect(*native, request, entries, limit); })
+            | stdexec::upon_error([](execution::EExecutionError error) noexcept -> RenderResult<RenderEffect> {
+                  return cxx::unexpected(RenderError{kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}});
+              })
+            | stdexec::continues_on(render_loop_.scheduler())
+            | stdexec::let_value([server = this](RenderResult<RenderEffect>& candidate) noexcept {
+                  return stdexec::read_env(stdexec::get_stop_token)
+                      | stdexec::then([server, &candidate](auto stop) noexcept -> CreateEffect::Response {
+                            if (!candidate) return cxx::unexpected(candidate.error());
+                            if (stop.stop_requested())
+                                return cxx::unexpected(RenderError{kCommandCancelled});
+#ifdef LUX_RUNTIME_EFFECT_TEST_SEAM
+                            runtime_cpu_test::effectAdopted();
+#endif
+                            const auto effect = server->effects.emplace(std::move(*candidate));
+                            ++server->compiled_graphs;
+                            return EffectCreated{effect};
+                        });
+              });
+        auto invalid = stdexec::just(CreateEffect::Response{cxx::unexpected(initial_error)});
+        using VSource = exec::variant_sender<decltype(invalid), decltype(compiled)>;
+        return initial_error.type != error::ErrorId{} ? VSource{std::move(invalid)} : VSource{std::move(compiled)};
     }
 
     void RenderServer::Impl::installAsyncBuiltins() noexcept

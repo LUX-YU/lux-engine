@@ -7,7 +7,7 @@ client pending registry or Command wire codec. Pure command consumers need neith
 Vulkan nor stdexec. Server-only installation uses the selected Native provider.
 
 `RenderServer::Impl` owns one `CommandRegistry`, `ResponseOutbox`, counting scope,
-completion queue, Responder and DeviceSession. Scene owns View.
+Core execution::RunLoop, Responder and DeviceSession. Scene owns View.
 Effect owns its immutable CompiledGraph and four-field execution groups:
 SceneId, ViewId, TargetId and ExecutionContext pointer.
 
@@ -69,13 +69,13 @@ never a guaranteed cancellation.
 
 ## Native work and shutdown
 
-CreateEffectSender connects a standard schedule/then/continues_on/then transaction;
+CreateEffect directly returns a standard schedule/then/continues_on/let_value transaction;
 spawn owns its connected state. Its worker only calls compileEffect with the moved
-request, stable Feature borrows and Device. A private RenderScheduler borrows the
-existing CompletionPost landing place and returns the candidate to RenderThread,
-which alone allocates EffectId and produces success. There is no separate compile
-Operation owner or CpuReceiver. Graph analysis/compiler and Native retirement are
-unchanged. GPU upload senders retain source Payload through actual Transfer completion;
+request, stable Feature borrows and Device. The same Core RunLoop that delivers completed
+Replies schedules candidate adoption on RenderThread, which alone allocates EffectId.
+The owner handoff cannot swallow a determined error on cancellation; successful candidates
+check stop before adoption. No private RenderScheduler or CreateEffectSender remains.
+Graph analysis/compiler and Native retirement are unchanged. GPU upload senders retain source Payload through actual Transfer completion;
 Copy/Acquire/publication determines success. Readback waits for its own GPU work.
 
 Stop closes dispatch, requests operation stops, drains accepted CPU/GPU work and

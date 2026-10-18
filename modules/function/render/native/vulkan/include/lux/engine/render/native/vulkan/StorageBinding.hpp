@@ -13,7 +13,7 @@ namespace lux::render::vulkan
     // field is written directly after submit. No Storage lookup or dynamic dispatch occurs per draw.
     struct PreparedStorageBinding final
     {
-        BufferAllocation* buffer = nullptr;
+        Buffer* buffer = nullptr;
         VkDescriptorSet descriptors = VK_NULL_HANDLE;
         std::span<const std::byte> parameters;
         const ShaderBlock* parameter_layout = nullptr; // Stable professional value layout, not physical placement.

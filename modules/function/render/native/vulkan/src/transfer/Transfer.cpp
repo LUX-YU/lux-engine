@@ -130,7 +130,7 @@ namespace lux::render::vulkan
 
     RenderResult<std::unique_ptr<Transfer>> DeviceSession::uploadImage(
         const ImageDescription& description, std::span<const std::byte> source,
-        std::span<const ImageTransferRegion> regions, const ImageAllocation* clone, bool graphics_queue,
+        std::span<const ImageTransferRegion> regions, const Image* clone, bool graphics_queue,
         SubmissionRequirements* clone_last_use
     ) noexcept
     {
@@ -233,9 +233,9 @@ namespace lux::render::vulkan
 
     VkDevice Transfer::device() const noexcept { return session_->device().native(); }
 
-    const ImageAllocation& Transfer::image() const noexcept { return *session_->borrow(image_); }
+    const Image& Transfer::image() const noexcept { return *session_->borrow(image_); }
 
-    const BufferAllocation& Transfer::buffer() const noexcept { return *session_->borrow(buffer_); }
+    const Buffer& Transfer::buffer() const noexcept { return *session_->borrow(buffer_); }
 
     RenderResult<ImagePermit> Transfer::takeImage() noexcept
     {

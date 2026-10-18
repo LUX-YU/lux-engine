@@ -117,7 +117,7 @@ namespace lux::render::vulkan
         friend class RetirementReservation;
         friend struct NativeMemoryAudit;
         using CompositeBacking = std::unique_ptr<void, void (*)(void*)>;
-        using VBacking = std::variant<BufferAllocation*, ImageAllocation*, CompositeBacking>;
+        using VBacking = std::variant<Buffer*, Image*, CompositeBacking>;
 
         struct Entry final
         {

@@ -10,7 +10,7 @@ namespace lux::render::vulkan
         struct Page final
         {
             BufferPermit permit;
-            BufferAllocation* buffer = nullptr;
+            Buffer* buffer = nullptr;
             std::byte* mapped = nullptr;
             bool leased = false;
         };

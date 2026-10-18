@@ -195,7 +195,7 @@ namespace lux::render::vulkan
         record->retired_ = true;
         backing.owner_ = nullptr;
         backing.key_ = {};
-        commit(reservation, requirements, VBacking{std::in_place_type<BufferAllocation*>, record});
+        commit(reservation, requirements, VBacking{std::in_place_type<Buffer*>, record});
         return {};
     }
 
@@ -208,7 +208,7 @@ namespace lux::render::vulkan
         record->retired_ = true;
         backing.owner_ = nullptr;
         backing.key_ = {};
-        commit(reservation, requirements, VBacking{std::in_place_type<ImageAllocation*>, record});
+        commit(reservation, requirements, VBacking{std::in_place_type<Image*>, record});
         return {};
     }
 

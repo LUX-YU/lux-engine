@@ -18,26 +18,19 @@ namespace lux::render::vulkan
             render_allocation::calls = 0;
             render_allocation::window = true;
             // Host metadata only: no fake allocation is published to a DeviceSession or GPU.
-            cxx::StableSlotMap<BufferAllocation, BufferAllocationTag> buffers;
-            cxx::StableSlotMap<ImageAllocation, ImageAllocationTag> images;
+            cxx::StableSlotMap<Buffer, BufferAllocationTag> buffers;
+            cxx::StableSlotMap<Image, ImageAllocationTag> images;
             buffers.reserve(count / 2);
             images.reserve(count / 2);
             std::vector<ExecutionContext::Binding> bindings(count);
-            for (std::size_t i = 0; i < count / 2; ++i)
-            {
-                const auto b = buffers.emplace(VK_NULL_HANDLE, nullptr, nullptr, 16,
-                    VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE);
-                bindings[i].buffer = buffers.find(b);
-                const auto image = images.emplace(VK_NULL_HANDLE, nullptr,
-                    ImageDescription{{16, 16}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_TRANSFER_DST_BIT});
-                bindings[i + count / 2].image = images.find(image);
-            }
+            // Reserve physical metadata pages without fabricating Native objects with null owners.
+            // Real VkBuffer instances are separately measured by zeroRetirement().
             render_allocation::window = false;
             const auto bytes = buffers.storageBytes() + images.storageBytes() + sizeof(bindings) +
                 bindings.capacity() * sizeof(ExecutionContext::Binding);
-            std::printf("VkBuffer=%zu VkImage=%zu BufferAllocation=%zu ImageAllocation=%zu Binding=%zu "
-                "Context=%zu RetirementEntry=%zu host_records=%zu ledger_and_bindings_bytes=%zu new_calls=%llu\n",
-                sizeof(VkBuffer), sizeof(VkImage), sizeof(BufferAllocation), sizeof(ImageAllocation),
+            std::printf("VkBuffer=%zu VkImage=%zu Buffer=%zu Image=%zu Binding=%zu "
+                "Context=%zu RetirementEntry=%zu reserved_host_records=%zu ledger_and_bindings_bytes=%zu new_calls=%llu\n",
+                sizeof(VkBuffer), sizeof(VkImage), sizeof(Buffer), sizeof(Image),
                 sizeof(ExecutionContext::Binding), sizeof(ExecutionContext), sizeof(RetirementQueue::Entry),
                 count, bytes, render_allocation::calls.load());
             std::printf("PreparedBinding=%zu StorageUse=%zu Registry=%zu StorageSet=%zu Factory=%zu\n",
@@ -112,6 +105,8 @@ namespace lux::render::vulkan
                     CHECK(owner->prepare(type, "live"));
                 }
                 CHECK(session->buffers_.size() == count && session->resources().size() == count);
+                std::printf("real_buffer_records=%u ledger_storage_bytes=%zu sizeof_Buffer=%zu\n",
+                    count, session->buffers_.storageBytes(), sizeof(Buffer));
                 CHECK(session->retirement().reservations() == count && session->retirement().pending() == 0);
                 for (unsigned warm = 0; warm < 20; ++warm) CHECK(session->collect());
                 for (unsigned sample = 0; sample < 1000; ++sample)

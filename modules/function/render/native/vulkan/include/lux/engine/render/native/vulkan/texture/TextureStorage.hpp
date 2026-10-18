@@ -32,7 +32,7 @@ namespace lux::render::vulkan
             Backing& operator=(const Backing&) = delete;
             [[nodiscard]] const rdesc::TextureInfo& info() const noexcept { return info_; }
             [[nodiscard]] std::uint32_t descriptorIndex() const noexcept { return descriptor_.index; }
-            [[nodiscard]] const ImageAllocation& image() const noexcept { return *image_; }
+            [[nodiscard]] const Image& image() const noexcept { return *image_; }
             [[nodiscard]] std::uint64_t revision() const noexcept { return revision_; }
         private:
             friend class TextureStorage;
@@ -43,7 +43,7 @@ namespace lux::render::vulkan
             DescriptorArray::Slot descriptor_;
             rdesc::TextureInfo info_{};
             ImagePermit permit_;
-            const ImageAllocation* image_ = nullptr;
+            const Image* image_ = nullptr;
             VkImageView view_ = VK_NULL_HANDLE;
             VkSampler sampler_ = VK_NULL_HANDLE;
             SubmissionRequirements last_use_;

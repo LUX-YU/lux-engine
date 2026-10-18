@@ -26,15 +26,8 @@ namespace lux::render::vulkan
         for (auto& retirement : retirement_owners_) retirement.reset();
         if (!sampled_images_.expired()) std::terminate();
         sampled_images_.reset();
-        while (!buffers_.empty()) destroyFinished(&*buffers_.begin());
-        // Destroy aliases before allocations, including aliases not explicitly released by the caller.
-        for (;;)
-        {
-            auto alias = std::find_if(images_.begin(), images_.end(), [](const auto& value) { return value.source_; });
-            if (alias == images_.end()) break;
-            destroyFinished(&*alias);
-        }
-        while (!images_.empty()) destroyFinished(&*images_.begin());
+        buffers_.clear();
+        images_.clear(); // Each VkImage releases independently; shared ImageMemory determines allocation lifetime.
         // Retirement owners, queue owners, allocator, device: reverse member destruction order.
     }
 

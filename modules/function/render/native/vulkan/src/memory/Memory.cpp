@@ -8,7 +8,23 @@
 
 namespace lux::render::vulkan
 {
-    RenderResult<BufferAllocation*> DeviceSession::createBufferRecord(
+    Buffer::~Buffer() noexcept
+    {
+        LUX_DESTROY("buffer", vmaDestroyBuffer(allocator_->native(), buffer_, allocation_));
+    }
+
+    ImageMemory::~ImageMemory() noexcept
+    {
+        LUX_DESTROY("image_memory", vmaFreeMemory(allocator_->native(), allocation_));
+    }
+
+    Image::~Image() noexcept
+    {
+        LUX_DESTROY("image", vkDestroyImage(memory_->allocator_->device(), image_, nullptr));
+        // memory_ releases after VkImage; the last alias releases the allocation.
+    }
+
+    RenderResult<Buffer*> DeviceSession::createBufferRecord(
         VkDeviceSize size,
         VkBufferUsageFlags usage,
         EMemoryAccess access,
@@ -59,13 +75,13 @@ namespace lux::render::vulkan
                 return cxx::unexpected(nativeError(mapping));
             }
         }
-        const auto key = buffers_.emplace(buffer, allocation, mapped.pMappedData, size, usage, access);
+        const auto key = buffers_.emplace(allocator_, buffer, allocation, mapped.pMappedData, size, usage, access);
         auto* record = buffers_.find(key);
         record->key_ = key;
         return record;
     }
 
-    RenderResult<void> DeviceSession::write(BufferAllocation& buffer, VkDeviceSize offset,
+    RenderResult<void> DeviceSession::write(Buffer& buffer, VkDeviceSize offset,
         std::span<const std::byte> bytes) noexcept
     {
         if (!owns(&buffer)) return cxx::unexpected(RenderError{kWrongOwner});
@@ -90,7 +106,7 @@ namespace lux::render::vulkan
         return {};
     }
 
-    RenderResult<void> DeviceSession::read(const BufferAllocation& buffer, VkDeviceSize offset,
+    RenderResult<void> DeviceSession::read(const Buffer& buffer, VkDeviceSize offset,
         std::span<std::byte> bytes) const noexcept
     {
         if (!owns(&buffer)) return cxx::unexpected(RenderError{kWrongOwner});
@@ -126,7 +142,7 @@ namespace lux::render::vulkan
         return createImage(ImageDescription{extent, format, usage, samples});
     }
 
-    RenderResult<ImageAllocation*> DeviceSession::createImageRecord(const ImageDescription& description) noexcept
+    RenderResult<Image*> DeviceSession::createImageRecord(const ImageDescription& description) noexcept
     {
         const auto extent = description.extent;
         const auto format = description.format;
@@ -195,7 +211,9 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(nativeError(result));
         }
-        const auto key = images_.emplace(image, allocation, description);
+        LUX_RECORD("image_memory", (void)0);
+        auto backing = std::make_shared<ImageMemory>(allocator_, allocation);
+        const auto key = images_.emplace(image, std::move(backing), description);
         auto* record = images_.find(key);
         record->key_ = key;
         return record;
@@ -206,7 +224,7 @@ namespace lux::render::vulkan
         auto* record = borrow(permit);
         if (!record) return cxx::unexpected(RenderError{kWrongOwner});
         auto& source = *record;
-        const bool is_invalid_source = !source.description_.aliasable || source.source_ || source.released_;
+        const bool is_invalid_source = !source.description_.aliasable;
         if (is_invalid_source)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
@@ -246,15 +264,15 @@ namespace lux::render::vulkan
             LUX_DESTROY("image_alias", vkDestroyImage(device_.native(), image, nullptr));
             return cxx::unexpected(RenderError{kUnsupported});
         }
-        created = LUX_NATIVE("image_alias_bind", vmaBindImageMemory(allocator_.native(), source.allocation_, image));
+        created = LUX_NATIVE("image_alias_bind", vmaBindImageMemory(allocator_.native(), source.memory_->allocation_, image));
         if (created != VK_SUCCESS)
         {
             LUX_DESTROY("image_alias", vkDestroyImage(device_.native(), image, nullptr));
             return cxx::unexpected(nativeError(created));
         }
-        const auto key = images_.emplace(image, source.allocation_, description, &source);
+        LUX_RECORD("image", (void)0);
+        const auto key = images_.emplace(image, source.memory_, description);
         images_.find(key)->key_ = key;
-        ++source.aliases_;
         return ImagePermit{*this, key};
     }
     RenderResult<BufferPermit> DeviceSession::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access) noexcept
@@ -264,7 +282,7 @@ namespace lux::render::vulkan
         return BufferPermit{*this, (*record)->key_};
     }
 
-    BufferAllocation* DeviceSession::borrow(const BufferPermit& permit) const noexcept
+    Buffer* DeviceSession::borrow(const BufferPermit& permit) const noexcept
     {
         if (permit.owner_ != this) return nullptr;
         auto* value = const_cast<DeviceSession*>(this)->buffers_.find(permit.key_);
@@ -288,11 +306,11 @@ namespace lux::render::vulkan
         return ImagePermit{*this, (*record)->key_};
     }
 
-    ImageAllocation* DeviceSession::borrow(const ImagePermit& permit) const noexcept
+    Image* DeviceSession::borrow(const ImagePermit& permit) const noexcept
     {
         if (permit.owner_ != this) return nullptr;
         auto* value = const_cast<DeviceSession*>(this)->images_.find(permit.key_);
-        return value && !value->retired_ && !value->released_ ? value : nullptr;
+        return value && !value->retired_ ? value : nullptr;
     }
 
     RenderResult<void> DeviceSession::destroyUnsubmitted(ImagePermit& permit) noexcept
@@ -359,47 +377,38 @@ namespace lux::render::vulkan
         return {};
     }
 
-    bool DeviceSession::owns(const BufferAllocation* value) const noexcept
+    bool DeviceSession::owns(const Buffer* value) const noexcept
     {
         return value && buffers_.find(value->key_) == value;
     }
 
-    bool DeviceSession::owns(const ImageAllocation* value) const noexcept
+    bool DeviceSession::owns(const Image* value) const noexcept
     {
         return value && images_.find(value->key_) == value;
     }
 
-    BufferMemoryBinding DeviceSession::memoryBinding(const BufferAllocation& buffer) const noexcept
+    BufferMemoryBinding DeviceSession::memoryBinding(const Buffer& buffer) const noexcept
     {
         VmaAllocationInfo info{};
         vmaGetAllocationInfo(allocator_.native(), buffer.allocation_, &info);
         return {info.deviceMemory, info.offset, info.size};
     }
 
-    ImageMemoryBinding DeviceSession::memoryBinding(const ImageAllocation& image) const noexcept
+    ImageMemoryBinding DeviceSession::memoryBinding(const Image& image) const noexcept
     {
         VmaAllocationInfo info{};
-        vmaGetAllocationInfo(allocator_.native(), image.allocation_, &info);
-        return {info.deviceMemory, info.offset, info.size, info.memoryType, image.source_ == nullptr};
+        vmaGetAllocationInfo(allocator_.native(), image.memory_->allocation_, &info);
+        return {info.deviceMemory, info.offset, info.size, info.memoryType};
     }
 
-    void DeviceSession::destroyFinished(BufferAllocation* buffer) noexcept
+    void DeviceSession::destroyFinished(Buffer* buffer) noexcept
     {
-        const auto key = buffer->key_;
-        LUX_DESTROY("buffer", vmaDestroyBuffer(allocator_.native(), buffer->buffer_, buffer->allocation_));
-        buffers_.erase(key);
+        buffers_.erase(buffer->key_);
     }
 
-    void DeviceSession::destroyFinished(ImageAllocation* image) noexcept
+    void DeviceSession::destroyFinished(Image* image) noexcept
     {
-        // Aliases pin the VMA allocation even if its original image is released first.
-        if (image->aliases_) { image->released_ = true; return; }
-        auto* source = image->source_;
-        const auto key = image->key_;
-        LUX_DESTROY(source ? "image_alias" : "image",
-            vmaDestroyImage(allocator_.native(), image->image_, source ? nullptr : image->allocation_));
-        images_.erase(key);
-        if (source && --source->aliases_ == 0 && source->released_) destroyFinished(source);
+        images_.erase(image->key_);
     }
 
 } // namespace lux::render::vulkan

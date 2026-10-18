@@ -44,8 +44,8 @@ namespace lux::render::vulkan
         {
             return session_ == &session && !started_ && !failure_;
         }
-        [[nodiscard]] const ImageAllocation& image() const noexcept;
-        [[nodiscard]] const BufferAllocation& buffer() const noexcept;
+        [[nodiscard]] const Image& image() const noexcept;
+        [[nodiscard]] const Buffer& buffer() const noexcept;
         [[nodiscard]] RenderResult<ImagePermit> takeImage() noexcept;
         [[nodiscard]] RenderResult<BufferPermit> takeBuffer() noexcept;
         [[nodiscard]] std::uint64_t prepareNs() const noexcept { return prepare_ns_; }
@@ -67,7 +67,7 @@ namespace lux::render::vulkan
         std::byte* mapped_;
         ImagePermit image_;
         BufferPermit buffer_;
-        const ImageAllocation* clone_ = nullptr;
+        const Image* clone_ = nullptr;
         SubmissionRequirements* clone_last_use_ = nullptr;
         std::vector<ImageTransferRegion> regions_;
         std::size_t page_, region_ = 0, offset_ = 0;

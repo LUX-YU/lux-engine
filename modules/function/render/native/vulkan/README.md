@@ -4,7 +4,14 @@
 owns one device, VMA allocator, unique queue owners and ticket-driven retirement. Aliased queue roles
 resolve to the same owner. No Graph, Scene or IPC object is introduced by this foundation.
 
-Resource factories return stable lightweight Buffer/Image records; DeviceSession is their unique physical owner.
+`Buffer` and `Image` own their actual Vulkan objects and release them in their destructors. Each borrows
+the session's allocator, which must outlive it. Alias images share `ImageMemory`; destroying the original
+image destroys its VkImage immediately without releasing memory still used by an alias. The last image
+releases the VMA allocation after destroying its VkImage. Alias synchronization remains the caller's
+responsibility.
+
+DeviceSession currently retains these objects in stable tables and controls their GPU-safe destruction
+through the existing permit/retirement interface. This is not yet submission-batch resource ownership.
 Code/context owners will be composed under the session lifetime; an outstanding ticket is queue-scoped
 evidence of actual accepted work, never a frame index. Failure of a subsequent submit cannot erase
 `lastSubmitted()`. Retirement transfers ownership only on success and destroys it only after completion.

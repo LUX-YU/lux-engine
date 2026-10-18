@@ -14,7 +14,7 @@ using namespace foundation_test;
 namespace
 {
     constexpr std::array names{"instance", "messenger", "device", "allocator", "buffer", "image",
-        "command_pool", "fence", "timeline", "shader", "pipeline_layout", "pipeline", "image_view", "image_alias"};
+        "command_pool", "fence", "timeline", "shader", "pipeline_layout", "pipeline", "image_view", "image_memory"};
     std::array<int, names.size()> live{};
     std::array<unsigned, names.size()> created{};
     std::string_view fail_operation;
@@ -71,6 +71,7 @@ namespace lux::render::vulkan
             return AllocationPermit<Tag>{*value.owner_, value.key_};
         }
         template <class Tag> static auto key(const AllocationPermit<Tag>& value) { return value.key_; }
+        static std::size_t images(const DeviceSession& session) noexcept { return session.images_.size(); }
     };
 }
 
@@ -115,7 +116,13 @@ static void exclusiveRetirement(const InstanceContext& bootstrap)
     auto original = take(a->createImage(description));
     auto alias = take(a->aliasImage(original));
     auto stale_image = NativeMemoryAudit::duplicate(alias);
-    CHECK(!a->aliasImage(alias));
+    auto nested_alias = take(a->aliasImage(alias));
+    CHECK(a->destroyUnsubmitted(nested_alias));
+    auto plain = description;
+    plain.aliasable = false;
+    auto not_aliasable = take(a->createImage(plain));
+    CHECK(!a->aliasImage(not_aliasable));
+    CHECK(a->destroyUnsubmitted(not_aliasable));
     CHECK(!b->aliasImage(original));
     CHECK(a->retirement().retire(ticket, alias));
     CHECK(!a->retirement().retire(ticket, stale_image));
@@ -127,7 +134,7 @@ static void exclusiveRetirement(const InstanceContext& bootstrap)
     auto new_image = take(a->createImage(description));
     CHECK(!a->destroyUnsubmitted(stale_image));
     CHECK(a->destroyUnsubmitted(new_image));
-    std::printf("exclusive retirement: duplicate/stale/cross-session/full retry/image alias rejection PASS\n");
+    std::printf("exclusive retirement: duplicate/stale/cross-session/full retry/alias memory sharing PASS\n");
 }
 
 static void preparedRetirement(const InstanceContext& bootstrap)
@@ -195,8 +202,11 @@ static void allocationRecords(DeviceSession& session)
     fails("flush", [&] { return session.write(*upload, 0, bytes); });
 #endif
     CHECK(session.destroyUnsubmitted(upload_permit));
-    ImageDescription description{{16, 16}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_TRANSFER_DST_BIT};
+    ImageDescription description{
+        {16, 16}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+    };
     description.aliasable = true;
+    const auto original_count = NativeMemoryAudit::images(session);
     auto original_permit = take(session.createImage(description));
     auto* original = session.borrow(original_permit);
 #ifdef LUX_VULKAN_TEST_SEAM
@@ -206,9 +216,20 @@ static void allocationRecords(DeviceSession& session)
     auto alias_permit = take(session.aliasImage(original_permit));
     auto* alias = session.borrow(alias_permit);
     const auto a = session.memoryBinding(*original), b = session.memoryBinding(*alias);
-    CHECK(a.memory == b.memory && a.offset == b.offset && a.owns_allocation && !b.owns_allocation);
+    CHECK(a.memory == b.memory && a.offset == b.offset && a.size == b.size);
     CHECK(original->native() != alias->native());
-    CHECK(session.destroyUnsubmitted(original_permit)); // an alias keeps the actual allocation alive
+#ifdef LUX_VULKAN_TEST_SEAM
+    const auto before_original_drop = live;
+#endif
+    CHECK(session.destroyUnsubmitted(original_permit));
+    CHECK(NativeMemoryAudit::images(session) == original_count + 1); // Source VkImage is really gone.
+#ifdef LUX_VULKAN_TEST_SEAM
+    CHECK(live[5] == before_original_drop[5] - 1);
+    CHECK(live[13] == before_original_drop[13]); // Allocation survives the original VkImage.
+#endif
+    const auto surviving_memory = session.memoryBinding(*alias);
+    CHECK(surviving_memory.memory == b.memory && surviving_memory.offset == b.offset);
+    auto pixels = take(session.createBuffer(16 * 16 * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
     auto batch = take(session.queue().begin());
     VkImageMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
     barrier.dstStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT;
@@ -225,12 +246,47 @@ static void allocationRecords(DeviceSession& session)
     const VkClearColorValue color{{1, 0, 0, 1}};
     vkCmdClearColorImage(batch.native(), alias->native(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         &color, 1, &barrier.subresourceRange);
+    barrier.srcStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT;
+    barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    barrier.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+    barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    vkCmdPipelineBarrier2(batch.native(), &dependency);
+    VkBufferImageCopy copy{};
+    copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copy.imageExtent = {16, 16, 1};
+    vkCmdCopyImageToBuffer(
+        batch.native(), alias->native(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        session.borrow(pixels)->native(), 1, &copy
+    );
+    VkMemoryBarrier2 host{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+    host.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+    host.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    host.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+    host.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+    VkDependencyInfo visible{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    visible.memoryBarrierCount = 1;
+    visible.pMemoryBarriers = &host;
+    vkCmdPipelineBarrier2(batch.native(), &visible);
     const auto ticket = take(std::move(batch).submit());
     CHECK(session.retirement().retire(ticket, alias_permit));
     CHECK(!alias_permit);
     CHECK(!session.retirement().retire(ticket, alias_permit));
     CHECK(!session.destroyUnsubmitted(alias_permit));
-    CHECK(session.drain()); // retires alias and then its pinned allocation exactly once
+    CHECK(session.drain()); // Alias VkImage dies before the last shared ImageMemory reference.
+    std::array<std::byte, 16 * 16 * 4> readback{};
+    CHECK(session.read(*session.borrow(pixels), 0, readback));
+    for (std::size_t i = 0; i < readback.size(); ++i)
+    {
+        CHECK(readback[i] == std::byte(i % 4 == 0 || i % 4 == 3 ? 255 : 0));
+    }
+    CHECK(session.releaseCompleted(pixels, ticket));
+    CHECK(NativeMemoryAudit::images(session) == original_count);
+#ifdef LUX_VULKAN_TEST_SEAM
+    CHECK(live[5] == before_original_drop[5] - 2);
+    CHECK(live[13] == before_original_drop[13] - 1); // Exactly one shared allocation released.
+#endif
 }
 
 static void actualFenceTimeout(DeviceSession& session)

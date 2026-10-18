@@ -61,10 +61,10 @@ namespace lux::render::vulkan
         ReadbackOperation* readbacks_ = nullptr;
         struct Binding final
         {
-            BufferAllocation* owned_buffer = nullptr;
-            ImageAllocation* image = nullptr;
+            Buffer* owned_buffer = nullptr;
+            Image* image = nullptr;
             VkImageView view{};
-            BufferAllocation* buffer = nullptr;
+            Buffer* buffer = nullptr;
         };
         struct Pass final
         {

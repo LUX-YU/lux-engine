@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <exception>
+#include <memory>
 #include <utility>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/render/native/vulkan/device/Device.hpp>
@@ -63,7 +64,7 @@ namespace lux::render::vulkan
     using BufferPermit = AllocationPermit<BufferAllocationTag>;
     using ImagePermit = AllocationPermit<ImageAllocationTag>;
 
-    class BufferAllocation
+    class Buffer
     {
     public:
         [[nodiscard]] VkBuffer native() const noexcept
@@ -86,19 +87,32 @@ namespace lux::render::vulkan
             return usage_;
         }
 
-        // Stable metadata, borrowed from DeviceSession. VkBuffer is the lightweight carrier.
-        BufferAllocation(VkBuffer buffer, VmaAllocation_T* allocation, void* mapped,
-            VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access) noexcept
-            : buffer_(buffer), allocation_(allocation), mapped_(mapped), size_(size), usage_(usage), access_(access) {}
+        // Owns VkBuffer and its allocation. The allocator outlives this object; GPU users retain it.
+        Buffer(
+            VulkanAllocator& allocator,
+            VkBuffer buffer,
+            VmaAllocation_T* allocation,
+            void* mapped,
+            VkDeviceSize size,
+            VkBufferUsageFlags usage,
+            EMemoryAccess access
+        ) noexcept
+            : allocator_(&allocator), buffer_(buffer), allocation_(allocation), mapped_(mapped),
+              size_(size), usage_(usage), access_(access)
+        {
+        }
 
-        BufferAllocation(const BufferAllocation&) = delete;
-        BufferAllocation& operator=(const BufferAllocation&) = delete;
+        ~Buffer() noexcept;
+
+        Buffer(const Buffer&) = delete;
+        Buffer& operator=(const Buffer&) = delete;
 
     private:
         friend class DeviceSession;
         friend class RetirementQueue;
         cxx::SlotKey<BufferAllocationTag> key_;
         friend class Transfer;
+        VulkanAllocator* allocator_;
         VkBuffer buffer_;
         VmaAllocation_T* allocation_;
         void* mapped_;
@@ -124,12 +138,31 @@ namespace lux::render::vulkan
         VkDeviceMemory memory;
         VkDeviceSize offset, size;
         std::uint32_t memory_type;
-        bool owns_allocation;
+    };
+
+    // Actual VMA allocation shared by alias Images. No Image points at another Image.
+    class ImageMemory final
+    {
+    public:
+        ImageMemory(VulkanAllocator& allocator, VmaAllocation_T* allocation) noexcept
+            : allocator_(&allocator), allocation_(allocation)
+        {
+        }
+
+        ~ImageMemory() noexcept;
+        ImageMemory(const ImageMemory&) = delete;
+        ImageMemory& operator=(const ImageMemory&) = delete;
+
+    private:
+        friend class DeviceSession;
+        friend class Image;
+        VulkanAllocator* allocator_;
+        VmaAllocation_T* allocation_;
     };
 
     // Optimal tiled 2D backing. Views borrow it; array layers and mip levels
     // belong to this allocation, not to independent per-mip resource owners.
-    class ImageAllocation
+    class Image
     {
     public:
         [[nodiscard]] VkImage native() const noexcept
@@ -162,23 +195,23 @@ namespace lux::render::vulkan
             return description_;
         }
 
-        ImageAllocation(VkImage image, VmaAllocation_T* allocation, ImageDescription description,
-            ImageAllocation* source = nullptr) noexcept
-            : image_(image), allocation_(allocation), description_(description), source_(source) {}
+        Image(VkImage image, std::shared_ptr<ImageMemory> memory, ImageDescription description) noexcept
+            : image_(image), memory_(std::move(memory)), description_(description)
+        {
+        }
 
-        ImageAllocation(const ImageAllocation&) = delete;
-        ImageAllocation& operator=(const ImageAllocation&) = delete;
+        ~Image() noexcept;
+
+        Image(const Image&) = delete;
+        Image& operator=(const Image&) = delete;
 
     private:
         friend class DeviceSession;
         friend class RetirementQueue;
         cxx::SlotKey<ImageAllocationTag> key_;
         VkImage image_;
-        VmaAllocation_T* allocation_;
+        std::shared_ptr<ImageMemory> memory_;
         ImageDescription description_;
-        ImageAllocation* source_;
-        std::uint32_t aliases_ = 0;
-        bool released_ = false;
         bool retired_ = false;
     };
 }

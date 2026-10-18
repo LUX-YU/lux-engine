@@ -59,7 +59,7 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&, execution::CpuScheduler) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadImage(
             const ImageDescription&, std::span<const std::byte>, std::span<const ImageTransferRegion>,
-            const ImageAllocation* clone = nullptr, bool graphics_queue = false,
+            const Image* clone = nullptr, bool graphics_queue = false,
             SubmissionRequirements* clone_last_use = nullptr) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadBuffer(
             std::span<const std::byte>, VkBufferUsageFlags usage) noexcept;
@@ -74,15 +74,15 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<ImagePermit> createImage(VkExtent2D extent, VkFormat format,
             VkImageUsageFlags usage, VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT) noexcept;
         [[nodiscard]] RenderResult<ImagePermit> aliasImage(const ImagePermit& source) noexcept;
-        [[nodiscard]] RenderResult<void> write(BufferAllocation& buffer, VkDeviceSize offset,
+        [[nodiscard]] RenderResult<void> write(Buffer& buffer, VkDeviceSize offset,
             std::span<const std::byte> bytes) noexcept;
-        [[nodiscard]] RenderResult<void> read(const BufferAllocation& buffer, VkDeviceSize offset,
+        [[nodiscard]] RenderResult<void> read(const Buffer& buffer, VkDeviceSize offset,
             std::span<std::byte> bytes) const noexcept;
-        [[nodiscard]] BufferMemoryBinding memoryBinding(const BufferAllocation& buffer) const noexcept;
-        [[nodiscard]] ImageMemoryBinding memoryBinding(const ImageAllocation& image) const noexcept;
+        [[nodiscard]] BufferMemoryBinding memoryBinding(const Buffer& buffer) const noexcept;
+        [[nodiscard]] ImageMemoryBinding memoryBinding(const Image& image) const noexcept;
         // Synchronous cold borrow. No stale pointer is read during identity validation.
-        [[nodiscard]] BufferAllocation* borrow(const BufferPermit& permit) const noexcept;
-        [[nodiscard]] ImageAllocation* borrow(const ImagePermit& permit) const noexcept;
+        [[nodiscard]] Buffer* borrow(const BufferPermit& permit) const noexcept;
+        [[nodiscard]] Image* borrow(const ImagePermit& permit) const noexcept;
         // Caller proves no accepted GPU work uses this candidate. Failure preserves the permit.
         [[nodiscard]] RenderResult<void> destroyUnsubmitted(BufferPermit& permit) noexcept;
         [[nodiscard]] RenderResult<void> destroyUnsubmitted(ImagePermit& permit) noexcept;
@@ -97,22 +97,22 @@ namespace lux::render::vulkan
         friend class RetirementQueue;
         friend class Transfer;
         struct UploadState;
-        [[nodiscard]] RenderResult<BufferAllocation*> createBufferRecord(
+        [[nodiscard]] RenderResult<Buffer*> createBufferRecord(
             VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access,
             std::span<const std::uint32_t> families = {}) noexcept;
-        [[nodiscard]] RenderResult<ImageAllocation*> createImageRecord(const ImageDescription& description) noexcept;
-        [[nodiscard]] bool owns(const BufferAllocation* value) const noexcept;
-        [[nodiscard]] bool owns(const ImageAllocation* value) const noexcept;
+        [[nodiscard]] RenderResult<Image*> createImageRecord(const ImageDescription& description) noexcept;
+        [[nodiscard]] bool owns(const Buffer* value) const noexcept;
+        [[nodiscard]] bool owns(const Image* value) const noexcept;
         [[nodiscard]] bool owns(const SubmissionRequirements&) const noexcept;
         // Trusted internal borrows only: Context completion, retirement, or fully drained Session shutdown.
-        void destroyFinished(BufferAllocation* value) noexcept;
-        void destroyFinished(ImageAllocation* value) noexcept;
+        void destroyFinished(Buffer* value) noexcept;
+        void destroyFinished(Image* value) noexcept;
         friend class ExecutionContext;
         DeviceSession(VulkanDevice device, VulkanAllocator allocator) noexcept;
         VulkanDevice device_;
         VulkanAllocator allocator_;
-        cxx::StableSlotMap<BufferAllocation, BufferAllocationTag> buffers_;
-        cxx::StableSlotMap<ImageAllocation, ImageAllocationTag> images_;
+        cxx::StableSlotMap<Buffer, BufferAllocationTag> buffers_;
+        cxx::StableSlotMap<Image, ImageAllocationTag> images_;
         std::array<std::unique_ptr<SubmissionQueue>, 3> queue_owners_;
         std::array<SubmissionQueue*, 3> queues_{};
         std::array<std::optional<RetirementQueue>, 3> retirement_owners_;

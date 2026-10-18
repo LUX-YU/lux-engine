@@ -1,5 +1,6 @@
 #include "ServerImpl.hpp"
 #include <lux/engine/render/data/Camera.hpp>
+#include <exec/variant_sender.hpp>
 
 #ifdef LUX_RUNTIME_EFFECT_TEST_SEAM
 namespace lux::render::runtime_cpu_test { void effectAdopted() noexcept; }
@@ -107,135 +108,106 @@ namespace lux::render
         return RenderEffect{std::make_shared<const vulkan::CompiledGraph>(std::move(*compiled)), std::move(arguments)};
     }
 
+    namespace
+    {
+        // A borrowed RenderThread scheduling target using the Command's existing completion landing place.
+        // It neither owns a queue nor extends the lifetime of Impl. Scope/Host shutdown owns that guarantee.
+        struct RenderScheduler final
+        {
+            CompletionPost post;
+
+            bool operator==(const RenderScheduler& other) const noexcept
+            {
+                return post.owner == other.post.owner && post.publish == other.post.publish;
+            }
+
+            template <class Tag> RenderScheduler query(stdexec::get_completion_scheduler_t<Tag>) const noexcept
+            {
+                return *this;
+            }
+
+            struct Sender final
+            {
+                using sender_concept = stdexec::sender_t;
+                using completion_signatures = stdexec::completion_signatures<
+                    stdexec::set_value_t(), stdexec::set_stopped_t()
+                >;
+                CompletionPost post;
+
+                RenderScheduler get_env() const noexcept { return {post}; }
+
+                template <class Receiver> struct Operation final
+                {
+                    using operation_state_concept = stdexec::operation_state_t;
+                    CompletionPost post;
+                    Receiver receiver;
+
+                    void start() & noexcept
+                    {
+                        // Copy the borrowed publisher before publication; the consumer may destroy this state.
+                        const auto publish = post;
+                        publish(this, [](void* value, RenderResult<void>) noexcept {
+                            auto& self = *static_cast<Operation*>(value);
+                            if (stdexec::get_stop_token(stdexec::get_env(self.receiver)).stop_requested())
+                                stdexec::set_stopped(std::move(self.receiver));
+                            else
+                                stdexec::set_value(std::move(self.receiver));
+                            // Terminal delivery may destroy the connected state. No access to self afterwards.
+                        }, {});
+                    }
+                };
+
+                template <class Receiver> auto connect(Receiver&& receiver) const noexcept
+                {
+                    return Operation<std::decay_t<Receiver>>{post, std::forward<Receiver>(receiver)};
+                }
+            };
+
+            Sender schedule() const noexcept { return {post}; }
+        };
+        static_assert(stdexec::scheduler<RenderScheduler>);
+
+    } // namespace
+
     struct RenderServer::Impl::CreateEffectSender final
     {
         using sender_concept = stdexec::sender_t;
         using completion_signatures = stdexec::completion_signatures<
-            stdexec::set_value_t(CreateEffect::Response),
-            stdexec::set_error_t(RenderError),
-            stdexec::set_stopped_t()>;
+            stdexec::set_value_t(CreateEffect::Response), stdexec::set_stopped_t()
+        >;
         Impl* owner;
         CreateEffect::Request request;
         std::vector<const FeatureEntry*> features;
         RenderError initial_error;
 
-        template <class Receiver> class Operation final
+        template <class Receiver> auto connect(Receiver&& receiver) && noexcept
         {
-            struct CpuReceiver final
-            {
-                using receiver_concept = stdexec::receiver_t;
-                Operation* operation;
-
-                stdexec::env_of_t<Receiver> get_env() const noexcept
-                {
-                    return stdexec::get_env(operation->receiver_);
-                }
-
-                void set_value() && noexcept
-                {
-                    operation->completionPost()(operation, adopt, {});
-                }
-
-                void set_error(execution::EExecutionError error) && noexcept
-                {
-                    operation->completionPost()(
-                        operation,
-                        adopt,
-                        cxx::unexpected(RenderError{kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}})
-                    );
-                }
-
-                void set_stopped() && noexcept
-                {
-                    operation->completionPost()(operation, adopt, cxx::unexpected(RenderError{kCommandCancelled}));
-                }
-            };
-
-            struct Compile final
-            {
-                Operation* operation;
-                void operator()() const noexcept
-                {
-                    auto& self = *operation;
-                    self.candidate_ = compileEffect(self.device_, self.request_, self.features_, self.max_config_bytes_);
-                }
-            };
-            using Sender = decltype(stdexec::then(stdexec::schedule(execution::CpuScheduler{}), Compile{}));
-
-        public:
-            using operation_state_concept = stdexec::operation_state_t;
-
-            Operation(CreateEffectSender input, Receiver receiver) noexcept
-                : owner_(input.owner), device_(*input.owner->device), request_(std::move(input.request)),
-                  features_(std::move(input.features)), max_config_bytes_(input.owner->config.max_config_bytes),
-                  initial_error_(input.initial_error), receiver_(std::move(receiver)),
-                  cpu_operation_(stdexec::connect(
-                      stdexec::then(stdexec::schedule(input.owner->scheduler), Compile{this}),
-                      CpuReceiver{this}
-                  ))
-            {
-            }
-
-            Operation(const Operation&) = delete;
-            Operation(Operation&&) = delete;
-
-            void start() noexcept
-            {
-                if (initial_error_.type != error::ErrorId{})
-                {
-                    stdexec::set_error(std::move(receiver_), initial_error_);
-                    return;
-                }
-                stdexec::start(cpu_operation_);
-            }
-
-        private:
-            CompletionPost completionPost() const noexcept
-            {
-                return execution::getCompletionPost(stdexec::get_env(receiver_));
-            }
-
-            static void adopt(void* value, RenderResult<void> completed) noexcept
-            {
-                auto& self = *static_cast<Operation*>(value);
-                // Only CompletionQueue's owner consumes this continuation. The Worker never touches Impl.
-                if (stdexec::get_stop_token(stdexec::get_env(self.receiver_)).stop_requested())
-                {
-                    stdexec::set_stopped(std::move(self.receiver_));
-                    return;
-                }
-                if (!completed)
-                {
-                    stdexec::set_error(std::move(self.receiver_), completed.error());
-                    return;
-                }
-                if (!self.candidate_)
-                {
-                    stdexec::set_error(std::move(self.receiver_), self.candidate_.error());
-                    return;
-                }
+            // Only this CPU closure goes to the Worker; no mutable Impl or registry is borrowed there.
+            auto compiled = stdexec::schedule(owner->scheduler)
+                | stdexec::then([
+                    device = owner->device.get(), input = std::move(request), registrations = std::move(features),
+                    limit = owner->config.max_config_bytes
+                ]() noexcept { return compileEffect(*device, input, registrations, limit); })
+                | stdexec::upon_error([](execution::EExecutionError error) noexcept -> RenderResult<RenderEffect> {
+                    return cxx::unexpected(RenderError{kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}});
+                })
+                | stdexec::continues_on(RenderScheduler{execution::getCompletionPost(stdexec::get_env(receiver))})
+                | stdexec::then(
+                    [server = owner](RenderResult<RenderEffect> candidate) noexcept -> CreateEffect::Response {
+                        if (!candidate) return cxx::unexpected(candidate.error());
 #ifdef LUX_RUNTIME_EFFECT_TEST_SEAM
-                runtime_cpu_test::effectAdopted();
+                        runtime_cpu_test::effectAdopted();
 #endif
-                const auto effect = self.owner_->effects.emplace(std::move(*self.candidate_));
-                ++self.owner_->compiled_graphs;
-                stdexec::set_value(std::move(self.receiver_), CreateEffect::Response{EffectCreated{effect}});
-            }
-
-            Impl* owner_;
-            vulkan::DeviceSession& device_;
-            CreateEffect::Request request_;
-            std::vector<const FeatureEntry*> features_;
-            std::size_t max_config_bytes_;
-            RenderError initial_error_;
-            RenderResult<RenderEffect> candidate_ = cxx::unexpected(RenderError{kRuntimeState});
-            Receiver receiver_;
-            stdexec::connect_result_t<Sender, CpuReceiver> cpu_operation_;
-        };
-
-        template <class Receiver> Operation<std::decay_t<Receiver>> connect(Receiver&& receiver) && noexcept
-        {
-            return {std::move(*this), std::forward<Receiver>(receiver)};
+                        const auto effect = server->effects.emplace(std::move(*candidate));
+                        ++server->compiled_graphs;
+                        return EffectCreated{effect};
+                    }
+                );
+            auto invalid = stdexec::just(CreateEffect::Response{cxx::unexpected(initial_error)});
+            using VSource = exec::variant_sender<decltype(invalid), decltype(compiled)>;
+            auto source = initial_error.type != error::ErrorId{} ? VSource{std::move(invalid)} :
+                VSource{std::move(compiled)};
+            return stdexec::connect(std::move(source), std::forward<Receiver>(receiver));
         }
     };
 

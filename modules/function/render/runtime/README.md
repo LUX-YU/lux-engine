@@ -51,10 +51,12 @@ never a guaranteed cancellation.
 
 ## Native work and shutdown
 
-CreateEffectSender owns the complete compile transaction. Its worker only calls
-compileEffect with the moved request, stable Feature borrows and Device. CompletionPost
-returns the candidate to RenderThread, which alone allocates EffectId and produces
-success. Graph analysis/compiler and the existing Native retirement algorithms are
+CreateEffectSender connects a standard schedule/then/continues_on/then transaction;
+spawn owns its connected state. Its worker only calls compileEffect with the moved
+request, stable Feature borrows and Device. A private RenderScheduler borrows the
+existing CompletionPost landing place and returns the candidate to RenderThread,
+which alone allocates EffectId and produces success. There is no separate compile
+Operation owner or CpuReceiver. Graph analysis/compiler and Native retirement are
 unchanged. GPU upload senders retain source Payload through actual Transfer completion;
 Copy/Acquire/publication determines success. Readback waits for its own GPU work.
 

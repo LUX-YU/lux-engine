@@ -44,6 +44,26 @@ namespace lux::render::runtime_cpu_test
     }
 }
 
+namespace lux::render::runtime_detail::test
+{
+    std::atomic<bool> hold_effect_publication{false};
+    std::latch* effect_published = nullptr;
+    std::latch* publication_return = nullptr;
+    std::atomic<bool> publication_returned{false};
+
+    void completionPublished() noexcept
+    {
+        const bool is_held_worker_publication = std::this_thread::get_id() != runtime_cpu_test::render_owner &&
+            hold_effect_publication.exchange(false);
+        if (is_held_worker_publication)
+        {
+            effect_published->count_down();
+            publication_return->wait();
+            publication_returned.store(true);
+        }
+    }
+}
+
 template <class T> static T take(RenderResult<T> result)
 {
     if (!result) { std::fprintf(stderr, "Runtime error %llu\n", result.error().type); std::abort(); }
@@ -51,6 +71,7 @@ template <class T> static T take(RenderResult<T> result)
 }
 
 static std::atomic<bool> pause_programs{false};
+static std::atomic<bool> reject_programs{false};
 static std::latch* program_entered = nullptr;
 static std::latch* program_resume = nullptr;
 
@@ -61,6 +82,7 @@ static RenderResult<ProgramContribution> programs(const void* wire, std::string_
         program_entered->count_down();
         program_resume->wait();
     }
+    if (reject_programs.exchange(false)) return lux::cxx::unexpected(RenderError{kFeatureContract, {73}});
     const auto* config = static_cast<const native_fixture::Config*>(wire);
     return ProgramContribution{camera_fixture::programs(*config, name), {}};
 }
@@ -119,6 +141,17 @@ int main()
     command.description = native_fixture::target(config);
     command.features.push_back({std::string(native_fixture::type.name()), "main", take(ConfigValue::make(config))});
     const auto effect = call(*client, command).effect;
+    // Initial contract failure bypasses even a rejected CPU scheduler; no candidate or EffectId is published.
+    auto invalid = command;
+    invalid.features.clear();
+    worker.reject(true);
+    CHECK(call(*client, invalid, false).error.type == kFeatureContract);
+    worker.reject(false);
+    // compileEffect failure is a value-channel expected, not a scheduler error.
+    reject_programs.store(true);
+    const auto failed_compile = call(*client, command, false);
+    CHECK(failed_compile.error.type == kFeatureContract && failed_compile.error.args[0] == 73);
+    CHECK(server->stats().compiled_graphs == 1);
     command.features.clear();
     std::array<SceneId, 2> scenes;
     command.operation = ETestCommand::CREATE_SCENE;
@@ -288,6 +321,29 @@ int main()
     csv << "sample,create_scene_end_to_end_us,engine_new_calls\n";
     for (unsigned i = 0; i < samples.size(); ++i) csv << i << ',' << samples[i] << ',' << allocation_samples[i] << '\n';
     std::sort(samples.begin(), samples.end());
+    // The RenderThread may finish and destroy the composed state while the Worker's publisher tail is held.
+    {
+        std::latch published(1), release_tail(1);
+        runtime_detail::test::effect_published = &published;
+        runtime_detail::test::publication_return = &release_tail;
+        runtime_detail::test::hold_effect_publication.store(true);
+        auto create = command;
+        create.operation = ETestCommand::CREATE_EFFECT;
+        create.description = native_fixture::target(config);
+        create.features.push_back({std::string(native_fixture::type.name()), "tail", take(ConfigValue::make(config))});
+        const auto pending_effect = take(upload->submit(create));
+        published.wait();
+        const auto completed = wait(*upload, pending_effect);
+        CHECK(completed.header.outcome == ETestOutcome::SUCCESS);
+        CHECK(!runtime_detail::test::publication_returned.load());
+        auto remove = create;
+        remove.operation = ETestCommand::REMOVE_EFFECT;
+        remove.features.clear();
+        remove.effect = completed.effect;
+        call(*upload, remove);
+        release_tail.count_down();
+        while (!runtime_detail::test::publication_returned.load()) std::this_thread::yield();
+    }
     // A real cold callback is held on the host worker. Existing groups must continue GPU submission.
     // Stop can now execute while compilation is held; shutdown joins before returning its cancellation.
     std::latch entered(1), resume(1);

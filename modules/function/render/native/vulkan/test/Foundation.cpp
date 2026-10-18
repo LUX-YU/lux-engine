@@ -72,6 +72,8 @@ namespace lux::render::vulkan
         }
         template <class Tag> static auto key(const AllocationPermit<Tag>& value) { return value.key_; }
         static std::size_t images(const DeviceSession& session) noexcept { return session.images_.size(); }
+        static std::size_t buffers(const DeviceSession& session) noexcept { return session.buffers_.size(); }
+        static std::size_t contexts(const DeviceSession& session) noexcept { return session.contexts_.size(); }
     };
 }
 
@@ -544,8 +546,14 @@ int main()
                 native_fixture::programs(execution_config), native_fixture::target(execution_config))));
             for (auto name : {"image", "image_view", "buffer", "mapping"})
                 fails(name, [&] { return session->prepare(code, native_fixture::target(execution_config), {}); });
+            const auto image_records = NativeMemoryAudit::images(*session);
+            const auto buffer_records = NativeMemoryAudit::buffers(*session);
+            const auto context_records = NativeMemoryAudit::contexts(*session);
             auto* first = take(session->prepare(code, native_fixture::target(execution_config), {}));
             auto* second = take(session->prepare(code, native_fixture::target(execution_config), {}));
+            CHECK(NativeMemoryAudit::images(*session) == image_records);
+            CHECK(NativeMemoryAudit::buffers(*session) == buffer_records);
+            CHECK(NativeMemoryAudit::contexts(*session) == context_records + 2);
             const auto creations = created;
             CHECK(take(first->execute()) == EExecutionOutcome::EXECUTED);
             const auto accepted = *first->lastUse();
@@ -555,14 +563,21 @@ int main()
             CHECK(created == creations); // execution creates no Shader/Pipeline/Layout/Buffer/Image
             const auto owners = live;
             CHECK(session->release(first));
+            CHECK(NativeMemoryAudit::contexts(*session) == context_records + 1);
+            CHECK(session->retirement().pending() == 0); // No Context retirement owner remains.
             CHECK(take(session->retirement().collect()) == 0 && live == owners);
+            CHECK(session->release(second)); // Failed submission retains no physical resource set.
+            CHECK(NativeMemoryAudit::contexts(*session) == context_records);
+            std::weak_ptr<const CompiledGraph> retained_code = code;
+            code.reset();
+            CHECK(!retained_code.expired()); // The accepted batch alone owns the pipelines/layout now.
+            CHECK(live[4] == owners[4] - 1 && live[5] == owners[5] - 1 && live[12] == owners[12] - 1);
             hold_fences = false;
             CHECK(take(session->queue().wait(accepted, UINT64_MAX)));
             CHECK(session->collect());
-            CHECK(live[4] == owners[4] - 1 && live[5] == owners[5] - 1 && live[12] == owners[12] - 1);
-            CHECK(session->release(second));
-            code.reset();
-            std::printf("Graph partial submission: accepted ticket retained, delayed completion retains Context/backing/code\n");
+            CHECK(live[4] == owners[4] - 2 && live[5] == owners[5] - 2 && live[12] == owners[12] - 2);
+            CHECK(retained_code.expired());
+            std::printf("Graph partial submission: Context destroyed immediately; accepted batch retains backing/code\n");
 #endif
         }
         options.multiple_queues = true;

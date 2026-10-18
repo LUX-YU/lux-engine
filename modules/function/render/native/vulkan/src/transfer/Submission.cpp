@@ -101,6 +101,9 @@ namespace lux::render::vulkan
         for (std::size_t i = 0; i < backing->batches.size(); ++i)
         {
             auto& batch = backing->batches[i];
+            // Graph execution retains one prepared set. Reserve it at Queue construction so even
+            // the first recording needs no heap allocation; multi-resource upload batches may grow it.
+            batch.resources.reserve(1);
             batch.command = commands[i];
             result = LUX_NATIVE("fence", vkCreateFence(device.native(), &fence, nullptr, &batch.fence));
             if (result != VK_SUCCESS)

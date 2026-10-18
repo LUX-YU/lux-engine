@@ -25,6 +25,7 @@ namespace lux::render::vulkan
 static bool hold_completion = false;
 static std::string_view fail_operation;
 static unsigned destroyed_buffers = 0;
+static unsigned live_descriptor_pools = 0;
 namespace lux::render::vulkan::test
 {
     VkResult before(const char* operation) noexcept
@@ -33,10 +34,16 @@ namespace lux::render::vulkan::test
         if (hold_completion && std::string_view(operation) == "fence_status") return VK_NOT_READY;
         return VK_SUCCESS;
     }
-    VkResult after(const char*, VkResult result) noexcept { return result; }
+    VkResult after(const char* operation, VkResult result) noexcept
+    {
+        if (result == VK_SUCCESS && std::string_view(operation) == "context_descriptor_pool")
+            ++live_descriptor_pools;
+        return result;
+    }
     void destroyed(const char* operation) noexcept
     {
         if (std::string_view(operation) == "buffer") ++destroyed_buffers;
+        if (std::string_view(operation) == "context_descriptor_pool") --live_descriptor_pools;
     }
 }
 
@@ -246,10 +253,12 @@ int main()
     NativeMemoryAudit::repeatedRebind(*context);
     NativeMemoryAudit::repeatedRebind(*replacement);
     const auto destroyed_before = destroyed_buffers;
+    const auto descriptor_pools_before = live_descriptor_pools;
     render_allocation::calls = 0;
     render_allocation::window = true;
     CHECK(session->release(context));
     CHECK(session->release(replacement));
+    CHECK(live_descriptor_pools == descriptor_pools_before);
     const auto context_release_calls = render_allocation::calls.load();
     CHECK(session->globalStorages().releasePrepared(instance_id));
     render_allocation::window = false;
@@ -262,6 +271,7 @@ int main()
     hold_completion = false;
     CHECK(take(session->queue().wait(ticket, UINT64_MAX)));
     CHECK(session->collect());
+    CHECK(live_descriptor_pools == descriptor_pools_before - 2);
     CHECK(destroyed_buffers == destroyed_before + 3); // current professional version + two Context readback buffers
     // Minimal indirect Material-like owner: a stored Texture reference survives both its creator
     // and its preload. It is the sole future user, and keeps the backing through a REAL copy ticket.

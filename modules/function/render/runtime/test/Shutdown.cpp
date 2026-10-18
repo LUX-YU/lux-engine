@@ -13,6 +13,7 @@
 using namespace lux::render;
 using namespace std::chrono_literals;
 static std::atomic<bool> hold{true}, waited{false};
+static std::atomic<bool> fail_image{false};
 static std::atomic<int> backing{0};
 static void check(bool x) { if (!x) std::abort(); }
 template <class T> static T take(RenderResult<T> value) { check(bool(value)); return std::move(*value); }
@@ -22,6 +23,7 @@ namespace lux::render::vulkan::test
     VkResult before(const char* operation) noexcept
     {
         const std::string_view name(operation);
+        if (name == "image" && fail_image.exchange(false)) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         if (name == "fence_status" && hold.load()) return VK_NOT_READY;
         if (name == "wait") { waited.store(true); hold.store(false); }
         return VK_SUCCESS;
@@ -116,7 +118,7 @@ static void exercise(bool close_requester)
     check(run_ok && backing == 0 && waited && server->stats().validation_errors == 0);
 }
 
-static void retirementAtomicity()
+static void preparationAtomicity()
 {
     hold.store(true);
     waited.store(false);
@@ -151,18 +153,24 @@ static void retirementAtomicity()
     command.target = second_target;
     const auto second_attachment = call(*client, command).attachment;
     command.target = third_target;
+    fail_image.store(true);
     auto unprepared = wait(*client, take(client->submit(command)));
     check(unprepared.header.outcome == ETestOutcome::FAILED);
-    check(unprepared.error.type == vulkan::kCapacity);
-    check(backing == 6 && !waited); // capacity failure precedes Native Context/backing publication
+    check(unprepared.error.type == vulkan::kNativeFailure && !fail_image);
+    check(backing == 6 && !waited); // Native preparation failure cannot publish a partial Attachment.
+    const auto third_attachment = call(*client, command).attachment;
+    check(backing == 9); // Three Contexts do not consume the two legacy resource-retirement slots.
     const auto deadline = std::chrono::steady_clock::now() + 10s;
-    while (server->stats().submissions < 2 && std::chrono::steady_clock::now() < deadline)
+    while (server->stats().submissions < 3 && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(1ms);
-    check(server->stats().submissions == 2);
+    check(server->stats().submissions == 3);
     command.operation = ETestCommand::DETACH;
+    command.target = third_target;
+    command.attachment = third_attachment;
+    call(*client, command);
     command.target = first_target;
     command.attachment = first_attachment;
-    call(*client, command); // consumes its creation-time reservation; detach cannot fail for capacity
+    call(*client, command); // CPU Contexts leave now; accepted batches still retain all nine GPU objects.
     command.target = second_target;
     command.attachment = second_attachment;
     command.operation = ETestCommand::READBACK;
@@ -171,10 +179,11 @@ static void retirementAtomicity()
     {
         command.operation = ETestCommand::RESIZE_TARGET;
         command.description.width = 16;
+        fail_image.store(true);
         auto rejected = wait(*client, take(client->submit(command)));
         check(rejected.header.outcome == ETestOutcome::FAILED);
-        check(rejected.error.type == vulkan::kCapacity);
-        check(!take(receiveExpected(*client, request)) && backing == 6 && !waited);
+        check(rejected.error.type == vulkan::kNativeFailure && !fail_image);
+        check(!take(receiveExpected(*client, request)) && backing == 9 && !waited);
     }
     hold.store(false); // observe real fence completion; the untouched readback must still succeed
     const auto pixels = wait(*client, request);
@@ -188,17 +197,18 @@ static void retirementAtomicity()
     for (auto operation : {ETestCommand::REMOVE_VIEW, ETestCommand::REMOVE_SCENE, ETestCommand::REMOVE_EFFECT})
     {
         command.operation = operation;
-        call(*client, command); // withdraw consumes prepared rights, never asks for new retirement capacity
+        call(*client, command); // Detach/Remove require no new retirement capacity.
     }
     server->stop();
     thread.join();
     check(run_ok && backing == 0 && server->stats().validation_errors == 0);
-    std::puts("Retirement reserved before Attach/Resize: rejection preserves readback/epoch/pixels; Detach/Remove cannot exhaust capacity");
+    std::puts("Attach/Resize Native failure preserves readback/epoch/pixels; three Contexts exceed legacy retirement "
+        "capacity without consuming it; Detach retains only accepted batch resources");
 }
 
 int main()
 {
-    retirementAtomicity();
+    preparationAtomicity();
     exercise(false);
     exercise(true);
     std::printf("Pending GPU readback: explicit Stop -> Cancelled; requester close -> retained until cold shutdown; "

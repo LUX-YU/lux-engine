@@ -87,8 +87,8 @@ static void readbackOperations(DeviceSession& session, const std::shared_ptr<Com
         CHECK(!context->lastUse() && session.queue().callbackReservations() == 0);
     }
     CHECK(session.release(context));
-    // Retirement admission moved to prepare(). Detach consumes the reserved right without allocation,
-    // even when other records are reserved; it cancels an active Readback while retaining submitted backing.
+    // The accepted batch owns graph backing. Detach needs no retirement record or allocation;
+    // it cancels an active Readback while the real submission keeps physical resources alive.
     context = take(session.prepare(code, target));
     {
         std::vector<RetirementReservation> reservations;

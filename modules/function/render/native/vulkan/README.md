@@ -20,8 +20,7 @@ or abandoned recording releases only its own set; a later Submit failure never d
 batch. Reference-array capacity is reused when slots cycle. Upload staging pages now use this path.
 Object retention does not permit rewriting a page or descriptor still in use by the GPU.
 
-Professional destinations and execution contexts are still being migrated from Session tables and
-permit/retirement ownership. Their existing safety checks remain until all indirect bindings and actual
+Professional destinations are still being migrated from Session tables and permit/retirement ownership. Their existing safety checks remain until all indirect bindings and actual
 GPU uses have batch owners. Primitive Copy/Alias tests are not proof of complete graph resource coverage.
 An outstanding ticket remains queue-scoped evidence of accepted work, never a frame index. Final teardown
 drains queue owners before allocator/device release; individual resources never wait idle.
@@ -75,9 +74,11 @@ sample count and kind changes require a new compiled candidate.
 
 ## G9 preparation and execution
 
-DeviceSession uniquely owns stable ExecutionContexts and scoped buffer backing. A context pins the
-immutable CompiledGraph, borrows session-owned transient images/readback buffers, owns image views and holds counted
-leases to scoped buffers. Scope keys derive from validated Scene/View SlotKeys; attachment-private
+DeviceSession currently owns stable ExecutionContexts. Each Context prepares one physical binding set
+containing its immutable CompiledGraph, allocator-owned transient images/readback buffers, image views,
+descriptor pool and shared descriptor-array owner. Its CPU recipes borrow stable pointers from that set;
+a successful Execute retains the whole set once in the physical submission slot. Context Storage leases
+remain separate subscriptions for future uses. Scope keys derive from validated Scene/View SlotKeys; attachment-private
 backing additionally uses the stable context identity. Global/Scene/View sharing compares full semantic
 key, storage type/ABI, size and usage during preparation only. A small typed CPU BufferInitializer is
 the actual cold consumer; it does not promise a future universal GPU Storage API.
@@ -87,11 +88,13 @@ checks only changing queue capacity/completion/submission results. Reusing an ov
 image discards old contents but still orders its previous accesses; the first-use barrier explicitly
 carries that inter-execution dependency. Unsupported graph semantics remain compiler errors.
 
-Release transfers an in-flight context into the existing RetirementQueue using its real last accepted
-SubmissionTicket. Its code pin, transient backing and scope leases survive there until completion.
-Attachment-private zero-lease entries are collected by the session; Global/Scene/View entries survive until
-business-scope release. There is no parallel ResourceDomain owner.
-Shutdown drains queues, destroys retired and active contexts, then scoped backing, allocator/device.
+Release destroys the CPU Context immediately, cancels Readback subscriptions and releases its Storage
+leases. It neither reserves nor appends a Context retirement record. Submitted batches retain the graph
+physical binding set until actual fence completion. Professional Storage versions still use their existing
+LastUse retirement path while they are migrated; retaining a descriptor array alone is not proof that all
+bindless targets are retained. There is no parallel ResourceDomain owner.
+Shutdown drains queues and destroys contexts and scoped backing. Queue teardown releases any terminal
+Device Lost batch references before allocator/device destruction.
 Fault tests hold completion observation after a real submit to prove failed later submits and IPC stop
 cannot destroy accepted work early. No production failure hook or additional queue is introduced.
 

@@ -8,9 +8,34 @@
 
 namespace lux::render::vulkan
 {
+    // These are physical GPU objects, independent of the Context's subscriptions and CPU recipes.
+    // Stable descriptor banks are never rewritten while their prior submission is in flight.
+    struct ExecutionContext::PreparedBindings final
+    {
+        explicit PreparedBindings(std::shared_ptr<const CompiledGraph> value) noexcept : code(std::move(value)) {}
+
+        ~PreparedBindings() noexcept
+        {
+            if (descriptor_pool)
+                LUX_DESTROY("context_descriptor_pool", vkDestroyDescriptorPool(
+                    code->device(), descriptor_pool, nullptr
+                ));
+            for (auto view : views)
+                LUX_DESTROY("image_view", vkDestroyImageView(code->device(), view, nullptr));
+        }
+
+        std::shared_ptr<const CompiledGraph> code;
+        std::vector<std::shared_ptr<Buffer>> buffers;
+        std::vector<std::shared_ptr<Image>> images;
+        std::vector<VkImageView> views;
+        std::shared_ptr<DescriptorArray> shared_descriptors;
+        VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+    };
+
     ExecutionContext::ExecutionContext(DeviceSession& owner, SubmissionQueue& queue,
         std::shared_ptr<const CompiledGraph> code, TargetDesc target) noexcept
-        : owner_(&owner), queue_(&queue), code_(std::move(code)), target_(target),
+        : owner_(&owner), queue_(&queue), prepared_(std::make_shared<PreparedBindings>(std::move(code))),
+          code_(prepared_->code.get()), target_(target),
           bindings_(code_->resources().size()), storages_(owner.resources())
     {
         leases_.reserve(bindings_.size());
@@ -21,13 +46,6 @@ namespace lux::render::vulkan
     ExecutionContext::~ExecutionContext() noexcept
     {
         withdraw();
-        if (descriptor_pool_) LUX_DESTROY("context_descriptor_pool", vkDestroyDescriptorPool(device(), descriptor_pool_, nullptr));
-        for (auto& binding : bindings_)
-        {
-            if (binding.view) LUX_DESTROY("image_view", vkDestroyImageView(device(), binding.view, nullptr));
-            if (binding.image) owner_->destroyFinished(binding.image);
-            if (binding.owned_buffer) owner_->destroyFinished(binding.owned_buffer);
-        }
     }
 
     void ExecutionContext::withdraw() noexcept
@@ -67,10 +85,7 @@ namespace lux::render::vulkan
             if (previous && *previous != argument.value) return cxx::unexpected(RenderError{kStorageMismatch});
             resolved_arguments[index] = &argument.value;
         }
-        auto reservation = retirement().reserve();
-        if (!reservation) return cxx::unexpected(reservation.error());
         auto context = std::unique_ptr<ExecutionContext>(new ExecutionContext(*this, queue(), std::move(code), target));
-        context->retirement_ = std::move(*reservation);
         const auto prepareGroup = [&](std::span<const std::uint32_t> indices, StorageSet* set) -> RenderResult<void> {
             for (auto i : indices)
             {
@@ -111,9 +126,10 @@ namespace lux::render::vulkan
                 const VkExtent2D extent{plan.target_sized ? target.width : image->width,
                     plan.target_sized ? target.height : image->height};
                 const auto format = imageFormat(image->format);
-                auto backing = createImageRecord({extent, format.native, plan.image_usage});
+                auto backing = allocator_.createImage({extent, format.native, plan.image_usage});
                 if (!backing) return cxx::unexpected(backing.error());
-                binding.image = *backing;
+                binding.image = backing->get();
+                context->prepared_->images.push_back(std::move(*backing));
                 VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
                 view.image = binding.image->native();
                 view.viewType = VK_IMAGE_VIEW_TYPE_2D;
@@ -126,6 +142,7 @@ namespace lux::render::vulkan
                     const auto status = LUX_NATIVE("image_view", vkCreateImageView(device_.native(), &view,
                         nullptr, &binding.view));
                     if (status != VK_SUCCESS) return cxx::unexpected(nativeError(status));
+                    context->prepared_->views.push_back(binding.view);
                 }
             }
             else
@@ -133,11 +150,11 @@ namespace lux::render::vulkan
                 const auto size = plan.target_sized ?
                     std::uint64_t(target.width) * target.height * plan.target_pixel_bytes :
                     std::get<GraphBufferDesc>(plan.description).size;
-                auto buffer = createBufferRecord(size, plan.buffer_usage,
+                auto buffer = allocator_.createBuffer(size, plan.buffer_usage,
                     plan.readback ? EMemoryAccess::READBACK : EMemoryAccess::DEVICE);
                 if (!buffer) return cxx::unexpected(buffer.error());
-                binding.owned_buffer = *buffer;
-                binding.buffer = binding.owned_buffer;
+                binding.buffer = buffer->get();
+                context->prepared_->buffers.push_back(std::move(*buffer));
                 if (plan.readback)
                     for (const auto& pass : context->code_->passes())
                         if (pass.recipe == ERecipe::COPY_IMAGE_BUFFER && pass.source == context->code_->output() &&
@@ -193,7 +210,7 @@ namespace lux::render::vulkan
         {
             auto table = owner_->sampledImageArray();
             if (!table) return cxx::unexpected(table.error());
-            shared_descriptors_ = std::move(*table);
+            prepared_->shared_descriptors = std::move(*table);
         }
         const auto draws = std::ranges::count_if(passes_, [](const auto& pass) {
             return pass.recipe->recipe == ERecipe::DRAW || pass.recipe->recipe == ERecipe::DISPATCH;
@@ -210,20 +227,21 @@ namespace lux::render::vulkan
             pool.poolSizeCount = 1;
             pool.pPoolSizes = &size;
             const auto result = LUX_NATIVE("context_descriptor_pool", vkCreateDescriptorPool(device(), &pool,
-                nullptr, &descriptor_pool_));
+                nullptr, &prepared_->descriptor_pool));
             if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
         }
         for (auto& pass : passes_)
         {
             if (pass.recipe->recipe != ERecipe::DRAW && pass.recipe->recipe != ERecipe::DISPATCH) continue;
             pass.descriptors.resize(code_->descriptor_layouts_.size());
-            if (shared_descriptors_) pass.descriptors[layout.shared_set] = shared_descriptors_->descriptors();
-            if (descriptor_pool_)
+            if (prepared_->shared_descriptors)
+                pass.descriptors[layout.shared_set] = prepared_->shared_descriptors->descriptors();
+            if (prepared_->descriptor_pool)
             {
                 const std::array native_layouts{code_->descriptor_layouts_[layout.private_set],
                     code_->descriptor_layouts_[layout.private_set]};
                 VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-                allocate.descriptorPool = descriptor_pool_;
+                allocate.descriptorPool = prepared_->descriptor_pool;
                 allocate.descriptorSetCount = 2;
                 allocate.pSetLayouts = native_layouts.data();
                 const auto result = LUX_NATIVE("context_descriptor_set", vkAllocateDescriptorSets(device(), &allocate,
@@ -276,7 +294,7 @@ namespace lux::render::vulkan
             for (std::size_t i = 0; i < pass.buffers.size(); ++i)
                 pass.buffers[i].buffer = bindings_[pass.recipe->buffers[i].resource].buffer->native();
             if ((pass.recipe->recipe != ERecipe::DRAW && pass.recipe->recipe != ERecipe::DISPATCH) ||
-                !descriptor_pool_) continue;
+                !prepared_->descriptor_pool) continue;
             const auto descriptors = pass.private_descriptors[descriptor_bank_];
             pass.descriptors[layout.private_set] = descriptors;
             for (const auto& use : layout.programs[pass.recipe->layout_program].uses)
@@ -339,14 +357,8 @@ namespace lux::render::vulkan
             return value.get() == context;
         });
         if (found == contexts_.end()) return cxx::unexpected(RenderError{kWrongOwner});
-        if (auto ticket = context->lastUse(); ticket && queue().completed() < ticket->serial())
-        {
-            SubmissionRequirements requirements;
-            requirements.merge(*ticket);
-            if (auto result = retirement().retire(context->retirement_, requirements, *found); !result) return result;
-        }
-        // The retirement record was reserved before Context publication; no release-time capacity allocation.
-        context->withdraw();
+        // The accepted batch owns the physical graph resources. Destroy CPU recipes/subscriptions now;
+        // professional Storage uses still release through their existing last-use retirement contract.
         contexts_.erase(found);
         return {};
     }
@@ -377,6 +389,7 @@ namespace lux::render::vulkan
             if (batch.error().type == kCapacity) return outcome(EExecutionOutcome::QUEUE_FULL);
             return cxx::unexpected(batch.error());
         }
+        batch->retain(prepared_);
         const auto command = batch->native();
         for (const auto& pass : passes_)
         {

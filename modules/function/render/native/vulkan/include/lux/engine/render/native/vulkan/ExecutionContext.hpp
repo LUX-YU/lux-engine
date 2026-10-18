@@ -61,7 +61,6 @@ namespace lux::render::vulkan
         ReadbackOperation* readbacks_ = nullptr;
         struct Binding final
         {
-            Buffer* owned_buffer = nullptr;
             Image* image = nullptr;
             VkImageView view{};
             Buffer* buffer = nullptr;
@@ -84,8 +83,9 @@ namespace lux::render::vulkan
         ExecutionContext(DeviceSession& owner, SubmissionQueue& queue, std::shared_ptr<const CompiledGraph> code, TargetDesc target) noexcept;
         DeviceSession* owner_;
         SubmissionQueue* queue_;
-        RetirementReservation retirement_;
-        std::shared_ptr<const CompiledGraph> code_;
+        struct PreparedBindings;
+        std::shared_ptr<PreparedBindings> prepared_;
+        const CompiledGraph* code_;
         TargetDesc target_;
         RasterViewport viewport_;
         std::vector<Binding> bindings_;
@@ -102,8 +102,6 @@ namespace lux::render::vulkan
         std::vector<std::byte> context_values_;
         std::span<const std::byte> context_view_; // Stable range after prepare, used by compiled parameter copies.
 
-        std::shared_ptr<DescriptorArray> shared_descriptors_;
-        VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
         unsigned descriptor_bank_ = 0;
         unsigned submitted_bank_ = 0;
         std::vector<VkBufferMemoryBarrier2> host_barriers_;

@@ -42,7 +42,7 @@ namespace lux::render::vulkan
         [[nodiscard]] StorageSet& attachmentStorages() noexcept { return storages_; }
         template <class Visitor> void forEachStorage(Visitor&& visitor) const noexcept
         {
-            for (const auto& use : leases_) visitor(code_->resources()[use.resource].key, use.lease.id());
+            for (const auto& use : storage_uses_) visitor(code_->resources()[use.resource].key, use.storage_id);
         }
         // Compiled resource indices are trusted here; this is a Native diagnostic borrow.
         [[nodiscard]] VkBuffer nativeBuffer(std::uint32_t resource) const noexcept
@@ -93,12 +93,13 @@ namespace lux::render::vulkan
         std::vector<Binding> bindings_;
         struct StorageUse final
         {
-            StorageLease lease;
+            StorageId storage_id;
+            std::shared_ptr<void> storage_reference;
             PreparedStorageBinding binding;
             std::uint32_t resource;
         };
         StorageSet storages_;
-        std::vector<StorageUse> leases_;
+        std::vector<StorageUse> storage_uses_;
 
         std::vector<Pass> passes_;
         std::vector<std::byte> context_values_;

@@ -85,7 +85,7 @@ namespace extension_test
             NativeBuffer& storage;
             BufferId id;
             std::shared_ptr<Backing> backing;
-            StorageLease lease;
+            std::shared_ptr<void> storage_reference;
 
             ~Candidate() noexcept
             {
@@ -99,6 +99,8 @@ namespace extension_test
 
             RenderResult<void> publish(vk::Transfer& transfer) noexcept
             {
+                if (!storage.session_.resources().native(storage.id_))
+                    return lux::cxx::unexpected(RenderError{kStorageIdentity});
                 auto buffer = transfer.takeBuffer();
                 if (!buffer) return lux::cxx::unexpected(buffer.error());
                 backing->buffer = std::move(*buffer);
@@ -128,8 +130,8 @@ namespace extension_test
             auto backing = std::make_shared<Backing>(physical_);
             if (id.isNull()) id = BufferId{id_, entries_.emplace()};
             entries_.find(id.local)->updating = true;
-            auto lease = session_.resources().lease(id_);
-            auto candidate = std::make_unique<Candidate>(*this, id, std::move(backing), std::move(*lease));
+            auto storage_reference = session_.resources().share(id_);
+            auto candidate = std::make_unique<Candidate>(*this, id, std::move(backing), std::move(*storage_reference));
             auto work = vk::GpuWork::pending<[](Candidate& value, vk::Transfer& upload, vk::DeviceSession&) noexcept {
                 return value.publish(upload);
             }>(session_, *transfer, candidate);

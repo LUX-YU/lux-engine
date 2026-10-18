@@ -154,7 +154,7 @@ namespace lux::render::vulkan
         std::shared_ptr<TextureData> version;
         TextureId texture;
         std::shared_ptr<TextureData> base;
-        StorageLease lease;
+        std::shared_ptr<void> storage_reference;
 
         ~Candidate() noexcept
         {
@@ -334,6 +334,8 @@ namespace lux::render::vulkan
     RenderResult<std::unique_ptr<TextureStorage::Candidate>> TextureStorage::reserve(
         Transfer& transfer, const rdesc::TextureInfo& info, TextureId id, std::uint64_t expected) noexcept
     {
+        auto reference = session_.resources().share(id_);
+        if (!reference) return cxx::unexpected(reference.error());
         auto* record = textures_.find(id.local);
         if (id.isNull())
         {
@@ -382,8 +384,7 @@ namespace lux::render::vulkan
         if (id.isNull()) id = TextureId{id_, textures_.emplace()};
         record = textures_.find(id.local);
         record->updating = true;
-        auto lease = session_.resources().lease(id_); // this live factory-created object proves the identity
-        return std::make_unique<Candidate>(*this, std::move(content), id, nullptr, std::move(*lease));
+        return std::make_unique<Candidate>(*this, std::move(content), id, nullptr, std::move(*reference));
     }
 
     void TextureStorage::rollback(Candidate& candidate) noexcept
@@ -406,6 +407,8 @@ namespace lux::render::vulkan
         if (!candidate) return cxx::unexpected(candidate.error());
         const TexturePublished result{(*candidate)->texture, (*candidate)->version->revision_};
         auto work = GpuWork::pending<[](Candidate& value, Transfer& transfer, DeviceSession&) noexcept -> RenderResult<void> {
+            if (!value.storage.session_.resources().native(value.storage.id_))
+                return cxx::unexpected(RenderError{kStorageIdentity});
             value.storage.publish(value, transfer);
             return {};
         }>(session_, *transfer, *candidate);
@@ -430,6 +433,8 @@ namespace lux::render::vulkan
         (*candidate)->base = record->current;
         const TexturePublished result{input.texture, (*candidate)->version->revision_};
         auto work = GpuWork::pending<[](Candidate& value, Transfer& transfer, DeviceSession&) noexcept -> RenderResult<void> {
+            if (!value.storage.session_.resources().native(value.storage.id_))
+                return cxx::unexpected(RenderError{kStorageIdentity});
             value.storage.publish(value, transfer);
             return {};
         }>(session_, *transfer, *candidate);

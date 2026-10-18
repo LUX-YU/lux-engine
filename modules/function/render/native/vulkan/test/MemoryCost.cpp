@@ -78,7 +78,7 @@ namespace lux::render::vulkan
                 for (unsigned i = 0; i < 1000; ++i)
                 {
                     auto& scene = scenes.emplace_back(std::make_unique<StorageSet>(registry));
-                    if (!scene->prepare(registry.typeId(description.type), "item")) std::abort();
+                    if (!scene->getOrCreate(registry.typeId(description.type), "item")) std::abort();
                 }
                 std::printf("Registry metadata 1000 real owner sets + instances: cold_new=%zu cumulative_bytes=%zu\n",
                     render_allocation::calls.load(), render_allocation::bytes.load());
@@ -117,7 +117,7 @@ namespace lux::render::vulkan
                 while (owners.size() < count)
                 {
                     auto& owner = owners.emplace_back(std::make_unique<StorageSet>(session->resources()));
-                    CHECK(owner->prepare(type, "live"));
+                    CHECK(owner->getOrCreate(type, "live"));
                 }
                 CHECK(live_buffers == count && session->resources().size() == count);
                 std::printf("real_live_buffers=%u sizeof_Buffer=%zu; Session allocation ledger removed\n", count, sizeof(Buffer));

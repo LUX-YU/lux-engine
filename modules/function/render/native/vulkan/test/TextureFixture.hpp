@@ -99,7 +99,7 @@ static RenderResult<void> configureTextures(DeviceSession& session, std::uint32_
     if (!registry.factory(lux::render::TextureStorage::description.type))
         if (auto installed = registry.installFactory(textureStorageFactory(), config); !installed)
             return lux::cxx::unexpected(installed.error());
-    auto id = session.globalStorages().prepare(registry.typeId(kTextureStorageType), "default",
+    auto id = session.globalStorages().getOrCreate(registry.typeId(kTextureStorageType), "default",
         *ConfigValue::make(config));
     if (!id) return lux::cxx::unexpected(id.error());
     return {};

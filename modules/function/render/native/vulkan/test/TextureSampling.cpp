@@ -236,7 +236,7 @@ int main()
     {
         // Actual Scene owners share only the device descriptor allocation, never resource identities.
         std::array<StorageSet, 2> scenes{StorageSet{session->resources()}, StorageSet{session->resources()}};
-        std::array<StorageLease, 2> leases;
+        std::array<StorageId, 2> storage_ids;
         std::array<lux::render::vulkan::TextureStorage*, 2> scene_textures{};
         std::array<TextureId, 2> textures;
         std::array<ExecutionContext*, 2> contexts{};
@@ -244,14 +244,14 @@ int main()
         const auto info = information(16, 1, false);
         for (std::size_t i = 0; i < scenes.size(); ++i)
         {
-            leases[i] = take(scenes[i].acquire(type, "default"));
+            storage_ids[i] = take(scenes[i].getOrCreate(type, "default"));
             scene_textures[i] = static_cast<lux::render::vulkan::TextureStorage*>(
-                session->resources().native(leases[i].id())
+                session->resources().native(storage_ids[i])
             );
             CHECK(scene_textures[i]->descriptors() == storage.descriptors());
             auto bytes = std::make_shared<const std::vector<std::byte>>(16 * 16 * 4, std::byte(i ? 96 : 32));
             auto work = take(lux::render::upload(*scene_textures[i],
-                SetTexture::Request{{leases[i].id(), {}}, 0, info, payload(bytes)}));
+                SetTexture::Request{{storage_ids[i], {}}, 0, info, payload(bytes)}));
             textures[i] = work.first.texture;
             complete(work.second, host, *session);
             work.second.reset();
@@ -290,7 +290,7 @@ int main()
         const auto destroyed = destroyed_samplers;
         const auto pools = destroyed_texture_pools;
         CHECK(session->release(contexts[0]));
-        leases[0].reset();
+        CHECK(scenes[0].remove(storage_ids[0]));
         CHECK(scenes[0].size() == 0 && !session->resources().native(textures[0].storage));
         CHECK(destroyed_samplers == destroyed && destroyed_texture_pools == pools);
         // The other Scene is still recordable while the first Scene's physical backing retires.
@@ -302,7 +302,7 @@ int main()
         CHECK(destroyed_samplers == destroyed + 1 && destroyed_texture_pools == pools);
         pixels(take(contexts[1]->readback()), {96, 96, 96, 96}, 0);
         CHECK(session->release(contexts[1]));
-        leases[1].reset();
+        CHECK(scenes[1].remove(storage_ids[1]));
         CHECK(session->collect());
         CHECK(destroyed_samplers == destroyed + 2 && destroyed_texture_pools == pools);
         std::puts("Scene Texture owners: distinct IDs/slots, one device descriptor table, shared Graph, pixels=32/96; "
@@ -341,7 +341,7 @@ int main()
         render_allocation::window = true;
         CHECK(session->release(context));
         const auto context_release_calls = render_allocation::calls.load();
-        CHECK(session->globalStorages().releasePrepared(id.storage));
+        CHECK(session->globalStorages().remove(id.storage));
         render_allocation::window = false;
         std::printf("final logical owner release allocations: context=%zu storage=%zu\n", context_release_calls,
             render_allocation::calls.load() - context_release_calls);

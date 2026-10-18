@@ -88,8 +88,8 @@ sample count and kind changes require a new compiled candidate.
 DeviceSession currently owns stable ExecutionContexts. Each Context prepares one physical binding set
 containing its immutable CompiledGraph, allocator-owned transient images/readback buffers, image views,
 descriptor pool and shared descriptor-array owner. Its CPU recipes borrow stable pointers from that set;
-a successful Execute retains the whole set once in the physical submission slot. Context Storage leases
-remain separate subscriptions for future uses. Scope keys derive from validated Scene/View SlotKeys; attachment-private
+a successful Execute retains the whole set once in the physical submission slot. Context Storage references
+keep their actual instances alive for future uses. Scope keys derive from validated Scene/View SlotKeys; attachment-private
 backing additionally uses the stable context identity. Global/Scene/View sharing compares full semantic
 key, storage type/ABI, size and usage during preparation only. A small typed CPU BufferInitializer is
 the actual cold consumer; it does not promise a future universal GPU Storage API.
@@ -99,8 +99,8 @@ checks only changing queue capacity/completion/submission results. Reusing an ov
 image discards old contents but still orders its previous accesses; the first-use barrier explicitly
 carries that inter-execution dependency. Unsupported graph semantics remain compiler errors.
 
-Release destroys the CPU Context immediately, cancels Readback subscriptions and releases its Storage
-leases. It neither reserves nor appends a Context retirement record. Submitted batches retain the graph
+Release destroys the CPU Context immediately, cancels Readback subscriptions and releases its shared Storage
+references. It neither reserves nor appends a Context retirement record. Submitted batches retain the graph
 physical binding set until actual fence completion. TextureData directly owns Image, View, Sampler and
 DescriptorRange. Publication creates an immutable prepared snapshot; accepted batches keep the old snapshot through completion. Material pins keep actual
 TextureData without keeping the logical Texture Storage. MeshData and MaterialData own actual Buffers;
@@ -158,3 +158,20 @@ Mesh and Material publication visits only that resource's prepared subscriptions
 uses its stored position; logical deletion disconnects subscriptions while their Storage still exists.
 A later binding destructor does not call a dead Storage. Buffer, Image and descriptor lifetime comes
 from the submitted physical snapshot, not from keeping that logical subscription alive.
+
+## Storage identity and lifetime
+
+The actual Global/Scene/View/Attachment StorageSet owns each created professional instance.
+`getOrCreate()` is idempotent for a compatible type/name/configuration and returns its StorageId;
+it does not add a preload count. `ResourceRegistry::share()` retains an accepted internal use through
+ordinary shared ownership. The registry itself only borrows the instance and its Set position.
+`StorageSet::remove()` and `clear()` revoke IDs before dropping the Set references. New requests fail
+on revoked IDs; existing Context subscriptions and asynchronous operations keep their instances alive.
+Before publishing an asynchronous upload result, the professional Storage checks that its ID is still
+registered. A removed Scene can therefore finish accepted GPU work without publishing a stale handle.
+The matching Native deleter finishes before its retained configuration is released.
+
+Name lookup uses ordered indices; ID removal repairs the dense position and erases the saved name
+iterator. Clearing a Set revokes all its own IDs once, then releases the instances, including indirect
+Storage references. It neither scans unrelated Sets nor waits for lease counts. GPU batches retain
+physical snapshots, independently of these logical Storage references.

@@ -76,7 +76,7 @@ int main(int argc, char** argv)
         auto session = take(DeviceSession::create(bootstrap, options));
         CHECK(session->configureUploads({65536, 2, 2 * 1024 * 1024}, host.cpu()));
         CHECK(session->resources().installFactory(materialStorageFactory(), MaterialStorageConfig{}));
-        const auto storage_id = take(session->globalStorages().prepare(
+        const auto storage_id = take(session->globalStorages().getOrCreate(
             session->resources().typeId(kMaterialStorageType), "material"));
         auto& storage = *take(session->resources().borrow<lux::render::vulkan::MaterialStorage>(storage_id));
         TexturePublished texture{};
@@ -221,7 +221,7 @@ int main(int argc, char** argv)
             CHECK(textures(*session)->residentVersions() == 1);
             CHECK(pipelines == pipeline_count);
             CHECK(textures(*session)->release(next.texture, next.revision));
-            CHECK(session->globalStorages().releasePrepared(texture_storage));
+            CHECK(session->globalStorages().remove(texture_storage));
             CHECK(!session->resources().native(texture_storage));
             pixels(*second, *session, 96); // Material pins physical content after the Texture Storage is gone.
         }
@@ -232,7 +232,7 @@ int main(int argc, char** argv)
         CHECK(storage.residentVersions() == 1);
         if (textured)
         {
-            CHECK(session->globalStorages().releasePrepared(storage_id));
+            CHECK(session->globalStorages().remove(storage_id));
             CHECK(!session->resources().native(storage_id) && !session->resources().native(texture_storage));
             CHECK(live_buffers > 0); // Both logical owners ended while actual Draw completion is unobserved.
         }

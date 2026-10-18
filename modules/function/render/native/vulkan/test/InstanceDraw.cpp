@@ -57,9 +57,9 @@ int main(int argc, char** argv)
         CHECK(registry.installFactory(materialStorageFactory(), MaterialStorageConfig{}));
         CHECK(registry.installFactory(instanceStorageFactory(), InstanceStorageConfig{}));
         auto& globals = session->globalStorages();
-        const auto mesh_id = take(globals.prepare(registry.typeId(kMeshStorageType), "mesh"));
-        const auto material_id = take(globals.prepare(registry.typeId(kMaterialStorageType), "material"));
-        const auto instance_id = take(globals.prepare(registry.typeId(kInstanceStorageType), "instances"));
+        const auto mesh_id = take(globals.getOrCreate(registry.typeId(kMeshStorageType), "mesh"));
+        const auto material_id = take(globals.getOrCreate(registry.typeId(kMaterialStorageType), "material"));
+        const auto instance_id = take(globals.getOrCreate(registry.typeId(kInstanceStorageType), "instances"));
         auto& meshes = *take(registry.borrow<lux::render::vulkan::MeshStorage>(mesh_id));
         auto& materials = *take(registry.borrow<lux::render::vulkan::MaterialStorage>(material_id));
         auto& instances = *take(registry.borrow<lux::render::vulkan::InstanceStorage>(instance_id));
@@ -199,9 +199,9 @@ int main(int argc, char** argv)
         CHECK(instances.release(left));
         CHECK(instances.release(right));
         CHECK(session->release(second));
-        CHECK(globals.releasePrepared(instance_id));
-        CHECK(globals.releasePrepared(mesh_id));
-        CHECK(globals.releasePrepared(material_id));
+        CHECK(globals.remove(instance_id));
+        CHECK(globals.remove(mesh_id));
+        CHECK(globals.remove(material_id));
         CHECK(session->drain());
         CHECK(pipelines == before_pipeline + 1);
     }

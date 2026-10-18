@@ -70,7 +70,7 @@ int main()
     CHECK(session->configureUploads({65536, 2, 131072}, worker.cpu()));
     CHECK(configureTextures(*session, 16, 1024 * 1024));
     CHECK(session->resources().installFactory(extension_test::bufferFactory(), TestBufferStorage::Config{}));
-    auto instance_id = take(session->globalStorages().prepare(
+    auto instance_id = take(session->globalStorages().getOrCreate(
         session->resources().typeId(TestBufferStorage::description.type), "values"));
     auto& buffer = *static_cast<NativeBuffer*>(session->resources().native(instance_id));
     const std::array<float, 4> half{0.5f, 0.5f, 0.5f, 0.5f};
@@ -260,7 +260,7 @@ int main()
     CHECK(session->release(replacement));
     CHECK(live_descriptor_pools == descriptor_pools_before);
     const auto context_release_calls = render_allocation::calls.load();
-    CHECK(session->globalStorages().releasePrepared(instance_id));
+    CHECK(session->globalStorages().remove(instance_id));
     render_allocation::window = false;
     std::printf("Buffer owner release allocations: contexts=%zu storage=%zu\n", context_release_calls,
         render_allocation::calls.load() - context_release_calls);
@@ -280,7 +280,7 @@ int main()
     auto* storage = textures(*session);
     auto indirect = take(storage->acquire(texture));
     CHECK(storage->release(texture, 1));
-    CHECK(session->globalStorages().releasePrepared(texture_instance));
+    CHECK(session->globalStorages().remove(texture_instance));
     CHECK(!registry.native(texture_instance)); // physical content needs no logical Storage owner
     const auto copied = read(*session, *indirect);
     CHECK(std::ranges::equal(copied, white));

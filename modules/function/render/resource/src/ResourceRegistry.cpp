@@ -13,9 +13,8 @@ namespace lux::render
 
     StorageTypeId ResourceRegistry::typeId(StorageNameView type) const noexcept
     {
-        for (const auto& entry : types_)
-            if (entry.factory.description->type == type) return entry.id;
-        return {};
+        const auto found = types_by_name_.find(type.name());
+        return found == types_by_name_.end() ? StorageTypeId{} : found->second;
     }
 
     const StorageFactory* ResourceRegistry::factory(StorageTypeId type) const noexcept
@@ -58,6 +57,7 @@ namespace lux::render
     {
         const auto id = types_.emplace(Type{{}, std::move(factory), std::move(configuration)});
         types_.find(id)->id = id;
+        types_by_name_.emplace(std::string(types_.find(id)->factory.description->type.name()), id);
         return id;
     }
 
@@ -102,12 +102,11 @@ namespace lux::render
         return entry && entry->native ? entry->owner : nullptr;
     }
 
-    RenderResult<StorageLease> ResourceRegistry::lease(StorageId id) noexcept
+    RenderResult<std::shared_ptr<void>> ResourceRegistry::share(StorageId id) noexcept
     {
         auto* entry = entries_.find(id);
-        if (!entry || !entry->native || entry->owner->closing_)
+        if (!entry || !entry->native)
             return cxx::unexpected(RenderError{kStorageIdentity});
-        ++entry->owner->records_[entry->position].leases;
-        return StorageLease{*entry->owner, id};
+        return entry->owner->records_[entry->position].native;
     }
 }

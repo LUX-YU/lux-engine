@@ -30,7 +30,7 @@ namespace lux::render
         addBuiltin<ListStorages, &Impl::listStorages>();
         addBuiltin<FindStorage, &Impl::findStorage>();
         addBuiltin<PrepareStorage, &Impl::prepareStorage>();
-        addBuiltin<ReleasePreparedStorage, &Impl::releasePreparedStorage>();
+        addBuiltin<RemoveStorage, &Impl::removeStorage>();
         addBuiltin<ListCommands, &Impl::listCommands>();
         addBuiltin<ListCommandBindings, &Impl::listCommandBindings>();
         addBuiltin<SelectCommandBinding, &Impl::selectCommandBinding>();

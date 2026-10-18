@@ -233,7 +233,7 @@ namespace mesh_sample
             (void)coldCall<ReleaseTexture>(client, commands, next, assets.texture);
             (void)coldCall<ReleaseMesh>(client, commands, next, assets.mesh);
             for (const auto id : {material_storage, texture_storage, mesh_storage})
-                (void)coldCall<ReleasePreparedStorage>(client, commands, next, id);
+                (void)coldCall<RemoveStorage>(client, commands, next, id);
         });
 
         loaded.wait();
@@ -284,7 +284,7 @@ namespace mesh_sample
                 return binding.storage == instance_storage;
             }));
         }
-        (void)coldCall<ReleasePreparedStorage>(main, main_commands, main_next, instance_storage); // Attach leases now retain it.
+        // The Scene retains its InstanceStorage while subsequent commands still address its ID.
         const auto read = command<Readback>(main_commands);
         const auto read_color = [&] { return call<Readback>(main, main_next, read, {first_bindings.attachment, {}}).pixels; };
         auto color = read_color();

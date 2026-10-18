@@ -21,7 +21,7 @@ namespace extension_test
             struct Read final
             {
                 vk::DeviceSession& session;
-                StorageLease storage;
+                std::shared_ptr<void> storage;
                 vk::PreparedStorageBinding source;
                 std::shared_ptr<vk::Buffer> buffer;
                 std::optional<vk::SubmissionTicket> ticket;
@@ -102,9 +102,9 @@ namespace extension_test
             auto payload = RenderPayload::fromVector(output, 0, output->size());
             if (!payload) return native_test::SubmissionSender<ReadBuffer::Response, Read>{payload.error()};
             ReadBuffer::Response response{ReadBuffer::ResponseValue{std::move(*payload)}};
-            auto lease = registry.lease(input.id.storage);
-            if (!lease) return native_test::SubmissionSender<ReadBuffer::Response, Read>{lease.error()};
-            auto owner = std::make_unique<Read>(session, std::move(*lease), vk::PreparedStorageBinding{}, std::shared_ptr<vk::Buffer>{},
+            auto storage_reference = registry.share(input.id.storage);
+            if (!storage_reference) return native_test::SubmissionSender<ReadBuffer::Response, Read>{storage_reference.error()};
+            auto owner = std::make_unique<Read>(session, std::move(*storage_reference), vk::PreparedStorageBinding{}, std::shared_ptr<vk::Buffer>{},
                 std::optional<vk::SubmissionTicket>{}, output);
             vk::NativeResourcePlan plan{"values", GraphBufferDesc{16}, EGraphOrigin::IMPORTED};
             auto prepared = (*storage)->prepare(plan, input, owner->source);

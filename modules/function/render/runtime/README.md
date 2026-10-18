@@ -8,8 +8,8 @@ Vulkan nor stdexec. Server-only installation uses the selected Native provider.
 
 `RenderServer::Impl` owns one `CommandRegistry`, `ResponseOutbox`, counting scope,
 Core execution::RunLoop, Responder and DeviceSession. Scene owns View.
-Effect owns its immutable CompiledGraph and four-field execution groups:
-SceneId, ViewId, TargetId and ExecutionContext pointer.
+Effect owns its immutable CompiledGraph. The Attachment table owns each actual
+Effect/Scene/View/Target relationship; those objects keep non-owning relation indices.
 
 ## Registration and dispatch
 
@@ -107,3 +107,13 @@ other Features define their own layouts without changing Runtime.
 size leaves its prior inputs unchanged. Success commits inputs for future recording, not a
 completed GPU frame. Different Attachments of one View can have independent parameter layouts
 and values. Resize preserves each Attachment's bytes and normalized viewport.
+
+## Scoped resource instances
+
+`PrepareStorage` resolves the actual Global/Scene/View/Attachment StorageSet and idempotently creates
+its type/name/configuration instance. `FindStorage` returns the corresponding identity. `RemoveStorage`
+revokes that identity immediately; it is not a decrement of a hidden preload count. A new request using
+the old ID fails. Attachments and accepted asynchronous operations can retain the actual Storage with
+standard shared references. Pending uploads revalidate their StorageId before publishing a new result.
+Scene/View destruction clears their Sets without waiting for or counting these accepted references;
+Server shutdown still settles accepted operations before destroying the DeviceSession.

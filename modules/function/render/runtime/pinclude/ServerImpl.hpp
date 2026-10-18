@@ -90,7 +90,7 @@ namespace lux::render
         RenderResult<StorageSet*> findStorageSet(const VStorageOwner&) noexcept;
         void findStorage(const FindStorage::Request&, FindStorage::Response&) noexcept;
         void prepareStorage(const PrepareStorage::Request&, PrepareStorage::Response&) noexcept;
-        void releasePreparedStorage(const ReleasePreparedStorage::Request&, ReleasePreparedStorage::Response&) noexcept;
+        void removeStorage(const RemoveStorage::Request&, RemoveStorage::Response&) noexcept;
 
         void attachEffect(const Attach::Request&, Attach::Response&) noexcept;
 

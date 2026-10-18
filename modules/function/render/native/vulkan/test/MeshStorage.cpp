@@ -65,7 +65,7 @@ static void pixels(ExecutionContext& context, DeviceSession& session, unsigned v
 
 static void snapshotLifetime(DeviceSession& session, CpuFixture& host)
 {
-    const auto id = take(session.globalStorages().prepare(session.resources().typeId(kMeshStorageType), "snapshot"));
+    const auto id = take(session.globalStorages().getOrCreate(session.resources().typeId(kMeshStorageType), "snapshot"));
     auto& storage = *take(session.resources().borrow<lux::render::vulkan::MeshStorage>(id));
     auto input = request(id, 4, .25f);
     auto upload = take(lux::render::upload(storage, input));
@@ -106,7 +106,7 @@ static void snapshotLifetime(DeviceSession& session, CpuFixture& host)
     const auto ticket = take(std::move(batch).submit());
     hold_completion = true;
     CHECK(storage.release(published.mesh, published.revision));
-    CHECK(session.globalStorages().releasePrepared(id));
+    CHECK(session.globalStorages().remove(id));
     CHECK(!session.resources().native(id));
     third = {}; // Late subscription destruction cannot touch the now-destroyed logical Storage.
     CHECK(!old.expired());
@@ -145,7 +145,7 @@ int main(int argc, char** argv)
         auto session = take(DeviceSession::create(bootstrap, options));
         CHECK(session->configureUploads({65536, 2, 2 * 1024 * 1024}, host.cpu()));
         CHECK(session->resources().installFactory(meshStorageFactory(), MeshStorageConfig{}));
-        const auto storage_id = take(session->globalStorages().prepare(
+        const auto storage_id = take(session->globalStorages().getOrCreate(
             session->resources().typeId(kMeshStorageType), "mesh"));
         auto& storage = *take(session->resources().borrow<lux::render::vulkan::MeshStorage>(storage_id));
         const TargetDesc target{16, 16, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
@@ -288,7 +288,7 @@ int main(int argc, char** argv)
             CHECK(storage.residentVersions() == records.size());
             for (auto value : records) CHECK(storage.release(value.mesh, value.revision));
             CHECK(storage.residentVersions() == 0);
-            const auto limited_id = take(session->globalStorages().prepare(
+            const auto limited_id = take(session->globalStorages().getOrCreate(
                 session->resources().typeId(kMeshStorageType), "budget", take(ConfigValue::make(MeshStorageConfig{60}))
             ));
             auto& limited = *take(session->resources().borrow<lux::render::vulkan::MeshStorage>(limited_id));

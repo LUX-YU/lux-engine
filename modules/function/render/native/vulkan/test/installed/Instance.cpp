@@ -27,7 +27,7 @@ int main(int argc, char** argv)
     CHECK(session->configureUploads({65536, 1, 65536}, host.cpu()));
     const auto factory = StorageProvider<lux::render::MaterialStorage>::factory();
     CHECK(session->resources().installFactory(factory, MaterialStorageConfig{}));
-    const auto id = take(session->globalStorages().prepare(session->resources().typeId(kMaterialStorageType), "material"));
+    const auto id = take(session->globalStorages().getOrCreate(session->resources().typeId(kMaterialStorageType), "material"));
     auto& storage = *take(session->resources().borrow<lux::render::vulkan::MaterialStorage>(id));
     const MaterialWrite request{{id, {}}, 0, program, program.borrow<MaterialProgram>()->defaults};
     auto upload = take(lux::render::upload(storage, request));
@@ -38,8 +38,8 @@ int main(int argc, char** argv)
     CHECK(take(access.query(published.material)).parameters == request.parameters);
     CHECK(session->resources().installFactory(meshStorageFactory(), MeshStorageConfig{}));
     CHECK(session->resources().installFactory(StorageProvider<lux::render::InstanceStorage>::factory(), InstanceStorageConfig{}));
-    const auto mesh_id = take(session->globalStorages().prepare(session->resources().typeId(kMeshStorageType), "mesh"));
-    const auto instance_id = take(session->globalStorages().prepare(session->resources().typeId(kInstanceStorageType), "instances"));
+    const auto mesh_id = take(session->globalStorages().getOrCreate(session->resources().typeId(kMeshStorageType), "mesh"));
+    const auto instance_id = take(session->globalStorages().getOrCreate(session->resources().typeId(kInstanceStorageType), "instances"));
     auto& meshes = *take(session->resources().borrow<lux::render::vulkan::MeshStorage>(mesh_id));
     auto& instances = *take(session->resources().borrow<lux::render::vulkan::InstanceStorage>(instance_id));
     auto owner = std::make_shared<std::vector<std::byte>>(60);

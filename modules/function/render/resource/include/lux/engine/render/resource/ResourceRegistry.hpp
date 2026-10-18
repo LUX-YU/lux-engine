@@ -71,7 +71,7 @@ namespace lux::render
         }
 
         [[nodiscard]] void* native(StorageId id) const noexcept;
-        [[nodiscard]] RenderResult<StorageLease> lease(StorageId id) noexcept;
+        [[nodiscard]] RenderResult<std::shared_ptr<void>> share(StorageId id) noexcept;
         [[nodiscard]] StorageSet* owner(StorageId id) const noexcept;
         [[nodiscard]] std::size_t size() const noexcept { return entries_.size(); }
         [[nodiscard]] std::uint64_t creations() const noexcept { return creations_; }
@@ -92,6 +92,7 @@ namespace lux::render
         std::uint32_t capabilities_;
         cxx::StableSlotMap<Type, StorageTypeTag> types_;
         cxx::SlotMap<Entry, StorageTag> entries_;
+        std::map<std::string, StorageTypeId, std::less<>> types_by_name_;
         std::uint64_t creations_ = 0;
     };
 }

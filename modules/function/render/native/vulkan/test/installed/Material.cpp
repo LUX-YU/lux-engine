@@ -24,7 +24,7 @@ int main(int argc, char** argv)
     CHECK(session->configureUploads({65536, 1, 65536}, host.cpu()));
     const auto factory = StorageProvider<lux::render::MaterialStorage>::factory();
     CHECK(session->resources().installFactory(factory, MaterialStorageConfig{}));
-    const auto id = take(session->globalStorages().prepare(session->resources().typeId(kMaterialStorageType), "material"));
+    const auto id = take(session->globalStorages().getOrCreate(session->resources().typeId(kMaterialStorageType), "material"));
     auto& storage = *take(session->resources().borrow<lux::render::vulkan::MaterialStorage>(id));
     const MaterialWrite request{{id, {}}, 0, program, program.borrow<MaterialProgram>()->defaults};
     auto upload = take(lux::render::upload(storage, request));

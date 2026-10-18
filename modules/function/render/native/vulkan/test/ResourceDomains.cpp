@@ -80,25 +80,25 @@ int main()
         CHECK(session->release(accepted));
         view.clear();
         scene.clear();
+        session->globalStorages().clear();
         // Logical identity ends now; only physical retirement owns the submitted buffers.
         CHECK(resources.size() == 0);
         CHECK(session->collect() && live == before);
-        CHECK(!session->prepare(code, native_fixture::target(config), &scene, &view));
         hold_completion = false;
         CHECK(take(session->queue().wait(ticket, UINT64_MAX)) && session->collect());
         CHECK(resources.size() == 0 && (live == std::array<int, 3>{}));
-        // Explicit preload survives Attach removal but does not merge distinct actual owners.
+        // Explicit Set ownership survives Attach removal but does not merge distinct actual owners.
         const auto type = resources.typeId(buffer_fixture::description.type);
-        auto global = take(session->globalStorages().prepare(type, "preload"));
+        auto global = take(session->globalStorages().getOrCreate(type, "preload"));
         StorageSet rebuilt_scene(resources);
-        auto local = take(rebuilt_scene.prepare(type, "preload"));
+        auto local = take(rebuilt_scene.getOrCreate(type, "preload"));
         CHECK(global != local && resources.size() == 2);
         rebuilt_scene.clear();
         CHECK(!resources.native(local) && resources.native(global));
-        CHECK(session->globalStorages().releasePrepared(global));
+        CHECK(session->globalStorages().remove(global));
         CHECK(resources.size() == 0 && (live == std::array<int, 3>{}));
     }
     CHECK(validation.errors == 0);
-    std::printf("Owner GPU candidate rollback=6; closed/cross-session owner rejection; held-ticket owner-close; errors=0 warnings=%u\n",
+    std::printf("Owner GPU candidate rollback=6; rollback/cross-session owner rejection; held-ticket owner-close; errors=0 warnings=%u\n",
         validation.warnings.load());
 }

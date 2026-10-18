@@ -4,6 +4,7 @@
 #include "ImageFormat.hpp"
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <algorithm>
+#include <lux/cxx/core/scope_exit.hpp>
 #include <cstring>
 
 namespace lux::render::vulkan
@@ -44,7 +45,7 @@ namespace lux::render::vulkan
           code_(frame_resources_->code.get()), target_(target),
           bindings_(code_->resources().size()), storages_(owner.resources())
     {
-        leases_.reserve(bindings_.size());
+        storage_uses_.reserve(bindings_.size());
         context_values_.resize(code_->descriptor_plan_->context_parameters.size);
         context_view_ = context_values_;
     }
@@ -59,12 +60,12 @@ namespace lux::render::vulkan
         cancelReadbacks();
         // All future-use subscriptions end while the actual Storage owners still exist. Physical
         // contents remain owned by already submitted immutable snapshots.
-        for (auto& use : leases_)
+        for (auto& use : storage_uses_)
         {
             use.binding.updated = nullptr;
             use.binding.reference.reset();
         }
-        leases_.clear();
+        storage_uses_.clear();
         storages_.clear();
     }
 
@@ -91,6 +92,10 @@ namespace lux::render::vulkan
             if (previous && *previous != argument.value) return cxx::unexpected(RenderError{kStorageMismatch});
             resolved_arguments[index] = &argument.value;
         }
+        std::vector<std::pair<StorageSet*, StorageId>> created_storages;
+        cxx::scope_exit rollback([&]() noexcept {
+            for (const auto& [set, id] : created_storages) (void)set->remove(id);
+        });
         auto context = std::unique_ptr<ExecutionContext>(new ExecutionContext(*this, queue(), std::move(code), target));
         const auto prepareGroup = [&](std::span<const std::uint32_t> indices, StorageSet* set) -> RenderResult<void> {
             for (auto i : indices)
@@ -106,14 +111,18 @@ namespace lux::render::vulkan
                 if (type != factory->description->binding_type)
                     return cxx::unexpected(RenderError{kStorageContract});
                 const auto* value = argument ? argument->data() : nullptr;
-                auto instance = set->acquire(resources_.typeId(plan.storage->type.view()), key, plan.storage->config);
+                const auto storage_type = resources_.typeId(plan.storage->type.view());
+                const auto previous = set->find(storage_type, key);
+                auto instance = set->getOrCreate(storage_type, key, plan.storage->config);
                 if (!instance) return cxx::unexpected(instance.error());
-                const auto id = instance->id();
-                auto& lease = context->leases_.emplace_back(std::move(*instance), PreparedStorageBinding{}, i);
+                const auto id = *instance;
+                if (previous.isNull() && set != &context->storages_) created_storages.emplace_back(set, id);
+                auto reference = resources_.share(id);
+                auto& use = context->storage_uses_.emplace_back(id, std::move(*reference), PreparedStorageBinding{}, i);
                 const auto& ops = *static_cast<const StorageBindingOps*>(factory->binding_ops);
-                if (auto prepared = ops.prepare(resources_.native(id), plan, value, lease.binding); !prepared)
+                if (auto prepared = ops.prepare(resources_.native(id), plan, value, use.binding); !prepared)
                     return cxx::unexpected(prepared.error());
-                binding.buffer = lease.binding.buffer;
+                binding.buffer = use.binding.buffer;
             }
             return {};
         };
@@ -199,13 +208,14 @@ namespace lux::render::vulkan
             context->host_barriers_.push_back(native);
         }
         if (auto ready = context->prepareDescriptors(); !ready) return cxx::unexpected(ready.error());
-        for (auto& use : context->leases_)
+        for (auto& use : context->storage_uses_)
         {
             use.binding.update_context = context.get();
             use.binding.updated = [](void* value) noexcept { static_cast<ExecutionContext*>(value)->rebind(); };
         }
         auto* result = context.get();
         contexts_.push_back(std::move(context));
+        rollback.release();
         return result;
     }
 
@@ -260,8 +270,8 @@ namespace lux::render::vulkan
                 const auto* source_bytes = &context_view_;
                 if (mapping.resource != kGraphInvalidIndex)
                 {
-                    const auto source = std::ranges::find(leases_, mapping.resource, &StorageUse::resource);
-                    if (source == leases_.end() || !source->binding.parameter_layout)
+                    const auto source = std::ranges::find(storage_uses_, mapping.resource, &StorageUse::resource);
+                    if (source == storage_uses_.end() || !source->binding.parameter_layout)
                         return cxx::unexpected(RenderError{kStorageContract});
                     source_layout = source->binding.parameter_layout;
                     source_bytes = &source->binding.parameters;
@@ -292,12 +302,12 @@ namespace lux::render::vulkan
         if (last_use_ && queue_->completed() < last_use_->serial()) descriptor_bank_ = 1u - submitted_bank_;
         auto snapshot = std::make_shared<PreparedBindings>();
         snapshot->frame = frame_resources_;
-        snapshot->resources.reserve(leases_.size());
-        for (const auto& lease : leases_)
-            if (lease.binding.resources) snapshot->resources.push_back(lease.binding.resources);
+        snapshot->resources.reserve(storage_uses_.size());
+        for (const auto& use : storage_uses_)
+            if (use.binding.resources) snapshot->resources.push_back(use.binding.resources);
         prepared_ = std::move(snapshot);
         const auto& layout = *code_->descriptor_plan_;
-        for (const auto& lease : leases_) bindings_[lease.resource].buffer = lease.binding.buffer;
+        for (const auto& use : storage_uses_) bindings_[use.resource].buffer = use.binding.buffer;
         for (auto& pass : passes_)
         {
             for (const auto& copy : pass.parameter_copies)
@@ -540,7 +550,7 @@ namespace lux::render::vulkan
         if (!submitted) return cxx::unexpected(submitted.error());
         last_use_ = *submitted;
         submitted_bank_ = descriptor_bank_;
-        for (const auto& lease : leases_) if (lease.binding.last_use) lease.binding.last_use->merge(*submitted);
+        for (const auto& use : storage_uses_) if (use.binding.last_use) use.binding.last_use->merge(*submitted);
         return outcome(EExecutionOutcome::EXECUTED);
     }
 

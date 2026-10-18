@@ -41,10 +41,10 @@ int main()
         ops);
     CHECK(registry.installFactory(factory, TextureStorageConfig{}));
     CHECK(!registry.installFactory(factory, TextureStorageConfig{}));
-    auto lease = take(session->globalStorages().acquire<Declaration>("explicit"));
-    auto access = take(registry.tryGet<Declaration>(lease.id()));
-    CHECK(created == 1 && take(access.query(TextureId{lease.id(), {2, 3}})).revision == 991);
-    lease.reset();
+    auto id = take(session->globalStorages().getOrCreate<Declaration>("explicit"));
+    auto access = take(registry.tryGet<Declaration>(id));
+    CHECK(created == 1 && take(access.query(TextureId{id, {2, 3}})).revision == 991);
+    CHECK(session->globalStorages().remove(id));
     session.reset();
     CHECK(created == destroyed && validation.errors == 0);
 }

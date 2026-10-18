@@ -1,41 +1,14 @@
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
-#include <algorithm>
-#include <exception>
 #include <utility>
 
 namespace lux::render
 {
-    StorageLease::~StorageLease() noexcept { reset(); }
-
-    StorageLease::StorageLease(StorageLease&& other) noexcept
-        : owner_(std::exchange(other.owner_, nullptr)), id_(std::exchange(other.id_, {})) {}
-
-    StorageLease& StorageLease::operator=(StorageLease&& other) noexcept
-    {
-        if (this != &other)
-        {
-            reset();
-            owner_ = std::exchange(other.owner_, nullptr);
-            id_ = std::exchange(other.id_, {});
-        }
-        return *this;
-    }
-
-    void StorageLease::reset() noexcept
-    {
-        auto* owner = std::exchange(owner_, nullptr);
-        const auto id = std::exchange(id_, {});
-        if (owner) owner->release(id);
-    }
-
     StorageSet::~StorageSet() noexcept { clear(); }
 
     StorageId StorageSet::find(StorageTypeId type, std::string_view key) const noexcept
     {
-        if (closing_) return {};
-        for (const auto& record : records_)
-            if (record.type == type && record.key == key) return record.id;
-        return {};
+        const auto found = instances_by_name_.find(std::tuple{type.index, type.gen, key});
+        return found == instances_by_name_.end() ? StorageId{} : found->second;
     }
 
     RenderResult<StorageId> StorageSet::ensure(
@@ -43,7 +16,6 @@ namespace lux::render
         CppType requested_config, CppType requested_ops
     ) noexcept
     {
-        if (closing_) return cxx::unexpected(RenderError{kStorageIdentity});
         if (key.empty()) return cxx::unexpected(RenderError{kStorageContract});
         const auto* installed = registry_.types_.find(type);
         if (!installed) return cxx::unexpected(RenderError{kStorageFactory});
@@ -76,13 +48,20 @@ namespace lux::render
         // Native creation may grow another Set. Reacquire the index entry after the callback.
         auto& entry = *registry_.entries_.find(id);
         entry.position = records_.size();
-        records_.push_back(Record{id, type, std::string(key), std::move(config), std::move(*native)});
+        const auto destroy = native->get_deleter();
+        std::shared_ptr<void> instance(native->release(),
+            [configuration = std::move(config), destroy](void* value) mutable noexcept {
+                destroy(value);
+                configuration = {}; // Includes configuration code pins, released after the Native deleter returns.
+            });
+        const auto name = instances_by_name_.emplace(NameKey{type.index, type.gen, std::string(key)}, id).first;
+        records_.push_back(Record{id, name, std::move(instance)});
         entry.native = records_.back().native.get();
         ++registry_.creations_;
         return id;
     }
 
-    RenderResult<StorageLease> StorageSet::acquireImpl(
+    RenderResult<StorageId> StorageSet::getOrCreateImpl(
         const StorageDescriptor& description, std::string_view key, ConfigValue config,
         CppType config_type, CppType ops_type
     ) noexcept
@@ -92,77 +71,49 @@ namespace lux::render
         if (!factory) return cxx::unexpected(RenderError{kStorageFactory});
         if (auto compatible = compatibleStorage(*factory->description, description); !compatible)
             return cxx::unexpected(compatible.error());
-        auto id = ensure(type, key, std::move(config), config_type, ops_type);
-        if (!id) return cxx::unexpected(id.error());
-        ++records_[registry_.entries_.find(*id)->position].leases;
-        return StorageLease{*this, *id};
+        return ensure(type, key, std::move(config), config_type, ops_type);
     }
 
-    RenderResult<StorageLease> StorageSet::acquire(
+    RenderResult<StorageId> StorageSet::getOrCreate(
         StorageTypeId type, std::string_view key, ConfigValue config
     ) noexcept
     {
-        auto id = ensure(type, key, std::move(config));
-        if (!id) return cxx::unexpected(id.error());
-        ++records_[registry_.entries_.find(*id)->position].leases;
-        return StorageLease{*this, *id};
+        return ensure(type, key, std::move(config));
     }
 
-    RenderResult<StorageId> StorageSet::prepare(
-        StorageTypeId type, std::string_view key, ConfigValue config
-    ) noexcept
+    RenderResult<void> StorageSet::remove(StorageId id) noexcept
     {
-        auto id = ensure(type, key, std::move(config));
-        if (!id) return cxx::unexpected(id.error());
-        ++records_[registry_.entries_.find(*id)->position].preloads;
-        return id;
-    }
-
-    RenderResult<void> StorageSet::releasePrepared(StorageId id) noexcept
-    {
-        auto* entry = registry_.entries_.find(id);
+        const auto* entry = registry_.entries_.find(id);
         if (!entry || entry->owner != this || !entry->native)
             return cxx::unexpected(RenderError{kStorageIdentity});
-        auto& record = records_[entry->position];
-        if (!record.preloads) return cxx::unexpected(RenderError{kStorageIdentity});
-        if (--record.preloads == 0 && record.leases == 0) erase(entry->position);
+        erase(entry->position);
         return {};
-    }
-
-    void StorageSet::release(StorageId id) noexcept
-    {
-        const auto& entry = *registry_.entries_.find(id); // one live noncopyable lease proves the entry
-        auto& record = records_[entry.position];
-        if (--record.leases == 0 && record.preloads == 0) erase(entry.position);
     }
 
     void StorageSet::erase(std::size_t position) noexcept
     {
-        const auto id = records_[position].id;
-        auto config = std::move(records_[position].config);
+        const auto& record = records_[position];
+        instances_by_name_.erase(record.name);
+        registry_.entries_.erase(record.id);
         auto native = std::move(records_[position].native);
-        registry_.entries_.erase(id);
         if (position + 1 != records_.size())
         {
             records_[position] = std::move(records_.back());
             registry_.entries_.find(records_[position].id)->position = position;
         }
         records_.pop_back();
-        // Native deletion follows index repair; its Config/code pin remains live until it returns.
-        // Do not move-construct Record: MSVC checked string iterators allocate a new proxy even for a move.
+        // All indexes are repaired before a Native destructor can release another actual instance.
     }
 
     void StorageSet::clear() noexcept
     {
-        closing_ = true;
-        for (auto& record : records_) record.preloads = 0;
+        for (const auto& record : records_) registry_.entries_.erase(record.id);
+        instances_by_name_.clear();
+        // Revoke the entire set before any destructor runs. No temporary container or allocation is needed.
         while (!records_.empty())
         {
-            const auto ready = std::find_if(records_.begin(), records_.end(), [](const auto& record) {
-                return record.leases == 0;
-            });
-            if (ready == records_.end()) std::terminate(); // caller must finish borrowers before Owner teardown
-            erase(std::size_t(ready - records_.begin()));
+            auto native = std::move(records_.back().native);
+            records_.pop_back();
         }
     }
 }

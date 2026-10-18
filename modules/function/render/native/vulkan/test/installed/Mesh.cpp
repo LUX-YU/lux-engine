@@ -11,7 +11,7 @@ int main()
     CHECK(session->configureUploads({65536, 1, 65536}, host.cpu()));
     const auto factory = StorageProvider<lux::render::MeshStorage>::factory();
     CHECK(session->resources().installFactory(factory, MeshStorageConfig{}));
-    const auto id = take(session->globalStorages().prepare(session->resources().typeId(kMeshStorageType), "mesh"));
+    const auto id = take(session->globalStorages().getOrCreate(session->resources().typeId(kMeshStorageType), "mesh"));
     auto& storage = *take(session->resources().borrow<lux::render::vulkan::MeshStorage>(id));
     auto bytes = std::make_shared<std::vector<std::byte>>(60);
     const std::array<float, 12> vertices{-1, -1, 0, 1, 3, -1, 0, 1, -1, 3, 0, 1};

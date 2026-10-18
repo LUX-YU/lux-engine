@@ -88,7 +88,7 @@ namespace lux::render::vulkan
         MaterialStorage& storage;
         MaterialId id;
         std::shared_ptr<MaterialData> backing;
-        StorageLease lease;
+        std::shared_ptr<void> storage_reference;
 
         ~Candidate() noexcept
         {
@@ -100,6 +100,8 @@ namespace lux::render::vulkan
 
         RenderResult<void> publish(Transfer& transfer) noexcept
         {
+            if (!storage.session_.resources().native(storage.id_))
+                return cxx::unexpected(RenderError{kStorageIdentity});
             auto buffer = transfer.takeBuffer();
             if (!buffer) return cxx::unexpected(buffer.error());
             backing->buffer = std::move(*buffer);
@@ -153,8 +155,8 @@ namespace lux::render::vulkan
         const bool over_budget = !projected ||
             (config_.resident_byte_budget && *projected > config_.resident_byte_budget);
         if (over_budget) return cxx::unexpected(RenderError{kStorageCapacity});
-        auto lease = session_.resources().lease(id_);
-        if (!lease) return cxx::unexpected(lease.error());
+        auto storage_reference = session_.resources().share(id_);
+        if (!storage_reference) return cxx::unexpected(storage_reference.error());
         auto backing = std::make_shared<MaterialData>(residency_, input);
         for (std::uint32_t slot = 0; slot < program->texture_count; ++slot)
         {
@@ -188,7 +190,7 @@ namespace lux::render::vulkan
         auto id = input.material;
         if (id.isNull()) id.local = entries_.emplace();
         entries_.find(id.local)->updating = true;
-        auto candidate = std::make_unique<Candidate>(*this, id, std::move(backing), std::move(*lease));
+        auto candidate = std::make_unique<Candidate>(*this, id, std::move(backing), std::move(*storage_reference));
         auto work = GpuWork::pending<[](Candidate& value, Transfer& transfer, DeviceSession&) noexcept {
             return value.publish(transfer);
         }>(session_, *transfer, candidate);

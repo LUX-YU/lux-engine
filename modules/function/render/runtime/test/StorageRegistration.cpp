@@ -185,8 +185,7 @@ static int exerciseRegistration(unsigned& handler_destructions)
             CHECK(found && *found == identities[i]);
             auto repeated = runtime_test::coldCall<PrepareStorage>(*client, {location, {}});
             CHECK(repeated && *repeated == identities[i]);
-            CHECK(runtime_test::coldCall<ReleasePreparedStorage>(*client, identities[i]));
-            CHECK(runtime_test::coldCall<FindStorage>(*client, location)); // the other preload remains
+            CHECK(runtime_test::coldCall<FindStorage>(*client, location)); // repeated creation adds no artificial count
         }
         StorageLocation invalid{scene_a->scene, storage.id, "rejected"};
         auto wrong_config = ConfigValue::make(17u);
@@ -196,13 +195,13 @@ static int exerciseRegistration(unsigned& handler_destructions)
         CHECK(runtime_test::coldCall<RemoveScene>(*client, {scene_a->scene}));
         CHECK(!runtime_test::coldCall<FindStorage>(*client, {owners[1], storage.id, "prepared"}));
         CHECK(!runtime_test::coldCall<FindStorage>(*client, {owners[3], storage.id, "prepared"}));
-        CHECK(!runtime_test::coldCall<ReleasePreparedStorage>(*client, identities[1]));
-        CHECK(!runtime_test::coldCall<ReleasePreparedStorage>(*client, identities[3]));
+        CHECK(!runtime_test::coldCall<RemoveStorage>(*client, identities[1]));
+        CHECK(!runtime_test::coldCall<RemoveStorage>(*client, identities[3]));
         for (const auto i : {0u, 2u})
         {
             CHECK(runtime_test::coldCall<FindStorage>(*client, {owners[i], storage.id, "prepared"}));
-            CHECK(runtime_test::coldCall<ReleasePreparedStorage>(*client, identities[i]));
-            CHECK(!runtime_test::coldCall<ReleasePreparedStorage>(*client, identities[i]));
+            CHECK(runtime_test::coldCall<RemoveStorage>(*client, identities[i]));
+            CHECK(!runtime_test::coldCall<RemoveStorage>(*client, identities[i]));
         }
         const auto replacement = runtime_test::coldCall<CreateScene>(*client, {});
         CHECK(replacement && replacement->scene != scene_a->scene);

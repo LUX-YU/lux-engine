@@ -78,7 +78,7 @@ namespace lux::render
             output_response = cxx::unexpected(owner.error());
             return;
         }
-        auto id = (*owner)->prepare(input.location.type, input.location.key, input.config);
+        auto id = (*owner)->getOrCreate(input.location.type, input.location.key, input.config);
         if (!id)
         {
             output_response = cxx::unexpected(id.error());
@@ -87,9 +87,9 @@ namespace lux::render
         output_response = *id;
     }
 
-    void RenderServer::Impl::releasePreparedStorage(
-        const ReleasePreparedStorage::Request& _request,
-        ReleasePreparedStorage::Response& output_response
+    void RenderServer::Impl::removeStorage(
+        const RemoveStorage::Request& _request,
+        RemoveStorage::Response& output_response
     ) noexcept
     {
         const auto id = _request;
@@ -99,7 +99,7 @@ namespace lux::render
             output_response = cxx::unexpected(RenderError{kStorageIdentity});
             return;
         }
-        if (auto result = owner->releasePrepared(id); !result)
+        if (auto result = owner->remove(id); !result)
         {
             output_response = cxx::unexpected(result.error());
             return;

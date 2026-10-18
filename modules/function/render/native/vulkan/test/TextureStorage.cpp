@@ -214,9 +214,14 @@ int main()
         auto session = take(DeviceSession::create(bootstrap, options));
         CHECK(session->configureUploads({1024 * 1024, 1, 1024 * 1024}, host.cpu()));
         CHECK(configureTextures(*session, 16, 1024 * 1024));
+        CHECK(session->globalStorages().remove(textures(*session)->id()));
+        auto scene = std::make_unique<StorageSet>(session->resources());
+        const auto storage_id = take(scene->getOrCreate(session->resources().typeId(kTextureStorageType), "scene"));
+        auto* storage = take(session->resources().borrow<lux::render::vulkan::TextureStorage>(storage_id));
+        std::weak_ptr<void> storage_lifetime = take(session->resources().share(storage_id));
         const auto source = std::make_shared<const std::vector<std::byte>>(1024, std::byte{71});
-        auto upload = take(lux::render::upload(*textures(*session),
-            SetTexture::Request{{textures(*session)->id(), {}}, 0, information(16, 1, false), payload(source)}));
+        auto upload = take(lux::render::upload(*storage,
+            SetTexture::Request{{storage_id, {}}, 0, information(16, 1, false), payload(source)}));
         hold_completion = true;
         const auto before_submit = session->queue().submitted();
         WorkCompletion completion;
@@ -228,15 +233,19 @@ int main()
             CHECK(!completion.done && Clock::now() < deadline);
         }
         const auto held = live;
-        // End the explicit preload; the accepted operation lease remains in this living Set.
-        CHECK(session->globalStorages().releasePrepared(textures(*session)->id()));
-        CHECK(session->resources().size() == 1 && live == held);
+        // Revoke the identity while the accepted operation and GPU batch retain their actual objects.
+        scene.reset();
+        CHECK(session->resources().size() == 0 && live == held && !storage_lifetime.expired());
+        CHECK(!session->resources().share(storage_id));
         pump(host, *session);
         CHECK(!completion.done && live == held);
         hold_completion = false;
         finish(completion, host, *session);
-        CHECK(completion.result && upload.second.publish());
+        CHECK(completion.result);
+        const auto publication = upload.second.publish();
+        CHECK(!publication && publication.error().type == kStorageIdentity);
         upload.second.reset();
+        CHECK(storage_lifetime.expired());
         CHECK(session->resources().size() == 0 && live[0] == 0 && live[1] == 0 && live[2] == 0);
     }
     {

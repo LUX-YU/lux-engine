@@ -53,9 +53,9 @@ int main(int argc, char** argv)
         CHECK(registry.installFactory(instanceStorageFactory(), InstanceStorageConfig{}));
         auto& global = session->globalStorages();
         StorageSet scene(registry);
-        const auto mesh_storage = checked(global.prepare(registry.typeId(kMeshStorageType), "meshes"));
-        const auto material_storage = checked(global.prepare(registry.typeId(kMaterialStorageType), "materials"));
-        const auto instance_storage = checked(scene.prepare(registry.typeId(kInstanceStorageType), "instances"));
+        const auto mesh_storage = checked(global.getOrCreate(registry.typeId(kMeshStorageType), "meshes"));
+        const auto material_storage = checked(global.getOrCreate(registry.typeId(kMaterialStorageType), "materials"));
+        const auto instance_storage = checked(scene.getOrCreate(registry.typeId(kInstanceStorageType), "instances"));
         auto& meshes = *take(registry.borrow<vulkan::MeshStorage>(mesh_storage));
         auto& materials = *take(registry.borrow<vulkan::MaterialStorage>(material_storage));
         auto& instances = *take(registry.borrow<vulkan::InstanceStorage>(instance_storage));
@@ -164,9 +164,9 @@ int main(int argc, char** argv)
         pixel(pixels, 46, 30, {0, 0, 0, 255});
         CHECK(instances.release(left));
         CHECK(session->release(first));
-        CHECK(scene.releasePrepared(instance_storage));
-        CHECK(global.releasePrepared(material_storage));
-        CHECK(global.releasePrepared(mesh_storage));
+        CHECK(scene.remove(instance_storage));
+        CHECK(global.remove(material_storage));
+        CHECK(global.remove(mesh_storage));
         CHECK(session->drain());
     }
     CHECK(validation.errors == 0);

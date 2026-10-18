@@ -214,13 +214,13 @@ int main()
     CHECK(session->release(b));
     CHECK(session->release(larger));
     CHECK(session->drain());
-    // No preload: the last Attach lease removes the live identity, including Global/Scene/View.
-    CHECK(session->resources().size() == 0);
+    // Only Attachment-private instances end on detach; the four actual enclosing Sets remain.
+    CHECK(session->resources().size() == 4);
     const auto creations = session->resources().creations();
     auto* reattached = take(session->prepare(code, native_fixture::target(config), &scene, &view_a));
     const std::array<float, 4> restored_color{1, 0, 0, 1};
     CHECK(reattached->setContextParameters(std::as_bytes(std::span(restored_color))));
-    CHECK(session->resources().creations() == creations + 4);
+    CHECK(session->resources().creations() == creations + 1);
     CHECK(take(reattached->execute()) == EExecutionOutcome::EXECUTED);
     CHECK(take(session->queue().wait(*reattached->lastUse(), UINT64_MAX)));
     pixel(take(reattached->readback()), 32, 16, 16, {255, 0, 0, 255});
@@ -228,6 +228,7 @@ int main()
     view_a.clear();
     view_b.clear();
     scene.clear();
+    session->globalStorages().clear();
     CHECK(session->resources().size() == 0);
     code.reset();
 

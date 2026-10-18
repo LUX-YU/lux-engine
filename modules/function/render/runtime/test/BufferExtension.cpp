@@ -142,7 +142,7 @@ int main()
     // Owner-safe-point publication updates every existing Context without detach/recompile.
     for (const auto& group : groups) publishedPixels(*main, read, group, 64, 32);
     call<Detach>(*main, detach, groups[0]);
-    CHECK(!runtime_test::coldCall<ReleasePreparedStorage>(*main, attachment_storage));
+    CHECK(!runtime_test::coldCall<RemoveStorage>(*main, attachment_storage));
     CHECK(!runtime_test::coldCall<FindStorage>(*main, {groups[0], buffer_type, "private"}));
     const auto detached = groups[0];
     groups[0] = call<Attach>(*main, attach, requests[0]).get<Attach::Response>()->attachment;

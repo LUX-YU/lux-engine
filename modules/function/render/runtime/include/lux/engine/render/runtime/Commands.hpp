@@ -83,9 +83,9 @@ namespace lux::render
         using Request = PrepareStorageRequest;
         using Response = RenderResult<StorageId>;
     };
-    struct ReleasePreparedStorage final
+    struct RemoveStorage final
     {
-        static constexpr std::string_view name{"render.storage.release_prepared"};
+        static constexpr std::string_view name{"render.storage.remove"};
         using Request = StorageId;
         using Response = RenderResult<Ack>;
     };

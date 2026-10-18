@@ -96,7 +96,7 @@ namespace lux::render::vulkan
         // No mutation, extra lease, mirrored requirement or production diagnostic API is introduced.
         static SubmissionRequirements textureRequirements(const ExecutionContext& context, VkDescriptorSet descriptors)
         {
-            for (const auto& lease : context.leases_)
+            for (const auto& lease : context.storage_uses_)
                 if (lease.binding.descriptors == descriptors && lease.binding.last_use) return *lease.binding.last_use;
             CHECK(false);
             return {};

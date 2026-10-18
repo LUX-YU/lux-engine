@@ -47,7 +47,7 @@ int main(int argc, char** argv)
     CHECK(session->resources().installFactory(
         extension_test::bufferFactory(), extension_test::TestBufferStorage::Config{8, 16}
     ));
-    const auto storage_id = take(session->globalStorages().prepare(
+    const auto storage_id = take(session->globalStorages().getOrCreate(
         session->resources().typeId(extension_test::TestBufferStorage::description.type), "wide"));
     auto& storage = *static_cast<extension_test::NativeBuffer*>(session->resources().native(storage_id));
     std::array<float, 4> values{0.5f, 0.5f, 0.5f, 0.5f};
@@ -220,7 +220,7 @@ int main(int argc, char** argv)
         CHECK(session->release(none));
     }
     CHECK(storage.remove(buffer));
-    CHECK(session->globalStorages().releasePrepared(storage_id));
+    CHECK(session->globalStorages().remove(storage_id));
     CHECK(session->drain());
     code.reset();
     session.reset();

@@ -7,9 +7,15 @@
 #include <memory>
 #include <vulkan/vulkan.h>
 
+namespace lux::gapi::vk
+{
+    class PhysicalDevice;
+}
+
 namespace lux::render::vulkan
 {
     struct LayoutPlan;
+    struct EnabledDeviceFeatures;
     class DeviceSession;
 
     struct NativeResourcePlan final
@@ -138,7 +144,7 @@ namespace lux::render::vulkan
         friend class ExecutionContext;
         friend class DeviceSession;
         friend RenderResult<CompiledGraph>
-        compileGraph(const DeviceSession&, const RenderGraphDefinition&, const GraphAnalysis&, GraphStorageBindings, std::span<const PassProgram>, const TargetDesc&, std::vector<ContextContribution>) noexcept;
+        compileGraph(const gapi::vk::PhysicalDevice&, VkDevice, const EnabledDeviceFeatures&, VkQueueFlags, std::uint32_t, const RenderGraphDefinition&, const GraphAnalysis&, GraphStorageBindings, std::span<const PassProgram* const>, const TargetDesc&, std::vector<ContextContribution>) noexcept;
         CompiledGraph(VkDevice device, TargetDesc target) noexcept;
         std::unique_ptr<LayoutPlan> descriptor_plan_;
         VkDevice device_;
@@ -164,14 +170,23 @@ namespace lux::render::vulkan
         std::uint32_t output_ = kGraphInvalidIndex;
     };
 
+    // Borrowed program index in GraphPassId order. Call once after authoring; programs must outlive compilation.
+    [[nodiscard]] RenderResult<std::vector<const PassProgram*>>
+    indexPrograms(const RenderGraphDefinition&, std::span<const PassProgram>) noexcept;
+
     // INVARIANT: analysis belongs to this immutable definition; never analyze again here.
     // Program/Target/device capabilities are the cold BOUNDARY checked by this compiler.
+    // External Storage declarations have already been qualified by the caller's installation/assembly boundary.
     [[nodiscard]] RenderResult<CompiledGraph> compileGraph(
-        const DeviceSession& session,
+        const gapi::vk::PhysicalDevice& physical,
+        VkDevice device,
+        const EnabledDeviceFeatures& enabled,
+        VkQueueFlags queue_flags,
+        std::uint32_t sampled_image_capacity,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
         GraphStorageBindings external_bindings,
-        std::span<const PassProgram> programs,
+        std::span<const PassProgram* const> programs,
         const TargetDesc& target,
         std::vector<ContextContribution> contexts = {}
     ) noexcept;

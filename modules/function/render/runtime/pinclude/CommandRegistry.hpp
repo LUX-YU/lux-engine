@@ -1,8 +1,8 @@
 #pragma once
 
+#include "Registration.hpp"
 #include <limits>
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/runtime/RenderServer.hpp>
 #include <map>
 
 namespace lux::render::runtime_detail

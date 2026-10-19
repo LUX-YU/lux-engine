@@ -76,7 +76,7 @@ namespace lux::render
         std::atomic<bool> stop_requested{false}, started{false}, running{false};
         std::atomic<std::uint64_t> ticks{0}, commands{0}, compiled_graphs{0}, submissions{0};
         std::atomic<std::uint64_t> validation_errors{0}, validation_warnings{0};
-        std::atomic<std::uint64_t> scoped_buffers_created{0};
+        std::atomic<std::uint64_t> storages_created{0};
 
         Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler scheduler);
 

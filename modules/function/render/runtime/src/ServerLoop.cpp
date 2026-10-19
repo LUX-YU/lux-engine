@@ -228,7 +228,7 @@ namespace lux::render
             s.submissions.load(),
             s.validation_errors.load(),
             s.validation_warnings.load(),
-            s.scoped_buffers_created.load()
+            s.storages_created.load()
         };
     }
 

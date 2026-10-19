@@ -58,7 +58,7 @@ lux_engine_install_components(
 
 if(BUILD_TESTING)
     foreach(header
-        CompletionPost CompletionWork ExecutionError ExecutionRuntime PortSender RunLoop
+        CompletionWork ExecutionError ExecutionRuntime PortSender RunLoop
         Scheduler Task TaskInfo TaskScope Timer
     )
         file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${header}.cpp" CONTENT
@@ -72,11 +72,6 @@ if(BUILD_TESTING)
     target_link_libraries(execution_run_loop_test PRIVATE core_execution)
     add_test(NAME core.execution_run_loop COMMAND execution_run_loop_test)
     set_tests_properties(core.execution_run_loop PROPERTIES TIMEOUT 15)
-
-    add_executable(execution_work_schedule_test test/WorkScheduleTest.cpp)
-    target_link_libraries(execution_work_schedule_test PRIVATE core_execution)
-    add_test(NAME core.execution_work_schedule COMMAND execution_work_schedule_test)
-    set_tests_properties(core.execution_work_schedule PROPERTIES TIMEOUT 15)
 
     get_filename_component(execution_source_root "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
     add_test(NAME core.execution_standalone

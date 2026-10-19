@@ -6,7 +6,6 @@
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/runtime/CommandBinding.hpp>
-#include <map>
 #include <optional>
 
 namespace lux::render::runtime_detail
@@ -34,7 +33,7 @@ namespace lux::render
     {
         std::uint64_t ticks = 0, commands = 0, compiled_graphs = 0, submissions = 0;
         std::uint64_t validation_errors = 0, validation_warnings = 0;
-        std::uint64_t scoped_buffers_created = 0;
+        std::uint64_t storages_created = 0;
     };
 
     // The host owns the rendering thread. Create initializes Native before cold installation;
@@ -104,59 +103,26 @@ namespace lux::render
         friend struct runtime_detail::ServerBootstrap;
         friend class runtime_detail::CommandRegistry;
 
-        struct HandlerRecord final
-        {
-            CppType type;
-            std::string name;
-            std::string instance_name;
-            std::unique_ptr<void, void (*)(void*) noexcept> object{nullptr, [](void*) noexcept {}};
-        };
+        struct HandlerRecord;
 
-        // Only installation owns this batch. Dropping it releases every unpublished Handler.
+        // Cold transaction only. Its containers and name index are Runtime-private.
         struct RegistrationBatch final
         {
-            struct Handler final
-            {
-                std::unique_ptr<HandlerRecord> record;
-                std::vector<CommandBinding> calls;
-            };
+            RegistrationBatch() noexcept;
+            ~RegistrationBatch() noexcept;
+            RegistrationBatch(const RegistrationBatch&) = delete;
+            RegistrationBatch& operator=(const RegistrationBatch&) = delete;
 
-            struct Storage final
-            {
-                StorageFactory factory;
-                ConfigValue configuration;
-                bool use_existing_configuration;
-                StorageTypeId id;
-            };
+            [[nodiscard]] RenderResult<bool> containsHandler(CppType, std::string_view) const noexcept;
+            void
+                addHandler(CppType, std::string_view, std::string_view, std::unique_ptr<void, void (*)(void*) noexcept>, std::vector<CommandBinding>) noexcept;
+            void addStorage(StorageFactory, ConfigValue, bool use_existing) noexcept;
+            void addFeature(feature_detail::Implementation) noexcept;
+            [[nodiscard]] StorageTypeId storageId() const noexcept;
+            [[nodiscard]] FeatureId featureId() const noexcept;
 
-            struct Feature final
-            {
-                feature_detail::Implementation definition;
-                FeatureId id;
-            };
-
-            using HandlerName = std::pair<std::string_view, std::string_view>;
-            std::vector<Handler> handlers;
-            std::map<HandlerName, std::size_t> handlers_by_name;
-            std::vector<Storage> storage_factories;
-            std::vector<Feature> features;
-
-            void addHandler(std::unique_ptr<HandlerRecord> record, std::vector<CommandBinding> calls) noexcept
-            {
-                const HandlerName name{record->type.token.name(), record->instance_name};
-                handlers_by_name.emplace(name, handlers.size());
-                handlers.push_back({std::move(record), std::move(calls)});
-            }
-
-            void addStorage(StorageFactory factory, ConfigValue configuration, bool use_existing) noexcept
-            {
-                storage_factories.push_back({std::move(factory), std::move(configuration), use_existing, {}});
-            }
-
-            void addFeature(feature_detail::Implementation definition) noexcept
-            {
-                features.push_back({definition, {}});
-            }
+            struct State;
+            std::unique_ptr<State> state_;
         };
 
         template <class T, class Provider>
@@ -219,13 +185,13 @@ namespace lux::render
             {
                 return {};
             }
-            const auto found = batch.handlers_by_name.find({type.token.name(), instance});
-            if (found != batch.handlers_by_name.end())
+            const auto present = batch.containsHandler(type, instance);
+            if (!present)
             {
-                if (batch.handlers[found->second].record->type != type)
-                {
-                    return cxx::unexpected(RenderError{kCommandContract});
-                }
+                return cxx::unexpected(present.error());
+            }
+            if (*present)
+            {
                 return {};
             }
             auto object = create();
@@ -234,14 +200,19 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
             auto& handler = *object;
-            auto record = std::make_unique<HandlerRecord>();
-            record->type = type;
-            record->name = H::name;
-            record->instance_name = instance;
-            record->object = {object.release(), [](void* value) noexcept { delete static_cast<H*>(value); }};
+            std::unique_ptr<void, void (*)(void*) noexcept> owner{
+                object.release(),
+                [](void* value) noexcept { delete static_cast<H*>(value); }
+            };
             [&]<class... B>(std::tuple<B...>*) noexcept
             {
-                batch.addHandler(std::move(record), {CommandBinding::bind<typename B::Command, B::method>(handler)...});
+                batch.addHandler(
+                    type,
+                    H::name,
+                    instance,
+                    std::move(owner),
+                    {CommandBinding::bind<typename B::Command, B::method>(handler)...}
+                );
             }(static_cast<typename H::Bindings*>(nullptr));
             return {};
         }

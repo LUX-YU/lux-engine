@@ -1,14 +1,16 @@
 #include "ImageFormat.hpp"
 #include "LayoutPlan.hpp"
 #include "Shader.hpp"
+#include <lux/engine/gapi/vk/PhysicalDevice.hpp>
 #include <lux/engine/gapi/vk/Pipeline.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
-#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/Error.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
+#include <lux/engine/render/native/vulkan/device/DeviceOptions.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <utility>
 
 namespace lux::render::vulkan
@@ -325,12 +327,43 @@ namespace lux::render::vulkan
         }
     } // namespace
 
+    RenderResult<std::vector<const PassProgram*>> indexPrograms(
+        const RenderGraphDefinition& graph,
+        std::span<const PassProgram> programs
+    ) noexcept
+    {
+        std::map<std::string_view, std::size_t, std::less<>> names;
+        for (std::size_t i = 0; i < graph.passes().size(); ++i)
+        {
+            names.emplace(graph.passes()[i].key, i);
+        }
+        std::vector<const PassProgram*> result(graph.passes().size(), nullptr);
+        for (std::size_t i = 0; i < programs.size(); ++i)
+        {
+            const auto found = names.find(programs[i].pass_key);
+            if (found == names.end())
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument, {i, 0}});
+            }
+            if (result[found->second])
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument, {i, 1}});
+            }
+            result[found->second] = &programs[i];
+        }
+        return result;
+    }
+
     RenderResult<CompiledGraph> compileGraph(
-        const DeviceSession& session,
+        const gapi::vk::PhysicalDevice& physical,
+        VkDevice device,
+        const EnabledDeviceFeatures& enabled,
+        VkQueueFlags queue_flags,
+        std::uint32_t sampled_image_capacity,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
         GraphStorageBindings external_bindings,
-        std::span<const PassProgram> programs,
+        std::span<const PassProgram* const> pass_programs,
         const TargetDesc& target,
         std::vector<ContextContribution> contexts
     ) noexcept
@@ -339,8 +372,6 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(result.error());
         }
-        const auto device = session.nativeDevice();
-        const auto& physical = session.physicalDevice();
         const auto& limits = physical.properties().properties.limits;
         const bool is_unsupported_target = target.kind != ETargetKind::OFFSCREEN || target.samples != 1 ||
                                            imageFormat(target.format).native == VK_FORMAT_UNDEFINED ||
@@ -351,21 +382,9 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kUnsupported});
         }
         CompiledGraph result(device, target);
-        // Resolve author keys once at the cold compiler boundary, then index by GraphPassId.
-        std::vector<const PassProgram*> pass_programs(graph.passes().size(), nullptr);
-        for (const auto& program : programs)
+        if (pass_programs.size() != graph.passes().size())
         {
-            const auto found = std::ranges::find(graph.passes(), program.pass_key, &GraphPass::key);
-            if (found == graph.passes().end())
-            {
-                return cxx::unexpected(RenderError{kInvalidArgument});
-            }
-            const auto index = static_cast<std::size_t>(found - graph.passes().begin());
-            if (pass_programs[index])
-            {
-                return cxx::unexpected(RenderError{kInvalidArgument});
-            }
-            pass_programs[index] = &program;
+            return cxx::unexpected(RenderError{kInvalidArgument});
         }
         std::vector<bool> live_resources(graph.resources().size(), false);
         for (const auto pass : analysis.execution_order)
@@ -428,12 +447,6 @@ namespace lux::render::vulkan
                 if (resource.storage)
                 {
                     return cxx::unexpected(RenderError{kInvalidArgument});
-                }
-                const auto* factory = session.resources().factory(binding.storage.type.view());
-                if (!factory || !factory->binding_ops ||
-                    !static_cast<const StorageBindingOps*>(factory->binding_ops)->resolve)
-                {
-                    return cxx::unexpected(RenderError{kStorageFactory});
                 }
                 resource.storage = std::move(binding.storage);
                 indices.push_back(binding.resource.index);
@@ -552,12 +565,11 @@ namespace lux::render::vulkan
         const auto& layout_plan = *result.descriptor_plan_;
         if (!layout_plan.shared_bindings.empty())
         {
-            auto capacity = session.sampledImageCapacity();
-            if (!capacity)
+            if (!sampled_image_capacity)
             {
-                return cxx::unexpected(capacity.error());
+                return cxx::unexpected(RenderError{kUnsupported});
             }
-            auto layout = createDescriptorLayout(device, layout_plan.shared_bindings, *capacity);
+            auto layout = createDescriptorLayout(device, layout_plan.shared_bindings, sampled_image_capacity);
             if (!layout)
             {
                 return cxx::unexpected(layout.error());
@@ -605,7 +617,7 @@ namespace lux::render::vulkan
             const bool compute = pass.kind == EGraphPassKind::COMPUTE;
             if (compute)
             {
-                if (!(session.queue().nativeQueue().flags & VK_QUEUE_COMPUTE_BIT))
+                if (!(queue_flags & VK_QUEUE_COMPUTE_BIT))
                 {
                     return cxx::unexpected(RenderError{kUnsupported});
                 }
@@ -844,7 +856,7 @@ namespace lux::render::vulkan
                                             : compileGraphics(
                                                   device,
                                                   physical,
-                                                  session.enabledFeatures(),
+                                                  enabled,
                                                   result.layout_,
                                                   identity.shader,
                                                   identity.graphics,

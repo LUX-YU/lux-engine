@@ -71,12 +71,11 @@ never a guaranteed cancellation.
 
 CreateEffect directly returns a standard schedule/then/continues_on/let_value transaction;
 spawn owns its connected state. Its worker only calls compileEffect with the moved
-request, stable Feature borrows and Device. The same Core RunLoop that delivers completed
+request, stable Feature borrows, qualified Storage names and immutable device facts. Workers never read the mutable ResourceRegistry. Program author names resolve once to GraphPassId indices. The same Core RunLoop that delivers completed
 Replies schedules candidate adoption on RenderThread, which alone allocates EffectId.
 The owner handoff cannot swallow a determined error on cancellation; successful candidates
 check stop before adoption. No private RenderScheduler or CreateEffectSender remains.
-Graph analysis/compiler and Native retirement remain independent. Upload tasks own their input while CPU
-preparation uses it; unpublished candidates remain operation-owned and released physical objects move into retirement. Copy/Acquire admission and
+Graph analysis/compiler and Native retirement remain independent. Upload tasks own the admitted request, while its Source span borrows caller memory until the typed Response. Failed enqueue preserves the caller message; accepted failure/cancellation does not return the original Request. After abandon/disconnect, the Host must drain Server and producers before releasing borrowed Source memory; unpublished candidates remain operation-owned and released physical objects move into retirement. Copy/Acquire admission and
 professional publication determine upload success. There is no production Readback command.
 
 Stop closes dispatch, requests operation stops, drains accepted CPU/GPU work and

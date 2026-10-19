@@ -5,6 +5,15 @@ one immutable PhysicalDevice snapshot, the actually enabled features, VMA, physi
 upload facilities, a device descriptor array and retirement. Graphics/Compute/Transfer roles
 may refer to the same physical queue; they never create duplicate submission serials.
 
+## Compilation inputs
+
+`indexPrograms(definition, programs)` resolves author names once and returns borrowed pointers in
+GraphPassId order. `compileGraph` receives that index, the same Definition/Analysis, actual PhysicalDevice,
+VkDevice, enabled features, queue flags, sampled-image capacity and qualified external Storage declarations.
+It neither owns nor queries DeviceSession/Registry. The caller keeps program input and the LogicalDevice
+alive through compilation; the resulting plan owns its own pipelines and data. A standalone consumer
+qualifies Storage factories at its cold installation/assembly boundary before compiling.
+
 ## Resource ownership
 
 VMA Buffer/Image are move-only owners. Their allocator must outlive them. Factories return unique

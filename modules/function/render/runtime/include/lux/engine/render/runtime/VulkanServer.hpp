@@ -84,7 +84,7 @@ namespace lux::render
         {
             return cxx::unexpected(installed.error());
         }
-        return batch.storage_factories.front().id;
+        return batch.storageId();
     }
 
     template <class T, class Provider, class... Args>
@@ -164,6 +164,6 @@ namespace lux::render
         {
             return cxx::unexpected(installed.error());
         }
-        return batch.features.front().id;
+        return batch.featureId();
     }
 } // namespace lux::render

@@ -53,7 +53,19 @@ static void graphOutput(InstanceContext& bootstrap)
     auto definition = take(std::move(builder).finish());
     auto analysis = take(analyze(definition));
     const std::array programs{PassProgram{"clear", {}, {1, 0, 1, 1}}, PassProgram{"copy"}, PassProgram{"copy-buffer"}};
-    auto graph = take(compileGraph(*session, definition, analysis, {}, programs, target));
+    auto indexed = take(indexPrograms(definition, programs));
+    auto graph = take(compileGraph(
+        session->physicalDevice(),
+        session->nativeDevice(),
+        session->enabledFeatures(),
+        session->queue().nativeQueue().flags,
+        0,
+        definition,
+        analysis,
+        {},
+        indexed,
+        target
+    ));
     auto execution = take(session->prepare(graph, target));
     auto output =
         take(session->allocator().createBuffer(1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));

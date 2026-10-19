@@ -176,7 +176,7 @@ namespace lux::render
         attachments.find(id)->link(id, *view, *effect, *target);
         output_response->attachment = id;
         active_targets.emplace(target_id);
-        scoped_buffers_created.store(device->resources().creations());
+        storages_created.store(device->resources().creations());
         return;
     }
 
@@ -210,7 +210,7 @@ namespace lux::render
         }
         target.description = description;
         ++target.epoch;
-        scoped_buffers_created.store(device->resources().creations());
+        storages_created.store(device->resources().creations());
         return {};
     }
 

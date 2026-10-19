@@ -2,7 +2,7 @@
 
 Bootstrap owns `InstanceContext`. `DeviceSession` borrows it and owns one gapi LogicalDevice,
 one immutable PhysicalDevice snapshot, the actually enabled features, VMA, physical queues,
-upload facilities, a device descriptor array and retirement. Graphics/Compute/Transfer roles
+upload facilities, a device descriptor array and one physical cleanup scope. Graphics/Compute/Transfer roles
 may refer to the same physical queue; they never create duplicate submission serials.
 
 ## Compilation inputs
@@ -16,9 +16,10 @@ qualifies Storage factories at its cold installation/assembly boundary before co
 
 ## Resource ownership
 
-VMA Buffer/Image are move-only owners. Their allocator must outlive them. Factories return unique
-ownership; recording code borrows them. Each Image owns its paired VMA allocation; no Image Alias API
-is exposed. High-count CommandBuffer/Fence/DescriptorSet
+VMA Buffer/Image are lightweight move-only gapi carriers: handle, allocation and necessary shape.
+They contain no Device/Allocator and perform no implicit destruction. Factories return values;
+the actual Storage/Context/Arena collection releases them with its Session allocator. Release an
+occupied carrier before move assignment. No Image Alias API is exposed. CommandBuffer/Fence/DescriptorSet
 and Pipeline handles remain carriers owned by their Queue, Context or compiled-plan collection.
 
 StorageSet exclusively owns professional Storage instances. ResourceRegistry holds non-owning indexes.
@@ -27,12 +28,17 @@ resources and borrows the plan. End subscriptions before destroying Storage, and
 before releasing its plan. Clients settle related operations and detach uses before deleting Storage.
 No shared Context/Storage owner repairs an invalid call order.
 
-Physical replacement or release moves ownership into the Session's retirement facility. Reserve the
-retirement record before publishing or submitting a physical resource. Transfer captures each physical
-queue's already accepted progress once; future work does not extend it. Pools can keep capacity after
-logical deletion. The old range or descriptor slot is reusable only after its accepted GPU use ends.
-Staging retirement depends only on the queue which consumed its copy. There is no outward Ticket,
-per-resource LastUse or batch-owned resource reference list.
+Physical replacement or release transfers the value into `DeviceSession::deferRelease`, whose operation
+state belongs to stdexec::spawn and the Session's single simple_counting_scope. All physical queue
+conditions are captured and registered in the same Owner segment; future work does not extend them.
+Callbacks are ordered by serial and then registration order, including already completed conditions.
+Final release runs directly in the last callback. An Arena has no local scope, counter or owner table.
+The old range or descriptor slot is reusable only after accepted GPU use ends. Staging page return waits
+only for its actual Copy queue. There is no outward Ticket, per-resource LastUse or batch resource list.
+
+gapi remains header-only. Native enables `LUX_GAPI_ENABLE_VMA` and exports its VMA header dependency;
+`src/device/Vma.cpp` is the sole VMA implementation. Plain Vulkan and VMA carriers use distinct types
+and paired release APIs. Host mapping addresses live in the Staging page collection, not every Buffer.
 
 ## Upload and rendering
 
@@ -69,8 +75,10 @@ MeshStorage uses separate chained vertex/index arenas and a compact GPU section 
 `MeshGpuSection` contains geometry facts only. The Mesh Feature copies these fields into its own
 indirect commands and supplies instance selection/count itself. VMA virtual blocks reuse free ranges;
 physical Buffers have one owner. A retiring range borrows its segment's virtual allocator metadata.
-Closing an arena first removes those metadata-only retirement records, then retires the entire segment
-against accepted queue progress. It does not keep a shared Device, Storage or Buffer owner.
+Closing an arena registers all remaining range callbacks before its final segment cleanup. Equal-serial
+FIFO on each physical queue and immediate range return ensure metadata remains valid until all borrowers
+finish. Segment addresses remain stable during ownership transfer. No queue-node removal or local join
+is needed, and no shared Device, Storage or Buffer owner is retained.
 Range uploads use the existing UploadContext on Graphics, avoiding ownership transfers of neighboring
 live ranges. Standalone Texture uploads still select the actual dedicated/fallback queue path.
 
@@ -91,11 +99,16 @@ professional updates; Context never carries a Storage upload task or writes Mate
 ## Completion and shutdown
 
 Queue poll observes native progress. `dispatchCompletions()` is the Owner safe point: it unlinks each
-callback before invoking it, then collects retired objects. A callback may end its own operation state.
+callback before invoking it. A callback may end its own operation state; the queue never touches it afterward.
 Only the host runs threads; Native does not add a worker or a second scheduler.
 
 Stop admission, request stop and settle CPU/Owner tasks, while continuing to advance GPU completion.
-Scope join does not replace producer-tail or host join. End all Contexts and logical Storage owners,
-drain retirement, then destroy device facilities, LogicalDevice and finally bootstrap InstanceContext.
-Standalone Native consumers must obey the same order. `DeviceSession::drain()` waits already accepted
-submissions; it is not a join of external producers which could submit new work afterward.
+Scope join does not replace producer-tail or host join. End Contexts, logical Storage owners and compiled
+plans, transferring their physical contents while cleanup admission is open. Final `DeviceSession::close()`
+clears Global Storage, closes the cleanup scope and advances queues until join. DescriptorArray, Staging
+pages and Upload timestamp data remain alive until then; final cleanup never spawns another cleanup.
+Queue/Allocator/LogicalDevice and finally bootstrap InstanceContext are released afterward.
+Standalone consumers obey the same order. `drain()` waits accepted submissions and dispatches completion;
+it does not close the scope or join external producers. Upload and execution can continue after drain.
+Extension hosts keep cleanup/destructor code loaded through final Session close and producer tails;
+destroying a Handler is not permission to unload code still used by its transferred physical resources.

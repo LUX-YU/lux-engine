@@ -4,8 +4,7 @@
 #include <lux/engine/gapi/vk/Sampler.hpp>
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
-#include <lux/engine/render/native/vulkan/memory/Memory.hpp>
-#include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
+#include <lux/engine/render/native/vulkan/device/Device.hpp>
 #include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/Texture.hpp>
@@ -25,16 +24,15 @@ namespace lux::render::vulkan
         {
         public:
             SampledImage(
-                std::unique_ptr<Image>,
-                DescriptorRange,
+                gapi::vk::VmaImage,
+                DescriptorArray::Slot,
                 const rdesc::TextureInfo&,
                 std::uint64_t revision
             ) noexcept;
-            ~SampledImage() noexcept;
             SampledImage(const SampledImage&) = delete;
             SampledImage& operator=(const SampledImage&) = delete;
-            SampledImage(SampledImage&&) noexcept;
-            SampledImage& operator=(SampledImage&&) noexcept;
+            SampledImage(SampledImage&&) noexcept = default;
+            SampledImage& operator=(SampledImage&&) noexcept = default;
 
             [[nodiscard]] const rdesc::TextureInfo& info() const noexcept
             {
@@ -43,12 +41,12 @@ namespace lux::render::vulkan
 
             [[nodiscard]] std::uint32_t descriptorIndex() const noexcept
             {
-                return descriptor_.index();
+                return descriptor_.index;
             }
 
-            [[nodiscard]] const Image& image() const noexcept
+            [[nodiscard]] const gapi::vk::VmaImage& image() const noexcept
             {
-                return *image_;
+                return image_;
             }
 
             [[nodiscard]] std::uint64_t revision() const noexcept
@@ -58,13 +56,12 @@ namespace lux::render::vulkan
 
         private:
             friend class TextureStorage;
-            void releaseViews() noexcept;
-            std::unique_ptr<Image> image_;
-            DescriptorRange descriptor_;
+            void release(VkDevice, VmaAllocator, DescriptorArray&) noexcept;
+            gapi::vk::VmaImage image_;
+            DescriptorArray::Slot descriptor_;
             rdesc::TextureInfo info_{};
             VkImageView view_ = VK_NULL_HANDLE;
             gapi::vk::Sampler sampler_;
-            RetirementReservation retirement_;
             std::uint64_t revision_ = 0;
             TextureGpuRef reference_;
         };
@@ -117,14 +114,14 @@ namespace lux::render::vulkan
         using UploadResult = exec::task<RenderResult<TexturePublished>>;
         [[nodiscard]] UploadResult upload(TextureWrite) noexcept;
         [[nodiscard]] UploadResult upload(TextureRegionWrite) noexcept;
-        using ImagePreparation = std::pair<std::unique_ptr<Image>, std::vector<ImageTransferRegion>>;
+        using ImagePreparation = std::pair<gapi::vk::VmaImage, std::vector<ImageTransferRegion>>;
         [[nodiscard]] RenderResult<ImagePreparation> prepareImage(
             const rdesc::TextureInfo&,
             std::span<const std::byte>,
             std::optional<TextureRegion> = {}
         ) noexcept;
         [[nodiscard]] RenderResult<Candidate> reserve(
-            std::unique_ptr<Image>,
+            gapi::vk::VmaImage,
             const rdesc::TextureInfo&,
             TextureId,
             std::uint64_t expected_revision

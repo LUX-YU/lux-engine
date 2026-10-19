@@ -1,4 +1,5 @@
 #include "MeshDraws.hpp"
+#include "Cleanup.hpp"
 #include <bit>
 #include <lux/engine/render/native/vulkan/material/MaterialStorage.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshStorage.hpp>
@@ -13,17 +14,14 @@ namespace lux::render::vulkan
         MeshInstanceDrawGroup selection
     ) noexcept
         : session_(session), context_(context), data_index_(index), resource_(resource), selection_(selection),
-          retirement_(session.retirement().reserve()), words_(5)
+          words_(5)
     {
     }
 
     MeshDraws::~MeshDraws() noexcept
     {
         observer_.reset();
-        if (buffer_ && !session_.retirement().retire(retirement_, buffer_))
-        {
-            std::terminate();
-        }
+        releaseAfterGpu(session_, buffer_);
     }
 
     bool MeshDraws::selected(const MeshInstanceDescription& input) const noexcept
@@ -79,7 +77,7 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
         const auto bytes = std::max<std::size_t>(24, words_.size() * sizeof(std::uint32_t));
-        if (!buffer_ || buffer_->size() < bytes)
+        if (!buffer_ || buffer_.size() < bytes)
         {
             const auto size = std::bit_ceil(bytes);
             if (size > session_.physicalDevice().properties().properties.limits.maxStorageBufferRange)
@@ -98,14 +96,10 @@ namespace lux::render::vulkan
             }
             if (buffer_)
             {
-                if (!session_.retirement().retire(retirement_, buffer_))
-                {
-                    std::terminate();
-                }
-                retirement_ = session_.retirement().reserve();
+                releaseAfterGpu(session_, buffer_);
             }
             buffer_ = std::move(*buffer);
-            context_.setResource(resource_.index, {buffer_.get(), 0, buffer_->size()});
+            context_.setResource(resource_.index, {buffer_.handle(), 0, buffer_.size()});
         }
         return {};
     }
@@ -118,7 +112,7 @@ namespace lux::render::vulkan
         barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
         barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
         barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.buffer = buffer_->native();
+        barrier.buffer = buffer_.handle();
         barrier.size = VK_WHOLE_SIZE;
         VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
         dependency.bufferMemoryBarrierCount = 1;
@@ -129,7 +123,7 @@ namespace lux::render::vulkan
         {
             vkCmdUpdateBuffer(
                 command,
-                buffer_->native(),
+                buffer_.handle(),
                 offset,
                 std::min<std::size_t>(65536, bytes.size() - offset),
                 bytes.data() + offset
@@ -144,8 +138,8 @@ namespace lux::render::vulkan
         const std::array<VkBufferCopy, 3> fields{{{section, 0, 4}, {section + 4, 8, 4}, {section + 8, 12, 4}}};
         vkCmdCopyBuffer(
             command,
-            sections_.buffer->native(),
-            buffer_->native(),
+            sections_.buffer,
+            buffer_.handle(),
             static_cast<std::uint32_t>(fields.size()),
             fields.data()
         );

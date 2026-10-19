@@ -9,43 +9,6 @@
 
 namespace lux::render::vulkan
 {
-    DescriptorRange::DescriptorRange(DescriptorArray& array, cxx::SlotKey<DescriptorSlotTag> slot) noexcept
-        : array_(&array), slot_(slot)
-    {
-    }
-
-    DescriptorRange::~DescriptorRange() noexcept
-    {
-        if (array_)
-        {
-            array_->release(slot_);
-        }
-    }
-
-    DescriptorRange::DescriptorRange(DescriptorRange&& other) noexcept
-        : array_(std::exchange(other.array_, nullptr)), slot_(other.slot_)
-    {
-    }
-
-    DescriptorRange& DescriptorRange::operator=(DescriptorRange&& other) noexcept
-    {
-        if (this != &other)
-        {
-            if (array_)
-            {
-                array_->release(slot_);
-            }
-            array_ = std::exchange(other.array_, nullptr);
-            slot_ = other.slot_;
-        }
-        return *this;
-    }
-
-    void DescriptorRange::write(VkImageView image, VkSampler sampler) noexcept
-    {
-        array_->write(slot_, image, sampler);
-    }
-
     RenderResult<std::uint32_t> DeviceSession::sampledImageCapacity() const noexcept
     {
         if (!enabled_features_.texture_descriptors)
@@ -78,7 +41,8 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(capacity.error());
         }
-        auto result = std::unique_ptr<DescriptorArray>(new DescriptorArray(nativeDevice(), *capacity));
+        auto result =
+            std::unique_ptr<DescriptorArray>(new DescriptorArray(nativeDevice(), allocator_.native(), *capacity));
         if (auto ready = result->initialize(); !ready)
         {
             return cxx::unexpected(ready.error());
@@ -146,6 +110,7 @@ namespace lux::render::vulkan
         {
             white_sampler_.release(device_);
         }
+        white_image_.release(allocator_);
     }
 
     RenderResult<void> DescriptorArray::initializeDefault(DeviceSession& session) noexcept
@@ -159,9 +124,9 @@ namespace lux::render::vulkan
         }
         white_image_ = std::move(*image);
         VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-        view.image = white_image_->native();
+        view.image = white_image_.handle();
         view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        view.format = white_image_->format();
+        view.format = white_image_.format();
         view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         auto status = vkCreateImageView(device_, &view, nullptr, &white_view_);
         if (status != VK_SUCCESS)
@@ -190,7 +155,7 @@ namespace lux::render::vulkan
         barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = white_image_->native();
+        barrier.image = white_image_.handle();
         barrier.subresourceRange = view.subresourceRange;
         VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
         dependency.imageMemoryBarrierCount = 1;
@@ -208,7 +173,7 @@ namespace lux::render::vulkan
         return std::move(*batch).submit();
     }
 
-    RenderResult<DescriptorRange> DescriptorArray::allocate() noexcept
+    RenderResult<cxx::SlotKey<DescriptorSlotTag>> DescriptorArray::allocate() noexcept
     {
         if (slots_.size() == capacity_)
         {
@@ -221,7 +186,7 @@ namespace lux::render::vulkan
             slots_.erase(slot);
             return cxx::unexpected(RenderError{kCapacity});
         }
-        return DescriptorRange{*this, slot};
+        return slot;
     }
 
     void DescriptorArray::write(Slot slot, VkImageView image, VkSampler sampler) noexcept

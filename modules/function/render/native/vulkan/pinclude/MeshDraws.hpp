@@ -35,8 +35,7 @@ namespace lux::render::vulkan
         StorageSubscription section_subscription_;
         MeshInstanceDrawGroup selection_;
         MeshInstanceStorage::Observer observer_;
-        std::unique_ptr<Buffer> buffer_;
-        RetirementReservation retirement_;
+        gapi::vk::VmaBuffer buffer_;
         std::vector<std::uint32_t> words_, positions_;
         bool available_ = true;
     };

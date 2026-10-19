@@ -138,15 +138,11 @@ namespace lux::render
                 std::terminate();
             }
         }
-        // A Sender may ignore cancellation and accept more GPU work while it settles.
-        // Only final shutdown waits: Contexts are detached, and their plans still own every Pipeline.
-        if (device)
+        // End plan owners while physical cleanup is still admitted. The Session closes only
+        // after Scene/Global Storage and every other producer have transferred their resources.
+        for (auto& effect : effects)
         {
-            auto drained = device->drain();
-            if (!drained && !device->deviceLost())
-            {
-                std::terminate();
-            }
+            device->deferRelease([code = std::move(effect.code)]() mutable noexcept { code.reset(); });
         }
         effects.clear();
         scenes.clear();

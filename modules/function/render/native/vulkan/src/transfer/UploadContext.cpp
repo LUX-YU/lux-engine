@@ -95,7 +95,7 @@ namespace lux::render::vulkan
 
     static void recordBuffer(
         VkCommandBuffer command,
-        Buffer& target,
+        gapi::vk::VmaBuffer& target,
         StagingPage& page,
         std::size_t offset,
         std::size_t chunk_size,
@@ -110,14 +110,14 @@ namespace lux::render::vulkan
         if (!acquiring)
         {
             const VkBufferCopy copy{0, offset, chunk_size};
-            vkCmdCopyBuffer(command, page.buffer().native(), target.native(), 1, &copy);
+            vkCmdCopyBuffer(command, page.buffer().handle(), target.handle(), 1, &copy);
         }
         if (!final)
         {
             return;
         }
         VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
-        barrier.buffer = target.native();
+        barrier.buffer = target.handle();
         barrier.size = VK_WHOLE_SIZE;
         barrier.srcStageMask = acquiring ? VK_PIPELINE_STAGE_2_NONE : VK_PIPELINE_STAGE_2_COPY_BIT;
         barrier.srcAccessMask = acquiring ? VK_ACCESS_2_NONE : VK_ACCESS_2_TRANSFER_WRITE_BIT;
@@ -133,10 +133,10 @@ namespace lux::render::vulkan
 
     static void recordImage(
         VkCommandBuffer command,
-        Image& target,
+        gapi::vk::VmaImage& target,
         StagingPage& page,
         const ImageTransferRegion& input,
-        const Image* clone,
+        const gapi::vk::VmaImage* clone,
         std::uint32_t row,
         std::uint32_t rows,
         bool first,
@@ -148,10 +148,11 @@ namespace lux::render::vulkan
     {
         const bool distinct = &copy != &graphics;
         const bool cross_family = copy.nativeQueue().family != graphics.nativeQueue().family;
-        const auto& description = target.description();
+        const auto& description = target;
         VkImageMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-        barrier.image = target.native();
-        barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, description.mip_levels, 0, description.array_layers};
+        barrier.image = target.handle();
+        barrier
+            .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, description.mipLevels(), 0, description.arrayLayers()};
         barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
         dependency.imageMemoryBarrierCount = 1;
@@ -168,7 +169,7 @@ namespace lux::render::vulkan
                 if (clone)
                 {
                     auto original = barrier;
-                    original.image = clone->native();
+                    original.image = clone->handle();
                     // The device sampled-image table is visible to every supported shader stage.
                     original.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
                     original.srcAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
@@ -178,14 +179,14 @@ namespace lux::render::vulkan
                     original.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
                     dependency.pImageMemoryBarriers = &original;
                     vkCmdPipelineBarrier2(command, &dependency);
-                    for (std::uint32_t mip = 0; mip < description.mip_levels; ++mip)
+                    for (std::uint32_t mip = 0; mip < description.mipLevels(); ++mip)
                     {
                         VkImageCopy copy{};
                         copy.srcSubresource =
-                            copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, description.array_layers};
+                            copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, description.arrayLayers()};
                         copy.extent = {
-                            std::max(1u, description.extent.width >> mip),
-                            std::max(1u, description.extent.height >> mip),
+                            std::max(1u, description.extent().width >> mip),
+                            std::max(1u, description.extent().height >> mip),
                             1
                         };
                         vkCmdCopyImage(
@@ -226,7 +227,7 @@ namespace lux::render::vulkan
             };
             vkCmdCopyBufferToImage(
                 command,
-                page.buffer().native(),
+                page.buffer().handle(),
                 barrier.image,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 1,
@@ -279,13 +280,16 @@ namespace lux::render::vulkan
         return {};
     }
 
-    UploadContext::Task UploadContext::writeBuffer(Buffer& target, std::span<const std::byte> source) noexcept
+    UploadContext::Task UploadContext::writeBuffer(
+        gapi::vk::VmaBuffer& target,
+        std::span<const std::byte> source
+    ) noexcept
     {
         return write(&target, nullptr, source, {}, nullptr);
     }
 
     UploadContext::Task UploadContext::writeBufferRange(
-        Buffer& target,
+        gapi::vk::VmaBuffer& target,
         VkDeviceSize offset,
         std::span<const std::byte> source
     ) noexcept
@@ -294,21 +298,21 @@ namespace lux::render::vulkan
     }
 
     UploadContext::Task UploadContext::writeImage(
-        Image& target,
+        gapi::vk::VmaImage& target,
         std::span<const std::byte> source,
         std::vector<ImageTransferRegion> regions,
-        const Image* clone
+        const gapi::vk::VmaImage* clone
     ) noexcept
     {
         return write(nullptr, &target, source, std::move(regions), clone);
     }
 
     UploadContext::Task UploadContext::write(
-        Buffer* buffer,
-        Image* image,
+        gapi::vk::VmaBuffer* buffer,
+        gapi::vk::VmaImage* image,
         std::span<const std::byte> source,
         std::vector<ImageTransferRegion> regions,
-        const Image* clone,
+        const gapi::vk::VmaImage* clone,
         VkDeviceSize target_offset,
         bool graphics_range
     ) noexcept
@@ -333,9 +337,9 @@ namespace lux::render::vulkan
             {
                 co_return cxx::unexpected(RenderError{kInvalidArgument});
             }
-            const auto& description = image->description();
-            const bool invalid_image =
-                description.samples != VK_SAMPLE_COUNT_1_BIT || !(description.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+            const auto& description = *image;
+            const bool invalid_image = description.samples() != VK_SAMPLE_COUNT_1_BIT ||
+                                       !(description.usage() & VK_IMAGE_USAGE_TRANSFER_DST_BIT);
             if (invalid_image)
             {
                 co_return cxx::unexpected(RenderError{kInvalidArgument});
@@ -345,15 +349,15 @@ namespace lux::render::vulkan
                 const bool invalid_shape =
                     !region.block_extent || !region.block_bytes || !region.extent.width || !region.extent.height ||
                     region.extent.depth != 1 || region.offset.x < 0 || region.offset.y < 0 || region.offset.z != 0 ||
-                    region.subresource.mipLevel >= description.mip_levels ||
+                    region.subresource.mipLevel >= description.mipLevels() ||
                     region.subresource.aspectMask != VK_IMAGE_ASPECT_COLOR_BIT || region.subresource.layerCount != 1 ||
-                    region.subresource.baseArrayLayer >= description.array_layers;
+                    region.subresource.baseArrayLayer >= description.arrayLayers();
                 if (invalid_shape)
                 {
                     co_return cxx::unexpected(RenderError{kInvalidArgument});
                 }
-                const auto width = std::max(1u, description.extent.width >> region.subresource.mipLevel);
-                const auto height = std::max(1u, description.extent.height >> region.subresource.mipLevel);
+                const auto width = std::max(1u, description.extent().width >> region.subresource.mipLevel);
+                const auto height = std::max(1u, description.extent().height >> region.subresource.mipLevel);
                 const bool invalid_offset =
                     std::uint32_t(region.offset.x) > width || std::uint32_t(region.offset.y) > height;
                 if (invalid_offset)
@@ -402,7 +406,6 @@ namespace lux::render::vulkan
             co_return cxx::unexpected(acquired.error());
         }
         auto page = std::move(*acquired);
-        auto retirement = session.retirement().reserve();
         auto& graphics = session.queue();
         auto& copy = clone || graphics_range ? graphics : *copy_queue;
         bool submitted_copy = false;
@@ -411,10 +414,7 @@ namespace lux::render::vulkan
             {
                 if (submitted_copy)
                 {
-                    if (!session.retirement().retire(retirement, page, &copy))
-                    {
-                        std::terminate(); // Reservation and page belong to this Session.
-                    }
+                    session.deferRelease(copy, [page = std::move(page)]() noexcept {});
                 }
             }
         );
@@ -462,7 +462,7 @@ namespace lux::render::vulkan
                     [&]() noexcept -> RenderResult<std::uint64_t>
                     {
                         const auto started = UploadClock::now();
-                        auto* destination = page->buffer().mappedBytes().data();
+                        auto* destination = page.bytes().data();
                         const auto* input =
                             source.data() + (region ? region->source_offset + row * region->source_row_pitch : offset);
                         if (!region || region->source_row_pitch == row_bytes)
@@ -525,19 +525,19 @@ namespace lux::render::vulkan
                 }
             }
             const auto recording_started = UploadClock::now();
-            const auto flushed = page->buffer().flush(0, chunk_size);
-            if (!flushed)
+            const auto flushed = page.flush(chunk_size);
+            if (flushed != VK_SUCCESS)
             {
-                co_return failure(flushed.error());
+                co_return failure(nativeError(flushed));
             }
             if (timestamp)
             {
-                vkResetQueryPool(session.nativeDevice(), timestamps, std::uint32_t(page->index() * 2), 2);
+                vkResetQueryPool(session.nativeDevice(), timestamps, std::uint32_t(page.index() * 2), 2);
                 vkCmdWriteTimestamp2(
                     batch->native(),
                     VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
                     timestamps,
-                    std::uint32_t(page->index() * 2)
+                    std::uint32_t(page.index() * 2)
                 );
             }
             if (buffer)
@@ -552,7 +552,7 @@ namespace lux::render::vulkan
                     barrier.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
                     barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
                     barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    barrier.buffer = buffer->native();
+                    barrier.buffer = buffer->handle();
                     barrier.offset = target_offset + offset;
                     barrier.size = chunk_size;
                     VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
@@ -563,7 +563,7 @@ namespace lux::render::vulkan
                 recordBuffer(
                     batch->native(),
                     *buffer,
-                    *page,
+                    page,
                     target_offset + offset,
                     chunk_size,
                     copy,
@@ -577,7 +577,7 @@ namespace lux::render::vulkan
                 recordImage(
                     batch->native(),
                     *image,
-                    *page,
+                    page,
                     *region,
                     clone,
                     row,
@@ -595,7 +595,7 @@ namespace lux::render::vulkan
                     batch->native(),
                     VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                     timestamps,
-                    std::uint32_t(page->index() * 2 + 1)
+                    std::uint32_t(page.index() * 2 + 1)
                 );
             }
             auto submitted = std::move(*batch).submit();
@@ -607,7 +607,7 @@ namespace lux::render::vulkan
             submitted_copy = true;
             if (timestamp)
             {
-                page->markMeasurement(*this, timestamp_bits);
+                page.markMeasurement(*this, timestamp_bits);
             }
             ++stats.chunks;
             if (final)
@@ -620,7 +620,7 @@ namespace lux::render::vulkan
             {
                 co_return failure(completed.error());
             }
-            if (auto measured = page->finishMeasurement(); !measured)
+            if (auto measured = page.finishMeasurement(); !measured)
             {
                 co_return failure(measured.error());
             }
@@ -663,14 +663,14 @@ namespace lux::render::vulkan
             const auto recording_started = UploadClock::now();
             if (buffer)
             {
-                recordBuffer(batch->native(), *buffer, *page, 0, 0, copy, graphics, true, true);
+                recordBuffer(batch->native(), *buffer, page, 0, 0, copy, graphics, true, true);
             }
             else
             {
                 recordImage(
                     batch->native(),
                     *image,
-                    *page,
+                    page,
                     regions.back(),
                     nullptr,
                     0,

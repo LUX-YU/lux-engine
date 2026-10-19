@@ -5,11 +5,6 @@
 
 namespace lux::render::vulkan
 {
-    BufferArena::Range::~Range() noexcept
-    {
-        reset();
-    }
-
     BufferArena::Range::Range(Range&& other) noexcept
         : buffer(std::exchange(other.buffer, nullptr)), offset(other.offset), size(other.size),
           segment_(std::exchange(other.segment_, nullptr)),
@@ -21,7 +16,6 @@ namespace lux::render::vulkan
     {
         if (this != &other)
         {
-            reset();
             buffer = std::exchange(other.buffer, nullptr);
             offset = other.offset;
             size = other.size;
@@ -31,48 +25,37 @@ namespace lux::render::vulkan
         return *this;
     }
 
-    void BufferArena::Range::reset() noexcept
+    void BufferArena::release(Range& range) noexcept
     {
-        if (allocation_)
+        if (!range.buffer)
         {
-            vmaVirtualFree(segment_->block, std::exchange(allocation_, VK_NULL_HANDLE));
+            return;
         }
-        segment_ = nullptr;
-        buffer = nullptr;
-    }
-
-    RenderResult<void> BufferArena::retireRange(
-        RetirementQueue& queue,
-        RetirementReservation& reservation,
-        std::unique_ptr<Range>& range
-    ) noexcept
-    {
-        if (!range || !queue.accepts(reservation, nullptr))
-        {
-            return cxx::unexpected(RenderError{kWrongOwner});
-        }
-        const auto* segment = range->segment_;
-        queue.commit(
-            reservation,
-            nullptr,
-            {range.release(), [](void* value) noexcept { delete static_cast<Range*>(value); }},
-            segment
-        );
-        return {};
+        auto* segment = std::exchange(range.segment_, nullptr);
+        const auto allocation = std::exchange(range.allocation_, VK_NULL_HANDLE);
+        range.buffer = nullptr;
+        session_.deferRelease([segment, allocation]() noexcept { vmaVirtualFree(segment->block, allocation); });
     }
 
     BufferArena::~BufferArena() noexcept
     {
-        for (auto& segment : segments_)
+        // Every range release has already registered its waits. Stable equal-serial ordering on
+        // each queue places those callbacks before this final segment destruction, even across queues.
+        if (segments_.empty())
         {
-            // No future allocation or recording can use this Segment. Its Buffer remains owned until
-            // the final retirement below; discarded range nodes release metadata only.
-            session_.retirement().reclaimArenaRanges(segment.get());
-            if (!session_.retirement().retire(segment->retirement, segment))
-            {
-                std::terminate();
-            }
+            return;
         }
+        session_.deferRelease(
+            [segments = std::move(segments_), allocator = session_.allocator().native()]() mutable noexcept
+            {
+                for (auto& segment : segments)
+                {
+                    vmaDestroyVirtualBlock(std::exchange(segment->block, VK_NULL_HANDLE));
+                    segment->buffer.release(allocator);
+                }
+                segments.clear();
+            }
+        );
     }
 
     BufferArena::Range BufferArena::allocate(Segment& segment, VkDeviceSize bytes, VkDeviceSize alignment) noexcept
@@ -85,39 +68,35 @@ namespace lux::render::vulkan
         {
             return result;
         }
-        result.buffer = segment.buffer.get();
+        result.buffer = &segment.buffer;
         result.size = bytes;
         result.segment_ = &segment;
         return result;
     }
 
-    RenderResult<std::unique_ptr<BufferArena::Range>> BufferArena::allocate(
-        VkDeviceSize bytes,
-        VkDeviceSize alignment
-    ) noexcept
+    RenderResult<BufferArena::Range> BufferArena::allocate(VkDeviceSize bytes, VkDeviceSize alignment) noexcept
     {
+        if (!bytes)
+        {
+            return cxx::unexpected(RenderError{kStorageContract});
+        }
         if (!segments_.empty())
         {
             auto result = allocate(*segments_.back(), bytes, alignment);
             if (result.buffer)
             {
-                return std::make_unique<Range>(std::move(result));
+                return result;
             }
             for (std::size_t i = 0; i + 1 < segments_.size(); ++i)
             {
                 result = allocate(*segments_[i], bytes, alignment);
                 if (result.buffer)
                 {
-                    return std::make_unique<Range>(std::move(result));
+                    return result;
                 }
             }
         }
-        // A growth quantum, not an asset limit. An oversized allocation gets its own larger segment.
         const auto size = std::max(segment_bytes_, bytes);
-        if (!bytes)
-        {
-            return cxx::unexpected(RenderError{kStorageContract});
-        }
         auto candidate = std::make_unique<Segment>();
         VmaVirtualBlockCreateInfo info{};
         info.size = size;
@@ -136,14 +115,14 @@ namespace lux::render::vulkan
             return cxx::unexpected(buffer.error());
         }
         candidate->buffer = std::move(*buffer);
-        candidate->retirement = session_.retirement().reserve();
         auto result = allocate(*candidate, bytes, alignment);
         if (!result.buffer)
         {
+            candidate->buffer.release(session_.allocator().native());
             return cxx::unexpected(RenderError{kStorageCapacity});
         }
         capacity_ += size;
         segments_.push_back(std::move(candidate));
-        return std::make_unique<Range>(std::move(result));
+        return result;
     }
 } // namespace lux::render::vulkan

@@ -94,7 +94,7 @@ namespace lux::render::vulkan
         void retire(std::unique_ptr<GpuPage>&) noexcept;
         void notify(const Entry&, bool removed) noexcept;
         void publishBuffers() noexcept;
-        [[nodiscard]] Buffer& fieldBuffer(std::uint32_t page, EMeshInstanceBinding) const noexcept;
+        [[nodiscard]] gapi::vk::VmaBuffer& fieldBuffer(std::uint32_t page, EMeshInstanceBinding) const noexcept;
         [[nodiscard]] VkDeviceSize fieldOffset(std::uint32_t slot, std::size_t stride) const noexcept;
         DeviceSession& session_;
         StorageId id_;

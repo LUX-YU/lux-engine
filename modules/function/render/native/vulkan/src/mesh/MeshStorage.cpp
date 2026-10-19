@@ -13,8 +13,7 @@ namespace lux::render::vulkan
 {
     struct MeshStorage::Geometry final
     {
-        std::unique_ptr<BufferArena::Range> vertices, indices, sections;
-        RetirementReservation vertex_retirement, index_retirement, section_retirement;
+        BufferArena::Range vertices, indices, sections;
     };
 
     MeshStorage::MeshStorage(DeviceSession& session, StorageId id) noexcept
@@ -165,11 +164,13 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(vertices.error());
         }
+        cxx::scope_exit rollback_vertices([&]() noexcept { vertices_->release(*vertices); });
         auto indices = indices_->allocate((index_bytes + 3) & ~std::size_t{3}, 4);
         if (!indices)
         {
             co_return cxx::unexpected(indices.error());
         }
+        cxx::scope_exit rollback_indices([&]() noexcept { indices_->release(*indices); });
         std::vector<MeshGpuSection> records;
         records.reserve(input.description.submeshes.size());
         for (const auto& section : input.description.submeshes)
@@ -181,14 +182,7 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(sections.error());
         }
-        auto geometry = std::make_unique<Geometry>(
-            std::move(*vertices),
-            std::move(*indices),
-            std::move(*sections),
-            session_.retirement().reserve(),
-            session_.retirement().reserve(),
-            session_.retirement().reserve()
-        );
+        auto geometry = std::make_unique<Geometry>(std::move(*vertices), std::move(*indices), std::move(*sections));
         auto id = input.mesh;
         if (id.isNull())
         {
@@ -208,8 +202,8 @@ namespace lux::render::vulkan
             }
         );
         auto uploaded = co_await session_.uploads().writeBufferRange(
-            *geometry->vertices->buffer,
-            geometry->vertices->offset,
+            *geometry->vertices.buffer,
+            geometry->vertices.offset,
             input.source.first(vertex_bytes)
         );
         if (!uploaded)
@@ -221,8 +215,8 @@ namespace lux::render::vulkan
         if (full_words)
         {
             uploaded = co_await session_.uploads().writeBufferRange(
-                *geometry->indices->buffer,
-                geometry->indices->offset,
+                *geometry->indices.buffer,
+                geometry->indices.offset,
                 index_source.first(full_words)
             );
             if (!uploaded)
@@ -235,7 +229,7 @@ namespace lux::render::vulkan
             std::array<std::byte, 4> tail{};
             std::memcpy(tail.data(), index_source.data() + full_words, index_bytes - full_words);
             uploaded = co_await session_.uploads()
-                           .writeBufferRange(*geometry->indices->buffer, geometry->indices->offset + full_words, tail);
+                           .writeBufferRange(*geometry->indices.buffer, geometry->indices.offset + full_words, tail);
             if (!uploaded)
             {
                 co_return cxx::unexpected(uploaded.error());
@@ -266,12 +260,12 @@ namespace lux::render::vulkan
             }
         }
         const auto bytes = std::as_bytes(std::span(records));
-        const auto& section_range = *geometry->sections;
+        const auto& section_range = geometry->sections;
         for (std::size_t offset = 0; offset < bytes.size(); offset += 65536)
         {
             vkCmdUpdateBuffer(
                 batch->native(),
-                section_range.buffer->native(),
+                section_range.buffer->handle(),
                 section_range.offset + offset,
                 std::min<std::size_t>(65536, bytes.size() - offset),
                 bytes.data() + offset
@@ -295,12 +289,12 @@ namespace lux::render::vulkan
         entry.description = std::move(input.description);
         entry.revision = revision + 1;
         entry.updating = false;
-        const auto& v = *entry.geometry->vertices;
-        const auto& i = *entry.geometry->indices;
-        StorageSubscription::publish(entry.vertices, {v.buffer, v.offset, v.size});
-        StorageSubscription::publish(entry.indices, {i.buffer, i.offset, i.size});
-        const auto& s = *entry.geometry->sections;
-        StorageSubscription::publish(entry.sections, {s.buffer, s.offset, s.size});
+        const auto& v = entry.geometry->vertices;
+        const auto& i = entry.geometry->indices;
+        StorageSubscription::publish(entry.vertices, {v.buffer->handle(), v.offset, v.size});
+        StorageSubscription::publish(entry.indices, {i.buffer->handle(), i.offset, i.size});
+        const auto& s = entry.geometry->sections;
+        StorageSubscription::publish(entry.sections, {s.buffer->handle(), s.offset, s.size});
         rollback.release();
         co_return MeshPublished{id, entry.revision};
     }
@@ -321,7 +315,7 @@ namespace lux::render::vulkan
         return MeshInformation{
             {id, entry->revision},
             entry->description,
-            entry->geometry->vertices->size + entry->geometry->indices->size
+            entry->geometry->vertices.size + entry->geometry->indices.size
         };
     }
 
@@ -366,15 +360,15 @@ namespace lux::render::vulkan
         }
         const bool vertex = argument.buffer == EMeshBuffer::VERTICES;
         const bool index = argument.buffer == EMeshBuffer::INDICES;
-        const auto& range = vertex  ? *entry->geometry->vertices
-                            : index ? *entry->geometry->indices
-                                    : *entry->geometry->sections;
+        const auto& range = vertex  ? entry->geometry->vertices
+                            : index ? entry->geometry->indices
+                                    : entry->geometry->sections;
         if (description->size > range.size)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
         subscription.attach(vertex ? entry->vertices : index ? entry->indices : entry->sections);
-        return StorageResource{range.buffer, range.offset, range.size};
+        return StorageResource{range.buffer->handle(), range.offset, range.size};
     }
 
     void MeshStorage::retire(std::unique_ptr<Geometry>& geometry) noexcept
@@ -383,12 +377,9 @@ namespace lux::render::vulkan
         {
             return;
         }
-        if (!BufferArena::retireRange(session_.retirement(), geometry->vertex_retirement, geometry->vertices) ||
-            !BufferArena::retireRange(session_.retirement(), geometry->index_retirement, geometry->indices) ||
-            !BufferArena::retireRange(session_.retirement(), geometry->section_retirement, geometry->sections))
-        {
-            std::terminate(); // Both reservations precede any accepted GPU work.
-        }
+        vertices_->release(geometry->vertices);
+        indices_->release(geometry->indices);
+        sections_->release(geometry->sections);
         geometry.reset();
     }
 

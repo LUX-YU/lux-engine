@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <lux/engine/gapi/vk/Vma.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/native/vulkan/Error.hpp>
 #include <lux/engine/render/native/vulkan/device/DeviceOptions.hpp>
@@ -10,10 +11,22 @@ struct VmaAllocator_T;
 
 namespace lux::render::vulkan
 {
-    class Buffer;
-    class Image;
-    struct ImageDescription;
-    enum class EMemoryAccess;
+    enum class EMemoryAccess
+    {
+        DEVICE,
+        UPLOAD,
+        READBACK
+    };
+
+    struct ImageDescription final
+    {
+        VkExtent2D extent;
+        VkFormat format;
+        VkImageUsageFlags usage;
+        VkSampleCountFlagBits samples{VK_SAMPLE_COUNT_1_BIT};
+        std::uint32_t mip_levels{1};
+        std::uint32_t array_layers{1};
+    };
 
     struct InstanceOptions
     {
@@ -90,14 +103,14 @@ namespace lux::render::vulkan
             VkDevice device,
             bool buffer_device_address
         ) noexcept;
-        // Returned objects own their Native allocation; this allocator must outlive every reference.
-        [[nodiscard]] RenderResult<std::unique_ptr<Buffer>> createBuffer(
+        // Returns lightweight allocation records. Their actual collection owner supplies this allocator at release.
+        [[nodiscard]] RenderResult<gapi::vk::VmaBuffer> createBuffer(
             VkDeviceSize size,
             VkBufferUsageFlags usage,
             EMemoryAccess access,
             std::span<const std::uint32_t> families = {}
         ) noexcept;
-        [[nodiscard]] RenderResult<std::unique_ptr<Image>> createImage(const ImageDescription& description) noexcept;
+        [[nodiscard]] RenderResult<gapi::vk::VmaImage> createImage(const ImageDescription& description) noexcept;
         ~VulkanAllocator() noexcept;
         VulkanAllocator(VulkanAllocator&& other) noexcept;
         VulkanAllocator& operator=(VulkanAllocator&& other) noexcept;

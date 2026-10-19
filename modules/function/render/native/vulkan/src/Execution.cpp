@@ -16,7 +16,7 @@ namespace lux::render::vulkan
     {
         explicit FrameResources(VkDevice value) noexcept : device(value) {}
 
-        ~FrameResources() noexcept
+        void release(VmaAllocator allocator) noexcept
         {
             if (descriptor_pool)
             {
@@ -26,13 +26,21 @@ namespace lux::render::vulkan
             {
                 vkDestroyImageView(device, view, nullptr);
             }
+            for (auto& image : images)
+            {
+                image.release(allocator);
+            }
+            for (auto& buffer : buffers)
+            {
+                buffer.release(allocator);
+            }
         }
 
         VkDevice device;
         SubmissionCallback completion;
         bool pending = false;
-        std::vector<std::unique_ptr<Buffer>> buffers;
-        std::vector<std::unique_ptr<Image>> images;
+        std::vector<gapi::vk::VmaBuffer> buffers;
+        std::vector<gapi::vk::VmaImage> images;
         std::vector<VkImageView> views;
         DescriptorArray* shared_descriptors = nullptr;
         VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
@@ -45,24 +53,30 @@ namespace lux::render::vulkan
         TargetDesc target
     ) noexcept
         : owner_(&owner), queue_(&queue), frame_resources_(std::make_unique<FrameResources>(code.device())),
-          retirement_(owner.retirement().reserve()), code_(&code), target_(target),
-          bindings_(code_->resources().size()), storages_(owner.resources())
+          code_(&code), target_(target), bindings_(code_->resources().size()), storages_(owner.resources())
     {
         storage_uses_.reserve(bindings_.size());
         changed_resources_.reserve(bindings_.size());
         context_data_.reserve(code_->contexts_.size());
         changed_data_.reserve(code_->contexts_.size());
         context_values_.resize(code_->descriptor_plan_->context_parameters.size);
+        frame_resources_->images.reserve(std::ranges::count_if(
+            code.resources(),
+            [](const auto& resource) { return resource.image_usage && !resource.storage; }
+        ));
     }
 
     ExecutionContext::~ExecutionContext() noexcept
     {
         withdraw();
         // The detached physical set owns the completion observer; it cannot call back into this Context.
-        if (!owner_->retirement().retire(retirement_, frame_resources_))
-        {
-            std::terminate();
-        }
+        owner_->deferRelease(
+            [frame = std::move(frame_resources_), allocator = owner_->allocator().native()]() mutable noexcept
+            {
+                frame->release(allocator);
+                frame.reset();
+            }
+        );
     }
 
     void ExecutionContext::withdraw() noexcept
@@ -242,10 +256,10 @@ namespace lux::render::vulkan
                 {
                     return cxx::unexpected(backing.error());
                 }
-                binding.image = backing->get();
                 context->frame_resources_->images.push_back(std::move(*backing));
+                binding.image = &context->frame_resources_->images.back();
                 VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-                view.image = binding.image->native();
+                view.image = binding.image->handle();
                 view.viewType = VK_IMAGE_VIEW_TYPE_2D;
                 view.format = format.native;
                 view.subresourceRange = {format.aspects, 0, 1, 0, 1};
@@ -269,7 +283,7 @@ namespace lux::render::vulkan
                 {
                     return cxx::unexpected(buffer.error());
                 }
-                binding.buffer = buffer->get();
+                binding.buffer = buffer->handle();
                 binding.buffer_size = size;
                 context->frame_resources_->buffers.push_back(std::move(*buffer));
             }
@@ -281,7 +295,7 @@ namespace lux::render::vulkan
             for (const auto& barrier : recipe.images)
             {
                 auto native = barrier.native;
-                native.image = context->bindings_[barrier.resource].image->native();
+                native.image = context->bindings_[barrier.resource].image->handle();
                 if (native.oldLayout == VK_IMAGE_LAYOUT_UNDEFINED)
                 {
                     // A full overwrite may discard prior frame content, but must
@@ -294,7 +308,7 @@ namespace lux::render::vulkan
             for (const auto& barrier : recipe.buffers)
             {
                 auto native = barrier.native;
-                native.buffer = context->bindings_[barrier.resource].buffer->native();
+                native.buffer = context->bindings_[barrier.resource].buffer;
                 pass.buffers.push_back(native);
             }
             context->passes_.push_back(std::move(pass));
@@ -302,10 +316,6 @@ namespace lux::render::vulkan
         if (auto ready = context->prepareDescriptors(); !ready)
         {
             return cxx::unexpected(ready.error());
-        }
-        if (auto reserved = queue().reserve(context->frame_resources_->completion); !reserved)
-        {
-            return cxx::unexpected(reserved.error());
         }
         rollback.release();
         return context;
@@ -515,7 +525,7 @@ namespace lux::render::vulkan
                 auto& pass = passes_[p];
                 const auto& recipe = pass.recipe->buffers[index].native;
                 auto& barrier = pass.buffers[index];
-                barrier.buffer = source.buffer->native();
+                barrier.buffer = source.buffer;
                 barrier.offset = source.buffer_offset + recipe.offset;
                 barrier.size = recipe.size == VK_WHOLE_SIZE ? source.buffer_size - recipe.offset : recipe.size;
             }
@@ -523,7 +533,7 @@ namespace lux::render::vulkan
             {
                 auto& pass = passes_[p];
                 const auto& use = layout.programs[pass.recipe->layout_program].uses[index];
-                const VkDescriptorBufferInfo info{source.buffer->native(), source.buffer_offset, source.buffer_size};
+                const VkDescriptorBufferInfo info{source.buffer, source.buffer_offset, source.buffer_size};
                 VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
                 write.dstSet = pass.private_descriptors;
                 write.dstBinding = use.binding;
@@ -687,7 +697,7 @@ namespace lux::render::vulkan
                     depth.clearValue.depthStencil = {recipe.clear_depth, 0};
                     const auto extent = destination.image->extent();
                     VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
-                    rendering.renderArea = {{0, 0}, extent};
+                    rendering.renderArea = {{0, 0}, {extent.width, extent.height}};
                     rendering.layerCount = 1;
                     rendering.colorAttachmentCount = unsigned(recipe.color != kGraphInvalidIndex);
                     rendering.pColorAttachments = &attachment;
@@ -704,7 +714,7 @@ namespace lux::render::vulkan
                         viewport_.min_depth,
                         viewport_.max_depth
                     };
-                    const VkRect2D scissor{{0, 0}, extent};
+                    const VkRect2D scissor{{0, 0}, {extent.width, extent.height}};
                     vkCmdSetViewport(command, 0, 1, &viewport);
                     vkCmdSetScissor(command, 0, 1, &scissor);
                 }
@@ -738,7 +748,7 @@ namespace lux::render::vulkan
                 }
                 for (const auto& source : recipe.vertices)
                 {
-                    const auto buffer = bindings_[source.resource].buffer->native();
+                    const auto buffer = bindings_[source.resource].buffer;
                     const auto offset = bindings_[source.resource].buffer_offset + source.offset;
                     vkCmdBindVertexBuffers(command, source.binding, 1, &buffer, &offset);
                 }
@@ -746,7 +756,7 @@ namespace lux::render::vulkan
                 {
                     vkCmdBindIndexBuffer(
                         command,
-                        bindings_[recipe.index_resource].buffer->native(),
+                        bindings_[recipe.index_resource].buffer,
                         bindings_[recipe.index_resource].buffer_offset + recipe.index_offset,
                         recipe.index_type
                     );
@@ -770,7 +780,7 @@ namespace lux::render::vulkan
                 {
                     vkCmdDrawIndexedIndirect(
                         command,
-                        bindings_[recipe.indirect_resource].buffer->native(),
+                        bindings_[recipe.indirect_resource].buffer,
                         bindings_[recipe.indirect_resource].buffer_offset + recipe.indirect_offset,
                         recipe.count,
                         recipe.indirect_stride
@@ -822,7 +832,7 @@ namespace lux::render::vulkan
                     const VkClearDepthStencilValue depth{recipe.clear_depth, 0};
                     vkCmdClearDepthStencilImage(
                         command,
-                        destination.image->native(),
+                        destination.image->handle(),
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                         &depth,
                         1,
@@ -833,7 +843,7 @@ namespace lux::render::vulkan
                 {
                     vkCmdClearColorImage(
                         command,
-                        destination.image->native(),
+                        destination.image->handle(),
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                         &value,
                         1,
@@ -845,7 +855,7 @@ namespace lux::render::vulkan
             case ERecipe::FILL_BUFFER:
                 vkCmdFillBuffer(
                     command,
-                    destination.buffer->native(),
+                    destination.buffer,
                     destination.buffer_offset,
                     std::get<GraphBufferDesc>(code_->resources()[recipe.destination].description).size,
                     0
@@ -865,9 +875,9 @@ namespace lux::render::vulkan
                 region.imageExtent = {image.extent().width, image.extent().height, 1};
                 vkCmdCopyImageToBuffer(
                     command,
-                    image.native(),
+                    image.handle(),
                     VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    destination.buffer->native(),
+                    destination.buffer,
                     1,
                     &region
                 );
@@ -875,13 +885,13 @@ namespace lux::render::vulkan
             }
             case ERecipe::COPY_BUFFER:
             {
-                const auto* source = bindings_[recipe.source].buffer;
+                const auto source = bindings_[recipe.source].buffer;
                 const VkBufferCopy region{
                     bindings_[recipe.source].buffer_offset,
                     destination.buffer_offset,
                     std::get<GraphBufferDesc>(code_->resources()[recipe.source].description).size
                 };
-                vkCmdCopyBuffer(command, source->native(), destination.buffer->native(), 1, &region);
+                vkCmdCopyBuffer(command, source, destination.buffer, 1, &region);
                 break;
             }
             }

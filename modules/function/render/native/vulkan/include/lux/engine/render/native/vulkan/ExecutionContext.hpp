@@ -5,11 +5,11 @@
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
-#include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
 #include <lux/engine/render/resource/StorageSet.hpp>
 
 namespace lux::render::vulkan
 {
+    class SubmissionQueue;
 
     class ExecutionContext final
     {
@@ -83,7 +83,7 @@ namespace lux::render::vulkan
         // Compiled resource indices are trusted here; this is a Native diagnostic borrow.
         [[nodiscard]] VkBuffer nativeBuffer(std::uint32_t resource) const noexcept
         {
-            return bindings_[resource].buffer ? bindings_[resource].buffer->native() : VK_NULL_HANDLE;
+            return bindings_[resource].buffer;
         }
 
     private:
@@ -94,9 +94,9 @@ namespace lux::render::vulkan
 
         struct Binding final
         {
-            Image* image = nullptr;
+            gapi::vk::VmaImage* image = nullptr;
             VkImageView view{};
-            Buffer* buffer = nullptr;
+            VkBuffer buffer = VK_NULL_HANDLE;
             VkDeviceSize buffer_offset = 0, buffer_size = 0;
             std::span<const std::byte> parameters;
             const rdesc::ShaderBlock* parameter_layout = nullptr;
@@ -132,7 +132,6 @@ namespace lux::render::vulkan
         SubmissionQueue* queue_;
         struct FrameResources;
         std::unique_ptr<FrameResources> frame_resources_;
-        RetirementReservation retirement_;
         std::size_t unavailable_buffers_ = 0;
         const CompiledGraph* code_;
         TargetDesc target_;

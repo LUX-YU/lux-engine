@@ -32,11 +32,10 @@ namespace lux::render::vulkan
         bool recording{};
         std::optional<RenderError> terminal;
         SubmissionCallback* callbacks = nullptr;
-        std::size_t callback_reservations = 0;
-        std::size_t callback_capacity;
+        SubmissionCallback* callbacks_tail = nullptr;
 
-        Backing(VkDevice device, NativeQueue queue, std::uint32_t capacity, std::uint32_t callbacks)
-            : device(device), queue(queue), batches(capacity), callback_capacity(callbacks)
+        Backing(VkDevice device, NativeQueue queue, std::uint32_t capacity)
+            : device(device), queue(queue), batches(capacity)
         {
         }
 
@@ -66,15 +65,14 @@ namespace lux::render::vulkan
         VkDevice device,
         NativeQueue native_queue,
         bool timeline_enabled,
-        std::uint32_t capacity,
-        std::uint32_t callback_capacity
+        std::uint32_t capacity
     ) noexcept
     {
-        if (capacity == 0 || callback_capacity == 0)
+        if (capacity == 0)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        auto backing = std::make_unique<Backing>(device, native_queue, capacity, callback_capacity);
+        auto backing = std::make_unique<Backing>(device, native_queue, capacity);
         VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
         pool.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         pool.queueFamilyIndex = backing->queue.family;
@@ -123,8 +121,8 @@ namespace lux::render::vulkan
 
     SubmissionQueue::~SubmissionQueue() noexcept
     {
-        // Subscribers borrow this queue. Their owners must settle and release reservations before teardown.
-        if (backing_->callback_reservations != 0)
+        // Completion nodes borrow this queue and must finish before teardown.
+        if (backing_->callbacks != nullptr)
         {
             std::terminate();
         }
@@ -142,35 +140,6 @@ namespace lux::render::vulkan
         {
             std::terminate();
         }
-        if (queue_)
-        {
-            queue_->releaseCallback(*this);
-        }
-    }
-
-    RenderResult<void> SubmissionQueue::reserve(SubmissionCallback& callback) noexcept
-    {
-        if (callback.queue_)
-        {
-            return cxx::unexpected(RenderError{kBusy});
-        }
-        if (backing_->terminal)
-        {
-            return cxx::unexpected(*backing_->terminal);
-        }
-        if (backing_->callback_reservations == backing_->callback_capacity)
-        {
-            return cxx::unexpected(RenderError{kCapacity});
-        }
-        ++backing_->callback_reservations;
-        callback.queue_ = this;
-        return {};
-    }
-
-    void SubmissionQueue::releaseCallback(SubmissionCallback& callback) noexcept
-    {
-        --backing_->callback_reservations;
-        callback.queue_ = nullptr;
     }
 
     void SubmissionQueue::arm(
@@ -184,6 +153,20 @@ namespace lux::render::vulkan
         callback.user_ = user;
         callback.serial_ = serial;
         callback.armed_ = true;
+        if (!backing_->callbacks_tail || backing_->callbacks_tail->serial_ <= serial)
+        {
+            if (backing_->callbacks_tail)
+            {
+                backing_->callbacks_tail->next_ = &callback;
+            }
+            else
+            {
+                backing_->callbacks = &callback;
+            }
+            callback.next_ = nullptr;
+            backing_->callbacks_tail = &callback;
+            return;
+        }
         auto** link = &backing_->callbacks;
         while (*link && (*link)->serial_ <= serial)
         {
@@ -208,6 +191,10 @@ namespace lux::render::vulkan
         auto* pending = *end;
         *end = nullptr;
         backing_->callbacks = pending;
+        if (!pending)
+        {
+            backing_->callbacks_tail = nullptr;
+        }
         const auto terminal = backing_->terminal;
         // Detached ready-prefix snapshot: callback re-registration cannot extend this dispatch indefinitely.
         while (ready)
@@ -221,16 +208,6 @@ namespace lux::render::vulkan
             function(user, terminal ? RenderResult<void>{cxx::unexpected(*terminal)} : RenderResult<void>{});
             // The callback may destroy its node and enclosing operation. Never access current again.
         }
-    }
-
-    std::size_t SubmissionQueue::callbackReservations() const noexcept
-    {
-        return backing_->callback_reservations;
-    }
-
-    std::size_t SubmissionQueue::callbackCapacity() const noexcept
-    {
-        return backing_->callback_capacity;
     }
 
     void SubmissionQueue::completePending() noexcept
@@ -320,7 +297,7 @@ namespace lux::render::vulkan
     ) noexcept
     {
         // Admission owns all mutation; no callback can change the prepared recording here.
-        const bool invalid_completion = completion && (completion->queue_ != this || completion->armed_ || !function);
+        const bool invalid_completion = completion && (completion->armed_ || !function);
         if (invalid_completion || waits.size() > 3)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});

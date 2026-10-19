@@ -3,9 +3,10 @@
 #include <lux/engine/gapi/vk/LogicalDevice.hpp>
 #include <lux/engine/gapi/vk/PhysicalDevice.hpp>
 
+#include <functional>
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
+#include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
@@ -35,6 +36,63 @@ namespace lux::render::vulkan
         DeviceSession& operator=(const DeviceSession&) = delete;
 
         [[nodiscard]] RenderResult<void> drain() noexcept;
+        // External Context/Storage owners and upload producers must be settled before final close.
+        void close() noexcept;
+
+        // Start on the Native owner. Every queue wait is registered now; cleanup executes inline
+        // in the last ordered completion callback. No resource is retained by the queue itself.
+        template <class Release> void deferRelease(Release release) noexcept
+        {
+            auto complete = [release = std::move(release)](auto... results) mutable noexcept
+            {
+                (requireCleanupComplete(results), ...);
+                std::invoke(release);
+            };
+            switch (physical_queues_.size())
+            {
+            case 1:
+                stdexec::spawn(
+                    physical_queues_[0]->whenIdle() | stdexec::then(std::move(complete)),
+                    cleanup_scope_.get_token()
+                );
+                break;
+            case 2:
+                stdexec::spawn(
+                    stdexec::when_all(physical_queues_[0]->whenIdle(), physical_queues_[1]->whenIdle()) |
+                        stdexec::then(std::move(complete)),
+                    cleanup_scope_.get_token()
+                );
+                break;
+            case 3:
+                stdexec::spawn(
+                    stdexec::when_all(
+                        physical_queues_[0]->whenIdle(),
+                        physical_queues_[1]->whenIdle(),
+                        physical_queues_[2]->whenIdle()
+                    ) | stdexec::then(std::move(complete)),
+                    cleanup_scope_.get_token()
+                );
+                break;
+            default:
+                // No queue exists only during rollback of device construction.
+                complete();
+            }
+        }
+
+        template <class Release> void deferRelease(SubmissionQueue& queue, Release release) noexcept
+        {
+            stdexec::spawn(
+                queue.whenIdle() | stdexec::then(
+                                       [release = std::move(release)](RenderResult<void> result) mutable noexcept
+                                       {
+                                           requireCleanupComplete(result);
+                                           std::invoke(release);
+                                       }
+                                   ),
+                cleanup_scope_.get_token()
+            );
+        }
+
         [[nodiscard]] RenderResult<void> collect() noexcept;
         // Explicit RenderThread safe point, separate from polling and resource admission/collection.
         void dispatchCompletions() noexcept;
@@ -49,11 +107,6 @@ namespace lux::render::vulkan
         [[nodiscard]] SubmissionQueue& queue(EQueueRole role = EQueueRole::GRAPHICS) noexcept
         {
             return *physical_queues_[queue_roles_[static_cast<std::size_t>(role)]];
-        }
-
-        [[nodiscard]] RetirementQueue& retirement() noexcept
-        {
-            return *retirement_;
         }
 
         [[nodiscard]] RenderResult<std::uint32_t> sampledImageCapacity() const noexcept;
@@ -111,6 +164,7 @@ namespace lux::render::vulkan
     private:
         friend class UploadContext;
         friend class ExecutionContext;
+        static void requireCleanupComplete(const RenderResult<void>&) noexcept;
         DeviceSession(
             gapi::vk::PhysicalDevice physical,
             gapi::vk::LogicalDevice logical,
@@ -128,7 +182,8 @@ namespace lux::render::vulkan
         std::unique_ptr<DescriptorArray> sampled_images_;
         std::unique_ptr<StagingArena> staging_arena_;
         std::unique_ptr<UploadContext> uploads_;
-        std::unique_ptr<RetirementQueue> retirement_;
+        stdexec::simple_counting_scope cleanup_scope_;
+        bool closed_ = false;
         ResourceRegistry resources_;
         StorageSet global_storages_;
     };

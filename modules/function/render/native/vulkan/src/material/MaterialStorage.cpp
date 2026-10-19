@@ -1,3 +1,4 @@
+#include "Cleanup.hpp"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -17,8 +18,7 @@ namespace lux::render::vulkan
         std::vector<std::byte> records; // The sole CPU parameter authority, in the reflected GPU layout.
         std::vector<Entry*> entries;
         std::vector<std::uint32_t> free_slots;
-        std::unique_ptr<Buffer> buffer;
-        RetirementReservation retirement;
+        gapi::vk::VmaBuffer buffer;
         bool updating = false;
         std::vector<std::uint32_t> texture_changes;
         std::vector<bool> texture_changed;
@@ -64,10 +64,7 @@ namespace lux::render::vulkan
         }
         for (auto& table : tables_)
         {
-            if (table->buffer && !session_.retirement().retire(table->retirement, table->buffer))
-            {
-                std::terminate();
-            }
+            releaseAfterGpu(session_, table->buffer);
         }
     }
 
@@ -143,7 +140,6 @@ namespace lux::render::vulkan
             candidate->texture_offsets.push_back(base);
         }
         candidate->program = std::move(program);
-        candidate->retirement = session_.retirement().reserve();
         auto* result = candidate.get();
         tables_.push_back(std::move(candidate));
         return result;
@@ -240,7 +236,7 @@ namespace lux::render::vulkan
             const auto& table = *entry.table;
             const auto offset = std::uint64_t(entry.slot) * table.stride + table.texture_offsets[texture] +
                                 offsetof(MaterialTextureGpuRef, resource_index);
-            vkCmdUpdateBuffer(command, table.buffer->native(), offset, sizeof(descriptor), &descriptor);
+            vkCmdUpdateBuffer(command, table.buffer.handle(), offset, sizeof(descriptor), &descriptor);
         }
     }
 
@@ -272,7 +268,7 @@ namespace lux::render::vulkan
         {
             if (entry)
             {
-                StorageSubscription::publish(entry->bindings, {table.buffer.get(), 0, table.buffer->size()});
+                StorageSubscription::publish(entry->bindings, {table.buffer.handle(), 0, table.buffer.size()});
             }
         }
     }
@@ -362,8 +358,7 @@ namespace lux::render::vulkan
         }
         auto& entry = *entries_.find(id.local);
         entry.updating = table.updating = true;
-        std::unique_ptr<Buffer> candidate;
-        auto retirement = session_.retirement().reserve();
+        gapi::vk::VmaBuffer candidate;
         cxx::scope_exit rollback(
             [&]() noexcept
             {
@@ -377,10 +372,7 @@ namespace lux::render::vulkan
                 {
                     entries_.erase(id.local);
                 }
-                if (candidate && !session_.retirement().retire(retirement, candidate))
-                {
-                    std::terminate();
-                }
+                releaseAfterGpu(session_, candidate);
                 if (table.entries.empty())
                 {
                     const auto empty =
@@ -407,7 +399,7 @@ namespace lux::render::vulkan
             co_return cxx::unexpected(allocated.error());
         }
         candidate = std::move(*allocated);
-        auto uploaded = co_await session_.uploads().writeBuffer(*candidate, source);
+        auto uploaded = co_await session_.uploads().writeBuffer(candidate, source);
         if (!uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
@@ -437,12 +429,12 @@ namespace lux::render::vulkan
             }
         }
         const auto command = batch->native();
-        auto& target = growing ? *candidate : *table.buffer;
+        auto& target = growing ? candidate : table.buffer;
         beforeWrite(command);
         if (!growing)
         {
             const VkBufferCopy copy{0, std::uint64_t(slot) * table.stride, table.stride};
-            vkCmdCopyBuffer(command, candidate->native(), target.native(), 1, &copy);
+            vkCmdCopyBuffer(command, candidate.handle(), target.handle(), 1, &copy);
             beforeWrite(command);
         }
         // Texture publications may have completed during CPU preparation. Apply their actual latest
@@ -455,7 +447,7 @@ namespace lux::render::vulkan
                 {
                     const auto at = std::size_t(changed) * table.stride + offset;
                     std::memcpy(grown.data() + at, table.records.data() + at, sizeof(MaterialTextureGpuRef));
-                    vkCmdUpdateBuffer(command, target.native(), at, sizeof(MaterialTextureGpuRef), grown.data() + at);
+                    vkCmdUpdateBuffer(command, target.handle(), at, sizeof(MaterialTextureGpuRef), grown.data() + at);
                 }
             }
         }
@@ -464,7 +456,7 @@ namespace lux::render::vulkan
         {
             vkCmdUpdateBuffer(
                 command,
-                target.native(),
+                target.handle(),
                 std::uint64_t(slot) * table.stride + offset,
                 sizeof(MaterialTextureGpuRef),
                 values.data() + offset
@@ -478,12 +470,8 @@ namespace lux::render::vulkan
         }
         if (growing)
         {
-            if (table.buffer && !session_.retirement().retire(table.retirement, table.buffer))
-            {
-                std::terminate();
-            }
+            releaseAfterGpu(session_, table.buffer);
             table.buffer = std::move(candidate);
-            table.retirement = std::move(retirement);
             table.records = std::move(grown);
             table.texture_changed.resize(capacity, false);
         }
@@ -577,10 +565,7 @@ namespace lux::render::vulkan
         entries_.erase(id.local);
         if (table.free_slots.size() == table.entries.size())
         {
-            if (!session_.retirement().retire(table.retirement, table.buffer))
-            {
-                std::terminate();
-            }
+            releaseAfterGpu(session_, table.buffer);
             const auto empty = std::ranges::find_if(tables_, [&](const auto& value) { return value.get() == &table; });
             tables_.erase(empty);
         }
@@ -634,12 +619,12 @@ namespace lux::render::vulkan
             return StorageResource{};
         }
         const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
-        if (!description || description->size < table.stride || description->size > table.buffer->size())
+        if (!description || description->size < table.stride || description->size > table.buffer.size())
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
         subscription.attach(entry->bindings);
-        return StorageResource{table.buffer.get(), 0, table.buffer->size()};
+        return StorageResource{table.buffer.handle(), 0, table.buffer.size()};
     }
 
     StorageFactory materialStorageFactory() noexcept

@@ -10,7 +10,7 @@ namespace lux::render::vulkan
     class SubmissionQueue;
     using SubmissionCallbackFn = void (*)(void*, RenderResult<void>) noexcept;
 
-    // Address-stable observer, reserved before submission. Unlinked before invoking user code.
+    // Address-stable, non-owning completion node. Unlinked before invoking user code.
     class SubmissionCallback final
     {
     public:
@@ -20,11 +20,6 @@ namespace lux::render::vulkan
         SubmissionCallback& operator=(const SubmissionCallback&) = delete;
         void reset() noexcept;
 
-        [[nodiscard]] bool reserved() const noexcept
-        {
-            return queue_ != nullptr;
-        }
-
         [[nodiscard]] bool armed() const noexcept
         {
             return armed_;
@@ -32,7 +27,6 @@ namespace lux::render::vulkan
 
     private:
         friend class SubmissionQueue;
-        SubmissionQueue* queue_ = nullptr;
         SubmissionCallback* next_ = nullptr;
         SubmissionCallbackFn callback_ = nullptr;
         void* user_ = nullptr;
@@ -104,8 +98,7 @@ namespace lux::render::vulkan
             VkDevice device,
             NativeQueue native_queue,
             bool timeline_enabled,
-            std::uint32_t capacity,
-            std::uint32_t callback_capacity = 128
+            std::uint32_t capacity
         ) noexcept;
         ~SubmissionQueue() noexcept;
         SubmissionQueue(const SubmissionQueue&) = delete;
@@ -116,11 +109,8 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<bool> waitIdle(std::uint64_t timeout_ns) noexcept;
         [[nodiscard]] CompletionSender whenIdle() noexcept;
         [[nodiscard]] CompletionSender whenAvailable() noexcept;
-        [[nodiscard]] RenderResult<void> reserve(SubmissionCallback&) noexcept;
         // Only this explicit Owner safe point invokes callbacks, never poll/begin/wait.
         void dispatchCompleted() noexcept;
-        [[nodiscard]] std::size_t callbackReservations() const noexcept;
-        [[nodiscard]] std::size_t callbackCapacity() const noexcept;
         [[nodiscard]] std::uint32_t capacity() const noexcept;
         [[nodiscard]] VkDevice device() const noexcept;
         [[nodiscard]] bool recording() const noexcept;
@@ -131,7 +121,6 @@ namespace lux::render::vulkan
     private:
         friend class CommandBatch;
         friend class ExecutionContext;
-        friend class RetirementQueue;
         friend class SubmissionCallback;
         struct Backing;
         explicit SubmissionQueue(std::unique_ptr<Backing>) noexcept;
@@ -150,7 +139,6 @@ namespace lux::render::vulkan
         [[nodiscard]] std::uint64_t submitted() const noexcept;
         void arm(std::uint64_t serial, SubmissionCallback&, SubmissionCallbackFn, void*) noexcept;
         void cancel() noexcept;
-        void releaseCallback(SubmissionCallback&) noexcept;
         void completePending() noexcept;
         RenderError failure(VkResult) noexcept;
         std::unique_ptr<Backing> backing_;
@@ -174,12 +162,6 @@ namespace lux::render::vulkan
 
             void start() & noexcept
             {
-                auto result = queue_.reserve(callback_);
-                if (!result)
-                {
-                    finish(this, std::move(result));
-                    return;
-                }
                 queue_.arm(serial_, callback_, finish, this);
             }
 

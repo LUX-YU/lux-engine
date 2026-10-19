@@ -3,14 +3,11 @@ find_package(Vulkan 1.3 REQUIRED)
 include(cmake/ShaderTools.cmake)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../engine/toolchain/shader/cmake/MetadataCompiler.cmake")
 
-find_path(LUX_VMA_INCLUDE_DIR vk_mem_alloc.h
-    HINTS "$ENV{VULKAN_SDK}/Include/vma" "${Vulkan_INCLUDE_DIR}/vma"
-    REQUIRED
-)
+include(cmake/Vma.cmake)
 
 set(LUX_NATIVE_SOURCES
     src/Error.cpp src/DeviceSession.cpp src/DescriptorArray.cpp src/device/Device.cpp src/device/Vma.cpp
-    src/memory/Memory.cpp src/transfer/Submission.cpp src/retirement/Retirement.cpp
+    src/transfer/Submission.cpp
     src/Compile.cpp src/LayoutPlan.cpp src/Shader.cpp src/Execution.cpp
     src/transfer/UploadContext.cpp src/transfer/StagingArena.cpp
 )
@@ -36,6 +33,7 @@ component_add_internal_dependencies(render_native_vulkan lux::engine::render::re
 
 target_link_libraries(render_native_vulkan PUBLIC
     Vulkan::Vulkan lux::engine::platform::gapi STDEXEC::stdexec lux::engine::core::core_execution
+    lux_render_vma_headers
     PRIVATE lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared
 )
 
@@ -47,9 +45,13 @@ component_add_transitive_commands(render_native_vulkan
     [=[include("${CMAKE_CURRENT_LIST_DIR}/ShaderTools.cmake")]=]
 )
 
-install(FILES cmake/ShaderTools.cmake DESTINATION share/lux-engine-render/render_native_vulkan)
+install(FILES cmake/ShaderTools.cmake cmake/Vma.cmake DESTINATION share/lux-engine-render/render_native_vulkan)
 
 target_compile_features(render_native_vulkan PUBLIC cxx_std_20)
+target_compile_definitions(render_native_vulkan PUBLIC LUX_GAPI_ENABLE_VMA=1)
+component_add_transitive_commands(render_native_vulkan
+    [=[include("${CMAKE_CURRENT_LIST_DIR}/Vma.cmake")]=]
+)
 
 set(LUX_NATIVE_EXTENSION_SOURCES
     src/memory/BufferArena.cpp

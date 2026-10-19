@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/description/ShaderBlock.hpp>
-#include <lux/engine/render/native/vulkan/memory/Memory.hpp>
+#include <lux/engine/render/native/vulkan/device/Device.hpp>
 #include <utility>
 
 namespace lux::render::vulkan
@@ -12,7 +12,7 @@ namespace lux::render::vulkan
     // pending upload, descriptor placement, or mutable parameter envelope lives in this value.
     struct StorageResource final
     {
-        Buffer* buffer = nullptr;
+        VkBuffer buffer = VK_NULL_HANDLE;
         VkDeviceSize offset = 0, size = 0;
         std::span<const std::byte> parameters;
         const rdesc::ShaderBlock* parameter_layout = nullptr;

@@ -9,6 +9,25 @@
 
 namespace lux::render::vulkan
 {
+    namespace
+    {
+        struct CloseReceiver final
+        {
+            using receiver_concept = stdexec::receiver_t;
+            bool& joined;
+
+            auto get_env() const noexcept
+            {
+                return stdexec::env{stdexec::prop{stdexec::get_scheduler, stdexec::inline_scheduler{}}};
+            }
+
+            void set_value() && noexcept
+            {
+                joined = true;
+            }
+        };
+    } // namespace
+
     DeviceSession::DeviceSession(
         gapi::vk::PhysicalDevice physical,
         gapi::vk::LogicalDevice logical,
@@ -24,13 +43,39 @@ namespace lux::render::vulkan
 
     DeviceSession::~DeviceSession() noexcept
     {
-        auto result = drain();
-        const bool is_device_lost = !result && result.error().type == kNativeFailure &&
-                                    result.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
-        if (!result && !is_device_lost)
+        close();
+    }
+
+    void DeviceSession::requireCleanupComplete(const RenderResult<void>& result) noexcept
+    {
+        const bool device_lost = !result && result.error().type == kNativeFailure &&
+                                 result.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
+        if (!result && !device_lost)
         {
             std::terminate();
         }
+    }
+
+    void DeviceSession::close() noexcept
+    {
+        if (closed_)
+        {
+            return;
+        }
+        // Members that can produce cleanup are emptied while admission is still open.
+        global_storages_.clear();
+        cleanup_scope_.close();
+        bool joined = false;
+        auto join = stdexec::connect(cleanup_scope_.join(), CloseReceiver{joined});
+        stdexec::start(join);
+        do
+        {
+            requireCleanupComplete(drain());
+        } while (!joined);
+        uploads_.reset();
+        staging_arena_.reset();
+        sampled_images_.reset();
+        closed_ = true;
     }
 
     RenderResult<void> DeviceSession::drain() noexcept
@@ -39,18 +84,21 @@ namespace lux::render::vulkan
         for (const auto& queue : physical_queues_)
         {
             auto result = queue->waitIdle(UINT64_MAX);
-            if (!result && !failure)
+            if (!failure)
             {
-                failure = result.error();
+                if (!result)
+                {
+                    failure = result.error();
+                }
+                else if (!*result)
+                {
+                    failure = nativeError(VK_TIMEOUT);
+                }
             }
-        }
-        if (failure)
-        {
-            return cxx::unexpected(*failure);
         }
         auto collected = collect();
         dispatchCompletions();
-        return collected;
+        return failure ? RenderResult<void>{cxx::unexpected(*failure)} : collected;
     }
 
     bool DeviceSession::deviceLost() const noexcept
@@ -87,10 +135,6 @@ namespace lux::render::vulkan
         for (auto& queue : physical_queues_)
         {
             queue->dispatchCompleted();
-        }
-        if (retirement_)
-        {
-            retirement_->collectReady();
         }
     }
 

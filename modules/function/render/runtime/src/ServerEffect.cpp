@@ -350,12 +350,7 @@ namespace lux::render
                 return;
             }
         }
-        auto retirement = device->retirement().reserve();
-        if (auto retired = device->retirement().retire(retirement, effect->code); !retired)
-        {
-            output_response = cxx::unexpected(retired.error());
-            return;
-        }
+        device->deferRelease([code = std::move(effect->code)]() mutable noexcept { code.reset(); });
         effects.erase(input->effect);
         output_response = Ack{};
     }

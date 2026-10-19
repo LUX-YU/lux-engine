@@ -72,10 +72,11 @@ static void graphOutput(InstanceContext& bootstrap)
     CHECK(take(execution->execute()) == EExecutionOutcome::EXECUTED);
     CHECK(take(execution->execute()) == EExecutionOutcome::PREVIOUS_SUBMISSION_PENDING);
     CHECK(session->drain());
-    copyBuffer(session->queue(), execution->nativeBuffer(pixels.index), output->native(), 1024);
+    copyBuffer(session->queue(), execution->nativeBuffer(pixels.index), output.handle(), 1024);
     CHECK(session->drain());
     std::array<std::byte, 1024> bytes;
-    CHECK(output->read(0, bytes));
+    CHECK(output.invalidate(session->allocator().native(), 0, bytes.size()) == VK_SUCCESS);
+    std::ranges::copy(output.mappedBytes(session->allocator().native()), bytes.begin());
     for (std::size_t i = 0; i < bytes.size(); i += 4)
     {
         CHECK(bytes[i] == std::byte{255} && bytes[i + 1] == std::byte{0});
@@ -84,7 +85,7 @@ static void graphOutput(InstanceContext& bootstrap)
     CHECK(take(execution->execute()) == EExecutionOutcome::EXECUTED);
     execution.reset(); // Physical frame resources and observer outlive the business Context.
     CHECK(session->drain());
-    CHECK(session->retirement().pending() == 0);
+    output.release(session->allocator().native());
     std::puts("Graph output: explicit external copy, correct pixels, Context detached in flight");
 }
 

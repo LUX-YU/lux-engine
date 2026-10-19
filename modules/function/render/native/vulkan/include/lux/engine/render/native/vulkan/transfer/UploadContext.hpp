@@ -2,7 +2,7 @@
 
 #include <exec/task.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
-#include <lux/engine/render/native/vulkan/memory/Memory.hpp>
+#include <lux/engine/render/native/vulkan/device/Device.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <span>
@@ -42,17 +42,17 @@ namespace lux::render::vulkan
 
         // Success means all required Copy/Acquire submissions were accepted. The caller retains targets or retires
         // failed candidates; success does not wait for the final fence observation.
-        [[nodiscard]] Task writeBuffer(Buffer& target, std::span<const std::byte> source) noexcept;
+        [[nodiscard]] Task writeBuffer(gapi::vk::VmaBuffer& target, std::span<const std::byte> source) noexcept;
         [[nodiscard]] Task writeBufferRange(
-            Buffer& target,
+            gapi::vk::VmaBuffer& target,
             VkDeviceSize offset,
             std::span<const std::byte> source
         ) noexcept;
         [[nodiscard]] Task writeImage(
-            Image& target,
+            gapi::vk::VmaImage& target,
             std::span<const std::byte> source,
             std::vector<ImageTransferRegion> regions,
-            const Image* clone = nullptr
+            const gapi::vk::VmaImage* clone = nullptr
         ) noexcept;
 
         [[nodiscard]] TransferStats statistics() const noexcept
@@ -65,11 +65,11 @@ namespace lux::render::vulkan
         friend class StagingPage;
         UploadContext(DeviceSession&, TransferOptions, execution::CpuScheduler) noexcept;
         [[nodiscard]] Task write(
-            Buffer*,
-            Image*,
+            gapi::vk::VmaBuffer*,
+            gapi::vk::VmaImage*,
             std::span<const std::byte>,
             std::vector<ImageTransferRegion>,
-            const Image*,
+            const gapi::vk::VmaImage*,
             VkDeviceSize = 0,
             bool = false
         ) noexcept;

@@ -16,7 +16,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        auto arena = std::unique_ptr<StagingArena>(new StagingArena);
+        auto arena = std::unique_ptr<StagingArena>(new StagingArena(allocator.native()));
         arena->pages_.reserve(page_count);
         arena->free_pages_.reserve(page_count);
         for (std::size_t i = 0; i < page_count; ++i)
@@ -27,7 +27,8 @@ namespace lux::render::vulkan
             {
                 return cxx::unexpected(buffer.error());
             }
-            arena->pages_.push_back(std::move(**buffer));
+            auto* mapped = buffer->mappedBytes(allocator.native()).data();
+            arena->pages_.push_back({std::move(*buffer), mapped});
             arena->free_pages_.push_back(i);
         }
         return arena;
@@ -40,23 +41,46 @@ namespace lux::render::vulkan
         {
             std::terminate();
         }
+        for (auto& page : pages_)
+        {
+            page.buffer.release(allocator_);
+        }
     }
 
-    RenderResult<std::unique_ptr<StagingPage>> StagingArena::acquire() noexcept
+    RenderResult<StagingPage> StagingArena::acquire() noexcept
     {
         if (free_pages_.empty())
         {
             return cxx::unexpected(RenderError{kCapacity});
         }
-        auto page = std::unique_ptr<StagingPage>(new StagingPage(*this, free_pages_.back()));
+        auto page = StagingPage(*this, free_pages_.back());
         free_pages_.pop_back();
         return page;
     }
 
     StagingPage::~StagingPage() noexcept
     {
-        (void)finishMeasurement(); // Failure is retained in the UploadContext measurement counters.
-        arena_.free_pages_.push_back(index_);
+        if (arena_)
+        {
+            (void)finishMeasurement(); // Diagnostics cannot change page reuse after actual Copy completion.
+            arena_->free_pages_.push_back(index_);
+        }
+    }
+
+    StagingPage::StagingPage(StagingPage&& other) noexcept
+        : arena_(std::exchange(other.arena_, nullptr)), index_(other.index_),
+          measurement_(std::exchange(other.measurement_, nullptr)), timestamp_bits_(other.timestamp_bits_)
+    {
+    }
+
+    std::span<std::byte> StagingPage::bytes() const noexcept
+    {
+        return {static_cast<std::byte*>(arena_->pages_[index_].mapped), std::size_t(buffer().size())};
+    }
+
+    VkResult StagingPage::flush(VkDeviceSize bytes) const noexcept
+    {
+        return buffer().flush(arena_->allocator_, 0, bytes);
     }
 
     void StagingPage::markMeasurement(UploadContext& context, std::uint32_t bits) noexcept
@@ -71,8 +95,8 @@ namespace lux::render::vulkan
         return context ? context->measure(index_, timestamp_bits_) : RenderResult<void>{};
     }
 
-    Buffer& StagingPage::buffer() const noexcept
+    gapi::vk::VmaBuffer& StagingPage::buffer() const noexcept
     {
-        return arena_.pages_[index_];
+        return arena_->pages_[index_].buffer;
     }
 } // namespace lux::render::vulkan

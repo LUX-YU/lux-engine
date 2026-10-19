@@ -600,7 +600,6 @@ namespace lux::render::vulkan
             }
             result->queue_roles_[i] = index;
         }
-        result->retirement_.reset(new RetirementQueue(result->physical_queues_));
         return result;
     }
 
@@ -664,4 +663,125 @@ namespace lux::render::vulkan
         }
         return *this;
     }
+
+    RenderResult<gapi::vk::VmaBuffer> VulkanAllocator::createBuffer(
+        VkDeviceSize size,
+        VkBufferUsageFlags usage,
+        EMemoryAccess access,
+        std::span<const std::uint32_t> families
+    ) noexcept
+    {
+        const bool is_invalid_access =
+            access != EMemoryAccess::DEVICE && access != EMemoryAccess::UPLOAD && access != EMemoryAccess::READBACK;
+        const bool is_invalid_config = size == 0 || usage == 0 || is_invalid_access;
+        if (is_invalid_config)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        const bool is_unsupported_address =
+            (usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) && !buffer_device_address_;
+        if (is_unsupported_address)
+        {
+            return cxx::unexpected(RenderError{kUnsupported});
+        }
+        VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        info.size = size;
+        info.usage = usage;
+        info.sharingMode = families.empty() ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
+        info.queueFamilyIndexCount = static_cast<std::uint32_t>(families.size());
+        info.pQueueFamilyIndices = families.data();
+        VmaAllocationCreateInfo memory{};
+        memory.usage = VMA_MEMORY_USAGE_AUTO;
+        if (access == EMemoryAccess::DEVICE)
+        {
+            memory.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        }
+        else
+        {
+            memory.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
+                           (access == EMemoryAccess::UPLOAD ? VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                                                            : VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT);
+            memory.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+        }
+        auto buffer = gapi::vk::VmaBuffer::create(native(), info, memory);
+        if (!buffer)
+        {
+            return cxx::unexpected(nativeError(buffer.error()));
+        }
+        if (access != EMemoryAccess::DEVICE && buffer->mappedBytes(native()).empty())
+        {
+            buffer->release(native());
+            return cxx::unexpected(nativeError(VK_ERROR_MEMORY_MAP_FAILED));
+        }
+        return std::move(*buffer);
+    }
+
+    RenderResult<gapi::vk::VmaImage> VulkanAllocator::createImage(const ImageDescription& description) noexcept
+    {
+        const auto extent = description.extent;
+        const auto format = description.format;
+        const auto usage = description.usage;
+        const auto samples = description.samples;
+        const auto mip_levels = description.mip_levels;
+        const auto array_layers = description.array_layers;
+        std::uint32_t max_levels = 0;
+        for (auto dimension = std::max(extent.width, extent.height); dimension != 0; dimension >>= 1)
+        {
+            ++max_levels;
+        }
+        const bool invalid_subresources = mip_levels == 0 || array_layers == 0 || mip_levels > max_levels ||
+                                          (samples != VK_SAMPLE_COUNT_1_BIT && mip_levels != 1);
+        const bool is_invalid_config =
+            extent.width == 0 || extent.height == 0 || format == VK_FORMAT_UNDEFINED || usage == 0 || samples == 0 ||
+            (static_cast<std::uint32_t>(samples) & (static_cast<std::uint32_t>(samples) - 1)) != 0;
+        if (is_invalid_config || invalid_subresources)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        VmaAllocatorInfo allocator_info{};
+        vmaGetAllocatorInfo(native(), &allocator_info);
+        VkImageFormatProperties supported{};
+        const auto support = vkGetPhysicalDeviceImageFormatProperties(
+            allocator_info.physicalDevice,
+            format,
+            VK_IMAGE_TYPE_2D,
+            VK_IMAGE_TILING_OPTIMAL,
+            usage,
+            0,
+            &supported
+        );
+        if (support != VK_SUCCESS)
+        {
+            return cxx::unexpected(nativeError(support));
+        }
+        const bool is_too_large = extent.width > supported.maxExtent.width ||
+                                  extent.height > supported.maxExtent.height || mip_levels > supported.maxMipLevels ||
+                                  array_layers > supported.maxArrayLayers;
+        if (is_too_large || (supported.sampleCounts & samples) == 0)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        info.flags = 0;
+        info.imageType = VK_IMAGE_TYPE_2D;
+        info.format = format;
+        info.extent = {extent.width, extent.height, 1};
+        info.mipLevels = mip_levels;
+        info.arrayLayers = array_layers;
+        info.samples = samples;
+        info.tiling = VK_IMAGE_TILING_OPTIMAL;
+        info.usage = usage;
+        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        VmaAllocationCreateInfo memory{};
+        memory.usage = VMA_MEMORY_USAGE_AUTO;
+        memory.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        auto image = gapi::vk::VmaImage::create(native(), info, memory);
+        if (!image)
+        {
+            return cxx::unexpected(nativeError(image.error()));
+        }
+        return std::move(*image);
+    }
+
 } // namespace lux::render::vulkan

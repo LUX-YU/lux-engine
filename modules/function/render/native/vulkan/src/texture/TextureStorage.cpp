@@ -12,55 +12,25 @@
 namespace lux::render::vulkan
 {
     TextureStorage::SampledImage::SampledImage(
-        std::unique_ptr<Image> image,
-        DescriptorRange descriptor,
+        gapi::vk::VmaImage image,
+        DescriptorArray::Slot descriptor,
         const rdesc::TextureInfo& info,
         std::uint64_t revision
     ) noexcept
         : image_(std::move(image)), descriptor_(std::move(descriptor)), info_(info), revision_(revision),
-          reference_{descriptor_.index(), static_cast<std::uint32_t>(info.color_space)}
+          reference_{descriptor_.index, static_cast<std::uint32_t>(info.color_space)}
     {
     }
 
-    TextureStorage::SampledImage::~SampledImage() noexcept
-    {
-        releaseViews();
-    }
-
-    TextureStorage::SampledImage::SampledImage(SampledImage&& other) noexcept
-        : image_(std::move(other.image_)), descriptor_(std::move(other.descriptor_)), info_(other.info_),
-          view_(std::exchange(other.view_, VK_NULL_HANDLE)), sampler_(std::move(other.sampler_)),
-          retirement_(std::move(other.retirement_)), revision_(other.revision_), reference_(other.reference_)
-    {
-    }
-
-    TextureStorage::SampledImage& TextureStorage::SampledImage::operator=(SampledImage&& other) noexcept
-    {
-        if (this != &other)
-        {
-            releaseViews();
-            image_ = std::move(other.image_);
-            descriptor_ = std::move(other.descriptor_);
-            info_ = other.info_;
-            view_ = std::exchange(other.view_, VK_NULL_HANDLE);
-            sampler_ = std::move(other.sampler_);
-            retirement_ = std::move(other.retirement_);
-            revision_ = other.revision_;
-            reference_ = other.reference_;
-        }
-        return *this;
-    }
-
-    void TextureStorage::SampledImage::releaseViews() noexcept
+    void TextureStorage::SampledImage::release(VkDevice device, VmaAllocator allocator, DescriptorArray& array) noexcept
     {
         if (view_)
         {
-            vkDestroyImageView(image_->device(), std::exchange(view_, VK_NULL_HANDLE), nullptr);
+            vkDestroyImageView(device, std::exchange(view_, VK_NULL_HANDLE), nullptr);
         }
-        if (sampler_)
-        {
-            sampler_.release(image_->device());
-        }
+        sampler_.release(device);
+        image_.release(allocator);
+        array.release(std::exchange(descriptor_, {}));
     }
 
     namespace
@@ -436,12 +406,13 @@ namespace lux::render::vulkan
     }
 
     RenderResult<TextureStorage::Candidate> TextureStorage::reserve(
-        std::unique_ptr<Image> image,
+        gapi::vk::VmaImage image,
         const rdesc::TextureInfo& info,
         TextureId id,
         std::uint64_t expected
     ) noexcept
     {
+        cxx::scope_exit release_image([&]() noexcept { image.release(session_.allocator().native()); });
         auto* record = textures_.find(id.local);
         if (id.isNull())
         {
@@ -479,13 +450,21 @@ namespace lux::render::vulkan
             return cxx::unexpected(descriptor.error());
         }
         auto content = std::make_unique<SampledImage>(std::move(image), std::move(*descriptor), info, expected + 1);
+        cxx::scope_exit rollback_content(
+            [&]() noexcept
+            {
+                if (content)
+                {
+                    content->release(session_.nativeDevice(), session_.allocator().native(), *descriptors_);
+                }
+            }
+        );
         auto& version = *content;
-        version.retirement_ = session_.retirement().reserve();
         const auto device = session_.nativeDevice();
         VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-        view.image = version.image_->native();
+        view.image = version.image_.handle();
         view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        view.format = version.image_->format();
+        view.format = version.image_.format();
         view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, version.info_.mip_count, 0, 1};
         auto result = vkCreateImageView(device, &view, nullptr, &version.view_);
         if (result != VK_SUCCESS)
@@ -503,7 +482,7 @@ namespace lux::render::vulkan
             return cxx::unexpected(nativeError(result));
         }
         // The descriptor becomes reachable only after the required upload submissions are accepted.
-        version.descriptor_.write(version.view_, version.sampler_);
+        descriptors_->write(version.descriptor_, version.view_, version.sampler_);
         if (id.isNull())
         {
             id = TextureId{id_, textures_.emplace()};
@@ -543,7 +522,7 @@ namespace lux::render::vulkan
         }
         const TexturePublished result{candidate->texture, candidate->version->revision_};
         auto uploaded = co_await session_.uploads()
-                            .writeImage(*candidate->version->image_, input.source, std::move(prepared->second));
+                            .writeImage(candidate->version->image_, input.source, std::move(prepared->second));
         if (!uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
@@ -590,10 +569,10 @@ namespace lux::render::vulkan
         candidate->base = record->current.get();
         const TexturePublished result{input.texture, candidate->version->revision_};
         auto uploaded = co_await session_.uploads().writeImage(
-            *candidate->version->image_,
+            candidate->version->image_,
             input.source,
             std::move(prepared->second),
-            candidate->base->image_.get()
+            &candidate->base->image_
         );
         if (!uploaded)
         {
@@ -614,10 +593,20 @@ namespace lux::render::vulkan
 
     void TextureStorage::retire(std::unique_ptr<SampledImage>& value) noexcept
     {
-        if (value && !session_.retirement().retire(value->retirement_, value))
+        if (!value)
         {
-            std::terminate(); // This physical candidate reserved its own retirement entry before submission.
+            return;
         }
+        session_.deferRelease(
+            [value = std::move(value),
+             device = session_.nativeDevice(),
+             allocator = session_.allocator().native(),
+             descriptors = descriptors_]() mutable noexcept
+            {
+                value->release(device, allocator, *descriptors);
+                value.reset();
+            }
+        );
     }
 
     void TextureStorage::publish(Candidate& candidate) noexcept

@@ -1,3 +1,4 @@
+#include "Cleanup.hpp"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -12,8 +13,7 @@ namespace lux::render::vulkan
 {
     struct MeshInstanceStorage::GpuPage final
     {
-        std::array<std::unique_ptr<Buffer>, 3> fields;
-        RetirementReservation retirement;
+        std::array<gapi::vk::VmaBuffer, 3> fields;
     };
 
     struct MeshInstanceStorage::Page final
@@ -28,12 +28,11 @@ namespace lux::render::vulkan
     {
         struct Leaf final
         {
-            std::unique_ptr<Buffer> buffer;
-            RetirementReservation retirement;
+            gapi::vk::VmaBuffer buffer;
         };
 
-        std::unique_ptr<Buffer> root;
-        RetirementReservation retirement;
+        gapi::vk::VmaBuffer root;
+
         std::vector<Leaf> leaves;
     };
 
@@ -71,10 +70,10 @@ namespace lux::render::vulkan
             vkCmdPipelineBarrier2(command, &dependency);
         }
 
-        std::uint64_t address(DeviceSession& session, const Buffer& buffer) noexcept
+        std::uint64_t address(DeviceSession& session, const gapi::vk::VmaBuffer& buffer) noexcept
         {
             VkBufferDeviceAddressInfo info{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
-            info.buffer = buffer.native();
+            info.buffer = buffer.handle();
             return vkGetBufferDeviceAddress(session.nativeDevice(), &info);
         }
     } // namespace
@@ -102,17 +101,17 @@ namespace lux::render::vulkan
         retire(flat_);
         if (page_table_)
         {
-            for (auto& leaf : page_table_->leaves)
-            {
-                if (leaf.buffer && !session_.retirement().retire(leaf.retirement, leaf.buffer))
+            session_.deferRelease(
+                [table = std::move(page_table_), allocator = session_.allocator().native()]() mutable noexcept
                 {
-                    std::terminate();
+                    for (auto& leaf : table->leaves)
+                    {
+                        leaf.buffer.release(allocator);
+                    }
+                    table->root.release(allocator);
+                    table.reset();
                 }
-            }
-            if (!session_.retirement().retire(page_table_->retirement, page_table_->root))
-            {
-                std::terminate();
-            }
+            );
         }
     }
 
@@ -157,17 +156,36 @@ namespace lux::render::vulkan
 
     void MeshInstanceStorage::retire(std::unique_ptr<GpuPage>& page) noexcept
     {
-        if (page && !session_.retirement().retire(page->retirement, page))
+        if (!page)
         {
-            std::terminate();
+            return;
         }
+        session_.deferRelease(
+            [page = std::move(page), allocator = session_.allocator().native()]() mutable noexcept
+            {
+                for (auto& field : page->fields)
+                {
+                    field.release(allocator);
+                }
+                page.reset();
+            }
+        );
     }
 
     RenderResult<std::unique_ptr<MeshInstanceStorage::GpuPage>> MeshInstanceStorage::allocate(std::size_t slots
     ) noexcept
     {
         auto result = std::make_unique<GpuPage>();
-        result->retirement = session_.retirement().reserve();
+        cxx::scope_exit rollback(
+            [&]() noexcept
+            {
+                for (auto& field : result->fields)
+                {
+                    field.release(session_.allocator().native());
+                }
+            }
+        );
+
         const auto usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                            VK_BUFFER_USAGE_TRANSFER_SRC_BIT | (paged_ ? VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT : 0);
         for (std::size_t field = 0; field < kStride.size(); ++field)
@@ -184,13 +202,14 @@ namespace lux::render::vulkan
             }
             result->fields[field] = std::move(*buffer);
         }
+        rollback.release();
         return result;
     }
 
-    Buffer& MeshInstanceStorage::fieldBuffer(std::uint32_t page, EMeshInstanceBinding field) const noexcept
+    gapi::vk::VmaBuffer& MeshInstanceStorage::fieldBuffer(std::uint32_t page, EMeshInstanceBinding field) const noexcept
     {
         const auto& owner = paged_ ? pages_[page]->gpu : flat_;
-        return *owner->fields[static_cast<std::size_t>(field)];
+        return owner->fields[static_cast<std::size_t>(field)];
     }
 
     VkDeviceSize MeshInstanceStorage::fieldOffset(std::uint32_t slot, std::size_t stride) const noexcept
@@ -202,8 +221,8 @@ namespace lux::render::vulkan
     {
         for (std::size_t field = 0; field < bindings_.size(); ++field)
         {
-            auto* buffer = paged_ ? page_table_->root.get() : flat_->fields[field].get();
-            StorageSubscription::publish(bindings_[field], {buffer, 0, buffer->size()});
+            auto* buffer = paged_ ? &page_table_->root : &flat_->fields[field];
+            StorageSubscription::publish(bindings_[field], {buffer->handle(), 0, buffer->size()});
         }
     }
 
@@ -262,6 +281,11 @@ namespace lux::render::vulkan
                 updating_ = false;
                 entries_.erase(key);
                 retire(gpu);
+                releaseAfterGpu(session_, leaf.buffer);
+                if (root)
+                {
+                    releaseAfterGpu(session_, root->root);
+                }
             }
         );
         const auto page_index = key.index / kMeshInstancePageSlots;
@@ -282,7 +306,7 @@ namespace lux::render::vulkan
                 if (!page_table_)
                 {
                     root = std::make_unique<PageTable>();
-                    root->retirement = session_.retirement().reserve();
+
                     auto buffer = session_.allocator().createBuffer(
                         kMeshInstanceTableAxis * sizeof(std::uint64_t),
                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -312,7 +336,6 @@ namespace lux::render::vulkan
                         co_return cxx::unexpected(buffer.error());
                     }
                     leaf.buffer = std::move(*buffer);
-                    leaf.retirement = session_.retirement().reserve();
                 }
             }
         }
@@ -347,23 +370,23 @@ namespace lux::render::vulkan
         {
             for (auto& field : gpu->fields)
             {
-                vkCmdFillBuffer(command, field->native(), 0, field->size(), 0);
+                vkCmdFillBuffer(command, field.handle(), 0, field.size(), 0);
             }
             if (root)
             {
-                vkCmdFillBuffer(command, root->root->native(), 0, root->root->size(), 0);
+                vkCmdFillBuffer(command, root->root.handle(), 0, root->root.size(), 0);
             }
             if (leaf.buffer)
             {
-                vkCmdFillBuffer(command, leaf.buffer->native(), 0, leaf.buffer->size(), 0);
+                vkCmdFillBuffer(command, leaf.buffer.handle(), 0, leaf.buffer.size(), 0);
             }
             beforeWrite(command);
             if (!paged_ && flat_)
             {
                 for (std::size_t f = 0; f < kStride.size(); ++f)
                 {
-                    const VkBufferCopy copy{0, 0, flat_->fields[f]->size()};
-                    vkCmdCopyBuffer(command, flat_->fields[f]->native(), gpu->fields[f]->native(), 1, &copy);
+                    const VkBufferCopy copy{0, 0, flat_->fields[f].size()};
+                    vkCmdCopyBuffer(command, flat_->fields[f].handle(), gpu->fields[f].handle(), 1, &copy);
                 }
             }
         }
@@ -373,35 +396,35 @@ namespace lux::render::vulkan
         const auto slot = paged_ ? local : key.index;
         vkCmdUpdateBuffer(
             command,
-            target.fields[0]->native(),
+            target.fields[0].handle(),
             std::uint64_t(slot) * kStride[0],
             kStride[0],
             input.transform.data()
         );
-        vkCmdUpdateBuffer(command, target.fields[1]->native(), std::uint64_t(slot) * kStride[1], kStride[1], &property);
-        vkCmdUpdateBuffer(command, target.fields[2]->native(), std::uint64_t(slot) * kStride[2], kStride[2], &alive);
+        vkCmdUpdateBuffer(command, target.fields[1].handle(), std::uint64_t(slot) * kStride[1], kStride[1], &property);
+        vkCmdUpdateBuffer(command, target.fields[2].handle(), std::uint64_t(slot) * kStride[2], kStride[2], &alive);
         if (growing && paged_)
         {
             auto& table = root ? *root : *page_table_;
             auto& selected = leaf.buffer ? leaf : table.leaves[page_index / kMeshInstanceTableAxis];
             const MeshInstancePageGpu addresses{
-                address(session_, *gpu->fields[0]),
-                address(session_, *gpu->fields[1]),
-                address(session_, *gpu->fields[2])
+                address(session_, gpu->fields[0]),
+                address(session_, gpu->fields[1]),
+                address(session_, gpu->fields[2])
             };
             vkCmdUpdateBuffer(
                 command,
-                selected.buffer->native(),
+                selected.buffer.handle(),
                 (page_index % kMeshInstanceTableAxis) * sizeof(addresses),
                 sizeof(addresses),
                 &addresses
             );
             if (leaf.buffer)
             {
-                const auto leaf_address = address(session_, *leaf.buffer);
+                const auto leaf_address = address(session_, leaf.buffer);
                 vkCmdUpdateBuffer(
                     command,
-                    table.root->native(),
+                    table.root.handle(),
                     (page_index / kMeshInstanceTableAxis) * sizeof(leaf_address),
                     sizeof(leaf_address),
                     &leaf_address
@@ -489,8 +512,7 @@ namespace lux::render::vulkan
         };
 
         std::vector<DirtyBlock> dirty;
-        std::unique_ptr<Buffer> staged;
-        auto retirement = session_.retirement().reserve();
+        gapi::vk::VmaBuffer staged;
         cxx::scope_exit cleanup(
             [&]() noexcept
             {
@@ -499,10 +521,7 @@ namespace lux::render::vulkan
                     dirty_positions_[block.index] = UINT32_MAX;
                 }
                 updating_ = false;
-                if (staged && !session_.retirement().retire(retirement, staged))
-                {
-                    std::terminate();
-                }
+                releaseAfterGpu(session_, staged);
             }
         );
         // Legacy dirty-upload flags collect unique 512-slot blocks, separately from 16K storage pages.
@@ -543,7 +562,7 @@ namespace lux::render::vulkan
             co_return cxx::unexpected(buffer.error());
         }
         staged = std::move(*buffer);
-        auto uploaded = co_await session_.uploads().writeBuffer(*staged, bytes);
+        auto uploaded = co_await session_.uploads().writeBuffer(staged, bytes);
         if (!uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
@@ -589,7 +608,7 @@ namespace lux::render::vulkan
                 fieldOffset(slot, sizeof(TransformMatrix)),
                 (end - first) * block_bytes
             };
-            vkCmdCopyBuffer(batch->native(), staged->native(), target.native(), 1, &copy);
+            vkCmdCopyBuffer(batch->native(), staged.handle(), target.handle(), 1, &copy);
             first = end;
         }
         afterWrite(batch->native());
@@ -670,7 +689,7 @@ namespace lux::render::vulkan
         auto& target = fieldBuffer(slot / kMeshInstancePageSlots, EMeshInstanceBinding::ALIVE);
         const std::uint32_t dead = 0;
         beforeWrite(batch->native());
-        vkCmdUpdateBuffer(batch->native(), target.native(), fieldOffset(slot, sizeof(dead)), sizeof(dead), &dead);
+        vkCmdUpdateBuffer(batch->native(), target.handle(), fieldOffset(slot, sizeof(dead)), sizeof(dead), &dead);
         afterWrite(batch->native());
         auto accepted = std::move(*batch).submit();
         if (!accepted)
@@ -696,13 +715,13 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
         const auto field = static_cast<std::size_t>(input.role);
-        auto* buffer = paged_ ? page_table_->root.get() : flat_->fields[field].get();
+        auto* buffer = paged_ ? &page_table_->root : &flat_->fields[field];
         if (description->size > buffer->size())
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
         subscription.attach(bindings_[field]);
-        return StorageResource{buffer, 0, buffer->size()};
+        return StorageResource{buffer->handle(), 0, buffer->size()};
     }
 
     StorageFactory meshInstanceStorageFactory() noexcept

@@ -86,7 +86,8 @@ namespace lux::render::vulkan
             std::ranges::sort(blocks); // Copy-range indexes only; business input order is untouched.
         }
 
-        template <class Record, class Visit> void forEachOrdered(Record record, Visit visit) const noexcept
+        template <class Record, class Visit>
+        void forEachOrdered(Record record, Visit visit, std::vector<DirtyWordMask>* masks = nullptr) const noexcept
         {
             std::array<std::uint32_t, kMeshInstanceDirtySlots> indices;
             for (auto block : blocks)
@@ -101,6 +102,10 @@ namespace lux::render::vulkan
                 for (std::uint32_t word = 0; word < bits.size(); ++word)
                 {
                     auto valid = bits[word];
+                    if (masks && valid)
+                    {
+                        masks->push_back({block * (kMeshInstanceDirtySlots / 64) + word, valid});
+                    }
                     while (valid)
                     {
                         const auto local = word * 64 + static_cast<unsigned>(std::countr_zero(valid));
@@ -734,6 +739,9 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(RenderError{kStorageIdentity});
         }
+        const auto first_record = input.updates.empty() ? 0u : input.updates.front().instance.local.index;
+        std::uint64_t next_record = first_record;
+        bool contiguous = true;
         for (const auto& value : input.updates)
         {
             const auto* entry = value.instance.storage == id_ ? entries_.find(value.instance.local) : nullptr;
@@ -747,6 +755,8 @@ namespace lux::render::vulkan
             {
                 co_return cxx::unexpected(RenderError{kStorageContract});
             }
+            contiguous &= value.instance.local.index == next_record;
+            ++next_record;
         }
         if (input.updates.empty())
         {
@@ -775,42 +785,90 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(prepared.error());
         }
-        data.order(
-            input.updates.size(),
-            capacity(),
-            [&](std::size_t i) noexcept { return input.updates[i].instance.local.index; }
-        );
-        data.forEachOrdered(
-            [&](std::size_t i) noexcept { return input.updates[i].instance.local.index; },
-            [&](std::uint32_t record, std::size_t i) noexcept
+        auto& changed = data.slices[frame].selected;
+        changed.clear();
+        data.writes.reserve(input.updates.size());
+        if (contiguous)
+        {
+            // Input classification shares the boundary validation above. Resolve each physical
+            // page once; consecutive records need neither the sparse index nor its bit traversal.
+            for (std::size_t i = 0; i < input.updates.size();)
             {
-                data.writes.push_back(
-                    {&fieldBuffer(frame, record / kMeshInstancePageSlots, 0),
-                     fieldOffset(record, kStride[0]),
-                     std::as_bytes(std::span(input.updates[i].transform))}
-                );
+                const auto record = input.updates[i].instance.local.index;
+                auto* buffer = &fieldBuffer(frame, record / kMeshInstancePageSlots, 0);
+                auto offset = fieldOffset(record, kStride[0]);
+                const auto end = i + std::min<std::size_t>(
+                                         input.updates.size() - i,
+                                         kMeshInstancePageSlots - record % kMeshInstancePageSlots
+                                     );
+                for (; i < end; ++i, offset += kStride[0])
+                {
+                    data.writes.push_back({buffer, offset, std::as_bytes(std::span(input.updates[i].transform))});
+                }
             }
-        );
+        }
+        else
+        {
+            data.order(
+                input.updates.size(),
+                capacity(),
+                [&](std::size_t i) noexcept { return input.updates[i].instance.local.index; }
+            );
+            data.forEachOrdered(
+                [&](std::size_t i) noexcept { return input.updates[i].instance.local.index; },
+                [&](std::uint32_t record, std::size_t i) noexcept
+                {
+                    data.writes.push_back(
+                        {&fieldBuffer(frame, record / kMeshInstancePageSlots, 0),
+                         fieldOffset(record, kStride[0]),
+                         std::as_bytes(std::span(input.updates[i].transform))}
+                    );
+                },
+                &changed
+            );
+        }
+        const auto mark_changed = [&](DirtyRanges& dirty) noexcept
+        {
+            if (contiguous)
+            {
+                dirty.markRange(first_record, input.updates.size());
+            }
+            else
+            {
+                for (auto mask : changed)
+                {
+                    dirty.mark(mask);
+                }
+            }
+        };
         if (auto accepted = co_await session_.uploads().writeBuffers(data.writes, {}, frame); !accepted)
         {
-            for (const auto& value : input.updates)
-            {
-                mark(frame, value.instance.local.index, 1);
-            }
+            mark_changed(data.slices[frame].dirty[0]);
             co_return cxx::unexpected(accepted.error());
         }
         for (const auto& value : input.updates)
         {
             const auto record = value.instance.local.index;
             pages_[record / kMeshInstancePageSlots]->transforms[record % kMeshInstancePageSlots] = value.transform;
-            for (std::uint32_t other = 0; other < session_.framesInFlight(); ++other)
+        }
+        // Publish only after acceptance. Preserve untouched dirty bits, including changes waiting
+        // for another slice; each changed word is handled once instead of once per record.
+        for (std::uint32_t other = 0; other < session_.framesInFlight(); ++other)
+        {
+            auto& dirty = data.slices[other].dirty[0];
+            if (other != frame)
             {
-                if (other != frame)
-                {
-                    mark(other, record, 1);
-                }
+                dirty.grow(capacity());
+                mark_changed(dirty);
             }
-            data.slices[frame].dirty[0].acknowledge({record / 64, std::uint64_t{1} << (record % 64)});
+            else if (contiguous)
+            {
+                dirty.acknowledgeRange(first_record, input.updates.size());
+            }
+            else
+            {
+                dirty.acknowledge(changed);
+            }
         }
         co_return TransformApplied{input.sequence, static_cast<std::uint32_t>(input.updates.size())};
     }

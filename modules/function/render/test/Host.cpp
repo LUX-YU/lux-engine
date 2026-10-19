@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/native/vulkan/mesh/MeshFeature.hpp>
+#include <lux/engine/render/native/vulkan/mesh/Provider.hpp>
 #include <lux/engine/render/runtime/VulkanServer.hpp>
 #include <thread>
 

@@ -1,3 +1,4 @@
+#include "ImageTransfer.hpp"
 #include "Shader.hpp"
 #include <algorithm>
 #include <bit>
@@ -172,42 +173,25 @@ namespace lux::render::vulkan
     ) noexcept
     {
         const auto& original = source_image.image_;
-        if (region.mip >= original.mipLevels())
-        {
-            return cxx::unexpected(RenderError{kInvalidArgument});
-        }
-        const auto width = std::max(1u, original.extent().width >> region.mip);
-        const auto height = std::max(1u, original.extent().height >> region.mip);
         const bool compressed = original.format() == VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
-        const std::uint32_t block_extent = compressed ? 4 : 1;
-        const std::uint32_t block_bytes = compressed ? 8 : 4;
-        const bool invalid_offset = region.x >= width || region.y >= height;
-        if (invalid_offset)
-        {
-            return cxx::unexpected(RenderError{kInvalidArgument});
-        }
-        const bool invalid_range =
-            !region.width || !region.height || region.width > width - region.x || region.height > height - region.y;
-        const bool invalid_blocks = region.x % block_extent || region.y % block_extent ||
-                                    (region.width % block_extent && region.width != width - region.x) ||
-                                    (region.height % block_extent && region.height != height - region.y);
-        if (invalid_range || invalid_blocks)
-        {
-            return cxx::unexpected(RenderError{kInvalidArgument});
-        }
-        const std::uint64_t row_bytes = std::uint64_t((region.width - 1) / block_extent + 1) * block_bytes;
-        const auto rows = (region.height - 1) / block_extent + 1;
-        if (region.row_pitch < row_bytes || region.row_pitch % block_bytes)
-        {
-            return cxx::unexpected(RenderError{kInvalidArgument});
-        }
-        const auto stride = cxx::checkedMul<std::uint64_t>(rows - 1, region.row_pitch);
-        if (!stride)
-        {
-            return cxx::unexpected(RenderError{kInvalidArgument});
-        }
-        const auto total = cxx::checkedAdd(*stride, row_bytes);
-        if (!total || *total != source.size())
+        const ImageTransferRegion patch{
+            0,
+            region.row_pitch,
+            compressed ? 4u : 1u,
+            compressed ? 8u : 4u,
+            {VK_IMAGE_ASPECT_COLOR_BIT, region.mip, 0, 1},
+            {std::int32_t(region.x), std::int32_t(region.y), 0},
+            {region.width, region.height, 1}
+        };
+        const auto size = imageRegionBytes(
+            original.extent(),
+            original.mipLevels(),
+            original.arrayLayers(),
+            patch,
+            source.size(),
+            UINT64_MAX
+        );
+        if (!size || *size != source.size())
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
@@ -223,15 +207,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(image.error());
         }
-        std::vector<ImageTransferRegion> regions{
-            {0,
-             region.row_pitch,
-             block_extent,
-             block_bytes,
-             {VK_IMAGE_ASPECT_COLOR_BIT, region.mip, 0, 1},
-             {std::int32_t(region.x), std::int32_t(region.y), 0},
-             {region.width, region.height, 1}}
-        };
+        std::vector<ImageTransferRegion> regions{patch};
         return ImagePreparation{std::move(*image), std::move(regions)};
     }
 

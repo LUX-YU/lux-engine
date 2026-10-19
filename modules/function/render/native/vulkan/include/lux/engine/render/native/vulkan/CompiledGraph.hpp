@@ -156,15 +156,6 @@ namespace lux::render::vulkan
         std::vector<CompiledPass> passes_;
         std::vector<std::uint32_t> pass_indices_;
 
-        struct PipelineIdentity final
-        {
-            SpirvArtifact shader;
-            GraphicsState graphics;
-            VkFormat color = VK_FORMAT_UNDEFINED, depth = VK_FORMAT_UNDEFINED;
-            bool operator==(const PipelineIdentity&) const noexcept = default;
-        };
-
-        std::vector<PipelineIdentity> shader_identities_;
         std::vector<VkPipeline> pipelines_; // unique physical owners; Pass recipes only borrow handles
         std::vector<VkDescriptorSetLayout> descriptor_layouts_;
         std::uint32_t output_ = kGraphInvalidIndex;

@@ -8,7 +8,7 @@
 #include "DepthOnlyPagedVertex.hpp"
 #include "DepthOnlyVertex.hpp"
 #include <lux/engine/render/features/mesh/MeshFeature.hpp>
-#include <lux/engine/render/native/vulkan/mesh/MeshFeature.hpp>
+#include <lux/engine/render/native/vulkan/mesh/Provider.hpp>
 
 namespace lux::render::vulkan
 {
@@ -94,19 +94,26 @@ namespace lux::render::vulkan
             result.arguments.push_back(
                 StorageArgument::make(resource("alive"), MeshInstanceBinding{EMeshInstanceBinding::ALIVE})
             );
-            const auto find = [&](std::string_view name) noexcept -> GraphResourceId
+            GraphResourceId matrices, members;
+            const auto matrices_key = resource("matrices"), members_key = resource("members");
+            for (std::uint32_t index = 0; index < graph.resources().size(); ++index)
             {
-                const auto found = std::ranges::find(graph.resources(), resource(name), &GraphResource::key);
-                return found == graph.resources().end()
-                           ? GraphResourceId{}
-                           : GraphResourceId{static_cast<std::uint32_t>(found - graph.resources().begin())};
-            };
-            auto configuration = ConfigValue::make(MeshDrawConfiguration{find("matrices"), config.group});
+                const auto& name = graph.resources()[index].key;
+                if (name == matrices_key)
+                {
+                    matrices = {index};
+                }
+                if (name == members_key)
+                {
+                    members = {index};
+                }
+            }
+            auto configuration = ConfigValue::make(MeshDrawConfiguration{matrices, config.group});
             if (!configuration)
             {
                 return cxx::unexpected(configuration.error());
             }
-            result.contexts.push_back({find("members"), std::move(*configuration), &MeshDraws::create});
+            result.contexts.push_back({members, std::move(*configuration), &MeshDraws::create});
             if constexpr (!Depth)
             {
                 // describe already qualified the typed cooked contract. Native reflection checks the actual code ABI.

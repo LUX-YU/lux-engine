@@ -184,6 +184,7 @@ namespace lux::render::vulkan
                 {
                     created_storages.emplace_back(set, id);
                 }
+                binding.storage_use = static_cast<std::uint32_t>(context->storage_uses_.size());
                 auto& use = context->storage_uses_.emplace_back(context.get(), id, i);
                 use.subscription.receiver = &use;
                 use.subscription.changed = [](void* value, const StorageResource& resource) noexcept
@@ -473,8 +474,8 @@ namespace lux::render::vulkan
 
     StorageId ExecutionContext::storageId(std::uint32_t resource) const noexcept
     {
-        const auto found = std::ranges::find(storage_uses_, resource, &StorageUse::resource);
-        return found == storage_uses_.end() ? StorageId{} : found->storage_id;
+        const auto index = bindings_[resource].storage_use;
+        return index == kGraphInvalidIndex ? StorageId{} : storage_uses_[index].storage_id;
     }
 
     void ExecutionContext::setResource(std::uint32_t resource, const StorageResource& value) noexcept

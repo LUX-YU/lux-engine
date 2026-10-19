@@ -42,8 +42,8 @@ namespace lux::render::vulkan
           target_(other.target_), layout_(other.layout_), resources_(std::move(other.resources_)),
           contexts_(std::move(other.contexts_)), storage_groups_(std::move(other.storage_groups_)),
           passes_(std::move(other.passes_)), pass_indices_(std::move(other.pass_indices_)),
-          shader_identities_(std::move(other.shader_identities_)), pipelines_(std::move(other.pipelines_)),
-          descriptor_layouts_(std::move(other.descriptor_layouts_)), output_(other.output_)
+          pipelines_(std::move(other.pipelines_)), descriptor_layouts_(std::move(other.descriptor_layouts_)),
+          output_(other.output_)
     {
     }
 
@@ -137,18 +137,20 @@ namespace lux::render::vulkan
             const PassProgram& program,
             const GraphPass& pass,
             std::span<const NativeResourcePlan> resources,
+            const ResourceNames& resource_names,
             const VkPhysicalDeviceLimits& limits,
             CompiledPass& result
         ) noexcept
         {
             const auto find = [&](std::string_view key, EGraphUse role) -> RenderResult<std::uint32_t>
             {
-                const auto found = std::ranges::find(resources, key, &NativeResourcePlan::key);
-                if (found == resources.end() || !std::holds_alternative<GraphBufferDesc>(found->description))
+                const auto found = resource_names.find(key);
+                if (found == resource_names.end() ||
+                    !std::holds_alternative<GraphBufferDesc>(resources[found->second].description))
                 {
                     return cxx::unexpected(RenderError{kStorageContract});
                 }
-                const auto index = std::uint32_t(found - resources.begin());
+                const auto index = found->second;
                 const bool declared = std::ranges::any_of(
                     pass.uses,
                     [&](const auto& use) { return use.version.resource.index == index && use.usage == role; }
@@ -381,6 +383,21 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kUnsupported});
         }
+
+        struct PipelineIdentity final
+        {
+            SpirvArtifact shader;
+            GraphicsState graphics;
+            VkFormat color = VK_FORMAT_UNDEFINED, depth = VK_FORMAT_UNDEFINED;
+            bool operator==(const PipelineIdentity&) const noexcept = default;
+        };
+
+        std::vector<PipelineIdentity> pipeline_identities;
+        ResourceNames resource_names;
+        for (std::uint32_t index = 0; index < graph.resources().size(); ++index)
+        {
+            resource_names.emplace(graph.resources()[index].key, index);
+        }
         CompiledGraph result(device, target);
         if (pass_programs.size() != graph.passes().size())
         {
@@ -556,7 +573,7 @@ namespace lux::render::vulkan
                 }
             }
         } while (changed);
-        auto planned = planLayouts(limits, graph, analysis, pass_programs);
+        auto planned = planLayouts(limits, graph, analysis, pass_programs, resource_names);
         if (!planned)
         {
             return cxx::unexpected(planned.error());
@@ -798,7 +815,7 @@ namespace lux::render::vulkan
                 compiled.recipe = compute ? ERecipe::DISPATCH : ERecipe::DRAW;
                 if (!compute)
                 {
-                    auto lowered = lowerDraw(*binding, pass, result.resources_, limits, compiled);
+                    auto lowered = lowerDraw(*binding, pass, result.resources_, resource_names, limits, compiled);
                     if (!lowered)
                     {
                         return cxx::unexpected(lowered.error());
@@ -827,10 +844,7 @@ namespace lux::render::vulkan
                 {
                     return cxx::unexpected(shader.error());
                 }
-                CompiledGraph::PipelineIdentity identity{
-                    std::move(*shader),
-                    compute ? GraphicsState{} : binding->graphics
-                };
+                PipelineIdentity identity{std::move(*shader), compute ? GraphicsState{} : binding->graphics};
                 if (compiled.color != kGraphInvalidIndex)
                 {
                     identity.color =
@@ -845,10 +859,10 @@ namespace lux::render::vulkan
                 }
                 std::ranges::sort(identity.graphics.vertex_bindings, {}, &VertexBinding::binding);
                 std::ranges::sort(identity.graphics.vertex_attributes, {}, &VertexAttribute::location);
-                const auto same = std::ranges::find(result.shader_identities_, identity);
-                if (same != result.shader_identities_.end())
+                const auto same = std::ranges::find(pipeline_identities, identity);
+                if (same != pipeline_identities.end())
                 {
-                    compiled.pipeline = result.pipelines_[same - result.shader_identities_.begin()];
+                    compiled.pipeline = result.pipelines_[same - pipeline_identities.begin()];
                 }
                 else
                 {
@@ -869,7 +883,7 @@ namespace lux::render::vulkan
                     }
                     compiled.pipeline = *pipeline;
                     result.pipelines_.push_back(*pipeline);
-                    result.shader_identities_.push_back(std::move(identity));
+                    pipeline_identities.push_back(std::move(identity));
                 }
             }
             else if (compiled.source == kGraphInvalidIndex)

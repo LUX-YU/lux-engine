@@ -473,7 +473,6 @@ namespace lux::render::vulkan
         pages_[page_index]->transforms[local] = input.transform;
         pages_[page_index]->properties[local] = *property;
         pages_[page_index]->alive[local] = 1;
-        ++written_records_;
         ++live_records_;
         entries_.find(key)->key = key;
         updating_ = false;
@@ -494,7 +493,6 @@ namespace lux::render::vulkan
         }
         for (const auto& value : input.updates)
         {
-            ++checked_updates_;
             const auto* entry = value.instance.storage == id_ ? entries_.find(value.instance.local) : nullptr;
             if (!entry)
             {
@@ -634,7 +632,6 @@ namespace lux::render::vulkan
                 block_bytes
             );
         }
-        written_records_ += dirty.size() * kMeshInstanceDirtySlots;
         co_return TransformApplied{input.sequence, static_cast<std::uint32_t>(input.updates.size())};
     }
 
@@ -735,7 +732,6 @@ namespace lux::render::vulkan
             page.properties[slot % kMeshInstancePageSlots] = properties[i];
             notify(entry, false);
         }
-        written_records_ += input.updates.size();
         co_return TransformApplied{input.sequence, static_cast<std::uint32_t>(input.updates.size())};
     }
 

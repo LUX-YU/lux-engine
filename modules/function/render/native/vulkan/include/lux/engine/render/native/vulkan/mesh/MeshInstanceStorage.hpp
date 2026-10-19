@@ -74,16 +74,6 @@ namespace lux::render::vulkan
 
         [[nodiscard]] std::uint64_t capacity() const noexcept;
 
-        [[nodiscard]] std::uint64_t writtenRecords() const noexcept
-        {
-            return written_records_;
-        }
-
-        [[nodiscard]] std::uint64_t checkedUpdates() const noexcept
-        {
-            return checked_updates_;
-        }
-
     private:
         friend StorageFactory meshInstanceStorageFactory() noexcept;
         [[nodiscard]] RenderResult<StorageResource>
@@ -112,6 +102,5 @@ namespace lux::render::vulkan
         std::vector<std::byte> update_bytes_;
         std::vector<MeshInstanceGpuProperty> update_properties_;
         gapi::vk::VmaBuffer update_buffer_;
-        std::uint64_t written_records_ = 0, checked_updates_ = 0;
     };
 } // namespace lux::render::vulkan

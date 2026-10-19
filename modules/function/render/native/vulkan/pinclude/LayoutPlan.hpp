@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ShaderInterface.hpp"
+#include <map>
 
 #include <lux/engine/render/graph/Analysis.hpp>
 #include <lux/engine/render/graph/Program.hpp>
@@ -8,6 +9,8 @@
 
 namespace lux::render::vulkan
 {
+    using ResourceNames = std::map<std::string_view, std::uint32_t, std::less<>>;
+
     struct DescriptorUse final
     {
         std::uint32_t resource;
@@ -51,7 +54,8 @@ namespace lux::render::vulkan
         const VkPhysicalDeviceLimits& limits,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
-        std::span<const PassProgram* const> programs
+        std::span<const PassProgram* const> programs,
+        const ResourceNames& resource_names
     ) noexcept;
 
     [[nodiscard]] RenderResult<SpirvArtifact> relocateShader(

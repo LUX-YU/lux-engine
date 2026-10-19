@@ -100,6 +100,7 @@ namespace lux::render::vulkan
             VkDeviceSize buffer_offset = 0, buffer_size = 0;
             std::span<const std::byte> parameters;
             const rdesc::ShaderBlock* parameter_layout = nullptr;
+            std::uint32_t storage_use = kGraphInvalidIndex;
             bool dirty = false;
             std::vector<std::pair<std::uint32_t, std::uint32_t>> barriers, descriptors, parameter_copies;
         };

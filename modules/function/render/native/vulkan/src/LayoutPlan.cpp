@@ -61,7 +61,8 @@ namespace lux::render::vulkan
         const VkPhysicalDeviceLimits& limits,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
-        std::span<const PassProgram* const> programs
+        std::span<const PassProgram* const> programs,
+        const ResourceNames& resource_names
     ) noexcept
     {
         LayoutPlan plan;
@@ -146,13 +147,12 @@ namespace lux::render::vulkan
                 std::uint32_t index = kGraphInvalidIndex;
                 if (mapping.source == EParameterSource::STORAGE)
                 {
-                    const auto resource =
-                        std::ranges::find(graph.resources(), mapping.resource_key, &GraphResource::key);
-                    if (resource == graph.resources().end())
+                    const auto resource = resource_names.find(mapping.resource_key);
+                    if (resource == resource_names.end())
                     {
                         return cxx::unexpected(RenderError{kStorageContract});
                     }
-                    index = std::uint32_t(resource - graph.resources().begin());
+                    index = resource->second;
                     const bool declared = std::ranges::any_of(
                         pass.uses,
                         [&](const auto& use)
@@ -225,12 +225,12 @@ namespace lux::render::vulkan
                 {
                     return cxx::unexpected(RenderError{kStorageContract});
                 }
-                const auto resource = std::ranges::find(graph.resources(), selected->resource_key, &GraphResource::key);
-                if (resource == graph.resources().end())
+                const auto resource = resource_names.find(selected->resource_key);
+                if (resource == resource_names.end())
                 {
                     return cxx::unexpected(RenderError{kStorageContract});
                 }
-                const auto index = static_cast<std::uint32_t>(resource - graph.resources().begin());
+                const auto index = resource->second;
                 const auto usage = binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY ? EGraphUse::SAMPLED
                                    : binding.access == EStorageAccess::READ_ONLY        ? EGraphUse::STORAGE_READ
                                    : binding.access == EStorageAccess::WRITE_ONLY       ? EGraphUse::STORAGE_WRITE
@@ -239,10 +239,10 @@ namespace lux::render::vulkan
                     pass.uses,
                     [&](const auto& use) { return use.version.resource.index == index && use.usage == usage; }
                 );
-                const bool image = std::holds_alternative<GraphImageDesc>(resource->description);
+                const bool image = std::holds_alternative<GraphImageDesc>(graph.resources()[index].description);
                 const bool wrong_kind = image != (binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY);
                 const bool invalid_size =
-                    !image && binding.block.size > std::get<GraphBufferDesc>(resource->description).size;
+                    !image && binding.block.size > std::get<GraphBufferDesc>(graph.resources()[index].description).size;
                 if (!declared || wrong_kind || invalid_size)
                 {
                     return cxx::unexpected(RenderError{kStorageContract});

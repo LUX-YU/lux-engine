@@ -1,6 +1,7 @@
 #include "MeshDraws.hpp"
 #include "Cleanup.hpp"
 #include <bit>
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/native/vulkan/material/MaterialStorage.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshStorage.hpp>
 #include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
@@ -110,21 +111,30 @@ namespace lux::render::vulkan
         }
         const auto source = std::as_bytes(std::span(words_));
         slice.pending_bytes = slice.uploaded_bytes;
-        uploads.afterFrameSubmit(
-            &slice,
-            [](void* value, RenderResult<void> accepted) noexcept
+        cxx::scope_exit register_ack(
+            [&]() noexcept
             {
-                auto& slice = *static_cast<GpuSlice*>(value);
-                if (accepted)
+                if (slice.pending_bytes == slice.uploaded_bytes && !slice.pending_revision)
                 {
-                    slice.uploaded_bytes = slice.pending_bytes;
-                    if (slice.pending_revision)
-                    {
-                        slice.uploaded_revision = slice.pending_revision;
-                        slice.uploaded_bytes = 0;
-                    }
+                    return;
                 }
-                slice.pending_revision = 0;
+                uploads.afterFrameSubmit(
+                    &slice,
+                    [](void* value, RenderResult<void> accepted) noexcept
+                    {
+                        auto& slice = *static_cast<GpuSlice*>(value);
+                        if (accepted)
+                        {
+                            slice.uploaded_bytes = slice.pending_bytes;
+                            if (slice.pending_revision)
+                            {
+                                slice.uploaded_revision = slice.pending_revision;
+                                slice.uploaded_bytes = 0;
+                            }
+                        }
+                        slice.pending_revision = 0;
+                    }
+                );
             }
         );
         while (slice.pending_bytes < source.size())

@@ -424,10 +424,7 @@ namespace lux::render::vulkan
 
     void UploadContext::afterFrameSubmit(void* receiver, void (*complete)(void*, RenderResult<void>) noexcept) noexcept
     {
-        BatchEntry entry{this, &session.queue(), {}};
-        entry.receiver = receiver;
-        entry.complete = complete;
-        frame_receivers_.push_back(entry);
+        frame_receivers_.emplace_back(receiver, complete);
     }
 
     bool UploadContext::hasFrameCopies() const noexcept
@@ -482,10 +479,8 @@ namespace lux::render::vulkan
             }
         }
         frame_copies_.clear();
-        for (auto& entry : frame_receivers_)
+        for (auto [receiver, complete] : frame_receivers_)
         {
-            const auto complete = entry.complete;
-            auto* receiver = entry.receiver;
             complete(receiver, result);
         }
         frame_receivers_.clear();

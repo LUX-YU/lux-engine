@@ -994,6 +994,7 @@ namespace lux::render::vulkan
             return true;
         }
         bool ready = true;
+        bool copied_any = false;
         // Every source is authoritative CPU data or an address table for this physical slice.
         // The selected masks are bounded by the current staging window, never all live records.
         auto stage = [&](DirtyRanges& dirty, std::vector<DirtyWordMask>& accepted, auto source
@@ -1019,6 +1020,7 @@ namespace lux::render::vulkan
                         const auto records = static_cast<unsigned>(*copied / stride);
                         if (records)
                         {
+                            copied_any = true;
                             const auto bits =
                                 records == 64 ? UINT64_MAX : ((std::uint64_t{1} << records) - 1) << (first % 64);
                             accepted.push_back({first / 64, bits});
@@ -1038,34 +1040,43 @@ namespace lux::render::vulkan
             }
             return covered == dirty.recordCount();
         };
-        // Register before staging so failures still clear borrowed batch metadata; acknowledgement
-        // only occurs on an accepted submit. The aggregate is stable for the synchronous Owner segment.
-        uploads.afterFrameSubmit(
-            &slice,
-            [](void* value, RenderResult<void> accepted) noexcept
+        // Register only real work, still before the caller can submit this synchronous segment.
+        // This also runs on failure so any already prepared ranges receive the failed acknowledgement.
+        cxx::scope_exit register_ack(
+            [&]() noexcept
             {
-                auto& slice = *static_cast<FrameData::Slice*>(value);
-                if (accepted)
+                if (!copied_any)
                 {
-                    for (std::size_t field = 0; field < kStride.size(); ++field)
+                    return;
+                }
+                uploads.afterFrameSubmit(
+                    &slice,
+                    [](void* value, RenderResult<void> accepted) noexcept
                     {
-                        slice.dirty[field].acknowledge(slice.accepted[field]);
+                        auto& slice = *static_cast<FrameData::Slice*>(value);
+                        if (accepted)
+                        {
+                            for (std::size_t field = 0; field < kStride.size(); ++field)
+                            {
+                                slice.dirty[field].acknowledge(slice.accepted[field]);
+                            }
+                            if (slice.table)
+                            {
+                                slice.table->roots_dirty.acknowledge(slice.table->roots_accepted);
+                                slice.table->pages_dirty.acknowledge(slice.table->pages_accepted);
+                            }
+                        }
+                        for (auto& masks : slice.accepted)
+                        {
+                            masks.clear();
+                        }
+                        if (slice.table)
+                        {
+                            slice.table->roots_accepted.clear();
+                            slice.table->pages_accepted.clear();
+                        }
                     }
-                    if (slice.table)
-                    {
-                        slice.table->roots_dirty.acknowledge(slice.table->roots_accepted);
-                        slice.table->pages_dirty.acknowledge(slice.table->pages_accepted);
-                    }
-                }
-                for (auto& masks : slice.accepted)
-                {
-                    masks.clear();
-                }
-                if (slice.table)
-                {
-                    slice.table->roots_accepted.clear();
-                    slice.table->pages_accepted.clear();
-                }
+                );
             }
         );
         if (slice.table)

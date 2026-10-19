@@ -149,6 +149,8 @@ namespace lux::render::vulkan
         // Owner-only preparation of already published data. A short result means this finite
         // staging window is full; no Sender or per-frame operation state is created.
         [[nodiscard]] RenderResult<std::size_t> prepareBuffer(const BufferWrite&, std::size_t unit = 4) noexcept;
+        // Contributed work only. The borrowed receiver survives this synchronous submission segment;
+        // the callback acknowledges acceptance, never GPU completion or physical cleanup.
         void afterFrameSubmit(void* receiver, void (*complete)(void*, RenderResult<void>) noexcept) noexcept;
 
         [[nodiscard]] std::size_t windowRegionLimit() const noexcept
@@ -177,7 +179,7 @@ namespace lux::render::vulkan
         void finishFrameCopies(RenderResult<void>) noexcept;
         [[nodiscard]] bool hasFrameCopies() const noexcept;
         std::vector<Copy> frame_copies_;
-        std::vector<BatchEntry> frame_receivers_;
+        std::vector<std::pair<void*, void (*)(void*, Result) noexcept>> frame_receivers_;
         UploadContext(DeviceSession&, TransferOptions, execution::CpuScheduler) noexcept;
         [[nodiscard]] Task write(
             std::span<const BufferWrite>,

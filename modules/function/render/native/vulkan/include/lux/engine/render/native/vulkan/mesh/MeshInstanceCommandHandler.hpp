@@ -24,6 +24,16 @@ namespace lux::render::vulkan
             return {{}, *result};
         };
 
+        static constexpr auto create_instances_response_ = [](RenderResult<std::vector<MeshInstanceId>> result
+                                                           ) noexcept -> CreateMeshInstances::Response
+        {
+            if (!result)
+            {
+                return {result.error()};
+            }
+            return {{}, std::move(*result)};
+        };
+
         static constexpr auto update_transforms_response_ = [](RenderResult<TransformApplied> result
                                                             ) noexcept -> UpdateTransforms::Response
         {
@@ -53,6 +63,11 @@ namespace lux::render::vulkan
             decltype(stdexec::then(std::declval<exec::task<RenderResult<MeshInstanceId>>>(), create_instance_response_)
             );
 
+        using CreateInstancesSender = decltype(stdexec::then(
+            std::declval<exec::task<RenderResult<std::vector<MeshInstanceId>>>>(),
+            create_instances_response_
+        ));
+
         using UpdateTransformsSender = decltype(stdexec::then(
             std::declval<exec::task<RenderResult<TransformApplied>>>(),
             update_transforms_response_
@@ -75,6 +90,11 @@ namespace lux::render::vulkan
             return createInstanceSource(std::move(input)) | stdexec::then(create_instance_response_);
         }
 
+        CreateInstancesSender createInstances(CreateMeshInstances::Request&& input) noexcept
+        {
+            return createInstancesSource(std::move(input)) | stdexec::then(create_instances_response_);
+        }
+
         UpdateTransformsSender updateTransforms(UpdateTransforms::Request&& input) noexcept
         {
             return updateTransformsSource(std::move(input)) | stdexec::then(update_transforms_response_);
@@ -92,11 +112,14 @@ namespace lux::render::vulkan
 
         using Bindings = std::tuple<
             CommandMethod<CreateMeshInstance, &MeshInstanceCommandHandler::createInstance>,
+            CommandMethod<CreateMeshInstances, &MeshInstanceCommandHandler::createInstances>,
             CommandMethod<UpdateTransforms, &MeshInstanceCommandHandler::updateTransforms>,
             CommandMethod<UpdateMeshInstances, &MeshInstanceCommandHandler::updateInstances>,
             CommandMethod<ReleaseMeshInstance, &MeshInstanceCommandHandler::releaseInstance>>;
 
     private:
+        exec::task<RenderResult<std::vector<MeshInstanceId>>> createInstancesSource(CreateMeshInstances::
+                                                                                        Request&&) noexcept;
         exec::task<RenderResult<MeshInstanceId>> createInstanceSource(CreateMeshInstance::Request&&) noexcept;
         exec::task<RenderResult<TransformApplied>> updateTransformsSource(UpdateTransforms::Request&&) noexcept;
         exec::task<RenderResult<TransformApplied>> updateInstancesSource(UpdateMeshInstances::Request&&) noexcept;

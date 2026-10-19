@@ -64,9 +64,14 @@ namespace lux::render::vulkan
         }
     }
 
-    RenderResult<StagingRange> StagingArena::acquire(std::size_t bytes, std::size_t unit) noexcept
+    RenderResult<StagingRange> StagingArena::acquire(
+        std::size_t bytes,
+        std::size_t unit,
+        bool reserve_frame_page
+    ) noexcept
     {
-        for (std::size_t i = 0; i < pages_.size(); ++i)
+        const std::size_t first = reserve_frame_page && pages_.size() > 1 ? 1 : 0;
+        for (std::size_t i = first; i < pages_.size(); ++i)
         {
             auto& page = pages_[i];
             const auto padding = (alignment_ - (page.head & (alignment_ - 1))) & (alignment_ - 1);
@@ -145,10 +150,12 @@ namespace lux::render::vulkan
         completion.arena->reclaim(page);
     }
 
-    bool StagingArena::canAcquire(std::size_t unit) const noexcept
+    bool StagingArena::canAcquire(std::size_t unit, bool reserve_frame_page) const noexcept
     {
-        for (const auto& page : pages_)
+        const std::size_t first = reserve_frame_page && pages_.size() > 1 ? 1 : 0;
+        for (std::size_t i = first; i < pages_.size(); ++i)
         {
+            const auto& page = pages_[i];
             const auto padding = (alignment_ - (page.head & (alignment_ - 1))) & (alignment_ - 1);
             const auto remaining = page.buffer.size() - page.head;
             if (padding <= remaining && unit <= remaining - padding)

@@ -25,7 +25,7 @@ static void copyBuffer(SubmissionQueue& queue, VkBuffer source, VkBuffer output,
 
 static void graphOutput(InstanceContext& bootstrap)
 {
-    auto session = take(DeviceSession::create(bootstrap));
+    auto session = take(DeviceSession::create(bootstrap, {}, 3, 3));
     const TargetDesc target{16, 16, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     RenderGraphBuilder builder;
     const auto color = take(builder.declareResource({"color", GraphImageDesc{16, 16}}));
@@ -73,9 +73,16 @@ static void graphOutput(InstanceContext& bootstrap)
     auto output =
         take(session->allocator().createBuffer(1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
     CHECK(take(session->render(contexts)) == 1);
+    CHECK(take(session->render(contexts)) == 1);
+    CHECK(take(session->render(contexts)) == 1);
     CHECK(take(session->render(contexts)) == 0);
     CHECK(session->drain());
-    copyBuffer(session->queue(), execution->nativeBuffer(pixels.index), output.handle(), 1024);
+    copyBuffer(
+        session->queue(),
+        execution->nativeBuffer(pixels.index, execution->progress().last_submitted_slot),
+        output.handle(),
+        1024
+    );
     CHECK(session->drain());
     std::array<std::byte, 1024> bytes;
     CHECK(output.invalidate(session->allocator().native(), 0, bytes.size()) == VK_SUCCESS);

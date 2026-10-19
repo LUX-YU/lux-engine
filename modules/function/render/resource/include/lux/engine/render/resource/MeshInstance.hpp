@@ -27,6 +27,12 @@ namespace lux::render
         MeshInstanceDescription description;
     };
 
+    struct MeshInstancesCreate final
+    {
+        StorageId storage;
+        std::vector<MeshInstanceDescription> descriptions;
+    };
+
     struct TransformUpdate final
     {
         MeshInstanceId instance;
@@ -92,6 +98,18 @@ namespace lux::render
         };
     };
 
+    struct CreateMeshInstances final
+    {
+        static constexpr std::string_view name = "lux.render.CreateMeshInstances";
+        using Request = MeshInstancesCreate;
+
+        struct Response final
+        {
+            RenderError error{};
+            std::vector<MeshInstanceId> instances;
+        };
+    };
+
     struct UpdateTransforms final
     {
         static constexpr std::string_view name = "lux.render.UpdateTransforms";
@@ -122,7 +140,7 @@ namespace lux::render
     {
         static constexpr std::string_view name = "lux.render.UpdateMeshInstances";
         // Client supplies unique changed instances and keeps referenced Mesh/Material identities valid.
-        // The entire batch validates before a single GPU submission and CPU adoption.
+        // The entire batch validates before uploads; one CPU adoption follows accepted finite windows.
         using Request = MeshInstanceBatch;
 
         struct Response final

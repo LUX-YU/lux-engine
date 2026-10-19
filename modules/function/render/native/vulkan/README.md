@@ -50,7 +50,8 @@ returns to the Owner scheduler. Begin/Record/Submit is one non-suspending segmen
 
 `writeBuffers` accepts multiple borrowed ranges in one operation. UploadContext packs a finite window
 of Staging ranges with one CPU scheduling step and combines ready work into physical queue submissions.
-Small atomic field updates, fills and existing GPU range copies use that same submission path. Pages
+Adjacent Buffer ranges gather directly from the Request into Staging without an intermediate GPU
+update Buffer. Required fills use that same submission path. Pages
 reuse their bytes only after CPU reservations and their actual queue conditions end. Counters distinguish
 CPU preparation windows, Copy regions, Copy submissions and Acquire submissions; they are not synonyms.
 
@@ -59,7 +60,19 @@ join that frame before their first write, then adopt or roll back before ending 
 After Queue observation and dispatch, the host consumes the Owner ready prefix before calling `render`.
 This lets a woken writer join before the next frame closes admission. `render` also seals upload-only
 frames when there are no active Contexts. Once writes settle, Contexts prepare bindings and record into
-one shared batch; only the Session submits it. Contexts do not submit independently.
+one shared batch; only the Session submits it. Contexts do not submit independently. The default is
+two frames in flight, configurable from one to three independently of Queue capacity. Instance fields,
+page tables, Material parameters, Context temporaries/descriptors, indirect data and Target outputs
+have corresponding physical slices. CPU business data, compiled indexes, Shaders and Pipelines remain
+single authorities. A slot is reusable only after every actual participating Queue completes and all
+CPU writers have ended.
+
+Published-data preparation contributes missing ranges synchronously to the same UploadContext. A finite
+window can submit copies alone and retain the PREPARING phase; the final window and compatible Views
+record in one batch. `render()` returns the number of actual submissions, including copy-only progress;
+Context execution counters distinguish completed recording of a graph. No per-frame Sender is created.
+With multiple Staging pages, active rendering reserves one existing page from background admission.
+A one-page configuration serializes reuse and does not provide this independent preparation capacity.
 
 Successful upload means required Copy/Acquire submissions were accepted, future use is ordered, and
 Storage published the handle. It does not require waiting for the last GPU fence. Failure retains
@@ -68,8 +81,9 @@ effect is reported as `kOutcomeUnknown`, never as a guaranteed rollback.
 
 Prepare changed bindings at the Owner safe point. Stable frames use prepared handles, offsets and
 parameters, without Feature callbacks, name lookup, Shader compilation or Storage-wide polling.
-Descriptor sets are not rewritten while that Context's previous submission is active. A Context
-currently has one in-flight frame resource set; queue capacity is not a claim of FIF support.
+Descriptor sets are rewritten only for the selected reusable slice. `nativeBuffer(resource, slot)` is
+a diagnostic physical borrow, not a readiness check. A consumer must prepare/submit that slot and observe
+real completion before host reading; the last-submitted slot index alone does not prove completion.
 
 There is no production Readback Command or automatic output-to-host allocation. Ordinary graph Copy,
 Native mapping and cache maintenance remain available. External verification explicitly copies output
@@ -78,14 +92,20 @@ and waits for completion; reading does not implicitly execute another frame.
 ## Professional data
 
 MeshInstanceStorage has stable generational slots and one CPU authority for Transform, properties
-and alive fields. Storage pages contain 16,384 slots; sparse uploads merge only dirty 512-slot blocks.
-An enabled BDA device uses a two-level page-address table; the fallback grows continuous field Buffers.
-GPU writes are ordered on Graphics after old draws; CPU fields commit only after submission admission.
+and alive fields. Storage pages contain 16,384 slots. A 512-slot indexing block orders only changed
+Request entries; holes are not uploaded. `CreateMeshInstances` validates a whole batch, uploads its
+fields through one operation and publishes IDs together in input order. The single-create API uses
+the same algorithm. An enabled BDA device uses a two-level page-address table per slice; the fallback
+grows continuous field Buffers per slice. GPU writes target a free slice on Graphics; CPU fields commit
+only after all required windows are accepted. A failed partial write marks affected fields for repair
+from the unchanged CPU authority before the next Draw.
 Requests supply already unique changed instances. There are no triple mapped banks or draw-prefix
 capacity limits. Each Context owns its Feature-derived Mesh selection and indirect Buffer. Storage
 reports structural changes; the Feature decides membership and prepares changed data before recording.
-The single writer reuses sparse CPU preparation bytes and a Graphics-owned GPU preparation Buffer;
-range barriers order reuse after earlier reads. Only actual capacity growth allocates another Buffer.
+Dirty bitmaps track missing records separately for each physical slice. Bounded selections acknowledge
+only successfully submitted masks, with O(1) nonzero-word removal. Zero change does not scan live records.
+Only first-slice preparation and actual growth rebuild complete ranges; normal updates copy K changed
+fields from the Request to Staging and then adopt those K values into the CPU pages.
 
 MeshStorage uses separate chained vertex/index arenas and a compact GPU section table. The public
 `MeshGpuSection` contains geometry facts only. The Mesh Feature copies these fields into its own
@@ -110,7 +130,9 @@ to white at this explicit boundary; an invalid later release is not repaired aut
 and coordinate multiple connections. There is no business revision CAS or Query mirror of Client input.
 Old physical content survives accepted GPU use through Session cleanup. Parameter-only changes do not
 compile another Pipeline; internal subscriptions report real buffer growth to attached Contexts.
-Ordinary Material updates reuse per-table preparation capacity. The committed parameter bytes remain
+Ordinary Material updates write the selected free table slice directly. Other slices retain sparse dirty
+record bits; only tables with pending work enter preparation. Large records can span finite windows without
+acknowledging the record early. The committed parameter bytes remain
 the sole CPU authority; failed preparation never publishes scratch content. Attach checks the complete
 reflected record ABI, including member types, offsets and strides, without retaining another Shader copy
 per texture port. Mesh bindings carry only vertex/index ABI requirements, not source byte offsets or

@@ -45,15 +45,20 @@ namespace lux::render::vulkan
         template <class Input> [[nodiscard]] exec::task<RenderResult<WriteValue<Input>>> write(Input) noexcept;
         [[nodiscard]] exec::task<RenderResult<MaterialId>> upload(MaterialWrite) noexcept;
         [[nodiscard]] exec::task<RenderResult<Ack>> upload(MaterialUpdate) noexcept;
-        [[nodiscard]] RenderResult<StorageResource>
-        resolve(const NativeResourcePlan&, const MaterialBinding&, StorageSubscription&) noexcept;
+        [[nodiscard]] RenderResult<void>
+        resolve(const NativeResourcePlan&, const MaterialBinding&, StorageSubscription&, std::span<StorageResource>) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, UploadContext&) noexcept;
+        void markDirty(Table&, std::uint32_t frame, std::uint32_t record) noexcept;
+        void removeDirty(Table&, std::uint32_t frame) noexcept;
+        void releaseTable(Table&) noexcept;
         [[nodiscard]] RenderResult<Table*> table(MaterialProgram&) noexcept;
         [[nodiscard]] std::uint32_t textureIndex(TextureId) const noexcept;
-        static void publish(Table&) noexcept;
+        static void publish(Table&, std::uint32_t frame) noexcept;
         DeviceSession& session_;
         StorageId id_;
         cxx::StableSlotMap<Entry, MaterialTag> entries_;
         std::vector<std::unique_ptr<Table>> tables_;
+        std::array<std::vector<Table*>, 3> dirty_tables_;
     };
 } // namespace lux::render::vulkan
 

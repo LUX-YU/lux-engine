@@ -21,6 +21,18 @@ namespace lux::render::vulkan
         return (*storage)->create(std::move(input.description));
     }
 
+    exec::task<RenderResult<std::vector<MeshInstanceId>>> MeshInstanceCommandHandler::createInstancesSource(
+        CreateMeshInstances::Request&& input
+    ) noexcept
+    {
+        auto storage = device_.resources().borrow<MeshInstanceStorage>(input.storage);
+        if (!storage)
+        {
+            return rejected<RenderResult<std::vector<MeshInstanceId>>>(storage.error());
+        }
+        return (*storage)->create(std::move(input.descriptions));
+    }
+
     exec::task<RenderResult<TransformApplied>> MeshInstanceCommandHandler::updateTransformsSource(
         UpdateTransforms::Request&& input
     ) noexcept

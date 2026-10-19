@@ -21,6 +21,7 @@ namespace lux::render::vulkan
     class StagingArena;
     struct ImageTransferRegion;
     struct TransferStats;
+    struct StorageBindingOps;
 
     // Stable Native lifetime root. Bootstrap owns InstanceContext and outlives this object.
     // Queue roles that alias the same VkQueue borrow the same SubmissionQueue owner.
@@ -30,7 +31,8 @@ namespace lux::render::vulkan
         [[nodiscard]] static RenderResult<std::unique_ptr<DeviceSession>> create(
             const InstanceContext& instance,
             const DeviceOptions& options = {},
-            std::uint32_t slots = 3
+            std::uint32_t slots = 3,
+            std::uint32_t frames_in_flight = 2
         ) noexcept;
         ~DeviceSession() noexcept;
         DeviceSession(const DeviceSession&) = delete;
@@ -202,6 +204,8 @@ namespace lux::render::vulkan
         std::array<FrameSlot, 3> frames_;
         std::uint32_t frame_count_ = 1;
         std::uint32_t next_frame_ = 0;
+        std::vector<std::pair<void*, const StorageBindingOps*>> frame_storages_;
+        bool rendering_ = false; // Reserves one existing Staging page while actual frame consumers are active.
 
         gapi::vk::PhysicalDevice physical_device_;
         gapi::vk::LogicalDevice logical_device_;

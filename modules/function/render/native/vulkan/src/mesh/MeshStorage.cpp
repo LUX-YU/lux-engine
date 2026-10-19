@@ -259,11 +259,20 @@ namespace lux::render::vulkan
     StorageFactory meshStorageFactory() noexcept
     {
         static const StorageBindingOps binding{
-            [](void* object, const NativeResourcePlan& plan, const void* argument, StorageSubscription& subscription
-            ) noexcept
+            [](void* object,
+               const NativeResourcePlan& plan,
+               const void* argument,
+               StorageSubscription& subscription,
+               std::span<StorageResource> output) noexcept -> RenderResult<void>
             {
-                return static_cast<MeshStorage*>(object)
-                    ->resolve(plan, *static_cast<const MeshBinding*>(argument), subscription);
+                auto value = static_cast<MeshStorage*>(object)
+                                 ->resolve(plan, *static_cast<const MeshBinding*>(argument), subscription);
+                if (!value)
+                {
+                    return cxx::unexpected(value.error());
+                }
+                std::ranges::fill(output, *value);
+                return {};
             }
         };
         static const auto create =

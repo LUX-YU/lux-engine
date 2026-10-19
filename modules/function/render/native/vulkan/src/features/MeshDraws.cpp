@@ -3,25 +3,27 @@
 #include <bit>
 #include <lux/engine/render/native/vulkan/material/MaterialStorage.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshStorage.hpp>
+#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 
 namespace lux::render::vulkan
 {
     MeshDraws::MeshDraws(
         DeviceSession& session,
         ExecutionContext& context,
-        std::uint32_t index,
         GraphResourceId resource,
         MeshInstanceDrawGroup selection
     ) noexcept
-        : session_(session), context_(context), data_index_(index), resource_(resource), selection_(selection),
-          words_(5)
+        : session_(session), context_(context), resource_(resource), selection_(selection), words_(5)
     {
     }
 
     MeshDraws::~MeshDraws() noexcept
     {
         observer_.reset();
-        releaseAfterGpu(session_, buffer_);
+        for (auto& slice : gpu_)
+        {
+            releaseAfterGpu(session_, slice.buffer);
+        }
     }
 
     bool MeshDraws::selected(const MeshInstanceDescription& input) const noexcept
@@ -68,24 +70,31 @@ namespace lux::render::vulkan
             words_.pop_back();
             --words_[1];
         }
+        ++revision_;
     }
 
-    RenderResult<void> MeshDraws::prepare() noexcept
+    RenderResult<ContextData::EPreparation> MeshDraws::prepare(std::uint32_t slot, UploadContext& uploads) noexcept
     {
         if (!available_)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        const auto bytes = std::max<std::size_t>(24, words_.size() * sizeof(std::uint32_t));
-        if (!buffer_ || buffer_.size() < bytes)
+        auto& slice = gpu_[slot];
+        slice.pending_revision = 0;
+        if (slice.uploaded_revision == revision_)
         {
-            const auto size = std::bit_ceil(bytes);
-            if (size > session_.physicalDevice().properties().properties.limits.maxStorageBufferRange)
+            return ContextData::EPreparation::READY;
+        }
+        const auto bytes = std::max<std::size_t>(24, words_.size() * sizeof(std::uint32_t));
+        if (slice.buffer.size() < bytes)
+        {
+            const auto capacity = std::bit_ceil(bytes);
+            if (capacity > session_.physicalDevice().properties().properties.limits.maxStorageBufferRange)
             {
                 return cxx::unexpected(RenderError{kStorageCapacity});
             }
             auto buffer = session_.allocator().createBuffer(
-                size,
+                capacity,
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
                     VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 EMemoryAccess::DEVICE
@@ -94,52 +103,73 @@ namespace lux::render::vulkan
             {
                 return cxx::unexpected(buffer.error());
             }
-            if (buffer_)
-            {
-                releaseAfterGpu(session_, buffer_);
-            }
-            buffer_ = std::move(*buffer);
-            context_.setResource(resource_.index, {buffer_.handle(), 0, buffer_.size()});
+            releaseAfterGpu(session_, slice.buffer);
+            slice.buffer = std::move(*buffer);
+            slice.uploaded_bytes = 0;
+            context_.setResource(resource_.index, slot, {slice.buffer.handle(), 0, slice.buffer.size()});
         }
-        return {};
+        const auto source = std::as_bytes(std::span(words_));
+        slice.pending_bytes = slice.uploaded_bytes;
+        uploads.afterFrameSubmit(
+            &slice,
+            [](void* value, RenderResult<void> accepted) noexcept
+            {
+                auto& slice = *static_cast<GpuSlice*>(value);
+                if (accepted)
+                {
+                    slice.uploaded_bytes = slice.pending_bytes;
+                    if (slice.pending_revision)
+                    {
+                        slice.uploaded_revision = slice.pending_revision;
+                        slice.uploaded_bytes = 0;
+                    }
+                }
+                slice.pending_revision = 0;
+            }
+        );
+        while (slice.pending_bytes < source.size())
+        {
+            auto copied =
+                uploads.prepareBuffer({&slice.buffer, slice.pending_bytes, source.subspan(slice.pending_bytes)});
+            if (!copied)
+            {
+                return cxx::unexpected(copied.error());
+            }
+            if (*copied == 0)
+            {
+                return ContextData::EPreparation::WAITING;
+            }
+            slice.pending_bytes += *copied;
+        }
+        slice.pending_revision = revision_;
+        return ContextData::EPreparation::RECORD;
     }
 
-    void MeshDraws::record(VkCommandBuffer command) noexcept
+    void MeshDraws::record(VkCommandBuffer command, std::uint32_t slot) noexcept
     {
+        auto& slice = gpu_[slot];
+        if (!slice.pending_revision)
+        {
+            return;
+        }
         VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
-        barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
-        barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+        barrier.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
         barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
         barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.buffer = buffer_.handle();
+        barrier.buffer = slice.buffer.handle();
         barrier.size = VK_WHOLE_SIZE;
         VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
         dependency.bufferMemoryBarrierCount = 1;
         dependency.pBufferMemoryBarriers = &barrier;
-        vkCmdPipelineBarrier2(command, &dependency);
-        const auto bytes = std::as_bytes(std::span(words_));
-        for (std::size_t offset = 0; offset < bytes.size(); offset += 65536)
-        {
-            vkCmdUpdateBuffer(
-                command,
-                buffer_.handle(),
-                offset,
-                std::min<std::size_t>(65536, bytes.size() - offset),
-                bytes.data() + offset
-            );
-        }
-        barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
-        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-        // Geometry fields come from Storage's actual GPU section table. The Feature supplies only
-        // its selection count and member list; Storage never constructs a draw command.
         vkCmdPipelineBarrier2(command, &dependency);
         const auto section = sections_.offset + std::uint64_t(selection_.submesh) * sizeof(MeshGpuSection);
         const std::array<VkBufferCopy, 3> fields{{{section, 0, 4}, {section + 4, 8, 4}, {section + 8, 12, 4}}};
         vkCmdCopyBuffer(
             command,
             sections_.buffer,
-            buffer_.handle(),
+            slice.buffer.handle(),
             static_cast<std::uint32_t>(fields.size()),
             fields.data()
         );
@@ -151,7 +181,6 @@ namespace lux::render::vulkan
     RenderResult<ContextData> MeshDraws::create(
         DeviceSession& session,
         ExecutionContext& context,
-        std::uint32_t index,
         GraphResourceId resource,
         const void* argument
     ) noexcept
@@ -171,7 +200,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        auto value = std::unique_ptr<MeshDraws>(new MeshDraws(session, context, index, resource, group));
+        auto value = std::unique_ptr<MeshDraws>(new MeshDraws(session, context, resource, group));
         const NativeResourcePlan section_plan{
             "sections",
             GraphBufferDesc{description->submeshes.size() * sizeof(MeshGpuSection)},
@@ -191,27 +220,20 @@ namespace lux::render::vulkan
         (*instances)
             ->forEach([&](MeshInstanceId id, const MeshInstanceDescription& input) noexcept
                       { value->update(id, &input); });
-        if (auto prepared = value->prepare(); !prepared)
-        {
-            return cxx::unexpected(prepared.error());
-        }
         value->observer_.receiver = value.get();
         value->observer_.changed =
             [](void* pointer, MeshInstanceId id, const MeshInstanceDescription* description) noexcept
         {
             auto& self = *static_cast<MeshDraws*>(pointer);
-            const auto count = self.words_[1];
             self.update(id, description);
-            if (!self.available_ || count != self.words_[1])
-            {
-                self.context_.invalidateData(self.data_index_);
-            }
         };
         (*instances)->observe(value->observer_);
         return ContextData{
             {value.release(), [](void* pointer) noexcept { delete static_cast<MeshDraws*>(pointer); }},
-            [](void* pointer) noexcept { return static_cast<MeshDraws*>(pointer)->prepare(); },
-            [](void* pointer, VkCommandBuffer command) noexcept { static_cast<MeshDraws*>(pointer)->record(command); }
+            [](void* pointer, std::uint32_t slot, UploadContext& uploads) noexcept
+            { return static_cast<MeshDraws*>(pointer)->prepare(slot, uploads); },
+            [](void* pointer, VkCommandBuffer command, std::uint32_t slot) noexcept
+            { static_cast<MeshDraws*>(pointer)->record(command, slot); }
         };
     }
 } // namespace lux::render::vulkan

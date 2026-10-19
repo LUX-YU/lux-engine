@@ -18,23 +18,31 @@ namespace lux::render::vulkan
     {
     public:
         [[nodiscard]] static RenderResult<ContextData>
-        create(DeviceSession&, ExecutionContext&, std::uint32_t, GraphResourceId, const void*) noexcept;
+        create(DeviceSession&, ExecutionContext&, GraphResourceId, const void*) noexcept;
         ~MeshDraws() noexcept;
 
     private:
-        MeshDraws(DeviceSession&, ExecutionContext&, std::uint32_t, GraphResourceId, MeshInstanceDrawGroup) noexcept;
-        [[nodiscard]] RenderResult<void> prepare() noexcept;
-        void record(VkCommandBuffer) noexcept;
+        MeshDraws(DeviceSession&, ExecutionContext&, GraphResourceId, MeshInstanceDrawGroup) noexcept;
+        [[nodiscard]] RenderResult<ContextData::EPreparation> prepare(std::uint32_t, UploadContext&) noexcept;
+        void record(VkCommandBuffer, std::uint32_t) noexcept;
         void update(MeshInstanceId, const MeshInstanceDescription*) noexcept;
         [[nodiscard]] bool selected(const MeshInstanceDescription&) const noexcept;
         DeviceSession& session_;
         ExecutionContext& context_;
-        std::uint32_t data_index_;
         GraphResourceId resource_;
         StorageResource sections_;
         MeshInstanceDrawGroup selection_;
         MeshInstanceStorage::Observer observer_;
-        gapi::vk::VmaBuffer buffer_;
+
+        struct GpuSlice final
+        {
+            gapi::vk::VmaBuffer buffer;
+            std::uint64_t uploaded_revision = 0, pending_revision = 0;
+            std::size_t uploaded_bytes = 0, pending_bytes = 0;
+        };
+
+        std::array<GpuSlice, 3> gpu_;
+        std::uint64_t revision_ = 1;
         std::vector<std::uint32_t> words_, positions_;
         bool available_ = true;
     };

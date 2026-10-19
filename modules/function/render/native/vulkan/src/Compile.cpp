@@ -1007,6 +1007,27 @@ namespace lux::render::vulkan
                 }
             }
         }
+        for (std::uint32_t pass = 0; pass < result.passes_.size(); ++pass)
+        {
+            const auto& recipe = result.passes_[pass];
+            for (std::uint32_t index = 0; index < recipe.buffers.size(); ++index)
+            {
+                result.resources_[recipe.buffers[index].resource].barrier_uses.emplace_back(pass, index);
+            }
+            if (recipe.recipe != ERecipe::DRAW && recipe.recipe != ERecipe::DISPATCH)
+            {
+                continue;
+            }
+            const auto& layout = result.descriptor_plan_->programs[recipe.layout_program];
+            for (std::uint32_t index = 0; index < layout.uses.size(); ++index)
+            {
+                const auto& use = layout.uses[index];
+                if (use.kind == EDescriptorKind::STORAGE_BUFFER)
+                {
+                    result.resources_[use.resource].descriptor_uses.emplace_back(pass, index);
+                }
+            }
+        }
         return result;
     }
 } // namespace lux::render::vulkan

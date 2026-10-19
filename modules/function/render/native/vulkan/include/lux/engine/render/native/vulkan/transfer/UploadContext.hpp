@@ -36,13 +36,6 @@ namespace lux::render::vulkan
         std::span<const std::byte> source;
     };
 
-    struct BufferCopy final
-    {
-        const gapi::vk::VmaBuffer* source = nullptr;
-        gapi::vk::VmaBuffer* target = nullptr;
-        VkBufferCopy range{};
-    };
-
     struct BufferFill final
     {
         gapi::vk::VmaBuffer* target = nullptr;
@@ -143,14 +136,8 @@ namespace lux::render::vulkan
 
         [[nodiscard]] Task writeBuffers(
             std::span<const BufferWrite> writes,
-            std::span<const BufferCopy> copies = {},
-            std::span<const BufferFill> fills = {}
-        ) noexcept;
-        // Small CPU fields copied into one command buffer. Each range obeys vkCmdUpdateBuffer limits.
-        [[nodiscard]] Task updateBuffers(
-            std::span<const BufferWrite> writes,
-            std::span<const BufferCopy> copies = {},
-            std::span<const BufferFill> fills = {}
+            std::span<const BufferFill> fills = {},
+            std::uint32_t frame_slot = UINT32_MAX
         ) noexcept;
         [[nodiscard]] Task writeImage(
             gapi::vk::VmaImage& target,
@@ -159,6 +146,16 @@ namespace lux::render::vulkan
             const gapi::vk::VmaImage* clone = nullptr
         ) noexcept;
 
+        // Owner-only preparation of already published data. A short result means this finite
+        // staging window is full; no Sender or per-frame operation state is created.
+        [[nodiscard]] RenderResult<std::size_t> prepareBuffer(const BufferWrite&, std::size_t unit = 4) noexcept;
+        void afterFrameSubmit(void* receiver, void (*complete)(void*, RenderResult<void>) noexcept) noexcept;
+
+        [[nodiscard]] std::size_t windowRegionLimit() const noexcept
+        {
+            return options.window_regions;
+        }
+
         [[nodiscard]] TransferStats statistics() const noexcept
         {
             return stats;
@@ -166,24 +163,30 @@ namespace lux::render::vulkan
 
     private:
         friend class DeviceSession;
+        struct Copy;
         struct BatchEntry;
         class BatchSender;
         struct Measurement;
         void enqueue(BatchEntry&) noexcept;
+        [[nodiscard]] bool canStage(std::uint32_t frame_slot) const noexcept;
         void enqueueFrame(FrameWriteSender::Node&) noexcept;
         [[nodiscard]] bool reserveBytes(std::size_t bytes) noexcept;
         void releaseBytes(std::size_t bytes) noexcept;
         void flush() noexcept;
+        void recordFrame(CommandBatch&) noexcept;
+        void finishFrameCopies(RenderResult<void>) noexcept;
+        [[nodiscard]] bool hasFrameCopies() const noexcept;
+        std::vector<Copy> frame_copies_;
+        std::vector<BatchEntry> frame_receivers_;
         UploadContext(DeviceSession&, TransferOptions, execution::CpuScheduler) noexcept;
         [[nodiscard]] Task write(
             std::span<const BufferWrite>,
-            std::span<const BufferCopy>,
             std::span<const BufferFill>,
             gapi::vk::VmaImage*,
             std::span<const std::byte>,
             std::vector<ImageTransferRegion>,
             const gapi::vk::VmaImage*,
-            bool inline_updates
+            std::uint32_t frame_slot
         ) noexcept;
         [[nodiscard]] RenderResult<void> measure(std::size_t page, std::uint32_t bits) noexcept;
 

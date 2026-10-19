@@ -9,7 +9,8 @@
 
 namespace lux::render::vulkan
 {
-    class SubmissionQueue;
+    class OffscreenTarget;
+    class UploadContext;
     class CommandBatch;
 
     class ExecutionContext final
@@ -34,17 +35,16 @@ namespace lux::render::vulkan
             return target_;
         }
 
-        [[nodiscard]] RenderResult<void> setContextParameters(std::span<const std::byte> bytes) noexcept;
+        [[nodiscard]] RenderResult<void> setContextParameters(std::span<const std::byte>) noexcept;
 
         [[nodiscard]] std::span<const std::byte> contextParameters() const noexcept
         {
             return context_values_;
         }
 
-        [[nodiscard]] RenderResult<void> setParameters(GraphPassId pass, std::span<const std::byte> bytes) noexcept;
-        [[nodiscard]] std::span<const std::byte> parameters(GraphPassId pass) const noexcept;
+        [[nodiscard]] RenderResult<void> setParameters(GraphPassId, std::span<const std::byte>) noexcept;
+        [[nodiscard]] std::span<const std::byte> parameters(GraphPassId) const noexcept;
 
-        // Owner-thread caller has validated the viewport at its request boundary.
         void setViewport(const RasterViewport& viewport) noexcept
         {
             viewport_ = viewport;
@@ -55,9 +55,10 @@ namespace lux::render::vulkan
             return viewport_;
         }
 
-        // Session prepares all participating Contexts before opening the shared recording.
-        [[nodiscard]] RenderResult<void> prepareFrame() noexcept;
-        void record(CommandBatch& batch) noexcept;
+        // DeviceSession selects the reusable slot and owns the recording/submission segment.
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, UploadContext*) noexcept;
+        void recordPreparation(CommandBatch&, std::uint32_t slot) noexcept;
+        void record(CommandBatch&, std::uint32_t slot) noexcept;
 
         [[nodiscard]] const ExecutionProgress& progress() const noexcept
         {
@@ -77,24 +78,17 @@ namespace lux::render::vulkan
             }
         }
 
-        // Native Feature contributions use already compiled resource indices. No name lookup or
-        // professional Storage behavior is performed by the Context.
-        void setResource(std::uint32_t resource, const StorageResource&) noexcept;
-        void invalidateData(std::uint32_t index) noexcept;
+        // Trusted compiled resource index and Session slot, not a business resource lookup.
+        void setResource(std::uint32_t resource, std::uint32_t slot, const StorageResource&) noexcept;
         [[nodiscard]] StorageId storageId(std::uint32_t resource) const noexcept;
-
-        // Compiled resource indices are trusted here; this is a Native diagnostic borrow.
-        [[nodiscard]] VkBuffer nativeBuffer(std::uint32_t resource) const noexcept
-        {
-            return bindings_[resource].buffer;
-        }
+        [[nodiscard]] VkBuffer nativeBuffer(std::uint32_t resource, std::uint32_t slot) const noexcept;
 
     private:
         friend class DeviceSession;
         void withdraw() noexcept;
-        void submitted() noexcept;
+        void submitted(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareDescriptors() noexcept;
-        void rebind() noexcept;
+        void rebind(std::uint32_t slot) noexcept;
 
         struct Binding final
         {
@@ -104,9 +98,7 @@ namespace lux::render::vulkan
             VkDeviceSize buffer_offset = 0, buffer_size = 0;
             std::span<const std::byte> parameters;
             const rdesc::ShaderBlock* parameter_layout = nullptr;
-            std::uint32_t storage_use = kGraphInvalidIndex;
             bool dirty = false;
-            std::vector<std::pair<std::uint32_t, std::uint32_t>> barriers, descriptors, parameter_copies;
         };
 
         struct Pass final
@@ -116,32 +108,22 @@ namespace lux::render::vulkan
             std::vector<VkBufferMemoryBarrier2> buffers;
             std::vector<VkDescriptorSet> descriptors;
             VkDescriptorSet private_descriptors = VK_NULL_HANDLE;
-            std::vector<std::byte> parameters;
-
-            struct ParameterCopy final
-            {
-                std::uint32_t resource; // kGraphInvalidIndex selects this Context's value array.
-                std::uint32_t source_offset, destination_offset, bytes;
-            };
-
-            std::vector<ParameterCopy> parameter_copies;
         };
 
-        ExecutionContext(
-            DeviceSession& owner,
-            SubmissionQueue& queue,
-            const CompiledGraph& code,
-            TargetDesc target
-        ) noexcept;
+        struct ParameterCopy final
+        {
+            std::uint32_t resource;
+            std::uint32_t source_offset, destination_offset, bytes;
+        };
+
+        ExecutionContext(DeviceSession&, const CompiledGraph&, OffscreenTarget&) noexcept;
         DeviceSession* owner_;
-        SubmissionQueue* queue_;
         struct FrameResources;
-        std::unique_ptr<FrameResources> frame_resources_;
-        std::size_t unavailable_buffers_ = 0;
+        std::array<std::unique_ptr<FrameResources>, 3> frames_;
         const CompiledGraph* code_;
         TargetDesc target_;
         RasterViewport viewport_;
-        std::vector<Binding> bindings_;
+        std::vector<std::uint32_t> storage_indices_;
 
         struct StorageUse final
         {
@@ -149,17 +131,17 @@ namespace lux::render::vulkan
             StorageId storage_id;
             std::uint32_t resource;
             StorageSubscription subscription;
+            void* native = nullptr;
+            const StorageBindingOps* ops = nullptr;
         };
 
         StorageSet storages_;
         std::vector<StorageUse> storage_uses_;
-        std::vector<std::uint32_t> changed_resources_;
         std::vector<ContextData> context_data_;
-        std::vector<std::uint32_t> changed_data_;
-
-        std::vector<Pass> passes_;
+        std::vector<std::uint32_t> prepared_data_;
+        std::vector<std::vector<std::byte>> pass_parameters_;
+        std::vector<std::vector<ParameterCopy>> parameter_copies_;
         std::vector<std::byte> context_values_;
-
         ExecutionProgress progress_;
     };
 } // namespace lux::render::vulkan

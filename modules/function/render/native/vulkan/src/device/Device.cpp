@@ -329,10 +329,11 @@ namespace lux::render::vulkan
     RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(
         const InstanceContext& instance,
         const DeviceOptions& options,
-        std::uint32_t slots
+        std::uint32_t slots,
+        std::uint32_t frames_in_flight
     ) noexcept
     {
-        if (slots == 0)
+        if (slots == 0 || frames_in_flight == 0 || frames_in_flight > 3)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
@@ -579,6 +580,7 @@ namespace lux::render::vulkan
         auto result = std::unique_ptr<DeviceSession>(
             new DeviceSession(std::move(*selected), std::move(device), features, std::move(*allocator))
         );
+        result->frame_count_ = frames_in_flight;
         result->physical_queues_.reserve(3);
         for (std::size_t i = 0; i < 3; ++i)
         {

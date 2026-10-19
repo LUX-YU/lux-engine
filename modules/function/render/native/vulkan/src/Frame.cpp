@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
@@ -24,7 +25,6 @@ namespace lux::render::vulkan
     void UploadContext::finishFrameWrite(std::uint32_t slot) noexcept
     {
         auto& frame = session.frames_[slot];
-        frame.accepted_serials[session.queue_roles_[0]] = session.queue().submitted();
         --frame.pending_writes;
     }
 
@@ -65,6 +65,7 @@ namespace lux::render::vulkan
 
     RenderResult<std::uint32_t> DeviceSession::render(std::span<ExecutionContext* const> contexts) noexcept
     {
+        rendering_ = !contexts.empty();
         auto& frame = frames_[next_frame_];
         if (contexts.empty() && frame.phase == EFramePhase::FREE)
         {
@@ -102,34 +103,121 @@ namespace lux::render::vulkan
         {
             return outcome(EExecutionOutcome::RECORDING_BUSY);
         }
-        for (auto* context : contexts)
-        {
-            if (auto prepared = context->prepareFrame(); !prepared)
-            {
-                sealFrame(frame);
-                return cxx::unexpected(prepared.error());
-            }
-        }
         auto batch = graphics.beginAfterPoll();
         if (!batch)
         {
             return batch.error().type == kCapacity ? outcome(EExecutionOutcome::QUEUE_FULL)
                                                    : RenderResult<std::uint32_t>{cxx::unexpected(batch.error())};
         }
+        const auto failed = [&](RenderError error) noexcept -> RenderResult<std::uint32_t>
+        {
+            if (uploads_)
+            {
+                uploads_->finishFrameCopies(cxx::unexpected(error));
+            }
+            sealFrame(frame);
+            return cxx::unexpected(error);
+        };
+        // Scratch contains only the actual cold-qualified borrows used in this frame. It is
+        // rebuilt from active Contexts, never an owning or global professional resource table.
+        frame_storages_.clear();
         for (auto* context : contexts)
         {
-            context->record(*batch);
+            for (const auto& use : context->storage_uses_)
+            {
+                if (use.ops->prepareFrame)
+                {
+                    frame_storages_.emplace_back(use.native, use.ops);
+                }
+            }
         }
-        if (auto accepted = std::move(*batch).submit(); !accepted)
+        std::ranges::sort(
+            frame_storages_,
+            [](const auto& left, const auto& right) { return std::less<void*>{}(left.first, right.first); }
+        );
+        frame_storages_.erase(
+            std::unique(
+                frame_storages_.begin(),
+                frame_storages_.end(),
+                [](const auto& left, const auto& right) { return left.first == right.first; }
+            ),
+            frame_storages_.end()
+        );
+        if (!frame_storages_.empty() && !uploads_)
         {
-            sealFrame(frame);
-            return cxx::unexpected(accepted.error());
+            return failed(RenderError{kInvalidArgument});
+        }
+        bool resources_ready = true;
+        for (const auto& [storage, ops] : frame_storages_)
+        {
+            auto prepared = ops->prepareFrame(storage, next_frame_, *uploads_);
+            if (!prepared)
+            {
+                return failed(prepared.error());
+            }
+            resources_ready &= *prepared;
+        }
+        bool contexts_ready = resources_ready;
+        bool native_records = false;
+        if (resources_ready)
+        {
+            for (auto* context : contexts)
+            {
+                auto prepared = context->prepareFrame(next_frame_, uploads_.get());
+                if (!prepared)
+                {
+                    return failed(prepared.error());
+                }
+                contexts_ready &= *prepared;
+                native_records |= !context->prepared_data_.empty();
+            }
+        }
+        const bool has_copies = uploads_ && uploads_->hasFrameCopies();
+        if (!contexts_ready && !has_copies && !native_records)
+        {
+            if (uploads_)
+            {
+                uploads_->finishFrameCopies(cxx::unexpected(RenderError{kCapacity}));
+            }
+            return outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
+        }
+        if (uploads_)
+        {
+            uploads_->recordFrame(*batch);
+        }
+        if (resources_ready)
+        {
+            for (auto* context : contexts)
+            {
+                context->recordPreparation(*batch, next_frame_);
+            }
+        }
+        if (contexts_ready)
+        {
+            for (auto* context : contexts)
+            {
+                context->record(*batch, next_frame_);
+            }
+        }
+        auto accepted = std::move(*batch).submit();
+        if (!accepted)
+        {
+            return failed(accepted.error());
         }
         frame.accepted_serials[queue_roles_[static_cast<std::size_t>(EQueueRole::GRAPHICS)]] = graphics.submitted();
+        if (uploads_)
+        {
+            uploads_->finishFrameCopies({});
+        }
+        if (!contexts_ready)
+        {
+            (void)outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
+            return 1; // A real replica-preparation submission; the frame stays open for its next finite window.
+        }
         sealFrame(frame);
         for (auto* context : contexts)
         {
-            context->submitted();
+            context->submitted(next_frame_);
         }
         next_frame_ = (next_frame_ + 1) % frame_count_;
         return 1;

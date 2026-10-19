@@ -420,11 +420,20 @@ namespace lux::render::vulkan
     StorageFactory textureStorageFactory() noexcept
     {
         static const StorageBindingOps bindings{
-            [](void* storage, const NativeResourcePlan& plan, const void* argument, StorageSubscription& subscription
-            ) noexcept
+            [](void* storage,
+               const NativeResourcePlan& plan,
+               const void* argument,
+               StorageSubscription& subscription,
+               std::span<StorageResource> output) noexcept -> RenderResult<void>
             {
-                return static_cast<TextureStorage*>(storage)
-                    ->resolve(plan, *static_cast<const TextureBinding*>(argument), subscription);
+                auto value = static_cast<TextureStorage*>(storage)
+                                 ->resolve(plan, *static_cast<const TextureBinding*>(argument), subscription);
+                if (!value)
+                {
+                    return cxx::unexpected(value.error());
+                }
+                std::ranges::fill(output, *value);
+                return {};
             }
         };
         static const auto factory =

@@ -29,6 +29,8 @@ namespace lux::render::vulkan
         VkBufferUsageFlags buffer_usage = 0;
         bool target_sized = false;
         std::uint32_t context_data = kGraphInvalidIndex;
+        // Immutable reverse indexes shared by every Context frame slice.
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> barrier_uses, descriptor_uses;
     };
 
     enum class ERecipe : std::uint8_t

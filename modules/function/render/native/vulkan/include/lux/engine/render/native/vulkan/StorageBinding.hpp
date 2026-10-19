@@ -7,6 +7,7 @@
 namespace lux::render::vulkan
 {
     struct NativeResourcePlan;
+    class UploadContext;
 
     // Current physical data borrowed at Attach or an Owner publication point. No owner, task,
     // pending upload, descriptor placement, or mutable parameter envelope lives in this value.
@@ -49,7 +50,8 @@ namespace lux::render::vulkan
         }
 
         void* receiver = nullptr;
-        void (*changed)(void*, const StorageResource&) noexcept = nullptr;
+        // UINT32_MAX denotes structural disconnection of all physical slices.
+        void (*changed)(void*, std::uint32_t slot, const StorageResource&) noexcept = nullptr;
 
         void attach(StorageSubscription*& head) noexcept
         {
@@ -77,12 +79,12 @@ namespace lux::render::vulkan
             }
         }
 
-        static void publish(StorageSubscription* head, const StorageResource& resource) noexcept
+        static void publish(StorageSubscription* head, std::uint32_t slot, const StorageResource& resource) noexcept
         {
             while (head)
             {
                 auto* next = head->next_;
-                head->changed(head->receiver, resource);
+                head->changed(head->receiver, slot, resource);
                 head = next;
             }
         }
@@ -93,7 +95,7 @@ namespace lux::render::vulkan
             {
                 auto* node = head;
                 node->reset();
-                node->changed(node->receiver, resource);
+                node->changed(node->receiver, UINT32_MAX, resource);
             }
         }
 
@@ -121,6 +123,7 @@ namespace lux::render::vulkan
     struct StorageBindingOps final
     {
         RenderResult<
-            StorageResource> (*resolve)(void*, const NativeResourcePlan&, const void*, StorageSubscription&) noexcept;
+            void> (*resolve)(void*, const NativeResourcePlan&, const void*, StorageSubscription&, std::span<StorageResource>) noexcept;
+        RenderResult<bool> (*prepareFrame)(void*, std::uint32_t slot, UploadContext&) noexcept = nullptr;
     };
 } // namespace lux::render::vulkan

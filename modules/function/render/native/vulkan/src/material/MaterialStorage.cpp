@@ -1,4 +1,5 @@
 #include "Cleanup.hpp"
+#include "DirtyRanges.hpp"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -18,39 +19,22 @@ namespace lux::render::vulkan
         std::vector<std::byte> records; // The sole CPU parameter authority, in the reflected GPU layout.
         std::vector<Entry*> entries;
         std::vector<std::uint32_t> free_slots;
-        gapi::vk::VmaBuffer buffer, update_buffer;
-        std::vector<std::byte> update_bytes; // Single writer retains preparation capacity across requests.
+
+        struct GpuSlice final
+        {
+            gapi::vk::VmaBuffer parameters;
+            std::uint32_t capacity = 0;
+            DirtyRanges dirty;
+            std::uint32_t position = UINT32_MAX;
+            std::vector<DirtyWordMask> selected, accepted;
+            std::uint32_t partial_record = UINT32_MAX, next_partial_record = UINT32_MAX;
+            std::size_t partial_bytes = 0, next_partial_bytes = 0;
+        };
+
+        std::array<GpuSlice, 3> gpu;
+        std::vector<std::byte> value_bytes; // One writer's reflected record, never a copy of the whole table.
         bool updating = false;
     };
-
-    namespace
-    {
-        void beforeWrite(VkCommandBuffer command) noexcept
-        {
-            VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
-            barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-            barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
-            barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
-            barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT;
-            VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-            dependency.memoryBarrierCount = 1;
-            dependency.pMemoryBarriers = &barrier;
-            vkCmdPipelineBarrier2(command, &dependency);
-        }
-
-        void afterWrite(VkCommandBuffer command) noexcept
-        {
-            VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
-            barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
-            barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-            barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-            barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
-            VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-            dependency.memoryBarrierCount = 1;
-            dependency.pMemoryBarriers = &barrier;
-            vkCmdPipelineBarrier2(command, &dependency);
-        }
-    } // namespace
 
     MaterialStorage::MaterialStorage(DeviceSession& session, StorageId id) noexcept : session_(session), id_(id) {}
 
@@ -62,8 +46,7 @@ namespace lux::render::vulkan
         }
         for (auto& table : tables_)
         {
-            releaseAfterGpu(session_, table->buffer);
-            releaseAfterGpu(session_, table->update_buffer);
+            releaseTable(*table);
         }
     }
 
@@ -160,13 +143,49 @@ namespace lux::render::vulkan
         return texture ? texture->descriptorIndex() : 0;
     }
 
-    void MaterialStorage::publish(Table& table) noexcept
+    void MaterialStorage::markDirty(Table& table, std::uint32_t frame, std::uint32_t record) noexcept
     {
+        auto& slice = table.gpu[frame];
+        slice.dirty.grow(table.records.size() / table.stride);
+        slice.dirty.mark(record);
+        if (slice.position == UINT32_MAX)
+        {
+            slice.position = static_cast<std::uint32_t>(dirty_tables_[frame].size());
+            dirty_tables_[frame].push_back(&table);
+        }
+    }
+
+    void MaterialStorage::removeDirty(Table& table, std::uint32_t frame) noexcept
+    {
+        auto& position = table.gpu[frame].position;
+        if (position == UINT32_MAX)
+        {
+            return;
+        }
+        auto& list = dirty_tables_[frame];
+        list[position] = list.back();
+        list[position]->gpu[frame].position = position;
+        list.pop_back();
+        position = UINT32_MAX;
+    }
+
+    void MaterialStorage::releaseTable(Table& table) noexcept
+    {
+        for (std::uint32_t frame = 0; frame < session_.framesInFlight(); ++frame)
+        {
+            removeDirty(table, frame);
+            releaseAfterGpu(session_, table.gpu[frame].parameters);
+        }
+    }
+
+    void MaterialStorage::publish(Table& table, std::uint32_t frame) noexcept
+    {
+        const auto& buffer = table.gpu[frame].parameters;
         for (auto* entry : table.entries)
         {
             if (entry)
             {
-                StorageSubscription::publish(entry->bindings, {table.buffer.handle(), 0, table.buffer.size()});
+                StorageSubscription::publish(entry->bindings, frame, {buffer.handle(), 0, buffer.size()});
             }
         }
     }
@@ -214,7 +233,7 @@ namespace lux::render::vulkan
                 {
                     const auto empty =
                         std::ranges::find_if(tables_, [&](const auto& value) { return value.get() == &table; });
-                    releaseAfterGpu(session_, table.update_buffer);
+                    releaseTable(table);
                     tables_.erase(empty);
                 }
             }
@@ -243,17 +262,8 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(RenderError{kStorageCapacity});
         }
-        if (growing)
-        {
-            table.update_bytes.assign(table.records.begin(), table.records.end());
-            table.update_bytes.resize(total_bytes);
-        }
-        else
-        {
-            table.update_bytes.assign(table.stride, std::byte{});
-        }
-        auto values =
-            std::span(table.update_bytes).subspan(growing ? std::size_t(slot) * table.stride : 0, table.stride);
+        table.value_bytes.assign(table.stride, std::byte{});
+        auto values = std::span(table.value_bytes);
         for (std::size_t p = 0; p < input.parameters.size(); ++p)
         {
             std::memcpy(
@@ -269,12 +279,21 @@ namespace lux::render::vulkan
             const MaterialTextureGpuRef reference{0, textureIndex(input.textures[t]), 0, 0};
             std::memcpy(values.data() + table.texture_offsets[t], &reference, sizeof(reference));
         }
-        const auto source = std::span<const std::byte>(table.update_bytes);
-        auto& staging = growing ? candidate : table.update_buffer;
-        if (growing || !staging)
+        std::uint32_t frame_slot = 0;
+        while (!session_.uploads().tryBeginFrameWrite(frame_slot))
+        {
+            if (auto ready = co_await session_.uploads().whenFrameWritable(values.size()); !ready)
+            {
+                co_return cxx::unexpected(ready.error());
+            }
+        }
+        cxx::scope_exit finish_frame([&]() noexcept { session_.uploads().finishFrameWrite(frame_slot); });
+        auto& slice = table.gpu[frame_slot];
+        const bool grow_gpu = slice.capacity < capacity;
+        if (grow_gpu)
         {
             auto allocated = session_.allocator().createBuffer(
-                source.size(),
+                total_bytes,
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                     VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 EMemoryAccess::DEVICE
@@ -283,43 +302,63 @@ namespace lux::render::vulkan
             {
                 co_return cxx::unexpected(allocated.error());
             }
-            staging = std::move(*allocated);
+            candidate = std::move(*allocated);
         }
-        // Reusable preparation Buffers stay on Graphics. The range upload orders their previous
-        // GPU reads before overwrite; table contents remain unchanged until the final copy is accepted.
-        std::uint32_t frame_slot = 0;
-        while (!session_.uploads().tryBeginFrameWrite(frame_slot))
-        {
-            if (auto ready = co_await session_.uploads().whenFrameWritable(source.size()); !ready)
+        auto& target = grow_gpu ? candidate : slice.parameters;
+        cxx::scope_exit restore(
+            [&]() noexcept
             {
-                co_return cxx::unexpected(ready.error());
+                if (!grow_gpu)
+                {
+                    markDirty(table, frame_slot, slot);
+                }
             }
+        );
+        std::array<BufferWrite, 2> writes;
+        std::size_t write_count = 0;
+        if (grow_gpu && !table.records.empty())
+        {
+            writes[write_count++] = {&target, 0, table.records};
         }
-        cxx::scope_exit finish_frame([&]() noexcept { session_.uploads().finishFrameWrite(frame_slot); });
-        const BufferWrite write{&staging, 0, source};
-        auto uploaded = co_await session_.uploads().writeBuffers(std::span(&write, 1));
+        writes[write_count++] = {&target, std::uint64_t(slot) * table.stride, values};
+        const BufferFill fill{&target, 0, target.size(), 0};
+        auto uploaded = co_await session_.uploads().writeBuffers(
+            std::span(writes).first(write_count),
+            grow_gpu ? std::span(&fill, 1) : std::span<const BufferFill>{},
+            frame_slot
+        );
         if (!uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
         }
-        if (!growing)
-        {
-            const BufferCopy copy{&staging, &table.buffer, {0, std::uint64_t(slot) * table.stride, table.stride}};
-            if (auto accepted = co_await session_.uploads().updateBuffers({}, std::span(&copy, 1)); !accepted)
-            {
-                co_return cxx::unexpected(accepted.error());
-            }
-        }
         if (growing)
         {
-            releaseAfterGpu(session_, table.buffer);
-            table.buffer = std::move(candidate);
-            table.records.swap(table.update_bytes);
+            table.records.resize(total_bytes);
+        }
+        std::memcpy(table.records.data() + std::size_t(slot) * table.stride, values.data(), values.size());
+        for (std::uint32_t frame = 0; frame < session_.framesInFlight(); ++frame)
+        {
+            if (frame != frame_slot)
+            {
+                markDirty(table, frame, slot);
+            }
+        }
+        if (grow_gpu)
+        {
+            releaseAfterGpu(session_, slice.parameters);
+            slice.parameters = std::move(candidate);
+            slice.capacity = static_cast<std::uint32_t>(capacity);
+            slice.dirty.clear(); // The actual growth copy covered the complete CPU table plus this record.
+            slice.partial_record = UINT32_MAX;
+            slice.partial_bytes = 0;
+            removeDirty(table, frame_slot);
         }
         else
         {
-            std::memcpy(table.records.data() + std::size_t(slot) * table.stride, values.data(), values.size());
+            slice.dirty.grow(capacity);
+            slice.dirty.acknowledge({slot / 64, std::uint64_t{1} << (slot % 64)});
         }
+        restore.release();
         MaterialId id;
         if constexpr (std::same_as<Input, MaterialWrite>)
         {
@@ -340,9 +379,9 @@ namespace lux::render::vulkan
                 table.entries[slot] = existing;
             }
         }
-        if (growing)
+        if (grow_gpu)
         {
-            publish(table);
+            publish(table, frame_slot);
         }
         if constexpr (std::same_as<Input, MaterialWrite>)
         {
@@ -399,18 +438,18 @@ namespace lux::render::vulkan
         entries_.erase(id.local);
         if (table.free_slots.size() == table.entries.size())
         {
-            releaseAfterGpu(session_, table.buffer);
-            releaseAfterGpu(session_, table.update_buffer);
+            releaseTable(table);
             const auto empty = std::ranges::find_if(tables_, [&](const auto& value) { return value.get() == &table; });
             tables_.erase(empty);
         }
         return {};
     }
 
-    RenderResult<StorageResource> MaterialStorage::resolve(
+    RenderResult<void> MaterialStorage::resolve(
         const NativeResourcePlan& plan,
         const MaterialBinding& argument,
-        StorageSubscription& subscription
+        StorageSubscription& subscription,
+        std::span<StorageResource> output
     ) noexcept
     {
         auto* entry = argument.material.storage == id_ ? entries_.find(argument.material.local) : nullptr;
@@ -428,30 +467,176 @@ namespace lux::render::vulkan
             }
             // This Graph port selects the device bindless table, not one physical Image. Its
             // Texture indices were resolved by the explicit write; no Client asset mirror is kept.
-            return StorageResource{};
+            std::ranges::fill(output, StorageResource{});
+            return {};
         }
         if (argument.layout != *table.program.parameterLayout())
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
         const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
-        if (!description || description->size < table.stride || description->size > table.buffer.size())
+        if (!description || description->size < table.stride || description->size > table.records.size())
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
         subscription.attach(entry->bindings);
-        return StorageResource{table.buffer.handle(), 0, table.buffer.size()};
+        for (std::uint32_t frame = 0; frame < output.size(); ++frame)
+        {
+            const auto& buffer = table.gpu[frame].parameters;
+            output[frame] = {buffer.handle(), 0, buffer ? buffer.size() : table.records.size()};
+        }
+        return {};
+    }
+
+    RenderResult<bool> MaterialStorage::prepareFrame(std::uint32_t frame, UploadContext& uploads) noexcept
+    {
+        bool ready = true;
+        auto& tables = dirty_tables_[frame];
+        for (std::size_t i = 0; i < tables.size();)
+        {
+            auto& table = *tables[i];
+            auto& slice = table.gpu[frame];
+            if (slice.dirty.empty())
+            {
+                removeDirty(table, frame);
+                continue;
+            }
+            ++i;
+            const auto capacity = static_cast<std::uint32_t>(table.records.size() / table.stride);
+            if (slice.capacity < capacity)
+            {
+                auto buffer = session_.allocator().createBuffer(
+                    table.records.size(),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                        VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    EMemoryAccess::DEVICE
+                );
+                if (!buffer)
+                {
+                    return cxx::unexpected(buffer.error());
+                }
+                releaseAfterGpu(session_, slice.parameters);
+                slice.parameters = std::move(*buffer);
+                slice.capacity = capacity;
+                slice.dirty.grow(capacity);
+                slice.dirty.markRange(0, capacity);
+                slice.partial_record = UINT32_MAX;
+                slice.partial_bytes = 0;
+                publish(table, frame);
+            }
+            slice.accepted.clear();
+            slice.next_partial_record = slice.partial_record;
+            slice.next_partial_bytes = slice.partial_bytes;
+            std::uint64_t covered = 0;
+            bool progress = false;
+            const auto stage = [&](std::uint32_t first, std::uint32_t count, std::size_t offset
+                               ) noexcept -> RenderResult<bool>
+            {
+                while (count)
+                {
+                    const auto begin = std::size_t(first) * table.stride + offset;
+                    const auto source = std::span<const std::byte>(table.records)
+                                            .subspan(begin, std::size_t(count) * table.stride - offset);
+                    auto copied = uploads.prepareBuffer({&slice.parameters, begin, source});
+                    if (!copied)
+                    {
+                        return cxx::unexpected(copied.error());
+                    }
+                    if (*copied == 0)
+                    {
+                        return false;
+                    }
+                    progress = true;
+                    const auto total = offset + *copied;
+                    const auto records = static_cast<std::uint32_t>(total / table.stride);
+                    if (records)
+                    {
+                        const auto mask =
+                            records == 64 ? UINT64_MAX : ((std::uint64_t{1} << records) - 1) << (first % 64);
+                        slice.accepted.push_back({first / 64, mask});
+                        covered += records;
+                    }
+                    first += records;
+                    count -= records;
+                    offset = total % table.stride;
+                    slice.next_partial_record = offset ? first : UINT32_MAX;
+                    slice.next_partial_bytes = offset;
+                }
+                return true;
+            };
+            RenderResult<bool> staged = true;
+            if (slice.partial_record != UINT32_MAX)
+            {
+                staged = stage(slice.partial_record, 1, slice.partial_bytes);
+            }
+            if (staged && *staged)
+            {
+                slice.dirty.select(uploads.windowRegionLimit(), slice.selected);
+                for (auto mask : slice.selected)
+                {
+                    auto bits = mask.bits;
+                    if (slice.partial_record != UINT32_MAX && slice.partial_record / 64 == mask.word_index)
+                    {
+                        bits &= ~(std::uint64_t{1} << (slice.partial_record % 64));
+                    }
+                    while (bits)
+                    {
+                        const auto first = static_cast<unsigned>(std::countr_zero(bits));
+                        const auto count = static_cast<unsigned>(std::countr_one(bits >> first));
+                        staged = stage(mask.word_index * 64 + first, count, 0);
+                        if (!staged || !*staged)
+                        {
+                            break;
+                        }
+                        const auto done = count == 64 ? UINT64_MAX : ((std::uint64_t{1} << count) - 1) << first;
+                        bits &= ~done;
+                    }
+                    if (!staged || !*staged)
+                    {
+                        break;
+                    }
+                }
+            }
+            if (progress)
+            {
+                uploads.afterFrameSubmit(
+                    &slice,
+                    [](void* value, RenderResult<void> accepted) noexcept
+                    {
+                        auto& slice = *static_cast<Table::GpuSlice*>(value);
+                        if (accepted)
+                        {
+                            slice.dirty.acknowledge(slice.accepted);
+                            slice.partial_record = slice.next_partial_record;
+                            slice.partial_bytes = slice.next_partial_bytes;
+                        }
+                        slice.accepted.clear();
+                    }
+                );
+            }
+            if (!staged)
+            {
+                return cxx::unexpected(staged.error());
+            }
+            ready &= covered == slice.dirty.recordCount();
+        }
+        return ready;
     }
 
     StorageFactory materialStorageFactory() noexcept
     {
         static const StorageBindingOps binding{
-            [](void* object, const NativeResourcePlan& plan, const void* argument, StorageSubscription& subscription
-            ) noexcept
+            [](void* object,
+               const NativeResourcePlan& plan,
+               const void* argument,
+               StorageSubscription& subscription,
+               std::span<StorageResource> output) noexcept
             {
                 return static_cast<MaterialStorage*>(object)
-                    ->resolve(plan, *static_cast<const MaterialBinding*>(argument), subscription);
-            }
+                    ->resolve(plan, *static_cast<const MaterialBinding*>(argument), subscription, output);
+            },
+            [](void* object, std::uint32_t slot, UploadContext& uploads) noexcept
+            { return static_cast<MaterialStorage*>(object)->prepareFrame(slot, uploads); }
         };
         static const auto create =
             +[](DeviceSession& session, StorageId id) noexcept -> RenderResult<std::unique_ptr<MaterialStorage>>

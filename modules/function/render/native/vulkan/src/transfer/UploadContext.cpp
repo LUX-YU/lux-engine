@@ -27,30 +27,32 @@ namespace lux::render::vulkan
         std::uint32_t bits = 0;
     };
 
+    struct UploadContext::Copy final
+    {
+        StagingRange staging;
+        gapi::vk::VmaBuffer* buffer = nullptr;
+        gapi::vk::VmaImage* image = nullptr;
+        const gapi::vk::VmaImage* clone = nullptr;
+        VkDeviceSize offset = 0;
+        ImageTransferRegion region;
+        std::span<const std::byte> source;
+        std::span<const BufferWrite> inputs;
+        std::size_t input_offset = 0, bytes = 0;
+        std::uint32_t row = 0, rows = 0;
+        bool first = false, final = false;
+    };
+
     struct UploadContext::BatchEntry final
     {
-        struct Copy final
-        {
-            StagingRange staging;
-            gapi::vk::VmaBuffer* buffer = nullptr;
-            gapi::vk::VmaImage* image = nullptr;
-            const gapi::vk::VmaImage* clone = nullptr;
-            VkDeviceSize offset = 0;
-            ImageTransferRegion region;
-            std::span<const std::byte> source;
-            std::uint32_t row = 0, rows = 0;
-            bool first = false, final = false;
-        };
-
         UploadContext* owner;
         SubmissionQueue* queue;
         std::span<Copy> copies;
-        std::span<const BufferCopy> gpu_copies;
         std::span<const BufferFill> fills;
-        std::span<const BufferWrite> updates;
         BatchEntry* next = nullptr;
         void* receiver = nullptr;
         void (*complete)(void*, RenderResult<void>) noexcept = nullptr;
+        std::uint32_t frame_slot = UINT32_MAX;
+        bool (*stopping)(void*) noexcept = nullptr;
         bool acquiring = false;
         bool waiting_range = false;
         std::size_t minimum_range = 4;
@@ -73,6 +75,11 @@ namespace lux::render::vulkan
             void start() & noexcept
             {
                 entry.receiver = this;
+                entry.stopping = [](void* value) noexcept
+                {
+                    auto& self = *static_cast<Operation*>(value);
+                    return stdexec::get_stop_token(stdexec::get_env(self.receiver)).stop_requested();
+                };
                 entry.complete = [](void* value, RenderResult<void> result) noexcept
                 {
                     auto& self = *static_cast<Operation*>(value);
@@ -116,7 +123,7 @@ namespace lux::render::vulkan
         const bool invalid = uploads_ || cpu == execution::CpuScheduler{} || options.chunk_bytes < 256 ||
                              options.chunk_bytes > 16 * 1024 * 1024 || options.staging_pages == 0 ||
                              options.staging_pages > 16 || options.pending_bytes < options.chunk_bytes ||
-                             options.batch_entries == 0;
+                             options.batch_entries == 0 || options.window_regions == 0;
         if (invalid)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
@@ -173,6 +180,8 @@ namespace lux::render::vulkan
         staging_arena_ = std::move(*arena);
         state->stats.staging_bytes = options.chunk_bytes * options.staging_pages;
         state->batch_entries_.reserve(options.batch_entries);
+        state->frame_copies_.reserve(options.window_regions);
+        state->frame_receivers_.reserve(options.window_regions);
         uploads_ = std::move(state);
         return {};
     }
@@ -386,6 +395,102 @@ namespace lux::render::vulkan
         return {};
     }
 
+    RenderResult<std::size_t> UploadContext::prepareBuffer(const BufferWrite& write, std::size_t unit) noexcept
+    {
+        if (frame_copies_.size() == options.window_regions)
+        {
+            return 0;
+        }
+        auto range = session.staging_arena_->acquire(std::min(write.source.size(), options.chunk_bytes), unit);
+        if (!range)
+        {
+            return 0;
+        }
+        const auto bytes = range->bytes().size();
+        std::memcpy(range->bytes().data(), write.source.data(), bytes);
+        if (auto result = range->flush(); result != VK_SUCCESS)
+        {
+            return cxx::unexpected(nativeError(result));
+        }
+        Copy copy{std::move(*range)};
+        copy.buffer = write.target;
+        copy.offset = write.offset;
+        copy.bytes = bytes;
+        copy.final = true;
+        frame_copies_.push_back(std::move(copy));
+        stats.copied_bytes += bytes;
+        return bytes;
+    }
+
+    void UploadContext::afterFrameSubmit(void* receiver, void (*complete)(void*, RenderResult<void>) noexcept) noexcept
+    {
+        BatchEntry entry{this, &session.queue(), {}};
+        entry.receiver = receiver;
+        entry.complete = complete;
+        frame_receivers_.push_back(entry);
+    }
+
+    bool UploadContext::hasFrameCopies() const noexcept
+    {
+        return !frame_copies_.empty();
+    }
+
+    void UploadContext::recordFrame(CommandBatch& batch) noexcept
+    {
+        if (frame_copies_.empty())
+        {
+            return;
+        }
+        VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+        barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+        barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        dependency.memoryBarrierCount = 1;
+        dependency.pMemoryBarriers = &barrier;
+        vkCmdPipelineBarrier2(batch.native(), &dependency);
+        for (auto& copy : frame_copies_)
+        {
+            recordBuffer(
+                batch.native(),
+                *copy.buffer,
+                copy.staging,
+                copy.offset,
+                copy.bytes,
+                session.queue(),
+                session.queue(),
+                false,
+                false
+            );
+        }
+        barrier.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
+        vkCmdPipelineBarrier2(batch.native(), &dependency);
+    }
+
+    void UploadContext::finishFrameCopies(RenderResult<void> result) noexcept
+    {
+        if (result)
+        {
+            for (auto& copy : frame_copies_)
+            {
+                copy.staging.commit(session.queue());
+                ++stats.copy_regions;
+            }
+        }
+        frame_copies_.clear();
+        for (auto& entry : frame_receivers_)
+        {
+            const auto complete = entry.complete;
+            auto* receiver = entry.receiver;
+            complete(receiver, result);
+        }
+        frame_receivers_.clear();
+    }
+
     void UploadContext::enqueueFrame(FrameWriteSender::Node& node) noexcept
     {
         node.next = nullptr;
@@ -400,8 +505,31 @@ namespace lux::render::vulkan
         frame_waiters_tail_ = &node;
     }
 
+    bool UploadContext::canStage(std::uint32_t frame_slot) const noexcept
+    {
+        if (frame_slot != UINT32_MAX)
+        {
+            return true;
+        }
+        const auto& frame = session.frames_[session.next_frame_];
+        return frame.phase != DeviceSession::EFramePhase::PREPARING && frame.pending_writes == 0;
+    }
+
     void UploadContext::enqueue(BatchEntry& entry) noexcept
     {
+        // Current-frame writers precede background range waiters in the same finite list.
+        // The active render workload reserves one existing page for frame preparation; an
+        // upload-only workload can use every page. Both use the same Arena and waiter list.
+        if (entry.waiting_range && entry.frame_slot != UINT32_MAX)
+        {
+            entry.next = range_waiters_;
+            range_waiters_ = &entry;
+            if (!range_waiters_tail_)
+            {
+                range_waiters_tail_ = &entry;
+            }
+            return;
+        }
         auto*& head = entry.waiting_range ? range_waiters_ : ready_head_;
         auto*& tail = entry.waiting_range ? range_waiters_tail_ : ready_tail_;
         entry.next = nullptr;
@@ -420,6 +548,8 @@ namespace lux::render::vulkan
     {
         // A bounded prefix only. Completing a Sender may enqueue later work, never extend this flush.
         auto* boundary = ready_tail_;
+        BatchEntry* blocked_head = nullptr;
+        BatchEntry* blocked_tail = nullptr;
         while (ready_head_ && boundary)
         {
             auto& first = *ready_head_;
@@ -429,7 +559,36 @@ namespace lux::render::vulkan
                              : queue.beginAfterPoll();
             if (!batch && batch.error().type == kCapacity)
             {
-                break;
+                // Temporarily detach blocked groups from this flush's original prefix.
+                // Restore them ahead of newly enqueued work, preserving per-Queue FIFO even
+                // when groups for the same Queue were separated by another Queue's entries.
+                auto* begin = ready_head_;
+                auto* end = begin;
+                while (end != boundary && end->next && end->next->queue == begin->queue &&
+                       end->next->acquiring == begin->acquiring)
+                {
+                    end = end->next;
+                }
+                ready_head_ = end->next;
+                if (!ready_head_)
+                {
+                    ready_tail_ = nullptr;
+                }
+                end->next = nullptr;
+                if (blocked_tail)
+                {
+                    blocked_tail->next = begin;
+                }
+                else
+                {
+                    blocked_head = begin;
+                }
+                blocked_tail = end;
+                if (end == boundary)
+                {
+                    boundary = nullptr;
+                }
+                continue;
             }
             batch_entries_.clear();
             const bool acquiring = first.acquiring;
@@ -493,7 +652,7 @@ namespace lux::render::vulkan
                         dependency.pMemoryBarriers = &barrier;
                         vkCmdPipelineBarrier2(batch->native(), &dependency);
                     };
-                    if (!entry->fills.empty() || !entry->gpu_copies.empty() || !entry->updates.empty())
+                    if (!entry->fills.empty())
                     {
                         bufferBarrier(
                             VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
@@ -512,26 +671,6 @@ namespace lux::render::vulkan
                                 VK_ACCESS_2_TRANSFER_WRITE_BIT,
                                 VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
                                 VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT
-                            );
-                        }
-                        for (const auto& copy : entry->gpu_copies)
-                        {
-                            vkCmdCopyBuffer(
-                                batch->native(),
-                                copy.source->handle(),
-                                copy.target->handle(),
-                                1,
-                                &copy.range
-                            );
-                        }
-                        for (const auto& write : entry->updates)
-                        {
-                            vkCmdUpdateBuffer(
-                                batch->native(),
-                                write.target->handle(),
-                                write.offset,
-                                write.source.size(),
-                                write.source.data()
                             );
                         }
                         bufferBarrier(
@@ -561,7 +700,7 @@ namespace lux::render::vulkan
                                 barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                                 barrier.buffer = copy.buffer->handle();
                                 barrier.offset = copy.offset;
-                                barrier.size = copy.source.size();
+                                barrier.size = copy.bytes;
                                 VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
                                 dependency.bufferMemoryBarrierCount = 1;
                                 dependency.pBufferMemoryBarriers = &barrier;
@@ -572,7 +711,7 @@ namespace lux::render::vulkan
                                 *copy.buffer,
                                 copy.staging,
                                 copy.offset,
-                                copy.source.size(),
+                                copy.bytes,
                                 queue,
                                 session.queue(),
                                 acquiring,
@@ -615,13 +754,15 @@ namespace lux::render::vulkan
                 {
                     acquiring ? ++stats.acquire_submissions : ++stats.copy_submissions;
                 }
-                if (accepted && &queue == &session.queue())
+                if (accepted)
                 {
-                    auto& frame = session.frames_[session.next_frame_];
-                    if (frame.phase == DeviceSession::EFramePhase::COLLECTING ||
-                        frame.phase == DeviceSession::EFramePhase::PREPARING)
+                    for (auto* entry : batch_entries_)
                     {
-                        frame.accepted_serials[session.queue_roles_[0]] = queue.submitted();
+                        if (entry->frame_slot != UINT32_MAX)
+                        {
+                            session.frames_[entry->frame_slot].accepted_serials[session.queue_roles_[0]] =
+                                queue.submitted();
+                        }
                     }
                 }
                 if (accepted && timestamp)
@@ -673,6 +814,15 @@ namespace lux::render::vulkan
                 }
             }
         }
+        if (blocked_head)
+        {
+            blocked_tail->next = ready_head_;
+            ready_head_ = blocked_head;
+            if (!ready_tail_)
+            {
+                ready_tail_ = blocked_tail;
+            }
+        }
         const auto phase = session.frames_[session.next_frame_].phase;
         const bool can_write =
             phase == DeviceSession::EFramePhase::FREE || phase == DeviceSession::EFramePhase::COLLECTING;
@@ -701,7 +851,12 @@ namespace lux::render::vulkan
         while (range_waiters_ && range_boundary)
         {
             auto* entry = range_waiters_;
-            if (!session.deviceLost() && !session.staging_arena_->canAcquire(entry->minimum_range))
+            const bool stopping = entry->stopping(entry->receiver);
+            if (!stopping && !session.deviceLost() &&
+                (!canStage(entry->frame_slot) || !session.staging_arena_->canAcquire(
+                                                     entry->minimum_range,
+                                                     entry->frame_slot == UINT32_MAX && session.rendering_
+                                                 )))
             {
                 break;
             }
@@ -720,6 +875,7 @@ namespace lux::render::vulkan
             complete(
                 receiver,
                 session.deviceLost() ? RenderResult<void>{cxx::unexpected(nativeError(VK_ERROR_DEVICE_LOST))}
+                : stopping           ? RenderResult<void>{cxx::unexpected(RenderError{kWorkStopped})}
                                      : RenderResult<void>{}
             );
         }
@@ -727,20 +883,11 @@ namespace lux::render::vulkan
 
     UploadContext::Task UploadContext::writeBuffers(
         std::span<const BufferWrite> writes,
-        std::span<const BufferCopy> copies,
-        std::span<const BufferFill> fills
+        std::span<const BufferFill> fills,
+        std::uint32_t frame_slot
     ) noexcept
     {
-        return write(writes, copies, fills, nullptr, {}, {}, nullptr, false);
-    }
-
-    UploadContext::Task UploadContext::updateBuffers(
-        std::span<const BufferWrite> writes,
-        std::span<const BufferCopy> copies,
-        std::span<const BufferFill> fills
-    ) noexcept
-    {
-        return write(writes, copies, fills, nullptr, {}, {}, nullptr, true);
+        return write(writes, fills, nullptr, {}, {}, nullptr, frame_slot);
     }
 
     UploadContext::Task UploadContext::writeImage(
@@ -750,21 +897,23 @@ namespace lux::render::vulkan
         const gapi::vk::VmaImage* clone
     ) noexcept
     {
-        return write({}, {}, {}, &target, source, std::move(regions), clone, false);
+        return write({}, {}, &target, source, std::move(regions), clone, UINT32_MAX);
     }
 
     UploadContext::Task UploadContext::write(
         std::span<const BufferWrite> writes,
-        std::span<const BufferCopy> gpu_copies,
         std::span<const BufferFill> fills,
         gapi::vk::VmaImage* image,
         std::span<const std::byte> source,
         std::vector<ImageTransferRegion> regions,
         const gapi::vk::VmaImage* clone,
-        bool inline_updates
+        std::uint32_t frame_slot
     ) noexcept
     {
         std::size_t pending_bytes = 0;
+        std::size_t buffer_runs = 0;
+        const gapi::vk::VmaBuffer* previous_target = nullptr;
+        VkDeviceSize previous_end = 0;
         if (!image)
         {
             for (const auto& input : writes)
@@ -774,7 +923,6 @@ namespace lux::render::vulkan
                     co_return cxx::unexpected(RenderError{kInvalidArgument});
                 }
                 const bool invalid = input.source.empty() || input.source.size() % 4 || input.offset % 4 ||
-                                     (inline_updates && input.source.size() > 65536) ||
                                      input.offset > input.target->size() ||
                                      input.source.size() > input.target->size() - input.offset ||
                                      !(input.target->usage() & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
@@ -787,6 +935,9 @@ namespace lux::render::vulkan
                     co_return cxx::unexpected(RenderError{kCapacity});
                 }
                 pending_bytes += input.source.size();
+                buffer_runs += input.target != previous_target || input.offset != previous_end;
+                previous_target = input.target;
+                previous_end = input.offset + input.source.size();
             }
         }
         else
@@ -818,24 +969,6 @@ namespace lux::render::vulkan
             }
             pending_bytes = source.size();
         }
-        for (const auto& copy : gpu_copies)
-        {
-            if (!copy.source || !copy.target)
-            {
-                co_return cxx::unexpected(RenderError{kInvalidArgument});
-            }
-            const auto& range = copy.range;
-            const bool invalid =
-                !range.size || (range.srcOffset | range.dstOffset | range.size) % 4 ||
-                range.srcOffset > copy.source->size() || range.size > copy.source->size() - range.srcOffset ||
-                range.dstOffset > copy.target->size() || range.size > copy.target->size() - range.dstOffset ||
-                !(copy.source->usage() & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) ||
-                !(copy.target->usage() & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-            if (invalid)
-            {
-                co_return cxx::unexpected(RenderError{kInvalidArgument});
-            }
-        }
         for (const auto& fill : fills)
         {
             if (!fill.target)
@@ -850,7 +983,7 @@ namespace lux::render::vulkan
                 co_return cxx::unexpected(RenderError{kInvalidArgument});
             }
         }
-        if (!image && writes.empty() && gpu_copies.empty() && fills.empty())
+        if (!image && writes.empty() && fills.empty())
         {
             co_return cxx::unexpected(RenderError{kInvalidArgument});
         }
@@ -868,14 +1001,12 @@ namespace lux::render::vulkan
                 error.type == kNativeFailure && error.args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
             return cxx::unexpected(accepted_any && lost ? RenderError{kOutcomeUnknown} : error);
         };
-        std::vector<BatchEntry::Copy> copies;
-        if (!inline_updates)
-        {
-            copies.reserve(options.staging_pages);
-        }
-        std::size_t index = 0, offset = 0;
+        std::vector<Copy> copies;
+        const auto ranges = image ? regions.size() : buffer_runs;
+        copies.reserve(std::min(options.window_regions, std::max(options.staging_pages, ranges)));
+        std::size_t index = 0, offset = 0, run_end = 0, run_remaining = 0;
         std::uint32_t row = 0;
-        const auto count = image ? regions.size() : inline_updates ? 0 : writes.size();
+        const auto count = image ? regions.size() : writes.size();
         while (index < count || !accepted_any)
         {
             if (stop.stop_requested())
@@ -883,50 +1014,86 @@ namespace lux::render::vulkan
                 co_return failure(RenderError{kWorkStopped});
             }
             copies.clear();
-            while (index < count && copies.size() < copies.capacity())
+            while (index < count && copies.size() < copies.capacity() && canStage(frame_slot))
             {
                 const auto* region = image ? &regions[index] : nullptr;
                 const auto row_bytes =
                     region ? std::size_t((region->extent.width - 1) / region->block_extent + 1) * region->block_bytes
                            : 0;
+                if (!region && run_remaining == 0)
+                {
+                    run_end = index + 1;
+                    run_remaining = writes[index].source.size() - offset;
+                    auto end_offset = writes[index].offset + writes[index].source.size();
+                    while (run_end < count && writes[run_end].target == writes[index].target &&
+                           writes[run_end].offset == end_offset)
+                    {
+                        run_remaining += writes[run_end].source.size();
+                        end_offset += writes[run_end].source.size();
+                        ++run_end;
+                    }
+                }
                 const auto remaining =
                     region ? std::size_t((region->extent.height - 1) / region->block_extent + 1 - row) * row_bytes
-                           : writes[index].source.size() - offset;
-                auto range =
-                    session.staging_arena_->acquire(std::min(remaining, options.chunk_bytes), region ? row_bytes : 4);
+                           : run_remaining;
+                auto range = session.staging_arena_->acquire(
+                    std::min(remaining, options.chunk_bytes),
+                    region ? row_bytes : 4,
+                    frame_slot == UINT32_MAX && session.rendering_
+                );
                 if (!range)
                 {
                     break;
                 }
                 const auto bytes = range->bytes().size();
-                const auto rows = region ? std::uint32_t(bytes / row_bytes) : 0;
-                const bool region_final = bytes == remaining;
-                const bool final = region ? region_final && index + 1 == count : true;
-                BatchEntry::Copy chunk{std::move(*range)};
+                Copy chunk{std::move(*range)};
+                chunk.bytes = bytes;
                 chunk.buffer = region ? nullptr : writes[index].target;
+                chunk.offset = region ? 0 : writes[index].offset + offset;
                 chunk.image = image;
                 chunk.clone = clone;
-                chunk.offset = region ? 0 : writes[index].offset + offset;
-                chunk.region = region ? *region : ImageTransferRegion{};
-                chunk.source = region ? source : writes[index].source.subspan(offset, bytes);
-                chunk.row = row;
-                chunk.rows = rows;
                 chunk.first = !accepted_any && copies.empty();
-                chunk.final = final;
-                copies.push_back(std::move(chunk));
-                offset += bytes;
-                row += rows;
-                if (region_final)
+                if (region)
                 {
-                    ++index;
-                    offset = 0;
-                    row = 0;
+                    chunk.region = *region;
+                    chunk.source = source;
+                    chunk.row = row;
+                    chunk.rows = static_cast<std::uint32_t>(bytes / row_bytes);
+                    chunk.final = bytes == remaining && index + 1 == count;
+                    row += chunk.rows;
+                    if (bytes == remaining)
+                    {
+                        ++index;
+                        row = 0;
+                    }
                 }
+                else
+                {
+                    const auto first_input = index;
+                    chunk.input_offset = offset;
+                    auto consumed = bytes;
+                    while (consumed)
+                    {
+                        const auto part = std::min(consumed, writes[index].source.size() - offset);
+                        consumed -= part;
+                        offset += part;
+                        if (offset == writes[index].source.size())
+                        {
+                            ++index;
+                            offset = 0;
+                        }
+                    }
+                    chunk.inputs = writes.subspan(first_input, index - first_input + (offset != 0));
+                    chunk.final = true;
+                    run_remaining -= bytes;
+                }
+                copies.push_back(std::move(chunk));
             }
             if (copies.empty() && index < count)
             {
                 BatchEntry wait{this, &copy_queue, {}};
                 wait.waiting_range = true;
+                wait.frame_slot = frame_slot;
                 if (image)
                 {
                     const auto& region = regions[index];
@@ -954,7 +1121,16 @@ namespace lux::render::vulkan
                                 auto target = copy.staging.bytes();
                                 if (copy.buffer)
                                 {
-                                    std::memcpy(target.data(), copy.source.data(), target.size());
+                                    auto offset = copy.input_offset;
+                                    std::size_t packed = 0;
+                                    for (const auto& input : copy.inputs)
+                                    {
+                                        const auto count =
+                                            std::min(target.size() - packed, input.source.size() - offset);
+                                        std::memcpy(target.data() + packed, input.source.data() + offset, count);
+                                        packed += count;
+                                        offset = 0;
+                                    }
                                 }
                                 else
                                 {
@@ -1005,11 +1181,10 @@ namespace lux::render::vulkan
                 co_return failure(RenderError{kWorkStopped});
             }
             BatchEntry entry{this, &copy_queue, copies};
+            entry.frame_slot = frame_slot;
             if (!accepted_any)
             {
-                entry.gpu_copies = gpu_copies;
                 entry.fills = fills;
-                entry.updates = inline_updates ? writes : std::span<const BufferWrite>{};
             }
             auto submitted = co_await BatchSender{entry};
             if (!submitted)

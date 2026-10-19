@@ -285,11 +285,13 @@ namespace mesh_sample
             prepare(main, main_commands, main_next, kMeshInstanceStorageType, "instances", scene);
         MeshInstanceDescription description{assets.mesh, assets.material};
         description.transform[12] = -.45f;
-        auto left =
-            coldCall<CreateMeshInstance>(main, main_commands, main_next, {instance_storage, description}).instance;
+        MeshInstancesCreate instances{instance_storage, {description}};
         description.transform[12] = .45f;
-        auto right =
-            coldCall<CreateMeshInstance>(main, main_commands, main_next, {instance_storage, description}).instance;
+        instances.descriptions.push_back(description);
+        auto created = coldCall<CreateMeshInstances>(main, main_commands, main_next, std::move(instances));
+        check(created.instances.size() == 2);
+        const auto left = created.instances[0];
+        const auto right = created.instances[1];
         check(left != right); // The Client keeps the creation description; no resource query mirror is needed.
 
         MeshViewParameters first_camera, second_camera;

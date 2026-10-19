@@ -54,8 +54,12 @@ namespace lux::render::vulkan
         StagingArena& operator=(const StagingArena&) = delete;
 
         // Legacy's aligned bump allocation, independently reclaimed for each finite backing page.
-        [[nodiscard]] RenderResult<StagingRange> acquire(std::size_t bytes, std::size_t unit = 4) noexcept;
-        [[nodiscard]] bool canAcquire(std::size_t unit) const noexcept;
+        [[nodiscard]] RenderResult<StagingRange> acquire(
+            std::size_t bytes,
+            std::size_t unit = 4,
+            bool reserve_frame_page = false
+        ) noexcept;
+        [[nodiscard]] bool canAcquire(std::size_t unit, bool reserve_frame_page = false) const noexcept;
 
     private:
         friend class StagingRange;

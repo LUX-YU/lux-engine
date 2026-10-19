@@ -16,6 +16,7 @@ namespace lux::render::vulkan
         struct GpuPage;
         struct Page;
         struct PageTable;
+        struct FrameData;
 
         struct Entry final
         {
@@ -51,6 +52,8 @@ namespace lux::render::vulkan
         MeshInstanceStorage& operator=(const MeshInstanceStorage&) = delete;
 
         [[nodiscard]] exec::task<RenderResult<MeshInstanceId>> create(MeshInstanceDescription) noexcept;
+        [[nodiscard]] exec::task<
+            RenderResult<std::vector<MeshInstanceId>>> create(std::vector<MeshInstanceDescription>) noexcept;
         [[nodiscard]] exec::task<RenderResult<TransformApplied>> update(TransformBatch) noexcept;
         [[nodiscard]] exec::task<RenderResult<TransformApplied>> update(MeshInstanceBatch) noexcept;
         [[nodiscard]] exec::task<RenderResult<Ack>> release(MeshInstanceId) noexcept;
@@ -76,17 +79,29 @@ namespace lux::render::vulkan
 
     private:
         friend StorageFactory meshInstanceStorageFactory() noexcept;
-        [[nodiscard]] RenderResult<StorageResource>
-        resolve(const NativeResourcePlan&, const MeshInstanceBinding&, StorageSubscription&) noexcept;
-        [[nodiscard]] RenderResult<std::unique_ptr<GpuPage>> allocate(std::size_t slots) noexcept;
+        template <class Input>
+        using CreateValue = std::
+            conditional_t<std::same_as<Input, MeshInstanceDescription>, MeshInstanceId, std::vector<MeshInstanceId>>;
+        template <class Input> [[nodiscard]] exec::task<RenderResult<CreateValue<Input>>> createBatch(Input) noexcept;
+        [[nodiscard]] RenderResult<void>
+        resolve(const NativeResourcePlan&, const MeshInstanceBinding&, StorageSubscription&, std::span<StorageResource>) noexcept;
+        [[nodiscard]] RenderResult<void> allocate(GpuPage&, std::size_t slots) noexcept;
+        [[nodiscard]] RenderResult<void> ensureFrame(std::uint32_t slot) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, UploadContext&) noexcept;
         [[nodiscard]] RenderResult<MeshInstanceGpuProperty> resolveReferences(const MeshInstanceDescription&)
             const noexcept;
         [[nodiscard]] MeshInstanceDescription describe(const Entry&) const noexcept;
-        void retire(std::unique_ptr<GpuPage>&) noexcept;
         void notify(const Entry&, bool removed) noexcept;
-        void publishBuffers() noexcept;
-        [[nodiscard]] gapi::vk::VmaBuffer& fieldBuffer(std::uint32_t page, EMeshInstanceBinding) const noexcept;
-        [[nodiscard]] VkDeviceSize fieldOffset(std::uint32_t slot, std::size_t stride) const noexcept;
+        void publishBuffers(std::uint32_t slot) noexcept;
+        void release(GpuPage&) noexcept;
+        void release(PageTable&) noexcept;
+        void mark(std::uint32_t frame, std::uint32_t record, std::uint8_t fields) noexcept;
+        [[nodiscard]] gapi::vk::VmaBuffer& fieldBuffer(
+            std::uint32_t frame,
+            std::uint32_t page,
+            std::size_t field
+        ) noexcept;
+        [[nodiscard]] VkDeviceSize fieldOffset(std::uint32_t record, std::size_t stride) const noexcept;
         DeviceSession& session_;
         StorageId id_;
         const bool paged_;
@@ -94,13 +109,8 @@ namespace lux::render::vulkan
         std::uint32_t live_records_ = 0;
         cxx::SlotMap<Entry, MeshInstanceTag> entries_;
         std::vector<std::unique_ptr<Page>> pages_;
-        std::unique_ptr<GpuPage> flat_;
-        std::unique_ptr<PageTable> page_table_;
+        std::unique_ptr<FrameData> frames_;
         std::array<StorageSubscription*, 3> bindings_{};
         std::vector<Observer*> observers_;
-        std::vector<std::uint32_t> dirty_positions_, dirty_blocks_;
-        std::vector<std::byte> update_bytes_;
-        std::vector<MeshInstanceGpuProperty> update_properties_;
-        gapi::vk::VmaBuffer update_buffer_;
     };
 } // namespace lux::render::vulkan

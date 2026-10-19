@@ -19,6 +19,16 @@ namespace lux::render::vulkan
         return std::chrono::duration_cast<std::chrono::nanoseconds>(UploadClock::now() - start).count();
     }
 
+    static inline std::size_t bufferBytes(
+        const BufferWrite& input,
+        std::uint32_t element_bytes,
+        std::uint32_t source_stride
+    ) noexcept
+    {
+        return source_stride ? ((input.source.size() - element_bytes) / source_stride + 1) * element_bytes
+                             : input.source.size();
+    }
+
     struct UploadContext::Measurement final
     {
         SubmissionCallback completion;
@@ -923,11 +933,6 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        const auto buffer_size = [=](const BufferWrite& input) noexcept
-        {
-            return strided ? ((input.source.size() - element_bytes) / source_stride + 1) * element_bytes
-                           : input.source.size();
-        };
         std::size_t pending_bytes = 0;
         std::size_t buffer_runs = 0;
         const gapi::vk::VmaBuffer* previous_target = nullptr;
@@ -947,7 +952,7 @@ namespace lux::render::vulkan
                 {
                     co_return cxx::unexpected(RenderError{kInvalidArgument});
                 }
-                const auto bytes = buffer_size(input);
+                const auto bytes = bufferBytes(input, element_bytes, source_stride);
                 const bool invalid = bytes % 4 || input.offset % 4 || input.offset > input.target->size() ||
                                      bytes > input.target->size() - input.offset ||
                                      !(input.target->usage() & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
@@ -1048,12 +1053,12 @@ namespace lux::render::vulkan
                 if (!region && run_remaining == 0)
                 {
                     run_end = index + 1;
-                    run_remaining = buffer_size(writes[index]) - offset;
-                    auto end_offset = writes[index].offset + buffer_size(writes[index]);
+                    run_remaining = bufferBytes(writes[index], element_bytes, source_stride) - offset;
+                    auto end_offset = writes[index].offset + bufferBytes(writes[index], element_bytes, source_stride);
                     while (run_end < count && writes[run_end].target == writes[index].target &&
                            writes[run_end].offset == end_offset)
                     {
-                        const auto bytes = buffer_size(writes[run_end]);
+                        const auto bytes = bufferBytes(writes[run_end], element_bytes, source_stride);
                         run_remaining += bytes;
                         end_offset += bytes;
                         ++run_end;
@@ -1100,7 +1105,7 @@ namespace lux::render::vulkan
                     auto consumed = bytes;
                     while (consumed)
                     {
-                        const auto input_bytes = buffer_size(writes[index]);
+                        const auto input_bytes = bufferBytes(writes[index], element_bytes, source_stride);
                         const auto part = std::min(consumed, input_bytes - offset);
                         consumed -= part;
                         offset += part;
@@ -1140,7 +1145,7 @@ namespace lux::render::vulkan
                 auto prepared = co_await (
                     stdexec::schedule(cpu) |
                     stdexec::then(
-                        [&]() noexcept
+                        [&copies, element_bytes, source_stride]() noexcept
                         {
                             const auto started = UploadClock::now();
                             for (auto& copy : copies)
@@ -1152,9 +1157,11 @@ namespace lux::render::vulkan
                                     std::size_t packed = 0;
                                     for (const auto& input : copy.inputs)
                                     {
-                                        const auto count =
-                                            std::min(target.size() - packed, buffer_size(input) - offset);
-                                        if (!strided || source_stride == element_bytes)
+                                        const auto count = std::min(
+                                            target.size() - packed,
+                                            bufferBytes(input, element_bytes, source_stride) - offset
+                                        );
+                                        if (!source_stride || source_stride == element_bytes)
                                         {
                                             std::memcpy(target.data() + packed, input.source.data() + offset, count);
                                         }

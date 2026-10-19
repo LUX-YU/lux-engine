@@ -19,10 +19,17 @@ namespace lux::render
         std::uint64_t revision = 0;
     };
 
+    struct TextureGpuRef final
+    {
+        std::uint32_t descriptor_index = 0;
+        std::uint32_t color_space = 0;
+    };
+
+    static_assert(sizeof(TextureGpuRef) == 8);
+
     struct TextureBinding final
     {
         TextureId texture;
-        std::uint32_t lod = 0;
         bool operator==(const TextureBinding&) const noexcept = default;
     };
 
@@ -96,7 +103,6 @@ namespace lux::render
         struct Ops final
         {
             RenderResult<TexturePublished> (*query)(const void*, TextureId) noexcept;
-            RenderResult<void> (*release)(void*, TextureId, std::uint64_t) noexcept;
         };
 
         class Access final
@@ -105,11 +111,6 @@ namespace lux::render
             [[nodiscard]] RenderResult<TexturePublished> query(TextureId id) const noexcept
             {
                 return ops_->query(native_, id);
-            }
-
-            [[nodiscard]] RenderResult<void> release(TextureId id, std::uint64_t revision) const noexcept
-            {
-                return ops_->release(native_, id, revision);
             }
 
         private:

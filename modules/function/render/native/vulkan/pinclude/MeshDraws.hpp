@@ -1,41 +1,43 @@
 #pragma once
 
-#include <lux/engine/render/native/vulkan/StorageBinding.hpp>
+#include <lux/engine/render/features/mesh/MeshFeature.hpp>
+#include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshInstanceStorage.hpp>
 
 namespace lux::render::vulkan
 {
-    // Context-owned mesh selection. Storage provides instance changes; this binding owns the
-    // derived membership/indirect buffer. It is not a Storage or another resource registry.
+    struct MeshDrawConfiguration final
+    {
+        GraphResourceId instances;
+        MeshInstanceDrawGroup selection;
+    };
+
+    // One Attachment's derived selection and indirect commands. MeshInstanceStorage only reports
+    // identity changes; selection, grouping, allocation and recording belong to this Native Feature.
     class MeshDraws final
     {
     public:
-        static RenderResult<void>
-        prepare(MeshInstanceStorage&, const MeshInstanceBinding&, PreparedStorageBinding&) noexcept;
+        [[nodiscard]] static RenderResult<ContextData>
+        create(DeviceSession&, ExecutionContext&, std::uint32_t, GraphResourceId, const void*) noexcept;
         ~MeshDraws() noexcept;
-        void added(std::uint32_t index) noexcept;
-        void removed(std::uint32_t index) noexcept;
-
-        [[nodiscard]] std::size_t capacity() const noexcept
-        {
-            return positions_.size();
-        }
-
-        void disconnect() noexcept
-        {
-            storage_ = nullptr;
-        }
 
     private:
-        MeshDraws(DeviceSession&, MeshInstanceStorage&, MeshInstanceDrawGroup, PreparedStorageBinding&) noexcept;
-        void changed() noexcept;
+        MeshDraws(DeviceSession&, ExecutionContext&, std::uint32_t, GraphResourceId, MeshInstanceDrawGroup) noexcept;
+        [[nodiscard]] RenderResult<void> prepare() noexcept;
+        void record(VkCommandBuffer) noexcept;
+        void update(MeshInstanceId, const MeshInstanceDescription*) noexcept;
+        [[nodiscard]] bool selected(const MeshInstanceDescription&) const noexcept;
         DeviceSession& session_;
-        MeshInstanceStorage* storage_;
+        ExecutionContext& context_;
+        std::uint32_t data_index_;
+        GraphResourceId resource_;
+        StorageResource sections_;
+        StorageSubscription section_subscription_;
         MeshInstanceDrawGroup selection_;
-        PreparedStorageBinding& binding_;
+        MeshInstanceStorage::Observer observer_;
         std::unique_ptr<Buffer> buffer_;
         RetirementReservation retirement_;
         std::vector<std::uint32_t> words_, positions_;
-        std::size_t position_ = 0;
+        bool available_ = true;
     };
 } // namespace lux::render::vulkan

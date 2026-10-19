@@ -56,16 +56,16 @@ namespace lux::render
             }
             const auto& mesh = config.mesh.description;
             const auto* program = &config.material.program;
-            const bool has_group = config.instances.group.has_value();
-            const bool is_invalid_group = !has_group || !config.instances.record_count ||
-                                          config.instances.role != EMeshInstanceBinding::MATRICES ||
-                                          (has_group && (config.instances.group->mesh != config.mesh.mesh ||
-                                                         config.instances.group->material != config.material.material ||
-                                                         config.instances.group->submesh >= mesh.submeshes.size()));
+            const bool is_invalid_group = config.group.mesh != config.mesh.mesh ||
+                                          config.group.material != config.material.material ||
+                                          config.group.submesh >= mesh.submeshes.size();
             const bool is_invalid_storage =
                 config.mesh_storage.empty() || config.material_storage.empty() || config.instance_storage.empty();
-            const bool is_invalid_material = !Depth && (config.material.texture_slot != UINT32_MAX ||
-                                                        config.textures.size() != program->texture_count);
+            const auto* material_layout = program->parameterLayout();
+            const bool is_invalid_material =
+                !Depth &&
+                (!material_layout || material_layout->fields.empty() ||
+                 (config.material.texture_slot != UINT32_MAX || config.textures.size() != program->texture_count));
             const bool is_invalid_config = is_invalid_group || is_invalid_storage || is_invalid_material;
             if (is_invalid_config)
             {
@@ -103,20 +103,48 @@ namespace lux::render
                      StorageRequirement{StorageName(storage.name()), owner_key}}
                 );
             };
-            buffer(claims.storage.global, "mesh", *bytes, kMeshStorageType, config.mesh_storage);
+            buffer(
+                claims.storage.global,
+                "vertices",
+                std::uint64_t(mesh.vertex_count) * mesh.vertex_stride,
+                kMeshStorageType,
+                config.mesh_storage
+            );
+            buffer(
+                claims.storage.global,
+                "indices",
+                std::uint64_t(mesh.index_count) * mesh.index_stride,
+                kMeshStorageType,
+                config.mesh_storage
+            );
             buffer(
                 claims.storage.scene,
                 "matrices",
-                std::uint64_t(config.instances.record_count) * 64,
+                sizeof(TransformMatrix),
                 kMeshInstanceStorageType,
                 config.instance_storage
             );
             buffer(
                 claims.storage.scene,
-                "members",
-                20 + std::uint64_t(config.instances.record_count) * 4,
+                "properties",
+                sizeof(MeshInstanceGpuProperty),
                 kMeshInstanceStorageType,
                 config.instance_storage
+            );
+            buffer(
+                claims.storage.scene,
+                "alive",
+                sizeof(std::uint64_t), // Covers a flat value or one paged root address; Attach binds actual capacity.
+                kMeshInstanceStorageType,
+                config.instance_storage
+            );
+            // Feature-derived indirect membership, prepared once per Attachment. It is not a Storage.
+            claims.resources.push_back(
+                {key("members"),
+                 EResourceClaim::PROVIDE,
+                 GraphBufferDesc{24},
+                 EGraphOrigin::IMPORTED,
+                 {GraphBufferRange{0, 24}}}
             );
             const GraphImageDesc color{config.target.width, config.target.height, 1, 1, config.target.format};
             const GraphImageDesc
@@ -128,7 +156,7 @@ namespace lux::render
                 buffer(
                     claims.storage.global,
                     "material",
-                    materialParameterBlock(*program).size,
+                    material_layout->size,
                     kMaterialStorageType,
                     config.material_storage
                 );
@@ -162,9 +190,11 @@ namespace lux::render
             GraphPass draw{
                 key("draw"),
                 EGraphPassKind::GRAPHICS,
-                {{resource("mesh"), {}, EGraphAccess::READ, 0, {}, EGraphUse::VERTEX},
-                 {resource("mesh"), {}, EGraphAccess::READ, 0, {}, EGraphUse::INDEX},
+                {{resource("vertices"), {}, EGraphAccess::READ, 0, {}, EGraphUse::VERTEX},
+                 {resource("indices"), {}, EGraphAccess::READ, 0, {}, EGraphUse::INDEX},
                  {resource("matrices"), {}, EGraphAccess::READ, 0, {}, EGraphUse::STORAGE_READ},
+                 {resource("properties"), {}, EGraphAccess::READ, 0, {}, EGraphUse::STORAGE_READ},
+                 {resource("alive"), {}, EGraphAccess::READ, 0, {}, EGraphUse::STORAGE_READ},
                  {resource("members"), {}, EGraphAccess::READ, 0, {}, EGraphUse::STORAGE_READ},
                  {resource("members"), {}, EGraphAccess::READ, 0, {}, EGraphUse::INDIRECT},
                  {resource("depth"), {}, EGraphAccess::WRITE, 0, {}, EGraphUse::DEPTH_ATTACHMENT}}

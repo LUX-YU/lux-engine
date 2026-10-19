@@ -3,44 +3,33 @@
 
 namespace lux::render::vulkan
 {
-    void MeshInstanceCommandHandler::createInstance(
-        const CreateMeshInstance::Request& input,
-        CreateMeshInstance::Response& response
-    ) noexcept
+    template <class Response> static exec::task<Response> rejectedInstance(RenderError error) noexcept
     {
-        auto storage = device_.resources().borrow<MeshInstanceStorage>(input.storage);
-        if (!storage)
-        {
-            response = cxx::unexpected(storage.error());
-            return;
-        }
-        auto result = (*storage)->create(input.description);
-        if (!result)
-        {
-            response = cxx::unexpected(result.error());
-            return;
-        }
-        response = std::move(*result);
+        co_return cxx::unexpected(error);
     }
 
-    void MeshInstanceCommandHandler::updateTransforms(
-        const UpdateTransforms::Request& input,
-        UpdateTransforms::Response& response
+    exec::task<CreateMeshInstance::Response> MeshInstanceCommandHandler::createInstance(
+        CreateMeshInstance::Request&& input
     ) noexcept
     {
         auto storage = device_.resources().borrow<MeshInstanceStorage>(input.storage);
         if (!storage)
         {
-            response = cxx::unexpected(storage.error());
-            return;
+            return rejectedInstance<CreateMeshInstance::Response>(storage.error());
         }
-        auto result = (*storage)->update(input);
-        if (!result)
+        return (*storage)->create(std::move(input.description));
+    }
+
+    exec::task<UpdateTransforms::Response> MeshInstanceCommandHandler::updateTransforms(
+        UpdateTransforms::Request&& input
+    ) noexcept
+    {
+        auto storage = device_.resources().borrow<MeshInstanceStorage>(input.storage);
+        if (!storage)
         {
-            response = cxx::unexpected(result.error());
-            return;
+            return rejectedInstance<UpdateTransforms::Response>(storage.error());
         }
-        response = std::move(*result);
+        return (*storage)->update(std::move(input));
     }
 
     void MeshInstanceCommandHandler::queryInstance(
@@ -63,23 +52,16 @@ namespace lux::render::vulkan
         response = std::move(*result);
     }
 
-    void MeshInstanceCommandHandler::releaseInstance(
-        const ReleaseMeshInstance::Request& input,
-        ReleaseMeshInstance::Response& response
+    exec::task<ReleaseMeshInstance::Response> MeshInstanceCommandHandler::releaseInstance(
+        ReleaseMeshInstance::Request&& input
     ) noexcept
     {
         auto storage = device_.resources().borrow<MeshInstanceStorage>(input.instance.storage);
         if (!storage)
         {
-            response = cxx::unexpected(storage.error());
-            return;
+            return rejectedInstance<ReleaseMeshInstance::Response>(storage.error());
         }
-        if (auto result = (*storage)->release(input); !result)
-        {
-            response = cxx::unexpected(result.error());
-            return;
-        }
-        response = Ack{};
+        return (*storage)->release(input);
     }
 
 } // namespace lux::render::vulkan

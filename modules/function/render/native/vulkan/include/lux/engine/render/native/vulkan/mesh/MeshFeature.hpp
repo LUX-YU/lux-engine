@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/features/mesh/MeshFeature.hpp>
-#include <lux/engine/render/features/Registration.hpp>
+#include <lux/engine/render/native/vulkan/Feature.hpp>
 #include <lux/engine/render/native/vulkan/material/MaterialCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshInstanceCommandHandler.hpp>

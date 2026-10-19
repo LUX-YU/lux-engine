@@ -21,7 +21,7 @@ namespace lux::render::vulkan
 
         exec::task<SetTexture::Response> setTexture(SetTexture::Request&&) noexcept;
         exec::task<SetTextureRegion::Response> updateTextureRegion(SetTextureRegion::Request&&) noexcept;
-        void releaseTexture(const ReleaseTexture::Request&, ReleaseTexture::Response&) noexcept;
+        exec::task<ReleaseTexture::Response> releaseTexture(ReleaseTexture::Request&&) noexcept;
         void queryTexture(const QueryTexture::Request&, QueryTexture::Response&) noexcept;
 
         using Bindings = std::tuple<

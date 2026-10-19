@@ -1,43 +1,126 @@
 #pragma once
 
-#include <lux/engine/render/data/ShaderBlock.hpp>
+#include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
-#include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
+#include <utility>
 
 namespace lux::render::vulkan
 {
     struct NativeResourcePlan;
-    class DeviceSession;
 
-    // Stable Context-owned binding. Resources hold physical content; reference owns an update subscription.
-    // Publication marks its Context dirty; the Owner prepares changed bindings before recording.
-    struct PreparedStorageBinding final
+    // Current physical data borrowed at Attach or an Owner publication point. No owner, task,
+    // pending upload, descriptor placement, or mutable parameter envelope lives in this value.
+    struct StorageResource final
     {
         Buffer* buffer = nullptr;
-        VkDeviceSize buffer_offset = 0;
+        VkDeviceSize offset = 0, size = 0;
         std::span<const std::byte> parameters;
-        const ShaderBlock* parameter_layout = nullptr; // Stable professional value layout, not physical placement.
+        const rdesc::ShaderBlock* parameter_layout = nullptr;
+    };
 
-        // Changed CPU data consumed at the next recording safe point. Empty on unchanged frames.
-        // The Storage owns these bytes; native recording copies them into the command buffer.
-        std::span<const std::byte> pending_bytes;
+    // Intrusive, non-owning change relationship. The consumer embeds this node in its actual
+    // record; the Storage keeps only the list head. Heads and linked consumers have stable addresses.
+    class StorageSubscription final
+    {
+    public:
+        StorageSubscription() noexcept = default;
 
-        void* update_context = nullptr;
-        void (*updated)(void*) noexcept = nullptr; // Owner publication only; not a per-frame callback
-
-        void publishUpdate() noexcept
+        ~StorageSubscription() noexcept
         {
-            if (updated)
+            reset();
+        }
+
+        StorageSubscription(const StorageSubscription&) = delete;
+        StorageSubscription& operator=(const StorageSubscription&) = delete;
+
+        StorageSubscription(StorageSubscription&& other) noexcept
+        {
+            move(other);
+        }
+
+        StorageSubscription& operator=(StorageSubscription&& other) noexcept
+        {
+            if (this != &other)
             {
-                updated(update_context);
+                reset();
+                move(other);
+            }
+            return *this;
+        }
+
+        void* receiver = nullptr;
+        void (*changed)(void*, const StorageResource&) noexcept = nullptr;
+
+        void attach(StorageSubscription*& head) noexcept
+        {
+            reset();
+            next_ = head;
+            previous_ = &head;
+            if (head)
+            {
+                head->previous_ = &next_;
+            }
+            head = this;
+        }
+
+        void reset() noexcept
+        {
+            if (previous_)
+            {
+                *previous_ = next_;
+                if (next_)
+                {
+                    next_->previous_ = previous_;
+                }
+                previous_ = nullptr;
+                next_ = nullptr;
             }
         }
 
-        std::unique_ptr<void, void (*)(void*) noexcept> reference{nullptr, [](void*) noexcept {}};
+        static void publish(StorageSubscription* head, const StorageResource& resource) noexcept
+        {
+            while (head)
+            {
+                auto* next = head->next_;
+                head->changed(head->receiver, resource);
+                head = next;
+            }
+        }
+
+        static void disconnect(StorageSubscription*& head, const StorageResource& resource = {}) noexcept
+        {
+            while (head)
+            {
+                auto* node = head;
+                node->reset();
+                node->changed(node->receiver, resource);
+            }
+        }
+
+    private:
+        void move(StorageSubscription& other) noexcept
+        {
+            receiver = other.receiver;
+            changed = other.changed;
+            next_ = std::exchange(other.next_, nullptr);
+            previous_ = std::exchange(other.previous_, nullptr);
+            if (previous_)
+            {
+                *previous_ = this;
+            }
+            if (next_)
+            {
+                next_->previous_ = &next_;
+            }
+        }
+
+        StorageSubscription* next_ = nullptr;
+        StorageSubscription** previous_ = nullptr;
     };
 
     struct StorageBindingOps final
     {
-        RenderResult<void> (*prepare)(void*, const NativeResourcePlan&, const void*, PreparedStorageBinding&) noexcept;
+        RenderResult<
+            StorageResource> (*resolve)(void*, const NativeResourcePlan&, const void*, StorageSubscription&) noexcept;
     };
 } // namespace lux::render::vulkan

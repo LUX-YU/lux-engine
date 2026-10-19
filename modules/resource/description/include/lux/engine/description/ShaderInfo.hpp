@@ -1,10 +1,10 @@
 #pragma once
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
+#include <lux/engine/description/ShaderBlock.hpp>
 #include <span>
 #include <string>
 #include <vector>
-#include <lux/engine/resource/visibility.h>
 
 namespace lux::rdesc
 {
@@ -50,19 +50,27 @@ namespace lux::rdesc
         uint32_t count = 1;     // Array size (1 if unknown)
         std::string name;       // Variable name
         uint32_t blockSize = 0; // UBO/SSBO size in bytes; 0 for non-block resources
-        bool writable = false;  // For SSBO/StorageImage: whether it is writable
+        bool writable = false;  // For SSBO/StorageImage: whether it is writable.
+        bool readable = true;
+        ShaderBlock block;        // Reflected members/offsets/strides; opaque descriptors leave this empty.
+        std::uint32_t stages = 0; // PassContract bits: Vertex=1, Fragment=2, Compute=4.
+        bool operator==(const EDescriptorBindingInfo&) const noexcept = default;
     };
 
     struct DescriptorSetLayoutInfo
     {
         uint32_t set = 0;
         std::vector<EDescriptorBindingInfo> bindings;
+        bool operator==(const DescriptorSetLayoutInfo&) const noexcept = default;
     };
 
     struct PushConstantRangeInfo
     {
         uint32_t offset = 0;
         uint32_t size = 0;
+        ShaderBlock block;
+        std::uint32_t stages = 0;
+        bool operator==(const PushConstantRangeInfo&) const noexcept = default;
     };
 
     // —— Specialization Constant ——
@@ -78,13 +86,38 @@ namespace lux::rdesc
             UNKNOWN
         } kind = EKind::UNKNOWN;
         uint32_t bit_width = 32; // 8/16/32/64, or 16/32/64 for float
+
         // Stored uniformly in a 64-bit container; floats use f64
-        union {
+        union
+        {
             int64_t i64;
             uint64_t u64;
             double f64;
             uint8_t b8;
         } v{};
+
+        bool operator==(const SpecDefaultValue& other) const noexcept
+        {
+            if (kind != other.kind || bit_width != other.bit_width)
+            {
+                return false;
+            }
+            switch (kind)
+            {
+            case EKind::BOOL:
+                return v.b8 == other.v.b8;
+            case EKind::INT:
+                return v.i64 == other.v.i64;
+            case EKind::UINT:
+                return v.u64 == other.v.u64;
+            case EKind::FLOAT:
+            case EKind::DOUBLE:
+                return v.f64 == other.v.f64;
+            case EKind::UNKNOWN:
+                return true;
+            }
+            return false;
+        }
     };
 
     struct SpecConstantInfo
@@ -95,6 +128,7 @@ namespace lux::rdesc
         SpecDefaultValue default_value;
         uint32_t vec_size = 1; // Records the dimension if this is a composite
         uint32_t columns = 1;
+        bool operator==(const SpecConstantInfo&) const noexcept = default;
     };
 
     // Vertex input, only valid in the VERTEX stage
@@ -107,6 +141,7 @@ namespace lux::rdesc
         DOUBLE,
         UNKNOWN
     };
+
     struct VertexInputAttribute
     {
         uint32_t location = 0;
@@ -115,12 +150,14 @@ namespace lux::rdesc
         uint32_t vec_size = 1;
         uint32_t columns = 1;
         uint32_t array_size = 1;
+        bool operator==(const VertexInputAttribute&) const noexcept = default;
     };
 
     struct EntryPointInfo
     {
         std::string name{};
         EShaderType stage{};
+        bool operator==(const EntryPointInfo&) const noexcept = default;
     };
 
     inline const char* to_string(EShaderType s)
@@ -223,17 +260,19 @@ namespace lux::rdesc
         size_t findSet(uint32_t s) const
         {
             for (size_t i = 0; i < sets.size(); ++i)
+            {
                 if (sets[i].set == s)
+                {
                     return i;
+                }
+            }
             return static_cast<size_t>(-1);
         }
-        static constexpr size_t npos = static_cast<size_t>(-1);
 
-        LUX_RESOURCE_PUBLIC static std::vector<std::byte> serialize(const ShaderInfo& info);
-        LUX_RESOURCE_PUBLIC static bool deserialize(
-            std::span<const std::byte> buffer,
-            ShaderInfo& out,
-            std::string* err = nullptr
-        );
+        static constexpr size_t npos = static_cast<size_t>(-1);
+        bool operator==(const ShaderInfo&) const noexcept = default;
+
+        static std::vector<std::byte> serialize(const ShaderInfo& info);
+        static bool deserialize(std::span<const std::byte> buffer, ShaderInfo& out, std::string* err = nullptr);
     };
-}
+} // namespace lux::rdesc

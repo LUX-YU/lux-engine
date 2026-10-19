@@ -1,8 +1,9 @@
 #pragma once
 
-#include <lux/cxx/container/SlotMap.hpp>
+#include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/gapi/vk/Sampler.hpp>
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
+#include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
 #include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
@@ -13,25 +14,27 @@
 namespace lux::render::vulkan
 {
     [[nodiscard]] StorageFactory textureStorageFactory() noexcept;
-    struct PreparedStorageBinding;
     struct NativeResourcePlan;
     class TextureStorage;
     class ExecutionContext;
 
     class TextureStorage final
     {
-        class TextureData final
+    public:
+        class SampledImage final
         {
         public:
-            TextureData(
+            SampledImage(
                 std::unique_ptr<Image>,
                 DescriptorRange,
                 const rdesc::TextureInfo&,
                 std::uint64_t revision
             ) noexcept;
-            ~TextureData() noexcept;
-            TextureData(const TextureData&) = delete;
-            TextureData& operator=(const TextureData&) = delete;
+            ~SampledImage() noexcept;
+            SampledImage(const SampledImage&) = delete;
+            SampledImage& operator=(const SampledImage&) = delete;
+            SampledImage(SampledImage&&) noexcept;
+            SampledImage& operator=(SampledImage&&) noexcept;
 
             [[nodiscard]] const rdesc::TextureInfo& info() const noexcept
             {
@@ -55,6 +58,7 @@ namespace lux::render::vulkan
 
         private:
             friend class TextureStorage;
+            void releaseViews() noexcept;
             std::unique_ptr<Image> image_;
             DescriptorRange descriptor_;
             rdesc::TextureInfo info_{};
@@ -62,6 +66,7 @@ namespace lux::render::vulkan
             gapi::vk::Sampler sampler_;
             RetirementReservation retirement_;
             std::uint64_t revision_ = 0;
+            TextureGpuRef reference_;
         };
 
     public:
@@ -78,11 +83,31 @@ namespace lux::render::vulkan
         ~TextureStorage() noexcept;
         TextureStorage(const TextureStorage&) = delete;
         TextureStorage& operator=(const TextureStorage&) = delete;
-        [[nodiscard]] RenderResult<void> release(TextureId, std::uint64_t expected_revision) noexcept;
-        [[nodiscard]] const TextureData* find(TextureId) const noexcept;
-        // Owner-thread binding preparation; no independently owned Texture version is returned.
-        [[nodiscard]] RenderResult<std::pair<rdesc::TextureInfo, std::uint32_t>>
-        bind(TextureId, PreparedStorageBinding&) noexcept;
+        [[nodiscard]] exec::task<RenderResult<Ack>> release(TextureId, std::uint64_t expected_revision) noexcept;
+        [[nodiscard]] const SampledImage* find(TextureId) const noexcept;
+
+        // One non-owning dependency per interested Storage, not a per-Attach heap Use. Both callbacks
+        // run in the Texture Sender's uninterrupted commit segment; only Material writes its own table.
+        class Observer final
+        {
+        public:
+            Observer() noexcept = default;
+            ~Observer() noexcept;
+            Observer(const Observer&) = delete;
+            Observer& operator=(const Observer&) = delete;
+            void* receiver = nullptr;
+            bool (*affected)(const void*, TextureId) noexcept = nullptr;
+            void (*record)(void*, VkCommandBuffer, TextureId, std::uint32_t) noexcept = nullptr;
+            void (*adopt)(void*, TextureId, std::uint32_t) noexcept = nullptr;
+            void reset() noexcept;
+
+        private:
+            friend class TextureStorage;
+            TextureStorage* source_ = nullptr;
+            std::size_t position_ = 0;
+        };
+
+        void observe(Observer&) noexcept;
 
     private:
         friend class DeviceSession;
@@ -104,27 +129,32 @@ namespace lux::render::vulkan
             TextureId,
             std::uint64_t expected_revision
         ) noexcept;
-        struct Use;
-        RenderResult<void> prepare(const NativeResourcePlan&, const TextureBinding&, PreparedStorageBinding&) noexcept;
+        [[nodiscard]] RenderResult<StorageResource>
+        resolve(const NativeResourcePlan&, const TextureBinding&, StorageSubscription&) noexcept;
+        [[nodiscard]] exec::task<RenderResult<void>> commit(Candidate&) noexcept;
+        [[nodiscard]] bool hasDependents(TextureId) const noexcept;
+        void recordDependents(VkCommandBuffer, TextureId, std::uint32_t) noexcept;
+        void adoptDependents(TextureId, std::uint32_t) noexcept;
+        [[nodiscard]] static StorageResource resource(const SampledImage*) noexcept;
 
         struct TextureRecord final
         {
-            std::unique_ptr<TextureData> current;
-            std::vector<Use*> uses;
+            std::unique_ptr<SampledImage> current;
+            StorageSubscription* bindings = nullptr;
             bool updating = false;
         };
 
-        void unsubscribe(Use&) noexcept;
         void disconnect(TextureRecord&) noexcept;
         TextureStorage(DeviceSession& session, StorageId id) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         void rollback(Candidate&) noexcept;
-        void retire(std::unique_ptr<TextureData>&) noexcept;
+        void retire(std::unique_ptr<SampledImage>&) noexcept;
         void publish(Candidate&) noexcept;
         DeviceSession& session_;
         StorageId id_;
-        cxx::SlotMap<TextureRecord, TextureTag> textures_;
+        cxx::StableSlotMap<TextureRecord, TextureTag> textures_;
         DescriptorArray* descriptors_ = nullptr;
+        std::vector<Observer*> observers_;
     };
 } // namespace lux::render::vulkan
 

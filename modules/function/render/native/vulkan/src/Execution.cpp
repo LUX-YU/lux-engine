@@ -49,9 +49,10 @@ namespace lux::render::vulkan
           bindings_(code_->resources().size()), storages_(owner.resources())
     {
         storage_uses_.reserve(bindings_.size());
-        pending_updates_.reserve(bindings_.size());
+        changed_resources_.reserve(bindings_.size());
+        context_data_.reserve(code_->contexts_.size());
+        changed_data_.reserve(code_->contexts_.size());
         context_values_.resize(code_->descriptor_plan_->context_parameters.size);
-        context_view_ = context_values_;
     }
 
     ExecutionContext::~ExecutionContext() noexcept
@@ -66,12 +67,13 @@ namespace lux::render::vulkan
 
     void ExecutionContext::withdraw() noexcept
     {
-        // All future-use subscriptions end while the actual Storage owners still exist. Physical
-        // contents remain owned by already submitted immutable snapshots.
+        // End future-use relationships before the Attachment's actual Storage owners are destroyed.
+        // Submitted physical resources remain in the unique retirement facility.
+        context_data_.clear();
+        changed_data_.clear();
         for (auto& use : storage_uses_)
         {
-            use.binding.updated = nullptr;
-            use.binding.reference.reset();
+            use.subscription.reset();
         }
         storage_uses_.clear();
         storages_.clear();
@@ -168,14 +170,25 @@ namespace lux::render::vulkan
                 {
                     created_storages.emplace_back(set, id);
                 }
-                auto& use = context->storage_uses_.emplace_back(id, PreparedStorageBinding{}, i);
-                const auto& ops = *static_cast<const StorageBindingOps*>(factory->binding_ops);
-                if (auto prepared = ops.prepare(resources_.native(id), plan, value, use.binding); !prepared)
+                auto& use = context->storage_uses_.emplace_back(context.get(), id, i);
+                use.subscription.receiver = &use;
+                use.subscription.changed = [](void* value, const StorageResource& resource) noexcept
                 {
-                    return cxx::unexpected(prepared.error());
+                    auto& link = *static_cast<ExecutionContext::StorageUse*>(value);
+                    link.context->setResource(link.resource, resource);
+                };
+                const auto& ops = *static_cast<const StorageBindingOps*>(factory->binding_ops);
+                auto resolved = ops.resolve(resources_.native(id), plan, value, use.subscription);
+                if (!resolved)
+                {
+                    return cxx::unexpected(resolved.error());
                 }
-                binding.buffer = use.binding.buffer;
-                binding.buffer_offset = use.binding.buffer_offset;
+                // Count an initially absent Buffer once; setResource handles subsequent transitions.
+                if (plan.buffer_usage)
+                {
+                    ++context->unavailable_buffers_;
+                }
+                context->setResource(i, *resolved);
             }
             return {};
         };
@@ -196,11 +209,24 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(r.error());
         }
+        for (const auto& contribution : code.contexts_)
+        {
+            const auto index = static_cast<std::uint32_t>(context->context_data_.size());
+            ++context->unavailable_buffers_;
+            auto value =
+                contribution.create(*this, *context, index, contribution.resource, contribution.configuration.data());
+            if (!value)
+            {
+                return cxx::unexpected(value.error());
+            }
+            context->context_data_.push_back(std::move(*value));
+            context->invalidateData(index);
+        }
         for (std::uint32_t i = 0; i < context->bindings_.size(); ++i)
         {
             auto& binding = context->bindings_[i];
             const auto& plan = context->code_->resources()[i];
-            if ((!plan.image_usage && !plan.buffer_usage) || plan.storage)
+            if ((!plan.image_usage && !plan.buffer_usage) || plan.storage || plan.context_data != kGraphInvalidIndex)
             {
                 continue;
             }
@@ -244,6 +270,7 @@ namespace lux::render::vulkan
                     return cxx::unexpected(buffer.error());
                 }
                 binding.buffer = buffer->get();
+                binding.buffer_size = size;
                 context->frame_resources_->buffers.push_back(std::move(*buffer));
             }
         }
@@ -275,12 +302,6 @@ namespace lux::render::vulkan
         if (auto ready = context->prepareDescriptors(); !ready)
         {
             return cxx::unexpected(ready.error());
-        }
-        for (auto& use : context->storage_uses_)
-        {
-            use.binding.update_context = context.get();
-            use.binding.updated = [](void* value) noexcept
-            { static_cast<ExecutionContext*>(value)->bindings_dirty_ = true; };
         }
         if (auto reserved = queue().reserve(context->frame_resources_->completion); !reserved)
         {
@@ -352,20 +373,20 @@ namespace lux::render::vulkan
             }
             for (const auto& mapping : layout.programs[pass.recipe->layout_program].parameters)
             {
-                const ShaderBlock* source_layout = &layout.context_parameters;
-                const auto* source_bytes = &context_view_;
+                const rdesc::ShaderBlock* source_layout = &layout.context_parameters;
+                auto source_bytes = std::span<const std::byte>(context_values_);
                 if (mapping.resource != kGraphInvalidIndex)
                 {
-                    const auto source = std::ranges::find(storage_uses_, mapping.resource, &StorageUse::resource);
-                    if (source == storage_uses_.end() || !source->binding.parameter_layout)
+                    const auto& source = bindings_[mapping.resource];
+                    if (!source.parameter_layout)
                     {
                         return cxx::unexpected(RenderError{kStorageContract});
                     }
-                    source_layout = source->binding.parameter_layout;
-                    source_bytes = &source->binding.parameters;
+                    source_layout = source.parameter_layout;
+                    source_bytes = source.parameters;
                 }
                 const auto& fields = source_layout->fields;
-                const auto field = std::ranges::find(fields, mapping.source_field, &ShaderMember::path);
+                const auto field = std::ranges::find(fields, mapping.source_field, &rdesc::ShaderMember::path);
                 if (field == fields.end())
                 {
                     return cxx::unexpected(RenderError{kStorageContract});
@@ -378,73 +399,133 @@ namespace lux::render::vulkan
                 const auto size = std::uint64_t(field->rows) * 4 +
                                   (field->columns ? std::uint64_t(field->columns - 1) * field->matrix_stride : 0);
                 const bool invalid_range = !size || size > UINT32_MAX ||
-                                           std::uint64_t(field->offset) + size > source_bytes->size() ||
+                                           std::uint64_t(field->offset) + size > source_bytes.size() ||
                                            std::uint64_t(destination.offset) + size > pass.parameters.size();
                 if (mismatch || invalid_range)
                 {
                     return cxx::unexpected(RenderError{kStorageContract});
                 }
-                pass.parameter_copies.push_back({source_bytes, field->offset, destination.offset, std::uint32_t(size)});
+                pass.parameter_copies.push_back(
+                    {mapping.resource, field->offset, destination.offset, std::uint32_t(size)}
+                );
+                if (mapping.resource != kGraphInvalidIndex)
+                {
+                    bindings_[mapping.resource].parameter_copies.emplace_back(
+                        static_cast<std::uint32_t>(&pass - passes_.data()),
+                        static_cast<std::uint32_t>(pass.parameter_copies.size() - 1)
+                    );
+                }
+                std::memcpy(pass.parameters.data() + destination.offset, source_bytes.data() + field->offset, size);
+            }
+        }
+        for (std::uint32_t p = 0; p < passes_.size(); ++p)
+        {
+            auto& pass = passes_[p];
+            for (std::uint32_t b = 0; b < pass.recipe->buffers.size(); ++b)
+            {
+                bindings_[pass.recipe->buffers[b].resource].barriers.emplace_back(p, b);
+            }
+            if (pass.private_descriptors)
+            {
+                pass.descriptors[layout.private_set] = pass.private_descriptors;
+                const auto& uses = layout.programs[pass.recipe->layout_program].uses;
+                for (std::uint32_t d = 0; d < uses.size(); ++d)
+                {
+                    if (uses[d].kind == EDescriptorKind::STORAGE_BUFFER)
+                    {
+                        bindings_[uses[d].resource].descriptors.emplace_back(p, d);
+                    }
+                }
+            }
+        }
+        for (std::uint32_t i = 0; i < bindings_.size(); ++i)
+        {
+            auto& binding = bindings_[i];
+            if (!binding.dirty)
+            {
+                binding.dirty = true;
+                changed_resources_.push_back(i);
             }
         }
         rebind();
         return {};
     }
 
-    void ExecutionContext::rebind() noexcept
+    void ExecutionContext::invalidateData(std::uint32_t index) noexcept
     {
-        bindings_dirty_ = false;
-        pending_updates_.clear();
-        const auto& layout = *code_->descriptor_plan_;
-        for (const auto& use : storage_uses_)
+        auto& data = context_data_[index];
+        if (!data.dirty)
         {
-            bindings_[use.resource].buffer = use.binding.buffer;
-            bindings_[use.resource].buffer_offset = use.binding.buffer_offset;
-            if (!use.binding.pending_bytes.empty())
+            data.dirty = true;
+            changed_data_.push_back(index);
+        }
+    }
+
+    StorageId ExecutionContext::storageId(std::uint32_t resource) const noexcept
+    {
+        const auto found = std::ranges::find(storage_uses_, resource, &StorageUse::resource);
+        return found == storage_uses_.end() ? StorageId{} : found->storage_id;
+    }
+
+    void ExecutionContext::setResource(std::uint32_t resource, const StorageResource& value) noexcept
+    {
+        auto& binding = bindings_[resource];
+        if (code_->resources()[resource].buffer_usage)
+        {
+            if (!binding.buffer && value.buffer)
             {
-                pending_updates_.push_back(static_cast<std::uint32_t>(&use - storage_uses_.data()));
+                --unavailable_buffers_;
+            }
+            else if (binding.buffer && !value.buffer)
+            {
+                ++unavailable_buffers_;
             }
         }
-        for (auto& pass : passes_)
+        binding.buffer = value.buffer;
+        binding.buffer_offset = value.offset;
+        binding.buffer_size = value.size;
+        binding.parameters = value.parameters;
+        binding.parameter_layout = value.parameter_layout;
+        if (!binding.dirty)
         {
-            for (const auto& copy : pass.parameter_copies)
+            binding.dirty = true;
+            changed_resources_.push_back(resource);
+        }
+    }
+
+    void ExecutionContext::rebind() noexcept
+    {
+        const auto& layout = *code_->descriptor_plan_;
+        for (auto resource : changed_resources_)
+        {
+            auto& source = bindings_[resource];
+            source.dirty = false;
+            for (const auto [p, index] : source.parameter_copies)
             {
+                auto& pass = passes_[p];
+                const auto& copy = pass.parameter_copies[index];
                 std::memcpy(
                     pass.parameters.data() + copy.destination_offset,
-                    copy.source->data() + copy.source_offset,
+                    source.parameters.data() + copy.source_offset,
                     copy.bytes
                 );
             }
-            for (std::size_t i = 0; i < pass.buffers.size(); ++i)
+            for (const auto [p, index] : source.barriers)
             {
-                const auto& source = bindings_[pass.recipe->buffers[i].resource];
-                pass.buffers[i].buffer = source.buffer->native();
-                const auto& barrier = pass.recipe->buffers[i];
-                pass.buffers[i].offset = source.buffer_offset + barrier.native.offset;
-                pass.buffers[i].size =
-                    barrier.native.size == VK_WHOLE_SIZE
-                        ? std::get<GraphBufferDesc>(code_->resources()[barrier.resource].description).size -
-                              barrier.native.offset
-                        : barrier.native.size;
+                auto& pass = passes_[p];
+                const auto& recipe = pass.recipe->buffers[index].native;
+                auto& barrier = pass.buffers[index];
+                barrier.buffer = source.buffer->native();
+                barrier.offset = source.buffer_offset + recipe.offset;
+                barrier.size = recipe.size == VK_WHOLE_SIZE ? source.buffer_size - recipe.offset : recipe.size;
             }
-            if ((pass.recipe->recipe != ERecipe::DRAW && pass.recipe->recipe != ERecipe::DISPATCH) ||
-                !frame_resources_->descriptor_pool)
+            for (const auto [p, index] : source.descriptors)
             {
-                continue;
-            }
-            const auto descriptors = pass.private_descriptors;
-            pass.descriptors[layout.private_set] = descriptors;
-            for (const auto& use : layout.programs[pass.recipe->layout_program].uses)
-            {
-                if (use.kind != EDescriptorKind::STORAGE_BUFFER)
-                {
-                    continue;
-                }
-                const auto* buffer = bindings_[use.resource].buffer;
-                const auto range = std::get<GraphBufferDesc>(code_->resources()[use.resource].description).size;
-                const VkDescriptorBufferInfo info{buffer->native(), bindings_[use.resource].buffer_offset, range};
+                auto& pass = passes_[p];
+                const auto& use = layout.programs[pass.recipe->layout_program].uses[index];
+                const VkDescriptorBufferInfo info{source.buffer->native(), source.buffer_offset, source.buffer_size};
                 VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-                write.dstSet = descriptors;
+                write.dstSet = pass.private_descriptors;
                 write.dstBinding = use.binding;
                 write.descriptorCount = 1;
                 write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -452,6 +533,7 @@ namespace lux::render::vulkan
                 vkUpdateDescriptorSets(device(), 1, &write, 0, nullptr);
             }
         }
+        changed_resources_.clear();
     }
 
     RenderResult<void> ExecutionContext::setContextParameters(std::span<const std::byte> bytes) noexcept
@@ -465,9 +547,15 @@ namespace lux::render::vulkan
         {
             for (const auto& copy : pass.parameter_copies)
             {
+                if (copy.resource != kGraphInvalidIndex)
+                {
+                    continue;
+                }
                 std::memcpy(
                     pass.parameters.data() + copy.destination_offset,
-                    copy.source->data() + copy.source_offset,
+                    (copy.resource == kGraphInvalidIndex ? context_values_.data()
+                                                         : bindings_[copy.resource].parameters.data()) +
+                        copy.source_offset,
                     copy.bytes
                 );
             }
@@ -490,7 +578,9 @@ namespace lux::render::vulkan
         {
             std::memcpy(
                 pass->parameters.data() + copy.destination_offset,
-                copy.source->data() + copy.source_offset,
+                (copy.resource == kGraphInvalidIndex ? context_values_.data()
+                                                     : bindings_[copy.resource].parameters.data()) +
+                    copy.source_offset,
                 copy.bytes
             );
         }
@@ -519,6 +609,18 @@ namespace lux::render::vulkan
         {
             return outcome(EExecutionOutcome::PREVIOUS_SUBMISSION_PENDING);
         }
+        for (auto index : changed_data_)
+        {
+            auto& data = context_data_[index];
+            if (auto prepared = data.prepare(data.value.get()); !prepared)
+            {
+                return cxx::unexpected(prepared.error());
+            }
+        }
+        if (unavailable_buffers_)
+        {
+            return cxx::unexpected(RenderError{kStorageIdentity});
+        }
         if (queue_->recording())
         {
             return outcome(EExecutionOutcome::RECORDING_BUSY);
@@ -532,38 +634,15 @@ namespace lux::render::vulkan
             }
             return cxx::unexpected(batch.error());
         }
-        if (bindings_dirty_)
+        if (!changed_resources_.empty())
         {
             rebind();
         }
         const auto command = batch->native();
-        for (auto index : pending_updates_)
+        for (auto index : changed_data_)
         {
-            auto& use = storage_uses_[index];
-            const auto bytes = use.binding.pending_bytes;
-            VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
-            barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-            barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
-            barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
-            barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-            barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.buffer = use.binding.buffer->native();
-            barrier.offset = use.binding.buffer_offset;
-            barrier.size = bytes.size();
-            VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-            dependency.bufferMemoryBarrierCount = 1;
-            dependency.pBufferMemoryBarriers = &barrier;
-            vkCmdPipelineBarrier2(command, &dependency);
-            for (std::size_t offset = 0; offset < bytes.size(); offset += 65536)
-            {
-                const auto size = std::min<std::size_t>(65536, bytes.size() - offset);
-                vkCmdUpdateBuffer(command, barrier.buffer, barrier.offset + offset, size, bytes.data() + offset);
-            }
-            barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
-            barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-            barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-            barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
-            vkCmdPipelineBarrier2(command, &dependency);
+            auto& data = context_data_[index];
+            data.record(data.value.get(), command);
         }
         for (const auto& pass : passes_)
         {
@@ -817,11 +896,11 @@ namespace lux::render::vulkan
             return cxx::unexpected(submitted.error());
         }
         frame_resources_->pending = true;
-        for (auto index : pending_updates_)
+        for (auto index : changed_data_)
         {
-            storage_uses_[index].binding.pending_bytes = {};
+            context_data_[index].dirty = false;
         }
-        pending_updates_.clear();
+        changed_data_.clear();
         return outcome(EExecutionOutcome::EXECUTED);
     }
 

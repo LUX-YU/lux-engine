@@ -38,10 +38,10 @@ namespace lux::render::vulkan
     CompiledGraph::CompiledGraph(CompiledGraph&& other) noexcept
         : descriptor_plan_(std::move(other.descriptor_plan_)), device_(std::exchange(other.device_, VK_NULL_HANDLE)),
           target_(other.target_), layout_(other.layout_), resources_(std::move(other.resources_)),
-          storage_groups_(std::move(other.storage_groups_)), passes_(std::move(other.passes_)),
-          pass_indices_(std::move(other.pass_indices_)), shader_identities_(std::move(other.shader_identities_)),
-          pipelines_(std::move(other.pipelines_)), descriptor_layouts_(std::move(other.descriptor_layouts_)),
-          output_(other.output_)
+          contexts_(std::move(other.contexts_)), storage_groups_(std::move(other.storage_groups_)),
+          passes_(std::move(other.passes_)), pass_indices_(std::move(other.pass_indices_)),
+          shader_identities_(std::move(other.shader_identities_)), pipelines_(std::move(other.pipelines_)),
+          descriptor_layouts_(std::move(other.descriptor_layouts_)), output_(other.output_)
     {
     }
 
@@ -331,7 +331,8 @@ namespace lux::render::vulkan
         const GraphAnalysis& analysis,
         GraphStorageBindings external_bindings,
         std::span<const PassProgram> programs,
-        const TargetDesc& target
+        const TargetDesc& target,
+        std::vector<ContextContribution> contexts
     ) noexcept
     {
         if (auto result = target.validate(); !result)
@@ -430,7 +431,7 @@ namespace lux::render::vulkan
                 }
                 const auto* factory = session.resources().factory(binding.storage.type.view());
                 if (!factory || !factory->binding_ops ||
-                    !static_cast<const StorageBindingOps*>(factory->binding_ops)->prepare)
+                    !static_cast<const StorageBindingOps*>(factory->binding_ops)->resolve)
                 {
                     return cxx::unexpected(RenderError{kStorageFactory});
                 }
@@ -454,6 +455,28 @@ namespace lux::render::vulkan
         if (auto r = install(external_bindings.attachment, result.storage_groups_.attachment); !r)
         {
             return cxx::unexpected(r.error());
+        }
+        for (auto& contribution : contexts)
+        {
+            const auto index = contribution.resource.index;
+            if (index >= result.resources_.size() || !contribution.create || !contribution.configuration)
+            {
+                return cxx::unexpected(RenderError{kStorageContract});
+            }
+            if (!live_resources[index])
+            {
+                continue;
+            }
+            auto& resource = result.resources_[index];
+            const bool is_invalid = resource.storage || resource.context_data != kGraphInvalidIndex ||
+                                    resource.origin != EGraphOrigin::IMPORTED ||
+                                    !std::holds_alternative<GraphBufferDesc>(resource.description);
+            if (is_invalid)
+            {
+                return cxx::unexpected(RenderError{kStorageContract});
+            }
+            resource.context_data = static_cast<std::uint32_t>(result.contexts_.size());
+            result.contexts_.push_back(std::move(contribution));
         }
         for (const auto& output : graph.outputs())
         {
@@ -634,7 +657,8 @@ namespace lux::render::vulkan
                 if (use.usage == EGraphUse::SAMPLED || storage_use)
                 {
                     const bool is_image = std::holds_alternative<GraphImageDesc>(resource.description);
-                    const bool is_invalid_binding = (resource.origin == EGraphOrigin::IMPORTED && !resource.storage) ||
+                    const bool is_invalid_binding = (resource.origin == EGraphOrigin::IMPORTED && !resource.storage &&
+                                                     resource.context_data == kGraphInvalidIndex) ||
                                                     (is_image && resource.origin != EGraphOrigin::IMPORTED) ||
                                                     is_image != (use.usage == EGraphUse::SAMPLED);
                     if (is_invalid_binding)
@@ -913,7 +937,8 @@ namespace lux::render::vulkan
         for (std::uint32_t i = 0; i < result.resources_.size(); ++i)
         {
             const auto& resource = result.resources_[i];
-            if (used[i] && resource.origin == EGraphOrigin::IMPORTED && !resource.storage)
+            if (used[i] && resource.origin == EGraphOrigin::IMPORTED && !resource.storage &&
+                resource.context_data == kGraphInvalidIndex)
             {
                 return cxx::unexpected(RenderError{kUnsupported});
             }

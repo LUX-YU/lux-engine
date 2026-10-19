@@ -1,56 +1,79 @@
 #pragma once
 
+#include <exec/task.hpp>
+
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/MeshInstance.hpp>
-#include <map>
 
 namespace lux::render::vulkan
 {
-    class MeshDraws;
-    struct NativeResourcePlan;
-    struct PreparedStorageBinding;
     [[nodiscard]] StorageFactory meshInstanceStorageFactory() noexcept;
 
-    // Mesh instance CPU authority. Only changed pages are recorded; accepted graphics submissions
-    // order writes after prior draws. No mapped shadow banks or per-resource completion tokens.
     class MeshInstanceStorage final
     {
-        struct Backing;
-        struct Use;
+        struct GpuPage;
+        struct Page;
+        struct PageTable;
 
         struct Entry final
         {
             MeshId mesh;
             MaterialId material;
             std::uint32_t submesh = 0;
-            std::uint64_t revision = 1;
+            std::uint64_t revision = 0;
             cxx::SlotKey<MeshInstanceTag> key;
         };
 
-        static constexpr std::uint32_t kPageSize = 512;
-
-        struct Page final
+    public:
+        // A borrowed change node owned by the interested Feature's actual Context data. Storage
+        // reports identity changes; only the Feature decides selection and indirect membership.
+        class Observer final
         {
-            std::uint32_t index;
-            std::array<TransformMatrix, kPageSize> values;
+        public:
+            Observer() noexcept = default;
+            ~Observer() noexcept;
+            Observer(const Observer&) = delete;
+            Observer& operator=(const Observer&) = delete;
+            void* receiver = nullptr;
+            void (*changed)(void*, MeshInstanceId, const MeshInstanceDescription*) noexcept = nullptr;
+            void reset() noexcept;
+
+        private:
+            friend class MeshInstanceStorage;
+            MeshInstanceStorage* source_ = nullptr;
+            std::size_t position_ = 0;
         };
 
-    public:
         MeshInstanceStorage(DeviceSession&, StorageId) noexcept;
         ~MeshInstanceStorage() noexcept;
         MeshInstanceStorage(const MeshInstanceStorage&) = delete;
         MeshInstanceStorage& operator=(const MeshInstanceStorage&) = delete;
 
-        [[nodiscard]] RenderResult<MeshInstancePublished> create(const MeshInstanceDescription&) noexcept;
-        [[nodiscard]] RenderResult<TransformApplied> update(const TransformBatch&) noexcept;
+        [[nodiscard]] exec::task<RenderResult<MeshInstancePublished>> create(MeshInstanceDescription) noexcept;
+        [[nodiscard]] exec::task<RenderResult<TransformApplied>> update(TransformBatch) noexcept;
         [[nodiscard]] RenderResult<MeshInstanceInformation> query(MeshInstanceId) const noexcept;
-        [[nodiscard]] RenderResult<void> release(MeshInstancePublished) noexcept;
+        [[nodiscard]] exec::task<RenderResult<Ack>> release(MeshInstancePublished) noexcept;
+        void observe(Observer&) noexcept;
+
+        template <class Visitor> void forEach(Visitor&& visitor) const noexcept
+        {
+            for (const auto& entry : entries_)
+            {
+                if (entry.revision)
+                {
+                    visitor(MeshInstanceId{id_, entry.key}, describe(entry));
+                }
+            }
+        }
 
         [[nodiscard]] std::uint32_t recordCount() const noexcept
         {
-            return static_cast<std::uint32_t>(shadow_.size());
+            return live_records_;
         }
+
+        [[nodiscard]] std::uint64_t capacity() const noexcept;
 
         [[nodiscard]] std::uint64_t writtenRecords() const noexcept
         {
@@ -64,24 +87,27 @@ namespace lux::render::vulkan
 
     private:
         friend StorageFactory meshInstanceStorageFactory() noexcept;
-        friend class MeshDraws;
-        [[nodiscard]] RenderResult<void>
-        prepare(const NativeResourcePlan&, const MeshInstanceBinding&, PreparedStorageBinding&) noexcept;
-        [[nodiscard]] RenderResult<std::unique_ptr<Backing>> allocate(std::size_t, VkBufferUsageFlags) noexcept;
-        static void recordWrite(VkCommandBuffer, Buffer&, VkDeviceSize, std::span<const std::byte>) noexcept;
+        [[nodiscard]] RenderResult<StorageResource>
+        resolve(const NativeResourcePlan&, const MeshInstanceBinding&, StorageSubscription&) noexcept;
+        [[nodiscard]] RenderResult<std::unique_ptr<GpuPage>> allocate(std::size_t slots) noexcept;
         [[nodiscard]] MeshInstanceDescription describe(const Entry&) const noexcept;
-        void publish(std::unique_ptr<Backing>) noexcept;
-        void retire(std::unique_ptr<Backing>&) noexcept;
-        void unsubscribe(Use&) noexcept;
+        void retire(std::unique_ptr<GpuPage>&) noexcept;
+        void notify(const Entry&, bool removed) noexcept;
+        void publishBuffers() noexcept;
+        [[nodiscard]] Buffer& fieldBuffer(std::uint32_t page, EMeshInstanceBinding) const noexcept;
+        [[nodiscard]] VkDeviceSize fieldOffset(std::uint32_t slot, std::size_t stride) const noexcept;
         DeviceSession& session_;
         StorageId id_;
+        const bool paged_;
+        bool updating_ = false;
+        std::uint32_t live_records_ = 0;
         cxx::SlotMap<Entry, MeshInstanceTag> entries_;
-        std::vector<TransformMatrix> shadow_;
-        std::unique_ptr<Backing> current_;
-        std::vector<Page> pages_;
-        std::vector<std::uint32_t> page_positions_;
-        std::vector<Use*> uses_;
-        std::map<MeshInstanceDrawGroup, std::vector<MeshDraws*>> draw_subscribers_;
+        std::vector<std::unique_ptr<Page>> pages_;
+        std::unique_ptr<GpuPage> flat_;
+        std::unique_ptr<PageTable> page_table_;
+        std::array<StorageSubscription*, 3> bindings_{};
+        std::vector<Observer*> observers_;
+        std::vector<std::uint32_t> dirty_positions_;
         std::uint64_t written_records_ = 0, checked_updates_ = 0;
     };
 } // namespace lux::render::vulkan

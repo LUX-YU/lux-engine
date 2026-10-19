@@ -1,5 +1,6 @@
 #pragma once
 
+#include <exec/task.hpp>
 #include <lux/engine/render/commands/CommandMethod.hpp>
 
 #include <lux/engine/render/resource/Factory.hpp>
@@ -17,10 +18,10 @@ namespace lux::render::vulkan
 
         explicit MeshInstanceCommandHandler(DeviceSession& value) noexcept : device_(value) {}
 
-        void createInstance(const CreateMeshInstance::Request&, CreateMeshInstance::Response&) noexcept;
-        void updateTransforms(const UpdateTransforms::Request&, UpdateTransforms::Response&) noexcept;
+        exec::task<CreateMeshInstance::Response> createInstance(CreateMeshInstance::Request&&) noexcept;
+        exec::task<UpdateTransforms::Response> updateTransforms(UpdateTransforms::Request&&) noexcept;
         void queryInstance(const QueryMeshInstance::Request&, QueryMeshInstance::Response&) noexcept;
-        void releaseInstance(const ReleaseMeshInstance::Request&, ReleaseMeshInstance::Response&) noexcept;
+        exec::task<ReleaseMeshInstance::Response> releaseInstance(ReleaseMeshInstance::Request&&) noexcept;
         using Bindings = std::tuple<
             CommandMethod<CreateMeshInstance, &MeshInstanceCommandHandler::createInstance>,
             CommandMethod<UpdateTransforms, &MeshInstanceCommandHandler::updateTransforms>,

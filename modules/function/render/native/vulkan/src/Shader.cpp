@@ -85,7 +85,7 @@ namespace lux::render::vulkan
             std::string path,
             std::uint64_t base,
             std::uint32_t inherited_stride,
-            const ShaderBlock& expected,
+            const rdesc::ShaderBlock& expected,
             std::size_t& cursor
         ) noexcept
         {
@@ -189,7 +189,7 @@ namespace lux::render::vulkan
             return true;
         }
 
-        bool validateBlock(spvc_compiler compiler, spvc_type block, const ShaderBlock& expected) noexcept
+        bool validateBlock(spvc_compiler compiler, spvc_type block, const rdesc::ShaderBlock& expected) noexcept
         {
             const bool invalid =
                 !expected.size || !std::has_single_bit(expected.alignment) || expected.fields.empty() ||
@@ -228,7 +228,10 @@ namespace lux::render::vulkan
             }
             const auto rounded =
                 (std::uint64_t(size) + expected.alignment - 1) / expected.alignment * expected.alignment;
-            return rounded == expected.size && validateFields(compiler, record, "", 0, 0, expected, cursor) &&
+            // ArrayStride was checked against SPIR-V above. A runtime record can have trailing
+            // padding that is absent from its declared member extent; do not infer that ABI again.
+            const bool size_matches = expected.runtime_records ? size <= expected.size : rounded == expected.size;
+            return size_matches && validateFields(compiler, record, "", 0, 0, expected, cursor) &&
                    cursor == expected.fields.size();
         }
 
@@ -239,7 +242,8 @@ namespace lux::render::vulkan
             const VkPhysicalDeviceLimits& limits,
             const GraphicsState* graphics = nullptr,
             StageIo* io = nullptr,
-            bool color = true
+            bool color = true,
+            bool device_address = false
         ) noexcept
         {
             const bool invalid_entry = input.entry.empty() || input.entry.find('\0') != std::string::npos;
@@ -308,7 +312,9 @@ namespace lux::render::vulkan
                      capability == SpvCapabilitySampledImageArrayNonUniformIndexing ||
                      capability == SpvCapabilitySampledImageArrayDynamicIndexing ||
                      capability == SpvCapabilityImageQuery);
-                if (capability != SpvCapabilityShader && !sampled)
+                const bool physical_addresses =
+                    device_address && capability == SpvCapabilityPhysicalStorageBufferAddresses;
+                if (capability != SpvCapabilityShader && !sampled && !physical_addresses)
                 {
                     return false;
                 }
@@ -626,7 +632,12 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
         const auto& code = shader.stages[0];
-        if (!validateStage(code, SpvExecutionModelGLCompute, shader.interface, limits))
+        auto projected = shaderInterface(shader.interface);
+        if (!projected)
+        {
+            return cxx::unexpected(projected.error());
+        }
+        if (!validateStage(code, SpvExecutionModelGLCompute, *projected, limits))
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
@@ -670,8 +681,13 @@ namespace lux::render::vulkan
         VkFormat depth
     ) noexcept
     {
+        auto projected = shaderInterface(shader.interface);
+        if (!projected)
+        {
+            return cxx::unexpected(projected.error());
+        }
         const bool needs_arrays = std::ranges::any_of(
-            shader.interface.bindings,
+            projected->bindings,
             [](const auto& value) { return value.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY && value.count == 0; }
         );
         const bool is_unsupported = !enabled.dynamic_rendering || (needs_arrays && !enabled.texture_descriptors);
@@ -711,12 +727,20 @@ namespace lux::render::vulkan
         }
         const auto& limits = physical.properties().properties.limits;
         StageIo vertex_io, fragment_io;
-        const bool valid_vertex =
-            validateStage(*vertex_stage, SpvExecutionModelVertex, shader.interface, limits, &graphics, &vertex_io);
+        const bool valid_vertex = validateStage(
+            *vertex_stage,
+            SpvExecutionModelVertex,
+            *projected,
+            limits,
+            &graphics,
+            &vertex_io,
+            true,
+            enabled.buffer_device_address
+        );
         const bool valid_fragment = !fragment_stage || validateStage(
                                                            *fragment_stage,
                                                            SpvExecutionModelFragment,
-                                                           shader.interface,
+                                                           *projected,
                                                            limits,
                                                            &graphics,
                                                            &fragment_io,

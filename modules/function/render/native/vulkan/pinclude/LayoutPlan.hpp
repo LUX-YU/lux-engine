@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ShaderInterface.hpp"
+
 #include <lux/engine/render/graph/Analysis.hpp>
 #include <lux/engine/render/graph/Program.hpp>
 #include <lux/engine/render/native/vulkan/device/Device.hpp>
@@ -18,7 +20,7 @@ namespace lux::render::vulkan
     {
         std::uint32_t resource;
         std::string source_field;
-        ShaderMember destination;
+        rdesc::ShaderMember destination;
     };
 
     struct ProgramLayout final
@@ -38,7 +40,7 @@ namespace lux::render::vulkan
         std::vector<ProgramLayout> programs; // Original GraphPassId indices; pruned entries stay empty.
         std::uint32_t shared_set = kGraphInvalidIndex;
         std::uint32_t private_set = kGraphInvalidIndex;
-        ShaderBlock context_parameters;
+        rdesc::ShaderBlock context_parameters;
         std::uint32_t parameter_bytes = 0;
         VkShaderStageFlags parameter_stages = 0;
     };

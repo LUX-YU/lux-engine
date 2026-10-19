@@ -15,6 +15,7 @@ namespace lux::render
         std::vector<FeatureInstanceView> selected;
         std::vector<PassProgram> programs;
         std::vector<StorageArgument> arguments;
+        std::vector<vulkan::ContextContribution> contexts;
         selected.reserve(count);
         for (std::size_t i = 0; i < input->features.size(); ++i)
         {
@@ -54,7 +55,9 @@ namespace lux::render
             const auto& selection = selected[index];
             auto values = registrations[index]->programs(
                 selection.config ? selection.config->data() : nullptr,
-                selection.instance_key
+                selection.instance_key,
+                assembly->definition,
+                device.enabledFeatures()
             );
             if (!values)
             {
@@ -75,6 +78,24 @@ namespace lux::render
                         return cxx::unexpected(RenderError{kFeatureDuplicate, {index, p, previous}});
                     }
                 }
+            }
+            for (auto& value : values->contexts)
+            {
+                const bool is_declared = std::ranges::any_of(
+                    passes,
+                    [&](const auto& pass)
+                    {
+                        return std::ranges::any_of(
+                            pass.uses,
+                            [&](const auto& use) { return use.version.resource == value.resource; }
+                        );
+                    }
+                );
+                if (!is_declared)
+                {
+                    return cxx::unexpected(RenderError{kFeatureOwnership});
+                }
+                contexts.push_back(std::move(value));
             }
             for (auto& value : values->programs)
             {
@@ -138,7 +159,8 @@ namespace lux::render
             (*assembly).analysis,
             std::move(assembly->external_bindings),
             programs,
-            input->description
+            input->description,
+            std::move(contexts)
         );
         if (!compiled)
         {

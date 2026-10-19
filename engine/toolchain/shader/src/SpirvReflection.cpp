@@ -11,6 +11,7 @@ namespace lux::toolchain
 {
     using namespace lux::rdesc;
     namespace sc = SPIRV_CROSS_NAMESPACE;
+
     // Helper: map to the vertex base type
     static EVertexScalarBase toVertexBase(const sc::SPIRType& t)
     {
@@ -32,17 +33,24 @@ namespace lux::toolchain
             return EVertexScalarBase::UNKNOWN;
         }
     }
+
     static uint32_t calcArraySize(const sc::Compiler& comp, const sc::SPIRType& t)
     {
         if (t.array.empty())
+        {
             return 1;
+        }
         uint64_t total = 1;
         for (size_t i = 0; i < t.array.size(); ++i)
         {
             if (t.array_size_literal[i])
+            {
                 total *= t.array[i];
+            }
             else
+            {
                 return 1;
+            }
         }
         return static_cast<uint32_t>(total);
     }
@@ -113,6 +121,85 @@ namespace lux::toolchain
         return out;
     }
 
+    static bool reflectFields(
+        const sc::Compiler& compiler,
+        const sc::SPIRType& type,
+        std::string path,
+        std::uint32_t offset,
+        std::uint32_t inherited_stride,
+        std::vector<ShaderMember>& result
+    )
+    {
+        for (std::uint32_t i = 0; i < type.member_types.size(); ++i)
+        {
+            const auto& member = compiler.get_type(type.member_types[i]);
+            const auto name = path + compiler.get_member_name(type.self, i);
+            const auto base = offset + compiler.type_struct_member_offset(type, i);
+            std::uint32_t count = 1, stride = inherited_stride;
+            if (!member.array.empty())
+            {
+                if (member.array.size() != 1 || !member.array_size_literal[0] || member.array[0] == 0)
+                {
+                    return false;
+                }
+                count = member.array[0];
+                stride = compiler.type_struct_member_array_stride(type, i);
+            }
+            for (std::uint32_t index = 0; index < count; ++index)
+            {
+                const auto item = name + (member.array.empty() ? "" : "[" + std::to_string(index) + "]");
+                const auto at = base + (member.array.empty() ? 0 : index * stride);
+                if (member.basetype == sc::SPIRType::Struct)
+                {
+                    if (!reflectFields(compiler, member, item + ".", at, stride, result))
+                    {
+                        return false;
+                    }
+                    continue;
+                }
+                const bool is_numeric = member.basetype == sc::SPIRType::Float ||
+                                        member.basetype == sc::SPIRType::Int || member.basetype == sc::SPIRType::UInt;
+                if (!is_numeric || member.width != 32 ||
+                    compiler.has_member_decoration(type.self, i, spv::DecorationRowMajor))
+                {
+                    return false;
+                }
+                const auto scalar = member.basetype == sc::SPIRType::Float ? rdesc::EDataScalar::FLOAT
+                                    : member.basetype == sc::SPIRType::Int ? rdesc::EDataScalar::SINT
+                                                                           : rdesc::EDataScalar::UINT;
+                const auto matrix_stride = member.columns > 1 ? compiler.type_struct_member_matrix_stride(type, i) : 0;
+                result.push_back({item, scalar, at, member.vecsize, member.columns, stride, matrix_stride});
+            }
+        }
+        return true;
+    }
+
+    static ShaderBlock reflectBlock(const sc::Compiler& compiler, const sc::SPIRType& type)
+    {
+        ShaderBlock result;
+        result.size = static_cast<std::uint32_t>(compiler.get_declared_struct_size(type));
+        const sc::SPIRType* record = &type;
+        if (type.member_types.size() == 1)
+        {
+            const auto& member = compiler.get_type(type.member_types[0]);
+            const bool is_record_array = member.array.size() == 1 && member.array_size_literal[0] &&
+                                         member.array[0] == 0 && compiler.type_struct_member_offset(type, 0) == 0;
+            if (is_record_array)
+            {
+                result.runtime_records = true;
+                result.size = compiler.type_struct_member_array_stride(type, 0);
+                record = &member;
+            }
+        }
+        // Layout values come from SPIR-V decorations. Unsupported element shapes retain byte facts,
+        // but have no member contract; consumers requiring typed members reject them at their boundary.
+        if (!reflectFields(compiler, *record, "", 0, 0, result.fields))
+        {
+            result.fields.clear();
+        }
+        return result;
+    }
+
     bool reflectSpirv(const void* bytes, size_t byte_count, ShaderInfo& out)
     {
         const uint32_t* words = reinterpret_cast<const uint32_t*>(bytes);
@@ -122,6 +209,7 @@ namespace lux::toolchain
         const auto res = comp.get_shader_resources();
 
         // entry points
+        out = {};
         out.entry_points = detectEntry(comp);
 
         // UBO
@@ -138,6 +226,7 @@ namespace lux::toolchain
             b.type = EDescriptorType::UNIFORM_BUFFER;
             b.count = calcArraySize(comp, comp.get_type(r.type_id));
             b.blockSize = static_cast<uint32_t>(comp.get_declared_struct_size(t));
+            b.block = reflectBlock(comp, t);
             b.writable = false;
             pushBinding(out, b);
         }
@@ -156,7 +245,9 @@ namespace lux::toolchain
             b.type = EDescriptorType::STORAGE_BUFFER;
             b.count = calcArraySize(comp, comp.get_type(r.type_id));
             b.blockSize = static_cast<uint32_t>(comp.get_declared_struct_size(t));
+            b.block = reflectBlock(comp, t);
             b.writable = !comp.get_buffer_block_flags(r.id).get(spv::DecorationNonWritable);
+            b.readable = !comp.get_buffer_block_flags(r.id).get(spv::DecorationNonReadable);
             pushBinding(out, b);
         }
 
@@ -255,6 +346,7 @@ namespace lux::toolchain
             PushConstantRangeInfo rng{};
             rng.offset = 0;
             rng.size = static_cast<uint32_t>(comp.get_declared_struct_size(t));
+            rng.block = reflectBlock(comp, t);
             out.push_constants.push_back(rng);
         }
 
@@ -285,24 +377,40 @@ namespace lux::toolchain
             case BT::Int:
                 dv.kind = SpecDefaultValue::EKind::INT;
                 if (t.width == 64)
+                {
                     dv.v.i64 = c.scalar_i64();
+                }
                 else if (t.width == 16)
+                {
                     dv.v.i64 = c.scalar_i16();
+                }
                 else if (t.width == 8)
+                {
                     dv.v.i64 = c.scalar_i8();
+                }
                 else
+                {
                     dv.v.i64 = c.scalar_i32();
+                }
                 break;
             case BT::UInt:
                 dv.kind = SpecDefaultValue::EKind::UINT;
                 if (t.width == 64)
+                {
                     dv.v.u64 = c.scalar_u64();
+                }
                 else if (t.width == 16)
+                {
                     dv.v.u64 = static_cast<uint16_t>(c.scalar_u16());
+                }
                 else if (t.width == 8)
+                {
                     dv.v.u64 = static_cast<uint8_t>(c.scalar_u8());
+                }
                 else
+                {
                     dv.v.u64 = static_cast<uint32_t>(c.scalar());
+                }
                 break;
             case BT::Half:
                 dv.kind = SpecDefaultValue::EKind::FLOAT;
@@ -335,7 +443,9 @@ namespace lux::toolchain
                 has_vertex = true;
                 // Prefer the entry point named "main"; fall back to the first one found
                 if (vertex_entry.empty() || ep.name == "main")
+                {
                     vertex_entry = ep.name;
+                }
             }
         }
 
@@ -345,7 +455,9 @@ namespace lux::toolchain
             // entry points, fetch resources again specifically for the vertex entry
             sc::Compiler comp_vi(words, word_count);
             if (!vertex_entry.empty())
+            {
                 comp_vi.set_entry_point(vertex_entry, spv::ExecutionModelVertex);
+            }
 
             const auto res_vi = comp_vi.get_shader_resources();
 
@@ -353,7 +465,9 @@ namespace lux::toolchain
             {
                 // Skip built-in variables (e.g. gl_VertexIndex / gl_InstanceIndex)
                 if (comp_vi.has_decoration(a.id, spv::DecorationBuiltIn))
+                {
                     continue;
+                }
 
                 VertexInputAttribute vi{};
                 // Location (required)
@@ -374,11 +488,32 @@ namespace lux::toolchain
 
             // Sort by location ascending, so upstream code can generate
             // VkVertexInputAttributeDescription directly
-            std::sort(out.vertex_inputs.begin(), out.vertex_inputs.end(), [](const auto& lhs, const auto& rhs) {
-                return lhs.location < rhs.location;
-            });
+            std::sort(
+                out.vertex_inputs.begin(),
+                out.vertex_inputs.end(),
+                [](const auto& lhs, const auto& rhs) { return lhs.location < rhs.location; }
+            );
         }
 
+        std::uint32_t stages = 0;
+        for (const auto& entry : out.entry_points)
+        {
+            stages |= entry.stage == EShaderType::VERTEX     ? 1u
+                      : entry.stage == EShaderType::FRAGMENT ? 2u
+                      : entry.stage == EShaderType::COMPUTE  ? 4u
+                                                             : 0u;
+        }
+        for (auto& set : out.sets)
+        {
+            for (auto& binding : set.bindings)
+            {
+                binding.stages = stages;
+            }
+        }
+        for (auto& range : out.push_constants)
+        {
+            range.stages = stages;
+        }
         return true;
     }
-}
+} // namespace lux::toolchain

@@ -23,7 +23,9 @@ target_include_directories(render_material_asset_tool PRIVATE
     "${render_source_root}/engine/toolchain/material/pinclude"
 )
 target_compile_definitions(render_material_asset_tool PRIVATE LUX_ENGINE_MATERIAL_COMPILER_DLL_DISABLE)
-target_link_libraries(render_material_asset_tool PRIVATE lux::engine::function::material_graph)
+target_link_libraries(render_material_asset_tool PRIVATE
+    lux::engine::function::material_graph
+)
 generate_visibility_header(
     ENABLE_MACRO_NAME LUX_ENGINE_MATERIAL_COMPILER_LIBRARY
     PUBLIC_MACRO_NAME LUX_ENGINE_MATERIAL_COMPILER_PUBLIC
@@ -34,22 +36,23 @@ set(shader_root "${render_source_root}/engine/toolchain/material/shaders")
 set(shader "${CMAKE_CURRENT_BINARY_DIR}/assets/UnlitTexture.frag")
 find_package(Vulkan REQUIRED COMPONENTS glslangValidator)
 add_custom_command(
-    OUTPUT "${shader}.spv"
+    OUTPUT "${shader}.spv" "${shader}.spv.meta"
     BYPRODUCTS "${shader}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/assets"
     COMMAND render_material_asset_tool "${shader}" texture
     COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -S frag
         "-I${shader_root}" "${shader}" -o "${shader}.spv"
-    DEPENDS render_material_asset_tool "${shader_root}/material_types.glsl"
+    COMMAND lux_shader_metadata "${shader}.spv" "${shader}.spv.meta"
+    DEPENDS render_material_asset_tool lux_shader_metadata "${shader_root}/material_types.glsl"
         "${shader_root}/texture_sampling.glsl" "${shader_root}/transition_dither.glsl"
     VERBATIM
 )
-add_custom_target(render_sample_assets ALL DEPENDS "${shader}.spv")
+add_custom_target(render_sample_assets ALL DEPENDS "${shader}.spv" "${shader}.spv.meta")
 
 add_library(render_basic_mesh_client OBJECT Client.cpp)
-target_link_libraries(render_basic_mesh_client PRIVATE render_commands render_features lux::engine::platform::platform_ipc)
+target_link_libraries(render_basic_mesh_client PRIVATE render_commands render_features lux::engine::platform::platform_ipc lux::engine::resource::shader_metadata)
 add_executable(render_basic_mesh Host.cpp $<TARGET_OBJECTS:render_basic_mesh_client>)
-target_link_libraries(render_basic_mesh PRIVATE render_runtime render_native_vulkan_features lux::engine::core::core_execution)
+target_link_libraries(render_basic_mesh PRIVATE render_runtime render_native_vulkan_features lux::engine::core::core_execution lux::engine::resource::shader_metadata)
 add_dependencies(render_basic_mesh render_sample_assets)
 add_test(NAME render.sample.basic_mesh COMMAND render_basic_mesh "${shader}.spv")
 set_tests_properties(render.sample.basic_mesh PROPERTIES TIMEOUT 90)

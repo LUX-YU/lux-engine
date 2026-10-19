@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/graph/Analysis.hpp>
 #include <lux/engine/render/graph/Program.hpp>
+#include <lux/engine/render/native/vulkan/ContextContribution.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
 #include <memory>
 #include <vulkan/vulkan.h>
@@ -20,6 +21,7 @@ namespace lux::render::vulkan
         VkImageUsageFlags image_usage = 0;
         VkBufferUsageFlags buffer_usage = 0;
         bool target_sized = false;
+        std::uint32_t context_data = kGraphInvalidIndex;
     };
 
     enum class ERecipe : std::uint8_t
@@ -136,13 +138,14 @@ namespace lux::render::vulkan
         friend class ExecutionContext;
         friend class DeviceSession;
         friend RenderResult<CompiledGraph>
-        compileGraph(const DeviceSession&, const RenderGraphDefinition&, const GraphAnalysis&, GraphStorageBindings, std::span<const PassProgram>, const TargetDesc&) noexcept;
+        compileGraph(const DeviceSession&, const RenderGraphDefinition&, const GraphAnalysis&, GraphStorageBindings, std::span<const PassProgram>, const TargetDesc&, std::vector<ContextContribution>) noexcept;
         CompiledGraph(VkDevice device, TargetDesc target) noexcept;
         std::unique_ptr<LayoutPlan> descriptor_plan_;
         VkDevice device_;
         TargetDesc target_;
         VkPipelineLayout layout_{};
         std::vector<NativeResourcePlan> resources_;
+        std::vector<ContextContribution> contexts_;
         StorageGroups<std::uint32_t> storage_groups_;
         std::vector<CompiledPass> passes_;
         std::vector<std::uint32_t> pass_indices_;
@@ -169,6 +172,7 @@ namespace lux::render::vulkan
         const GraphAnalysis& analysis,
         GraphStorageBindings external_bindings,
         std::span<const PassProgram> programs,
-        const TargetDesc& target
+        const TargetDesc& target,
+        std::vector<ContextContribution> contexts = {}
     ) noexcept;
 } // namespace lux::render::vulkan

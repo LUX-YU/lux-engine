@@ -6,6 +6,50 @@
 
 namespace lux::render::vulkan
 {
+    RenderResult<ShaderInterface> shaderInterface(const rdesc::ShaderInfo& cooked) noexcept
+    {
+        ShaderInterface result;
+        for (const auto& set : cooked.sets)
+        {
+            for (const auto& source : set.bindings)
+            {
+                const bool is_buffer = source.type == rdesc::EDescriptorType::STORAGE_BUFFER;
+                const bool is_images = source.type == rdesc::EDescriptorType::COMBINED_IMAGE_SAMPLER;
+                if (!is_buffer && !is_images)
+                {
+                    return cxx::unexpected(RenderError{kUnsupported});
+                }
+                const auto access = source.writable
+                                        ? (source.readable ? EStorageAccess::READ_WRITE : EStorageAccess::WRITE_ONLY)
+                                        : EStorageAccess::READ_ONLY;
+                result.bindings.push_back(
+                    {source.set,
+                     source.binding,
+                     is_buffer ? EDescriptorKind::STORAGE_BUFFER : EDescriptorKind::SAMPLED_IMAGE_ARRAY,
+                     source.count,
+                     source.block,
+                     source.name,
+                     source.stages,
+                     access}
+                );
+            }
+        }
+        for (const auto& source : cooked.push_constants)
+        {
+            // The current executor consumes one complete push block. Separate or overlapping
+            // incompatible blocks are rejected here, not flattened into an invented ABI.
+            const bool is_incompatible = source.offset != 0 || source.size != source.block.size ||
+                                         (result.parameters.size && result.parameters != source.block);
+            if (is_incompatible)
+            {
+                return cxx::unexpected(RenderError{kStorageContract});
+            }
+            result.parameters = source.block;
+            result.parameter_stages |= source.stages;
+        }
+        return result;
+    }
+
     const ShaderBinding& sampledImageTableBinding() noexcept
     {
         // Complete shape of the existing device table, not a reflected subset or a Storage decision.
@@ -49,12 +93,18 @@ namespace lux::render::vulkan
                     present_stages |= 4;
                 }
             }
-            if (source->shader.interface.bindings.size() > UINT32_MAX)
+            auto projected = shaderInterface(source->shader.interface);
+            if (!projected)
+            {
+                return cxx::unexpected(projected.error());
+            }
+            const auto& interface = *projected;
+            if (interface.bindings.size() > UINT32_MAX)
             {
                 return cxx::unexpected(RenderError{kCapacity});
             }
-            const auto& parameters = source->shader.interface.parameters;
-            const auto stages = source->shader.interface.parameter_stages;
+            const auto& parameters = interface.parameters;
+            const auto stages = interface.parameter_stages;
             const bool invalid_parameters = source->parameter_values.size() != parameters.size ||
                                             (parameters.size == 0) != (stages == 0) || (stages & ~present_stages) ||
                                             parameters.size % 4 || parameters.size > limits.maxPushConstantsSize ||
@@ -87,7 +137,8 @@ namespace lux::render::vulkan
             }
             for (const auto& mapping : source->parameters)
             {
-                const auto field = std::ranges::find(parameters.fields, mapping.shader_field, &ShaderMember::path);
+                const auto field =
+                    std::ranges::find(parameters.fields, mapping.shader_field, &rdesc::ShaderMember::path);
                 if (field == parameters.fields.end() || mapping.source_field.empty())
                 {
                     return cxx::unexpected(RenderError{kStorageContract});
@@ -127,7 +178,7 @@ namespace lux::render::vulkan
                 }
                 output.parameters.push_back({index, mapping.source_field, *field});
             }
-            output.bindings = source->shader.interface.bindings;
+            output.bindings = interface.bindings;
             if (source->resources.size() != output.bindings.size())
             {
                 return cxx::unexpected(RenderError{kStorageContract});
@@ -287,15 +338,38 @@ namespace lux::render::vulkan
         std::span<const ShaderBinding> locations
     ) noexcept
     {
-        if (locations.size() != original.interface.bindings.size())
+        auto projected = shaderInterface(original.interface);
+        if (!projected)
+        {
+            return cxx::unexpected(projected.error());
+        }
+        const auto& bindings = projected->bindings;
+        if (locations.size() != bindings.size())
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
         auto result = original;
-        result.interface.bindings.assign(locations.begin(), locations.end());
+        result.interface.sets.clear();
+        std::size_t index = 0;
+        for (const auto& group : original.interface.sets)
+        {
+            for (auto binding : group.bindings)
+            {
+                binding.set = locations[index].set;
+                binding.binding = locations[index++].binding;
+                auto destination =
+                    std::ranges::find(result.interface.sets, binding.set, &rdesc::DescriptorSetLayoutInfo::set);
+                if (destination == result.interface.sets.end())
+                {
+                    result.interface.sets.emplace_back(binding.set);
+                    destination = std::prev(result.interface.sets.end());
+                }
+                destination->bindings.push_back(std::move(binding));
+            }
+        }
         // The compiler derived these locations from the validated field list. Only positions change.
         const bool unchanged = std::ranges::equal(
-            original.interface.bindings,
+            bindings,
             locations,
             [](const auto& a, const auto& b) { return a.set == b.set && a.binding == b.binding; }
         );
@@ -413,18 +487,18 @@ namespace lux::render::vulkan
                     return cxx::unexpected(RenderError{kInvalidArgument});
                 }
                 const auto found = std::ranges::find_if(
-                    original.interface.bindings,
+                    bindings,
                     [&](const auto& value)
                     {
                         return value.set == words[record.set] && value.binding == words[record.binding] &&
                                (value.stages & stage_bit) != 0;
                     }
                 );
-                if (found == original.interface.bindings.end())
+                if (found == bindings.end())
                 {
                     return cxx::unexpected(RenderError{kStorageMismatch});
                 }
-                const auto field = static_cast<std::size_t>(found - original.interface.bindings.begin());
+                const auto field = static_cast<std::size_t>(found - bindings.begin());
                 if (seen[field])
                 {
                     return cxx::unexpected(RenderError{kStorageMismatch});
@@ -434,7 +508,7 @@ namespace lux::render::vulkan
             }
             for (std::size_t field = 0; field < seen.size(); ++field)
             {
-                if (!seen[field] && (original.interface.bindings[field].stages & stage_bit) != 0)
+                if (!seen[field] && (bindings[field].stages & stage_bit) != 0)
                 {
                     return cxx::unexpected(RenderError{kStorageMismatch});
                 }

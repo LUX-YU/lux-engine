@@ -74,6 +74,12 @@ namespace lux::render::vulkan
             }
         }
 
+        // Native Feature contributions use already compiled resource indices. No name lookup or
+        // professional Storage behavior is performed by the Context.
+        void setResource(std::uint32_t resource, const StorageResource&) noexcept;
+        void invalidateData(std::uint32_t index) noexcept;
+        [[nodiscard]] StorageId storageId(std::uint32_t resource) const noexcept;
+
         // Compiled resource indices are trusted here; this is a Native diagnostic borrow.
         [[nodiscard]] VkBuffer nativeBuffer(std::uint32_t resource) const noexcept
         {
@@ -91,7 +97,11 @@ namespace lux::render::vulkan
             Image* image = nullptr;
             VkImageView view{};
             Buffer* buffer = nullptr;
-            VkDeviceSize buffer_offset = 0;
+            VkDeviceSize buffer_offset = 0, buffer_size = 0;
+            std::span<const std::byte> parameters;
+            const rdesc::ShaderBlock* parameter_layout = nullptr;
+            bool dirty = false;
+            std::vector<std::pair<std::uint32_t, std::uint32_t>> barriers, descriptors, parameter_copies;
         };
 
         struct Pass final
@@ -105,7 +115,7 @@ namespace lux::render::vulkan
 
             struct ParameterCopy final
             {
-                const std::span<const std::byte>* source;
+                std::uint32_t resource; // kGraphInvalidIndex selects this Context's value array.
                 std::uint32_t source_offset, destination_offset, bytes;
             };
 
@@ -123,7 +133,7 @@ namespace lux::render::vulkan
         struct FrameResources;
         std::unique_ptr<FrameResources> frame_resources_;
         RetirementReservation retirement_;
-        bool bindings_dirty_ = false;
+        std::size_t unavailable_buffers_ = 0;
         const CompiledGraph* code_;
         TargetDesc target_;
         RasterViewport viewport_;
@@ -131,18 +141,20 @@ namespace lux::render::vulkan
 
         struct StorageUse final
         {
+            ExecutionContext* context;
             StorageId storage_id;
-            PreparedStorageBinding binding;
             std::uint32_t resource;
+            StorageSubscription subscription;
         };
 
         StorageSet storages_;
         std::vector<StorageUse> storage_uses_;
-        std::vector<std::uint32_t> pending_updates_;
+        std::vector<std::uint32_t> changed_resources_;
+        std::vector<ContextData> context_data_;
+        std::vector<std::uint32_t> changed_data_;
 
         std::vector<Pass> passes_;
         std::vector<std::byte> context_values_;
-        std::span<const std::byte> context_view_; // Stable range after prepare, used by compiled parameter copies.
 
         ExecutionProgress progress_;
     };

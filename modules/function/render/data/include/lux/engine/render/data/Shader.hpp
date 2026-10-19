@@ -1,7 +1,6 @@
 #pragma once
 
 #include <lux/engine/description/ShaderInfo.hpp>
-#include <lux/engine/render/data/ShaderInterface.hpp>
 
 namespace lux::render
 {
@@ -18,7 +17,7 @@ namespace lux::render
     struct SpirvArtifact final
     {
         std::vector<SpirvStage> stages;
-        ShaderInterface interface;
+        rdesc::ShaderInfo interface;
         bool operator==(const SpirvArtifact&) const noexcept = default;
     };
 

@@ -38,16 +38,34 @@ namespace lux::render
         bool operator==(const MeshDescription&) const noexcept = default;
     };
 
+    // Actual geometry record consumed when a Feature lowers a section to an indirect draw.
+    // Instance count and selection belong to the Feature, not this asset table.
+    struct MeshGpuSection final
+    {
+        std::uint32_t index_count = 0, first_index = 0;
+        std::int32_t vertex_offset = 0;
+    };
+
+    static_assert(sizeof(MeshGpuSection) == 12);
+
     struct MeshPublished final
     {
         MeshId mesh;
         std::uint64_t revision = 0;
     };
 
+    enum class EMeshBuffer : std::uint8_t
+    {
+        VERTICES,
+        INDICES,
+        SECTIONS
+    };
+
     struct MeshBinding final
     {
         MeshId mesh;
         MeshDescription description; // The exact cold asset contract used to construct the Draw recipe.
+        EMeshBuffer buffer = EMeshBuffer::VERTICES;
         bool operator==(const MeshBinding&) const noexcept = default;
     };
 

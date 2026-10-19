@@ -1,5 +1,7 @@
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/resource/description/cmake/ValueTypes.cmake")
 
+include(cmake/MetadataCompiler.cmake)
+
 find_package(spirv_cross_core CONFIG REQUIRED)
 
 # vcpkg exports Debug/Release only; optimized callers must use the matching CRT.

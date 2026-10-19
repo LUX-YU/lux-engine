@@ -1,31 +1,38 @@
 #pragma once
 
-#include <lux/cxx/container/SlotMap.hpp>
-#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
-#include <lux/engine/render/resource/Factory.hpp>
+#include <lux/cxx/container/StableSlotMap.hpp>
+#include <lux/engine/render/native/vulkan/StorageBinding.hpp>
+#include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include <lux/engine/render/resource/Material.hpp>
 #include <lux/engine/render/resource/Upload.hpp>
+#include <map>
 
 namespace lux::render::vulkan
 {
-    class BufferArena;
-    struct NativeResourcePlan;
-    struct PreparedStorageBinding;
     [[nodiscard]] StorageFactory materialStorageFactory() noexcept;
 
     class MaterialStorage final
     {
         struct Table;
-        struct MaterialData;
-        struct Candidate;
-        struct Use;
+
+        struct TextureLink final
+        {
+            TextureId texture;
+            std::size_t position = 0;
+        };
 
         struct Entry final
         {
-            std::unique_ptr<MaterialData> current;
-            std::vector<Use*> uses;
+            Table* table = nullptr;
+            std::uint32_t slot = 0;
+            std::vector<TextureLink> textures;
+            StorageSubscription* bindings = nullptr;
+            std::uint64_t revision = 0;
             bool updating = false;
         };
+
+        using TextureKey = std::array<std::uint32_t, 4>;
+        using StorageKey = std::pair<std::uint32_t, std::uint32_t>;
 
     public:
         MaterialStorage(DeviceSession&, StorageId) noexcept;
@@ -39,6 +46,8 @@ namespace lux::render::vulkan
         }
 
         [[nodiscard]] RenderResult<MaterialInformation> query(MaterialId) const noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> gpuIndex(MaterialId) const noexcept;
+        [[nodiscard]] bool sameTable(MaterialId, MaterialId) const noexcept;
         [[nodiscard]] RenderResult<void> release(MaterialId, std::uint64_t expected_revision) noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
 
@@ -47,16 +56,23 @@ namespace lux::render::vulkan
         friend struct lux::render::StorageTraits<MaterialStorage>;
         using UploadResult = exec::task<RenderResult<MaterialPublished>>;
         [[nodiscard]] UploadResult upload(MaterialWrite) noexcept;
-        [[nodiscard]] RenderResult<void>
-        prepare(const NativeResourcePlan&, const MaterialBinding&, PreparedStorageBinding&) noexcept;
-        void retire(std::unique_ptr<MaterialData>&) noexcept;
-        void refreshTextures(MaterialData&) noexcept;
-        void unsubscribe(Use&) noexcept;
-        static void disconnect(Entry&) noexcept;
+        [[nodiscard]] RenderResult<StorageResource>
+        resolve(const NativeResourcePlan&, const MaterialBinding&, StorageSubscription&) noexcept;
+        [[nodiscard]] RenderResult<Table*> table(MaterialProgram&) noexcept;
+        [[nodiscard]] std::uint32_t textureIndex(TextureId) const noexcept;
+        void watch(TextureId) noexcept;
+        void link(MaterialId, Entry&, std::span<const TextureId>) noexcept;
+        void unlink(Entry&) noexcept;
+        void recordTexture(VkCommandBuffer, TextureId, std::uint32_t) noexcept;
+        void adoptTexture(TextureId, std::uint32_t) noexcept;
+        static TextureKey key(TextureId id) noexcept;
+        static void publish(Table&) noexcept;
         DeviceSession& session_;
         StorageId id_;
-        cxx::SlotMap<Entry, MaterialTag> entries_;
+        cxx::StableSlotMap<Entry, MaterialTag> entries_;
         std::vector<std::unique_ptr<Table>> tables_;
+        std::map<TextureKey, std::vector<std::pair<MaterialId, std::uint32_t>>> references_;
+        std::map<StorageKey, TextureStorage::Observer> observers_;
     };
 } // namespace lux::render::vulkan
 

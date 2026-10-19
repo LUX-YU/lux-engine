@@ -2,7 +2,6 @@
 
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/gapi/vk/Sampler.hpp>
-#include <lux/engine/render/data/ShaderInterface.hpp>
 #include <lux/engine/render/native/vulkan/device/Device.hpp>
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <memory>
@@ -80,15 +79,14 @@ namespace lux::render::vulkan
         {
         };
 
-        explicit DescriptorArray(VkDevice device, ShaderBinding binding, std::uint32_t capacity) noexcept
-            : device_(device), binding_(binding), capacity_(capacity)
+        explicit DescriptorArray(VkDevice device, std::uint32_t capacity) noexcept
+            : device_(device), capacity_(capacity)
         {
         }
 
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] RenderResult<void> initializeDefault(DeviceSession&) noexcept;
         VkDevice device_;
-        ShaderBinding binding_;
         std::uint32_t capacity_;
         cxx::SlotMap<Entry, DescriptorSlotTag> slots_;
         VkDescriptorSetLayout layout_ = VK_NULL_HANDLE;

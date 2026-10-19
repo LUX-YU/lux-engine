@@ -42,7 +42,7 @@ namespace lux::render
         std::vector<ProgramResourceBinding> resources;
         std::array<std::uint32_t, 3> dispatch{1, 1, 1}; // Actual Compute workgroup count.
         std::vector<std::byte> parameter_values; // Complete initial Shader ABI bytes, owned by the compiled result.
-        ShaderBlock context_parameters;          // Declared frame input ABI, shared by this Graph's Context.
+        rdesc::ShaderBlock context_parameters;   // Declared frame input ABI, shared by this Graph's Context.
         std::vector<ProgramParameterBinding> parameters; // Named Storage/Context fields override initial bytes.
     };
 

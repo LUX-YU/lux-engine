@@ -1,85 +1,70 @@
-#include <algorithm>
-#include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/engine/render/resource/Material.hpp>
 
 namespace lux::render
 {
     namespace
     {
-        RenderResult<std::size_t> add(std::size_t a, std::size_t b) noexcept
+        std::size_t stringBytes(const std::string& value) noexcept
         {
-            const auto result = cxx::checkedAdd(a, b);
-            if (!result)
+            const auto object = reinterpret_cast<std::uintptr_t>(&value);
+            const auto data = reinterpret_cast<std::uintptr_t>(value.data());
+            const bool is_inline = data >= object && data < object + sizeof(value);
+            return is_inline || value.capacity() == 0 ? 0 : value.capacity() + 1;
+        }
+
+        std::size_t blockBytes(const rdesc::ShaderBlock& block) noexcept
+        {
+            auto bytes = block.fields.capacity() * sizeof(rdesc::ShaderMember);
+            for (const auto& field : block.fields)
             {
-                return cxx::unexpected(RenderError{kCommandContract});
+                bytes += stringBytes(field.path);
             }
-            return *result;
+            return bytes;
         }
     } // namespace
 
-    ShaderBlock materialParameterBlock(const MaterialProgram& program) noexcept
-    {
-        const auto parameter_count = std::max(1u, program.parameterCount());
-        const auto texture_count = std::max(1u, program.texture_count);
-        {
-            ShaderBlock block{16 * parameter_count + 16 * texture_count, 16, rdesc::EDataLayout::STD430, {}, true};
-            for (unsigned i = 0; i < parameter_count; ++i)
-            {
-                block.fields.push_back(
-                    {"params[" + std::to_string(i) + "]", rdesc::EDataScalar::FLOAT, i * 16, 4, 1, 16, 0}
-                );
-            }
-            const std::array texture_fields{"representation_index", "resource_index", "aux", "flags"};
-            for (unsigned i = 0; i < texture_count; ++i)
-            {
-                for (unsigned j = 0; j < texture_fields.size(); ++j)
-                {
-                    block.fields.push_back(
-                        {"tex[" + std::to_string(i) + "]." + texture_fields[j],
-                         rdesc::EDataScalar::UINT,
-                         parameter_count * 16 + i * 16 + j * 4,
-                         1,
-                         1,
-                         16,
-                         0}
-                    );
-                }
-            }
-            return block;
-        }
-    }
-
     RenderResult<std::size_t> ConfigValueTraits<MaterialProgram>::retainedBytes(const MaterialProgram& value) noexcept
     {
-        const auto lanes =
-            std::uint64_t(std::max<std::size_t>(1, value.defaults.size())) + std::max(1u, value.texture_count);
-        if (lanes > UINT32_MAX / 16u)
+        // These are actual, distinct C++ allocations, not externally supplied lengths or borrowed assets.
+        const auto& info = value.interface;
+        std::size_t bytes = sizeof(value) + value.fragment.words.capacity() * sizeof(std::uint32_t) +
+                            stringBytes(value.fragment.entry) +
+                            info.entry_points.capacity() * sizeof(rdesc::EntryPointInfo) +
+                            info.sets.capacity() * sizeof(rdesc::DescriptorSetLayoutInfo) +
+                            info.push_constants.capacity() * sizeof(rdesc::PushConstantRangeInfo) +
+                            info.spec_constants.capacity() * sizeof(rdesc::SpecConstantInfo) +
+                            info.vertex_inputs.capacity() * sizeof(rdesc::VertexInputAttribute) +
+                            info.private_set_remap.capacity() * sizeof(std::pair<std::uint32_t, std::uint32_t>);
+        for (const auto& entry : info.entry_points)
         {
-            return cxx::unexpected(RenderError{kCommandContract});
+            bytes += stringBytes(entry.name);
         }
-        const auto words = cxx::checkedMul(value.fragment.words.capacity(), sizeof(std::uint32_t));
-        if (!words)
+        for (const auto& set : info.sets)
         {
-            return cxx::unexpected(RenderError{kCommandContract});
+            bytes += set.bindings.capacity() * sizeof(rdesc::EDescriptorBindingInfo);
+            for (const auto& binding : set.bindings)
+            {
+                bytes += stringBytes(binding.name) + blockBytes(binding.block);
+            }
         }
-        auto bytes = add(sizeof(value), *words);
-        if (!bytes)
+        for (const auto& range : info.push_constants)
         {
-            return bytes;
+            bytes += blockBytes(range.block);
         }
-        bytes = add(*bytes, value.fragment.entry.capacity() + 1);
-        const auto parameters = cxx::checkedMul(value.defaults.capacity(), sizeof(std::array<float, 4>));
-        if (!bytes || !parameters)
+        for (const auto& constant : info.spec_constants)
         {
-            return cxx::unexpected(RenderError{kCommandContract});
+            bytes += stringBytes(constant.name);
         }
-        return add(*bytes, *parameters);
+        for (const auto& input : info.vertex_inputs)
+        {
+            bytes += stringBytes(input.name);
+        }
+        return bytes;
     }
 
     RenderResult<std::size_t> ConfigValueTraits<MaterialBinding>::retainedBytes(const MaterialBinding& value) noexcept
     {
-        auto bytes = ConfigValueTraits<MaterialProgram>::retainedBytes(value.program);
-        return bytes ? add(sizeof(value), *bytes - sizeof(MaterialProgram)) : cxx::unexpected(bytes.error());
+        return sizeof(value) + *ConfigValueTraits<MaterialProgram>::retainedBytes(value.program) -
+               sizeof(MaterialProgram);
     }
-
 } // namespace lux::render

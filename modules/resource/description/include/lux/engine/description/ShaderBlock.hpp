@@ -4,13 +4,13 @@
 #include <string>
 #include <vector>
 
-namespace lux::render
+namespace lux::rdesc
 {
     // Owning counterpart of DataGpuField. Cooked artifacts cannot retain the source's borrowed paths.
     struct ShaderMember final
     {
         std::string path;
-        rdesc::EDataScalar scalar;
+        EDataScalar scalar;
         std::uint32_t offset, rows, columns, array_stride, matrix_stride;
         bool operator==(const ShaderMember&) const noexcept = default;
     };
@@ -19,13 +19,13 @@ namespace lux::render
     {
         std::uint32_t size = 0;
         std::uint32_t alignment = 1;
-        rdesc::EDataLayout storage = rdesc::EDataLayout::STD430;
+        EDataLayout storage = EDataLayout::STD430;
         std::vector<ShaderMember> fields;
-        bool runtime_records = false; // one zero-offset runtime array of this record, stride == size
+        bool runtime_records = false; // One zero-offset runtime record array; size is its reflected ArrayStride.
         bool operator==(const ShaderBlock&) const noexcept = default;
 
         // A cold copy, not a second Schema registry or validator. Native reflection checks the ABI boundary.
-        [[nodiscard]] static ShaderBlock from(const rdesc::DataGpuLayout& layout, bool records = false) noexcept
+        [[nodiscard]] static ShaderBlock from(const DataGpuLayout& layout, bool records = false) noexcept
         {
             ShaderBlock result{layout.size, layout.alignment, layout.storage, {}, records};
             result.fields.reserve(layout.fields.size());
@@ -44,4 +44,4 @@ namespace lux::render
             return result;
         }
     };
-} // namespace lux::render
+} // namespace lux::rdesc

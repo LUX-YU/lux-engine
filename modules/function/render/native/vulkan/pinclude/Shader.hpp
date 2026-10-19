@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ShaderInterface.hpp"
+
 #include <lux/engine/gapi/vk/PhysicalDevice.hpp>
 #include <lux/engine/render/graph/Program.hpp>
 #include <lux/engine/render/native/vulkan/device/Device.hpp>

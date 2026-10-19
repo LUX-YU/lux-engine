@@ -8,8 +8,8 @@ may refer to the same physical queue; they never create duplicate submission ser
 ## Resource ownership
 
 VMA Buffer/Image are move-only owners. Their allocator must outlive them. Factories return unique
-ownership; recording code borrows them. Image aliases share only their actual memory allocation.
-Destroying either Image first is legal after GPU use ends. High-count CommandBuffer/Fence/DescriptorSet
+ownership; recording code borrows them. Each Image owns its paired VMA allocation; no Image Alias API
+is exposed. High-count CommandBuffer/Fence/DescriptorSet
 and Pipeline handles remain carriers owned by their Queue, Context or compiled-plan collection.
 
 StorageSet exclusively owns professional Storage instances. ResourceRegistry holds non-owning indexes.
@@ -48,26 +48,36 @@ and waits for completion; reading does not implicitly execute another frame.
 
 ## Professional data
 
-MeshInstanceStorage has stable generational slots and one CPU Transform authority. Sparse updates
-copy only unique dirty pages, using the Legacy 512-record page algorithm. GPU writes are ordered on
-Graphics after old draws; CPU revisions commit only after submission admission. Requests supply
-already unique changed instances. Growth allocates a replacement table; there are no triple mapped banks.
-Each Context owns its derived Mesh selection and indirect Buffer. Storage only notifies matching
-subscribers; selection changes are prepared at the next recording safe point. Existing recipes remain
-limited to their declared record prefix.
+MeshInstanceStorage has stable generational slots and one CPU authority for Transform, properties
+and alive fields. Storage pages contain 16,384 slots; sparse uploads merge only dirty 512-slot blocks.
+An enabled BDA device uses a two-level page-address table; the fallback grows continuous field Buffers.
+GPU writes are ordered on Graphics after old draws; CPU revisions commit only after submission admission.
+Requests supply already unique changed instances. There are no triple mapped banks or draw-prefix
+capacity limits. Each Context owns its Feature-derived Mesh selection and indirect Buffer. Storage
+reports structural changes; the Feature decides membership and prepares changed data before recording.
 
-MeshStorage uses chained Buffer arena segments for combined vertex/index ranges. MaterialStorage
-uses an arena per complete Cooked program/layout. VMA virtual blocks reuse free ranges; physical
-Buffers have one owner. A retiring range retains only virtual allocator metadata, allowing its delayed
-free after a closing Storage has retired the segment. It does not retain Device, Storage or Buffer.
+MeshStorage uses separate chained vertex/index arenas and a compact GPU section table. The public
+`MeshGpuSection` contains geometry facts only. The Mesh Feature copies these fields into its own
+indirect commands and supplies instance selection/count itself. VMA virtual blocks reuse free ranges;
+physical Buffers have one owner. A retiring range borrows its segment's virtual allocator metadata.
+Closing an arena first removes those metadata-only retirement records, then retires the entire segment
+against accepted queue progress. It does not keep a shared Device, Storage or Buffer owner.
 Range uploads use the existing UploadContext on Graphics, avoiding ownership transfers of neighboring
 live ranges. Standalone Texture uploads still select the actual dedicated/fallback queue path.
 
-Material parameter and texture counts come from the cooked program. ShaderEmitter and runtime use
-that same variable record shape; old incompatible material assets must be cooked again. Material
-holds logical TextureId references. Texture changes invalidate only actual consumers; missing or stale
-references sample the device's real white texture. Old Image/descriptor contents survive only prior GPU
-use, not a Material's future reference. Parameter-only changes do not compile another Pipeline.
+MaterialStorage owns a continuous parameter table for each complete Cooked Shader/layout, with stable
+local GPU slots. Values belong to Material writes, not program identity. Offsets and record stride come
+from the Shader's reflected Cooked metadata; runtime does not recompute the ABI from parameter counts.
+Material assets without that layout require re-cooking. Material holds logical TextureId references.
+Texture replacement records all affected Material integer-field updates in one Graphics batch, using
+each MaterialStorage's recorder. Submit success adopts those CPU fields and the Texture together;
+rejection retains the old published values. A Material upload that suspended re-resolves its Texture
+references at adoption. Missing or stale references sample the device's white texture. Old physical
+content survives prior GPU use only. Parameter-only changes do not compile another Pipeline.
+
+Attach writes borrowed Buffer/parameter facts directly into the Context's resource records. Intrusive
+non-owning subscriptions mark only affected descriptor, barrier and parameter locations. Storage owns
+professional updates; Context never carries a Storage upload task or writes Material data on its behalf.
 
 ## Completion and shutdown
 

@@ -69,7 +69,6 @@ namespace lux::render::vulkan
 
     RenderResult<DescriptorArray*> DeviceSession::sampledImageArray() noexcept
     {
-        const auto& binding = sampledImageTableBinding();
         if (sampled_images_)
         {
             return sampled_images_.get();
@@ -79,7 +78,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(capacity.error());
         }
-        auto result = std::unique_ptr<DescriptorArray>(new DescriptorArray(nativeDevice(), binding, *capacity));
+        auto result = std::unique_ptr<DescriptorArray>(new DescriptorArray(nativeDevice(), *capacity));
         if (auto ready = result->initialize(); !ready)
         {
             return cxx::unexpected(ready.error());
@@ -94,7 +93,7 @@ namespace lux::render::vulkan
 
     RenderResult<void> DescriptorArray::initialize() noexcept
     {
-        auto layout = createDescriptorLayout(device_, std::span(&binding_, 1), capacity_);
+        auto layout = createDescriptorLayout(device_, std::span(&sampledImageTableBinding(), 1), capacity_);
         if (!layout)
         {
             return cxx::unexpected(layout.error());
@@ -230,7 +229,7 @@ namespace lux::render::vulkan
         const VkDescriptorImageInfo info{sampler, image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         write.dstSet = descriptors_;
-        write.dstBinding = binding_.binding;
+        write.dstBinding = sampledImageTableBinding().binding;
         write.dstArrayElement = slot.index;
         write.descriptorCount = 1;
         write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;

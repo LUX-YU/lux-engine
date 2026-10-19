@@ -2,7 +2,7 @@
 
 #include <array>
 #include <cstddef>
-#include <lux/engine/render/data/ShaderBlock.hpp>
+#include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/render/features/Assembly.hpp>
 #include <lux/engine/render/resource/MeshInstance.hpp>
 #include <span>
@@ -27,15 +27,42 @@ namespace lux::render
         return std::as_bytes(std::span(&values, 1));
     }
 
-    [[nodiscard]] inline ShaderBlock meshViewParameterBlock() noexcept
+    [[nodiscard]] inline rdesc::ShaderBlock meshViewParameterBlock() noexcept
     {
-        ShaderBlock result{sizeof(MeshViewParameters), 16};
+        rdesc::ShaderBlock result{sizeof(MeshViewParameters), 16};
         result.fields = {
             {"view", rdesc::EDataScalar::FLOAT, 0, 4, 4, 0, 16},
             {"projection", rdesc::EDataScalar::FLOAT, 64, 4, 4, 0, 16}
         };
         return result;
     }
+
+    struct MeshInstanceDrawGroup final
+    {
+        MeshId mesh;
+        MaterialId material;
+        std::uint32_t submesh = 0;
+        bool operator==(const MeshInstanceDrawGroup&) const noexcept = default;
+
+        bool operator<(const MeshInstanceDrawGroup& other) const noexcept
+        {
+            const auto key = [](const MeshInstanceDrawGroup& group) noexcept
+            {
+                return std::tuple{
+                    group.mesh.storage.index,
+                    group.mesh.storage.gen,
+                    group.mesh.local.index,
+                    group.mesh.local.gen,
+                    group.material.storage.index,
+                    group.material.storage.gen,
+                    group.material.local.index,
+                    group.material.local.gen,
+                    group.submesh
+                };
+            };
+            return key(*this) < key(other);
+        }
+    };
 
     // One cold Draw selection. Assets are Global; instance records belong to the attached Scene.
     // Storage keys select existing owner-local instances; qualified resource IDs prove their identity.
@@ -48,7 +75,7 @@ namespace lux::render
         TargetDesc target;
         MeshBinding mesh;
         MaterialBinding material;
-        MeshInstanceBinding instances;
+        MeshInstanceDrawGroup group;
         std::string mesh_storage = "meshes";
         std::string material_storage = "materials";
         std::string instance_storage = "instances";

@@ -1,8 +1,8 @@
-#include <lux/engine/description/ShaderInfo.hpp>
+#include <algorithm>
 #include <cstring>
+#include <lux/engine/description/ShaderInfo.hpp>
 #include <map>
 #include <span>
-#include <algorithm>
 
 namespace lux::rdesc
 {
@@ -13,6 +13,8 @@ namespace lux::rdesc
         PUSH_CONST = 0x03,
         SPEC_CONST = 0x04,
         VERTEX_INPUT = 0x05,
+        BINDING_LAYOUT = 0x06,
+        PUSH_LAYOUT = 0x07,
         END = 0xFF
     };
 
@@ -33,18 +35,22 @@ namespace lux::rdesc
     {
         appendLE(out, v);
     }
+
     static inline void appendU32(std::vector<std::byte>& out, uint32_t v)
     {
         appendLE(out, v);
     }
+
     [[maybe_unused]] static inline void appendU64(std::vector<std::byte>& out, uint64_t v)
     {
         appendLE(out, v);
     }
+
     [[maybe_unused]] static inline void appendI64(std::vector<std::byte>& out, int64_t v)
     {
         appendLE(out, v);
     }
+
     [[maybe_unused]] static inline void appendF64(std::vector<std::byte>& out, double v)
     {
         appendLE(out, v);
@@ -86,18 +92,22 @@ namespace lux::rdesc
     {
         return readLE(b, o, v);
     }
+
     static inline bool readU32(std::span<const std::byte> b, size_t& o, uint32_t& v)
     {
         return readLE(b, o, v);
     }
+
     static inline bool readU64(std::span<const std::byte> b, size_t& o, uint64_t& v)
     {
         return readLE(b, o, v);
     }
+
     static inline bool readI64(std::span<const std::byte> b, size_t& o, int64_t& v)
     {
         return readLE(b, o, v);
     }
+
     static inline bool readF64(std::span<const std::byte> b, size_t& o, double& v)
     {
         return readLE(b, o, v);
@@ -123,22 +133,27 @@ namespace lux::rdesc
     struct PayloadBuilder
     {
         std::vector<std::byte> payload;
+
         template <typename T> void put(const T& v)
         {
             appendLE(payload, v);
         }
+
         void putStr(const std::string& s)
         {
             appendStr(payload, s);
         }
+
         void putPad(size_t n)
         {
             payload.resize(payload.size() + n);
         }
+
         void clear()
         {
             payload.clear();
         }
+
         void flush(std::vector<std::byte>& out, EShaderInfoOp opcode)
         {
             appendU8(out, static_cast<uint8_t>(opcode));
@@ -150,6 +165,58 @@ namespace lux::rdesc
             payload.clear();
         }
     };
+
+    static void appendBlock(PayloadBuilder& output, const ShaderBlock& block)
+    {
+        output.put(block.size);
+        output.put(block.alignment);
+        output.put<std::uint8_t>(static_cast<std::uint8_t>(block.storage));
+        output.put<std::uint8_t>(block.runtime_records ? 1u : 0u);
+        output.put<std::uint32_t>(static_cast<std::uint32_t>(block.fields.size()));
+        for (const auto& field : block.fields)
+        {
+            output.putStr(field.path);
+            output.put<std::uint8_t>(static_cast<std::uint8_t>(field.scalar));
+            output.put(field.offset);
+            output.put(field.rows);
+            output.put(field.columns);
+            output.put(field.array_stride);
+            output.put(field.matrix_stride);
+        }
+    }
+
+    static bool readBlock(std::span<const std::byte> bytes, std::size_t& offset, ShaderBlock& output)
+    {
+        std::uint8_t storage = 0, records = 0;
+        std::uint32_t count = 0;
+        const bool has_header = readU32(bytes, offset, output.size) && readU32(bytes, offset, output.alignment) &&
+                                readU8(bytes, offset, storage) && readU8(bytes, offset, records) &&
+                                readU32(bytes, offset, count);
+        if (!has_header || count > (bytes.size() - offset) / 25 || records > 1)
+        {
+            return false;
+        }
+        output.storage = static_cast<EDataLayout>(storage);
+        output.runtime_records = records != 0;
+        output.fields.reserve(count);
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            ShaderMember field{};
+            std::uint8_t scalar = 0;
+            const bool has_field = readStr(bytes, offset, field.path) && readU8(bytes, offset, scalar) &&
+                                   readU32(bytes, offset, field.offset) && readU32(bytes, offset, field.rows) &&
+                                   readU32(bytes, offset, field.columns) &&
+                                   readU32(bytes, offset, field.array_stride) &&
+                                   readU32(bytes, offset, field.matrix_stride);
+            if (!has_field)
+            {
+                return false;
+            }
+            field.scalar = static_cast<EDataScalar>(scalar);
+            output.fields.push_back(std::move(field));
+        }
+        return true;
+    }
 
     std::vector<std::byte> ShaderInfo::serialize(const ShaderInfo& info)
     {
@@ -178,6 +245,12 @@ namespace lux::rdesc
                 pb.put<uint32_t>(b.blockSize);
                 pb.put<uint8_t>(b.writable ? 1u : 0u);
                 pb.flush(out, EShaderInfoOp::BINDING);
+                pb.put(b.set);
+                pb.put(b.binding);
+                pb.put(b.stages);
+                pb.put<std::uint8_t>(b.readable ? 1u : 0u);
+                appendBlock(pb, b.block);
+                pb.flush(out, EShaderInfoOp::BINDING_LAYOUT);
             }
         }
 
@@ -187,6 +260,10 @@ namespace lux::rdesc
             pb.put<uint32_t>(pc.offset);
             pb.put<uint32_t>(pc.size);
             pb.flush(out, EShaderInfoOp::PUSH_CONST);
+            pb.put(pc.offset);
+            pb.put(pc.stages);
+            appendBlock(pb, pc.block);
+            pb.flush(out, EShaderInfoOp::PUSH_LAYOUT);
         }
 
         // spec constants
@@ -201,7 +278,8 @@ namespace lux::rdesc
             // Fixed 8-byte slot
             switch (sc.default_value.kind)
             {
-            case SpecDefaultValue::EKind::BOOL: {
+            case SpecDefaultValue::EKind::BOOL:
+            {
                 pb.put<uint8_t>(sc.default_value.v.b8);
                 pb.putPad(7);
             }
@@ -245,9 +323,11 @@ namespace lux::rdesc
         return out;
     }
 
-    bool ShaderInfo::deserialize(std::span<const std::byte> buffer, ShaderInfo& out, std::string* err)
+    bool ShaderInfo::deserialize(std::span<const std::byte> buffer, ShaderInfo& result, std::string* err)
     {
-        auto fail = [&](const char* m) {
+        ShaderInfo out;
+        auto fail = [&](const char* m)
+        {
             if (err)
             {
                 *err = m;
@@ -291,16 +371,18 @@ namespace lux::rdesc
 
             size_t p = off, end = off + sz;
             auto left = [&] { return end - p; };
-            auto rdU8 = [&](uint8_t& v) { return readU8(buffer, p, v); };
-            auto rdU32 = [&](uint32_t& v) { return readU32(buffer, p, v); };
-            auto rdU64 = [&](uint64_t& v) { return readU64(buffer, p, v); };
-            auto rdI64 = [&](int64_t& v) { return readI64(buffer, p, v); };
-            auto rdF64 = [&](double& v) { return readF64(buffer, p, v); };
-            auto rdStr = [&](std::string& s) { return readStr(buffer, p, s); };
+            const auto record = buffer.first(end);
+            auto rdU8 = [&](uint8_t& v) { return readU8(record, p, v); };
+            auto rdU32 = [&](uint32_t& v) { return readU32(record, p, v); };
+            auto rdU64 = [&](uint64_t& v) { return readU64(record, p, v); };
+            auto rdI64 = [&](int64_t& v) { return readI64(record, p, v); };
+            auto rdF64 = [&](double& v) { return readF64(record, p, v); };
+            auto rdStr = [&](std::string& s) { return readStr(record, p, s); };
 
             switch (op)
             {
-            case static_cast<uint8_t>(EShaderInfoOp::ENTRY_POINT): {
+            case static_cast<uint8_t>(EShaderInfoOp::ENTRY_POINT):
+            {
                 EntryPointInfo ep{};
                 if (!rdStr(ep.name))
                 {
@@ -316,7 +398,8 @@ namespace lux::rdesc
             }
             break;
 
-            case static_cast<uint8_t>(EShaderInfoOp::BINDING): {
+            case static_cast<uint8_t>(EShaderInfoOp::BINDING):
+            {
                 EDescriptorBindingInfo b{};
                 if (!rdU32(b.set))
                 {
@@ -354,7 +437,8 @@ namespace lux::rdesc
             }
             break;
 
-            case static_cast<uint8_t>(EShaderInfoOp::PUSH_CONST): {
+            case static_cast<uint8_t>(EShaderInfoOp::PUSH_CONST):
+            {
                 PushConstantRangeInfo pc{};
                 if (!rdU32(pc.offset))
                 {
@@ -368,7 +452,56 @@ namespace lux::rdesc
             }
             break;
 
-            case static_cast<uint8_t>(EShaderInfoOp::SPEC_CONST): {
+            case static_cast<std::uint8_t>(EShaderInfoOp::BINDING_LAYOUT):
+            {
+                std::uint32_t set = 0, binding = 0, stages = 0;
+                std::uint8_t readable = 0;
+                const bool has_header = rdU32(set) && rdU32(binding) && rdU32(stages) && rdU8(readable);
+                if (!has_header || readable > 1)
+                {
+                    return fail("binding layout header");
+                }
+                const auto group = setBuckets.find(set);
+                if (group == setBuckets.end())
+                {
+                    return fail("layout without binding");
+                }
+                const auto entry = std::find_if(
+                    group->second.begin(),
+                    group->second.end(),
+                    [binding](const auto& value) { return value.binding == binding; }
+                );
+                if (entry == group->second.end() || !readBlock(buffer.first(end), p, entry->block) || p != end)
+                {
+                    return fail("binding layout");
+                }
+                entry->stages = stages;
+                entry->readable = readable != 0;
+            }
+            break;
+
+            case static_cast<std::uint8_t>(EShaderInfoOp::PUSH_LAYOUT):
+            {
+                std::uint32_t offset = 0, stages = 0;
+                if (!rdU32(offset) || !rdU32(stages))
+                {
+                    return fail("push layout header");
+                }
+                const auto range = std::find_if(
+                    out.push_constants.begin(),
+                    out.push_constants.end(),
+                    [offset](const auto& value) { return value.offset == offset; }
+                );
+                if (range == out.push_constants.end() || !readBlock(buffer.first(end), p, range->block) || p != end)
+                {
+                    return fail("push layout");
+                }
+                range->stages = stages;
+            }
+            break;
+
+            case static_cast<uint8_t>(EShaderInfoOp::SPEC_CONST):
+            {
                 SpecConstantInfo sc{};
                 if (!rdU32(sc.id))
                 {
@@ -397,7 +530,8 @@ namespace lux::rdesc
 
                 switch (sc.default_value.kind)
                 {
-                case SpecDefaultValue::EKind::BOOL: {
+                case SpecDefaultValue::EKind::BOOL:
+                {
                     uint8_t b = 0;
                     if (!rdU8(b))
                     {
@@ -411,7 +545,8 @@ namespace lux::rdesc
                     p += 7; // skip pad
                 }
                 break;
-                case SpecDefaultValue::EKind::INT: {
+                case SpecDefaultValue::EKind::INT:
+                {
                     int64_t v = 0;
                     if (!rdI64(v))
                     {
@@ -420,7 +555,8 @@ namespace lux::rdesc
                     sc.default_value.v.i64 = v;
                 }
                 break;
-                case SpecDefaultValue::EKind::UINT: {
+                case SpecDefaultValue::EKind::UINT:
+                {
                     uint64_t v = 0;
                     if (!rdU64(v))
                     {
@@ -430,7 +566,8 @@ namespace lux::rdesc
                 }
                 break;
                 case SpecDefaultValue::EKind::FLOAT:
-                case SpecDefaultValue::EKind::DOUBLE: {
+                case SpecDefaultValue::EKind::DOUBLE:
+                {
                     double v = 0;
                     if (!rdF64(v))
                     {
@@ -439,7 +576,8 @@ namespace lux::rdesc
                     sc.default_value.v.f64 = v;
                 }
                 break;
-                default: {
+                default:
+                {
                     if (left() < 8)
                     {
                         return fail("sc.unknown payload");
@@ -462,7 +600,8 @@ namespace lux::rdesc
             }
             break;
 
-            case static_cast<uint8_t>(EShaderInfoOp::VERTEX_INPUT): {
+            case static_cast<uint8_t>(EShaderInfoOp::VERTEX_INPUT):
+            {
                 VertexInputAttribute vi{};
                 if (!rdU32(vi.location))
                 {
@@ -515,6 +654,7 @@ namespace lux::rdesc
         }
         std::sort(out.sets.begin(), out.sets.end(), [](const auto& a, const auto& b) { return a.set < b.set; });
 
+        result = std::move(out);
         return true;
     }
 

@@ -2,7 +2,7 @@
 
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/data/ConfigValue.hpp>
-#include <lux/engine/render/features/Registration.hpp>
+#include <lux/engine/render/native/vulkan/Feature.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/runtime/CommandBinding.hpp>

@@ -17,7 +17,7 @@ namespace lux::asset
 {
     namespace
     {
-        inline constexpr std::uint32_t kMaterialVersion = 5U;
+        inline constexpr std::uint32_t kMaterialVersion = 6U;
         inline constexpr std::uint32_t kMaterialInstanceVersion = 2U;
 
         [[nodiscard]] AssetDecodeFailure decodeFailure(EAssetDecodeError code) noexcept
@@ -48,12 +48,32 @@ namespace lux::asset
             return true;
         }
 
+        [[nodiscard]] bool hasCookedLayouts(const lux::rdesc::ShaderInfo& info) noexcept
+        {
+            if (info.entry_points.empty())
+            {
+                return false;
+            }
+            for (const auto& set : info.sets)
+            {
+                for (const auto& binding : set.bindings)
+                {
+                    if (binding.name == "uMats" && (!binding.block.runtime_records || binding.block.fields.empty()))
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
         [[nodiscard]] bool validMaterial(const lux::rdesc::MaterialDescription& data) noexcept
         {
             const auto alpha_mode = static_cast<std::uint8_t>(data.alpha_mode);
             if (data.parameter_defaults.size() > UINT32_MAX || data.texture_slot_ids.size() > UINT32_MAX ||
                 alpha_mode > static_cast<std::uint8_t>(lux::rdesc::EAlphaMode::BLEND) ||
-                !detail::validSpirvWords(data.gbuffer_spirv) || !detail::validSpirvWords(data.forward_spirv))
+                !detail::validSpirvWords(data.gbuffer_spirv) || !detail::validSpirvWords(data.forward_spirv) ||
+                !hasCookedLayouts(data.gbuffer_info) || !hasCookedLayouts(data.forward_info))
             {
                 return false;
             }

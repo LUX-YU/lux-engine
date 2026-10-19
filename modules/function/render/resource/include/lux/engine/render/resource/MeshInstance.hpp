@@ -59,44 +59,37 @@ namespace lux::render
         std::uint32_t changed = 0;
     };
 
-    struct MeshInstanceDrawGroup final
+    // The live GPU fields used by the current Mesh Feature. No previous-transform or culling
+    // stream is allocated until an actual writer and shader consume it.
+    struct MeshInstanceGpuProperty final
     {
-        MeshId mesh;
-        MaterialId material;
-        std::uint32_t submesh = 0;
-        bool operator==(const MeshInstanceDrawGroup&) const noexcept = default;
-
-        bool operator<(const MeshInstanceDrawGroup& other) const noexcept
-        {
-            const auto key = [](const MeshInstanceDrawGroup& group) noexcept
-            {
-                return std::tuple{
-                    group.mesh.storage.index,
-                    group.mesh.storage.gen,
-                    group.mesh.local.index,
-                    group.mesh.local.gen,
-                    group.material.storage.index,
-                    group.material.storage.gen,
-                    group.material.local.index,
-                    group.material.local.gen,
-                    group.submesh
-                };
-            };
-            return key(*this) < key(other);
-        }
+        std::uint32_t mesh_index = 0;
+        std::uint32_t material_index = 0;
+        std::uint32_t section_index = 0;
     };
+
+    struct alignas(8) MeshInstancePageGpu final
+    {
+        std::uint64_t transforms = 0;
+        std::uint64_t properties = 0;
+        std::uint64_t alive = 0;
+    };
+
+    static_assert(sizeof(MeshInstanceGpuProperty) == 12 && sizeof(MeshInstancePageGpu) == 24);
+    inline constexpr std::uint32_t kMeshInstancePageSlots = 16'384;
+    inline constexpr std::uint32_t kMeshInstanceDirtySlots = 512;
+    inline constexpr std::uint32_t kMeshInstanceTableAxis = 512;
 
     enum class EMeshInstanceBinding : std::uint8_t
     {
-        MATRICES,
-        DRAW
+        TRANSFORMS,
+        PROPERTIES,
+        ALIVE
     };
 
     struct MeshInstanceBinding final
     {
-        std::uint32_t record_count = 0; // Cold declared prefix; growth never enlarges an existing Graph's range.
-        std::optional<MeshInstanceDrawGroup> group;
-        EMeshInstanceBinding role = EMeshInstanceBinding::MATRICES;
+        EMeshInstanceBinding role = EMeshInstanceBinding::TRANSFORMS;
         bool operator==(const MeshInstanceBinding&) const noexcept = default;
     };
 

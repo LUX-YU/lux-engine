@@ -16,7 +16,7 @@ lux_engine_install_components(
 	PROJECT_NAME	lux-engine-resource
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::resource
-	COMPONENTS		identity description_types
+	COMPONENTS		identity description_types shader_metadata
                     description
                     asset
 )

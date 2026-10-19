@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/cxx/container/SlotMap.hpp>
+#include <lux/cxx/container/StableSlotMap.hpp>
+#include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 #include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/Mesh.hpp>
@@ -9,20 +10,20 @@
 namespace lux::render::vulkan
 {
     class BufferArena;
-    struct NativeResourcePlan;
-    struct PreparedStorageBinding;
     [[nodiscard]] StorageFactory meshStorageFactory() noexcept;
 
     class MeshStorage final
     {
-        struct MeshData;
-        struct Candidate;
-        struct Use;
+        struct Geometry;
 
         struct Entry final
         {
-            std::unique_ptr<MeshData> current;
-            std::vector<Use*> uses;
+            MeshDescription description;
+            std::unique_ptr<Geometry> geometry;
+            StorageSubscription* vertices = nullptr;
+            StorageSubscription* indices = nullptr;
+            StorageSubscription* sections = nullptr;
+            std::uint64_t revision = 0;
             bool updating = false;
         };
 
@@ -37,9 +38,13 @@ namespace lux::render::vulkan
             return id_;
         }
 
+        [[nodiscard]] const MeshDescription* find(MeshId) const noexcept;
         [[nodiscard]] RenderResult<MeshInformation> query(MeshId) const noexcept;
         [[nodiscard]] RenderResult<void> release(MeshId, std::uint64_t expected_revision) noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
+
+        [[nodiscard]] RenderResult<StorageResource>
+        resolve(const NativeResourcePlan&, const MeshBinding&, StorageSubscription&) noexcept;
 
     private:
         friend StorageFactory meshStorageFactory() noexcept;
@@ -47,15 +52,12 @@ namespace lux::render::vulkan
         using UploadResult = exec::task<RenderResult<MeshPublished>>;
         [[nodiscard]] UploadResult upload(MeshWrite) noexcept;
         [[nodiscard]] RenderResult<void> validate(const MeshDescription&, std::span<const std::byte>) const noexcept;
-        [[nodiscard]] RenderResult<void>
-        prepare(const NativeResourcePlan&, const MeshBinding&, PreparedStorageBinding&) noexcept;
-        void retire(std::unique_ptr<MeshData>&) noexcept;
-        void unsubscribe(Use&) noexcept;
+        void retire(std::unique_ptr<Geometry>&) noexcept;
         static void disconnect(Entry&) noexcept;
         DeviceSession& session_;
         StorageId id_;
-        cxx::SlotMap<Entry, MeshTag> entries_;
-        std::unique_ptr<BufferArena> arena_;
+        cxx::StableSlotMap<Entry, MeshTag> entries_;
+        std::unique_ptr<BufferArena> vertices_, indices_, sections_;
     };
 } // namespace lux::render::vulkan
 

@@ -1,148 +1,280 @@
-#include "BufferArena.hpp"
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstring>
-#include <limits>
-#include <lux/cxx/core/CheckedArithmetic.hpp>
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
-#include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 #include <lux/engine/render/native/vulkan/material/MaterialStorage.hpp>
-#include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 
 namespace lux::render::vulkan
 {
     struct MaterialStorage::Table final
     {
         MaterialProgram program;
-        BufferArena arena;
-
-        Table(DeviceSession& session, MaterialProgram value) noexcept
-            : program(std::move(value)), arena(session, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 64 * 1024)
-        {
-        }
-    };
-
-    struct MaterialStorage::MaterialData final
-    {
-        MaterialData(MaterialProgram value, MaterialParameters params, std::vector<TextureId> references) noexcept
-            : program(std::move(value)), parameters(std::move(params)), textures(std::move(references))
-        {
-            const auto& cooked = program;
-            bytes = cooked.recordSize();
-            record.resize(bytes);
-            std::memcpy(record.data(), parameters.data(), parameters.size() * sizeof(parameters[0]));
-            texture_info.resize(textures.size());
-            texture_bindings.resize(textures.size());
-        }
-
-        void setTexture(std::size_t slot, std::uint32_t index) noexcept
-        {
-            const auto offset = 16 * std::max<std::size_t>(1, parameters.size()) + slot * 16 + 4;
-            std::memcpy(record.data() + offset, &index, sizeof(index));
-        }
-
-        MaterialProgram program;
-        MaterialParameters parameters;
-        std::vector<TextureId> textures;
-        std::vector<rdesc::TextureInfo> texture_info;
-        std::vector<PreparedStorageBinding> texture_bindings;
-        MaterialStorage* owner = nullptr;
-        MaterialId id;
-        std::vector<std::byte> record;
-        std::unique_ptr<BufferArena::Range> range;
+        std::uint32_t stride = 0;
+        std::vector<std::uint32_t> parameter_offsets, texture_offsets;
+        std::vector<std::byte> records; // The sole CPU parameter authority, in the reflected GPU layout.
+        std::vector<Entry*> entries;
+        std::vector<std::uint32_t> free_slots;
+        std::unique_ptr<Buffer> buffer;
         RetirementReservation retirement;
-        std::uint64_t bytes = 0, revision = 0;
+        bool updating = false;
+        std::vector<std::uint32_t> texture_changes;
+        std::vector<bool> texture_changed;
     };
 
-    struct MaterialStorage::Use final
+    namespace
     {
-        MaterialStorage* storage;
-        MaterialId id;
-        PreparedStorageBinding& binding;
-        std::size_t position;
-        std::uint32_t texture_slot;
-
-        void update(const std::unique_ptr<MaterialData>& value) noexcept
+        void beforeWrite(VkCommandBuffer command) noexcept
         {
-            if (texture_slot == UINT32_MAX)
-            {
-                binding.buffer = value->range->buffer;
-                binding.buffer_offset = value->range->offset;
-                binding.pending_bytes = value->record;
-            }
-            binding.publishUpdate();
+            VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+            barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+            barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+            barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT;
+            VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+            dependency.memoryBarrierCount = 1;
+            dependency.pMemoryBarriers = &barrier;
+            vkCmdPipelineBarrier2(command, &dependency);
         }
 
-        ~Use() noexcept
+        void afterWrite(VkCommandBuffer command) noexcept
         {
-            if (storage)
-            {
-                storage->unsubscribe(*this);
-            }
+            VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+            barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+            barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+            barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
+            VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+            dependency.memoryBarrierCount = 1;
+            dependency.pMemoryBarriers = &barrier;
+            vkCmdPipelineBarrier2(command, &dependency);
         }
-    };
-
-    struct MaterialStorage::Candidate final
-    {
-        MaterialStorage& storage;
-        MaterialId id;
-        std::unique_ptr<MaterialData> backing;
-
-        ~Candidate() noexcept
-        {
-            if (!backing)
-            {
-                return;
-            }
-            auto& entry = *storage.entries_.find(id.local);
-            entry.updating = false;
-            if (!entry.current)
-            {
-                storage.entries_.erase(id.local);
-            }
-            storage.retire(backing);
-        }
-
-        void publish() noexcept
-        {
-            auto& entry = *storage.entries_.find(id.local);
-            storage.retire(entry.current);
-            entry.current = std::move(backing);
-            auto& data = *entry.current;
-            data.owner = &storage;
-            data.id = id;
-            for (auto& texture : data.texture_bindings)
-            {
-                texture.update_context = &data;
-                texture.updated = [](void* value) noexcept
-                {
-                    auto& data = *static_cast<MaterialData*>(value);
-                    data.owner->refreshTextures(data);
-                };
-            }
-            entry.updating = false;
-            for (auto* use : entry.uses)
-            {
-                use->update(entry.current);
-            }
-        }
-    };
+    } // namespace
 
     MaterialStorage::MaterialStorage(DeviceSession& session, StorageId id) noexcept : session_(session), id_(id) {}
 
     MaterialStorage::~MaterialStorage() noexcept
     {
+        observers_.clear();
         for (auto& entry : entries_)
         {
-            disconnect(entry);
-            retire(entry.current);
+            StorageSubscription::disconnect(entry.bindings);
+        }
+        for (auto& table : tables_)
+        {
+            if (table->buffer && !session_.retirement().retire(table->retirement, table->buffer))
+            {
+                std::terminate();
+            }
         }
     }
 
     std::size_t MaterialStorage::recordCount() const noexcept
     {
-        return entries_.size();
+        std::size_t count = 0;
+        for (const auto& entry : entries_)
+        {
+            count += entry.revision != 0;
+        }
+        return count;
+    }
+
+    RenderResult<MaterialStorage::Table*> MaterialStorage::table(MaterialProgram& program) noexcept
+    {
+        for (auto& current : tables_)
+        {
+            if (current->program == program)
+            {
+                return current.get();
+            }
+        }
+        const auto* layout = program.parameterLayout();
+        const bool is_invalid_layout = !layout || !layout->runtime_records || !layout->size || layout->size % 4;
+        const bool is_invalid_shader = program.fragment.stage != rdesc::EShaderType::FRAGMENT ||
+                                       program.fragment.entry.empty() || program.fragment.words.size() < 5 ||
+                                       program.fragment.words.front() != 0x07230203;
+        if (is_invalid_layout || is_invalid_shader)
+        {
+            return cxx::unexpected(RenderError{kStorageContract});
+        }
+        auto candidate = std::make_unique<Table>();
+        candidate->stride = layout->size;
+        const auto field = [&](std::string_view name, rdesc::EDataScalar scalar, std::uint32_t rows
+                           ) -> const rdesc::ShaderMember*
+        {
+            const auto found = std::ranges::find(layout->fields, name, &rdesc::ShaderMember::path);
+            if (found == layout->fields.end())
+            {
+                return nullptr;
+            }
+            const bool invalid = found->scalar != scalar || found->rows != rows || found->columns != 1 ||
+                                 found->offset % 4 || found->offset > layout->size ||
+                                 rows * 4 > layout->size - found->offset;
+            return invalid ? nullptr : &*found;
+        };
+        for (std::size_t i = 0; i < program.parameter_count; ++i)
+        {
+            const auto* parameter = field("params[" + std::to_string(i) + "]", rdesc::EDataScalar::FLOAT, 4);
+            if (!parameter)
+            {
+                return cxx::unexpected(RenderError{kStorageContract});
+            }
+            candidate->parameter_offsets.push_back(parameter->offset);
+        }
+        constexpr std::array<std::string_view, 4> members{"representation_index", "resource_index", "aux", "flags"};
+        for (std::uint32_t i = 0; i < program.texture_count; ++i)
+        {
+            std::uint32_t base = 0;
+            for (std::uint32_t m = 0; m < members.size(); ++m)
+            {
+                const auto* member =
+                    field("tex[" + std::to_string(i) + "]." + std::string(members[m]), rdesc::EDataScalar::UINT, 1);
+                if (!member || (m && member->offset != base + m * 4))
+                {
+                    return cxx::unexpected(RenderError{kStorageContract});
+                }
+                if (!m)
+                {
+                    base = member->offset;
+                }
+            }
+            candidate->texture_offsets.push_back(base);
+        }
+        candidate->program = std::move(program);
+        candidate->retirement = session_.retirement().reserve();
+        auto* result = candidate.get();
+        tables_.push_back(std::move(candidate));
+        return result;
+    }
+
+    MaterialStorage::TextureKey MaterialStorage::key(TextureId id) noexcept
+    {
+        return {id.storage.index, id.storage.gen, id.local.index, id.local.gen};
+    }
+
+    std::uint32_t MaterialStorage::textureIndex(TextureId id) const noexcept
+    {
+        auto& registry = session_.resources();
+        const auto* owner = registry.owner(id.storage);
+        if (!owner || (owner != registry.owner(id_) && owner != &session_.globalStorages()))
+        {
+            return 0;
+        }
+        auto source = registry.borrow<TextureStorage>(id.storage);
+        const auto* texture = source ? (*source)->find(id) : nullptr;
+        return texture ? texture->descriptorIndex() : 0;
+    }
+
+    void MaterialStorage::watch(TextureId id) noexcept
+    {
+        const StorageKey storage{id.storage.index, id.storage.gen};
+        if (observers_.contains(storage))
+        {
+            return;
+        }
+        auto& registry = session_.resources();
+        const auto* owner = registry.owner(id.storage);
+        if (!owner || (owner != registry.owner(id_) && owner != &session_.globalStorages()))
+        {
+            return;
+        }
+        auto source = registry.borrow<TextureStorage>(id.storage);
+        if (!source)
+        {
+            return; // Stale Texture identity remains a logical white reference.
+        }
+        auto& observer = observers_.try_emplace(storage).first->second;
+        observer.receiver = this;
+        observer.affected = [](const void* value, TextureId id) noexcept
+        { return static_cast<const MaterialStorage*>(value)->references_.contains(key(id)); };
+        observer.record = [](void* value, VkCommandBuffer command, TextureId id, std::uint32_t descriptor) noexcept
+        { static_cast<MaterialStorage*>(value)->recordTexture(command, id, descriptor); };
+        observer.adopt = [](void* value, TextureId id, std::uint32_t descriptor) noexcept
+        { static_cast<MaterialStorage*>(value)->adoptTexture(id, descriptor); };
+        (*source)->observe(observer);
+    }
+
+    void MaterialStorage::link(MaterialId id, Entry& entry, std::span<const TextureId> textures) noexcept
+    {
+        entry.textures.reserve(textures.size());
+        for (std::uint32_t slot = 0; slot < textures.size(); ++slot)
+        {
+            const auto texture = textures[slot];
+            auto& references = references_[key(texture)];
+            entry.textures.push_back({texture, references.size()});
+            references.emplace_back(id, slot);
+            watch(texture);
+        }
+    }
+
+    void MaterialStorage::unlink(Entry& entry) noexcept
+    {
+        for (auto& texture : entry.textures)
+        {
+            auto found = references_.find(key(texture.texture));
+            auto& references = found->second;
+            references[texture.position] = references.back();
+            const auto [id, slot] = references[texture.position];
+            entries_.find(id.local)->textures[slot].position = texture.position;
+            references.pop_back();
+            if (references.empty())
+            {
+                references_.erase(found);
+            }
+        }
+        entry.textures.clear();
+    }
+
+    void MaterialStorage::recordTexture(VkCommandBuffer command, TextureId id, std::uint32_t descriptor) noexcept
+    {
+        const auto found = references_.find(key(id));
+        if (found == references_.end())
+        {
+            return;
+        }
+        for (const auto [material, texture] : found->second)
+        {
+            const auto& entry = *entries_.find(material.local);
+            const auto& table = *entry.table;
+            const auto offset = std::uint64_t(entry.slot) * table.stride + table.texture_offsets[texture] +
+                                offsetof(MaterialTextureGpuRef, resource_index);
+            vkCmdUpdateBuffer(command, table.buffer->native(), offset, sizeof(descriptor), &descriptor);
+        }
+    }
+
+    void MaterialStorage::adoptTexture(TextureId id, std::uint32_t descriptor) noexcept
+    {
+        const auto found = references_.find(key(id));
+        if (found == references_.end())
+        {
+            return;
+        }
+        for (const auto [material, texture] : found->second)
+        {
+            const auto& entry = *entries_.find(material.local);
+            auto& table = *entry.table;
+            const auto offset = std::size_t(entry.slot) * table.stride + table.texture_offsets[texture] +
+                                offsetof(MaterialTextureGpuRef, resource_index);
+            std::memcpy(table.records.data() + offset, &descriptor, sizeof(descriptor));
+            if (table.updating && !table.texture_changed[entry.slot])
+            {
+                table.texture_changed[entry.slot] = true;
+                table.texture_changes.push_back(entry.slot);
+            }
+        }
+    }
+
+    void MaterialStorage::publish(Table& table) noexcept
+    {
+        for (auto* entry : table.entries)
+        {
+            if (entry)
+            {
+                StorageSubscription::publish(entry->bindings, {table.buffer.get(), 0, table.buffer->size()});
+            }
+        }
     }
 
     MaterialStorage::UploadResult MaterialStorage::upload(MaterialWrite input) noexcept
@@ -152,259 +284,362 @@ namespace lux::render::vulkan
             co_return cxx::unexpected(RenderError{kStorageIdentity});
         }
         auto* existing = input.material.isNull() ? nullptr : entries_.find(input.material.local);
-        if (!input.material.isNull() && !existing)
+        if (!input.material.isNull() && (!existing || !existing->revision))
         {
             co_return cxx::unexpected(RenderError{kStorageIdentity});
+        }
+        const auto revision = existing ? existing->revision : 0;
+        if (input.expected_revision != revision || revision == UINT64_MAX)
+        {
+            co_return cxx::unexpected(RenderError{kStorageContract});
         }
         if (existing && existing->updating)
         {
             co_return cxx::unexpected(RenderError{kBusy});
         }
-        const auto revision = existing ? existing->current->revision : 0;
-        if (input.expected_revision != revision || revision == std::numeric_limits<std::uint64_t>::max())
+        const bool invalid_counts = input.parameters.size() != input.program.parameter_count ||
+                                    input.textures.size() != input.program.texture_count;
+        const bool invalid_values = std::ranges::any_of(
+            input.parameters,
+            [](const auto& lane)
+            { return !std::ranges::all_of(lane, [](float value) { return std::isfinite(value); }); }
+        );
+        if (invalid_counts || invalid_values)
         {
             co_return cxx::unexpected(RenderError{kStorageContract});
         }
-        const auto* program = &input.program;
-        const bool invalid_program =
-            program->fragment.stage != rdesc::EShaderType::FRAGMENT || program->fragment.entry.empty() ||
-            program->fragment.words.size() < 5 || program->fragment.words.front() != 0x07230203 ||
-            input.parameters.size() != program->defaults.size() || input.textures.size() != program->texture_count;
-        if (invalid_program)
-        {
-            co_return cxx::unexpected(RenderError{kStorageContract});
-        }
-        for (const auto& lane : input.parameters)
-        {
-            for (const auto value : lane)
-            {
-                if (!std::isfinite(value))
-                {
-                    co_return cxx::unexpected(RenderError{kStorageContract});
-                }
-            }
-        }
-        // Only the cold Graph owns a Pipeline. A bound Material cannot silently replace its Shader contract.
-        if (existing && !existing->uses.empty() && existing->current->program != *program)
+        // A Material identity belongs to one cooked table ABI. Changing the program creates a new
+        // Material, so existing instance GPU slots cannot silently change interpretation.
+        if (existing && existing->table->program != input.program)
         {
             co_return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        const auto record_bytes = program->recordSize();
-        if (record_bytes > session_.physicalDevice().properties().properties.limits.maxStorageBufferRange)
+        auto selected = table(input.program);
+        if (!selected)
+        {
+            co_return cxx::unexpected(selected.error());
+        }
+        auto& table = **selected;
+        if (table.updating)
+        {
+            co_return cxx::unexpected(RenderError{kBusy});
+        }
+        const auto slot = existing                    ? existing->slot
+                          : !table.free_slots.empty() ? table.free_slots.back()
+                                                      : static_cast<std::uint32_t>(table.entries.size());
+        const auto current_capacity = table.records.size() / table.stride;
+        const bool growing = slot >= current_capacity;
+        const auto capacity =
+            growing ? std::max<std::uint64_t>(16, std::bit_ceil(std::uint64_t(slot) + 1)) : current_capacity;
+        const auto total_bytes = capacity * table.stride;
+        if (total_bytes > session_.physicalDevice().properties().properties.limits.maxStorageBufferRange ||
+            table.entries.size() >= UINT32_MAX)
         {
             co_return cxx::unexpected(RenderError{kStorageCapacity});
         }
-        auto backing =
-            std::make_unique<MaterialData>(input.program, std::move(input.parameters), std::move(input.textures));
-        for (std::uint32_t slot = 0; slot < program->texture_count; ++slot)
+        std::vector<std::byte> values(table.stride);
+        for (std::size_t p = 0; p < input.parameters.size(); ++p)
         {
-            const auto texture = backing->textures[slot];
-            auto& registry = session_.resources();
-            auto* owner = registry.owner(texture.storage);
-            const bool invalid_owner = owner != &session_.globalStorages() && owner != registry.owner(id_);
-            if (!owner || invalid_owner)
-            {
-                continue; // Invalid logical Texture references sample the Session's white slot.
-            }
-            auto storage = registry.borrow<TextureStorage>(texture.storage);
-            if (!storage)
-            {
-                continue;
-            }
-            auto reference = (*storage)->bind(texture, backing->texture_bindings[slot]);
-            if (!reference)
-            {
-                co_return cxx::unexpected(reference.error());
-            }
-            backing->texture_info[slot] = reference->first;
-            backing->setTexture(slot, reference->second);
+            std::memcpy(
+                values.data() + table.parameter_offsets[p],
+                input.parameters[p].data(),
+                sizeof(input.parameters[p])
+            );
         }
-        auto table = std::ranges::find_if(tables_, [&](const auto& value) { return value->program == *program; });
-        if (table == tables_.end())
+        const auto setTextures = [&]() noexcept
         {
-            tables_.push_back(std::make_unique<Table>(session_, input.program));
-            table = std::prev(tables_.end());
-        }
-        const auto alignment = std::max<VkDeviceSize>(
-            16,
-            session_.physicalDevice().properties().properties.limits.minStorageBufferOffsetAlignment
-        );
-        auto range = (*table)->arena.allocate(backing->bytes, alignment);
-        if (!range)
-        {
-            co_return cxx::unexpected(range.error());
-        }
-        backing->range = std::move(*range);
-        backing->revision = revision + 1;
-        backing->retirement = session_.retirement().reserve();
+            for (std::size_t t = 0; t < input.textures.size(); ++t)
+            {
+                const MaterialTextureGpuRef reference{0, textureIndex(input.textures[t]), 0, 0};
+                std::memcpy(values.data() + table.texture_offsets[t], &reference, sizeof(reference));
+            }
+        };
+        setTextures();
         auto id = input.material;
         if (id.isNull())
         {
             id.local = entries_.emplace();
         }
-        entries_.find(id.local)->updating = true;
-        Candidate candidate{*this, id, std::move(backing)};
-        auto uploaded = co_await session_.uploads().writeBufferRange(
-            *candidate.backing->range->buffer,
-            candidate.backing->range->offset,
-            candidate.backing->record
+        auto& entry = *entries_.find(id.local);
+        entry.updating = table.updating = true;
+        std::unique_ptr<Buffer> candidate;
+        auto retirement = session_.retirement().reserve();
+        cxx::scope_exit rollback(
+            [&]() noexcept
+            {
+                entry.updating = table.updating = false;
+                for (auto changed : table.texture_changes)
+                {
+                    table.texture_changed[changed] = false;
+                }
+                table.texture_changes.clear();
+                if (!entry.revision)
+                {
+                    entries_.erase(id.local);
+                }
+                if (candidate && !session_.retirement().retire(retirement, candidate))
+                {
+                    std::terminate();
+                }
+                if (table.entries.empty())
+                {
+                    const auto empty =
+                        std::ranges::find_if(tables_, [&](const auto& value) { return value.get() == &table; });
+                    tables_.erase(empty);
+                }
+            }
         );
+        std::vector<std::byte> grown;
+        if (growing)
+        {
+            grown = table.records;
+            grown.resize(total_bytes);
+            std::memcpy(grown.data() + std::size_t(slot) * table.stride, values.data(), values.size());
+        }
+        const auto source = growing ? std::span<const std::byte>(grown) : std::span<const std::byte>(values);
+        auto allocated = session_.allocator().createBuffer(
+            source.size(),
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            EMemoryAccess::DEVICE
+        );
+        if (!allocated)
+        {
+            co_return cxx::unexpected(allocated.error());
+        }
+        candidate = std::move(*allocated);
+        auto uploaded = co_await session_.uploads().writeBuffer(*candidate, source);
         if (!uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
         }
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        if (stop.stop_requested())
+        std::optional<CommandBatch> batch;
+        for (;;)
         {
-            co_return cxx::unexpected(RenderError{kWorkStopped});
+            if (stop.stop_requested())
+            {
+                co_return cxx::unexpected(RenderError{kWorkStopped});
+            }
+            auto ready = session_.queue().begin();
+            if (ready)
+            {
+                batch.emplace(std::move(*ready));
+                break;
+            }
+            if (ready.error().type != kCapacity)
+            {
+                co_return cxx::unexpected(ready.error());
+            }
+            auto completed = co_await session_.queue().whenAvailable();
+            if (!completed)
+            {
+                co_return cxx::unexpected(completed.error());
+            }
         }
-        candidate.publish();
-        co_return MaterialPublished{id, revision + 1};
+        const auto command = batch->native();
+        auto& target = growing ? *candidate : *table.buffer;
+        beforeWrite(command);
+        if (!growing)
+        {
+            const VkBufferCopy copy{0, std::uint64_t(slot) * table.stride, table.stride};
+            vkCmdCopyBuffer(command, candidate->native(), target.native(), 1, &copy);
+            beforeWrite(command);
+        }
+        // Texture publications may have completed during CPU preparation. Apply their actual latest
+        // fields to the candidate and re-resolve this request's logical references before the single commit.
+        if (growing)
+        {
+            for (auto changed : table.texture_changes)
+            {
+                for (auto offset : table.texture_offsets)
+                {
+                    const auto at = std::size_t(changed) * table.stride + offset;
+                    std::memcpy(grown.data() + at, table.records.data() + at, sizeof(MaterialTextureGpuRef));
+                    vkCmdUpdateBuffer(command, target.native(), at, sizeof(MaterialTextureGpuRef), grown.data() + at);
+                }
+            }
+        }
+        setTextures();
+        for (auto offset : table.texture_offsets)
+        {
+            vkCmdUpdateBuffer(
+                command,
+                target.native(),
+                std::uint64_t(slot) * table.stride + offset,
+                sizeof(MaterialTextureGpuRef),
+                values.data() + offset
+            );
+        }
+        afterWrite(command);
+        auto accepted = std::move(*batch).submit();
+        if (!accepted)
+        {
+            co_return cxx::unexpected(accepted.error());
+        }
+        if (growing)
+        {
+            if (table.buffer && !session_.retirement().retire(table.retirement, table.buffer))
+            {
+                std::terminate();
+            }
+            table.buffer = std::move(candidate);
+            table.retirement = std::move(retirement);
+            table.records = std::move(grown);
+            table.texture_changed.resize(capacity, false);
+        }
+        std::memcpy(table.records.data() + std::size_t(slot) * table.stride, values.data(), values.size());
+        if (entry.revision)
+        {
+            unlink(entry);
+        }
+        else if (!table.free_slots.empty())
+        {
+            table.free_slots.pop_back();
+        }
+        if (slot == table.entries.size())
+        {
+            table.entries.push_back(&entry);
+        }
+        else
+        {
+            table.entries[slot] = &entry;
+        }
+        entry.table = &table;
+        entry.slot = slot;
+        entry.revision = revision + 1;
+        link(id, entry, input.textures);
+        if (growing)
+        {
+            publish(table);
+        }
+        co_return MaterialPublished{id, entry.revision}; // cleanup releases only the temporary staging candidate.
+    }
+
+    RenderResult<std::uint32_t> MaterialStorage::gpuIndex(MaterialId id) const noexcept
+    {
+        const auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
+        if (!entry || !entry->revision)
+        {
+            return cxx::unexpected(RenderError{kStorageIdentity});
+        }
+        return entry->slot;
+    }
+
+    bool MaterialStorage::sameTable(MaterialId left, MaterialId right) const noexcept
+    {
+        const auto* a = left.storage == id_ ? entries_.find(left.local) : nullptr;
+        const auto* b = right.storage == id_ ? entries_.find(right.local) : nullptr;
+        return a && b && a->revision && b->revision && a->table == b->table;
     }
 
     RenderResult<MaterialInformation> MaterialStorage::query(MaterialId id) const noexcept
     {
         const auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
-        if (!entry || !entry->current)
+        if (!entry || !entry->revision)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        const auto& value = *entry->current;
-        return MaterialInformation{{id, value.revision}, value.program, value.parameters, value.textures};
+        const auto& table = *entry->table;
+        MaterialInformation result{{id, entry->revision}, table.program};
+        result.parameters.resize(table.parameter_offsets.size());
+        const auto* bytes = table.records.data() + std::size_t(entry->slot) * table.stride;
+        for (std::size_t p = 0; p < result.parameters.size(); ++p)
+        {
+            std::memcpy(result.parameters[p].data(), bytes + table.parameter_offsets[p], sizeof(result.parameters[p]));
+        }
+        for (const auto& link : entry->textures)
+        {
+            result.textures.push_back(link.texture);
+        }
+        return result;
     }
 
     RenderResult<void> MaterialStorage::release(MaterialId id, std::uint64_t revision) noexcept
     {
-        if (id.storage != id_)
+        auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
+        if (!entry || !entry->revision)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        auto* entry = entries_.find(id.local);
-        if (!entry || !entry->current)
-        {
-            return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        if (entry->updating)
+        if (entry->updating || entry->table->updating)
         {
             return cxx::unexpected(RenderError{kBusy});
         }
-        if (revision != entry->current->revision)
+        if (entry->revision != revision)
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
-        disconnect(*entry);
-        retire(entry->current);
+        auto& table = *entry->table;
+        StorageSubscription::disconnect(entry->bindings);
+        unlink(*entry);
+        table.entries[entry->slot] = nullptr;
+        table.free_slots.push_back(entry->slot);
         entries_.erase(id.local);
+        if (table.free_slots.size() == table.entries.size())
+        {
+            if (!session_.retirement().retire(table.retirement, table.buffer))
+            {
+                std::terminate();
+            }
+            const auto empty = std::ranges::find_if(tables_, [&](const auto& value) { return value.get() == &table; });
+            tables_.erase(empty);
+        }
         return {};
     }
 
-    RenderResult<void> MaterialStorage::prepare(
+    RenderResult<StorageResource> MaterialStorage::resolve(
         const NativeResourcePlan& plan,
         const MaterialBinding& argument,
-        PreparedStorageBinding& binding
+        StorageSubscription& subscription
     ) noexcept
     {
         auto* entry = argument.material.storage == id_ ? entries_.find(argument.material.local) : nullptr;
-        if (!entry || !entry->current)
+        if (!entry || !entry->revision)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        const auto& current = *entry->current;
-        const auto* program = &argument.program;
-        if (*program != current.program)
+        const auto& table = *entry->table;
+        if (argument.program != table.program)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        if (argument.texture_slot == UINT32_MAX)
+        if (argument.texture_slot != UINT32_MAX)
         {
-            const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
-            if (!description || description->size != current.bytes)
-            {
-                return cxx::unexpected(RenderError{kStorageMismatch});
-            }
-        }
-        else
-        {
-            if (argument.texture_slot >= program->texture_count)
-            {
-                return cxx::unexpected(RenderError{kStorageMismatch});
-            }
             const auto* description = std::get_if<GraphImageDesc>(&plan.description);
-            const auto& actual = current.texture_info[argument.texture_slot];
-            const auto format =
-                actual.pixel_format == rdesc::ETexturePixelFormat::RGBA8_UNORM  ? rdesc::ETextureFormat::RGBA8_UNORM
-                : actual.pixel_format == rdesc::ETexturePixelFormat::RGBA8_SRGB ? rdesc::ETextureFormat::RGBA8_SRGB
-                                                                                : rdesc::ETextureFormat::BC1_RGBA_SRGB;
-            const bool has_texture = actual.width != 0;
-            const bool mismatch =
-                !description ||
-                (has_texture && (description->width != actual.width || description->height != actual.height ||
-                                 description->mips != actual.mip_count || description->layers != actual.layers ||
-                                 description->format != format));
-            if (mismatch)
+            if (!description || argument.texture_slot >= entry->textures.size())
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
-        }
-        auto use = std::make_unique<Use>(this, argument.material, binding, entry->uses.size(), argument.texture_slot);
-        entry->uses.push_back(use.get());
-        use->update(entry->current);
-        binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};
-        return {};
-    }
-
-    void MaterialStorage::refreshTextures(MaterialData& data) noexcept
-    {
-        for (std::size_t i = 0; i < data.texture_bindings.size(); ++i)
-        {
-            const auto parameters = data.texture_bindings[i].parameters;
-            if (parameters.empty())
+            const auto texture = entry->textures[argument.texture_slot].texture;
+            auto storage = session_.resources().borrow<TextureStorage>(texture.storage);
+            const auto* current = storage ? (*storage)->find(texture) : nullptr;
+            if (current)
             {
-                continue;
+                const auto& actual = current->info();
+                const auto format = actual.pixel_format == rdesc::ETexturePixelFormat::RGBA8_UNORM
+                                        ? rdesc::ETextureFormat::RGBA8_UNORM
+                                    : actual.pixel_format == rdesc::ETexturePixelFormat::RGBA8_SRGB
+                                        ? rdesc::ETextureFormat::RGBA8_SRGB
+                                        : rdesc::ETextureFormat::BC1_RGBA_SRGB;
+                const bool is_mismatch = description->width != actual.width || description->height != actual.height ||
+                                         description->mips != actual.mip_count ||
+                                         description->layers != actual.layers || description->format != format;
+                if (is_mismatch)
+                {
+                    return cxx::unexpected(RenderError{kStorageMismatch});
+                }
             }
-            float descriptor;
-            std::memcpy(&descriptor, parameters.data(), sizeof(descriptor));
-            data.setTexture(i, static_cast<std::uint32_t>(descriptor));
+            // The shared descriptor table is immutable in shape. Material owns the actual integer
+            // reference updates; a Context has no Texture subscription or professional write to perform.
+            return StorageResource{};
         }
-        auto& entry = *entries_.find(data.id.local);
-        for (auto* use : entry.uses)
+        const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
+        if (!description || description->size < table.stride || description->size > table.buffer->size())
         {
-            use->update(entry.current);
+            return cxx::unexpected(RenderError{kStorageMismatch});
         }
-    }
-
-    void MaterialStorage::retire(std::unique_ptr<MaterialData>& value) noexcept
-    {
-        if (value)
-        {
-            for (auto& texture : value->texture_bindings)
-            {
-                texture.updated = nullptr;
-                texture.reference.reset();
-            }
-        }
-        if (value && !BufferArena::retireRange(session_.retirement(), value->retirement, value->range))
-        {
-            std::terminate(); // The reservation was acquired with this physical candidate.
-        }
-        value.reset();
-    }
-
-    void MaterialStorage::unsubscribe(Use& use) noexcept
-    {
-        auto& subscriptions = entries_.find(use.id.local)->uses;
-        subscriptions[use.position] = subscriptions.back();
-        subscriptions[use.position]->position = use.position;
-        subscriptions.pop_back();
-    }
-
-    void MaterialStorage::disconnect(Entry& entry) noexcept
-    {
-        for (auto* use : entry.uses)
-        {
-            use->storage = nullptr;
-        }
-        entry.uses.clear();
+        subscription.attach(entry->bindings);
+        return StorageResource{table.buffer.get(), 0, table.buffer->size()};
     }
 
     StorageFactory materialStorageFactory() noexcept
@@ -416,11 +651,11 @@ namespace lux::render::vulkan
             { return static_cast<MaterialStorage*>(object)->release(id, revision); }
         };
         static const StorageBindingOps binding{
-            [](void* object, const NativeResourcePlan& plan, const void* argument, PreparedStorageBinding& prepared
+            [](void* object, const NativeResourcePlan& plan, const void* argument, StorageSubscription& subscription
             ) noexcept
             {
                 return static_cast<MaterialStorage*>(object)
-                    ->prepare(plan, *static_cast<const MaterialBinding*>(argument), prepared);
+                    ->resolve(plan, *static_cast<const MaterialBinding*>(argument), subscription);
             }
         };
         static const auto create =

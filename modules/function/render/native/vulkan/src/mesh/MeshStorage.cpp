@@ -4,84 +4,24 @@
 #include <cstring>
 #include <limits>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
-#include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 #include <lux/engine/render/native/vulkan/mesh/MeshStorage.hpp>
 
 namespace lux::render::vulkan
 {
-    struct MeshStorage::MeshData final
+    struct MeshStorage::Geometry final
     {
-        MeshDescription description;
-        std::unique_ptr<BufferArena::Range> range;
-        RetirementReservation retirement;
-        std::uint64_t bytes = 0, revision = 0;
-    };
-
-    struct MeshStorage::Use final
-    {
-        MeshStorage* storage;
-        MeshId id;
-        PreparedStorageBinding& binding;
-        std::size_t position;
-
-        void update(const std::unique_ptr<MeshData>& value) noexcept
-        {
-            binding.buffer = value->range->buffer;
-            binding.buffer_offset = value->range->offset;
-            binding.publishUpdate();
-        }
-
-        ~Use() noexcept
-        {
-            if (storage)
-            {
-                storage->unsubscribe(*this);
-            }
-        }
-    };
-
-    struct MeshStorage::Candidate final
-    {
-        MeshStorage& storage;
-        MeshId id;
-        std::unique_ptr<MeshData> backing;
-
-        ~Candidate() noexcept
-        {
-            if (!backing)
-            {
-                return;
-            }
-            auto& entry = *storage.entries_.find(id.local);
-            entry.updating = false;
-            if (!entry.current)
-            {
-                storage.entries_.erase(id.local);
-            }
-            storage.retire(backing);
-        }
-
-        void publish() noexcept
-        {
-            auto& entry = *storage.entries_.find(id.local);
-            storage.retire(entry.current);
-            entry.current = std::move(backing);
-            entry.updating = false;
-            for (auto* use : entry.uses)
-            {
-                use->update(entry.current);
-            }
-        }
+        std::unique_ptr<BufferArena::Range> vertices, indices, sections;
+        RetirementReservation vertex_retirement, index_retirement, section_retirement;
     };
 
     MeshStorage::MeshStorage(DeviceSession& session, StorageId id) noexcept
         : session_(session), id_(id),
-          arena_(std::make_unique<BufferArena>(
-              session,
-              VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-          ))
+          vertices_(std::make_unique<BufferArena>(session, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)),
+          indices_(std::make_unique<BufferArena>(session, VK_BUFFER_USAGE_INDEX_BUFFER_BIT)),
+          sections_(std::make_unique<BufferArena>(session, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 65536))
     {
     }
 
@@ -90,7 +30,7 @@ namespace lux::render::vulkan
         for (auto& entry : entries_)
         {
             disconnect(entry);
-            retire(entry.current);
+            retire(entry.geometry);
         }
     }
 
@@ -204,81 +144,191 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(RenderError{kBusy});
         }
-        const auto revision = existing ? existing->current->revision : 0;
-        if (input.expected_revision != revision || revision == std::numeric_limits<std::uint64_t>::max())
+        const auto revision = existing ? existing->revision : 0;
+        if (input.expected_revision != revision || revision == UINT64_MAX)
         {
             co_return cxx::unexpected(RenderError{kStorageContract});
         }
-        const auto source = input.source;
-        if (auto valid = validate(input.description, source); !valid)
+        if (auto valid = validate(input.description, input.source); !valid)
         {
             co_return cxx::unexpected(valid.error());
         }
-        // Immutable Graph recipes own counts/offsets. A live binding cannot silently change that ABI.
-        if (existing && !existing->uses.empty() && existing->current->description != input.description)
+        const bool has_bindings = existing && (existing->vertices || existing->indices || existing->sections);
+        if (has_bindings && existing->description != input.description)
         {
             co_return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        const auto alignment = std::max<VkDeviceSize>(
-            4,
-            session_.physicalDevice().properties().properties.limits.minStorageBufferOffsetAlignment
-        );
-        auto range = arena_->allocate(source.size(), alignment);
-        if (!range)
+        const auto vertex_bytes = std::size_t(input.description.vertex_count) * input.description.vertex_stride;
+        const auto index_bytes = std::size_t(input.description.index_count) * input.description.index_stride;
+        auto vertices = vertices_->allocate(vertex_bytes, 4);
+        if (!vertices)
         {
-            co_return cxx::unexpected(range.error());
+            co_return cxx::unexpected(vertices.error());
         }
-        auto backing = std::make_unique<MeshData>(
-            input.description,
-            std::move(*range),
+        auto indices = indices_->allocate((index_bytes + 3) & ~std::size_t{3}, 4);
+        if (!indices)
+        {
+            co_return cxx::unexpected(indices.error());
+        }
+        std::vector<MeshGpuSection> records;
+        records.reserve(input.description.submeshes.size());
+        for (const auto& section : input.description.submeshes)
+        {
+            records.push_back({section.index_count, section.first_index, section.vertex_offset});
+        }
+        auto sections = sections_->allocate(records.size() * sizeof(MeshGpuSection), 4);
+        if (!sections)
+        {
+            co_return cxx::unexpected(sections.error());
+        }
+        auto geometry = std::make_unique<Geometry>(
+            std::move(*vertices),
+            std::move(*indices),
+            std::move(*sections),
             session_.retirement().reserve(),
-            source.size(),
-            revision + 1
+            session_.retirement().reserve(),
+            session_.retirement().reserve()
         );
         auto id = input.mesh;
         if (id.isNull())
         {
             id.local = entries_.emplace();
         }
-        entries_.find(id.local)->updating = true;
-        Candidate candidate{*this, id, std::move(backing)};
+        auto& entry = *entries_.find(id.local); // StableSlotMap retains this address across suspension.
+        entry.updating = true;
+        cxx::scope_exit rollback(
+            [&]() noexcept
+            {
+                entry.updating = false;
+                retire(geometry);
+                if (!entry.geometry)
+                {
+                    entries_.erase(id.local);
+                }
+            }
+        );
         auto uploaded = co_await session_.uploads().writeBufferRange(
-            *candidate.backing->range->buffer,
-            candidate.backing->range->offset,
-            input.source
+            *geometry->vertices->buffer,
+            geometry->vertices->offset,
+            input.source.first(vertex_bytes)
         );
         if (!uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
         }
-        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        if (stop.stop_requested())
+        const auto index_source = input.source.subspan(input.description.index_offset, index_bytes);
+        const auto full_words = index_bytes & ~std::size_t{3};
+        if (full_words)
         {
-            co_return cxx::unexpected(RenderError{kWorkStopped});
+            uploaded = co_await session_.uploads().writeBufferRange(
+                *geometry->indices->buffer,
+                geometry->indices->offset,
+                index_source.first(full_words)
+            );
+            if (!uploaded)
+            {
+                co_return cxx::unexpected(uploaded.error());
+            }
         }
-        candidate.publish();
-        co_return MeshPublished{id, revision + 1};
+        if (full_words != index_bytes)
+        {
+            std::array<std::byte, 4> tail{};
+            std::memcpy(tail.data(), index_source.data() + full_words, index_bytes - full_words);
+            uploaded = co_await session_.uploads()
+                           .writeBufferRange(*geometry->indices->buffer, geometry->indices->offset + full_words, tail);
+            if (!uploaded)
+            {
+                co_return cxx::unexpected(uploaded.error());
+            }
+        }
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+        std::optional<CommandBatch> batch;
+        for (;;)
+        {
+            if (stop.stop_requested())
+            {
+                co_return cxx::unexpected(RenderError{kWorkStopped});
+            }
+            auto ready = session_.queue().begin();
+            if (ready)
+            {
+                batch.emplace(std::move(*ready));
+                break;
+            }
+            if (ready.error().type != kCapacity)
+            {
+                co_return cxx::unexpected(ready.error());
+            }
+            auto completed = co_await session_.queue().whenAvailable();
+            if (!completed)
+            {
+                co_return cxx::unexpected(completed.error());
+            }
+        }
+        const auto bytes = std::as_bytes(std::span(records));
+        const auto& section_range = *geometry->sections;
+        for (std::size_t offset = 0; offset < bytes.size(); offset += 65536)
+        {
+            vkCmdUpdateBuffer(
+                batch->native(),
+                section_range.buffer->native(),
+                section_range.offset + offset,
+                std::min<std::size_t>(65536, bytes.size() - offset),
+                bytes.data() + offset
+            );
+        }
+        VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+        barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
+        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        dependency.memoryBarrierCount = 1;
+        dependency.pMemoryBarriers = &barrier;
+        vkCmdPipelineBarrier2(batch->native(), &dependency);
+        if (auto accepted = std::move(*batch).submit(); !accepted)
+        {
+            co_return cxx::unexpected(accepted.error());
+        }
+        retire(entry.geometry);
+        entry.geometry = std::move(geometry);
+        entry.description = std::move(input.description);
+        entry.revision = revision + 1;
+        entry.updating = false;
+        const auto& v = *entry.geometry->vertices;
+        const auto& i = *entry.geometry->indices;
+        StorageSubscription::publish(entry.vertices, {v.buffer, v.offset, v.size});
+        StorageSubscription::publish(entry.indices, {i.buffer, i.offset, i.size});
+        const auto& s = *entry.geometry->sections;
+        StorageSubscription::publish(entry.sections, {s.buffer, s.offset, s.size});
+        rollback.release();
+        co_return MeshPublished{id, entry.revision};
+    }
+
+    const MeshDescription* MeshStorage::find(MeshId id) const noexcept
+    {
+        const auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
+        return entry && entry->geometry ? &entry->description : nullptr;
     }
 
     RenderResult<MeshInformation> MeshStorage::query(MeshId id) const noexcept
     {
         const auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
-        if (!entry || !entry->current)
+        if (!entry || !entry->geometry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        const auto& value = *entry->current;
-        return MeshInformation{{id, value.revision}, value.description, value.bytes};
+        return MeshInformation{
+            {id, entry->revision},
+            entry->description,
+            entry->geometry->vertices->size + entry->geometry->indices->size
+        };
     }
 
     RenderResult<void> MeshStorage::release(MeshId id, std::uint64_t revision) noexcept
     {
-        if (id.storage != id_)
-        {
-            return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        auto* entry = entries_.find(id.local);
-        if (!entry || !entry->current)
+        auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
+        if (!entry || !entry->geometry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
@@ -286,65 +336,67 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kBusy});
         }
-        if (revision != entry->current->revision)
+        if (revision != entry->revision)
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
         disconnect(*entry);
-        retire(entry->current);
+        retire(entry->geometry);
         entries_.erase(id.local);
         return {};
     }
 
-    RenderResult<void> MeshStorage::prepare(
+    RenderResult<StorageResource> MeshStorage::resolve(
         const NativeResourcePlan& plan,
         const MeshBinding& argument,
-        PreparedStorageBinding& binding
+        StorageSubscription& subscription
     ) noexcept
     {
         auto* entry = argument.mesh.storage == id_ ? entries_.find(argument.mesh.local) : nullptr;
-        if (!entry || !entry->current)
+        if (!entry || !entry->geometry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
         const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
-        const bool is_mismatch = !description || description->size != entry->current->bytes ||
-                                 argument.description != entry->current->description;
+        const bool is_invalid_kind = argument.buffer > EMeshBuffer::SECTIONS;
+        const bool is_mismatch = !description || argument.description != entry->description || is_invalid_kind;
         if (is_mismatch)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        auto use = std::make_unique<Use>(this, argument.mesh, binding, entry->uses.size());
-        entry->uses.push_back(use.get());
-        use->update(entry->current);
-        binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};
-        return {};
-    }
-
-    void MeshStorage::retire(std::unique_ptr<MeshData>& value) noexcept
-    {
-        if (value && !BufferArena::retireRange(session_.retirement(), value->retirement, value->range))
+        const bool vertex = argument.buffer == EMeshBuffer::VERTICES;
+        const bool index = argument.buffer == EMeshBuffer::INDICES;
+        const auto& range = vertex  ? *entry->geometry->vertices
+                            : index ? *entry->geometry->indices
+                                    : *entry->geometry->sections;
+        if (description->size > range.size)
         {
-            std::terminate(); // The reservation was acquired with this physical candidate.
+            return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        value.reset();
+        subscription.attach(vertex ? entry->vertices : index ? entry->indices : entry->sections);
+        return StorageResource{range.buffer, range.offset, range.size};
     }
 
-    void MeshStorage::unsubscribe(Use& use) noexcept
+    void MeshStorage::retire(std::unique_ptr<Geometry>& geometry) noexcept
     {
-        auto& subscriptions = entries_.find(use.id.local)->uses;
-        subscriptions[use.position] = subscriptions.back();
-        subscriptions[use.position]->position = use.position;
-        subscriptions.pop_back();
+        if (!geometry)
+        {
+            return;
+        }
+        if (!BufferArena::retireRange(session_.retirement(), geometry->vertex_retirement, geometry->vertices) ||
+            !BufferArena::retireRange(session_.retirement(), geometry->index_retirement, geometry->indices) ||
+            !BufferArena::retireRange(session_.retirement(), geometry->section_retirement, geometry->sections))
+        {
+            std::terminate(); // Both reservations precede any accepted GPU work.
+        }
+        geometry.reset();
     }
 
     void MeshStorage::disconnect(Entry& entry) noexcept
     {
-        for (auto* use : entry.uses)
-        {
-            use->storage = nullptr;
-        }
-        entry.uses.clear();
+        StorageSubscription::disconnect(entry.vertices);
+        StorageSubscription::disconnect(entry.indices);
+        StorageSubscription::disconnect(entry.sections);
     }
 
     StorageFactory meshStorageFactory() noexcept
@@ -355,11 +407,11 @@ namespace lux::render::vulkan
             { return static_cast<MeshStorage*>(object)->release(id, revision); }
         };
         static const StorageBindingOps binding{
-            [](void* object, const NativeResourcePlan& plan, const void* argument, PreparedStorageBinding& prepared
+            [](void* object, const NativeResourcePlan& plan, const void* argument, StorageSubscription& subscription
             ) noexcept
             {
                 return static_cast<MeshStorage*>(object)
-                    ->prepare(plan, *static_cast<const MeshBinding*>(argument), prepared);
+                    ->resolve(plan, *static_cast<const MeshBinding*>(argument), subscription);
             }
         };
         static const auto create =

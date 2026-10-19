@@ -32,23 +32,19 @@ namespace lux::render::vulkan
         return render::upload(**storage, std::move(input));
     }
 
-    void TextureCommandHandler::releaseTexture(
-        const ReleaseTexture::Request& input,
-        ReleaseTexture::Response& response
-    ) noexcept
+    static exec::task<ReleaseTexture::Response> rejectedRelease(RenderError error) noexcept
+    {
+        co_return cxx::unexpected(error);
+    }
+
+    exec::task<ReleaseTexture::Response> TextureCommandHandler::releaseTexture(ReleaseTexture::Request&& input) noexcept
     {
         auto storage = device_.resources().borrow<vulkan::TextureStorage>(input.texture.storage);
         if (!storage)
         {
-            response = cxx::unexpected(storage.error());
-            return;
+            return rejectedRelease(storage.error());
         }
-        if (auto result = (*storage)->release(input.texture, input.revision); !result)
-        {
-            response = cxx::unexpected(result.error());
-            return;
-        }
-        response = Ack{};
+        return (*storage)->release(input.texture, input.revision);
     }
 
     void TextureCommandHandler::queryTexture(

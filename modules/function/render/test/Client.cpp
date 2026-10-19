@@ -157,8 +157,15 @@ namespace mesh_sample
                 .fragment = {rdesc::EShaderType::FRAGMENT, "main", std::vector<std::uint32_t>(std::size_t(size) / 4)};
             input.seekg(0);
             check(bool(input.read(reinterpret_cast<char*>(program.fragment.words.data()), size)));
+            std::ifstream metadata(std::string(path) + ".meta", std::ios::binary | std::ios::ate);
+            const auto metadata_size = metadata.tellg();
+            check(metadata && metadata_size > 0);
+            std::vector<std::byte> encoded(static_cast<std::size_t>(metadata_size));
+            metadata.seekg(0);
+            check(bool(metadata.read(reinterpret_cast<char*>(encoded.data()), metadata_size)));
+            check(rdesc::ShaderInfo::deserialize(encoded, program.interface));
             program.texture_count = 1;
-            program.defaults = {{1, 1, 1, 1}};
+            program.parameter_count = 1;
             return program;
         }
 
@@ -232,7 +239,7 @@ namespace mesh_sample
                 assets.texture = call<SetTexture>(client, next, set_texture, textureInput(texture_storage, 0, bytes));
                 assets.program = materialProgram(cooked_fragment);
                 MaterialWrite material{{material_storage, {}}, 0, assets.program};
-                material.parameters = assets.program.defaults;
+                material.parameters = {{1, 1, 1, 1}};
                 material.textures = {assets.texture.texture};
                 assets.material = call<SetMaterial>(client, next, set_material, material);
                 loaded.count_down();
@@ -283,7 +290,7 @@ namespace mesh_sample
         config.target = {64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
         config.mesh = {assets.mesh.mesh, assets.description};
         config.material = {assets.material.material, assets.program};
-        config.instances = {2, MeshInstanceDrawGroup{assets.mesh.mesh, assets.material.material}};
+        config.group = {assets.mesh.mesh, assets.material.material};
         config.textures = {{16, 16, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}};
         const auto basic = feature(main, main_commands, main_next, BasicMeshFeature::name);
         const auto depth_feature = feature(main, main_commands, main_next, DepthOnlyFeature::name);

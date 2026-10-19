@@ -53,6 +53,8 @@ if(LUX_RENDER_CLIENT_ONLY)
     return()
 endif()
 
+include("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description/cmake/ShaderMetadata.cmake")
+
 find_package(stdexec CONFIG REQUIRED)
 
 set(platform_components platform_ipc gapi platform_process)
@@ -116,7 +118,7 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/ipc" ipc)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/gapi" gapi)
 
-set(resource_components description_types)
+set(resource_components description_types shader_metadata)
 if(BUILD_TESTING)
     list(APPEND resource_components identity)
 endif()

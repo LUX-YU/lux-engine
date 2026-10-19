@@ -1,7 +1,8 @@
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/ShaderMetadata.cmake")
+
 set(DESCRIPTION_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Texture.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Shader.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderInfo.cpp
 )
 
 add_component(
@@ -39,3 +40,5 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
 )
+
+component_add_internal_dependencies(description lux::engine::resource::shader_metadata)

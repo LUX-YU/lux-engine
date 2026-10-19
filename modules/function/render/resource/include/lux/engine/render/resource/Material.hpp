@@ -17,23 +17,38 @@ namespace lux::render
     struct MaterialProgram final
     {
         SpirvStage fragment;
-        MaterialParameters defaults{};
+        std::uint32_t parameter_count = 0;
         std::uint32_t texture_count = 0;
 
-        [[nodiscard]] std::uint32_t parameterCount() const noexcept
-        {
-            return static_cast<std::uint32_t>(defaults.size());
-        }
+        rdesc::ShaderInfo interface;
 
-        [[nodiscard]] std::uint32_t recordSize() const noexcept
+        [[nodiscard]] const rdesc::ShaderBlock* parameterLayout() const noexcept
         {
-            return 16 * std::max(1u, parameterCount()) + 16 * std::max(1u, texture_count);
+            for (const auto& set : interface.sets)
+            {
+                for (const auto& binding : set.bindings)
+                {
+                    if (binding.name == "uMats")
+                    {
+                        return &binding.block;
+                    }
+                }
+            }
+            return nullptr;
         }
 
         bool operator==(const MaterialProgram&) const noexcept = default;
     };
 
-    [[nodiscard]] ShaderBlock materialParameterBlock(const MaterialProgram&) noexcept;
+    struct MaterialTextureGpuRef final
+    {
+        std::uint32_t representation_index = 0;
+        std::uint32_t resource_index = 0;
+        std::uint32_t aux = 0;
+        std::uint32_t flags = 0;
+    };
+
+    static_assert(sizeof(MaterialTextureGpuRef) == 16);
 
     struct MaterialPublished final
     {

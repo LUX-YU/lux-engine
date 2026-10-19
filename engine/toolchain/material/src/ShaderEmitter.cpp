@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <lux/engine/description/MaterialLayout.hpp>
 #include <map>
 #include <sstream>
 #include <string>
@@ -204,7 +205,7 @@ namespace lux::shadergen::glsl
                 if (need_mat)
                 {
                     declared_in[4] = {"flat uint", "vMatIndex"};
-                    body << "    GraphMaterialRecord _mat = uMats.mats[vMatIndex];\n";
+                    body << "    GraphMaterialRecord _mat = " << rdesc::kMaterialTableName << ".mats[vMatIndex];\n";
                 }
                 for (size_t i = 0; i < ir.values.size(); ++i)
                 {
@@ -338,7 +339,8 @@ namespace lux::shadergen::glsl
                         // with builtin material families. Keep graph sampling on
                         // the same helper so a future provider does not require a
                         // second graph-only field convention.
-                        rhs = "luxSampleTexture(_mat.tex[" + std::to_string(v.slot) + "], " + operand(v, 0) + ")";
+                        rhs = "luxSampleTexture(_mat." + std::string(rdesc::kMaterialTexturesName) + "[" +
+                              std::to_string(v.slot) + "], " + operand(v, 0) + ")";
                         break;
                     case EOp::PARAM:
                     {
@@ -347,7 +349,8 @@ namespace lux::shadergen::glsl
                         // declared arity.
                         const int n = arity(v.type);
                         const char* sw = (n == 1) ? "x" : (n == 2) ? "xy" : (n == 3) ? "xyz" : "xyzw";
-                        rhs = "_mat.params[" + std::to_string(v.slot) + "]." + sw;
+                        rhs = "_mat." + std::string(rdesc::kMaterialParametersName) + "[" + std::to_string(v.slot) +
+                              "]." + sw;
                         break;
                     }
                     case EOp::TBN_NORMAL:
@@ -490,8 +493,10 @@ namespace lux::shadergen::glsl
         const auto material_record = [&]()
         {
             out << "struct GraphMaterialRecord {\n"
-                << " vec4 params[" << std::max<std::size_t>(1, ir.params.size()) << "];\n"
-                << " TextureRefGPU tex[" << std::max<std::size_t>(1, ir.textures.size()) << "];\n};\n";
+                << " vec4 " << rdesc::kMaterialParametersName << "[" << std::max<std::size_t>(1, ir.params.size())
+                << "];\n"
+                << " TextureRefGPU " << rdesc::kMaterialTexturesName << "["
+                << std::max<std::size_t>(1, ir.textures.size()) << "];\n};\n";
         };
 
         if (forward_lit)
@@ -515,7 +520,7 @@ namespace lux::shadergen::glsl
                 material_record();
                 out << "layout(set = 4, binding = 4, std430) readonly buffer MatBuf {\n"
                     << "    GraphMaterialRecord mats[];\n"
-                    << "} uMats;\n";
+                    << "} " << rdesc::kMaterialTableName << ";\n";
             }
         }
         else // GBuffer / Forward-Unlit: declares its own input + out + resource blocks.
@@ -551,7 +556,7 @@ namespace lux::shadergen::glsl
                 }
                 out << "layout(set = 4, binding = 4, std430) readonly buffer MatBuf {\n"
                     << "    GraphMaterialRecord mats[];\n"
-                    << "} uMats;\n";
+                    << "} " << rdesc::kMaterialTableName << ";\n";
             }
             if (gbuffer)
             {

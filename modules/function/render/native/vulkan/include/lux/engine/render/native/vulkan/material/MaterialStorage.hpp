@@ -18,7 +18,6 @@ namespace lux::render::vulkan
         {
             Table* table = nullptr;
             std::uint32_t slot = 0;
-            std::vector<TextureId> textures;
             StorageSubscription* bindings = nullptr;
         };
 

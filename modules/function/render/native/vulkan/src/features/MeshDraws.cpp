@@ -172,23 +172,16 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
         auto value = std::unique_ptr<MeshDraws>(new MeshDraws(session, context, index, resource, group));
-        value->section_subscription_.receiver = value.get();
-        value->section_subscription_.changed = [](void* pointer, const StorageResource& resource) noexcept
-        {
-            auto& self = *static_cast<MeshDraws*>(pointer);
-            self.sections_ = resource;
-            self.available_ = resource.buffer != nullptr;
-            self.context_.invalidateData(self.data_index_);
-        };
         const NativeResourcePlan section_plan{
             "sections",
             GraphBufferDesc{description->submeshes.size() * sizeof(MeshGpuSection)},
             EGraphOrigin::IMPORTED
         };
+        StorageSubscription unused;
         auto sections = (*mesh)->resolve(
             section_plan,
-            MeshBinding{group.mesh, *description, EMeshBuffer::SECTIONS},
-            value->section_subscription_
+            MeshBinding{group.mesh, EMeshBuffer::SECTIONS, sizeof(MeshGpuSection)},
+            unused
         );
         if (!sections)
         {

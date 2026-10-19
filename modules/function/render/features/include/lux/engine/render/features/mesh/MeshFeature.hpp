@@ -73,8 +73,8 @@ namespace lux::render
     struct MeshFeatureConfig final
     {
         TargetDesc target;
-        MeshBinding mesh;
-        MaterialBinding material;
+        MeshDescription geometry;
+        MaterialProgram program;
         MeshInstanceDrawGroup group;
         std::string mesh_storage = "meshes";
         std::string material_storage = "materials";

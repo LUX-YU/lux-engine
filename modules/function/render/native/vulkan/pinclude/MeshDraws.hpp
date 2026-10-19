@@ -32,7 +32,6 @@ namespace lux::render::vulkan
         std::uint32_t data_index_;
         GraphResourceId resource_;
         StorageResource sections_;
-        StorageSubscription section_subscription_;
         MeshInstanceDrawGroup selection_;
         MeshInstanceStorage::Observer observer_;
         gapi::vk::VmaBuffer buffer_;

@@ -27,9 +27,14 @@ namespace lux::render
         }
     } // namespace
 
+    RenderResult<std::size_t> ConfigValueTraits<MeshDescription>::retainedBytes(const MeshDescription& input) noexcept
+    {
+        return retained(input, sizeof(input));
+    }
+
     RenderResult<std::size_t> ConfigValueTraits<MeshBinding>::retainedBytes(const MeshBinding& input) noexcept
     {
-        return retained(input.description, sizeof(input));
+        return sizeof(input) + input.attributes.capacity() * sizeof(MeshAttribute);
     }
 
 } // namespace lux::render

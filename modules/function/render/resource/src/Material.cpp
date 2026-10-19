@@ -64,7 +64,6 @@ namespace lux::render
 
     RenderResult<std::size_t> ConfigValueTraits<MaterialBinding>::retainedBytes(const MaterialBinding& value) noexcept
     {
-        return sizeof(value) + *ConfigValueTraits<MaterialProgram>::retainedBytes(value.program) -
-               sizeof(MaterialProgram);
+        return sizeof(value) + blockBytes(value.layout);
     }
 } // namespace lux::render

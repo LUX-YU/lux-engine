@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <lux/engine/description/MaterialLayout.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/data/Shader.hpp>
 #include <lux/engine/render/resource/Texture.hpp>
@@ -28,7 +29,7 @@ namespace lux::render
             {
                 for (const auto& binding : set.bindings)
                 {
-                    if (binding.name == "uMats")
+                    if (binding.name == rdesc::kMaterialTableName)
                     {
                         return &binding.block;
                     }
@@ -53,7 +54,7 @@ namespace lux::render
     struct MaterialBinding final
     {
         MaterialId material;
-        MaterialProgram program;                 // Same complete cooked contract used by the cold Graph compiler.
+        rdesc::ShaderBlock layout;               // Complete reflected record ABI; image slots need no Shader copy.
         std::uint32_t texture_slot = UINT32_MAX; // UINT32_MAX selects the parameter Buffer; otherwise one Image.
         bool operator==(const MaterialBinding&) const noexcept = default;
     };

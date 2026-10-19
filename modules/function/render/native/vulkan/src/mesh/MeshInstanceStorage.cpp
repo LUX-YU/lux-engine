@@ -99,6 +99,7 @@ namespace lux::render::vulkan
             retire(page->gpu);
         }
         retire(flat_);
+        releaseAfterGpu(session_, update_buffer_);
         if (page_table_)
         {
             session_.deferRelease(
@@ -512,27 +513,23 @@ namespace lux::render::vulkan
         }
         updating_ = true;
 
-        struct DirtyBlock final
-        {
-            std::uint32_t index;
-            std::array<TransformMatrix, kMeshInstanceDirtySlots> values;
-        };
-
-        std::vector<DirtyBlock> dirty;
-        gapi::vk::VmaBuffer staged;
+        auto& dirty = dirty_blocks_;
+        auto& bytes = update_bytes_;
+        dirty.clear();
+        bytes.clear();
+        constexpr auto block_bytes = sizeof(TransformMatrix) * kMeshInstanceDirtySlots;
         cxx::scope_exit cleanup(
             [&]() noexcept
             {
-                for (const auto& block : dirty)
+                for (const auto index : dirty)
                 {
-                    dirty_positions_[block.index] = UINT32_MAX;
+                    dirty_positions_[index] = UINT32_MAX;
                 }
                 updating_ = false;
-                releaseAfterGpu(session_, staged);
             }
         );
-        // Legacy dirty-upload flags collect unique 512-slot blocks, separately from 16K storage pages.
-        // Request items are already unique; only dirty block indices are sorted to merge GPU copies.
+        // Keep one sparse preparation buffer, distinct from the authoritative 16K-slot CPU pages.
+        // Client items are unique. The index sort only merges adjacent GPU copies, not business updates.
         for (const auto& value : input.updates)
         {
             const auto slot = value.instance.local.index;
@@ -541,35 +538,38 @@ namespace lux::render::vulkan
             if (position == UINT32_MAX)
             {
                 position = static_cast<std::uint32_t>(dirty.size());
-                auto& block = dirty.emplace_back();
-                block.index = index;
+                dirty.push_back(index);
+                bytes.resize(dirty.size() * block_bytes);
                 const auto first = (index * kMeshInstanceDirtySlots) % kMeshInstancePageSlots;
-                std::copy_n(
+                std::memcpy(
+                    bytes.data() + std::size_t(position) * block_bytes,
                     pages_[slot / kMeshInstancePageSlots]->transforms.data() + first,
-                    kMeshInstanceDirtySlots,
-                    block.values.data()
+                    block_bytes
                 );
             }
-            dirty[position].values[slot % kMeshInstanceDirtySlots] = value.transform;
+            std::memcpy(
+                bytes.data() + std::size_t(position) * block_bytes +
+                    (slot % kMeshInstanceDirtySlots) * sizeof(TransformMatrix),
+                value.transform.data(),
+                sizeof(TransformMatrix)
+            );
         }
-        std::ranges::sort(dirty, {}, &DirtyBlock::index);
-        const auto block_bytes = sizeof(TransformMatrix) * kMeshInstanceDirtySlots;
-        std::vector<std::byte> bytes(dirty.size() * block_bytes);
-        for (std::size_t i = 0; i < dirty.size(); ++i)
+        std::ranges::sort(dirty);
+        if (bytes.size() > update_buffer_.size())
         {
-            std::memcpy(bytes.data() + i * block_bytes, dirty[i].values.data(), block_bytes);
+            auto buffer = session_.allocator().createBuffer(
+                std::bit_ceil(bytes.size()),
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                EMemoryAccess::DEVICE
+            );
+            if (!buffer)
+            {
+                co_return cxx::unexpected(buffer.error());
+            }
+            releaseAfterGpu(session_, update_buffer_);
+            update_buffer_ = std::move(*buffer);
         }
-        auto buffer = session_.allocator().createBuffer(
-            bytes.size(),
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            EMemoryAccess::DEVICE
-        );
-        if (!buffer)
-        {
-            co_return cxx::unexpected(buffer.error());
-        }
-        staged = std::move(*buffer);
-        auto uploaded = co_await session_.uploads().writeBuffer(staged, bytes);
+        auto uploaded = co_await session_.uploads().writeBufferRange(update_buffer_, 0, bytes);
         if (!uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
@@ -601,21 +601,22 @@ namespace lux::render::vulkan
         beforeWrite(batch->native());
         for (std::size_t first = 0; first < dirty.size();)
         {
-            const auto slot = dirty[first].index * kMeshInstanceDirtySlots;
+            const auto slot = dirty[first] * kMeshInstanceDirtySlots;
             const auto page_index = slot / kMeshInstancePageSlots;
             auto end = first + 1;
-            while (end < dirty.size() && dirty[end].index == dirty[end - 1].index + 1 &&
-                   (!paged_ || dirty[end].index * kMeshInstanceDirtySlots / kMeshInstancePageSlots == page_index))
+            while (end < dirty.size() && dirty[end] == dirty[end - 1] + 1 &&
+                   dirty_positions_[dirty[end]] == dirty_positions_[dirty[end - 1]] + 1 &&
+                   (!paged_ || dirty[end] * kMeshInstanceDirtySlots / kMeshInstancePageSlots == page_index))
             {
                 ++end;
             }
             auto& target = fieldBuffer(page_index, EMeshInstanceBinding::TRANSFORMS);
             const VkBufferCopy copy{
-                first * block_bytes,
+                std::size_t(dirty_positions_[dirty[first]]) * block_bytes,
                 fieldOffset(slot, sizeof(TransformMatrix)),
                 (end - first) * block_bytes
             };
-            vkCmdCopyBuffer(batch->native(), staged.handle(), target.handle(), 1, &copy);
+            vkCmdCopyBuffer(batch->native(), update_buffer_.handle(), target.handle(), 1, &copy);
             first = end;
         }
         afterWrite(batch->native());
@@ -624,13 +625,13 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(accepted.error());
         }
-        for (const auto& block : dirty)
+        for (const auto index : dirty)
         {
-            const auto slot = block.index * kMeshInstanceDirtySlots;
-            std::copy(
-                block.values.begin(),
-                block.values.end(),
-                pages_[slot / kMeshInstancePageSlots]->transforms.data() + slot % kMeshInstancePageSlots
+            const auto slot = index * kMeshInstanceDirtySlots;
+            std::memcpy(
+                pages_[slot / kMeshInstancePageSlots]->transforms.data() + slot % kMeshInstancePageSlots,
+                bytes.data() + std::size_t(dirty_positions_[index]) * block_bytes,
+                block_bytes
             );
         }
         written_records_ += dirty.size() * kMeshInstanceDirtySlots;
@@ -647,7 +648,8 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        std::vector<MeshInstanceGpuProperty> properties;
+        auto& properties = update_properties_;
+        properties.clear();
         properties.reserve(input.updates.size());
         for (const auto& value : input.updates)
         {

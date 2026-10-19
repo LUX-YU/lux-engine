@@ -54,18 +54,15 @@ namespace lux::render
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
-            const auto& mesh = config.mesh.description;
-            const auto* program = &config.material.program;
-            const bool is_invalid_group = config.group.mesh != config.mesh.mesh ||
-                                          config.group.material != config.material.material ||
+            const auto& mesh = config.geometry;
+            const auto* program = &config.program;
+            const bool is_invalid_group = config.group.mesh.isNull() || config.group.material.isNull() ||
                                           config.group.submesh >= mesh.submeshes.size();
             const bool is_invalid_storage =
                 config.mesh_storage.empty() || config.material_storage.empty() || config.instance_storage.empty();
             const auto* material_layout = program->parameterLayout();
-            const bool is_invalid_material =
-                !Depth &&
-                (!material_layout || material_layout->fields.empty() ||
-                 (config.material.texture_slot != UINT32_MAX || config.textures.size() != program->texture_count));
+            const bool is_invalid_material = !Depth && (!material_layout || material_layout->fields.empty() ||
+                                                        config.textures.size() != program->texture_count);
             const bool is_invalid_config = is_invalid_group || is_invalid_storage || is_invalid_material;
             if (is_invalid_config)
             {
@@ -246,7 +243,7 @@ namespace lux::render
     RenderResult<std::size_t> ConfigValueTraits<MeshFeatureConfig>::retainedBytes(const MeshFeatureConfig& value
     ) noexcept
     {
-        auto mesh = ConfigValueTraits<MeshBinding>::retainedBytes(value.mesh);
+        auto mesh = ConfigValueTraits<MeshDescription>::retainedBytes(value.geometry);
         if (!mesh)
         {
             return cxx::unexpected(mesh.error());
@@ -256,14 +253,14 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kInvalidConfig});
         }
-        auto program = ConfigValueTraits<MaterialProgram>::retainedBytes(value.material.program);
+        auto program = ConfigValueTraits<MaterialProgram>::retainedBytes(value.program);
         if (!program)
         {
             return cxx::unexpected(program.error());
         }
         std::size_t total = sizeof(value);
         for (auto bytes :
-             {*mesh - sizeof(MeshBinding),
+             {*mesh - sizeof(MeshDescription),
               *program - sizeof(MaterialProgram),
               *textures,
               value.mesh_storage.capacity(),

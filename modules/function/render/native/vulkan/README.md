@@ -70,6 +70,8 @@ GPU writes are ordered on Graphics after old draws; CPU fields commit only after
 Requests supply already unique changed instances. There are no triple mapped banks or draw-prefix
 capacity limits. Each Context owns its Feature-derived Mesh selection and indirect Buffer. Storage
 reports structural changes; the Feature decides membership and prepares changed data before recording.
+The single writer reuses sparse CPU preparation bytes and a Graphics-owned GPU preparation Buffer;
+range barriers order reuse after earlier reads. Only actual capacity growth allocates another Buffer.
 
 MeshStorage uses separate chained vertex/index arenas and a compact GPU section table. The public
 `MeshGpuSection` contains geometry facts only. The Mesh Feature copies these fields into its own
@@ -94,6 +96,11 @@ to white at this explicit boundary; an invalid later release is not repaired aut
 and coordinate multiple connections. There is no business revision CAS or Query mirror of Client input.
 Old physical content survives accepted GPU use through Session cleanup. Parameter-only changes do not
 compile another Pipeline; internal subscriptions report real buffer growth to attached Contexts.
+Ordinary Material updates reuse per-table preparation capacity. The committed parameter bytes remain
+the sole CPU authority; failed preparation never publishes scratch content. Attach checks the complete
+reflected record ABI, including member types, offsets and strides, without retaining another Shader copy
+per texture port. Mesh bindings carry only vertex/index ABI requirements, not source byte offsets or
+complete asset descriptions. Feature configuration owns the one cold geometry/program input used to compile.
 
 Attach writes borrowed Buffer/parameter facts directly into the Context's resource records. Intrusive
 non-owning subscriptions mark only affected descriptor, barrier and parameter locations. Storage owns

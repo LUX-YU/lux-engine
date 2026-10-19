@@ -282,13 +282,21 @@ namespace lux::render::vulkan
         }
         const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
         const bool is_invalid_kind = argument.buffer > EMeshBuffer::SECTIONS;
-        const bool is_mismatch = !description || argument.description != entry->description || is_invalid_kind;
+        const bool is_mismatch = !description || is_invalid_kind;
         if (is_mismatch)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
         const bool vertex = argument.buffer == EMeshBuffer::VERTICES;
         const bool index = argument.buffer == EMeshBuffer::INDICES;
+        const bool is_layout_mismatch =
+            vertex ? argument.stride != entry->description.vertex_stride ||
+                         argument.attributes != entry->description.attributes
+                   : argument.stride != (index ? entry->description.index_stride : sizeof(MeshGpuSection));
+        if (is_layout_mismatch)
+        {
+            return cxx::unexpected(RenderError{kStorageMismatch});
+        }
         const auto& range = vertex  ? entry->geometry->vertices
                             : index ? entry->geometry->indices
                                     : entry->geometry->sections;

@@ -289,8 +289,8 @@ namespace mesh_sample
         const auto second_view = coldCall<CreateView>(main, main_commands, main_next, {scene}).view;
         MeshFeatureConfig config;
         config.target = {64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
-        config.mesh = {assets.mesh, assets.description};
-        config.material = {assets.material, assets.program};
+        config.geometry = assets.description;
+        config.program = assets.program;
         config.group = {assets.mesh, assets.material};
         config.textures = {{16, 16, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}};
         const auto basic = feature(main, main_commands, main_next, BasicMeshFeature::name);

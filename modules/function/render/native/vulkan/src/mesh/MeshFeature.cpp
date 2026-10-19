@@ -55,8 +55,8 @@ namespace lux::render::vulkan
                 {"alive", resource("alive")},
                 {"members", resource("members")}
             };
-            draw.graphics.vertex_bindings = {{0, config.mesh.description.vertex_stride}};
-            for (const auto& attribute : config.mesh.description.attributes)
+            draw.graphics.vertex_bindings = {{0, config.geometry.vertex_stride}};
+            for (const auto& attribute : config.geometry.attributes)
             {
                 if (attribute.location == 0 || (!Depth && attribute.location == 1))
                 {
@@ -70,24 +70,21 @@ namespace lux::render::vulkan
             draw.draw = DrawIndexedIndirect{
                 resource("indices"),
                 0,
-                config.mesh.description.index_stride == 2 ? EIndexType::UINT16 : EIndexType::UINT32,
+                config.geometry.index_stride == 2 ? EIndexType::UINT16 : EIndexType::UINT32,
                 resource("members")
             };
-            const auto argument = [&](std::string_view local, auto binding) -> RenderResult<void>
-            {
-                result.arguments.push_back(StorageArgument::make(resource(local), std::move(binding)));
-                return {};
-            };
-            if (auto added = argument("vertices", config.mesh); !added)
-            {
-                return cxx::unexpected(added.error());
-            }
-            auto indices = config.mesh;
-            indices.buffer = EMeshBuffer::INDICES;
-            if (auto added = argument("indices", std::move(indices)); !added)
-            {
-                return cxx::unexpected(added.error());
-            }
+            const auto argument = [&](std::string_view local, auto binding)
+            { result.arguments.push_back(StorageArgument::make(resource(local), std::move(binding))); };
+            argument(
+                "vertices",
+                MeshBinding{
+                    config.group.mesh,
+                    EMeshBuffer::VERTICES,
+                    config.geometry.vertex_stride,
+                    config.geometry.attributes
+                }
+            );
+            argument("indices", MeshBinding{config.group.mesh, EMeshBuffer::INDICES, config.geometry.index_stride});
             result.arguments.push_back(
                 StorageArgument::make(resource("matrices"), MeshInstanceBinding{EMeshInstanceBinding::TRANSFORMS})
             );
@@ -113,7 +110,7 @@ namespace lux::render::vulkan
             if constexpr (!Depth)
             {
                 // describe already qualified the typed cooked contract. Native reflection checks the actual code ABI.
-                const auto& material = config.material.program;
+                const auto& material = config.program;
                 draw.shader.stages.push_back(material.fragment);
                 draw.shader.interface.entry_points.insert(
                     draw.shader.interface.entry_points.end(),
@@ -125,8 +122,8 @@ namespace lux::render::vulkan
                 {
                     for (const auto& binding : set.bindings)
                     {
-                        const bool is_table =
-                            binding.type == rdesc::EDescriptorType::STORAGE_BUFFER && binding.name == "uMats";
+                        const bool is_table = binding.type == rdesc::EDescriptorType::STORAGE_BUFFER &&
+                                              binding.name == rdesc::kMaterialTableName;
                         const bool is_images = binding.type == rdesc::EDescriptorType::COMBINED_IMAGE_SAMPLER;
                         if (!is_table && !is_images)
                         {
@@ -146,21 +143,10 @@ namespace lux::render::vulkan
                         draw.resources.push_back({binding.name, resource(is_table ? "material" : "texture0")});
                     }
                 }
-                if (auto added = argument("material", config.material); !added)
+                argument("material", MaterialBinding{config.group.material, *material.parameterLayout()});
+                for (std::uint32_t i = 0; i < config.textures.size(); ++i)
                 {
-                    return cxx::unexpected(added.error());
-                }
-                if (!config.textures.empty())
-                {
-                    for (std::uint32_t i = 0; i < config.textures.size(); ++i)
-                    {
-                        auto texture = config.material;
-                        texture.texture_slot = i;
-                        if (auto added = argument("texture" + std::to_string(i), std::move(texture)); !added)
-                        {
-                            return cxx::unexpected(added.error());
-                        }
-                    }
+                    argument("texture" + std::to_string(i), MaterialBinding{config.group.material, {}, i});
                 }
             }
             result.programs.push_back(std::move(draw));

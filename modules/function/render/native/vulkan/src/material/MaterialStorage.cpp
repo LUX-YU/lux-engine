@@ -18,7 +18,8 @@ namespace lux::render::vulkan
         std::vector<std::byte> records; // The sole CPU parameter authority, in the reflected GPU layout.
         std::vector<Entry*> entries;
         std::vector<std::uint32_t> free_slots;
-        gapi::vk::VmaBuffer buffer;
+        gapi::vk::VmaBuffer buffer, update_buffer;
+        std::vector<std::byte> update_bytes; // Single writer retains preparation capacity across requests.
         bool updating = false;
     };
 
@@ -62,6 +63,7 @@ namespace lux::render::vulkan
         for (auto& table : tables_)
         {
             releaseAfterGpu(session_, table->buffer);
+            releaseAfterGpu(session_, table->update_buffer);
         }
     }
 
@@ -105,21 +107,29 @@ namespace lux::render::vulkan
         };
         for (std::size_t i = 0; i < program.parameter_count; ++i)
         {
-            const auto* parameter = field("params[" + std::to_string(i) + "]", rdesc::EDataScalar::FLOAT, 4);
+            const auto* parameter = field(
+                std::string(rdesc::kMaterialParametersName) + "[" + std::to_string(i) + "]",
+                rdesc::EDataScalar::FLOAT,
+                4
+            );
             if (!parameter)
             {
                 return cxx::unexpected(RenderError{kStorageContract});
             }
             candidate->parameter_offsets.push_back(parameter->offset);
         }
-        constexpr std::array<std::string_view, 4> members{"representation_index", "resource_index", "aux", "flags"};
+        constexpr auto& members = rdesc::kMaterialTextureFields;
         for (std::uint32_t i = 0; i < program.texture_count; ++i)
         {
             std::uint32_t base = 0;
             for (std::uint32_t m = 0; m < members.size(); ++m)
             {
-                const auto* member =
-                    field("tex[" + std::to_string(i) + "]." + std::string(members[m]), rdesc::EDataScalar::UINT, 1);
+                const auto* member = field(
+                    std::string(rdesc::kMaterialTexturesName) + "[" + std::to_string(i) + "]." +
+                        std::string(members[m]),
+                    rdesc::EDataScalar::UINT,
+                    1
+                );
                 if (!member || (m && member->offset != base + m * 4))
                 {
                     return cxx::unexpected(RenderError{kStorageContract});
@@ -204,6 +214,7 @@ namespace lux::render::vulkan
                 {
                     const auto empty =
                         std::ranges::find_if(tables_, [&](const auto& value) { return value.get() == &table; });
+                    releaseAfterGpu(session_, table.update_buffer);
                     tables_.erase(empty);
                 }
             }
@@ -232,7 +243,17 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(RenderError{kStorageCapacity});
         }
-        std::vector<std::byte> values(table.stride);
+        if (growing)
+        {
+            table.update_bytes.assign(table.records.begin(), table.records.end());
+            table.update_bytes.resize(total_bytes);
+        }
+        else
+        {
+            table.update_bytes.assign(table.stride, std::byte{});
+        }
+        auto values =
+            std::span(table.update_bytes).subspan(growing ? std::size_t(slot) * table.stride : 0, table.stride);
         for (std::size_t p = 0; p < input.parameters.size(); ++p)
         {
             std::memcpy(
@@ -248,25 +269,25 @@ namespace lux::render::vulkan
             const MaterialTextureGpuRef reference{0, textureIndex(input.textures[t]), 0, 0};
             std::memcpy(values.data() + table.texture_offsets[t], &reference, sizeof(reference));
         }
-        std::vector<std::byte> grown;
-        if (growing)
+        const auto source = std::span<const std::byte>(table.update_bytes);
+        auto& staging = growing ? candidate : table.update_buffer;
+        if (growing || !staging)
         {
-            grown = table.records;
-            grown.resize(total_bytes);
-            std::memcpy(grown.data() + std::size_t(slot) * table.stride, values.data(), values.size());
+            auto allocated = session_.allocator().createBuffer(
+                source.size(),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                EMemoryAccess::DEVICE
+            );
+            if (!allocated)
+            {
+                co_return cxx::unexpected(allocated.error());
+            }
+            staging = std::move(*allocated);
         }
-        const auto source = growing ? std::span<const std::byte>(grown) : std::span<const std::byte>(values);
-        auto allocated = session_.allocator().createBuffer(
-            source.size(),
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            EMemoryAccess::DEVICE
-        );
-        if (!allocated)
-        {
-            co_return cxx::unexpected(allocated.error());
-        }
-        candidate = std::move(*allocated);
-        auto uploaded = co_await session_.uploads().writeBuffer(candidate, source);
+        // Reusable preparation Buffers stay on Graphics. The range upload orders their previous
+        // GPU reads before overwrite; table contents remain unchanged until the final copy is accepted.
+        auto uploaded = co_await session_.uploads().writeBufferRange(staging, 0, source);
         if (!uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
@@ -300,7 +321,7 @@ namespace lux::render::vulkan
         if (!growing)
         {
             const VkBufferCopy copy{0, std::uint64_t(slot) * table.stride, table.stride};
-            vkCmdCopyBuffer(command, candidate.handle(), table.buffer.handle(), 1, &copy);
+            vkCmdCopyBuffer(command, staging.handle(), table.buffer.handle(), 1, &copy);
         }
         afterWrite(command);
         if (auto accepted = std::move(*batch).submit(); !accepted)
@@ -311,9 +332,12 @@ namespace lux::render::vulkan
         {
             releaseAfterGpu(session_, table.buffer);
             table.buffer = std::move(candidate);
-            table.records = std::move(grown);
+            table.records.swap(table.update_bytes);
         }
-        std::memcpy(table.records.data() + std::size_t(slot) * table.stride, values.data(), values.size());
+        else
+        {
+            std::memcpy(table.records.data() + std::size_t(slot) * table.stride, values.data(), values.size());
+        }
         MaterialId id;
         if constexpr (std::same_as<Input, MaterialWrite>)
         {
@@ -334,7 +358,6 @@ namespace lux::render::vulkan
                 table.entries[slot] = existing;
             }
         }
-        existing->textures = std::move(input.textures);
         if (growing)
         {
             publish(table);
@@ -395,6 +418,7 @@ namespace lux::render::vulkan
         if (table.free_slots.size() == table.entries.size())
         {
             releaseAfterGpu(session_, table.buffer);
+            releaseAfterGpu(session_, table.update_buffer);
             const auto empty = std::ranges::find_if(tables_, [&](const auto& value) { return value.get() == &table; });
             tables_.erase(empty);
         }
@@ -413,38 +437,20 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
         const auto& table = *entry->table;
-        if (argument.program != table.program)
-        {
-            return cxx::unexpected(RenderError{kStorageMismatch});
-        }
         if (argument.texture_slot != UINT32_MAX)
         {
-            const auto* description = std::get_if<GraphImageDesc>(&plan.description);
-            if (!description || argument.texture_slot >= entry->textures.size())
+            const bool invalid_slot = argument.texture_slot >= table.texture_offsets.size();
+            if (!std::holds_alternative<GraphImageDesc>(plan.description) || invalid_slot)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
-            const auto texture = entry->textures[argument.texture_slot];
-            auto storage = session_.resources().borrow<TextureStorage>(texture.storage);
-            const auto* current = storage ? (*storage)->find(texture) : nullptr;
-            if (current)
-            {
-                const auto& actual = current->image();
-                const auto format = actual.format() == VK_FORMAT_R8G8B8A8_UNORM  ? rdesc::ETextureFormat::RGBA8_UNORM
-                                    : actual.format() == VK_FORMAT_R8G8B8A8_SRGB ? rdesc::ETextureFormat::RGBA8_SRGB
-                                                                                 : rdesc::ETextureFormat::BC1_RGBA_SRGB;
-                const bool is_mismatch = description->width != actual.extent().width ||
-                                         description->height != actual.extent().height ||
-                                         description->mips != actual.mipLevels() ||
-                                         description->layers != actual.arrayLayers() || description->format != format;
-                if (is_mismatch)
-                {
-                    return cxx::unexpected(RenderError{kStorageMismatch});
-                }
-            }
-            // The descriptor table is immutable in shape. Only explicit Material updates change the
-            // stored integer references; Context does not repair Client resource dependencies.
+            // This Graph port selects the device bindless table, not one physical Image. Its
+            // Texture indices were resolved by the explicit write; no Client asset mirror is kept.
             return StorageResource{};
+        }
+        if (argument.layout != *table.program.parameterLayout())
+        {
+            return cxx::unexpected(RenderError{kStorageMismatch});
         }
         const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
         if (!description || description->size < table.stride || description->size > table.buffer.size())

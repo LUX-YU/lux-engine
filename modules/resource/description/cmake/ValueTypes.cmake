@@ -27,6 +27,7 @@ install(
         "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/Image.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/TextureInfo.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/MaterialEnums.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/MaterialLayout.hpp"
     DESTINATION include/lux/engine/description
 )
 

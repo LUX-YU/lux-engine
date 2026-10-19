@@ -58,8 +58,9 @@ namespace lux::render
     struct MeshBinding final
     {
         MeshId mesh;
-        MeshDescription description; // The exact cold asset contract used to construct the Draw recipe.
         EMeshBuffer buffer = EMeshBuffer::VERTICES;
+        std::uint32_t stride = 0;
+        std::vector<MeshAttribute> attributes; // Vertex input ABI only; no counts, source offsets or Section mirror.
         bool operator==(const MeshBinding&) const noexcept = default;
     };
 
@@ -84,6 +85,11 @@ namespace lux::render
         static constexpr std::string_view name = "lux.render.ReleaseMesh";
         using Request = MeshId;
         using Response = RenderResult<Ack>;
+    };
+
+    template <> struct ConfigValueTraits<MeshDescription> final
+    {
+        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const MeshDescription&) noexcept;
     };
 
     template <> struct ConfigValueTraits<MeshBinding> final

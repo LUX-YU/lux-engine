@@ -108,7 +108,10 @@ namespace lux::render::vulkan
         std::unique_ptr<PageTable> page_table_;
         std::array<StorageSubscription*, 3> bindings_{};
         std::vector<Observer*> observers_;
-        std::vector<std::uint32_t> dirty_positions_;
+        std::vector<std::uint32_t> dirty_positions_, dirty_blocks_;
+        std::vector<std::byte> update_bytes_;
+        std::vector<MeshInstanceGpuProperty> update_properties_;
+        gapi::vk::VmaBuffer update_buffer_;
         std::uint64_t written_records_ = 0, checked_updates_ = 0;
     };
 } // namespace lux::render::vulkan

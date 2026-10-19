@@ -37,15 +37,10 @@ namespace lux::render::vulkan
         };
 
     public:
-        MeshInstanceStorage(DeviceSession&, StorageId, MeshInstanceStorageConfig) noexcept;
+        MeshInstanceStorage(DeviceSession&, StorageId) noexcept;
         ~MeshInstanceStorage() noexcept;
         MeshInstanceStorage(const MeshInstanceStorage&) = delete;
         MeshInstanceStorage& operator=(const MeshInstanceStorage&) = delete;
-
-        [[nodiscard]] bool compatibleConfig(const MeshInstanceStorageConfig& value) const noexcept
-        {
-            return value == config_;
-        }
 
         [[nodiscard]] RenderResult<MeshInstancePublished> create(const MeshInstanceDescription&) noexcept;
         [[nodiscard]] RenderResult<TransformApplied> update(const TransformBatch&) noexcept;
@@ -67,8 +62,6 @@ namespace lux::render::vulkan
             return checked_updates_;
         }
 
-        [[nodiscard]] std::uint64_t residentBytes() const noexcept;
-
     private:
         friend StorageFactory meshInstanceStorageFactory() noexcept;
         friend class MeshDraws;
@@ -82,7 +75,6 @@ namespace lux::render::vulkan
         void unsubscribe(Use&) noexcept;
         DeviceSession& session_;
         StorageId id_;
-        MeshInstanceStorageConfig config_;
         cxx::SlotMap<Entry, MeshInstanceTag> entries_;
         std::vector<TransformMatrix> shadow_;
         std::unique_ptr<Backing> current_;
@@ -90,7 +82,6 @@ namespace lux::render::vulkan
         std::vector<std::uint32_t> page_positions_;
         std::vector<Use*> uses_;
         std::map<MeshInstanceDrawGroup, std::vector<MeshDraws*>> draw_subscribers_;
-        std::uint64_t resident_bytes_ = 0;
         std::uint64_t written_records_ = 0, checked_updates_ = 0;
     };
 } // namespace lux::render::vulkan

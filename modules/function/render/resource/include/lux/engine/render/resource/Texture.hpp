@@ -3,8 +3,8 @@
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/description/TextureInfo.hpp>
 #include <lux/engine/render/commands/Command.hpp>
-#include <lux/engine/render/data/Payload.hpp>
 #include <lux/engine/render/resource/Storage.hpp>
+#include <span>
 
 namespace lux::render
 {
@@ -37,7 +37,9 @@ namespace lux::render
         TextureId texture{}; // valid StorageId + null local key creates; otherwise replace that qualified resource
         std::uint64_t expected_revision = 0;
         rdesc::TextureInfo info;
-        RenderPayload source;
+        // Borrowed until Response (success, failure or cancellation). Failed submission takes no borrow.
+        // Abandon/connection loss is not completion: Host must drain Server and Producers before freeing it.
+        std::span<const std::byte> source;
     };
 
     struct SetTexture final
@@ -53,7 +55,9 @@ namespace lux::render
         TextureId texture;
         std::uint64_t expected_revision = 0;
         TextureRegion region;
-        RenderPayload source;
+        // Borrowed until Response (success, failure or cancellation). Failed submission takes no borrow.
+        // Abandon/connection loss is not completion: Host must drain Server and Producers before freeing it.
+        std::span<const std::byte> source;
     };
 
     struct SetTextureRegion final
@@ -78,18 +82,10 @@ namespace lux::render
         using Response = RenderResult<TexturePublished>;
     };
 
-    struct TextureStorageConfig final
-    {
-        // Optional application residency budgets. Zero imposes no business limit; real device limits remain.
-        std::uint32_t resident_versions_budget = 0;
-        std::uint64_t resident_byte_budget = 0;
-        bool operator==(const TextureStorageConfig&) const noexcept = default;
-    };
-
     class TextureStorage final
     {
     public:
-        using Config = TextureStorageConfig;
+        using Config = void;
         static inline constexpr StorageDescriptor description{
             kTextureStorageType,
             static_cast<std::uint32_t>(EStorageCapability::SAMPLED_IMAGE_ARRAY),
@@ -113,24 +109,16 @@ namespace lux::render
 
             [[nodiscard]] RenderResult<void> release(TextureId id, std::uint64_t revision) const noexcept
             {
-                if (!writable_)
-                {
-                    return cxx::unexpected(RenderError{kStorageIdentity});
-                }
                 return ops_->release(native_, id, revision);
             }
 
         private:
             friend class ResourceRegistry;
 
-            Access(void* native, const Ops& ops, bool writable) noexcept
-                : native_(native), ops_(&ops), writable_(writable)
-            {
-            }
+            Access(void* native, const Ops& ops) noexcept : native_(native), ops_(&ops) {}
 
             void* native_;
             const Ops* ops_;
-            bool writable_;
         };
     };
 

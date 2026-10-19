@@ -24,13 +24,23 @@ namespace lux::render
         StorageSet& operator=(StorageSet&&) = delete;
 
         template <class T>
-        [[nodiscard]] RenderResult<StorageId> getOrCreate(std::string_view key, ConfigValue config = {}) noexcept
+        [[nodiscard]] RenderResult<StorageId> getOrCreate(std::string_view key, const ConfigValue& config = {}) noexcept
         {
             return getOrCreateImpl(
                 T::description,
                 key,
-                std::move(config),
-                cppType<typename T::Config>(),
+                config,
+                []() noexcept
+                {
+                    if constexpr (std::is_void_v<typename T::Config>)
+                    {
+                        return CppType{};
+                    }
+                    else
+                    {
+                        return cppType<typename T::Config>();
+                    }
+                }(),
                 cppType<typename T::Ops>()
             );
         }
@@ -38,7 +48,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<StorageId> getOrCreate(
             StorageTypeId type,
             std::string_view key,
-            ConfigValue config = {}
+            const ConfigValue& config = {}
         ) noexcept;
 
         // Caller finishes dependent operations before removal. The ID is revoked before destruction.
@@ -66,19 +76,23 @@ namespace lux::render
         {
             StorageId id;
             NameIndex::iterator name;
-            ConfigValue configuration;
             NativeStorage native;
         };
 
         [[nodiscard]] RenderResult<StorageId> getOrCreateImpl(
             const StorageDescriptor&,
             std::string_view,
-            ConfigValue,
+            const ConfigValue&,
             CppType,
             CppType
         ) noexcept;
-        [[nodiscard]] RenderResult<
-            StorageId> ensure(StorageTypeId, std::string_view, ConfigValue, CppType = {}, CppType = {}) noexcept;
+        [[nodiscard]] RenderResult<StorageId> ensure(
+            StorageTypeId,
+            std::string_view,
+            const ConfigValue&,
+            CppType = {},
+            CppType = {}
+        ) noexcept;
         void erase(std::size_t position) noexcept;
         ResourceRegistry& registry_;
         std::vector<Record> records_;

@@ -128,16 +128,10 @@ namespace lux::render
         using Response = RenderResult<Ack>;
     };
 
-    struct MeshInstanceStorageConfig final
-    {
-        std::uint64_t resident_byte_budget = 0;
-        bool operator==(const MeshInstanceStorageConfig&) const noexcept = default;
-    };
-
     class MeshInstanceStorage final
     {
     public:
-        using Config = MeshInstanceStorageConfig;
+        using Config = void;
         static inline const StorageDescriptor
             description{kMeshInstanceStorageType, 0, 0, cppType<MeshInstanceBinding>()};
 
@@ -157,7 +151,7 @@ namespace lux::render
         private:
             friend class ResourceRegistry;
 
-            Access(void* native, const Ops& ops, bool) noexcept : native_(native), ops_(&ops) {}
+            Access(void* native, const Ops& ops) noexcept : native_(native), ops_(&ops) {}
 
             void* native_;
             const Ops* ops_;

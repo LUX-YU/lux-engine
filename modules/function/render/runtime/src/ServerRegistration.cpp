@@ -179,9 +179,14 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kStorageMismatch});
                 }
             }
-            if (inserted && storage.id.isNull())
+        }
+
+        for (const auto& [name, index] : storage_names)
+        {
+            auto& storage = batch.storage_factories[index];
+            if (storage.id.isNull())
             {
-                factories.push_back({factory, storage.configuration});
+                factories.push_back({storage.factory, std::move(storage.configuration)});
             }
         }
 

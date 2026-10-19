@@ -118,7 +118,7 @@ namespace lux::render
                 {
                     arguments.push_back(std::move(argument));
                 }
-                else if (existing->value != argument.value)
+                else if (*existing != argument)
                 {
                     return cxx::unexpected(RenderError{kStorageMismatch});
                 }
@@ -136,7 +136,7 @@ namespace lux::render
             device,
             (*assembly).definition,
             (*assembly).analysis,
-            (*assembly).external_bindings,
+            std::move(assembly->external_bindings),
             programs,
             input->description
         );

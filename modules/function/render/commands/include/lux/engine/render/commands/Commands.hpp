@@ -7,9 +7,9 @@
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/data/ConfigValue.hpp>
-#include <lux/engine/render/data/Payload.hpp>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <tuple>
 #include <variant>
@@ -66,14 +66,14 @@ namespace lux::render
         ViewId view;
         TargetId target;
         EffectId effect;
-        RenderPayload parameters; // Exact bytes of the compiled context parameter block.
+        std::vector<std::byte> parameters; // Exact bytes of the compiled context parameter block.
         RasterViewport viewport;
     };
 
     struct AttachmentInputs final
     {
         AttachmentId attachment;
-        RenderPayload parameters;
+        std::vector<std::byte> parameters;
         RasterViewport viewport;
     };
 

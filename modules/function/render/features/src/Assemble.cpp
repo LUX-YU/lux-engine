@@ -224,8 +224,7 @@ namespace lux::render
                     locations.push_back({i, j});
                 }
             }
-            const auto claim = [&](ClaimLocation p) -> const ResourceClaim&
-            { return work[p.feature].claims[p.claim].value; };
+            const auto claim = [&](ClaimLocation p) -> ResourceClaim& { return work[p.feature].claims[p.claim].value; };
             const auto placement = [&](ClaimLocation p) { return work[p.feature].claims[p.claim].destination; };
             std::sort(
                 locations.begin(),
@@ -268,7 +267,7 @@ namespace lux::render
                 }
                 if (provider)
                 {
-                    const auto& c = claim(*provider);
+                    auto& c = claim(*provider);
                     auto resource =
                         builder.declareResource({"shared:" + c.key, c.description, c.origin, c.initial_ranges});
                     if (!resource)
@@ -281,7 +280,7 @@ namespace lux::render
                     ports.push_back({*provider, version});
                     if (c.storage)
                     {
-                        placement(*provider)->push_back({*resource, *c.storage});
+                        placement(*provider)->push_back({*resource, std::move(*c.storage)});
                     }
                     for (auto i = first; i < end; ++i)
                     {

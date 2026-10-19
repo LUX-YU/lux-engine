@@ -23,13 +23,6 @@ namespace lux::render
 
     private:
         template <class Declaration, class Native, class Device, auto Create, auto Compatible>
-            requires std::same_as<
-                         decltype(Create),
-                         RenderResult<std::unique_ptr<
-                             Native>> (*)(Device&, StorageId, const typename Declaration::Config&) noexcept> &&
-                     std::same_as<
-                         decltype(Compatible),
-                         bool (*)(const Native&, const typename Declaration::Config&) noexcept>
         friend StorageFactory makeStorageFactory(const typename Declaration::Ops&, const void*) noexcept;
 
         StorageFactory(
@@ -49,29 +42,62 @@ namespace lux::render
     };
 
     // Create and compatible callbacks are typed before the only erasure boundary.
-    template <class Declaration, class Native, class Device, auto Create, auto Compatible>
-        requires std::same_as<
-                     decltype(Create),
-                     RenderResult<std::unique_ptr<
-                         Native>> (*)(Device&, StorageId, const typename Declaration::Config&) noexcept> &&
-                 std::same_as<
-                     decltype(Compatible),
-                     bool (*)(const Native&, const typename Declaration::Config&) noexcept>
+    template <class Declaration, class Native, class Device, auto Create, auto Compatible = nullptr>
     [[nodiscard]] StorageFactory makeStorageFactory(
         const typename Declaration::Ops& ops,
         const void* binding_ops = nullptr
     ) noexcept
     {
+        using Config = typename Declaration::Config;
+        constexpr bool has_config = !std::is_void_v<Config>;
+        constexpr CppType config_type = []() noexcept
+        {
+            if constexpr (has_config)
+            {
+                return cppType<Config>();
+            }
+            else
+            {
+                return CppType{};
+            }
+        }();
+        constexpr auto compatible = []() noexcept -> bool (*)(const void*, const void*) noexcept
+        {
+            if constexpr (has_config)
+            {
+                static_assert(std::same_as<decltype(Compatible), bool (*)(const Native&, const Config&) noexcept>);
+                return [](const void* instance, const void* config) noexcept
+                { return Compatible(*static_cast<const Native*>(instance), *static_cast<const Config*>(config)); };
+            }
+            else
+            {
+                static_assert(Compatible == nullptr);
+                return nullptr;
+            }
+        }();
         return {
             &Declaration::description,
             &ops,
             [](void* device, StorageId id, const void* config) noexcept -> RenderResult<NativeStorage>
             {
-                auto candidate = Create(
-                    *static_cast<Device*>(device),
-                    id,
-                    *static_cast<const typename Declaration::Config*>(config)
-                );
+                auto candidate = [&]() noexcept
+                {
+                    if constexpr (has_config)
+                    {
+                        static_assert(std::same_as<
+                                      decltype(Create),
+                                      RenderResult<
+                                          std::unique_ptr<Native>> (*)(Device&, StorageId, const Config&) noexcept>);
+                        return Create(*static_cast<Device*>(device), id, *static_cast<const Config*>(config));
+                    }
+                    else
+                    {
+                        static_assert(std::same_as<
+                                      decltype(Create),
+                                      RenderResult<std::unique_ptr<Native>> (*)(Device&, StorageId) noexcept>);
+                        return Create(*static_cast<Device*>(device), id);
+                    }
+                }();
                 if (!candidate)
                 {
                     return cxx::unexpected(candidate.error());
@@ -81,15 +107,9 @@ namespace lux::render
                     [](void* value) noexcept { delete static_cast<Native*>(value); }
                 };
             },
-            [](const void* instance, const void* config) noexcept
-            {
-                return Compatible(
-                    *static_cast<const Native*>(instance),
-                    *static_cast<const typename Declaration::Config*>(config)
-                );
-            },
+            compatible,
             binding_ops,
-            cppType<typename Declaration::Config>(),
+            config_type,
             cppType<typename Declaration::Ops>(),
             cppType<Native>()
         };

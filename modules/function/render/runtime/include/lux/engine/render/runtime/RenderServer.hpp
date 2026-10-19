@@ -54,10 +54,15 @@ namespace lux::render
 
         // Owner-thread installation; selected Native header supplies the typed definitions.
         template <class T, class Provider = StorageProvider<T>>
+            requires(!std::is_void_v<typename T::Config>)
         [[nodiscard]] RenderResult<StorageTypeId> registerStorage(
             const typename T::Config& config = {},
             std::string_view handler_key = {}
         ) noexcept;
+
+        template <class T, class Provider = StorageProvider<T>>
+            requires std::is_void_v<typename T::Config>
+        [[nodiscard]] RenderResult<StorageTypeId> registerStorage(std::string_view handler_key = {}) noexcept;
 
         template <class T, class Provider = FeatureProvider<T>, class... Args>
         [[nodiscard]] RenderResult<FeatureId> registerFeature(
@@ -155,16 +160,30 @@ namespace lux::render
         };
 
         template <class T, class Provider>
+        RenderResult<StorageTypeId> registerStorageImpl(ConfigValue, std::string_view) noexcept;
+
+        template <class T, class Provider>
         static RenderResult<void> prepareStorage(
             RegistrationBatch& batch,
-            const typename T::Config& config,
+            ConfigValue configuration,
             bool use_existing
         ) noexcept
         {
             using Config = typename T::Config;
-            static_assert(requires(const Config& a, const Config& b) {
-                { a == b } noexcept -> std::same_as<bool>;
-            });
+            constexpr CppType config_type = []() noexcept
+            {
+                if constexpr (std::is_void_v<Config>)
+                {
+                    return CppType{};
+                }
+                else
+                {
+                    static_assert(requires(const Config& a, const Config& b) {
+                        { a == b } noexcept -> std::same_as<bool>;
+                    });
+                    return cppType<Config>();
+                }
+            }();
             auto factory = Provider::factory();
             if (!factory.description)
             {
@@ -175,18 +194,13 @@ namespace lux::render
                 return valid;
             }
             const bool is_wrong_provider = factory.native_type != Provider::implementationType() ||
-                                           factory.config_type != cppType<Config>() ||
+                                           factory.config_type != config_type ||
                                            factory.ops_type != cppType<typename T::Ops>();
             if (is_wrong_provider)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
-            auto configuration = ConfigValue::make(config);
-            if (!configuration)
-            {
-                return cxx::unexpected(configuration.error());
-            }
-            batch.addStorage(std::move(factory), std::move(*configuration), use_existing);
+            batch.addStorage(std::move(factory), std::move(configuration), use_existing);
             return {};
         }
 

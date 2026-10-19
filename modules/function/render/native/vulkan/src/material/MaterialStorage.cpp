@@ -14,21 +14,21 @@ namespace lux::render::vulkan
 {
     struct MaterialStorage::Table final
     {
-        ConfigValue program;
+        MaterialProgram program;
         BufferArena arena;
 
-        Table(DeviceSession& session, ConfigValue value) noexcept
-            : program(std::move(value)), arena(session, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 0, 64 * 1024)
+        Table(DeviceSession& session, MaterialProgram value) noexcept
+            : program(std::move(value)), arena(session, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 64 * 1024)
         {
         }
     };
 
     struct MaterialStorage::MaterialData final
     {
-        MaterialData(ConfigValue value, MaterialParameters params, std::vector<TextureId> references) noexcept
+        MaterialData(MaterialProgram value, MaterialParameters params, std::vector<TextureId> references) noexcept
             : program(std::move(value)), parameters(std::move(params)), textures(std::move(references))
         {
-            const auto& cooked = *program.borrow<MaterialProgram>();
+            const auto& cooked = program;
             bytes = cooked.recordSize();
             record.resize(bytes);
             std::memcpy(record.data(), parameters.data(), parameters.size() * sizeof(parameters[0]));
@@ -42,7 +42,7 @@ namespace lux::render::vulkan
             std::memcpy(record.data() + offset, &index, sizeof(index));
         }
 
-        ConfigValue program;
+        MaterialProgram program;
         MaterialParameters parameters;
         std::vector<TextureId> textures;
         std::vector<rdesc::TextureInfo> texture_info;
@@ -50,7 +50,7 @@ namespace lux::render::vulkan
         MaterialStorage* owner = nullptr;
         MaterialId id;
         std::vector<std::byte> record;
-        BufferArena::Range range;
+        std::unique_ptr<BufferArena::Range> range;
         RetirementReservation retirement;
         std::uint64_t bytes = 0, revision = 0;
     };
@@ -67,8 +67,8 @@ namespace lux::render::vulkan
         {
             if (texture_slot == UINT32_MAX)
             {
-                binding.buffer = value->range.buffer;
-                binding.buffer_offset = value->range.offset;
+                binding.buffer = value->range->buffer;
+                binding.buffer_offset = value->range->offset;
                 binding.pending_bytes = value->record;
             }
             binding.publishUpdate();
@@ -129,10 +129,7 @@ namespace lux::render::vulkan
         }
     };
 
-    MaterialStorage::MaterialStorage(DeviceSession& session, StorageId id, MaterialStorageConfig config) noexcept
-        : session_(session), id_(id), config_(config)
-    {
-    }
+    MaterialStorage::MaterialStorage(DeviceSession& session, StorageId id) noexcept : session_(session), id_(id) {}
 
     MaterialStorage::~MaterialStorage() noexcept
     {
@@ -141,16 +138,6 @@ namespace lux::render::vulkan
             disconnect(entry);
             retire(entry.current);
         }
-    }
-
-    std::uint64_t MaterialStorage::residentBytes() const noexcept
-    {
-        std::uint64_t bytes = 0;
-        for (const auto& table : tables_)
-        {
-            bytes += table->arena.capacity();
-        }
-        return bytes;
     }
 
     std::size_t MaterialStorage::recordCount() const noexcept
@@ -178,9 +165,9 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(RenderError{kStorageContract});
         }
-        const auto* program = input.program.borrow<MaterialProgram>();
+        const auto* program = &input.program;
         const bool invalid_program =
-            !program || program->fragment.stage != rdesc::EShaderType::FRAGMENT || program->fragment.entry.empty() ||
+            program->fragment.stage != rdesc::EShaderType::FRAGMENT || program->fragment.entry.empty() ||
             program->fragment.words.size() < 5 || program->fragment.words.front() != 0x07230203 ||
             input.parameters.size() != program->defaults.size() || input.textures.size() != program->texture_count;
         if (invalid_program)
@@ -198,13 +185,9 @@ namespace lux::render::vulkan
             }
         }
         // Only the cold Graph owns a Pipeline. A bound Material cannot silently replace its Shader contract.
-        if (existing && !existing->uses.empty() && *existing->current->program.borrow<MaterialProgram>() != *program)
+        if (existing && !existing->uses.empty() && existing->current->program != *program)
         {
             co_return cxx::unexpected(RenderError{kStorageMismatch});
-        }
-        if (auto collected = session_.collect(); !collected)
-        {
-            co_return cxx::unexpected(collected.error());
         }
         const auto record_bytes = program->recordSize();
         if (record_bytes > session_.physicalDevice().properties().properties.limits.maxStorageBufferRange)
@@ -236,17 +219,9 @@ namespace lux::render::vulkan
             backing->texture_info[slot] = reference->first;
             backing->setTexture(slot, reference->second);
         }
-        auto table = std::ranges::find_if(
-            tables_,
-            [&](const auto& value) { return *value->program.template borrow<MaterialProgram>() == *program; }
-        );
+        auto table = std::ranges::find_if(tables_, [&](const auto& value) { return value->program == *program; });
         if (table == tables_.end())
         {
-            const auto used = residentBytes();
-            if (config_.resident_byte_budget && used >= config_.resident_byte_budget)
-            {
-                co_return cxx::unexpected(RenderError{kStorageCapacity});
-            }
             tables_.push_back(std::make_unique<Table>(session_, input.program));
             table = std::prev(tables_.end());
         }
@@ -254,9 +229,7 @@ namespace lux::render::vulkan
             16,
             session_.physicalDevice().properties().properties.limits.minStorageBufferOffsetAlignment
         );
-        const auto growth_budget =
-            config_.resident_byte_budget ? config_.resident_byte_budget - residentBytes() : UINT64_MAX;
-        auto range = (*table)->arena.allocate(backing->bytes, alignment, growth_budget);
+        auto range = (*table)->arena.allocate(backing->bytes, alignment);
         if (!range)
         {
             co_return cxx::unexpected(range.error());
@@ -270,11 +243,11 @@ namespace lux::render::vulkan
             id.local = entries_.emplace();
         }
         entries_.find(id.local)->updating = true;
-        auto candidate = std::make_unique<Candidate>(*this, id, std::move(backing));
+        Candidate candidate{*this, id, std::move(backing)};
         auto uploaded = co_await session_.uploads().writeBufferRange(
-            *candidate->backing->range.buffer,
-            candidate->backing->range.offset,
-            RenderPayload::copyOf(candidate->backing->record)
+            *candidate.backing->range->buffer,
+            candidate.backing->range->offset,
+            candidate.backing->record
         );
         if (!uploaded)
         {
@@ -283,9 +256,9 @@ namespace lux::render::vulkan
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested())
         {
-            co_return cxx::unexpected(RenderError{kOutcomeUnknown});
+            co_return cxx::unexpected(RenderError{kWorkStopped});
         }
-        candidate->publish();
+        candidate.publish();
         co_return MaterialPublished{id, revision + 1};
     }
 
@@ -337,8 +310,8 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
         const auto& current = *entry->current;
-        const auto* program = argument.program.borrow<MaterialProgram>();
-        if (!program || *program != *current.program.borrow<MaterialProgram>())
+        const auto* program = &argument.program;
+        if (*program != current.program)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
@@ -410,10 +383,11 @@ namespace lux::render::vulkan
                 texture.reference.reset();
             }
         }
-        if (value && !session_.retirement().retire(value->retirement, value))
+        if (value && !BufferArena::retireRange(session_.retirement(), value->retirement, value->range))
         {
             std::terminate(); // The reservation was acquired with this physical candidate.
         }
+        value.reset();
     }
 
     void MaterialStorage::unsubscribe(Use& use) noexcept
@@ -449,15 +423,10 @@ namespace lux::render::vulkan
                     ->prepare(plan, *static_cast<const MaterialBinding*>(argument), prepared);
             }
         };
-        static const auto create = +[](DeviceSession& session, StorageId id, const MaterialStorageConfig& config
-                                    ) noexcept -> RenderResult<std::unique_ptr<MaterialStorage>>
-        { return std::make_unique<MaterialStorage>(session, id, config); };
-        static const auto compatible = +[](const MaterialStorage& value, const MaterialStorageConfig& config) noexcept
-        { return value.compatibleConfig(config); };
-        return makeStorageFactory<render::MaterialStorage, MaterialStorage, DeviceSession, create, compatible>(
-            ops,
-            &binding
-        );
+        static const auto create =
+            +[](DeviceSession& session, StorageId id) noexcept -> RenderResult<std::unique_ptr<MaterialStorage>>
+        { return std::make_unique<MaterialStorage>(session, id); };
+        return makeStorageFactory<render::MaterialStorage, MaterialStorage, DeviceSession, create>(ops, &binding);
     }
 } // namespace lux::render::vulkan
 

@@ -55,7 +55,7 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
             const auto& mesh = config.mesh.description;
-            const auto* program = config.material.program.borrow<MaterialProgram>();
+            const auto* program = &config.material.program;
             const bool has_group = config.instances.group.has_value();
             const bool is_invalid_group = !has_group || !config.instances.record_count ||
                                           config.instances.role != EMeshInstanceBinding::MATRICES ||
@@ -64,8 +64,8 @@ namespace lux::render
                                                          config.instances.group->submesh >= mesh.submeshes.size()));
             const bool is_invalid_storage =
                 config.mesh_storage.empty() || config.material_storage.empty() || config.instance_storage.empty();
-            const bool is_invalid_material = !Depth && (!program || config.material.texture_slot != UINT32_MAX ||
-                                                        (program && config.textures.size() != program->texture_count));
+            const bool is_invalid_material = !Depth && (config.material.texture_slot != UINT32_MAX ||
+                                                        config.textures.size() != program->texture_count);
             const bool is_invalid_config = is_invalid_group || is_invalid_storage || is_invalid_material;
             if (is_invalid_config)
             {
@@ -226,10 +226,15 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kInvalidConfig});
         }
+        auto program = ConfigValueTraits<MaterialProgram>::retainedBytes(value.material.program);
+        if (!program)
+        {
+            return cxx::unexpected(program.error());
+        }
         std::size_t total = sizeof(value);
         for (auto bytes :
              {*mesh - sizeof(MeshBinding),
-              value.material.program.retainedBytes(),
+              *program - sizeof(MaterialProgram),
               *textures,
               value.mesh_storage.capacity(),
               value.material_storage.capacity(),

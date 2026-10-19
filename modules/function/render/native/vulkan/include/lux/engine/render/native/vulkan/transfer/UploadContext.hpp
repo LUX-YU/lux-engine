@@ -2,10 +2,10 @@
 
 #include <exec/task.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
-#include <lux/engine/render/data/Payload.hpp>
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
+#include <span>
 
 namespace lux::render::vulkan
 {
@@ -28,7 +28,7 @@ namespace lux::render::vulkan
         VkExtent3D extent{};
     };
 
-    // One device's upload facilities. Tasks own their source and borrow their operation-owned targets; this object
+    // One device's upload facilities. Tasks borrow their source and operation-owned targets; this object
     // owns neither professional candidates nor running tasks. Start with the RenderThread scheduler.
     class UploadContext final
     {
@@ -42,11 +42,15 @@ namespace lux::render::vulkan
 
         // Success means all required Copy/Acquire submissions were accepted. The caller retains targets or retires
         // failed candidates; success does not wait for the final fence observation.
-        [[nodiscard]] Task writeBuffer(Buffer& target, RenderPayload source) noexcept;
-        [[nodiscard]] Task writeBufferRange(Buffer& target, VkDeviceSize offset, RenderPayload source) noexcept;
+        [[nodiscard]] Task writeBuffer(Buffer& target, std::span<const std::byte> source) noexcept;
+        [[nodiscard]] Task writeBufferRange(
+            Buffer& target,
+            VkDeviceSize offset,
+            std::span<const std::byte> source
+        ) noexcept;
         [[nodiscard]] Task writeImage(
             Image& target,
-            RenderPayload source,
+            std::span<const std::byte> source,
             std::vector<ImageTransferRegion> regions,
             const Image* clone = nullptr
         ) noexcept;
@@ -63,7 +67,7 @@ namespace lux::render::vulkan
         [[nodiscard]] Task write(
             Buffer*,
             Image*,
-            RenderPayload,
+            std::span<const std::byte>,
             std::vector<ImageTransferRegion>,
             const Image*,
             VkDeviceSize = 0,

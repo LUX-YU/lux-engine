@@ -73,7 +73,8 @@ namespace lux::render::vulkan
     void RetirementQueue::commit(
         RetirementReservation& reservation,
         const SubmissionQueue* queue,
-        Backing backing
+        Backing backing,
+        const void* arena_segment
     ) noexcept
     {
         auto& entry = *entries_.find(reservation.key_);
@@ -84,6 +85,7 @@ namespace lux::render::vulkan
             entry.submitted[i] = !queue || queue == queues_[i].get() ? queues_[i]->submitted() : 0;
         }
         entry.backing = std::move(backing);
+        entry.arena_segment = arena_segment;
         reservation.owner_ = nullptr;
         reservation.key_ = {};
         ++pending_;
@@ -99,6 +101,46 @@ namespace lux::render::vulkan
             }
             ready_.tail = &entry;
         }
+    }
+
+    void RetirementQueue::reclaimArenaRanges(const void* segment) noexcept
+    {
+        const auto reclaim = [&](List& list) noexcept
+        {
+            Entry* previous = nullptr;
+            auto* entry = list.head;
+            while (entry)
+            {
+                auto* next = entry->next;
+                if (entry->arena_segment == segment)
+                {
+                    if (previous)
+                    {
+                        previous->next = next;
+                    }
+                    else
+                    {
+                        list.head = next;
+                    }
+                    if (list.tail == entry)
+                    {
+                        list.tail = previous;
+                    }
+                    entry->next = nullptr;
+                    destroy(*entry);
+                }
+                else
+                {
+                    previous = entry;
+                }
+                entry = next;
+            }
+        };
+        for (auto& list : waiting_)
+        {
+            reclaim(list);
+        }
+        reclaim(ready_);
     }
 
     bool RetirementQueue::enqueue(Entry& entry) noexcept

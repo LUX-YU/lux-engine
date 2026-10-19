@@ -70,6 +70,7 @@ namespace lux::render::vulkan
 
     private:
         friend class DeviceSession;
+        friend class BufferArena;
         friend class RetirementReservation;
         using Backing = std::unique_ptr<void, void (*)(void*) noexcept>;
 
@@ -80,6 +81,7 @@ namespace lux::render::vulkan
             Backing backing{nullptr, [](void*) noexcept {}};
             Entry* next = nullptr;
             std::uint64_t serial = 0;
+            const void* arena_segment = nullptr; // Metadata-only records, installed solely by BufferArena.
         };
 
         struct List final
@@ -91,7 +93,13 @@ namespace lux::render::vulkan
         explicit RetirementQueue(std::span<const std::unique_ptr<SubmissionQueue>> queues) noexcept;
         void cancel(cxx::SlotKey<RetirementTag>) noexcept;
         [[nodiscard]] bool accepts(const RetirementReservation&, const SubmissionQueue*) const noexcept;
-        void commit(RetirementReservation&, const SubmissionQueue*, Backing) noexcept;
+        void commit(
+            RetirementReservation&,
+            const SubmissionQueue*,
+            Backing,
+            const void* arena_segment = nullptr
+        ) noexcept;
+        void reclaimArenaRanges(const void* segment) noexcept;
         [[nodiscard]] bool enqueue(Entry&) noexcept;
         void collectReady() noexcept;
         void destroy(Entry&) noexcept;

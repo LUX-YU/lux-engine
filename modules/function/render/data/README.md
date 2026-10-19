@@ -1,12 +1,15 @@
 # Render values
 
-`RenderPayload` retains immutable bytes and accounts for the complete source vector capacity,
-including when only a subrange is exposed. `fromVector` does not deep-copy the asset. The host keeps
-foreign owner/deleter code loaded until the final byte owner is released. `copyOf` is an explicit copy.
+Upload requests borrow immutable source bytes. Client keeps the source address, extent and contents valid
+until the Response, including failure or cancellation. A failed submit takes no borrow. Abandoning a request
+or closing its link does not prove that CPU reading has ended: the Host must drain Server and Producers
+before releasing inputs that have no Response. Native owns staging and submitted GPU resources.
 
-`ConfigValue` holds immutable typed configuration and any code pin needed by its destructor. Cold
-comparison uses the complete C++ type and value contract. Dynamic configurations supply retained-byte
-accounting for all backing capacity; they are not serialized through a Render-specific wire schema.
+`ConfigValue` exclusively owns an immutable typed configuration and is move-only. Assembly borrows it
+synchronously; installation owns its defaults and concrete Storage copies only the fields it needs.
+Dynamic configurations account for their own allocation capacity, excluding externally borrowed data.
+The Host keeps implementation/deleter code loaded until all values and callbacks have been destroyed.
+Configurations are not serialized through a Render-specific wire schema.
 
 Shader contracts own Stage, Entry, SPIR-V and field/layout descriptions. Native checks the actual
 binary against this declaration. These values contain no Vulkan handles and create no Shader compiler.

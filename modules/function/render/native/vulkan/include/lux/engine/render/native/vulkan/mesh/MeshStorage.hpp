@@ -27,7 +27,7 @@ namespace lux::render::vulkan
         };
 
     public:
-        MeshStorage(DeviceSession&, StorageId, MeshStorageConfig) noexcept;
+        MeshStorage(DeviceSession&, StorageId) noexcept;
         ~MeshStorage() noexcept;
         MeshStorage(const MeshStorage&) = delete;
         MeshStorage& operator=(const MeshStorage&) = delete;
@@ -37,14 +37,8 @@ namespace lux::render::vulkan
             return id_;
         }
 
-        [[nodiscard]] bool compatibleConfig(const MeshStorageConfig& value) const noexcept
-        {
-            return value == config_;
-        }
-
         [[nodiscard]] RenderResult<MeshInformation> query(MeshId) const noexcept;
         [[nodiscard]] RenderResult<void> release(MeshId, std::uint64_t expected_revision) noexcept;
-        [[nodiscard]] std::uint64_t residentBytes() const noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
 
     private:
@@ -60,7 +54,6 @@ namespace lux::render::vulkan
         static void disconnect(Entry&) noexcept;
         DeviceSession& session_;
         StorageId id_;
-        MeshStorageConfig config_;
         cxx::SlotMap<Entry, MeshTag> entries_;
         std::unique_ptr<BufferArena> arena_;
     };

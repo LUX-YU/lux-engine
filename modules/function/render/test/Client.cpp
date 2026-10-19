@@ -146,7 +146,7 @@ namespace mesh_sample
             return found->id;
         }
 
-        ConfigValue materialProgram(const char* path)
+        MaterialProgram materialProgram(const char* path)
         {
             std::ifstream input(path, std::ios::binary | std::ios::ate);
             check(bool(input));
@@ -159,17 +159,17 @@ namespace mesh_sample
             check(bool(input.read(reinterpret_cast<char*>(program.fragment.words.data()), size)));
             program.texture_count = 1;
             program.defaults = {{1, 1, 1, 1}};
-            return take(ConfigValue::make(std::move(program)));
+            return program;
         }
 
-        TextureWrite textureInput(StorageId storage, unsigned green)
+        TextureWrite textureInput(StorageId storage, unsigned green, std::vector<std::byte>& bytes)
         {
-            auto owner = std::make_shared<std::vector<std::byte>>(16 * 16 * 4);
-            for (std::size_t i = 0; i < owner->size(); i += 4)
+            bytes.assign(16 * 16 * 4, std::byte{});
+            for (std::size_t i = 0; i < bytes.size(); i += 4)
             {
-                (*owner)[i] = std::byte(255 - green);
-                (*owner)[i + 1] = std::byte(green);
-                (*owner)[i + 3] = std::byte{255};
+                bytes[i] = std::byte(255 - green);
+                bytes[i + 1] = std::byte(green);
+                bytes[i + 3] = std::byte{255};
             }
             rdesc::TextureInfo info{};
             info.width = info.height = 16;
@@ -177,8 +177,8 @@ namespace mesh_sample
             info.mip_count = 1;
             info.pixel_format = rdesc::ETexturePixelFormat::RGBA8_UNORM;
             info.color_space = rdesc::ETextureColorSpace::DATA;
-            info.mip_ranges[0] = {0, owner->size(), 16, 16};
-            return {{storage, {}}, 0, info, take(RenderPayload::fromVector(owner, 0, owner->size()))};
+            info.mip_ranges[0] = {0, bytes.size(), 16, 16};
+            return {{storage, {}}, 0, info, bytes};
         }
 
         struct Assets final
@@ -187,7 +187,7 @@ namespace mesh_sample
             MaterialPublished material;
             TexturePublished texture;
             MeshDescription description;
-            ConfigValue program;
+            MaterialProgram program;
         };
 
     } // namespace
@@ -214,9 +214,9 @@ namespace mesh_sample
                 const std::array<float, 20> vertices{-.22f, -.2f, .3f, 0,   0, .22f, -.2f, .3f, 1,   0,
                                                      0,     .23f, .3f, .5f, 1, 0,    0,    .8f, .5f, .5f};
                 const std::array<std::uint32_t, 12> indices{0, 1, 2, 1, 0, 3, 2, 1, 3, 0, 2, 3};
-                auto owner = std::make_shared<std::vector<std::byte>>(sizeof(vertices) + sizeof(indices));
-                std::memcpy(owner->data(), vertices.data(), sizeof(vertices));
-                std::memcpy(owner->data() + sizeof(vertices), indices.data(), sizeof(indices));
+                std::vector<std::byte> bytes(sizeof(vertices) + sizeof(indices));
+                std::memcpy(bytes.data(), vertices.data(), sizeof(vertices));
+                std::memcpy(bytes.data() + sizeof(vertices), indices.data(), sizeof(indices));
                 assets.description = {
                     20,
                     4,
@@ -226,24 +226,19 @@ namespace mesh_sample
                     {{0, 0, rdesc::ETextureFormat::RGB32_SFLOAT}, {1, 12, rdesc::ETextureFormat::RG32_SFLOAT}},
                     {{0, 12, 0}}
                 };
-                assets.mesh = coldCall<SetMesh>(
-                    client,
-                    commands,
-                    next,
-                    {{mesh_storage, {}}, 0, assets.description, take(RenderPayload::fromVector(owner, 0, owner->size()))
-                    }
-                );
-                owner.reset();
-                assets.texture = call<SetTexture>(client, next, set_texture, textureInput(texture_storage, 0));
+                assets.mesh =
+                    coldCall<SetMesh>(client, commands, next, {{mesh_storage, {}}, 0, assets.description, bytes});
+                bytes.clear(); // SetMesh Response ended the source borrow.
+                assets.texture = call<SetTexture>(client, next, set_texture, textureInput(texture_storage, 0, bytes));
                 assets.program = materialProgram(cooked_fragment);
                 MaterialWrite material{{material_storage, {}}, 0, assets.program};
-                material.parameters = assets.program.borrow<MaterialProgram>()->defaults;
+                material.parameters = assets.program.defaults;
                 material.textures = {assets.texture.texture};
                 assets.material = call<SetMaterial>(client, next, set_material, material);
                 loaded.count_down();
 
                 replace_texture.wait();
-                auto changed = textureInput(texture_storage, 255);
+                auto changed = textureInput(texture_storage, 255, bytes);
                 changed.texture = assets.texture.texture;
                 changed.expected_revision = assets.texture.revision;
                 assets.texture = call<SetTexture>(client, next, set_texture, std::move(changed));
@@ -292,18 +287,13 @@ namespace mesh_sample
         config.textures = {{16, 16, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}};
         const auto basic = feature(main, main_commands, main_next, BasicMeshFeature::name);
         const auto depth_feature = feature(main, main_commands, main_next, DepthOnlyFeature::name);
-        const auto first_effect = coldCall<CreateEffect>(
-                                      main,
-                                      main_commands,
-                                      main_next,
-                                      {config.target, {{basic, "main", take(ConfigValue::make(config))}}}
-        ).effect;
-        const auto second_effect = coldCall<CreateEffect>(
-                                       main,
-                                       main_commands,
-                                       main_next,
-                                       {config.target, {{depth_feature, "main", take(ConfigValue::make(config))}}}
-        ).effect;
+        CreateEffectRequest first_request{config.target}, second_request{config.target};
+        first_request.features.push_back({basic, "main", take(ConfigValue::make(config))});
+        second_request.features.push_back({depth_feature, "main", take(ConfigValue::make(config))});
+        const auto first_effect =
+            coldCall<CreateEffect>(main, main_commands, main_next, std::move(first_request)).effect;
+        const auto second_effect =
+            coldCall<CreateEffect>(main, main_commands, main_next, std::move(second_request)).effect;
         const auto first_target = coldCall<CreateTarget>(main, main_commands, main_next, {config.target}).target;
         const auto second_target = coldCall<CreateTarget>(main, main_commands, main_next, {config.target}).target;
         const AttachmentRequest first{
@@ -311,14 +301,14 @@ namespace mesh_sample
             first_view,
             first_target,
             first_effect,
-            RenderPayload::copyOf(meshViewParameterBytes(first_camera))
+            {meshViewParameterBytes(first_camera).begin(), meshViewParameterBytes(first_camera).end()}
         };
         const AttachmentRequest second{
             scene,
             second_view,
             second_target,
             second_effect,
-            RenderPayload::copyOf(meshViewParameterBytes(second_camera))
+            {meshViewParameterBytes(second_camera).begin(), meshViewParameterBytes(second_camera).end()}
         };
         const auto first_bindings = coldCall<Attach>(main, main_commands, main_next, first);
         const auto second_bindings = coldCall<Attach>(main, main_commands, main_next, second);

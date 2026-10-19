@@ -10,27 +10,14 @@
 
 namespace lux::render::vulkan
 {
-    // Budget accounting follows physical content, including snapshots held after logical deletion.
-    // It owns no device, resource or identity table.
-    struct TextureStorage::Residency final
-    {
-        std::size_t versions = 0;
-        std::uint64_t bytes = 0, peak = 0;
-    };
-
     TextureStorage::TextureData::TextureData(
-        std::shared_ptr<Residency> residency,
         std::unique_ptr<Image> image,
         DescriptorRange descriptor,
         const rdesc::TextureInfo& info,
         std::uint64_t revision
     ) noexcept
-        : residency_(std::move(residency)), image_(std::move(image)), descriptor_(std::move(descriptor)), info_(info),
-          bytes_(image_->memoryBinding().size), revision_(revision)
+        : image_(std::move(image)), descriptor_(std::move(descriptor)), info_(info), revision_(revision)
     {
-        ++residency_->versions;
-        residency_->bytes += bytes_;
-        residency_->peak = std::max(residency_->peak, residency_->bytes);
     }
 
     TextureStorage::TextureData::~TextureData() noexcept
@@ -44,8 +31,6 @@ namespace lux::render::vulkan
         {
             sampler_.release(device);
         }
-        --residency_->versions;
-        residency_->bytes -= bytes_;
     }
 
     namespace
@@ -246,6 +231,14 @@ namespace lux::render::vulkan
         TextureId texture;
         const TextureData* base = nullptr;
 
+        Candidate(TextureStorage& owner, std::unique_ptr<TextureData> value, TextureId id) noexcept
+            : storage(owner), version(std::move(value)), texture(id)
+        {
+        }
+
+        Candidate(Candidate&&) noexcept = default;
+        Candidate(const Candidate&) = delete;
+
         ~Candidate() noexcept
         {
             if (version)
@@ -364,10 +357,7 @@ namespace lux::render::vulkan
         return {};
     }
 
-    TextureStorage::TextureStorage(DeviceSession& session, StorageId id, TextureStorageConfig config) noexcept
-        : session_(session), id_(id), residency_(std::make_shared<Residency>()), config_(config)
-    {
-    }
+    TextureStorage::TextureStorage(DeviceSession& session, StorageId id) noexcept : session_(session), id_(id) {}
 
     StorageFactory textureStorageFactory() noexcept
     {
@@ -392,28 +382,21 @@ namespace lux::render::vulkan
                     ->prepare(plan, *static_cast<const TextureBinding*>(argument), binding);
             }
         };
-        static const auto compatible = +[](const vulkan::TextureStorage& value, const TextureStorageConfig& config
-                                        ) noexcept { return value.compatibleConfig(config); };
         static const auto factory = makeStorageFactory<
             lux::render::TextureStorage,
             vulkan::TextureStorage,
             DeviceSession,
-            &vulkan::TextureStorage::create,
-            compatible>(ops, &binding_ops);
+            &vulkan::TextureStorage::create>(ops, &binding_ops);
         return factory;
     }
 
-    RenderResult<std::unique_ptr<TextureStorage>> TextureStorage::create(
-        DeviceSession& session,
-        StorageId id,
-        const TextureStorageConfig& config
-    ) noexcept
+    RenderResult<std::unique_ptr<TextureStorage>> TextureStorage::create(DeviceSession& session, StorageId id) noexcept
     {
         if (!session.enabledFeatures().texture_descriptors)
         {
             return cxx::unexpected(RenderError{kUnsupported});
         }
-        auto storage = std::unique_ptr<TextureStorage>(new TextureStorage(session, id, config));
+        auto storage = std::unique_ptr<TextureStorage>(new TextureStorage(session, id));
         if (auto result = storage->initialize(); !result)
         {
             return cxx::unexpected(result.error());
@@ -441,26 +424,6 @@ namespace lux::render::vulkan
         }
     }
 
-    VkDescriptorSetLayout TextureStorage::layout() const noexcept
-    {
-        return descriptors_->layout();
-    }
-
-    std::size_t TextureStorage::residentVersions() const noexcept
-    {
-        return residency_->versions;
-    }
-
-    std::uint64_t TextureStorage::residentBytes() const noexcept
-    {
-        return residency_->bytes;
-    }
-
-    std::uint64_t TextureStorage::residentPeak() const noexcept
-    {
-        return residency_->peak;
-    }
-
     const TextureStorage::TextureData* TextureStorage::find(TextureId id) const noexcept
     {
         if (id.storage != id_)
@@ -471,40 +434,7 @@ namespace lux::render::vulkan
         return record ? record->current.get() : nullptr;
     }
 
-    RenderResult<const TextureStorage::TextureData*> TextureStorage::acquire(TextureId id) noexcept
-    {
-        if (id.storage != id_)
-        {
-            return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        auto* record = textures_.find(id.local);
-        if (!record || !record->current)
-        {
-            return cxx::unexpected(RenderError{kWrongOwner});
-        }
-        return record->current.get();
-    }
-
-    RenderResult<void> TextureStorage::admit(std::uint64_t minimum_bytes, bool) noexcept
-    {
-        if (auto collected = session_.collect(); !collected)
-        {
-            return cxx::unexpected(collected.error());
-        }
-        const bool is_version_budget_full =
-            config_.resident_versions_budget && residency_->versions >= config_.resident_versions_budget;
-        const bool is_byte_budget_full =
-            config_.resident_byte_budget && minimum_bytes > config_.resident_byte_budget - residency_->bytes;
-        const bool full =
-            is_version_budget_full || is_byte_budget_full || descriptors_->occupied() == descriptors_->capacity();
-        if (full)
-        {
-            return cxx::unexpected(RenderError{kCapacity});
-        }
-        return {};
-    }
-
-    RenderResult<std::unique_ptr<TextureStorage::Candidate>> TextureStorage::reserve(
+    RenderResult<TextureStorage::Candidate> TextureStorage::reserve(
         std::unique_ptr<Image> image,
         const rdesc::TextureInfo& info,
         TextureId id,
@@ -542,24 +472,12 @@ namespace lux::render::vulkan
                 return cxx::unexpected(RenderError{kUnsupported});
             }
         }
-        if (auto collected = session_.collect(); !collected)
-        {
-            return cxx::unexpected(collected.error());
-        }
-        const auto bytes = image->memoryBinding().size;
-        const bool is_byte_budget_full =
-            config_.resident_byte_budget && bytes > config_.resident_byte_budget - residency_->bytes;
-        if (is_byte_budget_full)
-        {
-            return cxx::unexpected(RenderError{kCapacity});
-        }
         auto descriptor = descriptors_->allocate();
         if (!descriptor)
         {
             return cxx::unexpected(descriptor.error());
         }
-        auto content =
-            std::make_unique<TextureData>(residency_, std::move(image), std::move(*descriptor), info, expected + 1);
+        auto content = std::make_unique<TextureData>(std::move(image), std::move(*descriptor), info, expected + 1);
         auto& version = *content;
         version.retirement_ = session_.retirement().reserve();
         const auto device = session_.nativeDevice();
@@ -591,7 +509,7 @@ namespace lux::render::vulkan
         }
         record = textures_.find(id.local);
         record->updating = true;
-        return std::make_unique<Candidate>(*this, std::move(content), id, nullptr);
+        return Candidate{*this, std::move(content), id};
     }
 
     void TextureStorage::rollback(Candidate& candidate) noexcept
@@ -611,11 +529,7 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        const auto source = input.source.bytes().view();
-        if (auto admitted = admit(source.size(), input.texture.isNull()); !admitted)
-        {
-            co_return cxx::unexpected(admitted.error());
-        }
+        const auto source = input.source;
         auto prepared = prepareImage(input.info, source);
         if (!prepared)
         {
@@ -626,12 +540,9 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(candidate.error());
         }
-        const TexturePublished result{(*candidate)->texture, (*candidate)->version->revision_};
-        auto uploaded = co_await session_.uploads().writeImage(
-            *(*candidate)->version->image_,
-            std::move(input.source),
-            std::move(prepared->second)
-        );
+        const TexturePublished result{candidate->texture, candidate->version->revision_};
+        auto uploaded = co_await session_.uploads()
+                            .writeImage(*candidate->version->image_, input.source, std::move(prepared->second));
         if (!uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
@@ -639,9 +550,9 @@ namespace lux::render::vulkan
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested())
         {
-            co_return cxx::unexpected(RenderError{kOutcomeUnknown});
+            co_return cxx::unexpected(RenderError{kWorkStopped});
         }
-        publish(**candidate);
+        publish(*candidate);
         co_return result;
     }
 
@@ -661,12 +572,7 @@ namespace lux::render::vulkan
             co_return cxx::unexpected(RenderError{kBusy});
         }
         const auto& info = record->current->info_;
-        const auto last = info.mip_ranges[info.mip_count - 1];
-        if (auto admitted = admit(last.offset + last.size, false); !admitted)
-        {
-            co_return cxx::unexpected(admitted.error());
-        }
-        auto prepared = prepareImage(info, input.source.bytes().view(), input.region);
+        auto prepared = prepareImage(info, input.source, input.region);
         if (!prepared)
         {
             co_return cxx::unexpected(prepared.error());
@@ -676,13 +582,13 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(candidate.error());
         }
-        (*candidate)->base = record->current.get();
-        const TexturePublished result{input.texture, (*candidate)->version->revision_};
+        candidate->base = record->current.get();
+        const TexturePublished result{input.texture, candidate->version->revision_};
         auto uploaded = co_await session_.uploads().writeImage(
-            *(*candidate)->version->image_,
-            std::move(input.source),
+            *candidate->version->image_,
+            input.source,
             std::move(prepared->second),
-            (*candidate)->base->image_.get()
+            candidate->base->image_.get()
         );
         if (!uploaded)
         {
@@ -691,9 +597,9 @@ namespace lux::render::vulkan
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested())
         {
-            co_return cxx::unexpected(RenderError{kOutcomeUnknown});
+            co_return cxx::unexpected(RenderError{kWorkStopped});
         }
-        publish(**candidate);
+        publish(*candidate);
         co_return result;
     }
 

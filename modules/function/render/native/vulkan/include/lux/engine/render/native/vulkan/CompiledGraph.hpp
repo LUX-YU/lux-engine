@@ -136,7 +136,7 @@ namespace lux::render::vulkan
         friend class ExecutionContext;
         friend class DeviceSession;
         friend RenderResult<CompiledGraph>
-        compileGraph(const DeviceSession&, const RenderGraphDefinition&, const GraphAnalysis&, const GraphStorageBindings&, std::span<const PassProgram>, const TargetDesc&) noexcept;
+        compileGraph(const DeviceSession&, const RenderGraphDefinition&, const GraphAnalysis&, GraphStorageBindings, std::span<const PassProgram>, const TargetDesc&) noexcept;
         CompiledGraph(VkDevice device, TargetDesc target) noexcept;
         std::unique_ptr<LayoutPlan> descriptor_plan_;
         VkDevice device_;
@@ -167,7 +167,7 @@ namespace lux::render::vulkan
         const DeviceSession& session,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
-        const GraphStorageBindings& external_bindings,
+        GraphStorageBindings external_bindings,
         std::span<const PassProgram> programs,
         const TargetDesc& target
     ) noexcept;

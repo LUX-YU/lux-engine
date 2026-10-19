@@ -2,8 +2,8 @@
 
 #include <lux/engine/description/Image.hpp>
 #include <lux/engine/render/commands/Command.hpp>
-#include <lux/engine/render/data/Payload.hpp>
 #include <lux/engine/render/resource/Storage.hpp>
+#include <span>
 #include <vector>
 
 namespace lux::render
@@ -56,7 +56,9 @@ namespace lux::render
         MeshId mesh;
         std::uint64_t expected_revision = 0;
         MeshDescription description;
-        RenderPayload source;
+        // Borrowed until Response (success, failure or cancellation). Failed submission takes no borrow.
+        // Abandon/connection loss is not completion: Host must drain Server and Producers before freeing it.
+        std::span<const std::byte> source;
     };
 
     struct MeshInformation final
@@ -92,16 +94,10 @@ namespace lux::render
         [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const MeshBinding&) noexcept;
     };
 
-    struct MeshStorageConfig final
-    {
-        std::uint64_t resident_byte_budget = 0; // Optional; includes retained physical versions.
-        bool operator==(const MeshStorageConfig&) const noexcept = default;
-    };
-
     class MeshStorage final
     {
     public:
-        using Config = MeshStorageConfig;
+        using Config = void;
         static inline const StorageDescriptor description{kMeshStorageType, 0, 0, cppType<MeshBinding>()};
 
         struct Ops final
@@ -120,24 +116,16 @@ namespace lux::render
 
             [[nodiscard]] RenderResult<void> release(MeshId id, std::uint64_t revision) const noexcept
             {
-                if (!writable_)
-                {
-                    return cxx::unexpected(RenderError{kStorageIdentity});
-                }
                 return ops_->release(native_, id, revision);
             }
 
         private:
             friend class ResourceRegistry;
 
-            Access(void* native, const Ops& ops, bool writable) noexcept
-                : native_(native), ops_(&ops), writable_(writable)
-            {
-            }
+            Access(void* native, const Ops& ops) noexcept : native_(native), ops_(&ops) {}
 
             void* native_;
             const Ops* ops_;
-            bool writable_;
         };
     };
 } // namespace lux::render

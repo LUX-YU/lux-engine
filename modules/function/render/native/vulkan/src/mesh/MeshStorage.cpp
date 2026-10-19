@@ -14,7 +14,7 @@ namespace lux::render::vulkan
     struct MeshStorage::MeshData final
     {
         MeshDescription description;
-        BufferArena::Range range;
+        std::unique_ptr<BufferArena::Range> range;
         RetirementReservation retirement;
         std::uint64_t bytes = 0, revision = 0;
     };
@@ -28,8 +28,8 @@ namespace lux::render::vulkan
 
         void update(const std::unique_ptr<MeshData>& value) noexcept
         {
-            binding.buffer = value->range.buffer;
-            binding.buffer_offset = value->range.offset;
+            binding.buffer = value->range->buffer;
+            binding.buffer_offset = value->range->offset;
             binding.publishUpdate();
         }
 
@@ -76,12 +76,11 @@ namespace lux::render::vulkan
         }
     };
 
-    MeshStorage::MeshStorage(DeviceSession& session, StorageId id, MeshStorageConfig config) noexcept
-        : session_(session), id_(id), config_(config),
+    MeshStorage::MeshStorage(DeviceSession& session, StorageId id) noexcept
+        : session_(session), id_(id),
           arena_(std::make_unique<BufferArena>(
               session,
-              VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-              config.resident_byte_budget
+              VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
           ))
     {
     }
@@ -93,11 +92,6 @@ namespace lux::render::vulkan
             disconnect(entry);
             retire(entry.current);
         }
-    }
-
-    std::uint64_t MeshStorage::residentBytes() const noexcept
-    {
-        return arena_->capacity();
     }
 
     std::size_t MeshStorage::recordCount() const noexcept
@@ -215,7 +209,7 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(RenderError{kStorageContract});
         }
-        const auto source = input.source.bytes().view();
+        const auto source = input.source;
         if (auto valid = validate(input.description, source); !valid)
         {
             co_return cxx::unexpected(valid.error());
@@ -224,10 +218,6 @@ namespace lux::render::vulkan
         if (existing && !existing->uses.empty() && existing->current->description != input.description)
         {
             co_return cxx::unexpected(RenderError{kStorageMismatch});
-        }
-        if (auto collected = session_.collect(); !collected)
-        {
-            co_return cxx::unexpected(collected.error());
         }
         const auto alignment = std::max<VkDeviceSize>(
             4,
@@ -251,11 +241,11 @@ namespace lux::render::vulkan
             id.local = entries_.emplace();
         }
         entries_.find(id.local)->updating = true;
-        auto candidate = std::make_unique<Candidate>(*this, id, std::move(backing));
+        Candidate candidate{*this, id, std::move(backing)};
         auto uploaded = co_await session_.uploads().writeBufferRange(
-            *candidate->backing->range.buffer,
-            candidate->backing->range.offset,
-            std::move(input.source)
+            *candidate.backing->range->buffer,
+            candidate.backing->range->offset,
+            input.source
         );
         if (!uploaded)
         {
@@ -264,9 +254,9 @@ namespace lux::render::vulkan
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested())
         {
-            co_return cxx::unexpected(RenderError{kOutcomeUnknown});
+            co_return cxx::unexpected(RenderError{kWorkStopped});
         }
-        candidate->publish();
+        candidate.publish();
         co_return MeshPublished{id, revision + 1};
     }
 
@@ -333,10 +323,11 @@ namespace lux::render::vulkan
 
     void MeshStorage::retire(std::unique_ptr<MeshData>& value) noexcept
     {
-        if (value && !session_.retirement().retire(value->retirement, value))
+        if (value && !BufferArena::retireRange(session_.retirement(), value->retirement, value->range))
         {
             std::terminate(); // The reservation was acquired with this physical candidate.
         }
+        value.reset();
     }
 
     void MeshStorage::unsubscribe(Use& use) noexcept
@@ -371,12 +362,10 @@ namespace lux::render::vulkan
                     ->prepare(plan, *static_cast<const MeshBinding*>(argument), prepared);
             }
         };
-        static const auto create = +[](DeviceSession& session, StorageId id, const MeshStorageConfig& config
-                                    ) noexcept -> RenderResult<std::unique_ptr<MeshStorage>>
-        { return std::make_unique<MeshStorage>(session, id, config); };
-        static const auto compatible = +[](const MeshStorage& value, const MeshStorageConfig& config) noexcept
-        { return value.compatibleConfig(config); };
-        return makeStorageFactory<render::MeshStorage, MeshStorage, DeviceSession, create, compatible>(ops, &binding);
+        static const auto create =
+            +[](DeviceSession& session, StorageId id) noexcept -> RenderResult<std::unique_ptr<MeshStorage>>
+        { return std::make_unique<MeshStorage>(session, id); };
+        return makeStorageFactory<render::MeshStorage, MeshStorage, DeviceSession, create>(ops, &binding);
     }
 } // namespace lux::render::vulkan
 

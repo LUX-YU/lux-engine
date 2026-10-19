@@ -17,7 +17,7 @@ namespace lux::render
     RenderResult<StorageId> StorageSet::ensure(
         StorageTypeId type,
         std::string_view key,
-        ConfigValue config,
+        const ConfigValue& config,
         CppType requested_config,
         CppType requested_ops
     ) noexcept
@@ -32,7 +32,7 @@ namespace lux::render
             return cxx::unexpected(RenderError{kStorageFactory});
         }
         const auto& factory = installed->factory;
-        const bool is_wrong_config = requested_config.size && requested_config != factory.config_type;
+        const bool is_wrong_config = requested_ops.size && requested_config != factory.config_type;
         const bool is_wrong_ops = requested_ops.size && requested_ops != factory.ops_type;
         if (is_wrong_config || is_wrong_ops)
         {
@@ -46,25 +46,22 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
         }
-        else
-        {
-            config = installed->configuration; // already qualified at installation
-        }
-        if (!config)
+        const auto& selected_config = config ? config : installed->configuration;
+        if (factory.config_type.size && !selected_config)
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
         if (const auto id = find(type, key); !id.isNull())
         {
             const auto& entry = *registry_.entries_.find(id);
-            if (!factory.compatible_config(entry.native, config.data()))
+            if (factory.compatible_config && !factory.compatible_config(entry.native, selected_config.data()))
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
             return id;
         }
         const auto id = registry_.entries_.emplace(ResourceRegistry::Entry{this, 0, type});
-        auto native = factory.create(registry_.native_, id, config.data());
+        auto native = factory.create(registry_.native_, id, selected_config.data());
         if (!native || !*native)
         {
             const auto error = native ? RenderError{kStorageFactory} : native.error();
@@ -75,7 +72,7 @@ namespace lux::render
         auto& entry = *registry_.entries_.find(id);
         entry.position = records_.size();
         const auto name = instances_by_name_.emplace(NameKey{type.index, type.gen, std::string(key)}, id).first;
-        records_.push_back(Record{id, name, std::move(config), std::move(*native)});
+        records_.push_back(Record{id, name, std::move(*native)});
         entry.native = records_.back().native.get();
         ++registry_.creations_;
         return id;
@@ -84,7 +81,7 @@ namespace lux::render
     RenderResult<StorageId> StorageSet::getOrCreateImpl(
         const StorageDescriptor& description,
         std::string_view key,
-        ConfigValue config,
+        const ConfigValue& config,
         CppType config_type,
         CppType ops_type
     ) noexcept
@@ -99,16 +96,16 @@ namespace lux::render
         {
             return cxx::unexpected(compatible.error());
         }
-        return ensure(type, key, std::move(config), config_type, ops_type);
+        return ensure(type, key, config, config_type, ops_type);
     }
 
     RenderResult<StorageId> StorageSet::getOrCreate(
         StorageTypeId type,
         std::string_view key,
-        ConfigValue config
+        const ConfigValue& config
     ) noexcept
     {
-        return ensure(type, key, std::move(config));
+        return ensure(type, key, config);
     }
 
     RenderResult<void> StorageSet::remove(StorageId id) noexcept
@@ -127,8 +124,6 @@ namespace lux::render
         const auto& record = records_[position];
         instances_by_name_.erase(record.name);
         registry_.entries_.erase(record.id);
-        // Keep configuration/module code alive until the actual Native destructor returns.
-        auto configuration = std::move(records_[position].configuration);
         auto native = std::move(records_[position].native);
         if (position + 1 != records_.size())
         {
@@ -149,7 +144,6 @@ namespace lux::render
         // Revoke the entire set before any destructor runs. No temporary container or allocation is needed.
         while (!records_.empty())
         {
-            auto configuration = std::move(records_.back().configuration);
             auto native = std::move(records_.back().native);
             records_.pop_back();
         }

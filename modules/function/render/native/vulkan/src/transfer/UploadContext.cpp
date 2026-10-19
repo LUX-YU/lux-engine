@@ -279,41 +279,40 @@ namespace lux::render::vulkan
         return {};
     }
 
-    UploadContext::Task UploadContext::writeBuffer(Buffer& target, RenderPayload source) noexcept
+    UploadContext::Task UploadContext::writeBuffer(Buffer& target, std::span<const std::byte> source) noexcept
     {
-        return write(&target, nullptr, std::move(source), {}, nullptr);
+        return write(&target, nullptr, source, {}, nullptr);
     }
 
     UploadContext::Task UploadContext::writeBufferRange(
         Buffer& target,
         VkDeviceSize offset,
-        RenderPayload source
+        std::span<const std::byte> source
     ) noexcept
     {
-        return write(&target, nullptr, std::move(source), {}, nullptr, offset, true);
+        return write(&target, nullptr, source, {}, nullptr, offset, true);
     }
 
     UploadContext::Task UploadContext::writeImage(
         Image& target,
-        RenderPayload source,
+        std::span<const std::byte> source,
         std::vector<ImageTransferRegion> regions,
         const Image* clone
     ) noexcept
     {
-        return write(nullptr, &target, std::move(source), std::move(regions), clone);
+        return write(nullptr, &target, source, std::move(regions), clone);
     }
 
     UploadContext::Task UploadContext::write(
         Buffer* buffer,
         Image* image,
-        RenderPayload payload,
+        std::span<const std::byte> source,
         std::vector<ImageTransferRegion> regions,
         const Image* clone,
         VkDeviceSize target_offset,
         bool graphics_range
     ) noexcept
     {
-        const auto source = payload.bytes().view();
         if (source.empty())
         {
             co_return cxx::unexpected(RenderError{kInvalidArgument});
@@ -392,8 +391,8 @@ namespace lux::render::vulkan
                 }
             }
         }
-        const auto retained = payload.retainedBytes();
-        if (retained > options.pending_bytes - stats.pending_bytes)
+        const auto pending_bytes = source.size();
+        if (pending_bytes > options.pending_bytes - stats.pending_bytes)
         {
             co_return cxx::unexpected(RenderError{kCapacity});
         }
@@ -419,25 +418,20 @@ namespace lux::render::vulkan
                 }
             }
         );
-        stats.pending_bytes += retained;
+        stats.pending_bytes += pending_bytes;
         stats.pending_peak = std::max(stats.pending_peak, stats.pending_bytes);
-        cxx::scope_exit budget(
-            [&]() noexcept
-            {
-                payload = {};
-                stats.pending_bytes -= retained;
-            }
-        );
+        cxx::scope_exit budget([&]() noexcept { stats.pending_bytes -= pending_bytes; });
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         const bool distinct = &copy != &graphics;
         const auto timestamp_bits = &copy == &graphics ? graphics_timestamp_bits : copy_timestamp_bits;
         const bool timestamp = timestamps && timestamp_bits;
-        // A stop or device loss after accepted work cannot claim that the command had no side effects.
+        // Device loss after accepted work is indeterminate. Cancellation of an unpublished candidate
+        // is classified by its Storage; an accepted Copy alone is not a public business commit.
         const auto failure = [&](RenderError error) noexcept
         {
             const bool is_device_lost =
                 error.type == kNativeFailure && error.args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
-            const bool is_unknown = submitted_copy && (stop.stop_requested() || is_device_lost);
+            const bool is_unknown = submitted_copy && is_device_lost;
             return cxx::unexpected(is_unknown ? RenderError{kOutcomeUnknown} : error);
         };
         std::size_t offset = 0;
@@ -467,7 +461,6 @@ namespace lux::render::vulkan
                 stdexec::then(
                     [&]() noexcept -> RenderResult<std::uint64_t>
                     {
-                        (void)0;
                         const auto started = UploadClock::now();
                         auto* destination = page->buffer().mappedBytes().data();
                         const auto* input =

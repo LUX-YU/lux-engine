@@ -104,34 +104,6 @@ namespace lux::render::vulkan
         VkSampleCountFlagBits samples{VK_SAMPLE_COUNT_1_BIT};
         std::uint32_t mip_levels{1};
         std::uint32_t array_layers{1};
-        bool aliasable{false};
-    };
-
-    struct ImageMemoryBinding
-    {
-        VkDeviceMemory memory;
-        VkDeviceSize offset, size;
-        std::uint32_t memory_type;
-    };
-
-    // Actual VMA allocation shared by alias Images. No Image points at another Image.
-    class ImageMemory final
-    {
-    public:
-        ImageMemory(VulkanAllocator& allocator, VmaAllocation_T* allocation) noexcept
-            : allocator_(&allocator), allocation_(allocation)
-        {
-        }
-
-        ~ImageMemory() noexcept;
-        ImageMemory(const ImageMemory&) = delete;
-        ImageMemory& operator=(const ImageMemory&) = delete;
-
-    private:
-        friend class VulkanAllocator;
-        friend class Image;
-        VulkanAllocator* allocator_;
-        VmaAllocation_T* allocation_;
     };
 
     // Optimal tiled 2D backing. Views borrow it; array layers and mip levels
@@ -150,7 +122,7 @@ namespace lux::render::vulkan
 
         [[nodiscard]] VkDevice device() const noexcept
         {
-            return memory_ ? memory_->allocator_->device() : VK_NULL_HANDLE;
+            return allocator_ ? allocator_->device() : VK_NULL_HANDLE;
         }
 
         [[nodiscard]] VkExtent2D extent() const noexcept
@@ -180,22 +152,26 @@ namespace lux::render::vulkan
 
         ~Image() noexcept;
 
-        [[nodiscard]] ImageMemoryBinding memoryBinding() const noexcept;
-
         Image(const Image&) = delete;
         Image& operator=(const Image&) = delete;
 
     private:
         friend class VulkanAllocator;
 
-        Image(VkImage image, std::shared_ptr<ImageMemory> memory, ImageDescription description) noexcept
-            : image_(image), memory_(std::move(memory)), description_(description)
+        Image(
+            VulkanAllocator& allocator,
+            VkImage image,
+            VmaAllocation_T* allocation,
+            ImageDescription description
+        ) noexcept
+            : allocator_(&allocator), image_(image), allocation_(allocation), description_(description)
         {
         }
 
         void release() noexcept;
+        VulkanAllocator* allocator_ = nullptr;
         VkImage image_ = VK_NULL_HANDLE;
-        std::shared_ptr<ImageMemory> memory_;
+        VmaAllocation_T* allocation_ = nullptr;
         ImageDescription description_{};
     };
 } // namespace lux::render::vulkan

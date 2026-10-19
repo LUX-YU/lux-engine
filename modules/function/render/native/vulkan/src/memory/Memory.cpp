@@ -45,19 +45,14 @@ namespace lux::render::vulkan
         }
     }
 
-    ImageMemory::~ImageMemory() noexcept
-    {
-        vmaFreeMemory(allocator_->native(), allocation_);
-    }
-
     Image::~Image() noexcept
     {
         release();
     }
 
     Image::Image(Image&& other) noexcept
-        : image_(std::exchange(other.image_, VK_NULL_HANDLE)), memory_(std::move(other.memory_)),
-          description_(std::exchange(other.description_, {}))
+        : allocator_(std::exchange(other.allocator_, nullptr)), image_(std::exchange(other.image_, VK_NULL_HANDLE)),
+          allocation_(std::exchange(other.allocation_, nullptr)), description_(std::exchange(other.description_, {}))
     {
     }
 
@@ -67,7 +62,8 @@ namespace lux::render::vulkan
         {
             release();
             image_ = std::exchange(other.image_, VK_NULL_HANDLE);
-            memory_ = std::move(other.memory_);
+            allocator_ = std::exchange(other.allocator_, nullptr);
+            allocation_ = std::exchange(other.allocation_, nullptr);
             description_ = std::exchange(other.description_, {});
         }
         return *this;
@@ -77,10 +73,8 @@ namespace lux::render::vulkan
     {
         if (image_)
         {
-            vkDestroyImage(memory_->allocator_->device(), image_, nullptr);
+            vmaDestroyImage(allocator_->native(), image_, allocation_);
         }
-        // Release the image before its allocation; aliases only share the actual memory.
-        memory_.reset();
     }
 
     RenderResult<std::unique_ptr<Buffer>> VulkanAllocator::createBuffer(
@@ -235,7 +229,7 @@ namespace lux::render::vulkan
             VK_IMAGE_TYPE_2D,
             VK_IMAGE_TILING_OPTIMAL,
             usage,
-            description.aliasable ? VK_IMAGE_CREATE_ALIAS_BIT : 0,
+            0,
             &supported
         );
         if (support != VK_SUCCESS)
@@ -250,7 +244,7 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
         VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
-        info.flags = description.aliasable ? VK_IMAGE_CREATE_ALIAS_BIT : 0;
+        info.flags = 0;
         info.imageType = VK_IMAGE_TYPE_2D;
         info.format = format;
         info.extent = {extent.width, extent.height, 1};
@@ -262,7 +256,6 @@ namespace lux::render::vulkan
         info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         VmaAllocationCreateInfo memory{};
-        memory.flags = description.aliasable ? VMA_ALLOCATION_CREATE_CAN_ALIAS_BIT : 0;
         memory.usage = VMA_MEMORY_USAGE_AUTO;
         memory.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         VkImage image{};
@@ -272,67 +265,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(nativeError(result));
         }
-        auto backing = std::make_shared<ImageMemory>(*this, allocation);
-        return std::unique_ptr<Image>(new Image(image, std::move(backing), description));
-    }
-
-    RenderResult<std::unique_ptr<Image>> VulkanAllocator::aliasImage(const Image& source) noexcept
-    {
-        if (!source.image_)
-        {
-            return cxx::unexpected(RenderError{kInvalidArgument});
-        }
-        if (source.memory_->allocator_ != this)
-        {
-            return cxx::unexpected(RenderError{kWrongOwner});
-        }
-        const bool is_invalid_source = !source.description_.aliasable;
-        if (is_invalid_source)
-        {
-            return cxx::unexpected(RenderError{kInvalidArgument});
-        }
-        const auto& description = source.description_;
-        VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
-        info.flags = VK_IMAGE_CREATE_ALIAS_BIT;
-        info.imageType = VK_IMAGE_TYPE_2D;
-        info.format = description.format;
-        info.extent = {description.extent.width, description.extent.height, 1};
-        info.mipLevels = description.mip_levels;
-        info.arrayLayers = description.array_layers;
-        info.samples = description.samples;
-        info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        info.usage = description.usage;
-        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VkImage image{};
-        auto created = vkCreateImage(device(), &info, nullptr, &image);
-        if (created != VK_SUCCESS)
-        {
-            return cxx::unexpected(nativeError(created));
-        }
-
-        VkMemoryDedicatedRequirements dedicated{VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
-        VkMemoryRequirements2 requirements{VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
-        requirements.pNext = &dedicated;
-        VkImageMemoryRequirementsInfo2 query{VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2};
-        query.image = image;
-        vkGetImageMemoryRequirements2(device(), &query, &requirements);
-        const auto binding = source.memoryBinding();
-        const auto& required = requirements.memoryRequirements;
-        const bool incompatible = dedicated.requiresDedicatedAllocation || required.size > binding.size ||
-                                  (required.memoryTypeBits & (1u << binding.memory_type)) == 0 ||
-                                  binding.offset % required.alignment != 0;
-        if (incompatible)
-        {
-            vkDestroyImage(device(), image, nullptr);
-            return cxx::unexpected(RenderError{kUnsupported});
-        }
-        created = vmaBindImageMemory(native(), source.memory_->allocation_, image);
-        if (created != VK_SUCCESS)
-        {
-            vkDestroyImage(device(), image, nullptr);
-            return cxx::unexpected(nativeError(created));
-        }
-        return std::unique_ptr<Image>(new Image(image, source.memory_, description));
+        return std::unique_ptr<Image>(new Image(*this, image, allocation, description));
     }
 
     BufferMemoryBinding Buffer::memoryBinding() const noexcept
@@ -344,17 +277,6 @@ namespace lux::render::vulkan
         VmaAllocationInfo info{};
         vmaGetAllocationInfo(allocator_->native(), allocation_, &info);
         return {info.deviceMemory, info.offset, info.size};
-    }
-
-    ImageMemoryBinding Image::memoryBinding() const noexcept
-    {
-        if (!image_)
-        {
-            return {};
-        }
-        VmaAllocationInfo info{};
-        vmaGetAllocationInfo(memory_->allocator_->native(), memory_->allocation_, &info);
-        return {info.deviceMemory, info.offset, info.size, info.memoryType};
     }
 
 } // namespace lux::render::vulkan

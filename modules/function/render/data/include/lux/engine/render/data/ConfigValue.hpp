@@ -11,7 +11,7 @@ namespace lux::render
 {
     inline constexpr auto kInvalidConfig = error::errorId("lux.render.data.invalid_config");
 
-    // Dynamic configurations specialize this with full retained backing/capacity, not visible ranges.
+    // Dynamic configurations count their own allocations/capacity, excluding externally borrowed data.
     template <class T> struct ConfigValueTraits
     {
         [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const T&) noexcept
@@ -21,7 +21,7 @@ namespace lux::render
         }
     };
 
-    // One immutable shared configuration. No object dispatch, clone, mutable cast or wire ABI.
+    // One immutable, exclusively owned configuration. Borrowed views last only as long as this value.
     class ConfigValue final
     {
     public:
@@ -31,7 +31,6 @@ namespace lux::render
         }
 
         // Cold semantic agreement only. No object representation/padding comparison and no hash shortcut.
-        // Non-comparable configurations can still be shared by copying their existing immutable owner.
         [[nodiscard]] bool operator==(const ConfigValue& other) const noexcept
         {
             if (typeInfo() != other.typeInfo())
@@ -46,7 +45,8 @@ namespace lux::render
         }
 
         ConfigValue() noexcept = default;
-        ConfigValue(const ConfigValue&) noexcept = default;
+        ConfigValue(const ConfigValue&) = delete;
+        ConfigValue& operator=(const ConfigValue&) = delete;
 
         ConfigValue(ConfigValue&& other) noexcept
             : value_(std::move(other.value_)), type_(std::exchange(other.type_, {})),
@@ -54,12 +54,14 @@ namespace lux::render
         {
         }
 
-        ConfigValue& operator=(ConfigValue other) noexcept
+        ConfigValue& operator=(ConfigValue&& other) noexcept
         {
-            using std::swap;
-            swap(value_, other.value_);
-            swap(type_, other.type_);
-            swap(retained_bytes_, other.retained_bytes_);
+            if (this != &other)
+            {
+                value_ = std::move(other.value_);
+                type_ = std::exchange(other.type_, nullptr);
+                retained_bytes_ = std::exchange(other.retained_bytes_, 0);
+            }
             return *this;
         }
 
@@ -84,7 +86,10 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kInvalidConfig});
             }
             ConfigValue result;
-            result.value_ = std::make_shared<const Value>(std::forward<T>(value));
+            result.value_ = ValueOwner{
+                new const Value(std::forward<T>(value)),
+                [](const void* object) noexcept { delete static_cast<const Value*>(object); }
+            };
             static constexpr Metadata type{cppType<Value>(), equality<Value>()};
             result.type_ = &type;
             result.retained_bytes_ = *bytes;
@@ -152,7 +157,8 @@ namespace lux::render
             }
         }
 
-        std::shared_ptr<const void> value_;
+        using ValueOwner = std::unique_ptr<const void, void (*)(const void*) noexcept>;
+        ValueOwner value_{nullptr, nullptr};
         const Metadata* type_ = nullptr;
         std::size_t retained_bytes_ = 0;
     };

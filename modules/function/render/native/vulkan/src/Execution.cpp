@@ -98,7 +98,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        std::vector<const ConfigValue*> resolved_arguments(code.resources().size());
+        std::vector<const StorageArgument*> resolved_arguments(code.resources().size());
         for (const auto& argument : arguments)
         {
             const auto plan = std::ranges::find(code.resources(), argument.resource_key, &NativeResourcePlan::key);
@@ -116,11 +116,11 @@ namespace lux::render::vulkan
             }
             const auto index = static_cast<std::size_t>(plan - code.resources().begin());
             const auto* previous = resolved_arguments[index];
-            if (previous && *previous != argument.value)
+            if (previous && *previous != argument)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
-            resolved_arguments[index] = &argument.value;
+            resolved_arguments[index] = &argument;
         }
         std::vector<std::pair<StorageSet*, StorageId>> created_storages;
         cxx::scope_exit rollback(

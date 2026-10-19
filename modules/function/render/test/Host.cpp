@@ -85,7 +85,7 @@ int main(int argc, char** argv)
     auto server = require(vulkan::createRenderServer(config, execution, options));
     (void)require(server->registerFeature<BasicMeshFeature>());
     (void)require(server->registerFeature<DepthOnlyFeature>());
-    (void)require(server->registerStorage<TextureStorage, AlternateProvider>({}, "B"));
+    (void)require(server->registerStorage<TextureStorage, AlternateProvider>("B"));
 
     const auto directory_id = require(server->commandId<lux::render::ListCommands>());
     bool ran = false;

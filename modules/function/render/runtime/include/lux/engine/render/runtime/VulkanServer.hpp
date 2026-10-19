@@ -35,13 +35,35 @@ namespace lux::render::vulkan
 namespace lux::render
 {
     template <class T, class Provider>
-    [[nodiscard]] RenderResult<StorageTypeId> RenderServer::registerStorage(
+        requires(!std::is_void_v<typename T::Config>)
+    RenderResult<StorageTypeId> RenderServer::registerStorage(
         const typename T::Config& config,
         std::string_view handler_key
     ) noexcept
     {
+        auto value = ConfigValue::make(config);
+        if (!value)
+        {
+            return cxx::unexpected(value.error());
+        }
+        return registerStorageImpl<T, Provider>(std::move(*value), handler_key);
+    }
+
+    template <class T, class Provider>
+        requires std::is_void_v<typename T::Config>
+    RenderResult<StorageTypeId> RenderServer::registerStorage(std::string_view handler_key) noexcept
+    {
+        return registerStorageImpl<T, Provider>({}, handler_key);
+    }
+
+    template <class T, class Provider>
+    RenderResult<StorageTypeId> RenderServer::registerStorageImpl(
+        ConfigValue config,
+        std::string_view handler_key
+    ) noexcept
+    {
         RegistrationBatch batch;
-        if (auto added = prepareStorage<T, Provider>(batch, config, false); !added)
+        if (auto added = prepareStorage<T, Provider>(batch, std::move(config), false); !added)
         {
             return cxx::unexpected(added.error());
         }
@@ -83,7 +105,20 @@ namespace lux::render
                     return;
                 }
                 using P = StorageProvider<Storage>;
-                result = prepareStorage<Storage, P>(batch, {}, true);
+                if constexpr (std::is_void_v<typename Storage::Config>)
+                {
+                    result = prepareStorage<Storage, P>(batch, {}, true);
+                }
+                else
+                {
+                    auto config = ConfigValue::make(typename Storage::Config{});
+                    if (!config)
+                    {
+                        result = cxx::unexpected(config.error());
+                        return;
+                    }
+                    result = prepareStorage<Storage, P>(batch, std::move(*config), true);
+                }
                 if (!result)
                 {
                     return;

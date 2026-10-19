@@ -123,11 +123,13 @@ namespace lux::render::vulkan
         VulkanAllocator allocator_;
         std::vector<std::unique_ptr<SubmissionQueue>> physical_queues_;
         std::array<std::uint8_t, 3> queue_roles_{};
-        std::unique_ptr<RetirementQueue> retirement_;
+        // Reverse destruction: Sets -> Registry -> retired objects -> upload measurements/staging ->
+        // descriptor table -> physical Queues -> Allocator -> LogicalDevice.
+        std::unique_ptr<DescriptorArray> sampled_images_;
         std::unique_ptr<StagingArena> staging_arena_;
         std::unique_ptr<UploadContext> uploads_;
+        std::unique_ptr<RetirementQueue> retirement_;
         ResourceRegistry resources_;
         StorageSet global_storages_;
-        std::unique_ptr<DescriptorArray> sampled_images_;
     };
 } // namespace lux::render::vulkan

@@ -162,7 +162,7 @@ namespace lux::render
             output_response = cxx::unexpected(prepared.error());
             return;
         }
-        if (auto values = (*prepared)->setContextParameters(decoded->parameters.bytes().view()); !values)
+        if (auto values = (*prepared)->setContextParameters(decoded->parameters); !values)
         {
             output_response = cxx::unexpected(values.error());
             return;
@@ -282,7 +282,7 @@ namespace lux::render
             return;
         }
         // Native validates the complete input size before changing any parameter bytes.
-        if (auto applied = attachment->context->setContextParameters(input.parameters.bytes().view()); !applied)
+        if (auto applied = attachment->context->setContextParameters(input.parameters); !applied)
         {
             output_response = cxx::unexpected(applied.error());
             return;

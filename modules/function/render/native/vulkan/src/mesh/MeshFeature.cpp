@@ -58,12 +58,7 @@ namespace lux::render::vulkan
             };
             const auto argument = [&](std::string_view local, auto binding) -> RenderResult<void>
             {
-                auto config_value = ConfigValue::make(std::move(binding));
-                if (!config_value)
-                {
-                    return cxx::unexpected(config_value.error());
-                }
-                result.arguments.push_back({resource(local), std::move(*config_value)});
+                result.arguments.push_back(StorageArgument::make(resource(local), std::move(binding)));
                 return {};
             };
             if (auto added = argument("mesh", config.mesh); !added)
@@ -83,7 +78,7 @@ namespace lux::render::vulkan
             if constexpr (!Depth)
             {
                 // describe already qualified the typed cooked contract. Native reflection checks the actual code ABI.
-                const auto& material = *static_cast<const MaterialProgram*>(config.material.program.data());
+                const auto& material = config.material.program;
                 draw.shader.stages.push_back(material.fragment);
                 draw.shader.interface.bindings.push_back(
                     {4, 4, EDescriptorKind::STORAGE_BUFFER, 1, materialParameterBlock(material), "uMats", 2}

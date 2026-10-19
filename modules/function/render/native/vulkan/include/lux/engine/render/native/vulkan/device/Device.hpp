@@ -98,7 +98,6 @@ namespace lux::render::vulkan
             std::span<const std::uint32_t> families = {}
         ) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Image>> createImage(const ImageDescription& description) noexcept;
-        [[nodiscard]] RenderResult<std::unique_ptr<Image>> aliasImage(const Image& source) noexcept;
         ~VulkanAllocator() noexcept;
         VulkanAllocator(VulkanAllocator&& other) noexcept;
         VulkanAllocator& operator=(VulkanAllocator&& other) noexcept;

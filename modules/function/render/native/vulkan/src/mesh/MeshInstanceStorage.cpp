@@ -38,12 +38,7 @@ namespace lux::render::vulkan
         }
     };
 
-    MeshInstanceStorage::MeshInstanceStorage(
-        DeviceSession& session,
-        StorageId id,
-        MeshInstanceStorageConfig config
-    ) noexcept
-        : session_(session), id_(id), config_(config)
+    MeshInstanceStorage::MeshInstanceStorage(DeviceSession& session, StorageId id) noexcept : session_(session), id_(id)
     {
     }
 
@@ -63,16 +58,10 @@ namespace lux::render::vulkan
         }
     }
 
-    std::uint64_t MeshInstanceStorage::residentBytes() const noexcept
-    {
-        return resident_bytes_;
-    }
-
     void MeshInstanceStorage::retire(std::unique_ptr<Backing>& value) noexcept
     {
         if (value)
         {
-            resident_bytes_ -= value->buffer->size();
             if (!session_.retirement().retire(value->retirement, value))
             {
                 std::terminate();
@@ -94,10 +83,7 @@ namespace lux::render::vulkan
     {
         const bool exceeds_device =
             bytes > session_.physicalDevice().properties().properties.limits.maxStorageBufferRange;
-        const bool exceeds_budget =
-            config_.resident_byte_budget &&
-            (bytes > config_.resident_byte_budget || resident_bytes_ > config_.resident_byte_budget - bytes);
-        if (exceeds_device || exceeds_budget)
+        if (exceeds_device)
         {
             return cxx::unexpected(RenderError{kStorageCapacity});
         }
@@ -156,7 +142,6 @@ namespace lux::render::vulkan
     {
         retire(current_);
         current_ = std::move(value);
-        resident_bytes_ += current_->buffer->size();
         for (auto* use : uses_)
         {
             use->update(*current_);
@@ -438,12 +423,10 @@ namespace lux::render::vulkan
                     ->prepare(plan, *static_cast<const MeshInstanceBinding*>(argument), prepared);
             }
         };
-        static const auto create = +[](DeviceSession& session, StorageId id, const MeshInstanceStorageConfig& config
-                                    ) noexcept -> RenderResult<std::unique_ptr<MeshInstanceStorage>>
-        { return std::make_unique<MeshInstanceStorage>(session, id, config); };
-        static const auto compatible = +[](const MeshInstanceStorage& value, const MeshInstanceStorageConfig& config
-                                        ) noexcept { return value.compatibleConfig(config); };
-        return makeStorageFactory<render::MeshInstanceStorage, MeshInstanceStorage, DeviceSession, create, compatible>(
+        static const auto create =
+            +[](DeviceSession& session, StorageId id) noexcept -> RenderResult<std::unique_ptr<MeshInstanceStorage>>
+        { return std::make_unique<MeshInstanceStorage>(session, id); };
+        return makeStorageFactory<render::MeshInstanceStorage, MeshInstanceStorage, DeviceSession, create>(
             ops,
             &binding
         );

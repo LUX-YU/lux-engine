@@ -31,14 +31,6 @@ namespace lux::render::vulkan
         {
             std::terminate();
         }
-        // Logical subscriptions/actual Sets end while Native retirement and Queue owners still exist.
-        global_storages_.clear();
-        // Retired physical sets leave before their device-level descriptor allocation.
-        retirement_.reset();
-        physical_queues_.clear();
-        uploads_.reset();
-        staging_arena_.reset();
-        sampled_images_.reset();
     }
 
     RenderResult<void> DeviceSession::drain() noexcept

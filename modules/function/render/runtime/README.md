@@ -98,7 +98,7 @@ and unvisited Links in the bounded IPC roster. This is an idle observation deadl
 ## View and Attachment inputs
 
 A View contains identity and scoped resources; it does not own Camera matrices. `CreateView`
-accepts a SceneId. `Attach` takes explicit `RenderPayload` parameter bytes and a normalized
+accepts a SceneId. `Attach` takes explicit owned parameter bytes and a normalized
 `RasterViewport`, and returns the generational `AttachmentId`. The compiled Native layout
 checks the complete parameter byte count. A graph without context parameters takes an empty
 payload. Mesh callers can construct `MeshViewParameters` and use `meshViewParameterBytes()`;

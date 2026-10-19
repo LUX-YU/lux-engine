@@ -6,20 +6,11 @@
 
 namespace lux::render::vulkan
 {
-    // Legacy chained-arena allocation policy: newest segment, then reusable old segments, then growth.
-    // Buffer ownership stays in the arena. A Range shares only VMA virtual allocation metadata, so a
-    // delayed free remains valid even when closing the arena retires its Buffer before the range node.
+    // Newest segment, reusable older segments, then growth. Segments exclusively own both the
+    // Buffer and virtual allocation metadata; ranges borrow a stable Segment until returned.
     class BufferArena final
     {
-        struct Block final
-        {
-            VmaVirtualBlock native = VK_NULL_HANDLE;
-
-            ~Block() noexcept
-            {
-                vmaDestroyVirtualBlock(native);
-            }
-        };
+        struct Segment;
 
     public:
         class Range final
@@ -38,27 +29,32 @@ namespace lux::render::vulkan
         private:
             friend class BufferArena;
             void reset() noexcept;
-            std::shared_ptr<Block> block_;
+            Segment* segment_ = nullptr;
             VmaVirtualAllocation allocation_ = VK_NULL_HANDLE;
         };
 
         BufferArena(
             DeviceSession& session,
             VkBufferUsageFlags usage,
-            std::uint64_t byte_budget,
             VkDeviceSize segment_bytes = 4 * 1024 * 1024
         ) noexcept
-            : session_(session), usage_(usage), byte_budget_(byte_budget), segment_bytes_(segment_bytes)
+            : session_(session), usage_(usage), segment_bytes_(segment_bytes)
         {
         }
 
         ~BufferArena() noexcept;
         BufferArena(const BufferArena&) = delete;
         BufferArena& operator=(const BufferArena&) = delete;
-        [[nodiscard]] RenderResult<Range> allocate(
+        [[nodiscard]] RenderResult<std::unique_ptr<Range>> allocate(
             VkDeviceSize bytes,
-            VkDeviceSize alignment,
-            VkDeviceSize growth_budget = UINT64_MAX
+            VkDeviceSize alignment
+        ) noexcept;
+
+        // Only a range record is eligible for early metadata reclamation when its whole segment closes.
+        [[nodiscard]] static RenderResult<void> retireRange(
+            RetirementQueue& queue,
+            RetirementReservation& reservation,
+            std::unique_ptr<Range>& range
         ) noexcept;
 
         [[nodiscard]] std::uint64_t capacity() const noexcept
@@ -75,14 +71,20 @@ namespace lux::render::vulkan
         struct Segment final
         {
             std::unique_ptr<Buffer> buffer;
-            std::shared_ptr<Block> block;
+            VmaVirtualBlock block = VK_NULL_HANDLE;
+
+            ~Segment() noexcept
+            {
+                vmaDestroyVirtualBlock(block);
+            }
+
             RetirementReservation retirement;
         };
 
         [[nodiscard]] static Range allocate(Segment&, VkDeviceSize bytes, VkDeviceSize alignment) noexcept;
         DeviceSession& session_;
         VkBufferUsageFlags usage_;
-        std::uint64_t byte_budget_, capacity_ = 0;
+        std::uint64_t capacity_ = 0;
         VkDeviceSize segment_bytes_;
         std::vector<std::unique_ptr<Segment>> segments_;
     };

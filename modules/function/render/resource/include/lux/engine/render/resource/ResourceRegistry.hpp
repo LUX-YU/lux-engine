@@ -72,7 +72,7 @@ namespace lux::render
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
-            return typename T::Access(entry->native, *static_cast<const typename T::Ops*>(factory.ops), true);
+            return typename T::Access(entry->native, *static_cast<const typename T::Ops*>(factory.ops));
         }
 
         template <class Native> [[nodiscard]] RenderResult<Native*> borrow(StorageId id) noexcept

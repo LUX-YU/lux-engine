@@ -329,7 +329,7 @@ namespace lux::render::vulkan
         const DeviceSession& session,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
-        const GraphStorageBindings& external_bindings,
+        GraphStorageBindings external_bindings,
         std::span<const PassProgram> programs,
         const TargetDesc& target
     ) noexcept
@@ -410,10 +410,10 @@ namespace lux::render::vulkan
                 }
             }
         }
-        const auto install = [&](std::span<const GraphStorageBinding> source,
+        const auto install = [&](std::span<GraphStorageBinding> source,
                                  std::vector<std::uint32_t>& indices) -> RenderResult<void>
         {
-            for (const auto& binding : source)
+            for (auto& binding : source)
             {
                 if (binding.resource.index >= result.resources_.size())
                 {
@@ -434,7 +434,7 @@ namespace lux::render::vulkan
                 {
                     return cxx::unexpected(RenderError{kStorageFactory});
                 }
-                resource.storage = binding.storage;
+                resource.storage = std::move(binding.storage);
                 indices.push_back(binding.resource.index);
             }
             return {};

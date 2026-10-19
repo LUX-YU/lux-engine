@@ -28,7 +28,7 @@ namespace lux::render::vulkan
         };
 
     public:
-        MaterialStorage(DeviceSession&, StorageId, MaterialStorageConfig) noexcept;
+        MaterialStorage(DeviceSession&, StorageId) noexcept;
         ~MaterialStorage() noexcept;
         MaterialStorage(const MaterialStorage&) = delete;
         MaterialStorage& operator=(const MaterialStorage&) = delete;
@@ -38,14 +38,8 @@ namespace lux::render::vulkan
             return id_;
         }
 
-        [[nodiscard]] bool compatibleConfig(const MaterialStorageConfig& value) const noexcept
-        {
-            return value == config_;
-        }
-
         [[nodiscard]] RenderResult<MaterialInformation> query(MaterialId) const noexcept;
         [[nodiscard]] RenderResult<void> release(MaterialId, std::uint64_t expected_revision) noexcept;
-        [[nodiscard]] std::uint64_t residentBytes() const noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
 
     private:
@@ -61,7 +55,6 @@ namespace lux::render::vulkan
         static void disconnect(Entry&) noexcept;
         DeviceSession& session_;
         StorageId id_;
-        MaterialStorageConfig config_;
         cxx::SlotMap<Entry, MaterialTag> entries_;
         std::vector<std::unique_ptr<Table>> tables_;
     };

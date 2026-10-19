@@ -1,23 +1,37 @@
 #pragma once
-#include "lux/engine/gapi/vk/LogicalDevice.hpp"
 #include "lux/engine/gapi/vk/DeviceMemory.hpp"
+#include "lux/engine/gapi/vk/LogicalDevice.hpp"
+#include <lux/cxx/compile_time/expected.hpp>
+#include <memory>
+#include <utility>
 #include <vulkan/vulkan.h>
 
 namespace lux::gapi::vk
 {
     class ImageBuilder;
+
     class Image
     {
     public:
         using Builder = ImageBuilder;
 
-        Image() : image(VK_NULL_HANDLE) {}
+        Image() noexcept : image(VK_NULL_HANDLE) {}
 
         Image(VkImage image) : image(image) {}
 
-        Image(VkDevice dev, const VkImageCreateInfo& ci, VkAllocationCallbacks* allocator = nullptr)
+        [[nodiscard]] static cxx::expected<Image, VkResult> create(
+            VkDevice device,
+            const VkImageCreateInfo& info,
+            const VkAllocationCallbacks* allocator = nullptr
+        ) noexcept
         {
-            VK_FUNC_INVOKE(vkCreateImage, "Failed to create Image object", dev, &ci, allocator, &image);
+            Image value;
+            const auto status = vkCreateImage(device, &info, allocator, &value.image);
+            if (status != VK_SUCCESS)
+            {
+                return cxx::unexpected(status);
+            }
+            return value;
         }
 
         Image(const Image&) = delete;
@@ -31,12 +45,15 @@ namespace lux::gapi::vk
 
         Image& operator=(Image&& other) noexcept
         {
-            image = other.image;
-            other.image = VK_NULL_HANDLE;
+            if (this != std::addressof(other))
+            {
+                // The collection owner releases an occupied destination before assignment.
+                image = std::exchange(other.image, VK_NULL_HANDLE);
+            }
             return *this;
         }
 
-        void release(VkDevice dev, VkAllocationCallbacks* allocator = nullptr)
+        void release(VkDevice dev, const VkAllocationCallbacks* allocator = nullptr) noexcept
         {
             if (image != VK_NULL_HANDLE)
             {
@@ -45,7 +62,7 @@ namespace lux::gapi::vk
             }
         }
 
-        VkMemoryRequirements memoryRequirements(VkDevice dev)
+        VkMemoryRequirements memoryRequirements(VkDevice dev) const noexcept
         {
             VkMemoryRequirements req;
             vkGetImageMemoryRequirements(dev, image, &req);
@@ -62,15 +79,16 @@ namespace lux::gapi::vk
             return DeviceMemory{dev, allocation_size, memory_type_index, allocator};
         }
 
-        void bindMemory(VkDevice logical_dev, VkDeviceMemory memory, VkDeviceSize offset = 0)
+        [[nodiscard]] VkResult bindMemory(VkDevice device, VkDeviceMemory memory, VkDeviceSize offset = 0) noexcept
         {
-            VK_FUNC_INVOKE(vkBindImageMemory, "Failed to bind memory to image", logical_dev, image, memory, offset);
+            return vkBindImageMemory(device, image, memory, offset);
         }
 
         inline operator bool() const noexcept
         {
             return image != VK_NULL_HANDLE;
         }
+
         inline bool operator!() const noexcept
         {
             return image == VK_NULL_HANDLE;
@@ -80,6 +98,7 @@ namespace lux::gapi::vk
         {
             return image;
         }
+
         inline const VkImage* operator&() const noexcept
         {
             return &image;
@@ -89,6 +108,7 @@ namespace lux::gapi::vk
         {
             return image;
         }
+
         inline const VkImage* handlePtr() const noexcept
         {
             return &image;
@@ -101,11 +121,9 @@ namespace lux::gapi::vk
     class ImageBuilder
     {
     public:
-        ImageBuilder()
+        ImageBuilder() noexcept
         {
             ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-            ci.pNext = nullptr;
-            ci.flags = 0;
             ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         }
 
@@ -182,33 +200,47 @@ namespace lux::gapi::vk
             return *this;
         }
 
-        // Make the created image's memory exportable to an external API (CUDA interop).
-        // Chains a VkExternalMemoryImageCreateInfo onto ci.pNext. The chained struct is a
-        // builder member, so it stays alive until build() (called on this live builder).
-        ImageBuilder& setExternalMemoryHandleTypes(VkExternalMemoryHandleTypeFlags types)
+        ImageBuilder& setExternalMemoryHandleTypes(VkExternalMemoryHandleTypeFlags types) noexcept
         {
-            ext_mem_ci_.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
-            ext_mem_ci_.handleTypes = types;
-            ext_mem_ci_.pNext = ci.pNext; // preserve any existing chain
-            ci.pNext = &ext_mem_ci_;
+            external_types_ = types;
             return *this;
         }
 
-        Image build(VkDevice dev, VkAllocationCallbacks* allocator = nullptr)
+        [[nodiscard]] cxx::expected<Image, VkResult> build(
+            VkDevice device,
+            const VkAllocationCallbacks* allocator = nullptr
+        ) const noexcept
         {
-            return Image(dev, ci, allocator);
+            auto create_info = ci;
+            VkExternalMemoryImageCreateInfo external{VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO};
+            if (external_types_)
+            {
+                external.handleTypes = external_types_;
+                external.pNext = create_info.pNext;
+                create_info.pNext = &external;
+            }
+            return Image::create(device, create_info, allocator);
         }
 
-        Image buildAndBind(
-            VkDevice logical_dev,
+        [[nodiscard]] cxx::expected<Image, VkResult> buildAndBind(
+            VkDevice device,
             VkDeviceMemory memory,
             VkDeviceSize offset,
-            VkAllocationCallbacks* allocator = nullptr
-        )
+            const VkAllocationCallbacks* allocator = nullptr
+        ) const noexcept
         {
-            Image img = Image(logical_dev, ci, allocator);
-            img.bindMemory(logical_dev, memory, offset);
-            return img;
+            auto image = build(device, allocator);
+            if (!image)
+            {
+                return cxx::unexpected(image.error());
+            }
+            const auto status = image->bindMemory(device, memory, offset);
+            if (status != VK_SUCCESS)
+            {
+                image->release(device, allocator);
+                return cxx::unexpected(status);
+            }
+            return image;
         }
 
     private:
@@ -218,7 +250,7 @@ namespace lux::gapi::vk
             return alignedOffset;
         }
 
-        VkImageCreateInfo ci;
-        VkExternalMemoryImageCreateInfo ext_mem_ci_{}; // chained by setExternalMemoryHandleTypes
+        VkImageCreateInfo ci{};
+        VkExternalMemoryHandleTypeFlags external_types_ = 0;
     };
-}
+} // namespace lux::gapi::vk

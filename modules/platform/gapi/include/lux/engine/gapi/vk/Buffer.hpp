@@ -1,19 +1,33 @@
 #pragma once
-#include "lux/engine/gapi/vk/Object.hpp"
 #include "lux/engine/gapi/vk/DeviceMemory.hpp"
+#include "lux/engine/gapi/vk/Object.hpp"
+#include <lux/cxx/compile_time/expected.hpp>
+#include <memory>
+#include <utility>
 #include <vulkan/vulkan.h>
 
 namespace lux::gapi::vk
 {
     class BufferBuilder;
+
     class Buffer
     {
     public:
-        Buffer() : buffer(VK_NULL_HANDLE) {}
+        Buffer() noexcept : buffer(VK_NULL_HANDLE) {}
 
-        Buffer(VkDevice device, const VkBufferCreateInfo& info, VkAllocationCallbacks* allocator = nullptr)
+        [[nodiscard]] static cxx::expected<Buffer, VkResult> create(
+            VkDevice device,
+            const VkBufferCreateInfo& info,
+            const VkAllocationCallbacks* allocator = nullptr
+        ) noexcept
         {
-            VK_FUNC_INVOKE(vkCreateBuffer, "Failed to create Buffer object", device, &info, allocator, &buffer);
+            Buffer value;
+            const auto status = vkCreateBuffer(device, &info, allocator, &value.buffer);
+            if (status != VK_SUCCESS)
+            {
+                return cxx::unexpected(status);
+            }
+            return value;
         }
 
         Buffer(const Buffer&) = delete;
@@ -27,8 +41,11 @@ namespace lux::gapi::vk
 
         Buffer& operator=(Buffer&& other) noexcept
         {
-            buffer = other.buffer;
-            other.buffer = VK_NULL_HANDLE;
+            if (this != std::addressof(other))
+            {
+                // The collection owner releases an occupied destination before assignment.
+                buffer = std::exchange(other.buffer, VK_NULL_HANDLE);
+            }
             return *this;
         }
 
@@ -49,7 +66,7 @@ namespace lux::gapi::vk
             return req;
         }
 
-        void release(VkDevice device, VkAllocationCallbacks* allocator = nullptr)
+        void release(VkDevice device, const VkAllocationCallbacks* allocator = nullptr) noexcept
         {
             if (buffer != VK_NULL_HANDLE)
             {
@@ -58,15 +75,16 @@ namespace lux::gapi::vk
             }
         }
 
-        void bindMemory(VkDevice logical_dev, VkDeviceMemory memory, VkDeviceSize offset = 0)
+        [[nodiscard]] VkResult bindMemory(VkDevice device, VkDeviceMemory memory, VkDeviceSize offset = 0) noexcept
         {
-            VK_FUNC_INVOKE(vkBindBufferMemory, "Failed to bind memory to buffer", logical_dev, buffer, memory, offset);
+            return vkBindBufferMemory(device, buffer, memory, offset);
         }
 
         inline operator bool() const noexcept
         {
             return buffer != VK_NULL_HANDLE;
         }
+
         inline bool operator!() const noexcept
         {
             return buffer == VK_NULL_HANDLE;
@@ -76,6 +94,7 @@ namespace lux::gapi::vk
         {
             return buffer;
         }
+
         inline const VkBuffer* operator&() const noexcept
         {
             return &buffer;
@@ -85,6 +104,7 @@ namespace lux::gapi::vk
         {
             return buffer;
         }
+
         inline const VkBuffer* handlePtr() const noexcept
         {
             return &buffer;
@@ -209,13 +229,9 @@ namespace lux::gapi::vk
     class BufferBuilder
     {
     public:
-        BufferBuilder()
+        BufferBuilder() noexcept
         {
             info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-            info.pNext = nullptr;
-            info.flags = 0;
-
-            // default values
             info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         }
 
@@ -267,21 +283,26 @@ namespace lux::gapi::vk
             return *this;
         }
 
-        // Make the created buffer's memory exportable to an external API (CUDA interop).
-        // Chains a VkExternalMemoryBufferCreateInfo onto info.pNext. The chained struct is
-        // a builder member, so it stays alive until build() (called on this live builder).
-        BufferBuilder& setExternalMemoryHandleTypes(VkExternalMemoryHandleTypeFlags types)
+        BufferBuilder& setExternalMemoryHandleTypes(VkExternalMemoryHandleTypeFlags types) noexcept
         {
-            ext_mem_ci_.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
-            ext_mem_ci_.handleTypes = types;
-            ext_mem_ci_.pNext = info.pNext; // preserve any existing chain
-            info.pNext = &ext_mem_ci_;
+            external_types_ = types;
             return *this;
         }
 
-        Buffer build(VkDevice device, VkAllocationCallbacks* allocator = nullptr) const
+        [[nodiscard]] cxx::expected<Buffer, VkResult> build(
+            VkDevice device,
+            const VkAllocationCallbacks* allocator = nullptr
+        ) const noexcept
         {
-            return Buffer(device, info, allocator);
+            auto create_info = info;
+            VkExternalMemoryBufferCreateInfo external{VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO};
+            if (external_types_)
+            {
+                external.handleTypes = external_types_;
+                external.pNext = create_info.pNext;
+                create_info.pNext = &external;
+            }
+            return Buffer::create(device, create_info, allocator);
         }
 
     private:
@@ -297,7 +318,7 @@ namespace lux::gapi::vk
             const uint32_t*        pQueueFamilyIndices;
         } VkBufferCreateInfo;
         */
-        VkBufferCreateInfo info;
-        VkExternalMemoryBufferCreateInfo ext_mem_ci_{}; // chained by setExternalMemoryHandleTypes
+        VkBufferCreateInfo info{};
+        VkExternalMemoryHandleTypeFlags external_types_ = 0;
     };
-}
+} // namespace lux::gapi::vk

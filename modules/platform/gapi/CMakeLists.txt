@@ -41,4 +41,5 @@ target_link_libraries(
 component_add_transitive_commands(
     gapi
     "find_package(Vulkan    REQUIRED)"
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )

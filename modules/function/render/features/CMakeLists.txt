@@ -14,8 +14,8 @@ component_include_directories(
 
 component_add_internal_dependencies(
     render_features
+    lux::engine::render::render_core
     lux::engine::render::render_graph
-    lux::engine::render::render_data
     lux::engine::render::render_commands
     lux::engine::render::render_resource
 )

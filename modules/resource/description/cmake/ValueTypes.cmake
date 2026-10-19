@@ -21,6 +21,7 @@ target_include_directories(
 
 install(
     FILES "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/ShaderInfo.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/SpirvArtifact.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/ShaderBlock.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/DataLayout.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/PassContract.hpp"

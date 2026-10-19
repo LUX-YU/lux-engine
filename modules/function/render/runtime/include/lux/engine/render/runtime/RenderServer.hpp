@@ -1,8 +1,8 @@
 #pragma once
 
 #include <lux/engine/render/commands/Error.hpp>
-#include <lux/engine/render/data/ConfigValue.hpp>
-#include <lux/engine/render/native/vulkan/Feature.hpp>
+#include <lux/engine/render/core/ConfigValue.hpp>
+#include <lux/engine/render/features/Assembly.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/runtime/CommandBinding.hpp>
@@ -16,6 +16,11 @@ namespace lux::render::runtime_detail
 
 namespace lux::render
 {
+    namespace feature_detail
+    {
+        struct Implementation;
+    }
+
     template <class T> struct StorageProvider;
     template <class T> struct FeatureProvider;
 

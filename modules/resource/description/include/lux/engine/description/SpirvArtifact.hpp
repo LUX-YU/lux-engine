@@ -2,11 +2,11 @@
 
 #include <lux/engine/description/ShaderInfo.hpp>
 
-namespace lux::render
+namespace lux::rdesc
 {
     struct SpirvStage final
     {
-        rdesc::EShaderType stage = rdesc::EShaderType::UNDEFINED;
+        EShaderType stage = EShaderType::UNDEFINED;
         std::string entry;
         std::vector<std::uint32_t> words;
         bool operator==(const SpirvStage&) const noexcept = default;
@@ -17,8 +17,8 @@ namespace lux::render
     struct SpirvArtifact final
     {
         std::vector<SpirvStage> stages;
-        rdesc::ShaderInfo interface;
+        ShaderInfo interface;
         bool operator==(const SpirvArtifact&) const noexcept = default;
     };
 
-} // namespace lux::render
+} // namespace lux::rdesc

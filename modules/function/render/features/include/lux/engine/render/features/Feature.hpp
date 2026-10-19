@@ -1,8 +1,8 @@
 #pragma once
 
 #include <lux/cxx/core/Schema.hpp>
+#include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/data/ConfigValue.hpp>
 
 namespace lux::render
 {

@@ -16,7 +16,6 @@ component_include_directories(
 
 component_add_internal_dependencies(render_commands
     lux::engine::render::render_core
-    lux::engine::render::render_data
 )
 
 target_link_libraries(render_commands PUBLIC lux::cxx::core)

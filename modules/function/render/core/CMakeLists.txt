@@ -1,4 +1,4 @@
-find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm)
+find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core)
 
 add_component(
     STATIC
@@ -17,13 +17,13 @@ component_include_directories(
     INSTALL_TIME include
 )
 
-target_link_libraries(render_core PUBLIC lux::cxx::container lux::cxx::compile_time lux::cxx::algorithm
+target_link_libraries(render_core PUBLIC lux::cxx::container lux::cxx::compile_time lux::cxx::algorithm lux::cxx::core
     lux::engine::core::error_values lux::engine::resource::description_types
 )
 
 component_add_transitive_commands(
     render_core
-    "find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm)"
+    "find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core)"
     "find_package(lux-engine-core CONFIG REQUIRED COMPONENTS error_values)"
     "find_package(lux-engine-resource CONFIG REQUIRED COMPONENTS description_types)"
 )

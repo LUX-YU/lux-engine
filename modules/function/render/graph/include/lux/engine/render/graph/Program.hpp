@@ -2,7 +2,7 @@
 
 #include <array>
 #include <cstddef>
-#include <lux/engine/render/data/Shader.hpp>
+#include <lux/engine/description/SpirvArtifact.hpp>
 #include <lux/engine/render/graph/Draw.hpp>
 #include <string>
 
@@ -33,7 +33,7 @@ namespace lux::render
     struct PassProgram final
     {
         std::string pass_key;
-        SpirvArtifact shader; // empty for transfer-only commands
+        rdesc::SpirvArtifact shader; // empty for transfer-only commands
         std::array<float, 4> clear_color{0, 0, 0, 1};
         VDrawCommand draw = DrawVertices{};
         GraphicsState graphics;

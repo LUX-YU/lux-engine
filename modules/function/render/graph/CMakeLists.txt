@@ -15,7 +15,6 @@ component_include_directories(
 
 component_add_internal_dependencies(render_graph
     lux::engine::render::render_core
-    lux::engine::render::render_data
 )
 
 target_compile_features(render_graph PUBLIC cxx_std_20)

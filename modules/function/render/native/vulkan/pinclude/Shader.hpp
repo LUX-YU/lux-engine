@@ -30,14 +30,14 @@ namespace lux::render::vulkan
         VkDevice device,
         const VkPhysicalDeviceLimits& limits,
         VkPipelineLayout layout,
-        const SpirvArtifact& shader
+        const rdesc::SpirvArtifact& shader
     ) noexcept;
     [[nodiscard]] RenderResult<VkPipeline> compileGraphics(
         VkDevice device,
         const gapi::vk::PhysicalDevice& physical,
         const EnabledDeviceFeatures& enabled,
         VkPipelineLayout layout,
-        const SpirvArtifact& shader,
+        const rdesc::SpirvArtifact& shader,
         const GraphicsState& graphics,
         VkFormat color,
         VkFormat depth

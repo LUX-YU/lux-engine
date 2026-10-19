@@ -115,8 +115,8 @@ absence is a stage boundary, not a successful GPU/renderer qualification.
 
 ## Current public dependency
 
-Graph depends on Core and Data. GraphPassId/GraphResourceId are declared in Core without changing layout.
-Program.hpp supplies the neutral PassProgram compiler input and imports cooked SpirvArtifact from Data;
+Graph depends on Core and its neutral resource description contracts. GraphPassId/GraphResourceId are declared in Core.
+Program.hpp supplies the neutral PassProgram compiler input and imports cooked rdesc::SpirvArtifact from resource/description;
 it contains no concrete Storage arguments. Existing G4 algorithms are unchanged. Current Native compilation
 consumes the one successful Definition/Analysis directly; Feature selection is a separate upper layer.
 The historical G4 report/checker describes its original commit and is not rewritten for this migration.

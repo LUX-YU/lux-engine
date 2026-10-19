@@ -390,7 +390,7 @@ namespace lux::render::vulkan
 
         struct PipelineIdentity final
         {
-            SpirvArtifact shader;
+            rdesc::SpirvArtifact shader;
             GraphicsState graphics;
             VkFormat color = VK_FORMAT_UNDEFINED, depth = VK_FORMAT_UNDEFINED;
             bool operator==(const PipelineIdentity&) const noexcept = default;

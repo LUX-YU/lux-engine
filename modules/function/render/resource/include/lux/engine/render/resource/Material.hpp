@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <array>
 #include <lux/engine/description/MaterialLayout.hpp>
+#include <lux/engine/description/SpirvArtifact.hpp>
 #include <lux/engine/render/commands/Command.hpp>
-#include <lux/engine/render/data/Shader.hpp>
 #include <lux/engine/render/resource/Texture.hpp>
 
 namespace lux::render
@@ -17,7 +17,7 @@ namespace lux::render
     // Immutable runtime projection of existing cooked MaterialGraph output. No author graph or compiler.
     struct MaterialProgram final
     {
-        SpirvStage fragment;
+        rdesc::SpirvStage fragment;
         std::uint32_t parameter_count = 0;
         std::uint32_t texture_count = 0;
 

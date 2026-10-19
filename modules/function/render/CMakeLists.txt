@@ -1,7 +1,5 @@
 add_subdirectory(core)
 
-add_subdirectory(data)
-
 add_subdirectory(commands)
 
 if(LUX_RENDER_CLIENT_ONLY)
@@ -11,7 +9,7 @@ if(LUX_RENDER_CLIENT_ONLY)
         PROJECT_NAME lux-engine-render
         VERSION 0.0.1
         NAMESPACE lux::engine::render
-        COMPONENTS render_core render_data render_commands
+        COMPONENTS render_core render_commands
     )
     if(BUILD_TESTING)
         add_subdirectory(test)
@@ -40,7 +38,7 @@ lux_engine_install_components(
     PROJECT_NAME lux-engine-render
     VERSION 0.0.1
     NAMESPACE lux::engine::render
-    COMPONENTS render_core render_data render_commands render_resource render_graph render_features render_native_vulkan
+    COMPONENTS render_core render_commands render_resource render_graph render_features render_native_vulkan
         render_native_vulkan_extensions render_native_vulkan_features render_runtime
 )
 

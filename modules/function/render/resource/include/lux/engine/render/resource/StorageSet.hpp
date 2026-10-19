@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/data/ConfigValue.hpp>
+#include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <map>
 #include <string>

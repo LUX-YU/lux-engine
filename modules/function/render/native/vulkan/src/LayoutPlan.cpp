@@ -333,8 +333,8 @@ namespace lux::render::vulkan
         return plan;
     }
 
-    RenderResult<SpirvArtifact> relocateShader(
-        const SpirvArtifact& original,
+    RenderResult<rdesc::SpirvArtifact> relocateShader(
+        const rdesc::SpirvArtifact& original,
         std::span<const ShaderBinding> locations
     ) noexcept
     {

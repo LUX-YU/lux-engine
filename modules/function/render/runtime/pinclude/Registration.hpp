@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/native/vulkan/Feature.hpp>
+
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <map>
 

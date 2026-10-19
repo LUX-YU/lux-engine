@@ -58,8 +58,8 @@ namespace lux::render::vulkan
         const ResourceNames& resource_names
     ) noexcept;
 
-    [[nodiscard]] RenderResult<SpirvArtifact> relocateShader(
-        const SpirvArtifact& original,
+    [[nodiscard]] RenderResult<rdesc::SpirvArtifact> relocateShader(
+        const rdesc::SpirvArtifact& original,
         std::span<const ShaderBinding> locations
     ) noexcept;
 } // namespace lux::render::vulkan

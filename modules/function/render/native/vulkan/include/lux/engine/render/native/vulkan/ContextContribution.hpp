@@ -1,7 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/data/ConfigValue.hpp>
 #include <vulkan/vulkan.h>
 
 namespace lux::render::vulkan

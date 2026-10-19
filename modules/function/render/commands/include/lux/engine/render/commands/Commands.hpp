@@ -2,11 +2,11 @@
 
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Execution.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/data/ConfigValue.hpp>
 #include <memory>
 #include <optional>
 #include <span>

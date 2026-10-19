@@ -236,7 +236,7 @@ namespace lux::render::vulkan
         }
 
         bool validateStage(
-            const SpirvStage& input,
+            const rdesc::SpirvStage& input,
             SpvExecutionModel stage,
             const ShaderInterface& interface,
             const VkPhysicalDeviceLimits& limits,
@@ -623,7 +623,7 @@ namespace lux::render::vulkan
         VkDevice device,
         const VkPhysicalDeviceLimits& limits,
         VkPipelineLayout layout,
-        const SpirvArtifact& shader
+        const rdesc::SpirvArtifact& shader
     ) noexcept
     {
         const bool wrong_stage = shader.stages.size() != 1 || shader.stages[0].stage != rdesc::EShaderType::COMPUTE;
@@ -675,7 +675,7 @@ namespace lux::render::vulkan
         const gapi::vk::PhysicalDevice& physical,
         const EnabledDeviceFeatures& enabled,
         VkPipelineLayout layout,
-        const SpirvArtifact& shader,
+        const rdesc::SpirvArtifact& shader,
         const GraphicsState& graphics,
         VkFormat color,
         VkFormat depth
@@ -703,8 +703,8 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        const SpirvStage* vertex_stage = nullptr;
-        const SpirvStage* fragment_stage = nullptr;
+        const rdesc::SpirvStage* vertex_stage = nullptr;
+        const rdesc::SpirvStage* fragment_stage = nullptr;
         for (const auto& stage : shader.stages)
         {
             if (stage.stage == rdesc::EShaderType::VERTEX && !vertex_stage)

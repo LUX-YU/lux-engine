@@ -28,7 +28,7 @@ component_include_directories(
 )
 
 component_add_internal_dependencies(render_native_vulkan lux::engine::render::render_core
-    lux::engine::render::render_data lux::engine::render::render_resource lux::engine::render::render_graph
+    lux::engine::render::render_resource lux::engine::render::render_graph
 )
 
 target_link_libraries(render_native_vulkan PUBLIC

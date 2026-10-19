@@ -237,15 +237,12 @@ namespace lux::render::vulkan
         };
     }
 
-    exec::task<RenderResult<MeshInstancePublished>> MeshInstanceStorage::create(MeshInstanceDescription input) noexcept
+    RenderResult<MeshInstanceGpuProperty> MeshInstanceStorage::resolveReferences(const MeshInstanceDescription& input
+    ) const noexcept
     {
-        if (updating_)
-        {
-            co_return cxx::unexpected(RenderError{kBusy});
-        }
         if (!std::ranges::all_of(input.transform, [](float value) { return std::isfinite(value); }))
         {
-            co_return cxx::unexpected(RenderError{kStorageContract});
+            return cxx::unexpected(RenderError{kStorageContract});
         }
         auto& registry = session_.resources();
         for (auto source : {input.mesh.storage, input.material.storage})
@@ -253,23 +250,36 @@ namespace lux::render::vulkan
             const auto* owner = registry.owner(source);
             if (!owner || (owner != registry.owner(id_) && owner != &session_.globalStorages()))
             {
-                co_return cxx::unexpected(RenderError{kStorageIdentity});
+                return cxx::unexpected(RenderError{kStorageIdentity});
             }
         }
         auto mesh = registry.borrow<vulkan::MeshStorage>(input.mesh.storage);
         auto material = registry.borrow<vulkan::MaterialStorage>(input.material.storage);
         if (!mesh || !material)
         {
-            co_return cxx::unexpected(!mesh ? mesh.error() : material.error());
+            return cxx::unexpected(!mesh ? mesh.error() : material.error());
         }
         const auto* description = (*mesh)->find(input.mesh);
         const auto material_slot = (*material)->gpuIndex(input.material);
         if (!description || !material_slot || input.submesh >= description->submeshes.size())
         {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
+            return cxx::unexpected(RenderError{kStorageIdentity});
+        }
+        return MeshInstanceGpuProperty{input.mesh.local.index, *material_slot, input.submesh};
+    }
+
+    exec::task<RenderResult<MeshInstanceId>> MeshInstanceStorage::create(MeshInstanceDescription input) noexcept
+    {
+        if (updating_)
+        {
+            co_return cxx::unexpected(RenderError{kBusy});
+        }
+        const auto property = resolveReferences(input);
+        if (!property)
+        {
+            co_return cxx::unexpected(property.error());
         }
         const auto key = entries_.emplace(Entry{input.mesh, input.material, input.submesh});
-        entries_.find(key)->key = key;
         updating_ = true;
         std::unique_ptr<Page> page;
         std::unique_ptr<GpuPage> gpu;
@@ -390,7 +400,6 @@ namespace lux::render::vulkan
                 }
             }
         }
-        const MeshInstanceGpuProperty property{input.mesh.local.index, *material_slot, input.submesh};
         const std::uint32_t alive = 1;
         auto& target = growing ? *gpu : *(paged_ ? pages_[page_index]->gpu : flat_);
         const auto slot = paged_ ? local : key.index;
@@ -401,7 +410,7 @@ namespace lux::render::vulkan
             kStride[0],
             input.transform.data()
         );
-        vkCmdUpdateBuffer(command, target.fields[1].handle(), std::uint64_t(slot) * kStride[1], kStride[1], &property);
+        vkCmdUpdateBuffer(command, target.fields[1].handle(), std::uint64_t(slot) * kStride[1], kStride[1], &*property);
         vkCmdUpdateBuffer(command, target.fields[2].handle(), std::uint64_t(slot) * kStride[2], kStride[2], &alive);
         if (growing && paged_)
         {
@@ -461,15 +470,15 @@ namespace lux::render::vulkan
             publishBuffers();
         }
         pages_[page_index]->transforms[local] = input.transform;
-        pages_[page_index]->properties[local] = property;
+        pages_[page_index]->properties[local] = *property;
         pages_[page_index]->alive[local] = 1;
         ++written_records_;
         ++live_records_;
-        entries_.find(key)->revision = 1;
+        entries_.find(key)->key = key;
         updating_ = false;
         notify(*entries_.find(key), false);
         rollback.release();
-        co_return MeshInstancePublished{{id_, key}, 1};
+        co_return MeshInstanceId{id_, key};
     }
 
     exec::task<RenderResult<TransformApplied>> MeshInstanceStorage::update(TransformBatch input) noexcept
@@ -490,11 +499,9 @@ namespace lux::render::vulkan
             {
                 co_return cxx::unexpected(RenderError{kStorageIdentity});
             }
-            const bool is_revision_mismatch =
-                entry->revision != value.expected_revision || entry->revision == UINT64_MAX;
             const bool is_invalid_transform =
                 !std::ranges::all_of(value.transform, [](float element) { return std::isfinite(element); });
-            if (is_revision_mismatch || is_invalid_transform)
+            if (is_invalid_transform)
             {
                 co_return cxx::unexpected(RenderError{kStorageContract});
             }
@@ -626,38 +633,39 @@ namespace lux::render::vulkan
                 pages_[slot / kMeshInstancePageSlots]->transforms.data() + slot % kMeshInstancePageSlots
             );
         }
-        for (const auto& value : input.updates)
-        {
-            ++entries_.find(value.instance.local)->revision;
-        }
         written_records_ += dirty.size() * kMeshInstanceDirtySlots;
         co_return TransformApplied{input.sequence, static_cast<std::uint32_t>(input.updates.size())};
     }
 
-    RenderResult<MeshInstanceInformation> MeshInstanceStorage::query(MeshInstanceId id) const noexcept
-    {
-        const auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
-        if (!entry || !entry->revision)
-        {
-            return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        return MeshInstanceInformation{{id, entry->revision}, describe(*entry)};
-    }
-
-    exec::task<RenderResult<Ack>> MeshInstanceStorage::release(MeshInstancePublished input) noexcept
+    exec::task<RenderResult<TransformApplied>> MeshInstanceStorage::update(MeshInstanceBatch input) noexcept
     {
         if (updating_)
         {
             co_return cxx::unexpected(RenderError{kBusy});
         }
-        const auto* entry = input.instance.storage == id_ ? entries_.find(input.instance.local) : nullptr;
-        if (!entry)
+        if (input.storage != id_ || input.updates.size() > UINT32_MAX)
         {
             co_return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        if (input.revision != entry->revision)
+        std::vector<MeshInstanceGpuProperty> properties;
+        properties.reserve(input.updates.size());
+        for (const auto& value : input.updates)
         {
-            co_return cxx::unexpected(RenderError{kStorageContract});
+            const auto* entry = value.instance.storage == id_ ? entries_.find(value.instance.local) : nullptr;
+            if (!entry)
+            {
+                co_return cxx::unexpected(RenderError{kStorageIdentity});
+            }
+            const auto property = resolveReferences(value.description);
+            if (!property)
+            {
+                co_return cxx::unexpected(property.error());
+            }
+            properties.push_back(*property);
+        }
+        if (input.updates.empty())
+        {
+            co_return TransformApplied{input.sequence, 0};
         }
         updating_ = true;
         cxx::scope_exit cleanup([&]() noexcept { updating_ = false; });
@@ -685,7 +693,88 @@ namespace lux::render::vulkan
                 co_return cxx::unexpected(completed.error());
             }
         }
-        const auto slot = input.instance.local.index;
+        // All references and fields are validated before the single non-suspending recording segment.
+        beforeWrite(batch->native());
+        for (std::size_t i = 0; i < input.updates.size(); ++i)
+        {
+            const auto& value = input.updates[i];
+            const auto slot = value.instance.local.index;
+            const auto page = slot / kMeshInstancePageSlots;
+            vkCmdUpdateBuffer(
+                batch->native(),
+                fieldBuffer(page, EMeshInstanceBinding::TRANSFORMS).handle(),
+                fieldOffset(slot, kStride[0]),
+                kStride[0],
+                value.description.transform.data()
+            );
+            vkCmdUpdateBuffer(
+                batch->native(),
+                fieldBuffer(page, EMeshInstanceBinding::PROPERTIES).handle(),
+                fieldOffset(slot, kStride[1]),
+                kStride[1],
+                &properties[i]
+            );
+        }
+        afterWrite(batch->native());
+        if (auto accepted = std::move(*batch).submit(); !accepted)
+        {
+            co_return cxx::unexpected(accepted.error());
+        }
+        for (std::size_t i = 0; i < input.updates.size(); ++i)
+        {
+            const auto& value = input.updates[i];
+            auto& entry = *entries_.find(value.instance.local);
+            entry.mesh = value.description.mesh;
+            entry.material = value.description.material;
+            entry.submesh = value.description.submesh;
+            const auto slot = value.instance.local.index;
+            auto& page = *pages_[slot / kMeshInstancePageSlots];
+            page.transforms[slot % kMeshInstancePageSlots] = value.description.transform;
+            page.properties[slot % kMeshInstancePageSlots] = properties[i];
+            notify(entry, false);
+        }
+        written_records_ += input.updates.size();
+        co_return TransformApplied{input.sequence, static_cast<std::uint32_t>(input.updates.size())};
+    }
+
+    exec::task<RenderResult<Ack>> MeshInstanceStorage::release(MeshInstanceId input) noexcept
+    {
+        if (updating_)
+        {
+            co_return cxx::unexpected(RenderError{kBusy});
+        }
+        const auto* entry = input.storage == id_ ? entries_.find(input.local) : nullptr;
+        if (!entry)
+        {
+            co_return cxx::unexpected(RenderError{kStorageIdentity});
+        }
+        updating_ = true;
+        cxx::scope_exit cleanup([&]() noexcept { updating_ = false; });
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+        std::optional<CommandBatch> batch;
+        for (;;)
+        {
+            if (stop.stop_requested())
+            {
+                co_return cxx::unexpected(RenderError{kWorkStopped});
+            }
+            auto ready = session_.queue().begin();
+            if (ready)
+            {
+                batch.emplace(std::move(*ready));
+                break;
+            }
+            if (ready.error().type != kCapacity)
+            {
+                co_return cxx::unexpected(ready.error());
+            }
+            auto completed = co_await session_.queue().whenAvailable();
+            if (!completed)
+            {
+                co_return cxx::unexpected(completed.error());
+            }
+        }
+        const auto slot = input.local.index;
         auto& target = fieldBuffer(slot / kMeshInstancePageSlots, EMeshInstanceBinding::ALIVE);
         const std::uint32_t dead = 0;
         beforeWrite(batch->native());
@@ -698,7 +787,7 @@ namespace lux::render::vulkan
         }
         notify(*entry, true);
         pages_[slot / kMeshInstancePageSlots]->alive[slot % kMeshInstancePageSlots] = 0;
-        entries_.erase(input.instance.local);
+        entries_.erase(input.local);
         --live_records_;
         co_return Ack{};
     }
@@ -726,10 +815,6 @@ namespace lux::render::vulkan
 
     StorageFactory meshInstanceStorageFactory() noexcept
     {
-        static const render::MeshInstanceStorage::Ops ops{
-            [](const void* value, MeshInstanceId id) noexcept
-            { return static_cast<const MeshInstanceStorage*>(value)->query(id); }
-        };
         static const StorageBindingOps binding{
             [](void* value, const NativeResourcePlan& plan, const void* argument, StorageSubscription& subscription
             ) noexcept
@@ -742,7 +827,7 @@ namespace lux::render::vulkan
             +[](DeviceSession& session, StorageId id) noexcept -> RenderResult<std::unique_ptr<MeshInstanceStorage>>
         { return std::make_unique<MeshInstanceStorage>(session, id); };
         return makeStorageFactory<render::MeshInstanceStorage, MeshInstanceStorage, DeviceSession, create>(
-            ops,
+            nullptr,
             &binding
         );
     }

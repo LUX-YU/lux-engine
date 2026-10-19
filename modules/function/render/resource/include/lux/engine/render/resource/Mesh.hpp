@@ -48,12 +48,6 @@ namespace lux::render
 
     static_assert(sizeof(MeshGpuSection) == 12);
 
-    struct MeshPublished final
-    {
-        MeshId mesh;
-        std::uint64_t revision = 0;
-    };
-
     enum class EMeshBuffer : std::uint8_t
     {
         VERTICES,
@@ -71,39 +65,24 @@ namespace lux::render
 
     struct MeshWrite final
     {
-        MeshId mesh;
-        std::uint64_t expected_revision = 0;
+        StorageId storage;
         MeshDescription description;
         // Borrowed until Response (success, failure or cancellation). Failed submission takes no borrow.
         // Abandon/connection loss is not completion: Host must drain Server and Producers before freeing it.
         std::span<const std::byte> source;
     };
 
-    struct MeshInformation final
+    struct CreateMesh final
     {
-        MeshPublished published;
-        MeshDescription description;
-        std::uint64_t bytes = 0;
-    };
-
-    struct SetMesh final
-    {
-        static constexpr std::string_view name = "lux.render.SetMesh";
+        static constexpr std::string_view name = "lux.render.CreateMesh";
         using Request = MeshWrite;
-        using Response = RenderResult<MeshPublished>;
-    };
-
-    struct QueryMesh final
-    {
-        static constexpr std::string_view name = "lux.render.QueryMesh";
-        using Request = MeshId;
-        using Response = RenderResult<MeshInformation>;
+        using Response = RenderResult<MeshId>;
     };
 
     struct ReleaseMesh final
     {
         static constexpr std::string_view name = "lux.render.ReleaseMesh";
-        using Request = MeshPublished;
+        using Request = MeshId;
         using Response = RenderResult<Ack>;
     };
 
@@ -118,32 +97,6 @@ namespace lux::render
         using Config = void;
         static inline const StorageDescriptor description{kMeshStorageType, 0, 0, cppType<MeshBinding>()};
 
-        struct Ops final
-        {
-            RenderResult<MeshInformation> (*query)(const void*, MeshId) noexcept;
-            RenderResult<void> (*release)(void*, MeshId, std::uint64_t) noexcept;
-        };
-
-        class Access final
-        {
-        public:
-            [[nodiscard]] RenderResult<MeshInformation> query(MeshId id) const noexcept
-            {
-                return ops_->query(native_, id);
-            }
-
-            [[nodiscard]] RenderResult<void> release(MeshId id, std::uint64_t revision) const noexcept
-            {
-                return ops_->release(native_, id, revision);
-            }
-
-        private:
-            friend class ResourceRegistry;
-
-            Access(void* native, const Ops& ops) noexcept : native_(native), ops_(&ops) {}
-
-            void* native_;
-            const Ops* ops_;
-        };
+        using Ops = void;
     };
 } // namespace lux::render

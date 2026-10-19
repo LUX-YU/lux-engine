@@ -20,8 +20,6 @@ namespace lux::render::vulkan
         std::vector<std::uint32_t> free_slots;
         gapi::vk::VmaBuffer buffer;
         bool updating = false;
-        std::vector<std::uint32_t> texture_changes;
-        std::vector<bool> texture_changed;
     };
 
     namespace
@@ -57,7 +55,6 @@ namespace lux::render::vulkan
 
     MaterialStorage::~MaterialStorage() noexcept
     {
-        observers_.clear();
         for (auto& entry : entries_)
         {
             StorageSubscription::disconnect(entry.bindings);
@@ -70,12 +67,7 @@ namespace lux::render::vulkan
 
     std::size_t MaterialStorage::recordCount() const noexcept
     {
-        std::size_t count = 0;
-        for (const auto& entry : entries_)
-        {
-            count += entry.revision != 0;
-        }
-        return count;
+        return entries_.size();
     }
 
     RenderResult<MaterialStorage::Table*> MaterialStorage::table(MaterialProgram& program) noexcept
@@ -145,11 +137,6 @@ namespace lux::render::vulkan
         return result;
     }
 
-    MaterialStorage::TextureKey MaterialStorage::key(TextureId id) noexcept
-    {
-        return {id.storage.index, id.storage.gen, id.local.index, id.local.gen};
-    }
-
     std::uint32_t MaterialStorage::textureIndex(TextureId id) const noexcept
     {
         auto& registry = session_.resources();
@@ -163,105 +150,6 @@ namespace lux::render::vulkan
         return texture ? texture->descriptorIndex() : 0;
     }
 
-    void MaterialStorage::watch(TextureId id) noexcept
-    {
-        const StorageKey storage{id.storage.index, id.storage.gen};
-        if (observers_.contains(storage))
-        {
-            return;
-        }
-        auto& registry = session_.resources();
-        const auto* owner = registry.owner(id.storage);
-        if (!owner || (owner != registry.owner(id_) && owner != &session_.globalStorages()))
-        {
-            return;
-        }
-        auto source = registry.borrow<TextureStorage>(id.storage);
-        if (!source)
-        {
-            return; // Stale Texture identity remains a logical white reference.
-        }
-        auto& observer = observers_.try_emplace(storage).first->second;
-        observer.receiver = this;
-        observer.affected = [](const void* value, TextureId id) noexcept
-        { return static_cast<const MaterialStorage*>(value)->references_.contains(key(id)); };
-        observer.record = [](void* value, VkCommandBuffer command, TextureId id, std::uint32_t descriptor) noexcept
-        { static_cast<MaterialStorage*>(value)->recordTexture(command, id, descriptor); };
-        observer.adopt = [](void* value, TextureId id, std::uint32_t descriptor) noexcept
-        { static_cast<MaterialStorage*>(value)->adoptTexture(id, descriptor); };
-        (*source)->observe(observer);
-    }
-
-    void MaterialStorage::link(MaterialId id, Entry& entry, std::span<const TextureId> textures) noexcept
-    {
-        entry.textures.reserve(textures.size());
-        for (std::uint32_t slot = 0; slot < textures.size(); ++slot)
-        {
-            const auto texture = textures[slot];
-            auto& references = references_[key(texture)];
-            entry.textures.push_back({texture, references.size()});
-            references.emplace_back(id, slot);
-            watch(texture);
-        }
-    }
-
-    void MaterialStorage::unlink(Entry& entry) noexcept
-    {
-        for (auto& texture : entry.textures)
-        {
-            auto found = references_.find(key(texture.texture));
-            auto& references = found->second;
-            references[texture.position] = references.back();
-            const auto [id, slot] = references[texture.position];
-            entries_.find(id.local)->textures[slot].position = texture.position;
-            references.pop_back();
-            if (references.empty())
-            {
-                references_.erase(found);
-            }
-        }
-        entry.textures.clear();
-    }
-
-    void MaterialStorage::recordTexture(VkCommandBuffer command, TextureId id, std::uint32_t descriptor) noexcept
-    {
-        const auto found = references_.find(key(id));
-        if (found == references_.end())
-        {
-            return;
-        }
-        for (const auto [material, texture] : found->second)
-        {
-            const auto& entry = *entries_.find(material.local);
-            const auto& table = *entry.table;
-            const auto offset = std::uint64_t(entry.slot) * table.stride + table.texture_offsets[texture] +
-                                offsetof(MaterialTextureGpuRef, resource_index);
-            vkCmdUpdateBuffer(command, table.buffer.handle(), offset, sizeof(descriptor), &descriptor);
-        }
-    }
-
-    void MaterialStorage::adoptTexture(TextureId id, std::uint32_t descriptor) noexcept
-    {
-        const auto found = references_.find(key(id));
-        if (found == references_.end())
-        {
-            return;
-        }
-        for (const auto [material, texture] : found->second)
-        {
-            const auto& entry = *entries_.find(material.local);
-            auto& table = *entry.table;
-            const auto offset = std::size_t(entry.slot) * table.stride + table.texture_offsets[texture] +
-                                offsetof(MaterialTextureGpuRef, resource_index);
-            std::memcpy(table.records.data() + offset, &descriptor, sizeof(descriptor));
-            if (table.updating && !table.texture_changed[entry.slot])
-            {
-                table.texture_changed[entry.slot] = true;
-                table.texture_changes.push_back(entry.slot);
-            }
-        }
-    }
-
     void MaterialStorage::publish(Table& table) noexcept
     {
         for (auto* entry : table.entries)
@@ -273,28 +161,55 @@ namespace lux::render::vulkan
         }
     }
 
-    MaterialStorage::UploadResult MaterialStorage::upload(MaterialWrite input) noexcept
+    template <class Input>
+    exec::task<RenderResult<MaterialStorage::WriteValue<Input>>> MaterialStorage::write(Input input) noexcept
     {
-        if (input.material.storage != id_)
+        Entry* existing = nullptr;
+        Table* selected = nullptr;
+        if constexpr (std::same_as<Input, MaterialWrite>)
         {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
+            if (input.storage != id_)
+            {
+                co_return cxx::unexpected(RenderError{kStorageIdentity});
+            }
+            auto found = table(input.program);
+            if (!found)
+            {
+                co_return cxx::unexpected(found.error());
+            }
+            selected = *found;
         }
-        auto* existing = input.material.isNull() ? nullptr : entries_.find(input.material.local);
-        if (!input.material.isNull() && (!existing || !existing->revision))
+        else
         {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
+            existing = input.material.storage == id_ ? entries_.find(input.material.local) : nullptr;
+            if (!existing)
+            {
+                co_return cxx::unexpected(RenderError{kStorageIdentity});
+            }
+            selected = existing->table;
         }
-        const auto revision = existing ? existing->revision : 0;
-        if (input.expected_revision != revision || revision == UINT64_MAX)
-        {
-            co_return cxx::unexpected(RenderError{kStorageContract});
-        }
-        if (existing && existing->updating)
+        auto& table = *selected;
+        if (table.updating)
         {
             co_return cxx::unexpected(RenderError{kBusy});
         }
-        const bool invalid_counts = input.parameters.size() != input.program.parameter_count ||
-                                    input.textures.size() != input.program.texture_count;
+        table.updating = true;
+        gapi::vk::VmaBuffer candidate;
+        cxx::scope_exit rollback(
+            [&]() noexcept
+            {
+                table.updating = false;
+                releaseAfterGpu(session_, candidate);
+                if (table.entries.empty())
+                {
+                    const auto empty =
+                        std::ranges::find_if(tables_, [&](const auto& value) { return value.get() == &table; });
+                    tables_.erase(empty);
+                }
+            }
+        );
+        const bool invalid_counts = input.parameters.size() != table.parameter_offsets.size() ||
+                                    input.textures.size() != table.texture_offsets.size();
         const bool invalid_values = std::ranges::any_of(
             input.parameters,
             [](const auto& lane)
@@ -303,22 +218,6 @@ namespace lux::render::vulkan
         if (invalid_counts || invalid_values)
         {
             co_return cxx::unexpected(RenderError{kStorageContract});
-        }
-        // A Material identity belongs to one cooked table ABI. Changing the program creates a new
-        // Material, so existing instance GPU slots cannot silently change interpretation.
-        if (existing && existing->table->program != input.program)
-        {
-            co_return cxx::unexpected(RenderError{kStorageMismatch});
-        }
-        auto selected = table(input.program);
-        if (!selected)
-        {
-            co_return cxx::unexpected(selected.error());
-        }
-        auto& table = **selected;
-        if (table.updating)
-        {
-            co_return cxx::unexpected(RenderError{kBusy});
         }
         const auto slot = existing                    ? existing->slot
                           : !table.free_slots.empty() ? table.free_slots.back()
@@ -342,45 +241,13 @@ namespace lux::render::vulkan
                 sizeof(input.parameters[p])
             );
         }
-        const auto setTextures = [&]() noexcept
+        // Resolve only the explicit request. Client retains these references through completion and
+        // updates Materials before releasing Textures; no cross-Storage observer repairs later misuse.
+        for (std::size_t t = 0; t < input.textures.size(); ++t)
         {
-            for (std::size_t t = 0; t < input.textures.size(); ++t)
-            {
-                const MaterialTextureGpuRef reference{0, textureIndex(input.textures[t]), 0, 0};
-                std::memcpy(values.data() + table.texture_offsets[t], &reference, sizeof(reference));
-            }
-        };
-        setTextures();
-        auto id = input.material;
-        if (id.isNull())
-        {
-            id.local = entries_.emplace();
+            const MaterialTextureGpuRef reference{0, textureIndex(input.textures[t]), 0, 0};
+            std::memcpy(values.data() + table.texture_offsets[t], &reference, sizeof(reference));
         }
-        auto& entry = *entries_.find(id.local);
-        entry.updating = table.updating = true;
-        gapi::vk::VmaBuffer candidate;
-        cxx::scope_exit rollback(
-            [&]() noexcept
-            {
-                entry.updating = table.updating = false;
-                for (auto changed : table.texture_changes)
-                {
-                    table.texture_changed[changed] = false;
-                }
-                table.texture_changes.clear();
-                if (!entry.revision)
-                {
-                    entries_.erase(id.local);
-                }
-                releaseAfterGpu(session_, candidate);
-                if (table.entries.empty())
-                {
-                    const auto empty =
-                        std::ranges::find_if(tables_, [&](const auto& value) { return value.get() == &table; });
-                    tables_.erase(empty);
-                }
-            }
-        );
         std::vector<std::byte> grown;
         if (growing)
         {
@@ -429,42 +296,14 @@ namespace lux::render::vulkan
             }
         }
         const auto command = batch->native();
-        auto& target = growing ? candidate : table.buffer;
         beforeWrite(command);
         if (!growing)
         {
             const VkBufferCopy copy{0, std::uint64_t(slot) * table.stride, table.stride};
-            vkCmdCopyBuffer(command, candidate.handle(), target.handle(), 1, &copy);
-            beforeWrite(command);
-        }
-        // Texture publications may have completed during CPU preparation. Apply their actual latest
-        // fields to the candidate and re-resolve this request's logical references before the single commit.
-        if (growing)
-        {
-            for (auto changed : table.texture_changes)
-            {
-                for (auto offset : table.texture_offsets)
-                {
-                    const auto at = std::size_t(changed) * table.stride + offset;
-                    std::memcpy(grown.data() + at, table.records.data() + at, sizeof(MaterialTextureGpuRef));
-                    vkCmdUpdateBuffer(command, target.handle(), at, sizeof(MaterialTextureGpuRef), grown.data() + at);
-                }
-            }
-        }
-        setTextures();
-        for (auto offset : table.texture_offsets)
-        {
-            vkCmdUpdateBuffer(
-                command,
-                target.handle(),
-                std::uint64_t(slot) * table.stride + offset,
-                sizeof(MaterialTextureGpuRef),
-                values.data() + offset
-            );
+            vkCmdCopyBuffer(command, candidate.handle(), table.buffer.handle(), 1, &copy);
         }
         afterWrite(command);
-        auto accepted = std::move(*batch).submit();
-        if (!accepted)
+        if (auto accepted = std::move(*batch).submit(); !accepted)
         {
             co_return cxx::unexpected(accepted.error());
         }
@@ -473,40 +312,57 @@ namespace lux::render::vulkan
             releaseAfterGpu(session_, table.buffer);
             table.buffer = std::move(candidate);
             table.records = std::move(grown);
-            table.texture_changed.resize(capacity, false);
         }
         std::memcpy(table.records.data() + std::size_t(slot) * table.stride, values.data(), values.size());
-        if (entry.revision)
+        MaterialId id;
+        if constexpr (std::same_as<Input, MaterialWrite>)
         {
-            unlink(entry);
+            id = {id_, entries_.emplace()};
+            existing = entries_.find(id.local);
+            existing->table = &table;
+            existing->slot = slot;
+            if (!table.free_slots.empty())
+            {
+                table.free_slots.pop_back();
+            }
+            if (slot == table.entries.size())
+            {
+                table.entries.push_back(existing);
+            }
+            else
+            {
+                table.entries[slot] = existing;
+            }
         }
-        else if (!table.free_slots.empty())
-        {
-            table.free_slots.pop_back();
-        }
-        if (slot == table.entries.size())
-        {
-            table.entries.push_back(&entry);
-        }
-        else
-        {
-            table.entries[slot] = &entry;
-        }
-        entry.table = &table;
-        entry.slot = slot;
-        entry.revision = revision + 1;
-        link(id, entry, input.textures);
+        existing->textures = std::move(input.textures);
         if (growing)
         {
             publish(table);
         }
-        co_return MaterialPublished{id, entry.revision}; // cleanup releases only the temporary staging candidate.
+        if constexpr (std::same_as<Input, MaterialWrite>)
+        {
+            co_return id;
+        }
+        else
+        {
+            co_return Ack{};
+        }
+    }
+
+    exec::task<RenderResult<MaterialId>> MaterialStorage::upload(MaterialWrite input) noexcept
+    {
+        return write(std::move(input));
+    }
+
+    exec::task<RenderResult<Ack>> MaterialStorage::upload(MaterialUpdate input) noexcept
+    {
+        return write(std::move(input));
     }
 
     RenderResult<std::uint32_t> MaterialStorage::gpuIndex(MaterialId id) const noexcept
     {
         const auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
-        if (!entry || !entry->revision)
+        if (!entry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
@@ -517,49 +373,22 @@ namespace lux::render::vulkan
     {
         const auto* a = left.storage == id_ ? entries_.find(left.local) : nullptr;
         const auto* b = right.storage == id_ ? entries_.find(right.local) : nullptr;
-        return a && b && a->revision && b->revision && a->table == b->table;
+        return a && b && a->table == b->table;
     }
 
-    RenderResult<MaterialInformation> MaterialStorage::query(MaterialId id) const noexcept
-    {
-        const auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
-        if (!entry || !entry->revision)
-        {
-            return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        const auto& table = *entry->table;
-        MaterialInformation result{{id, entry->revision}, table.program};
-        result.parameters.resize(table.parameter_offsets.size());
-        const auto* bytes = table.records.data() + std::size_t(entry->slot) * table.stride;
-        for (std::size_t p = 0; p < result.parameters.size(); ++p)
-        {
-            std::memcpy(result.parameters[p].data(), bytes + table.parameter_offsets[p], sizeof(result.parameters[p]));
-        }
-        for (const auto& link : entry->textures)
-        {
-            result.textures.push_back(link.texture);
-        }
-        return result;
-    }
-
-    RenderResult<void> MaterialStorage::release(MaterialId id, std::uint64_t revision) noexcept
+    RenderResult<void> MaterialStorage::release(MaterialId id) noexcept
     {
         auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
-        if (!entry || !entry->revision)
+        if (!entry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        if (entry->updating || entry->table->updating)
+        if (entry->table->updating)
         {
             return cxx::unexpected(RenderError{kBusy});
         }
-        if (entry->revision != revision)
-        {
-            return cxx::unexpected(RenderError{kStorageContract});
-        }
         auto& table = *entry->table;
         StorageSubscription::disconnect(entry->bindings);
-        unlink(*entry);
         table.entries[entry->slot] = nullptr;
         table.free_slots.push_back(entry->slot);
         entries_.erase(id.local);
@@ -579,7 +408,7 @@ namespace lux::render::vulkan
     ) noexcept
     {
         auto* entry = argument.material.storage == id_ ? entries_.find(argument.material.local) : nullptr;
-        if (!entry || !entry->revision)
+        if (!entry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
@@ -595,27 +424,26 @@ namespace lux::render::vulkan
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
-            const auto texture = entry->textures[argument.texture_slot].texture;
+            const auto texture = entry->textures[argument.texture_slot];
             auto storage = session_.resources().borrow<TextureStorage>(texture.storage);
             const auto* current = storage ? (*storage)->find(texture) : nullptr;
             if (current)
             {
-                const auto& actual = current->info();
-                const auto format = actual.pixel_format == rdesc::ETexturePixelFormat::RGBA8_UNORM
-                                        ? rdesc::ETextureFormat::RGBA8_UNORM
-                                    : actual.pixel_format == rdesc::ETexturePixelFormat::RGBA8_SRGB
-                                        ? rdesc::ETextureFormat::RGBA8_SRGB
-                                        : rdesc::ETextureFormat::BC1_RGBA_SRGB;
-                const bool is_mismatch = description->width != actual.width || description->height != actual.height ||
-                                         description->mips != actual.mip_count ||
-                                         description->layers != actual.layers || description->format != format;
+                const auto& actual = current->image();
+                const auto format = actual.format() == VK_FORMAT_R8G8B8A8_UNORM  ? rdesc::ETextureFormat::RGBA8_UNORM
+                                    : actual.format() == VK_FORMAT_R8G8B8A8_SRGB ? rdesc::ETextureFormat::RGBA8_SRGB
+                                                                                 : rdesc::ETextureFormat::BC1_RGBA_SRGB;
+                const bool is_mismatch = description->width != actual.extent().width ||
+                                         description->height != actual.extent().height ||
+                                         description->mips != actual.mipLevels() ||
+                                         description->layers != actual.arrayLayers() || description->format != format;
                 if (is_mismatch)
                 {
                     return cxx::unexpected(RenderError{kStorageMismatch});
                 }
             }
-            // The shared descriptor table is immutable in shape. Material owns the actual integer
-            // reference updates; a Context has no Texture subscription or professional write to perform.
+            // The descriptor table is immutable in shape. Only explicit Material updates change the
+            // stored integer references; Context does not repair Client resource dependencies.
             return StorageResource{};
         }
         const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
@@ -629,12 +457,6 @@ namespace lux::render::vulkan
 
     StorageFactory materialStorageFactory() noexcept
     {
-        static const render::MaterialStorage::Ops ops{
-            [](const void* object, MaterialId id) noexcept
-            { return static_cast<const MaterialStorage*>(object)->query(id); },
-            [](void* object, MaterialId id, std::uint64_t revision) noexcept
-            { return static_cast<MaterialStorage*>(object)->release(id, revision); }
-        };
         static const StorageBindingOps binding{
             [](void* object, const NativeResourcePlan& plan, const void* argument, StorageSubscription& subscription
             ) noexcept
@@ -646,15 +468,23 @@ namespace lux::render::vulkan
         static const auto create =
             +[](DeviceSession& session, StorageId id) noexcept -> RenderResult<std::unique_ptr<MaterialStorage>>
         { return std::make_unique<MaterialStorage>(session, id); };
-        return makeStorageFactory<render::MaterialStorage, MaterialStorage, DeviceSession, create>(ops, &binding);
+        return makeStorageFactory<render::MaterialStorage, MaterialStorage, DeviceSession, create>(nullptr, &binding);
     }
 } // namespace lux::render::vulkan
 
 namespace lux::render
 {
-    StorageTraits<vulkan::MaterialStorage>::Result StorageTraits<vulkan::MaterialStorage>::upload(
+    exec::task<RenderResult<MaterialId>> StorageTraits<vulkan::MaterialStorage>::upload(
         vulkan::MaterialStorage& storage,
         MaterialWrite input
+    ) noexcept
+    {
+        return storage.upload(std::move(input));
+    }
+
+    exec::task<RenderResult<Ack>> StorageTraits<vulkan::MaterialStorage>::upload(
+        vulkan::MaterialStorage& storage,
+        MaterialUpdate input
     ) noexcept
     {
         return storage.upload(std::move(input));

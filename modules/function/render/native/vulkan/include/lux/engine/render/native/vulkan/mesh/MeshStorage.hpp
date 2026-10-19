@@ -20,11 +20,6 @@ namespace lux::render::vulkan
         {
             MeshDescription description;
             std::unique_ptr<Geometry> geometry;
-            StorageSubscription* vertices = nullptr;
-            StorageSubscription* indices = nullptr;
-            StorageSubscription* sections = nullptr;
-            std::uint64_t revision = 0;
-            bool updating = false;
         };
 
     public:
@@ -39,8 +34,7 @@ namespace lux::render::vulkan
         }
 
         [[nodiscard]] const MeshDescription* find(MeshId) const noexcept;
-        [[nodiscard]] RenderResult<MeshInformation> query(MeshId) const noexcept;
-        [[nodiscard]] RenderResult<void> release(MeshId, std::uint64_t expected_revision) noexcept;
+        [[nodiscard]] RenderResult<void> release(MeshId) noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
 
         [[nodiscard]] RenderResult<StorageResource>
@@ -49,11 +43,10 @@ namespace lux::render::vulkan
     private:
         friend StorageFactory meshStorageFactory() noexcept;
         friend struct lux::render::StorageTraits<MeshStorage>;
-        using UploadResult = exec::task<RenderResult<MeshPublished>>;
+        using UploadResult = exec::task<RenderResult<MeshId>>;
         [[nodiscard]] UploadResult upload(MeshWrite) noexcept;
         [[nodiscard]] RenderResult<void> validate(const MeshDescription&, std::span<const std::byte>) const noexcept;
         void retire(std::unique_ptr<Geometry>&) noexcept;
-        static void disconnect(Entry&) noexcept;
         DeviceSession& session_;
         StorageId id_;
         cxx::StableSlotMap<Entry, MeshTag> entries_;
@@ -65,7 +58,7 @@ namespace lux::render
 {
     template <> struct StorageTraits<vulkan::MeshStorage> final
     {
-        using Result = exec::task<RenderResult<MeshPublished>>;
+        using Result = exec::task<RenderResult<MeshId>>;
         [[nodiscard]] static Result upload(vulkan::MeshStorage&, MeshWrite) noexcept;
     };
 } // namespace lux::render

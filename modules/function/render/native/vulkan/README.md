@@ -66,7 +66,7 @@ and waits for completion; reading does not implicitly execute another frame.
 MeshInstanceStorage has stable generational slots and one CPU authority for Transform, properties
 and alive fields. Storage pages contain 16,384 slots; sparse uploads merge only dirty 512-slot blocks.
 An enabled BDA device uses a two-level page-address table; the fallback grows continuous field Buffers.
-GPU writes are ordered on Graphics after old draws; CPU revisions commit only after submission admission.
+GPU writes are ordered on Graphics after old draws; CPU fields commit only after submission admission.
 Requests supply already unique changed instances. There are no triple mapped banks or draw-prefix
 capacity limits. Each Context owns its Feature-derived Mesh selection and indirect Buffer. Storage
 reports structural changes; the Feature decides membership and prepares changed data before recording.
@@ -85,12 +85,15 @@ live ranges. Standalone Texture uploads still select the actual dedicated/fallba
 MaterialStorage owns a continuous parameter table for each complete Cooked Shader/layout, with stable
 local GPU slots. Values belong to Material writes, not program identity. Offsets and record stride come
 from the Shader's reflected Cooked metadata; runtime does not recompute the ABI from parameter counts.
-Material assets without that layout require re-cooking. Material holds logical TextureId references.
-Texture replacement records all affected Material integer-field updates in one Graphics batch, using
-each MaterialStorage's recorder. Submit success adopts those CPU fields and the Texture together;
-rejection retains the old published values. A Material upload that suspended re-resolves its Texture
-references at adoption. Missing or stale references sample the device's white texture. Old physical
-content survives prior GPU use only. Parameter-only changes do not compile another Pipeline.
+Material assets without that layout require re-cooking. `CreateTexture` and `CreatePatchedTexture` return
+new immutable identities; neither changes another Storage. Clients issue `UpdateMaterial` to replace
+parameters or Texture references, then release the previous Texture after its references have ended.
+The update keeps the Material's Cooked program and GPU slot. Missing or stale Texture inputs resolve
+to white at this explicit boundary; an invalid later release is not repaired automatically.
+`UpdateMeshInstances` changes Mesh/Material references explicitly. Clients sequence related operations
+and coordinate multiple connections. There is no business revision CAS or Query mirror of Client input.
+Old physical content survives accepted GPU use through Session cleanup. Parameter-only changes do not
+compile another Pipeline; internal subscriptions report real buffer growth to attached Contexts.
 
 Attach writes borrowed Buffer/parameter facts directly into the Context's resource records. Intrusive
 non-owning subscriptions mark only affected descriptor, barrier and parameter locations. Storage owns

@@ -10,6 +10,22 @@ namespace lux::render
     // One owned native instance. The factory's matching Ops are separate immutable metadata.
     using NativeStorage = std::unique_ptr<void, void (*)(void*) noexcept>;
 
+    template <class Declaration> [[nodiscard]] constexpr CppType storageOpsType() noexcept
+    {
+        if constexpr (std::is_void_v<typename Declaration::Ops>)
+        {
+            return {};
+        }
+        else
+        {
+            return cppType<typename Declaration::Ops>();
+        }
+    }
+
+    template <class Ops>
+    using StorageOpsArgument =
+        std::conditional_t<std::is_void_v<Ops>, std::nullptr_t, std::add_lvalue_reference_t<std::add_const_t<Ops>>>;
+
     struct StorageFactory final
     {
         const StorageDescriptor* const description;
@@ -23,7 +39,7 @@ namespace lux::render
 
     private:
         template <class Declaration, class Native, class Device, auto Create, auto Compatible>
-        friend StorageFactory makeStorageFactory(const typename Declaration::Ops&, const void*) noexcept;
+        friend StorageFactory makeStorageFactory(StorageOpsArgument<typename Declaration::Ops>, const void*) noexcept;
 
         StorageFactory(
             const StorageDescriptor* description,
@@ -44,7 +60,7 @@ namespace lux::render
     // Create and compatible callbacks are typed before the only erasure boundary.
     template <class Declaration, class Native, class Device, auto Create, auto Compatible = nullptr>
     [[nodiscard]] StorageFactory makeStorageFactory(
-        const typename Declaration::Ops& ops,
+        StorageOpsArgument<typename Declaration::Ops> ops,
         const void* binding_ops = nullptr
     ) noexcept
     {
@@ -75,9 +91,14 @@ namespace lux::render
                 return nullptr;
             }
         }();
+        const void* ops_pointer = nullptr;
+        if constexpr (!std::is_void_v<typename Declaration::Ops>)
+        {
+            ops_pointer = &ops;
+        }
         return {
             &Declaration::description,
-            &ops,
+            ops_pointer,
             [](void* device, StorageId id, const void* config) noexcept -> RenderResult<NativeStorage>
             {
                 auto candidate = [&]() noexcept
@@ -110,7 +131,7 @@ namespace lux::render
             compatible,
             binding_ops,
             config_type,
-            cppType<typename Declaration::Ops>(),
+            storageOpsType<Declaration>(),
             cppType<Native>()
         };
     }

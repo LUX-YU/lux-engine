@@ -28,7 +28,6 @@ namespace lux::render::vulkan
     {
         for (auto& entry : entries_)
         {
-            disconnect(entry);
             retire(entry.geometry);
         }
     }
@@ -130,32 +129,13 @@ namespace lux::render::vulkan
 
     MeshStorage::UploadResult MeshStorage::upload(MeshWrite input) noexcept
     {
-        if (input.mesh.storage != id_)
+        if (input.storage != id_)
         {
             co_return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        auto* existing = input.mesh.isNull() ? nullptr : entries_.find(input.mesh.local);
-        if (!input.mesh.isNull() && !existing)
-        {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        if (existing && existing->updating)
-        {
-            co_return cxx::unexpected(RenderError{kBusy});
-        }
-        const auto revision = existing ? existing->revision : 0;
-        if (input.expected_revision != revision || revision == UINT64_MAX)
-        {
-            co_return cxx::unexpected(RenderError{kStorageContract});
         }
         if (auto valid = validate(input.description, input.source); !valid)
         {
             co_return cxx::unexpected(valid.error());
-        }
-        const bool has_bindings = existing && (existing->vertices || existing->indices || existing->sections);
-        if (has_bindings && existing->description != input.description)
-        {
-            co_return cxx::unexpected(RenderError{kStorageMismatch});
         }
         const auto vertex_bytes = std::size_t(input.description.vertex_count) * input.description.vertex_stride;
         const auto index_bytes = std::size_t(input.description.index_count) * input.description.index_stride;
@@ -183,24 +163,7 @@ namespace lux::render::vulkan
             co_return cxx::unexpected(sections.error());
         }
         auto geometry = std::make_unique<Geometry>(std::move(*vertices), std::move(*indices), std::move(*sections));
-        auto id = input.mesh;
-        if (id.isNull())
-        {
-            id.local = entries_.emplace();
-        }
-        auto& entry = *entries_.find(id.local); // StableSlotMap retains this address across suspension.
-        entry.updating = true;
-        cxx::scope_exit rollback(
-            [&]() noexcept
-            {
-                entry.updating = false;
-                retire(geometry);
-                if (!entry.geometry)
-                {
-                    entries_.erase(id.local);
-                }
-            }
-        );
+        cxx::scope_exit rollback([&]() noexcept { retire(geometry); });
         auto uploaded = co_await session_.uploads().writeBufferRange(
             *geometry->vertices.buffer,
             geometry->vertices.offset,
@@ -284,19 +247,11 @@ namespace lux::render::vulkan
         {
             co_return cxx::unexpected(accepted.error());
         }
-        retire(entry.geometry);
+        const auto key = entries_.emplace();
+        auto& entry = *entries_.find(key);
         entry.geometry = std::move(geometry);
         entry.description = std::move(input.description);
-        entry.revision = revision + 1;
-        entry.updating = false;
-        const auto& v = entry.geometry->vertices;
-        const auto& i = entry.geometry->indices;
-        StorageSubscription::publish(entry.vertices, {v.buffer->handle(), v.offset, v.size});
-        StorageSubscription::publish(entry.indices, {i.buffer->handle(), i.offset, i.size});
-        const auto& s = entry.geometry->sections;
-        StorageSubscription::publish(entry.sections, {s.buffer->handle(), s.offset, s.size});
-        rollback.release();
-        co_return MeshPublished{id, entry.revision};
+        co_return MeshId{id_, key};
     }
 
     const MeshDescription* MeshStorage::find(MeshId id) const noexcept
@@ -305,46 +260,20 @@ namespace lux::render::vulkan
         return entry && entry->geometry ? &entry->description : nullptr;
     }
 
-    RenderResult<MeshInformation> MeshStorage::query(MeshId id) const noexcept
-    {
-        const auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
-        if (!entry || !entry->geometry)
-        {
-            return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        return MeshInformation{
-            {id, entry->revision},
-            entry->description,
-            entry->geometry->vertices.size + entry->geometry->indices.size
-        };
-    }
-
-    RenderResult<void> MeshStorage::release(MeshId id, std::uint64_t revision) noexcept
+    RenderResult<void> MeshStorage::release(MeshId id) noexcept
     {
         auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
         if (!entry || !entry->geometry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        if (entry->updating)
-        {
-            return cxx::unexpected(RenderError{kBusy});
-        }
-        if (revision != entry->revision)
-        {
-            return cxx::unexpected(RenderError{kStorageContract});
-        }
-        disconnect(*entry);
         retire(entry->geometry);
         entries_.erase(id.local);
         return {};
     }
 
-    RenderResult<StorageResource> MeshStorage::resolve(
-        const NativeResourcePlan& plan,
-        const MeshBinding& argument,
-        StorageSubscription& subscription
-    ) noexcept
+    RenderResult<StorageResource> MeshStorage::
+        resolve(const NativeResourcePlan& plan, const MeshBinding& argument, StorageSubscription&) noexcept
     {
         auto* entry = argument.mesh.storage == id_ ? entries_.find(argument.mesh.local) : nullptr;
         if (!entry || !entry->geometry)
@@ -367,7 +296,6 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        subscription.attach(vertex ? entry->vertices : index ? entry->indices : entry->sections);
         return StorageResource{range.buffer->handle(), range.offset, range.size};
     }
 
@@ -383,20 +311,8 @@ namespace lux::render::vulkan
         geometry.reset();
     }
 
-    void MeshStorage::disconnect(Entry& entry) noexcept
-    {
-        StorageSubscription::disconnect(entry.vertices);
-        StorageSubscription::disconnect(entry.indices);
-        StorageSubscription::disconnect(entry.sections);
-    }
-
     StorageFactory meshStorageFactory() noexcept
     {
-        static const render::MeshStorage::Ops ops{
-            [](const void* object, MeshId id) noexcept { return static_cast<const MeshStorage*>(object)->query(id); },
-            [](void* object, MeshId id, std::uint64_t revision) noexcept
-            { return static_cast<MeshStorage*>(object)->release(id, revision); }
-        };
         static const StorageBindingOps binding{
             [](void* object, const NativeResourcePlan& plan, const void* argument, StorageSubscription& subscription
             ) noexcept
@@ -408,7 +324,7 @@ namespace lux::render::vulkan
         static const auto create =
             +[](DeviceSession& session, StorageId id) noexcept -> RenderResult<std::unique_ptr<MeshStorage>>
         { return std::make_unique<MeshStorage>(session, id); };
-        return makeStorageFactory<render::MeshStorage, MeshStorage, DeviceSession, create>(ops, &binding);
+        return makeStorageFactory<render::MeshStorage, MeshStorage, DeviceSession, create>(nullptr, &binding);
     }
 } // namespace lux::render::vulkan
 

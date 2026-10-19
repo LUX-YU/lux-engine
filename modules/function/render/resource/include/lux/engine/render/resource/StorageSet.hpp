@@ -41,7 +41,7 @@ namespace lux::render
                         return cppType<typename T::Config>();
                     }
                 }(),
-                cppType<typename T::Ops>()
+                storageOpsType<T>()
             );
         }
 

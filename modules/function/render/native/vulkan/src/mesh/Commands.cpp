@@ -4,52 +4,31 @@
 
 namespace lux::render::vulkan
 {
-    static exec::task<SetMesh::Response> rejectedMesh(RenderError error) noexcept
+    template <class Response> static exec::task<Response> rejected(RenderError error) noexcept
     {
         co_return cxx::unexpected(error);
     }
 
-    exec::task<SetMesh::Response> MeshCommandHandler::setMesh(SetMesh::Request&& input) noexcept
+    exec::task<CreateMesh::Response> MeshCommandHandler::createMesh(CreateMesh::Request&& input) noexcept
     {
-        auto storage = device_.resources().borrow<MeshStorage>(input.mesh.storage);
+        auto storage = device_.resources().borrow<MeshStorage>(input.storage);
         if (!storage)
         {
-            return rejectedMesh(storage.error());
+            return rejected<CreateMesh::Response>(storage.error());
         }
         return render::upload(**storage, std::move(input));
     }
 
-    void MeshCommandHandler::queryMesh(const QueryMesh::Request& input, QueryMesh::Response& response) noexcept
-    {
-        auto storage = device_.resources().tryGet<render::MeshStorage>(input.storage);
-        if (!storage)
-        {
-            response = cxx::unexpected(storage.error());
-            return;
-        }
-        auto result = storage->query(input);
-        if (!result)
-        {
-            response = cxx::unexpected(result.error());
-            return;
-        }
-        response = std::move(*result);
-    }
-
     void MeshCommandHandler::releaseMesh(const ReleaseMesh::Request& input, ReleaseMesh::Response& response) noexcept
     {
-        auto storage = device_.resources().borrow<MeshStorage>(input.mesh.storage);
+        auto storage = device_.resources().borrow<MeshStorage>(input.storage);
         if (!storage)
         {
             response = cxx::unexpected(storage.error());
             return;
         }
-        if (auto result = (*storage)->release(input.mesh, input.revision); !result)
-        {
-            response = cxx::unexpected(result.error());
-            return;
-        }
-        response = Ack{};
+        const auto released = (*storage)->release(input);
+        response = released ? ReleaseMesh::Response(Ack{}) : cxx::unexpected(released.error());
     }
 
 } // namespace lux::render::vulkan

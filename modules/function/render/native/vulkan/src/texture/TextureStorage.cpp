@@ -5,20 +5,14 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
-#include <lux/engine/render/native/vulkan/Error.hpp>
-#include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 
 namespace lux::render::vulkan
 {
-    TextureStorage::SampledImage::SampledImage(
-        gapi::vk::VmaImage image,
-        DescriptorArray::Slot descriptor,
-        const rdesc::TextureInfo& info,
-        std::uint64_t revision
-    ) noexcept
-        : image_(std::move(image)), descriptor_(std::move(descriptor)), info_(info), revision_(revision),
-          reference_{descriptor_.index, static_cast<std::uint32_t>(info.color_space)}
+    TextureStorage::SampledImage::SampledImage(SampledImage&& other) noexcept
+        : image_(std::move(other.image_)), view_(std::exchange(other.view_, VK_NULL_HANDLE)),
+          sampler_(std::move(other.sampler_)), descriptor_(std::exchange(other.descriptor_, {})),
+          reference_(other.reference_)
     {
     }
 
@@ -30,7 +24,10 @@ namespace lux::render::vulkan
         }
         sampler_.release(device);
         image_.release(allocator);
-        array.release(std::exchange(descriptor_, {}));
+        if (!descriptor_.isNull())
+        {
+            array.release(std::exchange(descriptor_, {}));
+        }
     }
 
     namespace
@@ -60,8 +57,7 @@ namespace lux::render::vulkan
 
     RenderResult<TextureStorage::ImagePreparation> TextureStorage::prepareImage(
         const rdesc::TextureInfo& info,
-        std::span<const std::byte> source,
-        std::optional<TextureRegion> region
+        std::span<const std::byte> source
     ) noexcept
     {
         auto& session = session_;
@@ -126,46 +122,6 @@ namespace lux::render::vulkan
             }
             expected_offset = *total;
         }
-        if (region)
-        {
-            if (region->mip >= info.mip_count)
-            {
-                return cxx::unexpected(RenderError{kInvalidArgument});
-            }
-            const auto& mip = info.mip_ranges[region->mip];
-            const bool invalid_offset = region->x >= mip.width || region->y >= mip.height;
-            if (invalid_offset)
-            {
-                return cxx::unexpected(RenderError{kInvalidArgument});
-            }
-            const bool invalid_range = !region->width || !region->height || region->width > mip.width - region->x ||
-                                       region->height > mip.height - region->y;
-            const bool invalid_blocks = region->x % layout.extent || region->y % layout.extent ||
-                                        (region->width % layout.extent && region->width != mip.width - region->x) ||
-                                        (region->height % layout.extent && region->height != mip.height - region->y);
-            if (invalid_range || invalid_blocks)
-            {
-                return cxx::unexpected(RenderError{kInvalidArgument});
-            }
-            const auto rows = (region->height + layout.extent - 1) / layout.extent;
-            const std::uint64_t row = ((region->width + layout.extent - 1) / layout.extent) * layout.bytes;
-            const bool invalid_pitch = region->row_pitch < row || region->row_pitch % layout.bytes;
-            if (invalid_pitch)
-            {
-                return cxx::unexpected(RenderError{kInvalidArgument});
-            }
-            auto stride = cxx::checkedMul<std::uint64_t>(rows - 1, region->row_pitch);
-            if (!stride)
-            {
-                return cxx::unexpected(RenderError{kInvalidArgument});
-            }
-            auto total = cxx::checkedAdd(*stride, row);
-            if (!total)
-            {
-                return cxx::unexpected(RenderError{kInvalidArgument});
-            }
-            expected_offset = *total;
-        }
         if (expected_offset != source.size() || source.empty())
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
@@ -186,35 +142,21 @@ namespace lux::render::vulkan
             1
         };
         std::vector<ImageTransferRegion> regions;
-        if (region)
+        for (std::uint32_t mip = 0; mip < info.mip_count; ++mip)
         {
+            const auto& input = info.mip_ranges[mip];
+            const auto pitch = std::uint64_t((input.width + layout.extent - 1) / layout.extent) * layout.bytes;
             regions.push_back(
-                {0,
-                 region->row_pitch,
+                {input.offset,
+                 pitch,
                  layout.extent,
                  layout.bytes,
-                 {VK_IMAGE_ASPECT_COLOR_BIT, region->mip, 0, 1},
-                 {std::int32_t(region->x), std::int32_t(region->y), 0},
-                 {region->width, region->height, 1}}
+                 {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, 1},
+                 {},
+                 {input.width, input.height, 1}}
             );
         }
-        else
-        {
-            for (std::uint32_t mip = 0; mip < info.mip_count; ++mip)
-            {
-                const auto& input = info.mip_ranges[mip];
-                const auto pitch = std::uint64_t((input.width + layout.extent - 1) / layout.extent) * layout.bytes;
-                regions.push_back(
-                    {input.offset,
-                     pitch,
-                     layout.extent,
-                     layout.bytes,
-                     {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, 1},
-                     {},
-                     {input.width, input.height, 1}}
-                );
-            }
-        }
+
         auto image = session.allocator().createImage(description);
         if (!image)
         {
@@ -223,152 +165,86 @@ namespace lux::render::vulkan
         return ImagePreparation{std::move(*image), std::move(regions)};
     }
 
-    // Exclusive reservation of an existing Storage candidate. No transfer, queue or async phase is owned here.
-    struct TextureStorage::Candidate final
-    {
-        TextureStorage& storage;
-        std::unique_ptr<SampledImage> version;
-        TextureId texture;
-        const SampledImage* base = nullptr;
-
-        Candidate(TextureStorage& owner, std::unique_ptr<SampledImage> value, TextureId id) noexcept
-            : storage(owner), version(std::move(value)), texture(id)
-        {
-        }
-
-        Candidate(Candidate&&) noexcept = default;
-        Candidate(const Candidate&) = delete;
-
-        ~Candidate() noexcept
-        {
-            if (version)
-            {
-                storage.rollback(*this);
-            }
-        }
-    };
-
-    TextureStorage::Observer::~Observer() noexcept
-    {
-        reset();
-    }
-
-    void TextureStorage::Observer::reset() noexcept
-    {
-        if (source_)
-        {
-            auto& records = source_->observers_;
-            records[position_] = records.back();
-            records[position_]->position_ = position_;
-            records.pop_back();
-            source_ = nullptr;
-        }
-    }
-
-    void TextureStorage::observe(Observer& observer) noexcept
-    {
-        observer.reset();
-        observer.source_ = this;
-        observer.position_ = observers_.size();
-        observers_.push_back(&observer);
-    }
-
-    StorageResource TextureStorage::resource(const SampledImage* value) noexcept
-    {
-        static const TextureGpuRef white{};
-        static const rdesc::ShaderBlock layout = []
-        {
-            rdesc::ShaderBlock result{sizeof(TextureGpuRef), alignof(TextureGpuRef)};
-            result.fields = {
-                {"descriptor_index", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, descriptor_index), 1, 1, 0, 0},
-                {"color_space", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, color_space), 1, 1, 0, 0}
-            };
-            return result;
-        }();
-        return {nullptr, 0, 0, std::as_bytes(std::span(value ? &value->reference_ : &white, 1)), &layout};
-    }
-
-    void TextureStorage::disconnect(TextureRecord& record) noexcept
-    {
-        StorageSubscription::disconnect(record.bindings, resource(nullptr));
-    }
-
-    RenderResult<StorageResource> TextureStorage::resolve(
-        const NativeResourcePlan& plan,
-        const TextureBinding& argument,
-        StorageSubscription& subscription
+    RenderResult<TextureStorage::ImagePreparation> TextureStorage::preparePatched(
+        const SampledImage& source_image,
+        const TextureRegion& region,
+        std::span<const std::byte> source
     ) noexcept
     {
-        auto* record = argument.texture.storage == id_ ? textures_.find(argument.texture.local) : nullptr;
-        if (!record || !record->current)
+        const auto& original = source_image.image_;
+        if (region.mip >= original.mipLevels())
         {
-            return cxx::unexpected(RenderError{kStorageIdentity});
+            return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        const auto& backing = *record->current;
-        const auto* expected = std::get_if<GraphImageDesc>(&plan.description);
-        if (!expected)
+        const auto width = std::max(1u, original.extent().width >> region.mip);
+        const auto height = std::max(1u, original.extent().height >> region.mip);
+        const bool compressed = original.format() == VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
+        const std::uint32_t block_extent = compressed ? 4 : 1;
+        const std::uint32_t block_bytes = compressed ? 8 : 4;
+        const bool invalid_offset = region.x >= width || region.y >= height;
+        if (invalid_offset)
         {
-            return cxx::unexpected(RenderError{kStorageMismatch});
+            return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        const auto& actual = backing.info();
-        const auto native_format = expected->format == rdesc::ETextureFormat::RGBA8_UNORM ? VK_FORMAT_R8G8B8A8_UNORM
-                                   : expected->format == rdesc::ETextureFormat::RGBA8_SRGB
-                                       ? VK_FORMAT_R8G8B8A8_SRGB
-                                       : VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
-        const bool is_mismatch = expected->width != actual.width || expected->height != actual.height ||
-                                 expected->mips != actual.mip_count || expected->layers != actual.layers ||
-                                 native_format != backing.image().format();
-        if (is_mismatch)
+        const bool invalid_range =
+            !region.width || !region.height || region.width > width - region.x || region.height > height - region.y;
+        const bool invalid_blocks = region.x % block_extent || region.y % block_extent ||
+                                    (region.width % block_extent && region.width != width - region.x) ||
+                                    (region.height % block_extent && region.height != height - region.y);
+        if (invalid_range || invalid_blocks)
         {
-            return cxx::unexpected(RenderError{kStorageMismatch});
+            return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        subscription.attach(record->bindings);
-        return resource(&backing);
+        const std::uint64_t row_bytes = std::uint64_t((region.width - 1) / block_extent + 1) * block_bytes;
+        const auto rows = (region.height - 1) / block_extent + 1;
+        if (region.row_pitch < row_bytes || region.row_pitch % block_bytes)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        const auto stride = cxx::checkedMul<std::uint64_t>(rows - 1, region.row_pitch);
+        if (!stride)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        const auto total = cxx::checkedAdd(*stride, row_bytes);
+        if (!total || *total != source.size())
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        auto image = session_.allocator().createImage(
+            {{original.extent().width, original.extent().height},
+             original.format(),
+             original.usage(),
+             original.samples(),
+             original.mipLevels(),
+             original.arrayLayers()}
+        );
+        if (!image)
+        {
+            return cxx::unexpected(image.error());
+        }
+        std::vector<ImageTransferRegion> regions{
+            {0,
+             region.row_pitch,
+             block_extent,
+             block_bytes,
+             {VK_IMAGE_ASPECT_COLOR_BIT, region.mip, 0, 1},
+             {std::int32_t(region.x), std::int32_t(region.y), 0},
+             {region.width, region.height, 1}}
+        };
+        return ImagePreparation{std::move(*image), std::move(regions)};
     }
 
     TextureStorage::TextureStorage(DeviceSession& session, StorageId id) noexcept : session_(session), id_(id) {}
 
-    StorageFactory textureStorageFactory() noexcept
-    {
-        static const lux::render::TextureStorage::Ops ops{
-            [](const void* value, TextureId id) noexcept -> RenderResult<TexturePublished>
-            {
-                auto* record = static_cast<const vulkan::TextureStorage*>(value)->find(id);
-                if (!record)
-                {
-                    return cxx::unexpected(RenderError{kStorageIdentity});
-                }
-                return TexturePublished{id, record->revision()};
-            }
-        };
-        static const StorageBindingOps binding_ops{
-            [](void* storage, const NativeResourcePlan& plan, const void* argument, StorageSubscription& subscription
-            ) noexcept
-            {
-                return static_cast<TextureStorage*>(storage)
-                    ->resolve(plan, *static_cast<const TextureBinding*>(argument), subscription);
-            }
-        };
-        static const auto factory = makeStorageFactory<
-            lux::render::TextureStorage,
-            vulkan::TextureStorage,
-            DeviceSession,
-            &vulkan::TextureStorage::create>(ops, &binding_ops);
-        return factory;
-    }
-
     RenderResult<std::unique_ptr<TextureStorage>> TextureStorage::create(DeviceSession& session, StorageId id) noexcept
     {
-        if (!session.enabledFeatures().texture_descriptors)
+        auto result = std::unique_ptr<TextureStorage>(new TextureStorage(session, id));
+        if (auto ready = result->initialize(); !ready)
         {
-            return cxx::unexpected(RenderError{kUnsupported});
+            return cxx::unexpected(ready.error());
         }
-        auto storage = std::unique_ptr<TextureStorage>(new TextureStorage(session, id));
-        if (auto result = storage->initialize(); !result)
-        {
-            return cxx::unexpected(result.error());
-        }
-        return storage;
+        return result;
     }
 
     RenderResult<void> TextureStorage::initialize() noexcept
@@ -378,380 +254,210 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(table.error());
         }
-        descriptors_ = std::move(*table);
+        descriptors_ = *table;
         return {};
     }
 
     TextureStorage::~TextureStorage() noexcept
     {
-        for (auto* observer : observers_)
+        for (auto& image : textures_)
         {
-            observer->source_ = nullptr;
-        }
-        for (auto& record : textures_)
-        {
-            disconnect(record);
-            retire(record.current);
+            retire(image);
         }
     }
 
     const TextureStorage::SampledImage* TextureStorage::find(TextureId id) const noexcept
     {
-        if (id.storage != id_)
-        {
-            return nullptr;
-        }
-        const auto* record = textures_.find(id.local);
-        return record ? record->current.get() : nullptr;
+        return id.storage == id_ ? textures_.find(id.local) : nullptr;
     }
 
-    RenderResult<TextureStorage::Candidate> TextureStorage::reserve(
+    RenderResult<TextureStorage::SampledImage> TextureStorage::sampledImage(
         gapi::vk::VmaImage image,
-        const rdesc::TextureInfo& info,
-        TextureId id,
-        std::uint64_t expected
+        std::uint32_t color_space
     ) noexcept
     {
-        cxx::scope_exit release_image([&]() noexcept { image.release(session_.allocator().native()); });
-        auto* record = textures_.find(id.local);
-        if (id.isNull())
-        {
-            if (expected != 0)
-            {
-                return cxx::unexpected(RenderError{kInvalidArgument});
-            }
-        }
-        else
-        {
-            if (!record || !record->current)
-            {
-                return cxx::unexpected(RenderError{kWrongOwner});
-            }
-            const bool conflict = record->updating || record->current->revision_ != expected || expected == UINT64_MAX;
-            if (conflict)
-            {
-                return cxx::unexpected(RenderError{kBusy});
-            }
-            const auto& previous = record->current->info_;
-            const auto& candidate = info;
-            const bool incompatible_consumers =
-                record->bindings &&
-                (previous.width != candidate.width || previous.height != candidate.height ||
-                 previous.mip_count != candidate.mip_count || previous.pixel_format != candidate.pixel_format ||
-                 previous.layers != candidate.layers);
-            if (incompatible_consumers)
-            {
-                return cxx::unexpected(RenderError{kUnsupported});
-            }
-        }
+        SampledImage candidate;
+        candidate.image_ = std::move(image);
+        cxx::scope_exit rollback(
+            [&]() noexcept { candidate.release(session_.nativeDevice(), session_.allocator().native(), *descriptors_); }
+        );
         auto descriptor = descriptors_->allocate();
         if (!descriptor)
         {
             return cxx::unexpected(descriptor.error());
         }
-        auto content = std::make_unique<SampledImage>(std::move(image), std::move(*descriptor), info, expected + 1);
-        cxx::scope_exit rollback_content(
-            [&]() noexcept
-            {
-                if (content)
-                {
-                    content->release(session_.nativeDevice(), session_.allocator().native(), *descriptors_);
-                }
-            }
-        );
-        auto& version = *content;
-        const auto device = session_.nativeDevice();
+        candidate.descriptor_ = *descriptor;
+        candidate.reference_ = {descriptor->index, color_space};
         VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-        view.image = version.image_.handle();
+        view.image = candidate.image_.handle();
         view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        view.format = version.image_.format();
-        view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, version.info_.mip_count, 0, 1};
-        auto result = vkCreateImageView(device, &view, nullptr, &version.view_);
-        if (result != VK_SUCCESS)
+        view.format = candidate.image_.format();
+        view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, candidate.image_.mipLevels(), 0, 1};
+        auto status = vkCreateImageView(session_.nativeDevice(), &view, nullptr, &candidate.view_);
+        if (status != VK_SUCCESS)
         {
-            return cxx::unexpected(nativeError(result));
+            return cxx::unexpected(nativeError(status));
         }
         VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
         sampler.magFilter = sampler.minFilter = VK_FILTER_NEAREST;
         sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
         sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        sampler.maxLod = float(version.info_.mip_count - 1);
-        result = version.sampler_.tryCreate(device, sampler);
-        if (result != VK_SUCCESS)
+        sampler.maxLod = float(candidate.image_.mipLevels() - 1);
+        status = candidate.sampler_.tryCreate(session_.nativeDevice(), sampler);
+        if (status != VK_SUCCESS)
         {
-            return cxx::unexpected(nativeError(result));
+            return cxx::unexpected(nativeError(status));
         }
-        // The descriptor becomes reachable only after the required upload submissions are accepted.
-        descriptors_->write(version.descriptor_, version.view_, version.sampler_);
-        if (id.isNull())
-        {
-            id = TextureId{id_, textures_.emplace()};
-        }
-        record = textures_.find(id.local);
-        record->updating = true;
-        return Candidate{*this, std::move(content), id};
+        descriptors_->write(candidate.descriptor_, candidate.view_, candidate.sampler_);
+        rollback.release();
+        return candidate;
     }
 
-    void TextureStorage::rollback(Candidate& candidate) noexcept
+    void TextureStorage::retire(SampledImage& value) noexcept
     {
-        auto& record = *textures_.find(candidate.texture.local);
-        record.updating = false;
-        if (!record.current)
+        if (!value.image_)
         {
-            textures_.erase(candidate.texture.local);
+            return;
         }
-        retire(candidate.version);
+        session_.deferRelease([value = std::move(value),
+                               device = session_.nativeDevice(),
+                               allocator = session_.allocator().native(),
+                               descriptors = descriptors_]() mutable noexcept
+                              { value.release(device, allocator, *descriptors); });
     }
 
     TextureStorage::UploadResult TextureStorage::upload(TextureWrite input) noexcept
     {
-        if (input.texture.storage != id_)
+        if (input.storage != id_)
         {
             co_return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        const auto source = input.source;
-        auto prepared = prepareImage(input.info, source);
+        auto prepared = prepareImage(input.info, input.source);
         if (!prepared)
         {
             co_return cxx::unexpected(prepared.error());
         }
-        auto candidate = reserve(std::move(prepared->first), input.info, input.texture, input.expected_revision);
+        auto candidate = sampledImage(std::move(prepared->first), std::uint32_t(input.info.color_space));
         if (!candidate)
         {
             co_return cxx::unexpected(candidate.error());
         }
-        const TexturePublished result{candidate->texture, candidate->version->revision_};
-        auto uploaded = co_await session_.uploads()
-                            .writeImage(candidate->version->image_, input.source, std::move(prepared->second));
-        if (!uploaded)
+        cxx::scope_exit rollback([&]() noexcept { retire(*candidate); });
+        auto accepted =
+            co_await session_.uploads().writeImage(candidate->image_, input.source, std::move(prepared->second));
+        if (!accepted)
         {
-            co_return cxx::unexpected(uploaded.error());
+            co_return cxx::unexpected(accepted.error());
         }
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested())
         {
             co_return cxx::unexpected(RenderError{kWorkStopped});
         }
-        auto committed = co_await commit(*candidate);
-        if (!committed)
-        {
-            co_return cxx::unexpected(committed.error());
-        }
-        co_return result;
+        co_return TextureId{id_, textures_.emplace(std::move(*candidate))};
     }
 
     TextureStorage::UploadResult TextureStorage::upload(TextureRegionWrite input) noexcept
     {
-        if (input.texture.storage != id_)
+        const auto* original = find(input.texture);
+        if (!original)
         {
             co_return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        auto* record = textures_.find(input.texture.local);
-        if (!record || !record->current)
-        {
-            co_return cxx::unexpected(RenderError{kWrongOwner});
-        }
-        if (record->updating || record->current->revision_ != input.expected_revision)
-        {
-            co_return cxx::unexpected(RenderError{kBusy});
-        }
-        const auto& info = record->current->info_;
-        auto prepared = prepareImage(info, input.source, input.region);
+        // The Client retains this immutable source through Response. No shared physical owner is needed.
+        auto prepared = preparePatched(*original, input.region, input.source);
         if (!prepared)
         {
             co_return cxx::unexpected(prepared.error());
         }
-        auto candidate = reserve(std::move(prepared->first), info, input.texture, input.expected_revision);
+        auto candidate = sampledImage(std::move(prepared->first), original->reference_.color_space);
         if (!candidate)
         {
             co_return cxx::unexpected(candidate.error());
         }
-        candidate->base = record->current.get();
-        const TexturePublished result{input.texture, candidate->version->revision_};
-        auto uploaded = co_await session_.uploads().writeImage(
-            candidate->version->image_,
-            input.source,
-            std::move(prepared->second),
-            &candidate->base->image_
-        );
-        if (!uploaded)
+        cxx::scope_exit rollback([&]() noexcept { retire(*candidate); });
+        auto accepted =
+            co_await session_.uploads()
+                .writeImage(candidate->image_, input.source, std::move(prepared->second), &original->image_);
+        if (!accepted)
         {
-            co_return cxx::unexpected(uploaded.error());
+            co_return cxx::unexpected(accepted.error());
         }
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested())
         {
             co_return cxx::unexpected(RenderError{kWorkStopped});
         }
-        auto committed = co_await commit(*candidate);
-        if (!committed)
-        {
-            co_return cxx::unexpected(committed.error());
-        }
-        co_return result;
+        co_return TextureId{id_, textures_.emplace(std::move(*candidate))};
     }
 
-    void TextureStorage::retire(std::unique_ptr<SampledImage>& value) noexcept
+    RenderResult<void> TextureStorage::release(TextureId id) noexcept
     {
+        auto* value = id.storage == id_ ? textures_.find(id.local) : nullptr;
         if (!value)
         {
-            return;
+            return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        session_.deferRelease(
-            [value = std::move(value),
-             device = session_.nativeDevice(),
-             allocator = session_.allocator().native(),
-             descriptors = descriptors_]() mutable noexcept
-            {
-                value->release(device, allocator, *descriptors);
-                value.reset();
-            }
-        );
-    }
-
-    void TextureStorage::publish(Candidate& candidate) noexcept
-    {
-        auto& record = *textures_.find(candidate.texture.local);
-        retire(record.current);
-        record.current = std::move(candidate.version);
-        record.updating = false;
-        StorageSubscription::publish(record.bindings, resource(record.current.get()));
-    }
-
-    bool TextureStorage::hasDependents(TextureId id) const noexcept
-    {
-        return std::ranges::any_of(
-            observers_,
-            [id](const auto* observer) { return observer->affected(observer->receiver, id); }
-        );
-    }
-
-    void TextureStorage::recordDependents(VkCommandBuffer command, TextureId id, std::uint32_t descriptor) noexcept
-    {
-        VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
-        barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
-        barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
-        barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-        dependency.memoryBarrierCount = 1;
-        dependency.pMemoryBarriers = &barrier;
-        vkCmdPipelineBarrier2(command, &dependency);
-        for (auto* observer : observers_)
-        {
-            observer->record(observer->receiver, command, id, descriptor);
-        }
-        barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
-        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-        barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
-        vkCmdPipelineBarrier2(command, &dependency);
-    }
-
-    void TextureStorage::adoptDependents(TextureId id, std::uint32_t descriptor) noexcept
-    {
-        for (auto* observer : observers_)
-        {
-            observer->adopt(observer->receiver, id, descriptor);
-        }
-    }
-
-    exec::task<RenderResult<void>> TextureStorage::commit(Candidate& candidate) noexcept
-    {
-        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        if (hasDependents(candidate.texture))
-        {
-            std::optional<CommandBatch> batch;
-            for (;;)
-            {
-                if (stop.stop_requested())
-                {
-                    co_return cxx::unexpected(RenderError{kWorkStopped});
-                }
-                auto ready = session_.queue().begin();
-                if (ready)
-                {
-                    batch.emplace(std::move(*ready));
-                    break;
-                }
-                if (ready.error().type != kCapacity)
-                {
-                    co_return cxx::unexpected(ready.error());
-                }
-                auto completed = co_await session_.queue().whenAvailable();
-                if (!completed)
-                {
-                    co_return cxx::unexpected(completed.error());
-                }
-            }
-            // Each professional consumer records its own fields. No Sender suspends between begin,
-            // record, Submit and adoption; failure preserves every old CPU index and Texture version.
-            recordDependents(batch->native(), candidate.texture, candidate.version->descriptorIndex());
-            auto accepted = std::move(*batch).submit();
-            if (!accepted)
-            {
-                co_return cxx::unexpected(accepted.error());
-            }
-            adoptDependents(candidate.texture, candidate.version->descriptorIndex());
-        }
-        publish(candidate);
-        co_return RenderResult<void>{};
-    }
-
-    exec::task<RenderResult<Ack>> TextureStorage::release(TextureId id, std::uint64_t expected) noexcept
-    {
-        auto* record = id.storage == id_ ? textures_.find(id.local) : nullptr;
-        if (!record || !record->current)
-        {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        if (record->updating || record->current->revision_ != expected)
-        {
-            co_return cxx::unexpected(RenderError{kBusy});
-        }
-        record->updating = true;
-        cxx::scope_exit reset([&]() noexcept { record->updating = false; });
-        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        if (hasDependents(id))
-        {
-            std::optional<CommandBatch> batch;
-            for (;;)
-            {
-                if (stop.stop_requested())
-                {
-                    co_return cxx::unexpected(RenderError{kWorkStopped});
-                }
-                auto ready = session_.queue().begin();
-                if (ready)
-                {
-                    batch.emplace(std::move(*ready));
-                    break;
-                }
-                if (ready.error().type != kCapacity)
-                {
-                    co_return cxx::unexpected(ready.error());
-                }
-                auto completed = co_await session_.queue().whenAvailable();
-                if (!completed)
-                {
-                    co_return cxx::unexpected(completed.error());
-                }
-            }
-            recordDependents(batch->native(), id, 0);
-            auto accepted = std::move(*batch).submit();
-            if (!accepted)
-            {
-                co_return cxx::unexpected(accepted.error());
-            }
-            adoptDependents(id, 0);
-        }
-        disconnect(*record);
-        retire(record->current);
-        reset.release();
+        retire(*value);
         textures_.erase(id.local);
-        co_return Ack{};
+        return {};
     }
 
+    RenderResult<StorageResource> TextureStorage::
+        resolve(const NativeResourcePlan& plan, const TextureBinding& argument, StorageSubscription&) noexcept
+    {
+        const auto* backing = find(argument.texture);
+        if (!backing)
+        {
+            return cxx::unexpected(RenderError{kStorageIdentity});
+        }
+        const auto* expected = std::get_if<GraphImageDesc>(&plan.description);
+        if (!expected)
+        {
+            return cxx::unexpected(RenderError{kStorageMismatch});
+        }
+        const auto native_format = expected->format == rdesc::ETextureFormat::RGBA8_UNORM ? VK_FORMAT_R8G8B8A8_UNORM
+                                   : expected->format == rdesc::ETextureFormat::RGBA8_SRGB
+                                       ? VK_FORMAT_R8G8B8A8_SRGB
+                                       : VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
+        const auto& image = backing->image_;
+        const bool is_mismatch = expected->width != image.extent().width || expected->height != image.extent().height ||
+                                 expected->mips != image.mipLevels() || expected->layers != image.arrayLayers() ||
+                                 native_format != image.format();
+        if (is_mismatch)
+        {
+            return cxx::unexpected(RenderError{kStorageMismatch});
+        }
+        static const rdesc::ShaderBlock layout = []
+        {
+            rdesc::ShaderBlock result{sizeof(TextureGpuRef), alignof(TextureGpuRef)};
+            result.fields = {
+                {"descriptor_index", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, descriptor_index), 1, 1, 0, 0},
+                {"color_space", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, color_space), 1, 1, 0, 0}
+            };
+            return result;
+        }();
+        // Texture identities are immutable. The Client ends bindings before release; there is no update subscription.
+        return StorageResource{VK_NULL_HANDLE, 0, 0, std::as_bytes(std::span(&backing->reference_, 1)), &layout};
+    }
+
+    StorageFactory textureStorageFactory() noexcept
+    {
+        static const StorageBindingOps bindings{
+            [](void* storage, const NativeResourcePlan& plan, const void* argument, StorageSubscription& subscription
+            ) noexcept
+            {
+                return static_cast<TextureStorage*>(storage)
+                    ->resolve(plan, *static_cast<const TextureBinding*>(argument), subscription);
+            }
+        };
+        static const auto factory =
+            makeStorageFactory<render::TextureStorage, TextureStorage, DeviceSession, &TextureStorage::create>(
+                nullptr,
+                &bindings
+            );
+        return factory;
+    }
 } // namespace lux::render::vulkan
 
 namespace lux::render

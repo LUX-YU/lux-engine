@@ -1,10 +1,8 @@
 #pragma once
 
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/gapi/vk/Sampler.hpp>
 #include <lux/engine/render/native/vulkan/DescriptorArray.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
-#include <lux/engine/render/native/vulkan/device/Device.hpp>
 #include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 #include <lux/engine/render/resource/Texture.hpp>
@@ -14,30 +12,19 @@ namespace lux::render::vulkan
 {
     [[nodiscard]] StorageFactory textureStorageFactory() noexcept;
     struct NativeResourcePlan;
-    class TextureStorage;
-    class ExecutionContext;
 
     class TextureStorage final
     {
     public:
+        // Stable SlotMap values: actual GPU objects and shader input, no asset layout or parent owner.
         class SampledImage final
         {
         public:
-            SampledImage(
-                gapi::vk::VmaImage,
-                DescriptorArray::Slot,
-                const rdesc::TextureInfo&,
-                std::uint64_t revision
-            ) noexcept;
+            SampledImage() noexcept = default;
             SampledImage(const SampledImage&) = delete;
             SampledImage& operator=(const SampledImage&) = delete;
-            SampledImage(SampledImage&&) noexcept = default;
-            SampledImage& operator=(SampledImage&&) noexcept = default;
-
-            [[nodiscard]] const rdesc::TextureInfo& info() const noexcept
-            {
-                return info_;
-            }
+            SampledImage(SampledImage&&) noexcept;
+            SampledImage& operator=(SampledImage&&) = delete;
 
             [[nodiscard]] std::uint32_t descriptorIndex() const noexcept
             {
@@ -49,109 +36,50 @@ namespace lux::render::vulkan
                 return image_;
             }
 
-            [[nodiscard]] std::uint64_t revision() const noexcept
-            {
-                return revision_;
-            }
-
         private:
             friend class TextureStorage;
             void release(VkDevice, VmaAllocator, DescriptorArray&) noexcept;
             gapi::vk::VmaImage image_;
-            DescriptorArray::Slot descriptor_;
-            rdesc::TextureInfo info_{};
             VkImageView view_ = VK_NULL_HANDLE;
             gapi::vk::Sampler sampler_;
-            std::uint64_t revision_ = 0;
-            TextureGpuRef reference_;
+            DescriptorArray::Slot descriptor_{};
+            TextureGpuRef reference_{};
         };
 
-    public:
-        [[nodiscard]] static RenderResult<std::unique_ptr<TextureStorage>> create(
-            DeviceSession& session,
-            StorageId id
-        ) noexcept;
+        [[nodiscard]] static RenderResult<std::unique_ptr<TextureStorage>> create(DeviceSession&, StorageId) noexcept;
+        ~TextureStorage() noexcept;
+        TextureStorage(const TextureStorage&) = delete;
+        TextureStorage& operator=(const TextureStorage&) = delete;
 
         [[nodiscard]] StorageId id() const noexcept
         {
             return id_;
         }
 
-        ~TextureStorage() noexcept;
-        TextureStorage(const TextureStorage&) = delete;
-        TextureStorage& operator=(const TextureStorage&) = delete;
-        [[nodiscard]] exec::task<RenderResult<Ack>> release(TextureId, std::uint64_t expected_revision) noexcept;
+        [[nodiscard]] RenderResult<void> release(TextureId) noexcept;
         [[nodiscard]] const SampledImage* find(TextureId) const noexcept;
 
-        // One non-owning dependency per interested Storage, not a per-Attach heap Use. Both callbacks
-        // run in the Texture Sender's uninterrupted commit segment; only Material writes its own table.
-        class Observer final
-        {
-        public:
-            Observer() noexcept = default;
-            ~Observer() noexcept;
-            Observer(const Observer&) = delete;
-            Observer& operator=(const Observer&) = delete;
-            void* receiver = nullptr;
-            bool (*affected)(const void*, TextureId) noexcept = nullptr;
-            void (*record)(void*, VkCommandBuffer, TextureId, std::uint32_t) noexcept = nullptr;
-            void (*adopt)(void*, TextureId, std::uint32_t) noexcept = nullptr;
-            void reset() noexcept;
-
-        private:
-            friend class TextureStorage;
-            TextureStorage* source_ = nullptr;
-            std::size_t position_ = 0;
-        };
-
-        void observe(Observer&) noexcept;
-
     private:
-        friend class DeviceSession;
         friend StorageFactory textureStorageFactory() noexcept;
         friend struct lux::render::StorageTraits<TextureStorage>;
-        struct Candidate;
-        using UploadResult = exec::task<RenderResult<TexturePublished>>;
+        using UploadResult = exec::task<RenderResult<TextureId>>;
+        using ImagePreparation = std::pair<gapi::vk::VmaImage, std::vector<ImageTransferRegion>>;
+        TextureStorage(DeviceSession&, StorageId) noexcept;
+        [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] UploadResult upload(TextureWrite) noexcept;
         [[nodiscard]] UploadResult upload(TextureRegionWrite) noexcept;
-        using ImagePreparation = std::pair<gapi::vk::VmaImage, std::vector<ImageTransferRegion>>;
-        [[nodiscard]] RenderResult<ImagePreparation> prepareImage(
-            const rdesc::TextureInfo&,
-            std::span<const std::byte>,
-            std::optional<TextureRegion> = {}
-        ) noexcept;
-        [[nodiscard]] RenderResult<Candidate> reserve(
-            gapi::vk::VmaImage,
-            const rdesc::TextureInfo&,
-            TextureId,
-            std::uint64_t expected_revision
-        ) noexcept;
+        [[nodiscard]] RenderResult<ImagePreparation>
+        prepareImage(const rdesc::TextureInfo&, std::span<const std::byte>) noexcept;
+        [[nodiscard]] RenderResult<ImagePreparation>
+        preparePatched(const SampledImage&, const TextureRegion&, std::span<const std::byte>) noexcept;
+        [[nodiscard]] RenderResult<SampledImage> sampledImage(gapi::vk::VmaImage, std::uint32_t color_space) noexcept;
         [[nodiscard]] RenderResult<StorageResource>
         resolve(const NativeResourcePlan&, const TextureBinding&, StorageSubscription&) noexcept;
-        [[nodiscard]] exec::task<RenderResult<void>> commit(Candidate&) noexcept;
-        [[nodiscard]] bool hasDependents(TextureId) const noexcept;
-        void recordDependents(VkCommandBuffer, TextureId, std::uint32_t) noexcept;
-        void adoptDependents(TextureId, std::uint32_t) noexcept;
-        [[nodiscard]] static StorageResource resource(const SampledImage*) noexcept;
-
-        struct TextureRecord final
-        {
-            std::unique_ptr<SampledImage> current;
-            StorageSubscription* bindings = nullptr;
-            bool updating = false;
-        };
-
-        void disconnect(TextureRecord&) noexcept;
-        TextureStorage(DeviceSession& session, StorageId id) noexcept;
-        [[nodiscard]] RenderResult<void> initialize() noexcept;
-        void rollback(Candidate&) noexcept;
-        void retire(std::unique_ptr<SampledImage>&) noexcept;
-        void publish(Candidate&) noexcept;
+        void retire(SampledImage&) noexcept;
         DeviceSession& session_;
         StorageId id_;
-        cxx::StableSlotMap<TextureRecord, TextureTag> textures_;
         DescriptorArray* descriptors_ = nullptr;
-        std::vector<Observer*> observers_;
+        cxx::StableSlotMap<SampledImage, TextureTag> textures_;
     };
 } // namespace lux::render::vulkan
 
@@ -159,7 +87,7 @@ namespace lux::render
 {
     template <> struct StorageTraits<vulkan::TextureStorage> final
     {
-        using Result = exec::task<RenderResult<TexturePublished>>;
+        using Result = exec::task<RenderResult<TextureId>>;
         [[nodiscard]] static Result upload(vulkan::TextureStorage&, TextureWrite) noexcept;
         [[nodiscard]] static Result upload(vulkan::TextureStorage&, TextureRegionWrite) noexcept;
     };

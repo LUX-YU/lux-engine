@@ -185,14 +185,14 @@ namespace mesh_sample
             info.pixel_format = rdesc::ETexturePixelFormat::RGBA8_UNORM;
             info.color_space = rdesc::ETextureColorSpace::DATA;
             info.mip_ranges[0] = {0, bytes.size(), 16, 16};
-            return {{storage, {}}, 0, info, bytes};
+            return {storage, info, bytes};
         }
 
         struct Assets final
         {
-            MeshPublished mesh;
-            MaterialPublished material;
-            TexturePublished texture;
+            MeshId mesh;
+            MaterialId material;
+            TextureId texture;
             MeshDescription description;
             MaterialProgram program;
         };
@@ -216,8 +216,8 @@ namespace mesh_sample
                 const auto mesh_storage = prepare(client, commands, next, kMeshStorageType, "meshes");
                 const auto material_storage = prepare(client, commands, next, kMaterialStorageType, "materials");
                 const auto texture_storage = prepare(client, commands, next, kTextureStorageType, "textures");
-                const auto set_texture = command<SetTexture>(commands);
-                const auto set_material = command<SetMaterial>(commands);
+                const auto set_texture = command<CreateTexture>(commands);
+                const auto set_material = command<CreateMaterial>(commands);
                 const std::array<float, 20> vertices{-.22f, -.2f, .3f, 0,   0, .22f, -.2f, .3f, 1,   0,
                                                      0,     .23f, .3f, .5f, 1, 0,    0,    .8f, .5f, .5f};
                 const std::array<std::uint32_t, 12> indices{0, 1, 2, 1, 0, 3, 2, 1, 3, 0, 2, 3};
@@ -233,28 +233,31 @@ namespace mesh_sample
                     {{0, 0, rdesc::ETextureFormat::RGB32_SFLOAT}, {1, 12, rdesc::ETextureFormat::RG32_SFLOAT}},
                     {{0, 12, 0}}
                 };
-                assets.mesh =
-                    coldCall<SetMesh>(client, commands, next, {{mesh_storage, {}}, 0, assets.description, bytes});
-                bytes.clear(); // SetMesh Response ended the source borrow.
-                assets.texture = call<SetTexture>(client, next, set_texture, textureInput(texture_storage, 0, bytes));
+                assets.mesh = coldCall<CreateMesh>(client, commands, next, {mesh_storage, assets.description, bytes});
+                bytes.clear(); // CreateMesh Response ended the source borrow.
+                assets.texture =
+                    call<CreateTexture>(client, next, set_texture, textureInput(texture_storage, 0, bytes));
                 assets.program = materialProgram(cooked_fragment);
-                MaterialWrite material{{material_storage, {}}, 0, assets.program};
+                MaterialWrite material{material_storage, assets.program};
                 material.parameters = {{1, 1, 1, 1}};
-                material.textures = {assets.texture.texture};
-                assets.material = call<SetMaterial>(client, next, set_material, material);
+                material.textures = {assets.texture};
+                assets.material = call<CreateMaterial>(client, next, set_material, material);
                 loaded.count_down();
 
                 replace_texture.wait();
                 auto changed = textureInput(texture_storage, 255, bytes);
-                changed.texture = assets.texture.texture;
-                changed.expected_revision = assets.texture.revision;
-                assets.texture = call<SetTexture>(client, next, set_texture, std::move(changed));
+                const auto old_texture = assets.texture;
+                assets.texture = call<CreateTexture>(client, next, set_texture, std::move(changed));
                 texture_ready.count_down();
                 publish_material.wait();
-                material.material = assets.material.material;
-                material.expected_revision = assets.material.revision;
-                material.textures = {assets.texture.texture};
-                assets.material = call<SetMaterial>(client, next, set_material, std::move(material));
+                (void)coldCall<UpdateMaterial>(
+                    client,
+                    commands,
+                    next,
+                    {assets.material, material.parameters, {assets.texture}}
+                );
+                // The Client explicitly replaces all references before releasing the previous resource.
+                (void)coldCall<ReleaseTexture>(client, commands, next, old_texture);
                 material_ready.count_down();
                 release.wait();
                 (void)coldCall<ReleaseMaterial>(client, commands, next, assets.material);
@@ -268,18 +271,16 @@ namespace mesh_sample
         );
 
         loaded.wait();
-        check(assets.mesh.revision == 1 && assets.material.revision == 1 && assets.texture.revision == 1);
+        check(!assets.mesh.isNull() && !assets.material.isNull() && !assets.texture.isNull());
         const auto scene = coldCall<CreateScene>(main, main_commands, main_next, {}).scene;
         const auto instance_storage =
             prepare(main, main_commands, main_next, kMeshInstanceStorageType, "instances", scene);
-        MeshInstanceDescription description{assets.mesh.mesh, assets.material.material};
+        MeshInstanceDescription description{assets.mesh, assets.material};
         description.transform[12] = -.45f;
         auto left = coldCall<CreateMeshInstance>(main, main_commands, main_next, {instance_storage, description});
         description.transform[12] = .45f;
         auto right = coldCall<CreateMeshInstance>(main, main_commands, main_next, {instance_storage, description});
-        const auto a = coldCall<QueryMeshInstance>(main, main_commands, main_next, left.instance);
-        const auto b = coldCall<QueryMeshInstance>(main, main_commands, main_next, right.instance);
-        check(a.description.mesh == b.description.mesh && a.description.material == b.description.material);
+        check(left != right); // The Client keeps the creation description; no resource query mirror is needed.
 
         MeshViewParameters first_camera, second_camera;
         second_camera.projection[0] = .5f;
@@ -288,9 +289,9 @@ namespace mesh_sample
         const auto second_view = coldCall<CreateView>(main, main_commands, main_next, {scene}).view;
         MeshFeatureConfig config;
         config.target = {64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
-        config.mesh = {assets.mesh.mesh, assets.description};
-        config.material = {assets.material.material, assets.program};
-        config.group = {assets.mesh.mesh, assets.material.material};
+        config.mesh = {assets.mesh, assets.description};
+        config.material = {assets.material, assets.program};
+        config.group = {assets.mesh, assets.material};
         config.textures = {{16, 16, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}};
         const auto basic = feature(main, main_commands, main_next, BasicMeshFeature::name);
         const auto depth_feature = feature(main, main_commands, main_next, DepthOnlyFeature::name);
@@ -323,7 +324,7 @@ namespace mesh_sample
         {
             check(std::ranges::any_of(
                 bindings->storages,
-                [&](const auto& binding) { return binding.storage == assets.mesh.mesh.storage; }
+                [&](const auto& binding) { return binding.storage == assets.mesh.storage; }
             ));
             check(std::ranges::any_of(
                 bindings->storages,
@@ -346,33 +347,28 @@ namespace mesh_sample
         // The application submits an already coalesced sparse update. The Scene retains the authoritative record.
         TransformBatch batch{instance_storage, 7};
         batch.updates.reserve(8);
-        auto matrix = a.description.transform;
+        auto matrix = description.transform;
         matrix[12] = -.2f;
-        batch.updates.push_back({left.instance, left.revision, matrix});
+        batch.updates.push_back({left, matrix});
         auto applied =
             call<UpdateTransforms>(main, main_next, command<UpdateTransforms>(main_commands), std::move(batch));
         check(applied.sequence == 7 && applied.changed == 1);
-        left = coldCall<QueryMeshInstance>(main, main_commands, main_next, left.instance).published;
-        check(
-            coldCall<QueryMeshInstance>(main, main_commands, main_next, left.instance).description.transform[12] == -.2f
-        );
         await_frame();
 
         // Handler selection is Server-global and observed by the already bound Asset Client.
-        const auto set_texture = command<SetTexture>(main_commands);
+        const auto set_texture = command<CreateTexture>(main_commands);
         const auto choices = coldCall<ListCommandBindings>(main, main_commands, main_next, set_texture);
         const auto alternate = std::ranges::find(choices.handlers, "example.TextureB", &HandlerInfo::name);
         check(alternate != choices.handlers.end() && choices.selected != alternate->id);
         (void)coldCall<SelectCommandBinding>(main, main_commands, main_next, {set_texture, alternate->id});
         replace_texture.count_down();
         texture_ready.wait();
-        check(assets.texture.revision == 2);
-        await_frame(); // Logical Material references follow the current Texture version.
+        check(!assets.texture.isNull());
+        await_frame(); // Material still uses the old Texture until the explicit update below.
         publish_material.count_down();
         material_ready.wait();
         await_frame();
         check(coldCall<QueryRenderStats>(main, main_commands, main_next, {}).compiled_graphs == original_compiles);
-        check(coldCall<QueryMesh>(main, main_commands, main_next, assets.mesh.mesh).published.revision == 1);
 
         (void)coldCall<Detach>(main, main_commands, main_next, second_bindings.attachment);
         (void)coldCall<ReleaseMeshInstance>(main, main_commands, main_next, right);

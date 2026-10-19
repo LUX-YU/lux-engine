@@ -161,7 +161,7 @@ namespace lux::render
             }
             const bool is_wrong_provider = factory.native_type != Provider::implementationType() ||
                                            factory.config_type != config_type ||
-                                           factory.ops_type != cppType<typename T::Ops>();
+                                           factory.ops_type != storageOpsType<T>();
             if (is_wrong_provider)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});

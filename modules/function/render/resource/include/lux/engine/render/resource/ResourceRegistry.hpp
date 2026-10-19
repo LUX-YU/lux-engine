@@ -58,7 +58,9 @@ namespace lux::render
         [[nodiscard]] const ConfigValue* configuration(StorageTypeId type) const noexcept;
 
         // Boundary lookup; the instance index borrows, never owns a Native object.
-        template <class T> [[nodiscard]] RenderResult<typename T::Access> tryGet(StorageId id) noexcept
+        template <class T>
+            requires(!std::is_void_v<typename T::Ops>)
+        [[nodiscard]] RenderResult<typename T::Access> tryGet(StorageId id) noexcept
         {
             auto* entry = entries_.find(id);
             if (!entry || !entry->native)

@@ -1,70 +1,49 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/texture/TextureCommandHandler.hpp>
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
-#include <lux/engine/render/resource/Texture.hpp>
-#include <lux/engine/render/resource/Upload.hpp>
 
 namespace lux::render::vulkan
 {
-    static exec::task<SetTexture::Response> rejectedTexture(RenderError error) noexcept
+    template <class Response> static exec::task<Response> rejected(RenderError error) noexcept
     {
         co_return cxx::unexpected(error);
     }
 
-    exec::task<SetTexture::Response> TextureCommandHandler::setTexture(SetTexture::Request&& input) noexcept
+    exec::task<CreateTexture::Response> TextureCommandHandler::createTexture(CreateTexture::Request&& input) noexcept
     {
-        auto storage = device_.resources().borrow<TextureStorage>(input.texture.storage);
+        auto storage = device_.resources().borrow<TextureStorage>(input.storage);
         if (!storage)
         {
-            return rejectedTexture(storage.error());
+            return rejected<CreateTexture::Response>(storage.error());
         }
         return render::upload(**storage, std::move(input));
     }
 
-    exec::task<SetTextureRegion::Response> TextureCommandHandler::updateTextureRegion(SetTextureRegion::Request&& input
+    exec::task<CreatePatchedTexture::Response> TextureCommandHandler::createPatchedTexture(
+        CreatePatchedTexture::Request&& input
     ) noexcept
     {
         auto storage = device_.resources().borrow<TextureStorage>(input.texture.storage);
         if (!storage)
         {
-            return rejectedTexture(storage.error());
+            return rejected<CreatePatchedTexture::Response>(storage.error());
         }
         return render::upload(**storage, std::move(input));
     }
 
-    static exec::task<ReleaseTexture::Response> rejectedRelease(RenderError error) noexcept
-    {
-        co_return cxx::unexpected(error);
-    }
-
-    exec::task<ReleaseTexture::Response> TextureCommandHandler::releaseTexture(ReleaseTexture::Request&& input) noexcept
-    {
-        auto storage = device_.resources().borrow<vulkan::TextureStorage>(input.texture.storage);
-        if (!storage)
-        {
-            return rejectedRelease(storage.error());
-        }
-        return (*storage)->release(input.texture, input.revision);
-    }
-
-    void TextureCommandHandler::queryTexture(
-        const QueryTexture::Request& input,
-        QueryTexture::Response& response
+    void TextureCommandHandler::releaseTexture(
+        const ReleaseTexture::Request& input,
+        ReleaseTexture::Response& response
     ) noexcept
     {
-        auto storage = device_.resources().tryGet<render::TextureStorage>(input.storage);
+        auto storage = device_.resources().borrow<TextureStorage>(input.storage);
         if (!storage)
         {
             response = cxx::unexpected(storage.error());
             return;
         }
-        auto result = storage->query(input);
-        if (!result)
-        {
-            response = cxx::unexpected(result.error());
-            return;
-        }
-        response = *result;
+        const auto released = (*storage)->release(input);
+        response = released ? ReleaseTexture::Response(Ack{}) : cxx::unexpected(released.error());
     }
 
 } // namespace lux::render::vulkan

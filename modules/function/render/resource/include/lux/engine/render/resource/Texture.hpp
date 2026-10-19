@@ -13,12 +13,6 @@ namespace lux::render
     using TextureId = StorageResourceId<TextureTag>;
     inline constexpr StorageNameView kTextureStorageType("lux.render.TextureStorage");
 
-    struct TexturePublished final
-    {
-        TextureId texture;
-        std::uint64_t revision = 0;
-    };
-
     struct TextureGpuRef final
     {
         std::uint32_t descriptor_index = 0;
@@ -41,52 +35,45 @@ namespace lux::render
 
     struct TextureWrite final
     {
-        TextureId texture{}; // valid StorageId + null local key creates; otherwise replace that qualified resource
-        std::uint64_t expected_revision = 0;
+        StorageId storage;
         rdesc::TextureInfo info;
         // Borrowed until Response (success, failure or cancellation). Failed submission takes no borrow.
         // Abandon/connection loss is not completion: Host must drain Server and Producers before freeing it.
         std::span<const std::byte> source;
     };
 
-    struct SetTexture final
+    struct CreateTexture final
     {
-        static constexpr std::string_view name = "lux.render.SetTexture";
+        static constexpr std::string_view name = "lux.render.CreateTexture";
         // Success certifies Copy, required Acquire and publication; the generic protocol has no GPU category.
         using Request = TextureWrite;
-        using Response = RenderResult<TexturePublished>;
+        using Response = RenderResult<TextureId>;
     };
 
     struct TextureRegionWrite final
     {
-        TextureId texture;
-        std::uint64_t expected_revision = 0;
+        TextureId texture; // Source remains valid through Response; the result is a new identity.
         TextureRegion region;
         // Borrowed until Response (success, failure or cancellation). Failed submission takes no borrow.
         // Abandon/connection loss is not completion: Host must drain Server and Producers before freeing it.
         std::span<const std::byte> source;
     };
 
-    struct SetTextureRegion final
+    struct CreatePatchedTexture final
     {
-        static constexpr std::string_view name = "lux.render.SetTextureRegion";
+        static constexpr std::string_view name = "lux.render.CreatePatchedTexture";
         // Success certifies Copy, required Acquire and publication; the generic protocol has no GPU category.
         using Request = TextureRegionWrite;
-        using Response = RenderResult<TexturePublished>;
+        using Response = RenderResult<TextureId>;
     };
 
     struct ReleaseTexture final
     {
         static constexpr std::string_view name = "lux.render.ReleaseTexture";
-        using Request = TexturePublished;
-        using Response = RenderResult<Ack>;
-    };
-
-    struct QueryTexture final
-    {
-        static constexpr std::string_view name = "lux.render.QueryTexture";
+        // Client ends all Material/Attachment references first. Release does not update other Storage.
+        // Success revokes the identity and hands accepted GPU use to Session cleanup, without a GPU wait.
         using Request = TextureId;
-        using Response = RenderResult<TexturePublished>;
+        using Response = RenderResult<Ack>;
     };
 
     class TextureStorage final
@@ -100,27 +87,6 @@ namespace lux::render
             cppType<TextureBinding>()
         };
 
-        struct Ops final
-        {
-            RenderResult<TexturePublished> (*query)(const void*, TextureId) noexcept;
-        };
-
-        class Access final
-        {
-        public:
-            [[nodiscard]] RenderResult<TexturePublished> query(TextureId id) const noexcept
-            {
-                return ops_->query(native_, id);
-            }
-
-        private:
-            friend class ResourceRegistry;
-
-            Access(void* native, const Ops& ops) noexcept : native_(native), ops_(&ops) {}
-
-            void* native_;
-            const Ops* ops_;
-        };
+        using Ops = void;
     };
-
 } // namespace lux::render

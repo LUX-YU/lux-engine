@@ -31,13 +31,13 @@ namespace
 
         explicit AlternateTexture(vulkan::DeviceSession& device) noexcept : texture_(device) {}
 
-        exec::task<SetTexture::Response> set(TextureWrite&& value) noexcept
+        exec::task<CreateTexture::Response> set(TextureWrite&& value) noexcept
         {
             ++calls;
-            return texture_.setTexture(std::move(value));
+            return texture_.createTexture(std::move(value));
         }
 
-        using Bindings = std::tuple<CommandMethod<SetTexture, &AlternateTexture::set>>;
+        using Bindings = std::tuple<CommandMethod<CreateTexture, &AlternateTexture::set>>;
 
     private:
         vulkan::TextureCommandHandler texture_;

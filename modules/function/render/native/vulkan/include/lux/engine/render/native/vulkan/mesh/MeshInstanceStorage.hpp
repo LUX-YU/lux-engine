@@ -22,7 +22,6 @@ namespace lux::render::vulkan
             MeshId mesh;
             MaterialId material;
             std::uint32_t submesh = 0;
-            std::uint64_t revision = 0;
             cxx::SlotKey<MeshInstanceTag> key;
         };
 
@@ -51,17 +50,17 @@ namespace lux::render::vulkan
         MeshInstanceStorage(const MeshInstanceStorage&) = delete;
         MeshInstanceStorage& operator=(const MeshInstanceStorage&) = delete;
 
-        [[nodiscard]] exec::task<RenderResult<MeshInstancePublished>> create(MeshInstanceDescription) noexcept;
+        [[nodiscard]] exec::task<RenderResult<MeshInstanceId>> create(MeshInstanceDescription) noexcept;
         [[nodiscard]] exec::task<RenderResult<TransformApplied>> update(TransformBatch) noexcept;
-        [[nodiscard]] RenderResult<MeshInstanceInformation> query(MeshInstanceId) const noexcept;
-        [[nodiscard]] exec::task<RenderResult<Ack>> release(MeshInstancePublished) noexcept;
+        [[nodiscard]] exec::task<RenderResult<TransformApplied>> update(MeshInstanceBatch) noexcept;
+        [[nodiscard]] exec::task<RenderResult<Ack>> release(MeshInstanceId) noexcept;
         void observe(Observer&) noexcept;
 
         template <class Visitor> void forEach(Visitor&& visitor) const noexcept
         {
             for (const auto& entry : entries_)
             {
-                if (entry.revision)
+                if (!entry.key.isNull())
                 {
                     visitor(MeshInstanceId{id_, entry.key}, describe(entry));
                 }
@@ -90,6 +89,8 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<StorageResource>
         resolve(const NativeResourcePlan&, const MeshInstanceBinding&, StorageSubscription&) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<GpuPage>> allocate(std::size_t slots) noexcept;
+        [[nodiscard]] RenderResult<MeshInstanceGpuProperty> resolveReferences(const MeshInstanceDescription&)
+            const noexcept;
         [[nodiscard]] MeshInstanceDescription describe(const Entry&) const noexcept;
         void retire(std::unique_ptr<GpuPage>&) noexcept;
         void notify(const Entry&, bool removed) noexcept;

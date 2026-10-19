@@ -21,18 +21,6 @@ namespace lux::render
         TransformMatrix transform = kIdentityTransform;
     };
 
-    struct MeshInstancePublished final
-    {
-        MeshInstanceId instance;
-        std::uint64_t revision = 0;
-    };
-
-    struct MeshInstanceInformation final
-    {
-        MeshInstancePublished published;
-        MeshInstanceDescription description;
-    };
-
     struct MeshInstanceCreate final
     {
         StorageId storage;
@@ -42,7 +30,6 @@ namespace lux::render
     struct TransformUpdate final
     {
         MeshInstanceId instance;
-        std::uint64_t expected_revision = 0;
         TransformMatrix transform = kIdentityTransform;
     };
 
@@ -97,7 +84,7 @@ namespace lux::render
     {
         static constexpr std::string_view name = "lux.render.CreateMeshInstance";
         using Request = MeshInstanceCreate;
-        using Response = RenderResult<MeshInstancePublished>;
+        using Response = RenderResult<MeshInstanceId>;
     };
 
     struct UpdateTransforms final
@@ -107,17 +94,32 @@ namespace lux::render
         using Response = RenderResult<TransformApplied>;
     };
 
-    struct QueryMeshInstance final
+    struct MeshInstanceUpdate final
     {
-        static constexpr std::string_view name = "lux.render.QueryMeshInstance";
-        using Request = MeshInstanceId;
-        using Response = RenderResult<MeshInstanceInformation>;
+        MeshInstanceId instance;
+        MeshInstanceDescription description;
+    };
+
+    struct MeshInstanceBatch final
+    {
+        StorageId storage;
+        std::uint64_t sequence = 0;
+        std::vector<MeshInstanceUpdate> updates;
+    };
+
+    struct UpdateMeshInstances final
+    {
+        static constexpr std::string_view name = "lux.render.UpdateMeshInstances";
+        // Client supplies unique changed instances and keeps referenced Mesh/Material identities valid.
+        // The entire batch validates before a single GPU submission and CPU adoption.
+        using Request = MeshInstanceBatch;
+        using Response = RenderResult<TransformApplied>;
     };
 
     struct ReleaseMeshInstance final
     {
         static constexpr std::string_view name = "lux.render.ReleaseMeshInstance";
-        using Request = MeshInstancePublished;
+        using Request = MeshInstanceId;
         using Response = RenderResult<Ack>;
     };
 
@@ -128,26 +130,6 @@ namespace lux::render
         static inline const StorageDescriptor
             description{kMeshInstanceStorageType, 0, 0, cppType<MeshInstanceBinding>()};
 
-        struct Ops final
-        {
-            RenderResult<MeshInstanceInformation> (*query)(const void*, MeshInstanceId) noexcept;
-        };
-
-        class Access final
-        {
-        public:
-            [[nodiscard]] RenderResult<MeshInstanceInformation> query(MeshInstanceId id) const noexcept
-            {
-                return ops_->query(native_, id);
-            }
-
-        private:
-            friend class ResourceRegistry;
-
-            Access(void* native, const Ops& ops) noexcept : native_(native), ops_(&ops) {}
-
-            void* native_;
-            const Ops* ops_;
-        };
+        using Ops = void;
     };
 } // namespace lux::render

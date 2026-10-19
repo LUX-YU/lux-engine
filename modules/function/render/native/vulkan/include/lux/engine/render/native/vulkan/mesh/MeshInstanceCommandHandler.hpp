@@ -20,12 +20,12 @@ namespace lux::render::vulkan
 
         exec::task<CreateMeshInstance::Response> createInstance(CreateMeshInstance::Request&&) noexcept;
         exec::task<UpdateTransforms::Response> updateTransforms(UpdateTransforms::Request&&) noexcept;
-        void queryInstance(const QueryMeshInstance::Request&, QueryMeshInstance::Response&) noexcept;
+        exec::task<UpdateMeshInstances::Response> updateInstances(UpdateMeshInstances::Request&&) noexcept;
         exec::task<ReleaseMeshInstance::Response> releaseInstance(ReleaseMeshInstance::Request&&) noexcept;
         using Bindings = std::tuple<
             CommandMethod<CreateMeshInstance, &MeshInstanceCommandHandler::createInstance>,
             CommandMethod<UpdateTransforms, &MeshInstanceCommandHandler::updateTransforms>,
-            CommandMethod<QueryMeshInstance, &MeshInstanceCommandHandler::queryInstance>,
+            CommandMethod<UpdateMeshInstances, &MeshInstanceCommandHandler::updateInstances>,
             CommandMethod<ReleaseMeshInstance, &MeshInstanceCommandHandler::releaseInstance>>;
 
     private:

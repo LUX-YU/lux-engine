@@ -50,12 +50,6 @@ namespace lux::render
 
     static_assert(sizeof(MaterialTextureGpuRef) == 16);
 
-    struct MaterialPublished final
-    {
-        MaterialId material;
-        std::uint64_t revision = 0;
-    };
-
     struct MaterialBinding final
     {
         MaterialId material;
@@ -66,41 +60,40 @@ namespace lux::render
 
     struct MaterialWrite final
     {
-        MaterialId material;
-        std::uint64_t expected_revision = 0;
+        StorageId storage;
         MaterialProgram program;
         MaterialParameters parameters{};
-        // Logical references resolve to the current image; stale or missing references select white.
+        // Client keeps referenced textures valid and explicitly updates these fields before releasing them.
         std::vector<TextureId> textures;
     };
 
-    struct MaterialInformation final
+    struct CreateMaterial final
     {
-        MaterialPublished published;
-        MaterialProgram program;
-        MaterialParameters parameters{};
-        // Logical references resolve to the current image; stale or missing references select white.
-        std::vector<TextureId> textures;
-    };
-
-    struct SetMaterial final
-    {
-        static constexpr std::string_view name = "lux.render.SetMaterial";
+        static constexpr std::string_view name = "lux.render.CreateMaterial";
         using Request = MaterialWrite;
-        using Response = RenderResult<MaterialPublished>;
+        using Response = RenderResult<MaterialId>;
     };
 
-    struct QueryMaterial final
+    struct MaterialUpdate final
     {
-        static constexpr std::string_view name = "lux.render.QueryMaterial";
-        using Request = MaterialId;
-        using Response = RenderResult<MaterialInformation>;
+        MaterialId material;
+        MaterialParameters parameters;
+        std::vector<TextureId> textures;
+    };
+
+    struct UpdateMaterial final
+    {
+        static constexpr std::string_view name = "lux.render.UpdateMaterial";
+        // Related writes and releases are ordered by the Client, including across Client connections.
+        // Program and table slot remain fixed. A different program requires a new Material identity.
+        using Request = MaterialUpdate;
+        using Response = RenderResult<Ack>;
     };
 
     struct ReleaseMaterial final
     {
         static constexpr std::string_view name = "lux.render.ReleaseMaterial";
-        using Request = MaterialPublished;
+        using Request = MaterialId;
         using Response = RenderResult<Ack>;
     };
 
@@ -120,32 +113,6 @@ namespace lux::render
         using Config = void;
         static inline const StorageDescriptor description{kMaterialStorageType, 0, 0, cppType<MaterialBinding>()};
 
-        struct Ops final
-        {
-            RenderResult<MaterialInformation> (*query)(const void*, MaterialId) noexcept;
-            RenderResult<void> (*release)(void*, MaterialId, std::uint64_t) noexcept;
-        };
-
-        class Access final
-        {
-        public:
-            [[nodiscard]] RenderResult<MaterialInformation> query(MaterialId id) const noexcept
-            {
-                return ops_->query(native_, id);
-            }
-
-            [[nodiscard]] RenderResult<void> release(MaterialId id, std::uint64_t revision) const noexcept
-            {
-                return ops_->release(native_, id, revision);
-            }
-
-        private:
-            friend class ResourceRegistry;
-
-            Access(void* native, const Ops& ops) noexcept : native_(native), ops_(&ops) {}
-
-            void* native_;
-            const Ops* ops_;
-        };
+        using Ops = void;
     };
 } // namespace lux::render

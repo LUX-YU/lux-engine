@@ -18,12 +18,10 @@ namespace lux::render::vulkan
 
         explicit MeshCommandHandler(DeviceSession& device) noexcept : device_(device) {}
 
-        exec::task<SetMesh::Response> setMesh(SetMesh::Request&&) noexcept;
-        void queryMesh(const QueryMesh::Request&, QueryMesh::Response&) noexcept;
+        exec::task<CreateMesh::Response> createMesh(CreateMesh::Request&&) noexcept;
         void releaseMesh(const ReleaseMesh::Request&, ReleaseMesh::Response&) noexcept;
         using Bindings = std::tuple<
-            CommandMethod<SetMesh, &MeshCommandHandler::setMesh>,
-            CommandMethod<QueryMesh, &MeshCommandHandler::queryMesh>,
+            CommandMethod<CreateMesh, &MeshCommandHandler::createMesh>,
             CommandMethod<ReleaseMesh, &MeshCommandHandler::releaseMesh>>;
 
     private:

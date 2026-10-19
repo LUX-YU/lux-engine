@@ -4,39 +4,31 @@
 
 namespace lux::render::vulkan
 {
-    static exec::task<SetMaterial::Response> rejectedMaterial(RenderError error) noexcept
+    template <class Response> static exec::task<Response> rejected(RenderError error) noexcept
     {
         co_return cxx::unexpected(error);
     }
 
-    exec::task<SetMaterial::Response> MaterialCommandHandler::setMaterial(SetMaterial::Request&& input) noexcept
+    exec::task<CreateMaterial::Response> MaterialCommandHandler::createMaterial(CreateMaterial::Request&& input
+    ) noexcept
     {
-        auto storage = device_.resources().borrow<MaterialStorage>(input.material.storage);
+        auto storage = device_.resources().borrow<MaterialStorage>(input.storage);
         if (!storage)
         {
-            return rejectedMaterial(storage.error());
+            return rejected<CreateMaterial::Response>(storage.error());
         }
         return render::upload(**storage, std::move(input));
     }
 
-    void MaterialCommandHandler::queryMaterial(
-        const QueryMaterial::Request& input,
-        QueryMaterial::Response& response
+    exec::task<UpdateMaterial::Response> MaterialCommandHandler::updateMaterial(UpdateMaterial::Request&& input
     ) noexcept
     {
-        auto storage = device_.resources().tryGet<render::MaterialStorage>(input.storage);
+        auto storage = device_.resources().borrow<MaterialStorage>(input.material.storage);
         if (!storage)
         {
-            response = cxx::unexpected(storage.error());
-            return;
+            return rejected<UpdateMaterial::Response>(storage.error());
         }
-        auto result = storage->query(input);
-        if (!result)
-        {
-            response = cxx::unexpected(result.error());
-            return;
-        }
-        response = std::move(*result);
+        return render::upload(**storage, std::move(input));
     }
 
     void MaterialCommandHandler::releaseMaterial(
@@ -44,18 +36,14 @@ namespace lux::render::vulkan
         ReleaseMaterial::Response& response
     ) noexcept
     {
-        auto storage = device_.resources().borrow<MaterialStorage>(input.material.storage);
+        auto storage = device_.resources().borrow<MaterialStorage>(input.storage);
         if (!storage)
         {
             response = cxx::unexpected(storage.error());
             return;
         }
-        if (auto result = (*storage)->release(input.material, input.revision); !result)
-        {
-            response = cxx::unexpected(result.error());
-            return;
-        }
-        response = Ack{};
+        const auto released = (*storage)->release(input);
+        response = released ? ReleaseMaterial::Response(Ack{}) : cxx::unexpected(released.error());
     }
 
 } // namespace lux::render::vulkan

@@ -18,12 +18,12 @@ namespace lux::render::vulkan
 
         explicit MaterialCommandHandler(DeviceSession& device) noexcept : device_(device) {}
 
-        exec::task<SetMaterial::Response> setMaterial(SetMaterial::Request&&) noexcept;
-        void queryMaterial(const QueryMaterial::Request&, QueryMaterial::Response&) noexcept;
+        exec::task<CreateMaterial::Response> createMaterial(CreateMaterial::Request&&) noexcept;
+        exec::task<UpdateMaterial::Response> updateMaterial(UpdateMaterial::Request&&) noexcept;
         void releaseMaterial(const ReleaseMaterial::Request&, ReleaseMaterial::Response&) noexcept;
         using Bindings = std::tuple<
-            CommandMethod<SetMaterial, &MaterialCommandHandler::setMaterial>,
-            CommandMethod<QueryMaterial, &MaterialCommandHandler::queryMaterial>,
+            CommandMethod<CreateMaterial, &MaterialCommandHandler::createMaterial>,
+            CommandMethod<UpdateMaterial, &MaterialCommandHandler::updateMaterial>,
             CommandMethod<ReleaseMaterial, &MaterialCommandHandler::releaseMaterial>>;
 
     private:

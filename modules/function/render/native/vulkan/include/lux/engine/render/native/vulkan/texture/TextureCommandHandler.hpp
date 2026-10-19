@@ -19,16 +19,13 @@ namespace lux::render::vulkan
 
         explicit TextureCommandHandler(DeviceSession& device) noexcept : device_(device) {}
 
-        exec::task<SetTexture::Response> setTexture(SetTexture::Request&&) noexcept;
-        exec::task<SetTextureRegion::Response> updateTextureRegion(SetTextureRegion::Request&&) noexcept;
-        exec::task<ReleaseTexture::Response> releaseTexture(ReleaseTexture::Request&&) noexcept;
-        void queryTexture(const QueryTexture::Request&, QueryTexture::Response&) noexcept;
-
+        exec::task<CreateTexture::Response> createTexture(CreateTexture::Request&&) noexcept;
+        exec::task<CreatePatchedTexture::Response> createPatchedTexture(CreatePatchedTexture::Request&&) noexcept;
+        void releaseTexture(const ReleaseTexture::Request&, ReleaseTexture::Response&) noexcept;
         using Bindings = std::tuple<
-            CommandMethod<SetTexture, &TextureCommandHandler::setTexture>,
-            CommandMethod<SetTextureRegion, &TextureCommandHandler::updateTextureRegion>,
-            CommandMethod<ReleaseTexture, &TextureCommandHandler::releaseTexture>,
-            CommandMethod<QueryTexture, &TextureCommandHandler::queryTexture>>;
+            CommandMethod<CreateTexture, &TextureCommandHandler::createTexture>,
+            CommandMethod<CreatePatchedTexture, &TextureCommandHandler::createPatchedTexture>,
+            CommandMethod<ReleaseTexture, &TextureCommandHandler::releaseTexture>>;
 
     private:
         DeviceSession& device_;

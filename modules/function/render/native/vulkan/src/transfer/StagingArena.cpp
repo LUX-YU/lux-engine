@@ -1,24 +1,30 @@
 #include "StagingArena.hpp"
+#include <algorithm>
+#include <bit>
 #include <exception>
-#include <lux/engine/render/native/vulkan/transfer/UploadContext.hpp>
+#include <utility>
 
 namespace lux::render::vulkan
 {
+    StagingArena::StagingArena(VmaAllocator allocator, std::size_t count, VkDeviceSize alignment) noexcept
+        : allocator_(allocator), alignment_(alignment), pages_(count)
+    {
+    }
+
     RenderResult<std::unique_ptr<StagingArena>> StagingArena::create(
         VulkanAllocator& allocator,
         std::size_t page_bytes,
         std::size_t page_count,
-        std::span<const std::uint32_t> families
+        std::span<const std::uint32_t> families,
+        VkDeviceSize alignment
     ) noexcept
     {
-        const bool is_invalid_capacity = !page_bytes || !page_count;
-        if (is_invalid_capacity)
+        const bool invalid = !page_bytes || !page_count || !std::has_single_bit(alignment);
+        if (invalid)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        auto arena = std::unique_ptr<StagingArena>(new StagingArena(allocator.native()));
-        arena->pages_.reserve(page_count);
-        arena->free_pages_.reserve(page_count);
+        auto arena = std::unique_ptr<StagingArena>(new StagingArena(allocator.native(), page_count, alignment));
         for (std::size_t i = 0; i < page_count; ++i)
         {
             auto buffer =
@@ -27,76 +33,168 @@ namespace lux::render::vulkan
             {
                 return cxx::unexpected(buffer.error());
             }
-            auto* mapped = buffer->mappedBytes(allocator.native()).data();
-            arena->pages_.push_back({std::move(*buffer), mapped});
-            arena->free_pages_.push_back(i);
+            auto& page = arena->pages_[i];
+            page.mapped = buffer->mappedBytes(allocator.native()).data();
+            page.buffer = std::move(*buffer);
+            for (auto& completion : page.completions)
+            {
+                completion.arena = arena.get();
+                completion.page = i;
+            }
         }
         return arena;
     }
 
     StagingArena::~StagingArena() noexcept
     {
-        // Session must release accepted batches and joined CPU work before destroying their arena.
-        if (free_pages_.size() != pages_.size())
-        {
-            std::terminate();
-        }
         for (auto& page : pages_)
         {
+            if (page.cpu_ranges)
+            {
+                std::terminate();
+            }
+            for (auto& completion : page.completions)
+            {
+                if (completion.node.armed())
+                {
+                    std::terminate();
+                }
+            }
             page.buffer.release(allocator_);
         }
     }
 
-    RenderResult<StagingPage> StagingArena::acquire() noexcept
+    RenderResult<StagingRange> StagingArena::acquire(std::size_t bytes, std::size_t unit) noexcept
     {
-        if (free_pages_.empty())
+        for (std::size_t i = 0; i < pages_.size(); ++i)
         {
-            return cxx::unexpected(RenderError{kCapacity});
+            auto& page = pages_[i];
+            const auto padding = (alignment_ - (page.head & (alignment_ - 1))) & (alignment_ - 1);
+            const auto remaining = page.buffer.size() - page.head;
+            if (padding >= remaining)
+            {
+                continue;
+            }
+            const auto count = std::min<VkDeviceSize>(bytes, remaining - padding) / unit * unit;
+            if (count == 0)
+            {
+                continue;
+            }
+            const auto offset = page.head + padding;
+            page.head = offset + count;
+            ++page.cpu_ranges;
+            return StagingRange{*this, i, offset, static_cast<std::size_t>(count)};
         }
-        auto page = StagingPage(*this, free_pages_.back());
-        free_pages_.pop_back();
-        return page;
+        return cxx::unexpected(RenderError{kCapacity});
     }
 
-    StagingPage::~StagingPage() noexcept
+    void StagingArena::reclaim(Page& page) noexcept
+    {
+        if (page.cpu_ranges != 0)
+        {
+            return;
+        }
+        for (const auto& completion : page.completions)
+        {
+            if (completion.node.armed())
+            {
+                return;
+            }
+        }
+        page.head = 0;
+    }
+
+    void StagingArena::release(std::size_t index) noexcept
+    {
+        auto& page = pages_[index];
+        --page.cpu_ranges;
+        reclaim(page);
+    }
+
+    void StagingArena::commit(std::size_t index, SubmissionQueue& queue) noexcept
+    {
+        auto& page = pages_[index];
+        auto found = std::ranges::find_if(
+            page.completions,
+            [&](const Completion& item) { return item.queue == &queue || item.queue == nullptr; }
+        );
+        // DeviceSession has at most three physical queues. No independent queue is admitted here.
+        if (found == page.completions.end())
+        {
+            std::terminate();
+        }
+        found->queue = &queue;
+        found->accepted = queue.submitted();
+        if (!found->node.armed())
+        {
+            queue.arm(found->accepted, found->node, completed, &*found);
+        }
+        release(index);
+    }
+
+    void StagingArena::completed(void* value, RenderResult<void> result) noexcept
+    {
+        auto& completion = *static_cast<Completion*>(value);
+        auto& page = completion.arena->pages_[completion.page];
+        // Later accepted ranges may have extended this page's use while the first callback was armed.
+        if (result && completion.queue->completed() < completion.accepted)
+        {
+            completion.queue->arm(completion.accepted, completion.node, completed, &completion);
+            return;
+        }
+        completion.arena->reclaim(page);
+    }
+
+    bool StagingArena::canAcquire(std::size_t unit) const noexcept
+    {
+        for (const auto& page : pages_)
+        {
+            const auto padding = (alignment_ - (page.head & (alignment_ - 1))) & (alignment_ - 1);
+            const auto remaining = page.buffer.size() - page.head;
+            if (padding <= remaining && unit <= remaining - padding)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    StagingRange::StagingRange(StagingArena& arena, std::size_t page, VkDeviceSize offset, std::size_t bytes) noexcept
+        : arena_(&arena), page_(page), offset_(offset), bytes_(bytes)
+    {
+    }
+
+    StagingRange::~StagingRange() noexcept
     {
         if (arena_)
         {
-            (void)finishMeasurement(); // Diagnostics cannot change page reuse after actual Copy completion.
-            arena_->free_pages_.push_back(index_);
+            arena_->release(page_);
         }
     }
 
-    StagingPage::StagingPage(StagingPage&& other) noexcept
-        : arena_(std::exchange(other.arena_, nullptr)), index_(other.index_),
-          measurement_(std::exchange(other.measurement_, nullptr)), timestamp_bits_(other.timestamp_bits_)
+    StagingRange::StagingRange(StagingRange&& other) noexcept
+        : arena_(std::exchange(other.arena_, nullptr)), page_(other.page_), offset_(other.offset_), bytes_(other.bytes_)
     {
     }
 
-    std::span<std::byte> StagingPage::bytes() const noexcept
+    VkBuffer StagingRange::buffer() const noexcept
     {
-        return {static_cast<std::byte*>(arena_->pages_[index_].mapped), std::size_t(buffer().size())};
+        return arena_->pages_[page_].buffer.handle();
     }
 
-    VkResult StagingPage::flush(VkDeviceSize bytes) const noexcept
+    std::span<std::byte> StagingRange::bytes() const noexcept
     {
-        return buffer().flush(arena_->allocator_, 0, bytes);
+        return {arena_->pages_[page_].mapped + offset_, bytes_};
     }
 
-    void StagingPage::markMeasurement(UploadContext& context, std::uint32_t bits) noexcept
+    VkResult StagingRange::flush() const noexcept
     {
-        measurement_ = &context;
-        timestamp_bits_ = bits;
+        return arena_->pages_[page_].buffer.flush(arena_->allocator_, offset_, bytes_);
     }
 
-    RenderResult<void> StagingPage::finishMeasurement() noexcept
+    void StagingRange::commit(SubmissionQueue& queue) noexcept
     {
-        auto* context = std::exchange(measurement_, nullptr);
-        return context ? context->measure(index_, timestamp_bits_) : RenderResult<void>{};
-    }
-
-    gapi::vk::VmaBuffer& StagingPage::buffer() const noexcept
-    {
-        return arena_->pages_[index_].buffer;
+        auto* arena = std::exchange(arena_, nullptr);
+        arena->commit(page_, queue);
     }
 } // namespace lux::render::vulkan

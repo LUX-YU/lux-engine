@@ -7,7 +7,7 @@ namespace lux::render
 {
     template <class C, class H, auto Method>
     concept SyncCommandHandlerFor =
-        RenderCommand<C> && std::constructible_from<typename C::Response, cxx::unexpected<RenderError>> &&
+        RenderCommand<C> &&
         std::same_as<decltype(Method), void (H::*)(const typename C::Request&, typename C::Response&) noexcept>;
 
     // Compile-time association only. Runtime installation creates the actual call thunk.

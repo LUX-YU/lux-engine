@@ -72,7 +72,12 @@ namespace lux::render
     {
         static constexpr std::string_view name = "lux.render.CreateMaterial";
         using Request = MaterialWrite;
-        using Response = RenderResult<MaterialId>;
+
+        struct Response final
+        {
+            RenderError error{};
+            MaterialId material{};
+        };
     };
 
     struct MaterialUpdate final
@@ -88,14 +93,14 @@ namespace lux::render
         // Related writes and releases are ordered by the Client, including across Client connections.
         // Program and table slot remain fixed. A different program requires a new Material identity.
         using Request = MaterialUpdate;
-        using Response = RenderResult<Ack>;
+        using Response = AckResponse;
     };
 
     struct ReleaseMaterial final
     {
         static constexpr std::string_view name = "lux.render.ReleaseMaterial";
         using Request = MaterialId;
-        using Response = RenderResult<Ack>;
+        using Response = AckResponse;
     };
 
     template <> struct ConfigValueTraits<MaterialProgram> final

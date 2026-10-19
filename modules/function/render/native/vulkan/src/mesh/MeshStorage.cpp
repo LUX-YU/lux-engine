@@ -164,88 +164,25 @@ namespace lux::render::vulkan
         }
         auto geometry = std::make_unique<Geometry>(std::move(*vertices), std::move(*indices), std::move(*sections));
         cxx::scope_exit rollback([&]() noexcept { retire(geometry); });
-        auto uploaded = co_await session_.uploads().writeBufferRange(
-            *geometry->vertices.buffer,
-            geometry->vertices.offset,
-            input.source.first(vertex_bytes)
-        );
-        if (!uploaded)
-        {
-            co_return cxx::unexpected(uploaded.error());
-        }
+        std::array<BufferWrite, 4> writes;
+        std::size_t count = 0;
+        writes[count++] = {geometry->vertices.buffer, geometry->vertices.offset, input.source.first(vertex_bytes)};
         const auto index_source = input.source.subspan(input.description.index_offset, index_bytes);
         const auto full_words = index_bytes & ~std::size_t{3};
         if (full_words)
         {
-            uploaded = co_await session_.uploads().writeBufferRange(
-                *geometry->indices.buffer,
-                geometry->indices.offset,
-                index_source.first(full_words)
-            );
-            if (!uploaded)
-            {
-                co_return cxx::unexpected(uploaded.error());
-            }
+            writes[count++] = {geometry->indices.buffer, geometry->indices.offset, index_source.first(full_words)};
         }
+        std::array<std::byte, 4> tail{};
         if (full_words != index_bytes)
         {
-            std::array<std::byte, 4> tail{};
             std::memcpy(tail.data(), index_source.data() + full_words, index_bytes - full_words);
-            uploaded = co_await session_.uploads()
-                           .writeBufferRange(*geometry->indices.buffer, geometry->indices.offset + full_words, tail);
-            if (!uploaded)
-            {
-                co_return cxx::unexpected(uploaded.error());
-            }
+            writes[count++] = {geometry->indices.buffer, geometry->indices.offset + full_words, tail};
         }
-        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        std::optional<CommandBatch> batch;
-        for (;;)
+        writes[count++] = {geometry->sections.buffer, geometry->sections.offset, std::as_bytes(std::span(records))};
+        if (auto uploaded = co_await session_.uploads().writeBuffers(std::span(writes).first(count)); !uploaded)
         {
-            if (stop.stop_requested())
-            {
-                co_return cxx::unexpected(RenderError{kWorkStopped});
-            }
-            auto ready = session_.queue().begin();
-            if (ready)
-            {
-                batch.emplace(std::move(*ready));
-                break;
-            }
-            if (ready.error().type != kCapacity)
-            {
-                co_return cxx::unexpected(ready.error());
-            }
-            auto completed = co_await session_.queue().whenAvailable();
-            if (!completed)
-            {
-                co_return cxx::unexpected(completed.error());
-            }
-        }
-        const auto bytes = std::as_bytes(std::span(records));
-        const auto& section_range = geometry->sections;
-        for (std::size_t offset = 0; offset < bytes.size(); offset += 65536)
-        {
-            vkCmdUpdateBuffer(
-                batch->native(),
-                section_range.buffer->handle(),
-                section_range.offset + offset,
-                std::min<std::size_t>(65536, bytes.size() - offset),
-                bytes.data() + offset
-            );
-        }
-        VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
-        barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
-        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-        barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
-        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-        dependency.memoryBarrierCount = 1;
-        dependency.pMemoryBarriers = &barrier;
-        vkCmdPipelineBarrier2(batch->native(), &dependency);
-        if (auto accepted = std::move(*batch).submit(); !accepted)
-        {
-            co_return cxx::unexpected(accepted.error());
+            co_return cxx::unexpected(uploaded.error());
         }
         const auto key = entries_.emplace();
         auto& entry = *entries_.find(key);

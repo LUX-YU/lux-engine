@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/graph/Analysis.hpp>
 #include <lux/engine/render/graph/Program.hpp>
 #include <lux/engine/render/native/vulkan/ContextContribution.hpp>
@@ -159,6 +160,7 @@ namespace lux::render::vulkan
         std::vector<VkPipeline> pipelines_; // unique physical owners; Pass recipes only borrow handles
         std::vector<VkDescriptorSetLayout> descriptor_layouts_;
         std::uint32_t output_ = kGraphInvalidIndex;
+        bool resizable_output_ = false;
     };
 
     // Borrowed program index in GraphPassId order. Call once after authoring; programs must outlive compilation.

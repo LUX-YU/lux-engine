@@ -223,7 +223,10 @@ namespace lux::render
                     return cxx::unexpected(cleared.error());
                 }
             }
-            if (auto output = builder.exportOutput({resource("color"), {}, config.target}); !output)
+            if (auto output = builder.exportOutput(
+                    {resource("color"), {}, GraphOutputRequirements{config.target.format, config.target.samples}}
+                );
+                !output)
             {
                 return output;
             }

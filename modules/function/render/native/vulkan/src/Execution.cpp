@@ -7,6 +7,7 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/Error.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
+#include <lux/engine/render/native/vulkan/OffscreenTarget.hpp>
 
 namespace lux::render::vulkan
 {
@@ -37,8 +38,6 @@ namespace lux::render::vulkan
         }
 
         VkDevice device;
-        SubmissionCallback completion;
-        bool pending = false;
         std::vector<gapi::vk::VmaBuffer> buffers;
         std::vector<gapi::vk::VmaImage> images;
         std::vector<VkImageView> views;
@@ -69,7 +68,7 @@ namespace lux::render::vulkan
     ExecutionContext::~ExecutionContext() noexcept
     {
         withdraw();
-        // The detached physical set owns the completion observer; it cannot call back into this Context.
+        // Physical cleanup is owned by the Session; it never calls back into this Context.
         owner_->deferRelease(
             [frame = std::move(frame_resources_), allocator = owner_->allocator().native()]() mutable noexcept
             {
@@ -95,15 +94,17 @@ namespace lux::render::vulkan
 
     RenderResult<std::unique_ptr<ExecutionContext>> DeviceSession::prepare(
         const CompiledGraph& code,
-        const TargetDesc& target,
+        OffscreenTarget& output,
         StorageSet* scene,
         StorageSet* view,
         std::span<const StorageArgument> arguments
     ) noexcept
     {
+        const auto& target = output.description();
         const auto max_extent = physical_device_.properties().properties.limits.maxImageDimension2D;
-        const bool invalid = code.device() != nativeDevice() || !code.compatible(target) || target.width == 0 ||
-                             target.height == 0 || target.width > max_extent || target.height > max_extent;
+        const bool invalid = &output.session() != this || code.device() != nativeDevice() || !code.compatible(target) ||
+                             target.width == 0 || target.height == 0 || target.width > max_extent ||
+                             target.height > max_extent;
         if (invalid)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
@@ -243,6 +244,13 @@ namespace lux::render::vulkan
             const auto& plan = context->code_->resources()[i];
             if ((!plan.image_usage && !plan.buffer_usage) || plan.storage || plan.context_data != kGraphInvalidIndex)
             {
+                continue;
+            }
+            if (i == code.output())
+            {
+                const auto frame = output.frame(0);
+                binding.image = frame.image;
+                binding.view = frame.view;
                 continue;
             }
             if (const auto* image = std::get_if<GraphImageDesc>(&plan.description))
@@ -604,22 +612,8 @@ namespace lux::render::vulkan
         return index == kGraphInvalidIndex ? std::span<const std::byte>{} : passes_[index].parameters;
     }
 
-    RenderResult<EExecutionOutcome> ExecutionContext::execute() noexcept
+    RenderResult<void> ExecutionContext::prepareFrame() noexcept
     {
-        const auto outcome = [this](EExecutionOutcome value) noexcept
-        {
-            ++progress_.counts[static_cast<std::size_t>(value)];
-            return value;
-        };
-        auto ready = queue_->poll();
-        if (!ready)
-        {
-            return cxx::unexpected(ready.error());
-        }
-        if (frame_resources_->pending)
-        {
-            return outcome(EExecutionOutcome::PREVIOUS_SUBMISSION_PENDING);
-        }
         for (auto index : changed_data_)
         {
             auto& data = context_data_[index];
@@ -632,24 +626,16 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        if (queue_->recording())
-        {
-            return outcome(EExecutionOutcome::RECORDING_BUSY);
-        }
-        auto batch = queue_->beginAfterPoll();
-        if (!batch)
-        {
-            if (batch.error().type == kCapacity)
-            {
-                return outcome(EExecutionOutcome::QUEUE_FULL);
-            }
-            return cxx::unexpected(batch.error());
-        }
         if (!changed_resources_.empty())
         {
             rebind();
         }
-        const auto command = batch->native();
+        return {};
+    }
+
+    void ExecutionContext::record(CommandBatch& batch) noexcept
+    {
+        const auto command = batch.native();
         for (auto index : changed_data_)
         {
             auto& data = context_data_[index];
@@ -897,22 +883,16 @@ namespace lux::render::vulkan
             }
             }
         }
-        auto submitted = std::move(*batch).submit(
-            frame_resources_->completion,
-            [](void* value, RenderResult<void>) noexcept { static_cast<FrameResources*>(value)->pending = false; },
-            frame_resources_.get()
-        );
-        if (!submitted)
-        {
-            return cxx::unexpected(submitted.error());
-        }
-        frame_resources_->pending = true;
+    }
+
+    void ExecutionContext::submitted() noexcept
+    {
         for (auto index : changed_data_)
         {
             context_data_[index].dirty = false;
         }
         changed_data_.clear();
-        return outcome(EExecutionOutcome::EXECUTED);
+        ++progress_.counts[static_cast<std::size_t>(EExecutionOutcome::EXECUTED)];
     }
 
 } // namespace lux::render::vulkan

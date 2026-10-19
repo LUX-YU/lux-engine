@@ -2,8 +2,9 @@
 
 #include <cstdint>
 #include <limits>
+#include <lux/engine/description/Image.hpp>
+#include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/core/Target.hpp>
 #include <optional>
 #include <span>
 #include <string>
@@ -134,12 +135,21 @@ namespace lux::render
         bool operator==(const GraphDependency&) const noexcept = default;
     };
 
+    struct GraphOutputRequirements final
+    {
+        rdesc::ETextureFormat format = rdesc::ETextureFormat::UNDEFINED;
+        std::uint32_t samples = 1;
+        // Both zero means Target-relative; otherwise both dimensions specify a fixed output.
+        std::uint32_t width = 0, height = 0;
+        bool operator==(const GraphOutputRequirements&) const noexcept = default;
+    };
+
     struct GraphOutput final
     {
         GraphVersion version;
         VGraphRange range;
-        // Present only for an actual final color output; G1 contract is reused.
-        std::optional<TargetDesc> target;
+        // Logical output requirements contain no Runtime Target kind or ownership.
+        std::optional<GraphOutputRequirements> target;
     };
 
     class RenderGraphBuilder;

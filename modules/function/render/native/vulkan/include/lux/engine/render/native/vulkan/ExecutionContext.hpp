@@ -10,6 +10,7 @@
 namespace lux::render::vulkan
 {
     class SubmissionQueue;
+    class CommandBatch;
 
     class ExecutionContext final
     {
@@ -54,7 +55,9 @@ namespace lux::render::vulkan
             return viewport_;
         }
 
-        [[nodiscard]] RenderResult<EExecutionOutcome> execute() noexcept;
+        // Session prepares all participating Contexts before opening the shared recording.
+        [[nodiscard]] RenderResult<void> prepareFrame() noexcept;
+        void record(CommandBatch& batch) noexcept;
 
         [[nodiscard]] const ExecutionProgress& progress() const noexcept
         {
@@ -89,6 +92,7 @@ namespace lux::render::vulkan
     private:
         friend class DeviceSession;
         void withdraw() noexcept;
+        void submitted() noexcept;
         [[nodiscard]] RenderResult<void> prepareDescriptors() noexcept;
         void rebind() noexcept;
 

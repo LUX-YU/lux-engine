@@ -9,50 +9,49 @@ namespace lux::render::vulkan
         co_return cxx::unexpected(error);
     }
 
-    exec::task<CreateMeshInstance::Response> MeshInstanceCommandHandler::createInstance(
+    exec::task<RenderResult<MeshInstanceId>> MeshInstanceCommandHandler::createInstanceSource(
         CreateMeshInstance::Request&& input
     ) noexcept
     {
         auto storage = device_.resources().borrow<MeshInstanceStorage>(input.storage);
         if (!storage)
         {
-            return rejected<CreateMeshInstance::Response>(storage.error());
+            return rejected<RenderResult<MeshInstanceId>>(storage.error());
         }
         return (*storage)->create(std::move(input.description));
     }
 
-    exec::task<UpdateTransforms::Response> MeshInstanceCommandHandler::updateTransforms(
+    exec::task<RenderResult<TransformApplied>> MeshInstanceCommandHandler::updateTransformsSource(
         UpdateTransforms::Request&& input
     ) noexcept
     {
         auto storage = device_.resources().borrow<MeshInstanceStorage>(input.storage);
         if (!storage)
         {
-            return rejected<UpdateTransforms::Response>(storage.error());
+            return rejected<RenderResult<TransformApplied>>(storage.error());
         }
         return (*storage)->update(std::move(input));
     }
 
-    exec::task<UpdateMeshInstances::Response> MeshInstanceCommandHandler::updateInstances(
+    exec::task<RenderResult<TransformApplied>> MeshInstanceCommandHandler::updateInstancesSource(
         UpdateMeshInstances::Request&& input
     ) noexcept
     {
         auto storage = device_.resources().borrow<MeshInstanceStorage>(input.storage);
         if (!storage)
         {
-            return rejected<UpdateMeshInstances::Response>(storage.error());
+            return rejected<RenderResult<TransformApplied>>(storage.error());
         }
         return (*storage)->update(std::move(input));
     }
 
-    exec::task<ReleaseMeshInstance::Response> MeshInstanceCommandHandler::releaseInstance(
-        ReleaseMeshInstance::Request&& input
+    exec::task<RenderResult<Ack>> MeshInstanceCommandHandler::releaseInstanceSource(ReleaseMeshInstance::Request&& input
     ) noexcept
     {
         auto storage = device_.resources().borrow<MeshInstanceStorage>(input.storage);
         if (!storage)
         {
-            return rejected<ReleaseMeshInstance::Response>(storage.error());
+            return rejected<RenderResult<Ack>>(storage.error());
         }
         return (*storage)->release(input);
     }

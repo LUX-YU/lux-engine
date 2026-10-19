@@ -307,20 +307,20 @@ namespace lux::render
                                {
                                    if (!candidate)
                                    {
-                                       return cxx::unexpected(candidate.error());
+                                       return {candidate.error()};
                                    }
                                    if (stop.stop_requested())
                                    {
-                                       return cxx::unexpected(RenderError{kCommandCancelled});
+                                       return {RenderError{kCommandCancelled}};
                                    }
                                    const auto effect = server->effects.emplace(std::move(*candidate));
                                    ++server->compiled_graphs;
-                                   return EffectCreated{effect};
+                                   return EffectCreated{{}, effect};
                                }
                            );
                 }
             );
-        auto invalid = stdexec::just(CreateEffect::Response{cxx::unexpected(initial_error)});
+        auto invalid = stdexec::just(CreateEffect::Response{initial_error});
         using VSource = exec::variant_sender<decltype(invalid), decltype(compiled)>;
         return initial_error.type != error::ErrorId{} ? VSource{std::move(invalid)} : VSource{std::move(compiled)};
     }
@@ -339,19 +339,19 @@ namespace lux::render
         auto* effect = effects.find(input->effect);
         if (!effect)
         {
-            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
         while (!effect->attachments.empty())
         {
             if (auto result = detachAttachment(effect->attachments.back()); !result)
             {
-                output_response = cxx::unexpected(result.error());
+                output_response.error = result.error();
                 return;
             }
         }
         device->deferRelease([code = std::move(effect->code)]() mutable noexcept { code.reset(); });
         effects.erase(input->effect);
-        output_response = Ack{};
+        output_response = {};
     }
 } // namespace lux::render

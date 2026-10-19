@@ -44,7 +44,11 @@ void H::method(const C::Request&, C::Response&) noexcept;
 ConcreteSender H::method(C::Request&&) noexcept;
 ```
 
-Responses use `RenderResult<Success>`. Synchronous dispatch creates an error-initialized
+Responses declare a RenderError error member and their actual business fields. A zero error.type means
+success; fields are consumed only on success. Commands without a payload use AckResponse. Error text
+stays in the registered diagnostic descriptions, rather than an allocated string in every reply.
+Internal fallible functions can still return RenderResult<T>; Handler boundaries map the result once
+without an additional coroutine or result owner. Synchronous dispatch creates an error-initialized
 Response directly in an Outbox message before entering the Handler. No temporary
 Response or asynchronous state is needed. Dispatch is not reentrant: a Handler may
 install declarations but must not recursively dispatch or flush the Outbox.
@@ -62,9 +66,9 @@ Scope completion and IPC delivery are distinct; an operation may end before its 
 can be sent. Host scheduler/module lifetimes still cover external callback tails.
 Outbox alone publishes finished results, with bounded fair retries when a reply
 segment cannot grow. A closed requester cannot hold ready output indefinitely.
-The source route is independent of input ownership. Invalid CommandId or wrong
-request type produces one raw RenderError(kCommandContract); known commands
-produce only their declared Response. Accepted uncertain effects use kOutcomeUnknown,
+The source route is independent of input ownership. An unknown CommandId or invalid correlation
+produces AckResponse with kCommandContract. A known Command, including a rejected request type,
+produces its declared Response with the structured error field. Accepted uncertain effects use kOutcomeUnknown,
 never a guaranteed cancellation.
 
 ## Native work and shutdown
@@ -89,10 +93,15 @@ stable frames use prepared pointers without Feature dispatch, name/schema lookup
 Graph analysis or Shader/Pipeline compilation. Resource/Graph/Material architecture
 and historical un-attributed performance qualifications are outside this refactor.
 
-The single RenderThread alternates bounded request, completion and response work with ready View execution.
-There is no unconditional sleep: successful work starts the next round immediately. Only a round with no progress
-waits on IpcCore's epoch; requests, CPU completion and stop wake it. A requested 1ms idle deadline observes GPU fences
-and unvisited Links in the bounded IPC roster. This is an idle observation deadline, subject to OS scheduling, not a rendering rate limit.
+The single RenderThread alternates bounded request, completion and response work with ready frame recording.
+DeviceSession observes Queue completion before preparing a frame and merges ready Context recordings into its
+submission. A Context neither polls a Queue nor submits its own command buffer. Dynamic writes join a finite
+input prefix and finish CPU adoption before its dependent frame records.
+
+There is no unconditional sleep. With no progress, queued IPC/CPU work is rechecked first. Pending GPU work uses
+the earliest incomplete submission and the configured gpu_wait_ns budget (default 1ms); truly idle work uses
+IpcCore's wakeable epoch wait. Its finite revisit remains necessary for the bounded IPC Link roster. Neither
+deadline is a frame-rate limit, and GPU waits do not replace Source or callback-tail settlement.
 
 ## View and Attachment inputs
 
@@ -119,4 +128,6 @@ before destroying scoped Storage and DeviceSession; arbitrary early removal is n
 
 Each Target has one Attachment. Feature composition and pass order are fixed by its compiled graph;
 Runtime does not coordinate multiple independent Effects writing the same Target. Resize prepares a
-replacement Context before publishing it and preserves the old association on failure.
+replacement OffscreenTarget and Context before publishing either, and preserves the old association on failure.
+The Target owns the actual output image/view; the Context borrows that output. Both physical collections use the
+same DeviceSession cleanup_scope_ after future recording is detached.

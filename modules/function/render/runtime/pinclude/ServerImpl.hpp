@@ -73,6 +73,7 @@ namespace lux::render
         stdexec::counting_scope command_scope_;
         execution::RunLoop render_loop_;
         std::size_t next_target = 0;
+        std::vector<vulkan::ExecutionContext*> frame_contexts;
         std::atomic<bool> stop_requested{false}, started{false}, running{false};
         std::atomic<std::uint64_t> ticks{0}, commands{0}, compiled_graphs{0}, submissions{0};
         std::atomic<std::uint64_t> validation_errors{0}, validation_warnings{0};

@@ -27,6 +27,7 @@ namespace lux::render
         std::size_t max_config_bytes = 1024 * 1024;
         // Scheduler availability does not imply a persistent staging allocation.
         std::optional<TransferOptions> uploads;
+        std::uint64_t gpu_wait_ns = 1'000'000; // 0..1ms; IPC/CPU/stop are checked between waits.
     };
 
     struct RenderServerStats final

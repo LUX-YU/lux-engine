@@ -16,6 +16,7 @@ namespace lux::render::vulkan
     class CompiledGraph;
     class DescriptorArray;
     class ExecutionContext;
+    class OffscreenTarget;
     class UploadContext;
     class StagingArena;
     struct ImageTransferRegion;
@@ -93,16 +94,23 @@ namespace lux::render::vulkan
             );
         }
 
+        // Call after collect/dispatch at the Owner safe point. Contexts are borrowed for this call only.
+        [[nodiscard]] RenderResult<std::uint32_t> render(std::span<ExecutionContext* const> contexts) noexcept;
         [[nodiscard]] RenderResult<void> collect() noexcept;
         // Explicit RenderThread safe point, separate from polling and resource admission/collection.
         void dispatchCompletions() noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<ExecutionContext>> prepare(
             const CompiledGraph& code,
-            const TargetDesc& target,
+            OffscreenTarget& target,
             StorageSet* scene = nullptr,
             StorageSet* view = nullptr,
             std::span<const StorageArgument> arguments = {}
         ) noexcept;
+
+        [[nodiscard]] std::uint32_t framesInFlight() const noexcept
+        {
+            return frame_count_;
+        }
 
         [[nodiscard]] SubmissionQueue& queue(EQueueRole role = EQueueRole::GRAPHICS) noexcept
         {
@@ -138,6 +146,8 @@ namespace lux::render::vulkan
         }
 
         [[nodiscard]] bool deviceLost() const noexcept;
+        [[nodiscard]] bool pendingGpuWork() const noexcept;
+        [[nodiscard]] RenderResult<bool> waitForProgress(std::uint64_t timeout_ns) noexcept;
         [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&, execution::CpuScheduler) noexcept;
         [[nodiscard]] TransferStats uploadStats() const noexcept;
 
@@ -171,6 +181,28 @@ namespace lux::render::vulkan
             EnabledDeviceFeatures enabled,
             VulkanAllocator allocator
         ) noexcept;
+        enum class EFramePhase : std::uint8_t
+        {
+            FREE,
+            COLLECTING,
+            PREPARING,
+            SUBMITTED
+        };
+
+        struct FrameSlot final
+        {
+            EFramePhase phase = EFramePhase::FREE;
+            std::array<std::uint64_t, 3> accepted_serials{};
+            std::array<SubmissionCallback, 3> completions;
+            std::uint32_t pending_writes = 0;
+            std::uint8_t pending_queues = 0;
+        };
+
+        void sealFrame(FrameSlot&) noexcept;
+        std::array<FrameSlot, 3> frames_;
+        std::uint32_t frame_count_ = 1;
+        std::uint32_t next_frame_ = 0;
+
         gapi::vk::PhysicalDevice physical_device_;
         gapi::vk::LogicalDevice logical_device_;
         EnabledDeviceFeatures enabled_features_;

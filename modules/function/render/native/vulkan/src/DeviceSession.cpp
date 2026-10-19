@@ -113,6 +113,23 @@ namespace lux::render::vulkan
         return false;
     }
 
+    bool DeviceSession::pendingGpuWork() const noexcept
+    {
+        return std::ranges::any_of(physical_queues_, [](const auto& queue) { return !queue->idle(); });
+    }
+
+    RenderResult<bool> DeviceSession::waitForProgress(std::uint64_t timeout_ns) noexcept
+    {
+        for (const auto& queue : physical_queues_)
+        {
+            if (!queue->idle())
+            {
+                return queue->wait(queue->completed() + 1, timeout_ns);
+            }
+        }
+        return false;
+    }
+
     RenderResult<void> DeviceSession::collect() noexcept
     {
         std::optional<RenderError> failure;
@@ -135,6 +152,10 @@ namespace lux::render::vulkan
         for (auto& queue : physical_queues_)
         {
             queue->dispatchCompleted();
+        }
+        if (uploads_)
+        {
+            uploads_->flush();
         }
     }
 

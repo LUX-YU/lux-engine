@@ -31,7 +31,7 @@ namespace
 
         explicit AlternateTexture(vulkan::DeviceSession& device) noexcept : texture_(device) {}
 
-        exec::task<CreateTexture::Response> set(TextureWrite&& value) noexcept
+        vulkan::TextureCommandHandler::CreateTextureSender set(TextureWrite&& value) noexcept
         {
             ++calls;
             return texture_.createTexture(std::move(value));

@@ -25,7 +25,12 @@ struct ExternalCommand final
 {
     static constexpr std::string_view name = "installed.client.external";
     using Request = std::vector<unsigned>;
-    using Response = RenderResult<unsigned>;
+
+    struct Response final
+    {
+        RenderError error{};
+        unsigned value = 0;
+    };
 };
 
 static_assert(RenderCommand<ExternalCommand>);
@@ -54,17 +59,19 @@ int main()
     CHECK(service->tryReceive(accepted) == ipc::EIpcReceive::RECEIVED);
     CHECK(accepted.message().get<ExternalCommand::Request>().data() == backing);
     ipc::IpcMessage result;
-    auto& response = result.emplace<ExternalCommand::Response>(lux::cxx::unexpected(RenderError{kCommandContract}));
-    response.emplace(accepted.message().get<ExternalCommand::Request>()[0] + 1);
+    auto& response = result.emplace<ExternalCommand::Response>();
+    response.value = accepted.message().get<ExternalCommand::Request>()[0] + 1;
     CHECK(service->trySendResponse(accepted.requesterId(), accepted.correlation(), result));
     accepted.reset();
     std::uint64_t correlation = 0;
     CHECK(peer->tryReceive(correlation, message) == ipc::EIpcReceive::RECEIVED);
     CHECK(correlation == request.value);
-    CHECK(message.get<ExternalCommand::Response>() == 18);
+    CHECK(message.get<ExternalCommand::Response>().error.type == 0);
+    CHECK(message.get<ExternalCommand::Response>().value == 18);
     service->reset();
     peer->reset();
-    CHECK(message.get<ExternalCommand::Response>() == 18); // Actual output outlives both roles.
+    CHECK(message.get<ExternalCommand::Response>().error.type == 0);
+    CHECK(message.get<ExternalCommand::Response>().value == 18); // Actual output outlives both roles.
     std::puts(
         "Direct IPC + neutral Command declarations: NotReady preserves vector, RequestId echoed, late result valid"
     );

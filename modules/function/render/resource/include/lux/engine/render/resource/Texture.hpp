@@ -47,7 +47,12 @@ namespace lux::render
         static constexpr std::string_view name = "lux.render.CreateTexture";
         // Success certifies Copy, required Acquire and publication; the generic protocol has no GPU category.
         using Request = TextureWrite;
-        using Response = RenderResult<TextureId>;
+
+        struct Response final
+        {
+            RenderError error{};
+            TextureId texture{};
+        };
     };
 
     struct TextureRegionWrite final
@@ -64,7 +69,12 @@ namespace lux::render
         static constexpr std::string_view name = "lux.render.CreatePatchedTexture";
         // Success certifies Copy, required Acquire and publication; the generic protocol has no GPU category.
         using Request = TextureRegionWrite;
-        using Response = RenderResult<TextureId>;
+
+        struct Response final
+        {
+            RenderError error{};
+            TextureId texture{};
+        };
     };
 
     struct ReleaseTexture final
@@ -73,7 +83,7 @@ namespace lux::render
         // Client ends all Material/Attachment references first. Release does not update other Storage.
         // Success revokes the identity and hands accepted GPU use to Session cleanup, without a GPU wait.
         using Request = TextureId;
-        using Response = RenderResult<Ack>;
+        using Response = AckResponse;
     };
 
     class TextureStorage final

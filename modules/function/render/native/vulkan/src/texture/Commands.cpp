@@ -9,24 +9,25 @@ namespace lux::render::vulkan
         co_return cxx::unexpected(error);
     }
 
-    exec::task<CreateTexture::Response> TextureCommandHandler::createTexture(CreateTexture::Request&& input) noexcept
+    exec::task<RenderResult<TextureId>> TextureCommandHandler::createTextureSource(CreateTexture::Request&& input
+    ) noexcept
     {
         auto storage = device_.resources().borrow<TextureStorage>(input.storage);
         if (!storage)
         {
-            return rejected<CreateTexture::Response>(storage.error());
+            return rejected<RenderResult<TextureId>>(storage.error());
         }
         return render::upload(**storage, std::move(input));
     }
 
-    exec::task<CreatePatchedTexture::Response> TextureCommandHandler::createPatchedTexture(
+    exec::task<RenderResult<TextureId>> TextureCommandHandler::createPatchedTextureSource(
         CreatePatchedTexture::Request&& input
     ) noexcept
     {
         auto storage = device_.resources().borrow<TextureStorage>(input.texture.storage);
         if (!storage)
         {
-            return rejected<CreatePatchedTexture::Response>(storage.error());
+            return rejected<RenderResult<TextureId>>(storage.error());
         }
         return render::upload(**storage, std::move(input));
     }
@@ -39,11 +40,11 @@ namespace lux::render::vulkan
         auto storage = device_.resources().borrow<TextureStorage>(input.storage);
         if (!storage)
         {
-            response = cxx::unexpected(storage.error());
+            response.error = storage.error();
             return;
         }
         const auto released = (*storage)->release(input);
-        response = released ? ReleaseTexture::Response(Ack{}) : cxx::unexpected(released.error());
+        response.error = released ? RenderError{} : released.error();
     }
 
 } // namespace lux::render::vulkan

@@ -47,6 +47,11 @@ namespace lux::render
     {
     };
 
+    struct AckResponse final
+    {
+        RenderError error{};
+    };
+
     // Cold declaration metadata; same controlled C++ build is the host precondition.
     struct CommandDescriptor final
     {
@@ -57,11 +62,13 @@ namespace lux::render
 
     template <typename C>
     concept RenderCommand =
-        requires {
+        requires(typename C::Response& response) {
             typename C::Request;
             typename C::Response;
             std::string_view{C::name};
-        } && std::is_nothrow_move_constructible_v<typename C::Request> &&
+            { response.error } -> std::same_as<RenderError&>;
+        } && std::is_nothrow_default_constructible_v<typename C::Response> &&
+        std::is_nothrow_move_constructible_v<typename C::Request> &&
         std::is_nothrow_destructible_v<typename C::Request> &&
         std::is_nothrow_move_constructible_v<typename C::Response> &&
         std::is_nothrow_destructible_v<typename C::Response>;

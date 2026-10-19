@@ -350,100 +350,86 @@ namespace lux::render::vulkan
                 }
             }
         }
-        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        std::optional<CommandBatch> batch;
-        for (;;)
+        std::uint32_t frame_slot = 0;
+        while (!session_.uploads().tryBeginFrameWrite(frame_slot))
         {
-            if (stop.stop_requested())
-            {
-                co_return cxx::unexpected(RenderError{kWorkStopped});
-            }
-            auto ready = session_.queue().begin();
-            if (ready)
-            {
-                batch.emplace(std::move(*ready));
-                break;
-            }
-            if (ready.error().type != kCapacity)
+            if (auto ready = co_await session_.uploads().whenFrameWritable(
+                    sizeof(TransformMatrix) + sizeof(MeshInstanceGpuProperty) + sizeof(std::uint32_t) +
+                    sizeof(MeshInstancePageGpu) + sizeof(std::uint64_t)
+                );
+                !ready)
             {
                 co_return cxx::unexpected(ready.error());
             }
-            auto completed = co_await session_.queue().whenAvailable();
-            if (!completed)
-            {
-                co_return cxx::unexpected(completed.error());
-            }
         }
-        // No suspension after begin: all stream writes and page-table publication share one accepted batch.
-        const auto command = batch->native();
-        beforeWrite(command);
+        cxx::scope_exit finish_frame([&]() noexcept { session_.uploads().finishFrameWrite(frame_slot); });
+        std::array<BufferFill, 5> fills;
+        std::array<BufferCopy, 3> copies;
+        std::array<BufferWrite, 5> writes;
+        std::size_t fill_count = 0, copy_count = 0, write_count = 0;
         if (growing)
         {
             for (auto& field : gpu->fields)
             {
-                vkCmdFillBuffer(command, field.handle(), 0, field.size(), 0);
+                fills[fill_count++] = {&field, 0, field.size(), 0};
             }
             if (root)
             {
-                vkCmdFillBuffer(command, root->root.handle(), 0, root->root.size(), 0);
+                fills[fill_count++] = {&root->root, 0, root->root.size(), 0};
             }
             if (leaf.buffer)
             {
-                vkCmdFillBuffer(command, leaf.buffer.handle(), 0, leaf.buffer.size(), 0);
+                fills[fill_count++] = {&leaf.buffer, 0, leaf.buffer.size(), 0};
             }
-            beforeWrite(command);
             if (!paged_ && flat_)
             {
                 for (std::size_t f = 0; f < kStride.size(); ++f)
                 {
-                    const VkBufferCopy copy{0, 0, flat_->fields[f].size()};
-                    vkCmdCopyBuffer(command, flat_->fields[f].handle(), gpu->fields[f].handle(), 1, &copy);
+                    copies[copy_count++] = {&flat_->fields[f], &gpu->fields[f], {0, 0, flat_->fields[f].size()}};
                 }
             }
         }
         const std::uint32_t alive = 1;
         auto& target = growing ? *gpu : *(paged_ ? pages_[page_index]->gpu : flat_);
         const auto slot = paged_ ? local : key.index;
-        vkCmdUpdateBuffer(
-            command,
-            target.fields[0].handle(),
-            std::uint64_t(slot) * kStride[0],
-            kStride[0],
-            input.transform.data()
-        );
-        vkCmdUpdateBuffer(command, target.fields[1].handle(), std::uint64_t(slot) * kStride[1], kStride[1], &*property);
-        vkCmdUpdateBuffer(command, target.fields[2].handle(), std::uint64_t(slot) * kStride[2], kStride[2], &alive);
+        writes[write_count++] =
+            {&target.fields[0], std::uint64_t(slot) * kStride[0], std::as_bytes(std::span(input.transform))};
+        writes[write_count++] =
+            {&target.fields[1], std::uint64_t(slot) * kStride[1], std::as_bytes(std::span(&*property, 1))};
+        writes[write_count++] =
+            {&target.fields[2], std::uint64_t(slot) * kStride[2], std::as_bytes(std::span(&alive, 1))};
+        MeshInstancePageGpu addresses{};
+        std::uint64_t leaf_address = 0;
         if (growing && paged_)
         {
             auto& table = root ? *root : *page_table_;
             auto& selected = leaf.buffer ? leaf : table.leaves[page_index / kMeshInstanceTableAxis];
-            const MeshInstancePageGpu addresses{
+            addresses = {
                 address(session_, gpu->fields[0]),
                 address(session_, gpu->fields[1]),
                 address(session_, gpu->fields[2])
             };
-            vkCmdUpdateBuffer(
-                command,
-                selected.buffer.handle(),
+            writes[write_count++] = {
+                &selected.buffer,
                 (page_index % kMeshInstanceTableAxis) * sizeof(addresses),
-                sizeof(addresses),
-                &addresses
-            );
+                std::as_bytes(std::span(&addresses, 1))
+            };
             if (leaf.buffer)
             {
-                const auto leaf_address = address(session_, leaf.buffer);
-                vkCmdUpdateBuffer(
-                    command,
-                    table.root.handle(),
+                leaf_address = address(session_, leaf.buffer);
+                writes[write_count++] = {
+                    &table.root,
                     (page_index / kMeshInstanceTableAxis) * sizeof(leaf_address),
-                    sizeof(leaf_address),
-                    &leaf_address
-                );
+                    std::as_bytes(std::span(&leaf_address, 1))
+                };
             }
         }
-        afterWrite(command);
-        auto accepted = std::move(*batch).submit();
-        if (!accepted)
+        if (auto accepted = co_await session_.uploads().updateBuffers(
+                std::span(writes).first(write_count),
+                std::span(copies).first(copy_count),
+                std::span(fills).first(fill_count)
+            );
+            !accepted)
         {
             co_return cxx::unexpected(accepted.error());
         }
@@ -567,36 +553,23 @@ namespace lux::render::vulkan
             releaseAfterGpu(session_, update_buffer_);
             update_buffer_ = std::move(*buffer);
         }
-        auto uploaded = co_await session_.uploads().writeBufferRange(update_buffer_, 0, bytes);
+        std::uint32_t frame_slot = 0;
+        while (!session_.uploads().tryBeginFrameWrite(frame_slot))
+        {
+            if (auto ready = co_await session_.uploads().whenFrameWritable(bytes.size()); !ready)
+            {
+                co_return cxx::unexpected(ready.error());
+            }
+        }
+        cxx::scope_exit finish_frame([&]() noexcept { session_.uploads().finishFrameWrite(frame_slot); });
+        const BufferWrite write{&update_buffer_, 0, bytes};
+        auto uploaded = co_await session_.uploads().writeBuffers(std::span(&write, 1));
         if (!uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
         }
-        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        std::optional<CommandBatch> batch;
-        for (;;)
-        {
-            if (stop.stop_requested())
-            {
-                co_return cxx::unexpected(RenderError{kWorkStopped});
-            }
-            auto ready = session_.queue().begin();
-            if (ready)
-            {
-                batch.emplace(std::move(*ready));
-                break;
-            }
-            if (ready.error().type != kCapacity)
-            {
-                co_return cxx::unexpected(ready.error());
-            }
-            auto completed = co_await session_.queue().whenAvailable();
-            if (!completed)
-            {
-                co_return cxx::unexpected(completed.error());
-            }
-        }
-        beforeWrite(batch->native());
+        std::vector<BufferCopy> transfers;
+        transfers.reserve(dirty.size());
         for (std::size_t first = 0; first < dirty.size();)
         {
             const auto slot = dirty[first] * kMeshInstanceDirtySlots;
@@ -614,12 +587,10 @@ namespace lux::render::vulkan
                 fieldOffset(slot, sizeof(TransformMatrix)),
                 (end - first) * block_bytes
             };
-            vkCmdCopyBuffer(batch->native(), update_buffer_.handle(), target.handle(), 1, &copy);
+            transfers.push_back({&update_buffer_, &target, copy});
             first = end;
         }
-        afterWrite(batch->native());
-        auto accepted = std::move(*batch).submit();
-        if (!accepted)
+        if (auto accepted = co_await session_.uploads().updateBuffers({}, transfers); !accepted)
         {
             co_return cxx::unexpected(accepted.error());
         }
@@ -668,54 +639,37 @@ namespace lux::render::vulkan
         }
         updating_ = true;
         cxx::scope_exit cleanup([&]() noexcept { updating_ = false; });
-        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        std::optional<CommandBatch> batch;
-        for (;;)
+        std::uint32_t frame_slot = 0;
+        while (!session_.uploads().tryBeginFrameWrite(frame_slot))
         {
-            if (stop.stop_requested())
-            {
-                co_return cxx::unexpected(RenderError{kWorkStopped});
-            }
-            auto ready = session_.queue().begin();
-            if (ready)
-            {
-                batch.emplace(std::move(*ready));
-                break;
-            }
-            if (ready.error().type != kCapacity)
+            if (auto ready = co_await session_.uploads().whenFrameWritable(
+                    input.updates.size() * (sizeof(TransformMatrix) + sizeof(MeshInstanceGpuProperty))
+                );
+                !ready)
             {
                 co_return cxx::unexpected(ready.error());
             }
-            auto completed = co_await session_.queue().whenAvailable();
-            if (!completed)
-            {
-                co_return cxx::unexpected(completed.error());
-            }
         }
-        // All references and fields are validated before the single non-suspending recording segment.
-        beforeWrite(batch->native());
+        cxx::scope_exit finish_frame([&]() noexcept { session_.uploads().finishFrameWrite(frame_slot); });
+        std::vector<BufferWrite> writes;
+        writes.reserve(input.updates.size() * 2);
         for (std::size_t i = 0; i < input.updates.size(); ++i)
         {
             const auto& value = input.updates[i];
             const auto slot = value.instance.local.index;
             const auto page = slot / kMeshInstancePageSlots;
-            vkCmdUpdateBuffer(
-                batch->native(),
-                fieldBuffer(page, EMeshInstanceBinding::TRANSFORMS).handle(),
-                fieldOffset(slot, kStride[0]),
-                kStride[0],
-                value.description.transform.data()
+            writes.push_back(
+                {&fieldBuffer(page, EMeshInstanceBinding::TRANSFORMS),
+                 fieldOffset(slot, kStride[0]),
+                 std::as_bytes(std::span(value.description.transform))}
             );
-            vkCmdUpdateBuffer(
-                batch->native(),
-                fieldBuffer(page, EMeshInstanceBinding::PROPERTIES).handle(),
-                fieldOffset(slot, kStride[1]),
-                kStride[1],
-                &properties[i]
+            writes.push_back(
+                {&fieldBuffer(page, EMeshInstanceBinding::PROPERTIES),
+                 fieldOffset(slot, kStride[1]),
+                 std::as_bytes(std::span(&properties[i], 1))}
             );
         }
-        afterWrite(batch->native());
-        if (auto accepted = std::move(*batch).submit(); !accepted)
+        if (auto accepted = co_await session_.uploads().updateBuffers(writes); !accepted)
         {
             co_return cxx::unexpected(accepted.error());
         }
@@ -748,38 +702,20 @@ namespace lux::render::vulkan
         }
         updating_ = true;
         cxx::scope_exit cleanup([&]() noexcept { updating_ = false; });
-        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        std::optional<CommandBatch> batch;
-        for (;;)
+        std::uint32_t frame_slot = 0;
+        while (!session_.uploads().tryBeginFrameWrite(frame_slot))
         {
-            if (stop.stop_requested())
-            {
-                co_return cxx::unexpected(RenderError{kWorkStopped});
-            }
-            auto ready = session_.queue().begin();
-            if (ready)
-            {
-                batch.emplace(std::move(*ready));
-                break;
-            }
-            if (ready.error().type != kCapacity)
+            if (auto ready = co_await session_.uploads().whenFrameWritable(sizeof(std::uint32_t)); !ready)
             {
                 co_return cxx::unexpected(ready.error());
             }
-            auto completed = co_await session_.queue().whenAvailable();
-            if (!completed)
-            {
-                co_return cxx::unexpected(completed.error());
-            }
         }
+        cxx::scope_exit finish_frame([&]() noexcept { session_.uploads().finishFrameWrite(frame_slot); });
         const auto slot = input.local.index;
         auto& target = fieldBuffer(slot / kMeshInstancePageSlots, EMeshInstanceBinding::ALIVE);
         const std::uint32_t dead = 0;
-        beforeWrite(batch->native());
-        vkCmdUpdateBuffer(batch->native(), target.handle(), fieldOffset(slot, sizeof(dead)), sizeof(dead), &dead);
-        afterWrite(batch->native());
-        auto accepted = std::move(*batch).submit();
-        if (!accepted)
+        const BufferWrite write{&target, fieldOffset(slot, sizeof(dead)), std::as_bytes(std::span(&dead, 1))};
+        if (auto accepted = co_await session_.uploads().updateBuffers(std::span(&write, 1)); !accepted)
         {
             co_return cxx::unexpected(accepted.error());
         }

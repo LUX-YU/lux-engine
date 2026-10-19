@@ -54,21 +54,21 @@ namespace lux::render
         auto owner = findStorageSet(input.owner);
         if (!owner)
         {
-            output_response = cxx::unexpected(owner.error());
+            output_response.error = owner.error();
             return;
         }
         if (!device->resources().factory(input.type))
         {
-            output_response = cxx::unexpected(RenderError{kStorageFactory});
+            output_response.error = RenderError{kStorageFactory};
             return;
         }
         const auto id = (*owner)->find(input.type, input.key);
         if (id.isNull())
         {
-            output_response = cxx::unexpected(RenderError{kStorageIdentity});
+            output_response.error = RenderError{kStorageIdentity};
             return;
         }
-        output_response = id;
+        output_response = {{}, id};
     }
 
     void RenderServer::Impl::prepareStorage(
@@ -80,16 +80,16 @@ namespace lux::render
         auto owner = findStorageSet(input.location.owner);
         if (!owner)
         {
-            output_response = cxx::unexpected(owner.error());
+            output_response.error = owner.error();
             return;
         }
         auto id = (*owner)->getOrCreate(input.location.type, input.location.key, input.config);
         if (!id)
         {
-            output_response = cxx::unexpected(id.error());
+            output_response.error = id.error();
             return;
         }
-        output_response = *id;
+        output_response = {{}, *id};
     }
 
     void RenderServer::Impl::removeStorage(
@@ -101,15 +101,15 @@ namespace lux::render
         auto* owner = device->resources().owner(id);
         if (!owner)
         {
-            output_response = cxx::unexpected(RenderError{kStorageIdentity});
+            output_response.error = RenderError{kStorageIdentity};
             return;
         }
         if (auto result = owner->remove(id); !result)
         {
-            output_response = cxx::unexpected(result.error());
+            output_response.error = result.error();
             return;
         }
-        output_response = Ack{};
+        output_response = {};
     }
 
     RenderResult<void> RenderServer::Impl::detachAttachment(AttachmentId id) noexcept
@@ -142,39 +142,39 @@ namespace lux::render
         const bool invalid = !view || !target || !effect;
         if (invalid)
         {
-            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
         if (!target->attachment.isNull())
         {
-            output_response = cxx::unexpected(RenderError{kRuntimeState});
+            output_response.error = RenderError{kRuntimeState};
             return;
         }
         if (auto valid = decoded->viewport.validate(); !valid)
         {
-            output_response = cxx::unexpected(valid.error());
+            output_response.error = valid.error();
             return;
         }
         auto prepared =
-            device->prepare(*effect->code, target->description, &scene->storages, &view->storages, effect->arguments);
+            device->prepare(*effect->code, *target->physical, &scene->storages, &view->storages, effect->arguments);
         if (!prepared)
         {
-            output_response = cxx::unexpected(prepared.error());
+            output_response.error = prepared.error();
             return;
         }
         if (auto values = (*prepared)->setContextParameters(decoded->parameters); !values)
         {
-            output_response = cxx::unexpected(values.error());
+            output_response.error = values.error();
             return;
         }
         (*prepared)->setViewport(decoded->viewport);
-        output_response.emplace();
+        output_response = {};
         (*prepared)->forEachStorage([&](std::string_view key, StorageId id) noexcept
-                                    { output_response->storages.push_back({std::string(key), id}); });
+                                    { output_response.storages.push_back({std::string(key), id}); });
         const auto id =
             attachments.emplace(EffectAttachment{effect_id, scene_id, view_id, target_id, std::move(*prepared)});
         attachments.find(id)->link(id, *view, *effect, *target);
-        output_response->attachment = id;
+        output_response.attachment = id;
         active_targets.emplace(target_id);
         storages_created.store(device->resources().creations());
         return;
@@ -185,6 +185,11 @@ namespace lux::render
         const TargetDesc& description
     ) noexcept
     {
+        auto physical = vulkan::OffscreenTarget::create(*device, description);
+        if (!physical)
+        {
+            return cxx::unexpected(physical.error());
+        }
         auto* group = target.attachment.isNull() ? nullptr : attachments.find(target.attachment);
         if (group)
         {
@@ -192,7 +197,7 @@ namespace lux::render
             const auto& effect = *effects.find(group->effect);
             auto candidate = device->prepare(
                 *effect.code,
-                description,
+                **physical,
                 &scenes.find(group->scene)->storages,
                 &scenes.find(group->scene)->views.find(group->view)->storages,
                 effect.arguments
@@ -208,6 +213,7 @@ namespace lux::render
             (*candidate)->setViewport(group->context->viewport());
             group->context = std::move(*candidate);
         }
+        target.physical = std::move(*physical);
         target.description = description;
         ++target.epoch;
         storages_created.store(device->resources().creations());
@@ -219,7 +225,7 @@ namespace lux::render
         CreateScene::Response& output_response
     ) noexcept
     {
-        output_response = SceneCreated{scenes.emplace(device->resources())};
+        output_response = SceneCreated{{}, scenes.emplace(device->resources())};
     }
 
     void RenderServer::Impl::removeScene(
@@ -232,7 +238,7 @@ namespace lux::render
         auto* scene = scenes.find(scene_id);
         if (!scene)
         {
-            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
         for (auto& view : scene->views)
@@ -241,13 +247,13 @@ namespace lux::render
             {
                 if (auto result = detachAttachment(view.attachments.back()); !result)
                 {
-                    output_response = cxx::unexpected(result.error());
+                    output_response.error = result.error();
                     return;
                 }
             }
         }
         scenes.erase(scene_id);
-        output_response = Ack{};
+        output_response = {};
     }
 
     void RenderServer::Impl::createView(
@@ -259,10 +265,10 @@ namespace lux::render
         auto* scene = scenes.find(input->scene);
         if (!scene)
         {
-            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        output_response = ViewCreated{scene->views.emplace(device->resources())};
+        output_response = ViewCreated{{}, scene->views.emplace(device->resources())};
     }
 
     void RenderServer::Impl::updateAttachmentInputs(
@@ -273,22 +279,22 @@ namespace lux::render
         auto* attachment = attachments.find(input.attachment);
         if (!attachment)
         {
-            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
         if (auto valid = input.viewport.validate(); !valid)
         {
-            output_response = cxx::unexpected(valid.error());
+            output_response.error = valid.error();
             return;
         }
         // Native validates the complete input size before changing any parameter bytes.
         if (auto applied = attachment->context->setContextParameters(input.parameters); !applied)
         {
-            output_response = cxx::unexpected(applied.error());
+            output_response.error = applied.error();
             return;
         }
         attachment->context->setViewport(input.viewport);
-        output_response = Ack{};
+        output_response = {};
     }
 
     void RenderServer::Impl::removeView(
@@ -301,19 +307,19 @@ namespace lux::render
         auto* view = scene ? scene->views.find(input->view) : nullptr;
         if (!view)
         {
-            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
         while (!view->attachments.empty())
         {
             if (auto result = detachAttachment(view->attachments.back()); !result)
             {
-                output_response = cxx::unexpected(result.error());
+                output_response.error = result.error();
                 return;
             }
         }
         scene->views.erase(input->view);
-        output_response = Ack{};
+        output_response = {};
     }
 
     void RenderServer::Impl::createTarget(
@@ -324,15 +330,21 @@ namespace lux::render
         const auto* input = &_request;
         if (auto valid = input->description.validate(); !valid)
         {
-            output_response = cxx::unexpected(valid.error());
+            output_response.error = valid.error();
             return;
         }
         if (input->description.kind != ETargetKind::OFFSCREEN)
         {
-            output_response = cxx::unexpected(RenderError{kRuntimeUnsupported});
+            output_response.error = RenderError{kRuntimeUnsupported};
             return;
         }
-        output_response = TargetCreated{targets.emplace(input->description), 1};
+        auto physical = vulkan::OffscreenTarget::create(*device, input->description);
+        if (!physical)
+        {
+            output_response.error = physical.error();
+            return;
+        }
+        output_response = TargetCreated{{}, targets.emplace(std::move(*physical)), 1};
     }
 
     void RenderServer::Impl::resizeTarget(
@@ -343,31 +355,31 @@ namespace lux::render
         const auto* input = &_request;
         if (auto valid = input->description.validate(); !valid)
         {
-            output_response = cxx::unexpected(valid.error());
+            output_response.error = valid.error();
             return;
         }
         if (input->description.kind != ETargetKind::OFFSCREEN)
         {
-            output_response = cxx::unexpected(RenderError{kRuntimeUnsupported});
+            output_response.error = RenderError{kRuntimeUnsupported};
             return;
         }
         auto* target = targets.find(input->target);
         if (!target)
         {
-            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
         if (target->epoch == UINT64_MAX)
         {
-            output_response = cxx::unexpected(RenderError{kRuntimeCapacity});
+            output_response.error = RenderError{kRuntimeCapacity};
             return;
         }
         if (auto changed = resizeTargetResources(*target, input->description); !changed)
         {
-            output_response = cxx::unexpected(changed.error());
+            output_response.error = changed.error();
             return;
         }
-        output_response = TargetCreated{input->target, target->epoch};
+        output_response = TargetCreated{{}, input->target, target->epoch};
     }
 
     void RenderServer::Impl::detachEffect(const Detach::Request& _request, Detach::Response& output_response) noexcept
@@ -375,14 +387,14 @@ namespace lux::render
         const auto* attachment = attachments.find(_request);
         if (!attachment)
         {
-            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
         if (auto result = detachAttachment(_request); !result)
         {
-            output_response = cxx::unexpected(result.error());
+            output_response.error = result.error();
             return;
         }
-        output_response = Ack{};
+        output_response = {};
     }
 } // namespace lux::render

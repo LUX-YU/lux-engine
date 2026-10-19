@@ -43,7 +43,7 @@ namespace lux::render::vulkan
           contexts_(std::move(other.contexts_)), storage_groups_(std::move(other.storage_groups_)),
           passes_(std::move(other.passes_)), pass_indices_(std::move(other.pass_indices_)),
           pipelines_(std::move(other.pipelines_)), descriptor_layouts_(std::move(other.descriptor_layouts_)),
-          output_(other.output_)
+          output_(other.output_), resizable_output_(other.resizable_output_)
     {
     }
 
@@ -56,6 +56,10 @@ namespace lux::render::vulkan
             return false;
         }
         const bool resized = target.width != target_.width || target.height != target_.height;
+        if (resized && !resizable_output_)
+        {
+            return false;
+        }
         if (resized)
         {
             for (const auto& pass : passes_)
@@ -519,12 +523,20 @@ namespace lux::render::vulkan
             {
                 return cxx::unexpected(RenderError{kUnsupported});
             }
-            if (*output.target != target || result.output_ != kGraphInvalidIndex)
+            const auto& required = *output.target;
+            const auto& image = std::get<GraphImageDesc>(plan.description);
+            const bool relative = required.width == 0 && required.height == 0;
+            const bool incompatible =
+                required.format != target.format || required.samples != target.samples || image.width != target.width ||
+                image.height != target.height ||
+                (!relative && (required.width != target.width || required.height != target.height));
+            if (incompatible || result.output_ != kGraphInvalidIndex)
             {
                 return cxx::unexpected(RenderError{kInvalidArgument});
             }
             result.output_ = output.version.resource.index;
-            plan.target_sized = true;
+            result.resizable_output_ = relative;
+            plan.target_sized = relative;
         }
         if (result.output_ == kGraphInvalidIndex)
         {

@@ -287,46 +287,28 @@ namespace lux::render::vulkan
         }
         // Reusable preparation Buffers stay on Graphics. The range upload orders their previous
         // GPU reads before overwrite; table contents remain unchanged until the final copy is accepted.
-        auto uploaded = co_await session_.uploads().writeBufferRange(staging, 0, source);
+        std::uint32_t frame_slot = 0;
+        while (!session_.uploads().tryBeginFrameWrite(frame_slot))
+        {
+            if (auto ready = co_await session_.uploads().whenFrameWritable(source.size()); !ready)
+            {
+                co_return cxx::unexpected(ready.error());
+            }
+        }
+        cxx::scope_exit finish_frame([&]() noexcept { session_.uploads().finishFrameWrite(frame_slot); });
+        const BufferWrite write{&staging, 0, source};
+        auto uploaded = co_await session_.uploads().writeBuffers(std::span(&write, 1));
         if (!uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
         }
-        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        std::optional<CommandBatch> batch;
-        for (;;)
-        {
-            if (stop.stop_requested())
-            {
-                co_return cxx::unexpected(RenderError{kWorkStopped});
-            }
-            auto ready = session_.queue().begin();
-            if (ready)
-            {
-                batch.emplace(std::move(*ready));
-                break;
-            }
-            if (ready.error().type != kCapacity)
-            {
-                co_return cxx::unexpected(ready.error());
-            }
-            auto completed = co_await session_.queue().whenAvailable();
-            if (!completed)
-            {
-                co_return cxx::unexpected(completed.error());
-            }
-        }
-        const auto command = batch->native();
-        beforeWrite(command);
         if (!growing)
         {
-            const VkBufferCopy copy{0, std::uint64_t(slot) * table.stride, table.stride};
-            vkCmdCopyBuffer(command, staging.handle(), table.buffer.handle(), 1, &copy);
-        }
-        afterWrite(command);
-        if (auto accepted = std::move(*batch).submit(); !accepted)
-        {
-            co_return cxx::unexpected(accepted.error());
+            const BufferCopy copy{&staging, &table.buffer, {0, std::uint64_t(slot) * table.stride, table.stride}};
+            if (auto accepted = co_await session_.uploads().updateBuffers({}, std::span(&copy, 1)); !accepted)
+            {
+                co_return cxx::unexpected(accepted.error());
+            }
         }
         if (growing)
         {

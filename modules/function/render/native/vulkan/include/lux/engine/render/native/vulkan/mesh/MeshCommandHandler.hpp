@@ -13,18 +13,37 @@ namespace lux::render::vulkan
 
     class MeshCommandHandler final
     {
+    private:
+        static constexpr auto create_mesh_response_ = [](RenderResult<MeshId> result) noexcept -> CreateMesh::Response
+        {
+            if (!result)
+            {
+                return {result.error()};
+            }
+            return {{}, *result};
+        };
+
     public:
+        using CreateMeshSender =
+            decltype(stdexec::then(std::declval<exec::task<RenderResult<MeshId>>>(), create_mesh_response_));
+
         static constexpr std::string_view name = "lux.render.vulkan.MeshCommandHandler";
 
         explicit MeshCommandHandler(DeviceSession& device) noexcept : device_(device) {}
 
-        exec::task<CreateMesh::Response> createMesh(CreateMesh::Request&&) noexcept;
+        CreateMeshSender createMesh(CreateMesh::Request&& input) noexcept
+        {
+            return createMeshSource(std::move(input)) | stdexec::then(create_mesh_response_);
+        }
+
         void releaseMesh(const ReleaseMesh::Request&, ReleaseMesh::Response&) noexcept;
         using Bindings = std::tuple<
             CommandMethod<CreateMesh, &MeshCommandHandler::createMesh>,
             CommandMethod<ReleaseMesh, &MeshCommandHandler::releaseMesh>>;
 
     private:
+        exec::task<RenderResult<MeshId>> createMeshSource(CreateMesh::Request&&) noexcept;
+
         DeviceSession& device_;
     };
 

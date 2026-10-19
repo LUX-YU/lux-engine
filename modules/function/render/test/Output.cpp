@@ -3,6 +3,7 @@
 #include <lux/engine/render/graph/Builder.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
+#include <lux/engine/render/native/vulkan/OffscreenTarget.hpp>
 using namespace foundation_test;
 
 static void copyBuffer(SubmissionQueue& queue, VkBuffer source, VkBuffer output, std::uint64_t bytes)
@@ -41,7 +42,7 @@ static void graphOutput(InstanceContext& bootstrap)
          {{{color, 1}, {}, EGraphAccess::READ, 0, {}, EGraphUse::TRANSFER_SOURCE},
           {{pixels, 1}, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::TRANSFER_DESTINATION}}}
     ));
-    CHECK(builder.exportOutput({{color, 1}, {}, target}));
+    CHECK(builder.exportOutput({{color, 1}, {}, GraphOutputRequirements{target.format, target.samples}}));
     CHECK(builder.exportOutput({{pixels, 1}}));
     take(builder.addPass(
         {"copy-buffer",
@@ -66,11 +67,13 @@ static void graphOutput(InstanceContext& bootstrap)
         indexed,
         target
     ));
-    auto execution = take(session->prepare(graph, target));
+    auto physical = take(OffscreenTarget::create(*session, target));
+    auto execution = take(session->prepare(graph, *physical));
+    const std::array contexts{execution.get()};
     auto output =
         take(session->allocator().createBuffer(1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
-    CHECK(take(execution->execute()) == EExecutionOutcome::EXECUTED);
-    CHECK(take(execution->execute()) == EExecutionOutcome::PREVIOUS_SUBMISSION_PENDING);
+    CHECK(take(session->render(contexts)) == 1);
+    CHECK(take(session->render(contexts)) == 0);
     CHECK(session->drain());
     copyBuffer(session->queue(), execution->nativeBuffer(pixels.index), output.handle(), 1024);
     CHECK(session->drain());
@@ -82,8 +85,9 @@ static void graphOutput(InstanceContext& bootstrap)
         CHECK(bytes[i] == std::byte{255} && bytes[i + 1] == std::byte{0});
         CHECK(bytes[i + 2] == std::byte{255} && bytes[i + 3] == std::byte{255});
     }
-    CHECK(take(execution->execute()) == EExecutionOutcome::EXECUTED);
-    execution.reset(); // Physical frame resources and observer outlive the business Context.
+    CHECK(take(session->render(contexts)) == 1);
+    execution.reset(); // Physical resources outlive the business Context through Session cleanup.
+    physical.reset();
     CHECK(session->drain());
     output.release(session->allocator().native());
     std::puts("Graph output: explicit external copy, correct pixels, Context detached in flight");

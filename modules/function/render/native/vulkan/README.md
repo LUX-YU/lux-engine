@@ -23,8 +23,9 @@ occupied carrier before move assignment. No Image Alias API is exposed. CommandB
 and Pipeline handles remain carriers owned by their Queue, Context or compiled-plan collection.
 
 StorageSet exclusively owns professional Storage instances. ResourceRegistry holds non-owning indexes.
-Effect owns its immutable CompiledGraph; Attachment owns ExecutionContext. Context owns its frame
-resources and borrows the plan. End subscriptions before destroying Storage, and end Context borrows
+Effect owns its immutable CompiledGraph; Attachment owns ExecutionContext. OffscreenTarget owns the
+actual output Image/View; Context borrows that output and owns the other frame resources. End
+subscriptions before destroying Storage, and end Context borrows
 before releasing its plan. Clients settle related operations and detach uses before deleting Storage.
 No shared Context/Storage owner repairs an invalid call order.
 
@@ -46,6 +47,19 @@ Professional storage returns its upload Sender. `render::upload(storage, request
 concrete Sender. The operation owns input and unpublished content; UploadContext only stages bytes,
 records copies and establishes queue dependencies. CPU preparation uses the host CpuScheduler and
 returns to the Owner scheduler. Begin/Record/Submit is one non-suspending segment.
+
+`writeBuffers` accepts multiple borrowed ranges in one operation. UploadContext packs a finite window
+of Staging ranges with one CPU scheduling step and combines ready work into physical queue submissions.
+Small atomic field updates, fills and existing GPU range copies use that same submission path. Pages
+reuse their bytes only after CPU reservations and their actual queue conditions end. Counters distinguish
+CPU preparation windows, Copy regions, Copy submissions and Acquire submissions; they are not synonyms.
+
+DeviceSession selects the writable frame and closes a bounded input prefix. Dynamic Storage operations
+join that frame before their first write, then adopt or roll back before ending their participation.
+After Queue observation and dispatch, the host consumes the Owner ready prefix before calling `render`.
+This lets a woken writer join before the next frame closes admission. `render` also seals upload-only
+frames when there are no active Contexts. Once writes settle, Contexts prepare bindings and record into
+one shared batch; only the Session submits it. Contexts do not submit independently.
 
 Successful upload means required Copy/Acquire submissions were accepted, future use is ordered, and
 Storage published the handle. It does not require waiting for the last GPU fence. Failure retains

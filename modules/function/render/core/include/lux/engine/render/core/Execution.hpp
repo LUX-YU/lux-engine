@@ -11,14 +11,15 @@ namespace lux::render
         EXECUTED,
         PREVIOUS_SUBMISSION_PENDING,
         QUEUE_FULL,
-        RECORDING_BUSY
+        RECORDING_BUSY,
+        RESOURCE_PREPARATION_PENDING
     };
 
     // Owner-thread snapshot for one actual execution context. Replaced contexts start at zero.
     // Native failures remain errors; these counters describe only successful decisions.
     struct ExecutionProgress final
     {
-        std::array<std::uint64_t, 4> counts{};
+        std::array<std::uint64_t, 5> counts{};
 
         [[nodiscard]] std::uint64_t count(EExecutionOutcome outcome) const noexcept
         {

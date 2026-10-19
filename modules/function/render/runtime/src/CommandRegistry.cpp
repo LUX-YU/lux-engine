@@ -42,11 +42,11 @@ namespace lux::render::runtime_detail
         const auto* entry = commands_.find(command);
         if (!entry)
         {
-            response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            response.error = RenderError{kRuntimeIdentity};
             return;
         }
         const auto* selected = entry->selectedBinding();
-        CommandBindings result{selected ? selected->handler : HandlerId{}};
+        CommandBindings result{{}, selected ? selected->handler : HandlerId{}};
         result.handlers.reserve(entry->bindings.size());
         for (const auto& binding : entry->bindings)
         {
@@ -69,18 +69,18 @@ namespace lux::render::runtime_detail
         auto* entry = commands_.find(input.command);
         if (!entry)
         {
-            response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            response.error = RenderError{kRuntimeIdentity};
             return;
         }
         if (entry->bindings.front().handler.isNull())
         {
-            response = cxx::unexpected(RenderError{kRuntimeUnsupported});
+            response.error = RenderError{kRuntimeUnsupported};
             return;
         }
         if (input.handler.isNull())
         {
             entry->selected_binding = CommandRecord::kUnbound;
-            response = Ack{};
+            response = {};
             return;
         }
         // There is no per-Handler erase/hot unload. SlotMap assigns monotonically increasing
@@ -94,11 +94,11 @@ namespace lux::render::runtime_detail
         const bool is_missing_handler = found == entry->bindings.end() || found->handler != input.handler;
         if (is_missing_handler)
         {
-            response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            response.error = RenderError{kRuntimeIdentity};
             return;
         }
         entry->selected_binding = static_cast<std::size_t>(found - entry->bindings.begin());
-        response = Ack{};
+        response = {};
     }
 
     CommandId CommandRegistry::registerCommand(CommandBinding binding) noexcept

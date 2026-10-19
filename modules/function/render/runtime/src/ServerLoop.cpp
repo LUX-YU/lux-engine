@@ -4,24 +4,29 @@ namespace lux::render
 {
     RenderResult<void> RenderServer::Impl::advanceRendering() noexcept
     {
+        if (auto observed = device->collect(); !observed)
+        {
+            return observed;
+        }
+        device->dispatchCompletions();
+        // GPU reuse notifications resume admitted writers on the Owner. Consume this ready
+        // prefix before closing frame input, otherwise continuous drawing can starve retries.
+        drainCompletions();
         const auto& active = active_targets.keys();
+        frame_contexts.clear();
         for (std::size_t i = 0; i < active.size(); ++i)
         {
             const auto& target = *targets.find(active[(next_target + i) % active.size()]);
-            auto result = attachments.find(target.attachment)->context->execute();
-            if (!result)
-            {
-                return cxx::unexpected(result.error());
-            }
-            if (*result == EExecutionOutcome::EXECUTED)
-            {
-                ++submissions;
-            }
+            frame_contexts.push_back(attachments.find(target.attachment)->context.get());
         }
+        auto accepted = device->render(frame_contexts);
+        if (!accepted)
+        {
+            return cxx::unexpected(accepted.error());
+        }
+        submissions += *accepted;
         next_target = active.empty() ? 0 : (next_target + 1) % active.size();
-        auto collected = device->collect();
-        device->dispatchCompletions();
-        return collected;
+        return {};
     }
 
     void RenderServer::Impl::queryExecutionProgress(
@@ -32,10 +37,10 @@ namespace lux::render
         const auto* attachment = attachments.find(_request);
         if (!attachment)
         {
-            output_response = cxx::unexpected(RenderError{kRuntimeIdentity});
+            output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        output_response = attachment->context->progress();
+        output_response = {{}, attachment->context->progress()};
     }
 
     void RenderServer::Impl::queryRenderStats(
@@ -44,13 +49,13 @@ namespace lux::render
     ) noexcept
     {
         output_response =
-            RenderStatsSnapshot{ticks.load(), commands.load(), compiled_graphs.load(), submissions.load()};
+            RenderStatsSnapshot{{}, ticks.load(), commands.load(), compiled_graphs.load(), submissions.load()};
     }
 
     void RenderServer::Impl::stopCommand(const Stop::Request& _request, Stop::Response& output_response) noexcept
     {
         stop_requested.store(true);
-        output_response = Ack{};
+        output_response = {};
     }
 
     void RenderServer::Impl::dispatchRequest(ipc::ReceivedRequest received) noexcept
@@ -59,11 +64,11 @@ namespace lux::render
         const auto* entry = command_registry_.findCommand(commandIdFromTag(received.tag()));
         if (!entry || route.request_id.isNull())
         {
-            response_outbox_.emplaceResponse<RenderError>(route, RenderError{kCommandContract});
+            response_outbox_.emplaceResponse<AckResponse>(route, AckResponse{RenderError{kCommandContract}});
         }
         else if (received.message().typeHash() != entry->description->request.token.hash())
         {
-            response_outbox_.emplaceResponse<RenderError>(route, RenderError{kCommandContract});
+            entry->make_error(response_outbox_.prepare(route), RenderError{kCommandContract});
         }
         else if (!entry->selectedBinding())
         {
@@ -145,6 +150,7 @@ namespace lux::render
             device->deferRelease([code = std::move(effect.code)]() mutable noexcept { code.reset(); });
         }
         effects.clear();
+        targets.clear();
         scenes.clear();
         command_registry_.clear(); // All operations ended; professional Handler borrows still have a live Device.
         device.reset();
@@ -199,10 +205,23 @@ namespace lux::render
             ++s.ticks;
             if (!progressed && !s.stop_requested.load())
             {
-                // GPU fences have no CPU notification, and IPC receive inspects a bounded
-                // portion of the Link roster. Request a bounded revisit deadline (subject to OS scheduling).
-                // Active work never waits; request/CPU/stop notifications interrupt idle waits.
-                notifications.waitUntil(observed, std::chrono::steady_clock::now() + std::chrono::milliseconds(1));
+                if (notifications.workEpoch() != observed || !s.render_loop_.empty())
+                {
+                    continue;
+                }
+                if (s.device->pendingGpuWork())
+                {
+                    if (auto advanced = s.device->waitForProgress(s.config.gpu_wait_ns); !advanced)
+                    {
+                        result = cxx::unexpected(advanced.error());
+                        break;
+                    }
+                }
+                else
+                {
+                    // Receive only inspected a bounded prefix of Links. Preserve its finite revisit.
+                    notifications.waitUntil(observed, std::chrono::steady_clock::now() + std::chrono::milliseconds(1));
+                }
             }
         }
         s.shutdown();

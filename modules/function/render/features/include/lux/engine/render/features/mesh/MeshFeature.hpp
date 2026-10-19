@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/core/Target.hpp>
+
 #include <array>
 #include <cstddef>
 #include <lux/engine/description/ShaderBlock.hpp>

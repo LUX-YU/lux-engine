@@ -24,8 +24,7 @@ namespace lux::render
 {
     template <class C, class H, auto Method>
     concept AsyncCommandHandlerFor =
-        RenderCommand<C> && std::constructible_from<typename C::Response, cxx::unexpected<RenderError>> &&
-        std::is_nothrow_invocable_v<decltype(Method), H&, typename C::Request&&> &&
+        RenderCommand<C> && std::is_nothrow_invocable_v<decltype(Method), H&, typename C::Request&&> &&
         std::same_as<
             decltype(Method),
             std::invoke_result_t<decltype(Method), H&, typename C::Request&&> (H::*)(typename C::Request&&) noexcept> &&
@@ -74,7 +73,7 @@ namespace lux::render
             CommandBinding result;
             result.descriptor_ = &commandDescriptor<C>();
             result.make_error_ = [](platform::ipc::IpcMessage& output, RenderError error) noexcept
-            { output.emplace<typename C::Response>(cxx::unexpected(error)); };
+            { output.emplace<typename C::Response>().error = error; };
             result.call_ = {
                 [](void* object, runtime_detail::CommandDispatchContext& context) noexcept
                 {
@@ -82,8 +81,8 @@ namespace lux::render
                     if constexpr (SyncCommandHandlerFor<C, H, Method>)
                     {
                         auto& output = runtime_detail::prepareResponse(context);
-                        auto& response =
-                            output.emplace<typename C::Response>(cxx::unexpected(RenderError{kRuntimeState}));
+                        auto& response = output.emplace<typename C::Response>();
+                        response.error = RenderError{kRuntimeState};
                         (static_cast<H*>(object)->*Method)(input, response);
                     }
                     else
@@ -95,7 +94,7 @@ namespace lux::render
                             std::move(sender) | stdexec::upon_error(ResponseError<C>{}) |
                             stdexec::upon_stopped(
                                 []() noexcept -> typename C::Response
-                                { return cxx::unexpected(RenderError{kCommandCancelled}); }
+                                { return ResponseError<C>{}(RenderError{kCommandCancelled}); }
                             ) |
                             stdexec::then(
                                 [record = &completion](typename C::Response response) noexcept
@@ -126,12 +125,14 @@ namespace lux::render
         {
             typename C::Response operator()(RenderError error) const noexcept
             {
-                return cxx::unexpected(error);
+                typename C::Response response{};
+                response.error = error;
+                return response;
             }
 
             typename C::Response operator()(CommandFailure failure) const noexcept
             {
-                return cxx::unexpected(failure.outcome_unknown ? RenderError{kOutcomeUnknown} : failure.error);
+                return (*this)(failure.outcome_unknown ? RenderError{kOutcomeUnknown} : failure.error);
             }
 
             [[noreturn]] typename C::Response operator()(std::exception_ptr) const noexcept

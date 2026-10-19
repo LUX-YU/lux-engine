@@ -97,7 +97,8 @@ namespace lux::render
         vulkan::DeviceOptions options
     ) noexcept
     {
-        const bool invalid = config.request_work_budget == 0 || config.max_config_bytes == 0;
+        const bool invalid =
+            config.request_work_budget == 0 || config.max_config_bytes == 0 || config.gpu_wait_ns > 1'000'000;
         if (invalid)
         {
             return cxx::unexpected(RenderError{kRuntimeCapacity});

@@ -8,6 +8,7 @@
 namespace lux::render::vulkan
 {
     class SubmissionQueue;
+    class DeviceSession;
     using SubmissionCallbackFn = void (*)(void*, RenderResult<void>) noexcept;
 
     // Address-stable, non-owning completion node. Unlinked before invoking user code.
@@ -120,6 +121,9 @@ namespace lux::render::vulkan
 
     private:
         friend class CommandBatch;
+        friend class DeviceSession;
+        friend class StagingArena;
+        friend class UploadContext;
         friend class ExecutionContext;
         friend class SubmissionCallback;
         struct Backing;

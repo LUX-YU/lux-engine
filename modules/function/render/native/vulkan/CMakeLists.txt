@@ -6,7 +6,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../engine/toolchain/shader/cmak
 include(cmake/Vma.cmake)
 
 set(LUX_NATIVE_SOURCES
-    src/Error.cpp src/DeviceSession.cpp src/DescriptorArray.cpp src/device/Device.cpp src/device/Vma.cpp
+    src/Error.cpp src/DeviceSession.cpp src/Frame.cpp src/OffscreenTarget.cpp src/DescriptorArray.cpp src/device/Device.cpp src/device/Vma.cpp
     src/transfer/Submission.cpp
     src/Compile.cpp src/LayoutPlan.cpp src/Shader.cpp src/Execution.cpp
     src/transfer/UploadContext.cpp src/transfer/StagingArena.cpp

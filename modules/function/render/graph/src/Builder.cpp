@@ -241,17 +241,14 @@ namespace lux::render
         output.range = *range;
         if (output.target)
         {
-            if (auto valid = output.target->validate(); !valid)
-            {
-                return cxx::unexpected(valid.error());
-            }
             const auto* image = std::get_if<GraphImageDesc>(&resource.description);
             const auto* part = std::get_if<GraphImageRange>(&output.range);
             const auto& target = *output.target;
-            const bool is_compatible = image && part && image->width == target.width &&
-                                       image->height == target.height && image->format == target.format &&
-                                       image->samples == target.samples && part->aspects == 1 && part->first_mip == 0 &&
-                                       part->mip_count == 1 && part->layer_count == 1;
+            const bool is_relative = target.width == 0 && target.height == 0;
+            const bool is_compatible =
+                image && part && (is_relative || (image->width == target.width && image->height == target.height)) &&
+                image->format == target.format && image->samples == target.samples && part->aspects == 1 &&
+                part->first_mip == 0 && part->mip_count == 1 && part->layer_count == 1;
             if (!is_compatible)
             {
                 return cxx::unexpected(graphError(kGraphConflictingOutput, {}, id));

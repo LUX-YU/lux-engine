@@ -9,12 +9,12 @@ namespace lux::render::vulkan
         co_return cxx::unexpected(error);
     }
 
-    exec::task<CreateMesh::Response> MeshCommandHandler::createMesh(CreateMesh::Request&& input) noexcept
+    exec::task<RenderResult<MeshId>> MeshCommandHandler::createMeshSource(CreateMesh::Request&& input) noexcept
     {
         auto storage = device_.resources().borrow<MeshStorage>(input.storage);
         if (!storage)
         {
-            return rejected<CreateMesh::Response>(storage.error());
+            return rejected<RenderResult<MeshId>>(storage.error());
         }
         return render::upload(**storage, std::move(input));
     }
@@ -24,11 +24,11 @@ namespace lux::render::vulkan
         auto storage = device_.resources().borrow<MeshStorage>(input.storage);
         if (!storage)
         {
-            response = cxx::unexpected(storage.error());
+            response.error = storage.error();
             return;
         }
         const auto released = (*storage)->release(input);
-        response = released ? ReleaseMesh::Response(Ack{}) : cxx::unexpected(released.error());
+        response.error = released ? RenderError{} : released.error();
     }
 
 } // namespace lux::render::vulkan

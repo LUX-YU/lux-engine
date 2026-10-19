@@ -4,6 +4,7 @@
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/native/vulkan/OffscreenTarget.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <memory>
@@ -36,10 +37,14 @@ namespace lux::render::runtime_detail
     struct RenderTarget final
     {
         TargetDesc description;
+        std::unique_ptr<vulkan::OffscreenTarget> physical;
         std::uint64_t epoch = 1;
         AttachmentId attachment;
 
-        explicit RenderTarget(TargetDesc value = {}) noexcept : description(value) {}
+        explicit RenderTarget(std::unique_ptr<vulkan::OffscreenTarget> value) noexcept
+            : description(value->description()), physical(std::move(value))
+        {
+        }
 
         RenderTarget(const RenderTarget&) = delete;
         RenderTarget& operator=(const RenderTarget&) = delete;

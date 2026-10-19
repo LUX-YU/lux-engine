@@ -77,14 +77,19 @@ namespace lux::render
     {
         static constexpr std::string_view name = "lux.render.CreateMesh";
         using Request = MeshWrite;
-        using Response = RenderResult<MeshId>;
+
+        struct Response final
+        {
+            RenderError error{};
+            MeshId mesh{};
+        };
     };
 
     struct ReleaseMesh final
     {
         static constexpr std::string_view name = "lux.render.ReleaseMesh";
         using Request = MeshId;
-        using Response = RenderResult<Ack>;
+        using Response = AckResponse;
     };
 
     template <> struct ConfigValueTraits<MeshDescription> final

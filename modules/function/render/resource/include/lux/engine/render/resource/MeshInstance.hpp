@@ -84,14 +84,25 @@ namespace lux::render
     {
         static constexpr std::string_view name = "lux.render.CreateMeshInstance";
         using Request = MeshInstanceCreate;
-        using Response = RenderResult<MeshInstanceId>;
+
+        struct Response final
+        {
+            RenderError error{};
+            MeshInstanceId instance{};
+        };
     };
 
     struct UpdateTransforms final
     {
         static constexpr std::string_view name = "lux.render.UpdateTransforms";
         using Request = TransformBatch;
-        using Response = RenderResult<TransformApplied>;
+
+        struct Response final
+        {
+            RenderError error{};
+            std::uint64_t sequence = 0;
+            std::uint32_t changed = 0;
+        };
     };
 
     struct MeshInstanceUpdate final
@@ -113,14 +124,20 @@ namespace lux::render
         // Client supplies unique changed instances and keeps referenced Mesh/Material identities valid.
         // The entire batch validates before a single GPU submission and CPU adoption.
         using Request = MeshInstanceBatch;
-        using Response = RenderResult<TransformApplied>;
+
+        struct Response final
+        {
+            RenderError error{};
+            std::uint64_t sequence = 0;
+            std::uint32_t changed = 0;
+        };
     };
 
     struct ReleaseMeshInstance final
     {
         static constexpr std::string_view name = "lux.render.ReleaseMeshInstance";
         using Request = MeshInstanceId;
-        using Response = RenderResult<Ack>;
+        using Response = AckResponse;
     };
 
     class MeshInstanceStorage final

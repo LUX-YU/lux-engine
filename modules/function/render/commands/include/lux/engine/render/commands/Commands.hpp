@@ -104,6 +104,7 @@ namespace lux::render
 
     struct AttachmentCreated final
     {
+        RenderError error{};
         AttachmentId attachment;
         std::vector<StorageBindingInfo> storages;
     };
@@ -112,46 +113,61 @@ namespace lux::render
     {
         static constexpr std::string_view name{"render.storage.find"};
         using Request = StorageLocation;
-        using Response = RenderResult<StorageId>;
+
+        struct Response final
+        {
+            RenderError error{};
+            StorageId storage{};
+        };
     };
 
     struct PrepareStorage final
     {
         static constexpr std::string_view name{"render.storage.prepare"};
         using Request = PrepareStorageRequest;
-        using Response = RenderResult<StorageId>;
+
+        struct Response final
+        {
+            RenderError error{};
+            StorageId storage{};
+        };
     };
 
     struct RemoveStorage final
     {
         static constexpr std::string_view name{"render.storage.remove"};
         using Request = StorageId;
-        using Response = RenderResult<Ack>;
+        using Response = AckResponse;
     };
 
     struct SceneCreated final
     {
+        RenderError error{};
         SceneId scene{};
     };
 
     struct ViewCreated final
     {
+        RenderError error{};
         ViewId view{};
     };
 
     struct TargetCreated final
     {
+        RenderError error{};
         TargetId target{};
         std::uint64_t epoch = 0;
     };
 
     struct EffectCreated final
     {
+        RenderError error{};
         EffectId effect{};
     };
 
     struct RenderStatsSnapshot final
     {
+        RenderError error{};
         std::uint64_t ticks = 0, commands = 0, compiled_graphs = 0, submissions = 0;
     };
 
@@ -171,6 +187,7 @@ namespace lux::render
 
     struct FeatureList final
     {
+        RenderError error{};
         std::vector<FeatureInfo> features;
     };
 
@@ -183,6 +200,7 @@ namespace lux::render
 
     struct StorageList final
     {
+        RenderError error{};
         std::vector<StorageInfo> storages;
     };
 
@@ -190,14 +208,14 @@ namespace lux::render
     {
         static constexpr std::string_view name{"render.storages.list"};
         using Request = EmptyRequest;
-        using Response = RenderResult<StorageList>;
+        using Response = StorageList;
     };
 
     struct ListFeatures final
     {
         static constexpr std::string_view name{"render.features.list"};
         using Request = EmptyRequest;
-        using Response = RenderResult<FeatureList>;
+        using Response = FeatureList;
     };
 
     struct CommandInfo final
@@ -217,6 +235,7 @@ namespace lux::render
 
     struct CommandList final
     {
+        RenderError error{};
         std::vector<CommandInfo> commands;
     };
 
@@ -229,6 +248,7 @@ namespace lux::render
 
     struct CommandBindings final
     {
+        RenderError error{};
         HandlerId selected;
         std::vector<HandlerInfo> handlers;
     };
@@ -243,119 +263,124 @@ namespace lux::render
     {
         static constexpr std::string_view name{"render.commands.list"};
         using Request = EmptyRequest;
-        using Response = RenderResult<CommandList>;
+        using Response = CommandList;
     };
 
     struct ListCommandBindings final
     {
         static constexpr std::string_view name{"render.commands.bindings"};
         using Request = CommandId;
-        using Response = RenderResult<CommandBindings>;
+        using Response = CommandBindings;
     };
 
     struct SelectCommandBinding final
     {
         static constexpr std::string_view name{"render.commands.select"};
         using Request = CommandSelection;
-        using Response = RenderResult<Ack>;
+        using Response = AckResponse;
     };
 
     struct CreateScene final
     {
         static constexpr std::string_view name{"render.scene.create"};
         using Request = EmptyRequest;
-        using Response = RenderResult<SceneCreated>;
+        using Response = SceneCreated;
     };
 
     struct RemoveScene final
     {
         static constexpr std::string_view name{"render.scene.remove"};
         using Request = SceneRequest;
-        using Response = RenderResult<Ack>;
+        using Response = AckResponse;
     };
 
     struct CreateView final
     {
         static constexpr std::string_view name{"render.view.create"};
         using Request = CreateViewRequest;
-        using Response = RenderResult<ViewCreated>;
+        using Response = ViewCreated;
     };
 
     struct UpdateAttachmentInputs final
     {
         static constexpr std::string_view name{"render.attachment.inputs"};
         using Request = AttachmentInputs;
-        using Response = RenderResult<Ack>;
+        using Response = AckResponse;
     };
 
     struct RemoveView final
     {
         static constexpr std::string_view name{"render.view.remove"};
         using Request = ViewRequest;
-        using Response = RenderResult<Ack>;
+        using Response = AckResponse;
     };
 
     struct CreateTarget final
     {
         static constexpr std::string_view name{"render.target.create"};
         using Request = CreateTargetRequest;
-        using Response = RenderResult<TargetCreated>;
+        using Response = TargetCreated;
     };
 
     struct ResizeTarget final
     {
         static constexpr std::string_view name{"render.target.resize"};
         using Request = ResizeTargetRequest;
-        using Response = RenderResult<TargetCreated>;
+        using Response = TargetCreated;
     };
 
     struct CreateEffect final
     {
         static constexpr std::string_view name{"render.effect.create"};
         using Request = CreateEffectRequest;
-        using Response = RenderResult<EffectCreated>;
+        using Response = EffectCreated;
     };
 
     struct RemoveEffect final
     {
         static constexpr std::string_view name{"render.effect.remove"};
         using Request = EffectRequest;
-        using Response = RenderResult<Ack>;
+        using Response = AckResponse;
     };
 
     struct Attach final
     {
         static constexpr std::string_view name{"render.attach"};
         using Request = AttachmentRequest;
-        using Response = RenderResult<AttachmentCreated>;
+        using Response = AttachmentCreated;
     };
 
     struct Detach final
     {
         static constexpr std::string_view name{"render.detach"};
         using Request = AttachmentId;
-        using Response = RenderResult<Ack>;
+        using Response = AckResponse;
     };
 
     struct Stop final
     {
         static constexpr std::string_view name{"render.stop"};
         using Request = EmptyRequest;
-        using Response = RenderResult<Ack>;
+        using Response = AckResponse;
     };
 
     struct QueryExecutionProgress final
     {
         static constexpr std::string_view name{"render.execution.progress"};
         using Request = AttachmentId;
-        using Response = RenderResult<ExecutionProgress>;
+
+        struct Response final
+        {
+            RenderError error{};
+            ExecutionProgress progress{};
+        };
     };
 
     struct QueryRenderStats final
     {
         static constexpr std::string_view name{"render.stats.query"};
         using Request = EmptyRequest;
-        using Response = RenderResult<RenderStatsSnapshot>;
+        using Response = RenderStatsSnapshot;
     };
 
 } // namespace lux::render

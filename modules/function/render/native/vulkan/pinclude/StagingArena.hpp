@@ -1,45 +1,41 @@
 #pragma once
 
-#include <lux/engine/render/native/vulkan/device/Device.hpp>
+#include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 #include <vector>
 
 namespace lux::render::vulkan
 {
     class StagingArena;
-    class UploadContext;
 
-    // One acquired mapped page. Its owner transfers it to retirement after the last accepted Copy.
-    // The arena outlives all acquisitions; its free-list is accessed only on the RenderThread.
-    class StagingPage final
+    // A disjoint mapped range borrowed by CPU preparation until commit or cancellation.
+    // Accepted ranges are reclaimed by their page's existing Queue completion nodes.
+    class StagingRange final
     {
     public:
-        ~StagingPage() noexcept;
-        StagingPage(StagingPage&&) noexcept;
-        StagingPage& operator=(StagingPage&&) = delete;
-        StagingPage(const StagingPage&) = delete;
-        StagingPage& operator=(const StagingPage&) = delete;
-        [[nodiscard]] gapi::vk::VmaBuffer& buffer() const noexcept;
-        [[nodiscard]] std::span<std::byte> bytes() const noexcept;
-        [[nodiscard]] VkResult flush(VkDeviceSize bytes) const noexcept;
+        ~StagingRange() noexcept;
+        StagingRange(StagingRange&&) noexcept;
+        StagingRange& operator=(StagingRange&&) = delete;
+        StagingRange(const StagingRange&) = delete;
+        StagingRange& operator=(const StagingRange&) = delete;
 
-        [[nodiscard]] std::size_t index() const noexcept
+        [[nodiscard]] VkBuffer buffer() const noexcept;
+
+        [[nodiscard]] VkDeviceSize offset() const noexcept
         {
-            return index_;
+            return offset_;
         }
 
-        // Set only after timestamp-writing commands were accepted. Retirement retains the final page.
-        void markMeasurement(UploadContext& context, std::uint32_t bits) noexcept;
-        [[nodiscard]] RenderResult<void> finishMeasurement() noexcept;
+        [[nodiscard]] std::span<std::byte> bytes() const noexcept;
+        [[nodiscard]] VkResult flush() const noexcept;
+        void commit(SubmissionQueue&) noexcept;
 
     private:
         friend class StagingArena;
-
-        StagingPage(StagingArena& arena, std::size_t index) noexcept : arena_(&arena), index_(index) {}
-
+        StagingRange(StagingArena&, std::size_t, VkDeviceSize, std::size_t) noexcept;
         StagingArena* arena_;
-        std::size_t index_;
-        UploadContext* measurement_ = nullptr;
-        std::uint32_t timestamp_bits_ = 0;
+        std::size_t page_;
+        VkDeviceSize offset_;
+        std::size_t bytes_;
     };
 
     class StagingArena final
@@ -49,33 +45,48 @@ namespace lux::render::vulkan
             VulkanAllocator& allocator,
             std::size_t page_bytes,
             std::size_t page_count,
-            std::span<const std::uint32_t> families
+            std::span<const std::uint32_t> families,
+            VkDeviceSize alignment
         ) noexcept;
 
         ~StagingArena() noexcept;
         StagingArena(const StagingArena&) = delete;
         StagingArena& operator=(const StagingArena&) = delete;
-        [[nodiscard]] RenderResult<StagingPage> acquire() noexcept;
 
-        [[nodiscard]] std::size_t available() const noexcept
-        {
-            return free_pages_.size();
-        }
+        // Legacy's aligned bump allocation, independently reclaimed for each finite backing page.
+        [[nodiscard]] RenderResult<StagingRange> acquire(std::size_t bytes, std::size_t unit = 4) noexcept;
+        [[nodiscard]] bool canAcquire(std::size_t unit) const noexcept;
 
     private:
-        friend class StagingPage;
+        friend class StagingRange;
+        struct Page;
 
-        explicit StagingArena(VmaAllocator allocator) noexcept : allocator_(allocator) {}
-
-        VmaAllocator allocator_;
+        struct Completion final
+        {
+            SubmissionCallback node;
+            StagingArena* arena = nullptr;
+            SubmissionQueue* queue = nullptr;
+            std::size_t page = 0;
+            std::uint64_t accepted = 0;
+        };
 
         struct Page final
         {
             gapi::vk::VmaBuffer buffer;
-            void* mapped;
+            std::byte* mapped = nullptr;
+            VkDeviceSize head = 0;
+            std::size_t cpu_ranges = 0;
+            std::array<Completion, 3> completions;
         };
 
+        StagingArena(VmaAllocator allocator, std::size_t count, VkDeviceSize alignment) noexcept;
+        static void completed(void*, RenderResult<void>) noexcept;
+        void release(std::size_t) noexcept;
+        void reclaim(Page&) noexcept;
+        void commit(std::size_t, SubmissionQueue&) noexcept;
+
+        VmaAllocator allocator_;
+        VkDeviceSize alignment_;
         std::vector<Page> pages_;
-        std::vector<std::size_t> free_pages_;
     };
 } // namespace lux::render::vulkan

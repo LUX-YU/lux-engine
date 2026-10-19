@@ -61,7 +61,7 @@ namespace mesh_sample
         }
 
         template <RenderCommand C>
-        typename C::Response::value_type call(
+        typename C::Response call(
             ipc::IpcRequester& client,
             std::uint64_t& next,
             CommandId id,
@@ -77,14 +77,25 @@ namespace mesh_sample
             {
                 std::uint64_t correlation = 0;
                 const auto status = client.tryReceive(correlation, message);
+                if (status == ipc::EIpcReceive::CLOSED || Clock::now() >= deadline)
+                {
+                    std::fprintf(
+                        stderr,
+                        "Command %.*s request=%llu receive=%u timed out or closed\n",
+                        int(C::name.size()),
+                        C::name.data(),
+                        static_cast<unsigned long long>(request.value),
+                        static_cast<unsigned>(status)
+                    );
+                }
                 check(status != ipc::EIpcReceive::CLOSED && Clock::now() < deadline);
                 if (status == ipc::EIpcReceive::RECEIVED)
                 {
                     check(correlation == request.value);
                     auto& response = message.get<typename C::Response>();
-                    if (!response)
+                    if (response.error.type != 0)
                     {
-                        const auto error = response.error();
+                        const auto error = response.error;
                         std::fprintf(
                             stderr,
                             "Command %.*s failed error=%llu\n",
@@ -94,14 +105,14 @@ namespace mesh_sample
                         );
                         std::abort();
                     }
-                    return std::move(*response);
+                    return std::move(response);
                 }
                 std::this_thread::sleep_for(1ms); // Application scheduling, not queue latency.
             }
         }
 
         template <RenderCommand C>
-        typename C::Response::value_type coldCall(
+        typename C::Response coldCall(
             ipc::IpcRequester& client,
             const CommandList& directory,
             std::uint64_t& next,
@@ -130,12 +141,8 @@ namespace mesh_sample
             const auto directory = coldCall<ListStorages>(client, commands, next, {});
             const auto found = std::ranges::find(directory.storages, name.name(), &StorageInfo::name);
             check(found != directory.storages.end());
-            return coldCall<PrepareStorage>(
-                client,
-                commands,
-                next,
-                {{std::move(owner), found->id, std::move(key)}, {}}
-            );
+            return coldCall<PrepareStorage>(client, commands, next, {{std::move(owner), found->id, std::move(key)}, {}})
+                .storage;
         }
 
         FeatureId feature(ipc::IpcRequester& client, const CommandList& commands, std::uint64_t& next, FeatureName name)
@@ -233,21 +240,22 @@ namespace mesh_sample
                     {{0, 0, rdesc::ETextureFormat::RGB32_SFLOAT}, {1, 12, rdesc::ETextureFormat::RG32_SFLOAT}},
                     {{0, 12, 0}}
                 };
-                assets.mesh = coldCall<CreateMesh>(client, commands, next, {mesh_storage, assets.description, bytes});
+                assets.mesh =
+                    coldCall<CreateMesh>(client, commands, next, {mesh_storage, assets.description, bytes}).mesh;
                 bytes.clear(); // CreateMesh Response ended the source borrow.
                 assets.texture =
-                    call<CreateTexture>(client, next, set_texture, textureInput(texture_storage, 0, bytes));
+                    call<CreateTexture>(client, next, set_texture, textureInput(texture_storage, 0, bytes)).texture;
                 assets.program = materialProgram(cooked_fragment);
                 MaterialWrite material{material_storage, assets.program};
                 material.parameters = {{1, 1, 1, 1}};
                 material.textures = {assets.texture};
-                assets.material = call<CreateMaterial>(client, next, set_material, material);
+                assets.material = call<CreateMaterial>(client, next, set_material, material).material;
                 loaded.count_down();
 
                 replace_texture.wait();
                 auto changed = textureInput(texture_storage, 255, bytes);
                 const auto old_texture = assets.texture;
-                assets.texture = call<CreateTexture>(client, next, set_texture, std::move(changed));
+                assets.texture = call<CreateTexture>(client, next, set_texture, std::move(changed)).texture;
                 texture_ready.count_down();
                 publish_material.wait();
                 (void)coldCall<UpdateMaterial>(
@@ -277,9 +285,11 @@ namespace mesh_sample
             prepare(main, main_commands, main_next, kMeshInstanceStorageType, "instances", scene);
         MeshInstanceDescription description{assets.mesh, assets.material};
         description.transform[12] = -.45f;
-        auto left = coldCall<CreateMeshInstance>(main, main_commands, main_next, {instance_storage, description});
+        auto left =
+            coldCall<CreateMeshInstance>(main, main_commands, main_next, {instance_storage, description}).instance;
         description.transform[12] = .45f;
-        auto right = coldCall<CreateMeshInstance>(main, main_commands, main_next, {instance_storage, description});
+        auto right =
+            coldCall<CreateMeshInstance>(main, main_commands, main_next, {instance_storage, description}).instance;
         check(left != right); // The Client keeps the creation description; no resource query mirror is needed.
 
         MeshViewParameters first_camera, second_camera;

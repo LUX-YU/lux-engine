@@ -139,6 +139,15 @@ namespace lux::render::vulkan
             std::span<const BufferFill> fills = {},
             std::uint32_t frame_slot = UINT32_MAX
         ) noexcept;
+        // Each source spans the first element through the last element's end, including stride gaps.
+        // Pack only element_bytes per element; destination ranges and byte admission use packed sizes.
+        // The layout applies to this batch, keeping BufferWrite a compact borrowed range.
+        [[nodiscard]] Task writeBuffers(
+            std::span<const BufferWrite> writes,
+            std::uint32_t element_bytes,
+            std::uint32_t source_stride,
+            std::uint32_t frame_slot
+        ) noexcept;
         [[nodiscard]] Task writeImage(
             gapi::vk::VmaImage& target,
             std::span<const std::byte> source,
@@ -188,7 +197,9 @@ namespace lux::render::vulkan
             std::span<const std::byte>,
             std::vector<ImageTransferRegion>,
             const gapi::vk::VmaImage*,
-            std::uint32_t frame_slot
+            std::uint32_t frame_slot,
+            std::uint32_t element_bytes = 0,
+            std::uint32_t source_stride = 0
         ) noexcept;
         [[nodiscard]] RenderResult<void> measure(std::size_t page, std::uint32_t bits) noexcept;
 

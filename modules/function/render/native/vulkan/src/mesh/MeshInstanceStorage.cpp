@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
@@ -787,7 +788,11 @@ namespace lux::render::vulkan
         }
         auto& changed = data.slices[frame].selected;
         changed.clear();
-        data.writes.reserve(input.updates.size());
+        const auto range_count =
+            contiguous ? (first_record % kMeshInstancePageSlots + input.updates.size() + kMeshInstancePageSlots - 1) /
+                             kMeshInstancePageSlots
+                       : input.updates.size();
+        data.writes.reserve(range_count);
         if (contiguous)
         {
             // Input classification shares the boundary validation above. Resolve each physical
@@ -796,15 +801,21 @@ namespace lux::render::vulkan
             {
                 const auto record = input.updates[i].instance.local.index;
                 auto* buffer = &fieldBuffer(frame, record / kMeshInstancePageSlots, 0);
-                auto offset = fieldOffset(record, kStride[0]);
-                const auto end = i + std::min<std::size_t>(
-                                         input.updates.size() - i,
-                                         kMeshInstancePageSlots - record % kMeshInstancePageSlots
-                                     );
-                for (; i < end; ++i, offset += kStride[0])
-                {
-                    data.writes.push_back({buffer, offset, std::as_bytes(std::span(input.updates[i].transform))});
-                }
+                const auto offset = fieldOffset(record, kStride[0]);
+                const auto count = std::min<std::size_t>(
+                    input.updates.size() - i,
+                    kMeshInstancePageSlots - record % kMeshInstancePageSlots
+                );
+                const auto bytes = std::as_bytes(std::span(input.updates).subspan(i, count));
+                data.writes.push_back(
+                    {buffer,
+                     offset,
+                     bytes.subspan(
+                         offsetof(TransformUpdate, transform),
+                         (count - 1) * sizeof(TransformUpdate) + sizeof(TransformMatrix)
+                     )}
+                );
+                i += count;
             }
         }
         else
@@ -841,7 +852,12 @@ namespace lux::render::vulkan
                 }
             }
         };
-        if (auto accepted = co_await session_.uploads().writeBuffers(data.writes, {}, frame); !accepted)
+        auto accepted = co_await (
+            contiguous
+                ? session_.uploads().writeBuffers(data.writes, sizeof(TransformMatrix), sizeof(TransformUpdate), frame)
+                : session_.uploads().writeBuffers(data.writes, {}, frame)
+        );
+        if (!accepted)
         {
             mark_changed(data.slices[frame].dirty[0]);
             co_return cxx::unexpected(accepted.error());

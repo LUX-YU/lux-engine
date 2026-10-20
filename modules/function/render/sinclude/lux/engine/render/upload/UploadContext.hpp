@@ -149,7 +149,7 @@ namespace lux::render::detail
             const nri::Texture* clone = nullptr
         ) noexcept;
 
-        // Owner-only preparation of already published data. A short result means this finite
+        // Device-thread preparation of already published data. A short result means this finite
         // staging window is full; no Sender or per-frame operation state is created.
         [[nodiscard]] RenderResult<std::size_t> prepareBuffer(const BufferWrite&, std::size_t unit = 4) noexcept;
 

@@ -286,8 +286,9 @@ namespace lux::render
         using error::EArgument;
         static constexpr auto args = std::array{EArgument::UNSIGNED, EArgument::UNSIGNED, EArgument::UNSIGNED};
         static constexpr error::ErrorDescriptor descriptors[]{
-            {"lux.render.graph.unknown_resource", "Unknown owner-local resource", error::ERecovery::PERMANENT, args},
-            {"lux.render.graph.unknown_pass", "Unknown owner-local pass", error::ERecovery::PERMANENT, args},
+            {"lux.render.graph.unknown_resource", "Unknown definition-local resource", error::ERecovery::PERMANENT, args
+            },
+            {"lux.render.graph.unknown_pass", "Unknown definition-local pass", error::ERecovery::PERMANENT, args},
             {"lux.render.graph.invalid_descriptor", "Invalid graph declaration", error::ERecovery::PERMANENT, args},
             {"lux.render.graph.invalid_range", "Invalid resource range", error::ERecovery::PERMANENT, args},
             {"lux.render.graph.duplicate_key", "Duplicate complete key", error::ERecovery::PERMANENT, args},

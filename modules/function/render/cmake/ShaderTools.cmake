@@ -27,7 +27,8 @@ foreach(tool IN ITEMS spirv-cross-c-shared SPIRV-Tools-shared)
         )
         if(WIN32)
             find_file(LUX_RENDER_${name}_RUNTIME NAMES "${tool}.dll"
-                HINTS "${Vulkan_INCLUDE_DIR}/../Bin" "$ENV{VULKAN_SDK}/Bin" REQUIRED
+                HINTS "${tool_library_directory}/../Bin" "$ENV{VULKAN_SDK}/Bin"
+                NO_DEFAULT_PATH REQUIRED
             )
             install(FILES "${LUX_RENDER_${name}_RUNTIME}" DESTINATION bin)
         endif()

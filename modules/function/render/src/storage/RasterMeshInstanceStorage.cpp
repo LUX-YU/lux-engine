@@ -480,8 +480,8 @@ namespace lux::render::detail
         auto& registry = session_.resources();
         for (auto source : {input.mesh.storage, input.material.storage})
         {
-            const auto* owner = registry.storageSet(source);
-            if (!owner || (owner != registry.storageSet(id_) && owner != &session_.globalStorages()))
+            const auto* storage_set = registry.storageSet(source);
+            if (!storage_set || (storage_set != registry.storageSet(id_) && storage_set != &session_.globalStorages()))
             {
                 return cxx::unexpected(RenderError{kStorageIdentity});
             }

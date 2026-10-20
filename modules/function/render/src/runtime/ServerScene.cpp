@@ -5,16 +5,16 @@ namespace lux::render
     RenderResult<StorageSet*> RenderServer::Impl::findStorageSet(const VStorageLocation& address) noexcept
     {
         return std::visit(
-            [&](const auto& owner) -> RenderResult<StorageSet*>
+            [&](const auto& location) -> RenderResult<StorageSet*>
             {
-                using T = std::decay_t<decltype(owner)>;
+                using T = std::decay_t<decltype(location)>;
                 if constexpr (std::same_as<T, GlobalStorageLocation>)
                 {
                     return &device->globalStorages();
                 }
                 else if constexpr (std::same_as<T, SceneId>)
                 {
-                    auto* scene = scenes.find(owner);
+                    auto* scene = scenes.find(location);
                     if (!scene)
                     {
                         return cxx::unexpected(RenderError{kRuntimeIdentity});
@@ -23,8 +23,8 @@ namespace lux::render
                 }
                 else if constexpr (std::same_as<T, ViewRequest>)
                 {
-                    auto* scene = scenes.find(owner.scene);
-                    auto* view = scene ? scene->views.find(owner.view) : nullptr;
+                    auto* scene = scenes.find(location.scene);
+                    auto* view = scene ? scene->views.find(location.view) : nullptr;
                     if (!view)
                     {
                         return cxx::unexpected(RenderError{kRuntimeIdentity});
@@ -33,7 +33,7 @@ namespace lux::render
                 }
                 else
                 {
-                    auto* attachment = attachments.find(owner);
+                    auto* attachment = attachments.find(location);
                     if (!attachment)
                     {
                         return cxx::unexpected(RenderError{kRuntimeIdentity});
@@ -51,10 +51,10 @@ namespace lux::render
     ) noexcept
     {
         const auto& input = _request;
-        auto owner = findStorageSet(input.location);
-        if (!owner)
+        auto storage_set = findStorageSet(input.location);
+        if (!storage_set)
         {
-            output_response.error = owner.error();
+            output_response.error = storage_set.error();
             return;
         }
         if (!device->resources().factory(input.type))
@@ -62,7 +62,7 @@ namespace lux::render
             output_response.error = RenderError{kStorageFactory};
             return;
         }
-        const auto id = (*owner)->find(input.type, input.key);
+        const auto id = (*storage_set)->find(input.type, input.key);
         if (id.isNull())
         {
             output_response.error = RenderError{kStorageIdentity};
@@ -77,13 +77,13 @@ namespace lux::render
     ) noexcept
     {
         const auto& input = _request;
-        auto owner = findStorageSet(input.location.location);
-        if (!owner)
+        auto storage_set = findStorageSet(input.location.location);
+        if (!storage_set)
         {
-            output_response.error = owner.error();
+            output_response.error = storage_set.error();
             return;
         }
-        auto id = (*owner)->getOrCreate(input.location.type, input.location.key, input.config);
+        auto id = (*storage_set)->getOrCreate(input.location.type, input.location.key, input.config);
         if (!id)
         {
             output_response.error = id.error();
@@ -98,13 +98,13 @@ namespace lux::render
     ) noexcept
     {
         const auto id = _request;
-        auto* owner = device->resources().storageSet(id);
-        if (!owner)
+        auto* storage_set = device->resources().storageSet(id);
+        if (!storage_set)
         {
             output_response.error = RenderError{kStorageIdentity};
             return;
         }
-        if (auto result = owner->remove(id); !result)
+        if (auto result = storage_set->remove(id); !result)
         {
             output_response.error = result.error();
             return;

@@ -104,6 +104,10 @@ staging windows and batches Copy work. Frame preparation contributes missing ran
 recordings enter the shared submission. Dirty-word batching and contiguous Transform input avoid per-element Copy
 construction. There is no per-frame Sender for unchanged drawing and no unconditional sleep in the event loop.
 
+NRI Buffer barriers cover the whole resource. Adjacent, ordered frame copies to disjoint ranges of one Buffer
+share a transition pair; overlapping or reverse ranges retain separate write dependencies. This uses the existing
+finite Copy window without sorting, a temporary allocation or a second submission path.
+
 Optional upload timestamps use bounded Query slots. The CPU resets only reusable pairs; Copy queues write the
 timestamps, and existing Graphics upload submissions resolve them after the required GPU dependency. Sampling
 does not add submissions or CPU waits. Occupied pairs cause skipped samples, reported by `gpu_samples_skipped`;

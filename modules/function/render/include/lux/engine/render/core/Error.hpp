@@ -16,7 +16,6 @@ namespace lux::render
     inline constexpr auto kDeviceArgument = error::errorId("lux.render.device.invalid_argument");
     inline constexpr auto kDeviceUnsupported = error::errorId("lux.render.device.unsupported");
     inline constexpr auto kDeviceCapacity = error::errorId("lux.render.device.capacity");
-    inline constexpr auto kDeviceMismatch = error::errorId("lux.render.device.device_mismatch");
     inline constexpr auto kDeviceBusy = error::errorId("lux.render.device.busy");
     inline constexpr auto kUploadStopped = error::errorId("lux.render.device.work_stopped");
 
@@ -35,6 +34,6 @@ namespace lux::render
 
     inline constexpr auto kInvalidViewport = error::errorId("lux.render.core.invalid_viewport");
 
-    // Static descriptors for host registration. Core does not own a registry or log sink.
+    // Static descriptors for application registration. Core does not own a registry or log sink.
     [[nodiscard]] LUX_RENDER_PUBLIC std::span<const error::ErrorDescriptor> renderCoreErrorDescriptors() noexcept;
 } // namespace lux::render

@@ -270,7 +270,7 @@ namespace lux::render
             }
         }
         // Workers receive only immutable feature entries, the request and actual device facts.
-        // The final continuation is the sole place that adopts a candidate into the owner table.
+        // The final continuation is the sole place that adopts a candidate into the Effect table.
         auto compiled =
             stdexec::schedule(scheduler) |
             stdexec::then(

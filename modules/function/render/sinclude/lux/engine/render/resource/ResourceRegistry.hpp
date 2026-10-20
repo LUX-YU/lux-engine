@@ -22,7 +22,7 @@ namespace lux::render
         ResourceRegistry(const ResourceRegistry&) = delete;
         ResourceRegistry& operator=(const ResourceRegistry&) = delete;
 
-        // Owner-thread cold transaction; no instance creation or Native side effect.
+        // Configuration/device-thread cold transaction; no instance creation or GPU side effect.
         [[nodiscard]] RenderResult<StorageTypeId> installFactory(
             StorageFactory factory,
             ConfigValue configuration = {}

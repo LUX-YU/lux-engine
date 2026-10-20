@@ -103,9 +103,9 @@ namespace lux::render::detail
 
     bool DeviceSession::deviceLost() const noexcept
     {
-        for (const auto& owner : physical_queues_)
+        for (const auto& queue : physical_queues_)
         {
-            if (owner->deviceLost())
+            if (queue->deviceLost())
             {
                 return true;
             }

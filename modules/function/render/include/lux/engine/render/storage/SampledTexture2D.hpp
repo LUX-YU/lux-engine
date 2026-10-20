@@ -38,7 +38,7 @@ namespace lux::render
         StorageId storage;
         rdesc::TextureInfo info;
         // Borrowed until Response (success, failure or cancellation). Failed submission takes no borrow.
-        // Abandon/connection loss is not completion: Host must drain Server and Producers before freeing it.
+        // Abandon/connection loss is not completion: the application must drain Server and Producers before freeing it.
         std::span<const std::byte> source;
     };
 
@@ -60,7 +60,7 @@ namespace lux::render
         TextureId texture; // Source remains valid through Response; the result is a new identity.
         TextureRegion region;
         // Borrowed until Response (success, failure or cancellation). Failed submission takes no borrow.
-        // Abandon/connection loss is not completion: Host must drain Server and Producers before freeing it.
+        // Abandon/connection loss is not completion: the application must drain Server and Producers before freeing it.
         std::span<const std::byte> source;
     };
 

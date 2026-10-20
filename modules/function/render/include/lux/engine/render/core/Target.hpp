@@ -28,7 +28,7 @@ namespace lux::render
         bool operator==(const TargetDesc&) const noexcept = default;
     };
 
-    // A future Target owner's uint64_t target_epoch changes when its specification
-    // changes in place. It is independent of TargetId::gen and is not stored here:
+    // Target's uint64_t epoch changes when its specification changes in place.
+    // It is independent of TargetId::gen and is not stored here:
     // two identical descriptions need not belong to the same object or revision.
 } // namespace lux::render

@@ -55,7 +55,7 @@ namespace lux::render
         DeviceOptions options = {}
     ) noexcept;
 
-    // The host owns the rendering thread. Create initializes Native before cold installation;
+    // The application starts and joins the rendering thread. Create initializes the device before installation;
     // run transfers exclusive mutation to its calling thread. Only stop()/stats() may race with run().
     class LUX_RENDER_PUBLIC RenderServer final
     {
@@ -64,7 +64,7 @@ namespace lux::render
         RenderServer(const RenderServer&) = delete;
         RenderServer& operator=(const RenderServer&) = delete;
 
-        // Cold owner-thread query, before run() or at an owner safe point. No new identity is allocated.
+        // Cold query before run() or at a RenderThread safe point. No new identity is allocated.
         template <RenderCommand C> [[nodiscard]] RenderResult<CommandId> commandId() const noexcept
         {
             return findCommand(commandDescriptor<C>());
@@ -85,7 +85,7 @@ namespace lux::render
         template <class Descriptor>
         [[nodiscard]] RenderResult<FeatureId> registerFeature(std::string_view handler_key = {}) noexcept;
 
-        // Cold provider installation. The caller is the Server owner; no concurrent directory mutation.
+        // Cold Handler installation before run() or on RenderThread; no concurrent directory mutation.
         // H::Bindings is a tuple of CommandMethod entries. Reusing type + key is idempotent.
         template <class H, class... Args>
         [[nodiscard]] RenderResult<HandlerId> emplaceHandler(std::string_view key, Args&&... args) noexcept
@@ -135,9 +135,8 @@ namespace lux::render
             RegistrationBatch& operator=(const RegistrationBatch&) = delete;
 
             [[nodiscard]] RenderResult<bool> containsHandler(CppType, std::string_view) const noexcept;
-            void addHandler(
-                CppType, std::string_view, std::string_view, HandlerObject, std::vector<CommandBinding>
-            ) noexcept;
+            void
+                addHandler(CppType, std::string_view, std::string_view, HandlerObject, std::vector<CommandBinding>) noexcept;
             void addStorage(StorageFactory, ConfigValue, bool use_existing) noexcept;
             void addFeature(FeatureDefinition) noexcept;
             [[nodiscard]] StorageTypeId storageId() const noexcept;
@@ -196,7 +195,7 @@ namespace lux::render
             }
             auto object = create();
             auto& handler = *object;
-            std::unique_ptr<void, void (*)(void*) noexcept> owner{
+            std::unique_ptr<void, void (*)(void*) noexcept> handler_object{
                 object.release(),
                 [](void* value) noexcept { delete static_cast<H*>(value); }
             };
@@ -206,7 +205,7 @@ namespace lux::render
                     type,
                     H::name,
                     instance,
-                    std::move(owner),
+                    std::move(handler_object),
                     {CommandBinding::bind<typename B::Command, B::method>(handler)...}
                 );
             }(static_cast<typename H::Bindings*>(nullptr));

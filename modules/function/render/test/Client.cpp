@@ -148,15 +148,19 @@ namespace mesh_sample
             std::uint64_t& next,
             StorageNameView name,
             std::string key,
-            VStorageLocation owner = {}
+            VStorageLocation location = {}
         )
         {
             const auto directory = coldCall<ListStorages>(client, commands, next, {});
             const auto found = std::ranges::find(directory.storages, name.name(), &StorageInfo::name);
             check(found != directory.storages.end());
             check(!found->description.empty());
-            return coldCall<PrepareStorage>(client, commands, next, {{std::move(owner), found->id, std::move(key)}, {}})
-                .storage;
+            return coldCall<PrepareStorage>(
+                       client,
+                       commands,
+                       next,
+                       {{std::move(location), found->id, std::move(key)}, {}}
+            ).storage;
         }
 
         FeatureId feature(ipc::IpcRequester& client, const CommandList& commands, std::uint64_t& next, FeatureName name)

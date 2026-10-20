@@ -15,7 +15,7 @@ namespace lux::render
         RESOURCE_PREPARATION_PENDING
     };
 
-    // Owner-thread snapshot for one actual execution context. Replaced contexts start at zero.
+    // Device-thread snapshot for one execution context. Replaced contexts start at zero.
     // Native failures remain errors; these counters describe only successful decisions.
     struct ExecutionProgress final
     {

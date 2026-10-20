@@ -16,7 +16,7 @@ namespace lux::render::detail
     class SampledTexture2DStorage final
     {
     public:
-        // Stable SlotMap values: actual GPU objects and shader input, no asset layout or parent owner.
+        // Stable SlotMap values: actual GPU objects and shader input, no asset layout or parent control.
         class SampledImage final
         {
         public:

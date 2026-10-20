@@ -71,7 +71,7 @@ namespace lux::render
         StorageId storage;
         MeshDescription description;
         // Borrowed until Response (success, failure or cancellation). Failed submission takes no borrow.
-        // Abandon/connection loss is not completion: Host must drain Server and Producers before freeing it.
+        // Abandon/connection loss is not completion: the application must drain Server and Producers before freeing it.
         std::span<const std::byte> source;
     };
 

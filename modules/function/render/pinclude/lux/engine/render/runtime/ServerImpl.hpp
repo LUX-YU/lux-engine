@@ -59,7 +59,7 @@ namespace lux::render
         [[nodiscard]] RenderServerStats stats() const noexcept;
 
         RenderServerConfig config;
-        execution::CpuScheduler scheduler; // Borrowed from the Host runtime.
+        execution::CpuScheduler scheduler; // Borrowed from the application's ExecutionRuntime.
         ipc::IpcResponder responder;
         cxx::StableSlotMap<FeatureEntry, FeatureTag> features;
         std::map<std::string_view, FeatureId, std::less<>> features_by_name;

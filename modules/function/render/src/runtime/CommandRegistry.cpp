@@ -176,7 +176,7 @@ namespace lux::render::runtime_detail
         std::vector<CommandId> commands
     ) noexcept
     {
-        // Recoverable validation is complete; ordinary host allocation exhaustion remains fatal.
+        // Recoverable validation is complete; ordinary heap allocation exhaustion remains fatal.
         auto* record = handler.get();
         const auto id = handlers_.emplace(std::move(handler));
         handlers_by_name_.emplace(HandlerName{record->type.token.name(), record->instance_name}, id);

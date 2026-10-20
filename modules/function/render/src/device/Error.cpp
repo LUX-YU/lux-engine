@@ -32,12 +32,6 @@ namespace lux::render
                 {}
             },
             error::ErrorDescriptor{
-                "lux.render.device.device_mismatch",
-                "Resource or submission belongs to a different device",
-                error::ERecovery::PERMANENT,
-                {}
-            },
-            error::ErrorDescriptor{
                 "lux.render.device.busy",
                 "Native work or recording still active",
                 error::ERecovery::PERMANENT,

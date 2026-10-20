@@ -12,7 +12,7 @@ namespace lux::render::detail
     struct CompiledResource;
     class UploadContext;
 
-    // Current physical data borrowed at Attach or an Owner publication point. No owner, task,
+    // Current physical data borrowed at Attach or a device-thread publication point. No owner, task,
     // pending upload, descriptor placement, or mutable parameter envelope lives in this value.
     struct StorageResource final
     {

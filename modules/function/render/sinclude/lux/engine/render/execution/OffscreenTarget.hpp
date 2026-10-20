@@ -17,7 +17,7 @@ namespace lux::render::detail
         nri::Descriptor* view = nullptr;
     };
 
-    // One actual output owner. Contexts only borrow the matching frame slice.
+    // Owns the Target output slices. Contexts only borrow the matching frame slice.
     class LUX_RENDER_PUBLIC OffscreenTarget final
     {
     public:

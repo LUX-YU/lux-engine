@@ -74,7 +74,7 @@ namespace lux::render::detail
         // External Context/Storage owners and upload producers must be settled before final close.
         void close() noexcept;
 
-        // Start on the Native owner. Every queue wait is registered now; cleanup executes inline
+        // Start on the device thread. Every queue wait is registered now; cleanup executes inline
         // in the last ordered completion callback. No resource is retained by the queue itself.
         template <class Release> void deferRelease(Release release) noexcept
         {
@@ -128,7 +128,7 @@ namespace lux::render::detail
             );
         }
 
-        // Call after collect/dispatch at the Owner safe point. Contexts are borrowed for this call only.
+        // Call after collect/dispatch on the device thread. Contexts are borrowed for this call only.
         [[nodiscard]] RenderResult<std::uint32_t> render(std::span<ExecutionContext* const> contexts) noexcept;
         [[nodiscard]] RenderResult<void> collect() noexcept;
         // Explicit RenderThread safe point, separate from polling and resource admission/collection.

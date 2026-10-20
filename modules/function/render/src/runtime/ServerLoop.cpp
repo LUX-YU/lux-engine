@@ -9,7 +9,7 @@ namespace lux::render
             return observed;
         }
         device->dispatchCompletions();
-        // GPU reuse notifications resume admitted writers on the Owner. Consume this ready
+        // GPU reuse notifications resume admitted writers on RenderThread. Consume this ready
         // prefix before closing frame input, otherwise continuous drawing can starve retries.
         drainCompletions();
         const auto& active = active_targets.keys();
@@ -109,7 +109,7 @@ namespace lux::render
         auto join = stdexec::connect(command_scope_.join(), Joined{&joined});
         stdexec::start(join);
         response_outbox_.flushTo(responder, config.request_work_budget);
-        // Keep the Owner and GPU completion paths advancing until every accepted Sender settles.
+        // Keep RenderThread and GPU completion paths advancing until every accepted Sender settles.
         while (!joined.load(std::memory_order_acquire) || !render_loop_.empty())
         {
             drainCompletions();

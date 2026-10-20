@@ -7,7 +7,7 @@ namespace lux::render
 {
     inline constexpr auto kGraphInvalidIndex = std::numeric_limits<std::uint32_t>::max();
 
-    // Owner-local indices. Equal numbers in different definitions are unrelated.
+    // Definition-local indices. Equal numbers in different definitions are unrelated.
     struct GraphPassId final
     {
         std::uint32_t index = kGraphInvalidIndex;
@@ -38,7 +38,7 @@ namespace lux::render
     using StorageTypeId = cxx::SlotKey<StorageTypeTag>;
     using StorageId = cxx::SlotKey<StorageTag>;
 
-    // Keys are owner-local. isValid() only checks the null sentinel; lookup must
+    // Keys are local to their SlotMap. isValid() only checks the null sentinel; lookup must
     // validate generation in the owning SlotMap. View lookup also needs SceneId.
-    // Keys must not cross Server/Endpoint lifetimes or be persisted as global IDs.
+    // Keys must not cross Server lifetimes or be persisted as global IDs.
 } // namespace lux::render

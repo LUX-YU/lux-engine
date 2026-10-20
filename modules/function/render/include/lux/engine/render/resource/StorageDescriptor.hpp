@@ -36,7 +36,7 @@ namespace lux::render
     struct StorageRequirement final
     {
         StorageName type;
-        std::string key; // empty uses the Graph semantic key; otherwise names the Storage instance in its actual owner
+        std::string key; // empty uses the Graph semantic key; otherwise names the instance in the selected StorageSet
         ConfigValue config;
         bool operator==(const StorageRequirement&) const noexcept = default;
     };

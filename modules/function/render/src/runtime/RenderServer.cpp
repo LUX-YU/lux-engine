@@ -73,7 +73,7 @@ namespace lux::render
     {
         if (impl_->running.load())
         {
-            std::terminate(); // host must stop + join
+            std::terminate(); // the application must stop and join its rendering thread
         }
         if (impl_->device)
         {

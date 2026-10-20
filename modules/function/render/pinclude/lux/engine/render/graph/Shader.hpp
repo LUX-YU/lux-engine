@@ -25,7 +25,8 @@ namespace lux::render::detail
     [[nodiscard]] nri::StageBits shaderStages(std::uint32_t stages) noexcept;
     [[nodiscard]] std::vector<nri::DescriptorRangeDesc> descriptorRanges(
         std::span<const ShaderBinding>,
-        std::uint32_t runtime_count
+        std::uint32_t image_count,
+        std::uint32_t sampler_count
     ) noexcept;
     [[nodiscard]] RenderResult<nri::Pipeline*>
     compileCompute(nri::Device&, const nri::CoreInterface&, nri::PipelineLayout&, const rdesc::SpirvArtifact&) noexcept;

@@ -56,7 +56,7 @@ namespace lux::render::detail
         void removeDirty(Table&, std::uint32_t frame) noexcept;
         void releaseTable(Table&) noexcept;
         [[nodiscard]] RenderResult<Table*> table(MaterialProgram&) noexcept;
-        [[nodiscard]] std::uint32_t textureIndex(TextureId) const noexcept;
+        [[nodiscard]] TextureGpuRef resolveTextureReference(TextureId) const noexcept;
         static void publish(Table&, std::uint32_t frame) noexcept;
         DeviceSession& session_;
         ResourceUploader& uploads_;

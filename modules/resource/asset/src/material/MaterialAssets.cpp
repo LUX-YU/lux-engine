@@ -1,3 +1,4 @@
+#include <lux/engine/description/MaterialLayout.hpp>
 #include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 
 #include <lux/engine/resource/asset/CookedAssetImage.hpp>
@@ -17,7 +18,8 @@ namespace lux::asset
 {
     namespace
     {
-        inline constexpr std::uint32_t kMaterialVersion = 7U; // Cooked shaders use separate texture/sampler arrays.
+        inline constexpr std::uint32_t kMaterialVersion =
+            8U; // The payload now records the compiled texture-reference ABI explicitly.
         inline constexpr std::uint32_t kMaterialInstanceVersion = 2U;
 
         [[nodiscard]] AssetDecodeFailure decodeFailure(EAssetDecodeError code) noexcept
@@ -48,7 +50,7 @@ namespace lux::asset
             return true;
         }
 
-        [[nodiscard]] bool hasCookedLayouts(const lux::rdesc::ShaderInfo& info) noexcept
+        [[nodiscard]] bool hasCookedLayouts(const lux::rdesc::ShaderInfo& info, std::size_t texture_count) noexcept
         {
             if (info.entry_points.empty())
             {
@@ -62,6 +64,20 @@ namespace lux::asset
                     {
                         return false;
                     }
+                    if (binding.name == rdesc::kMaterialTableName)
+                    {
+                        for (std::size_t index = 0; index < texture_count; ++index)
+                        {
+                            const auto path = std::string(rdesc::kMaterialTexturesName) + "[" + std::to_string(index) +
+                                              "].sampler_index";
+                            const auto field =
+                                std::ranges::find(binding.block.fields, path, &rdesc::ShaderMember::path);
+                            if (field == binding.block.fields.end() || field->scalar != rdesc::EDataScalar::UINT)
+                            {
+                                return false;
+                            }
+                        }
+                    }
                 }
             }
             return true;
@@ -73,7 +89,8 @@ namespace lux::asset
             if (data.parameter_defaults.size() > UINT32_MAX || data.texture_slot_ids.size() > UINT32_MAX ||
                 alpha_mode > static_cast<std::uint8_t>(lux::rdesc::EAlphaMode::BLEND) ||
                 !detail::validSpirvWords(data.gbuffer_spirv) || !detail::validSpirvWords(data.forward_spirv) ||
-                !hasCookedLayouts(data.gbuffer_info) || !hasCookedLayouts(data.forward_info))
+                !hasCookedLayouts(data.gbuffer_info, data.texture_slot_ids.size()) ||
+                !hasCookedLayouts(data.forward_info, data.texture_slot_ids.size()))
             {
                 return false;
             }
@@ -337,9 +354,10 @@ namespace lux::asset
         {
             Reader reader{image->information().view()};
             auto data = std::make_shared<lux::rdesc::MaterialDescription>();
-            std::uint32_t version{}, parameter_count{}, texture_count{}, alpha_mode{};
+            std::uint32_t version{}, shader_abi{}, parameter_count{}, texture_count{}, alpha_mode{};
             std::uint8_t double_sided{};
-            if (!reader.pod(version) || version != kMaterialVersion || !reader.pod(parameter_count) ||
+            if (!reader.pod(version) || version != kMaterialVersion || !reader.pod(shader_abi) ||
+                shader_abi != rdesc::kMaterialShaderAbi || !reader.pod(parameter_count) ||
                 parameter_count > (reader.bytes.size() - reader.offset) / sizeof(std::array<float, 4>))
             {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
@@ -417,6 +435,7 @@ namespace lux::asset
             const auto forward_info = lux::rdesc::ShaderInfo::serialize(asset.data().forward_info);
             Writer writer;
             writer.pod(kMaterialVersion);
+            writer.pod(rdesc::kMaterialShaderAbi);
             writer.pod(static_cast<std::uint32_t>(asset.data().parameter_defaults.size()));
             for (std::size_t parameter = 0U; parameter < asset.data().parameter_defaults.size(); ++parameter)
             {

@@ -354,6 +354,7 @@ namespace lux::render::detail
         std::array<std::uint32_t, 2> vertex_limits,
         nri::QueueType queue_type,
         std::uint32_t sampled_image_capacity,
+        std::uint32_t sampler_capacity,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
         GraphStorageBindings external_bindings,
@@ -581,7 +582,7 @@ namespace lux::render::detail
         }
         result.descriptor_plan_ = std::make_unique<LayoutPlan>(std::move(*planned));
         const auto& layout_plan = *result.descriptor_plan_;
-        if (!layout_plan.shared_bindings.empty() && !sampled_image_capacity)
+        if (!layout_plan.shared_bindings.empty() && (!sampled_image_capacity || !sampler_capacity))
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
@@ -817,8 +818,9 @@ namespace lux::render::detail
                 }
                 if (!result.layout_)
                 {
-                    const auto shared_ranges = descriptorRanges(layout_plan.shared_bindings, sampled_image_capacity);
-                    const auto private_ranges = descriptorRanges(layout_plan.private_bindings, 0);
+                    const auto shared_ranges =
+                        descriptorRanges(layout_plan.shared_bindings, sampled_image_capacity, sampler_capacity);
+                    const auto private_ranges = descriptorRanges(layout_plan.private_bindings, 0, 0);
                     std::vector<nri::DescriptorSetDesc> sets;
                     if (!shared_ranges.empty())
                     {

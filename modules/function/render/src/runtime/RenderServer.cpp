@@ -71,7 +71,9 @@ namespace lux::render
         }
         s.frames = std::move(*frames);
         const auto& enabled = s.device->enabledFeatures();
-        s.resources.emplace((enabled.texture_descriptors ? 1u : 0u) | (enabled.texture_compression_bc ? 2u : 0u));
+        s.resources.emplace(
+            (s.device->descriptors().imageCapacity() ? 1u : 0u) | (enabled.texture_compression_bc ? 2u : 0u)
+        );
         s.global_storages.emplace(*s.resources, true);
         s.paged_instances = options.buffer_device_address;
         return {};

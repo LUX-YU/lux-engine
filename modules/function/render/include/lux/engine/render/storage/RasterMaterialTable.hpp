@@ -47,7 +47,7 @@ namespace lux::render
     {
         std::uint32_t representation_index = 0;
         std::uint32_t resource_index = 0;
-        std::uint32_t aux = 0;
+        std::uint32_t sampler_index = 0;
         std::uint32_t flags = 0;
     };
 

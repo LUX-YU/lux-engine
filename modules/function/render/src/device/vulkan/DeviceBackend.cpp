@@ -249,12 +249,15 @@ namespace lux::render::detail
         VkPhysicalDeviceVulkan12Properties indexing{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES};
         VkPhysicalDeviceProperties2 properties2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &indexing};
         query_properties2(physical, &properties2);
-        result->bindless_capacity_ = std::min(
+        const auto sampler_capacity = std::min(
             {description.descriptorSet.updateAfterSet.samplerMaxNum,
-             description.descriptorSet.updateAfterSet.textureMaxNum,
              description.shaderStage.updateAfterSet.descriptorSamplerMaxNum,
-             description.shaderStage.updateAfterSet.descriptorTextureMaxNum,
              indexing.maxUpdateAfterBindDescriptorsInAllPools / 2}
+        );
+        const auto image_capacity = std::min(
+            {description.descriptorSet.updateAfterSet.textureMaxNum,
+             description.shaderStage.updateAfterSet.descriptorTextureMaxNum,
+             indexing.maxUpdateAfterBindDescriptorsInAllPools - sampler_capacity}
         );
         result->upload_alignment_ = std::lcm<std::uint64_t>(
             properties.limits.nonCoherentAtomSize,
@@ -303,6 +306,17 @@ namespace lux::render::detail
                 result->physical_queues_.push_back(std::move(*queue));
             }
             result->queue_roles_[role] = index;
+        }
+        if (options.texture_descriptors)
+        {
+            if (image_capacity == 0 || sampler_capacity == 0)
+            {
+                return cxx::unexpected(RenderError{kDeviceUnsupported});
+            }
+            if (auto ready = session.descriptor_table_.initialize(image_capacity, sampler_capacity); !ready)
+            {
+                return ready;
+            }
         }
         return {};
     }

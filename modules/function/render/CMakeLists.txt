@@ -23,7 +23,7 @@ set(render_sources
     src/graph/Builder.cpp src/graph/Analysis.cpp
     src/features/Assemble.cpp src/features/RasterMeshParameters.cpp
     src/features/MaterialMeshRaster.cpp src/features/MeshDepthRaster.cpp src/features/RasterMeshDraws.cpp
-    src/device/Error.cpp src/device/DeviceSession.cpp src/device/DescriptorArray.cpp
+    src/device/Error.cpp src/device/DeviceSession.cpp src/device/DescriptorTable.cpp
     src/device/vulkan/DeviceBackend.cpp src/device/SubmissionQueue.cpp
     src/execution/FrameExecution.cpp
     src/execution/FrameResources.cpp src/execution/OffscreenTarget.cpp src/execution/ExecutionContext.cpp src/execution/RecordGraph.cpp

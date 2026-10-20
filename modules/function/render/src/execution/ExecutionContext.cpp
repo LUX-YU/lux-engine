@@ -2,7 +2,7 @@
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
-#include <lux/engine/render/device/DescriptorArray.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
@@ -380,16 +380,7 @@ namespace lux::render::detail
                 );
             }
         }
-        DescriptorArray* shared = nullptr;
-        if (!layout.shared_bindings.empty())
-        {
-            auto table = session_->sampledImageArray();
-            if (!table)
-            {
-                return cxx::unexpected(table.error());
-            }
-            shared = *table;
-        }
+        auto* shared = layout.shared_bindings.empty() ? nullptr : &session_->descriptors();
         const auto draws = std::ranges::count_if(
             code_->passes(),
             [](const auto& recipe) { return recipe.recipe == ERecipe::DRAW || recipe.recipe == ERecipe::DISPATCH; }

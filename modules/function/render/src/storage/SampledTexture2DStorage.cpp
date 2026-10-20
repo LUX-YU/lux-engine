@@ -13,19 +13,17 @@ namespace lux::render::detail
 {
     SampledTexture2DStorage::SampledImage::SampledImage(SampledImage&& other) noexcept
         : image_(std::exchange(other.image_, nullptr)), view_(std::exchange(other.view_, nullptr)),
-          sampler_(std::exchange(other.sampler_, nullptr)), descriptor_(std::exchange(other.descriptor_, {})),
-          reference_(other.reference_)
+          descriptor_(std::exchange(other.descriptor_, {})), reference_(other.reference_)
     {
     }
 
     void SampledTexture2DStorage::releaseImage(
         const nri::CoreInterface& api,
-        DescriptorArray& array,
+        DescriptorTable& array,
         SampledImage& image
     ) noexcept
     {
         api.DestroyDescriptor(std::exchange(image.view_, nullptr));
-        api.DestroyDescriptor(std::exchange(image.sampler_, nullptr));
         api.DestroyTexture(std::exchange(image.image_, nullptr));
         if (!image.descriptor_.isNull())
         {
@@ -249,12 +247,11 @@ namespace lux::render::detail
 
     RenderResult<void> SampledTexture2DStorage::initialize() noexcept
     {
-        auto table = session_.sampledImageArray();
-        if (!table)
+        if (!session_.descriptors().descriptors())
         {
-            return cxx::unexpected(table.error());
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
-        descriptors_ = *table;
+        descriptors_ = &session_.descriptors();
         return {};
     }
 
@@ -285,7 +282,6 @@ namespace lux::render::detail
             return cxx::unexpected(descriptor.error());
         }
         candidate.descriptor_ = *descriptor;
-        candidate.reference_ = {descriptor->index, color_space};
         const auto& description = session_.nriCore().GetTextureDesc(*candidate.image_);
         const nri::TextureViewDesc
             view{candidate.image_, nri::TextureView::TEXTURE, description.format, 0, description.mipNum, 0, 1};
@@ -299,12 +295,13 @@ namespace lux::render::detail
         sampler.addressModes =
             {nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE};
         sampler.mipMax = float(description.mipNum - 1);
-        status = session_.nriCore().CreateSampler(session_.device(), sampler, candidate.sampler_);
-        if (status != nri::Result::SUCCESS)
+        auto sampler_index = descriptors_->sampler(sampler);
+        if (!sampler_index)
         {
-            return cxx::unexpected(nativeError(status));
+            return cxx::unexpected(sampler_index.error());
         }
-        descriptors_->write(candidate.descriptor_, candidate.view_, candidate.sampler_);
+        candidate.reference_ = {descriptor->index, *sampler_index, color_space, 0};
+        descriptors_->write(candidate.descriptor_, candidate.view_);
         rollback.release();
         return candidate;
     }
@@ -399,37 +396,41 @@ namespace lux::render::detail
         resolve(const CompiledResource& plan, const TextureBinding& argument, StorageSubscription&) noexcept
     {
         const auto* backing = find(argument.texture);
-        if (!backing)
+        if (backing)
         {
-            return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        const auto* expected = std::get_if<GraphImageDesc>(&plan.description);
-        if (!expected)
-        {
-            return cxx::unexpected(RenderError{kStorageMismatch});
-        }
-        const auto native_format = expected->format == rdesc::ETextureFormat::RGBA8_UNORM  ? nri::Format::RGBA8_UNORM
-                                   : expected->format == rdesc::ETextureFormat::RGBA8_SRGB ? nri::Format::RGBA8_SRGB
-                                                                                           : nri::Format::BC1_RGBA_SRGB;
-        const auto& image = session_.nriCore().GetTextureDesc(*backing->image_);
-        const bool is_mismatch = expected->width != image.width || expected->height != image.height ||
-                                 expected->mips != image.mipNum || expected->layers != image.layerNum ||
-                                 native_format != image.format;
-        if (is_mismatch)
-        {
-            return cxx::unexpected(RenderError{kStorageMismatch});
+            const auto* expected = std::get_if<GraphImageDesc>(&plan.description);
+            if (!expected)
+            {
+                return cxx::unexpected(RenderError{kStorageMismatch});
+            }
+            const auto native_format = expected->format == rdesc::ETextureFormat::RGBA8_UNORM ? nri::Format::RGBA8_UNORM
+                                       : expected->format == rdesc::ETextureFormat::RGBA8_SRGB
+                                           ? nri::Format::RGBA8_SRGB
+                                           : nri::Format::BC1_RGBA_SRGB;
+            const auto& image = session_.nriCore().GetTextureDesc(*backing->image_);
+            const bool is_mismatch = expected->width != image.width || expected->height != image.height ||
+                                     expected->mips != image.mipNum || expected->layers != image.layerNum ||
+                                     native_format != image.format;
+            if (is_mismatch)
+            {
+                return cxx::unexpected(RenderError{kStorageMismatch});
+            }
         }
         static const rdesc::ShaderBlock layout = []
         {
             rdesc::ShaderBlock result{sizeof(TextureGpuRef), alignof(TextureGpuRef)};
             result.fields = {
-                {"descriptor_index", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, descriptor_index), 1, 1, 0, 0},
-                {"color_space", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, color_space), 1, 1, 0, 0}
+                {"image_index", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, image_index), 1, 1, 0, 0},
+                {"sampler_index", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, sampler_index), 1, 1, 0, 0},
+                {"color_space", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, color_space), 1, 1, 0, 0},
+                {"flags", rdesc::EDataScalar::UINT, offsetof(TextureGpuRef, flags), 1, 1, 0, 0}
             };
             return result;
         }();
         // Texture identities are immutable. The Client ends bindings before release; there is no update subscription.
-        return StorageResource{nullptr, 0, 0, std::as_bytes(std::span(&backing->reference_, 1)), &layout};
+        static constexpr TextureGpuRef default_reference{};
+        const auto& reference = backing ? backing->reference_ : default_reference;
+        return StorageResource{nullptr, 0, 0, std::as_bytes(std::span(&reference, 1)), &layout};
     }
 
     StorageFactory textureStorageFactory() noexcept

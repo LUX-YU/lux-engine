@@ -14,6 +14,7 @@ namespace lux::render
         std::array<std::uint32_t, 2> vertex_limits,
         nri::QueueType queue_type,
         std::uint32_t sampled_image_capacity,
+        std::uint32_t sampler_capacity,
         std::span<const StorageNameView> storage_types,
         const CreateEffectRequest& request,
         std::span<const FeatureEntry* const> registrations,
@@ -209,6 +210,7 @@ namespace lux::render
             vertex_limits,
             queue_type,
             sampled_image_capacity,
+            sampler_capacity,
             (*assembly).definition,
             (*assembly).analysis,
             std::move(assembly->external_bindings),
@@ -256,19 +258,8 @@ namespace lux::render
             }
         );
         std::ranges::sort(storage_types, {}, [](StorageNameView type) { return type.name(); });
-        std::uint32_t sampled_image_capacity = 0;
-        if (device->enabledFeatures().texture_descriptors)
-        {
-            const auto capacity = device->sampledImageCapacity();
-            if (capacity)
-            {
-                sampled_image_capacity = *capacity;
-            }
-            else
-            {
-                initial_error = capacity.error();
-            }
-        }
+        const auto sampled_image_capacity = device->descriptors().imageCapacity();
+        const auto sampler_capacity = device->descriptors().samplerCapacity();
         // Workers receive only immutable feature entries, the request and actual device facts.
         // The final continuation is the sole place that adopts a candidate into the Effect table.
         auto compiled =
@@ -281,6 +272,7 @@ namespace lux::render
                  vertex_limits = std::array{device->vertexStrideLimit(), device->vertexOffsetLimit()},
                  queue_type = device->queue().properties().type,
                  sampled_image_capacity,
+                 sampler_capacity,
                  storage_types = std::move(storage_types),
                  request = std::move(input),
                  entries = std::move(registrations),
@@ -294,6 +286,7 @@ namespace lux::render
                         vertex_limits,
                         queue_type,
                         sampled_image_capacity,
+                        sampler_capacity,
                         storage_types,
                         request,
                         entries,

@@ -2,7 +2,7 @@
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
-#include <lux/engine/render/device/DescriptorArray.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>

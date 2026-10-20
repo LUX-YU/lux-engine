@@ -9,6 +9,7 @@
 #include <functional>
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/runtime/DeviceOptions.hpp>
@@ -16,7 +17,6 @@
 namespace lux::render::detail
 {
     struct DeviceBackend;
-    class DescriptorArray;
     struct StorageBindingOps;
     struct StorageFrameUse;
 
@@ -142,8 +142,15 @@ namespace lux::render::detail
             return *physical_queues_[queue_roles_[static_cast<std::size_t>(role)]];
         }
 
-        [[nodiscard]] RenderResult<std::uint32_t> sampledImageCapacity() const noexcept;
-        [[nodiscard]] RenderResult<DescriptorArray*> sampledImageArray() noexcept;
+        [[nodiscard]] DescriptorTable& descriptors() noexcept
+        {
+            return descriptor_table_;
+        }
+
+        [[nodiscard]] const DescriptorTable& descriptors() const noexcept
+        {
+            return descriptor_table_;
+        }
 
         [[nodiscard]] nri::Device& device() const noexcept
         {
@@ -208,11 +215,11 @@ namespace lux::render::detail
         std::array<nri::FormatSupportBits, static_cast<std::size_t>(nri::Format::MAX_NUM)> format_support_{};
         EnabledDeviceFeatures enabled_features_{};
         std::uint64_t upload_alignment_ = 4;
-        std::uint32_t vertex_stride_limit_ = 0, vertex_offset_limit_ = 0, bindless_capacity_ = 0;
+        std::uint32_t vertex_stride_limit_ = 0, vertex_offset_limit_ = 0;
         std::vector<std::unique_ptr<SubmissionQueue>> physical_queues_;
         std::array<std::uint8_t, 3> queue_roles_{};
         // External producers settle before close; descriptors and queues are explicitly destroyed before Device.
-        std::unique_ptr<DescriptorArray> sampled_images_;
+        DescriptorTable descriptor_table_;
         stdexec::simple_counting_scope cleanup_scope_;
         bool closed_ = false;
     };

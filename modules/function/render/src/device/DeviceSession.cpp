@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <lux/engine/render/device/DescriptorArray.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/device/DeviceBackend.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 
@@ -27,7 +27,7 @@ namespace lux::render::detail
         };
     } // namespace
 
-    DeviceSession::DeviceSession() noexcept : backend_(std::make_unique<DeviceBackend>()) {}
+    DeviceSession::DeviceSession() noexcept : backend_(std::make_unique<DeviceBackend>()), descriptor_table_(*this) {}
 
     RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(
         const DeviceOptions& options,
@@ -87,7 +87,7 @@ namespace lux::render::detail
         {
             requireCleanupComplete(drain());
         } while (!joined);
-        sampled_images_.reset();
+        descriptor_table_.clear();
         physical_queues_.clear();
         if (device_)
         {

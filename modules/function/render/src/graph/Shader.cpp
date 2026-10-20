@@ -595,7 +595,8 @@ namespace lux::render::detail
 
     std::vector<nri::DescriptorRangeDesc> descriptorRanges(
         std::span<const ShaderBinding> contract,
-        std::uint32_t runtime_count
+        std::uint32_t image_count,
+        std::uint32_t sampler_count
     ) noexcept
     {
         std::vector<nri::DescriptorRangeDesc> ranges;
@@ -607,6 +608,7 @@ namespace lux::render::detail
                                   ? nri::DescriptorType::SAMPLER
                                   : nri::DescriptorType::STORAGE_STRUCTURED_BUFFER;
             const bool runtime = binding.count == 0;
+            const auto runtime_count = type == nri::DescriptorType::SAMPLER ? sampler_count : image_count;
             const auto flags = runtime ? nri::DescriptorRangeBits::ARRAY | nri::DescriptorRangeBits::PARTIALLY_BOUND |
                                              nri::DescriptorRangeBits::ALLOW_UPDATE_AFTER_SET
                                        : nri::DescriptorRangeBits::NONE;

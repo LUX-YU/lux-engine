@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/cxx/container/SlotMap.hpp>
+#include <lux/engine/description/MaterialLayout.hpp>
 #include <lux/engine/description/TextureInfo.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/resource/StorageDescriptor.hpp>
@@ -15,11 +16,13 @@ namespace lux::render
 
     struct TextureGpuRef final
     {
-        std::uint32_t descriptor_index = 0;
+        std::uint32_t image_index = 0;
+        std::uint32_t sampler_index = 0;
         std::uint32_t color_space = 0;
+        std::uint32_t flags = rdesc::kTextureDefaultWhite;
     };
 
-    static_assert(sizeof(TextureGpuRef) == 8);
+    static_assert(sizeof(TextureGpuRef) == 16);
 
     struct TextureBinding final
     {

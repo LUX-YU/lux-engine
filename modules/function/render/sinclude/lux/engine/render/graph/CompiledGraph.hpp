@@ -145,7 +145,9 @@ namespace lux::render::detail
     private:
         friend class ExecutionContext;
         friend class DeviceSession;
-        friend LUX_RENDER_PUBLIC RenderResult<CompiledGraph> compileGraph(nri::Device&, const nri::CoreInterface&, const EnabledDeviceFeatures&, std::span<const nri::FormatSupportBits>, std::array<std::uint32_t, 2>, nri::QueueType, std::uint32_t, const RenderGraphDefinition&, const GraphAnalysis&, GraphStorageBindings, std::span<const PassProgram* const>, const TargetDesc&, std::vector<FeatureFrameContribution>) noexcept;
+        friend LUX_RENDER_PUBLIC
+            RenderResult<CompiledGraph>
+            compileGraph(nri::Device&, const nri::CoreInterface&, const EnabledDeviceFeatures&, std::span<const nri::FormatSupportBits>, std::array<std::uint32_t, 2>, nri::QueueType, std::uint32_t, std::uint32_t, const RenderGraphDefinition&, const GraphAnalysis&, GraphStorageBindings, std::span<const PassProgram* const>, const TargetDesc&, std::vector<FeatureFrameContribution>) noexcept;
         CompiledGraph(nri::Device& device, const nri::CoreInterface&, TargetDesc target) noexcept;
         std::unique_ptr<LayoutPlan> descriptor_plan_;
         nri::Device* device_;
@@ -178,6 +180,7 @@ namespace lux::render::detail
         std::array<std::uint32_t, 2> vertex_limits,
         nri::QueueType queue_type,
         std::uint32_t sampled_image_capacity,
+        std::uint32_t sampler_capacity,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
         GraphStorageBindings external_bindings,

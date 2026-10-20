@@ -484,6 +484,8 @@ namespace lux::shadergen::glsl
 
         std::ostringstream out;
         out << "#version 450\n";
+        out << "#define LUX_MATERIAL_SHADER_ABI " << rdesc::kMaterialShaderAbi << "u\n";
+        out << "#define LUX_TEXTURE_DEFAULT_WHITE " << rdesc::kTextureDefaultWhite << "u\n";
         if (em.tex_mode ||
             forward_lit) // forward's lighting_common always needs this extension for the unbounded uTex[]
         {

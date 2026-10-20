@@ -7,7 +7,7 @@ struct TextureRefGPU
 {
     uint representation_index;
     uint resource_index;
-    uint aux;
+    uint sampler_index;
     uint flags;
 };
 

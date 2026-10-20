@@ -5,7 +5,7 @@
 #include <lux/engine/render/resource/StorageCreateContext.hpp>
 
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/render/device/DescriptorArray.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/resource/StorageFactory.hpp>
 #include <lux/engine/render/resource/Upload.hpp>
@@ -30,9 +30,9 @@ namespace lux::render::detail
             SampledImage(SampledImage&&) noexcept;
             SampledImage& operator=(SampledImage&&) = delete;
 
-            [[nodiscard]] std::uint32_t descriptorIndex() const noexcept
+            [[nodiscard]] const TextureGpuRef& gpuReference() const noexcept
             {
-                return descriptor_.index;
+                return reference_;
             }
 
             [[nodiscard]] const nri::Texture& image() const noexcept
@@ -44,8 +44,7 @@ namespace lux::render::detail
             friend class SampledTexture2DStorage;
             nri::Texture* image_ = nullptr;
             nri::Descriptor* view_ = nullptr;
-            nri::Descriptor* sampler_ = nullptr;
-            DescriptorArray::Slot descriptor_{};
+            DescriptorTable::Slot descriptor_{};
             TextureGpuRef reference_{};
         };
 
@@ -81,13 +80,13 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<SampledImage> sampledImage(nri::Texture*, std::uint32_t color_space) noexcept;
         [[nodiscard]] RenderResult<StorageResource>
         resolve(const CompiledResource&, const TextureBinding&, StorageSubscription&) noexcept;
-        static void releaseImage(const nri::CoreInterface&, DescriptorArray&, SampledImage&) noexcept;
+        static void releaseImage(const nri::CoreInterface&, DescriptorTable&, SampledImage&) noexcept;
         void retire(SampledImage&) noexcept;
         DeviceSession& session_;
         ResourceUploader& uploads_;
 
         StorageId id_;
-        DescriptorArray* descriptors_ = nullptr;
+        DescriptorTable* descriptors_ = nullptr;
         cxx::StableSlotMap<SampledImage, TextureTag> textures_;
     };
 } // namespace lux::render::detail

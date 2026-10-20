@@ -137,17 +137,17 @@ namespace lux::render::detail
         return result;
     }
 
-    std::uint32_t RasterMaterialTableStorage::textureIndex(TextureId id) const noexcept
+    TextureGpuRef RasterMaterialTableStorage::resolveTextureReference(TextureId id) const noexcept
     {
         auto& registry = resources_;
         const auto* storage_set = registry.storageSet(id.storage);
         if (!storage_set || (storage_set != registry.storageSet(id_) && !storage_set->isGlobal()))
         {
-            return 0;
+            return {};
         }
         auto source = registry.borrow<SampledTexture2DStorage>(id.storage);
         const auto* texture = source ? (*source)->find(id) : nullptr;
-        return texture ? texture->descriptorIndex() : 0;
+        return texture ? texture->gpuReference() : TextureGpuRef{};
     }
 
     void RasterMaterialTableStorage::markDirty(Table& table, std::uint32_t frame, std::uint32_t record) noexcept
@@ -288,7 +288,8 @@ namespace lux::render::detail
         // updates Materials before releasing Textures; no cross-Storage observer repairs later misuse.
         for (std::size_t t = 0; t < input.textures.size(); ++t)
         {
-            const MaterialTextureGpuRef reference{0, textureIndex(input.textures[t]), 0, 0};
+            const auto texture = resolveTextureReference(input.textures[t]);
+            const MaterialTextureGpuRef reference{0, texture.image_index, texture.sampler_index, texture.flags};
             std::memcpy(values.data() + table.texture_offsets[t], &reference, sizeof(reference));
         }
         std::uint32_t frame_slot = 0;

@@ -68,6 +68,7 @@ static void graphOutput(Validation& validation)
         {session->vertexStrideLimit(), session->vertexOffsetLimit()},
         session->queue().properties().type,
         0,
+        0,
         definition,
         analysis,
         {},

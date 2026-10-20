@@ -11,11 +11,13 @@ add_executable(ipc_consumer Main.cpp)
 target_link_libraries(ipc_consumer PRIVATE lux::engine::platform::platform_ipc)
 add_test(NAME installed.ipc COMMAND ipc_consumer)
 
-find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_commands)
+set(CMAKE_DISABLE_FIND_PACKAGE_Vulkan ON)
+set(CMAKE_DISABLE_FIND_PACKAGE_NRI ON)
+find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render)
 add_executable(ipc_protocol_consumer Main.cpp)
 target_compile_definitions(ipc_protocol_consumer PRIVATE IPC_PROTOCOL_CONSUMER)
 target_link_libraries(ipc_protocol_consumer PRIVATE
-    lux::engine::platform::platform_ipc lux::engine::render::render_commands)
+    lux::engine::platform::platform_ipc lux::engine::function::render)
 add_test(NAME installed.ipc_protocol COMMAND ipc_protocol_consumer)
 
 foreach(header IpcCore IpcMessage)

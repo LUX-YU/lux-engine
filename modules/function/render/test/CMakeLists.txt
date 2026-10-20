@@ -1,15 +1,12 @@
 # Formal SDK consumers only. Mechanism/fault/installation/performance probes live in the external verification suite.
 add_executable(render_sync_client SyncClient.cpp)
-target_link_libraries(render_sync_client PRIVATE render_commands lux::engine::platform::platform_ipc)
+target_link_libraries(render_sync_client PRIVATE render lux::engine::platform::platform_ipc)
 add_test(NAME render.client.sync_source COMMAND render_sync_client)
 set_target_properties(render_sync_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 
-if(LUX_RENDER_CLIENT_ONLY)
-    return()
-endif()
 
 add_executable(render_output_test Output.cpp)
-target_link_libraries(render_output_test PRIVATE render_native_vulkan)
+target_link_libraries(render_output_test PRIVATE render)
 add_test(NAME render.native.output COMMAND render_output_test)
 set_tests_properties(render.native.output PROPERTIES TIMEOUT 30)
 
@@ -50,9 +47,9 @@ add_custom_command(
 add_custom_target(render_sample_assets ALL DEPENDS "${shader}.spv" "${shader}.spv.meta")
 
 add_library(render_basic_mesh_client OBJECT Client.cpp)
-target_link_libraries(render_basic_mesh_client PRIVATE render_commands render_features lux::engine::platform::platform_ipc lux::engine::resource::shader_metadata)
-add_executable(render_basic_mesh Host.cpp $<TARGET_OBJECTS:render_basic_mesh_client>)
-target_link_libraries(render_basic_mesh PRIVATE render_runtime render_native_vulkan_features lux::engine::core::core_execution lux::engine::resource::shader_metadata)
+target_link_libraries(render_basic_mesh_client PRIVATE render lux::engine::platform::platform_ipc lux::engine::resource::shader_metadata)
+add_executable(render_basic_mesh RenderSample.cpp $<TARGET_OBJECTS:render_basic_mesh_client>)
+target_link_libraries(render_basic_mesh PRIVATE render lux::engine::core::core_execution lux::engine::resource::shader_metadata)
 add_dependencies(render_basic_mesh render_sample_assets)
 add_test(NAME render.sample.basic_mesh COMMAND render_basic_mesh "${shader}.spv")
 set_tests_properties(render.sample.basic_mesh PROPERTIES TIMEOUT 90)
@@ -61,3 +58,9 @@ set_tests_properties(render.sample.basic_mesh PROPERTIES TIMEOUT 90)
 foreach(target render_sync_client render_output_test render_material_asset_tool render_basic_mesh)
     set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 endforeach()
+
+# Explicit project GPU diagnostic surface, never inherited by an installed application.
+target_include_directories(render_output_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
+target_link_libraries(render_output_test PRIVATE lux::engine::platform::gapi Vulkan::Vulkan lux_render_vma_headers)
+target_compile_definitions(render_output_test PRIVATE LUX_GAPI_ENABLE_VMA=1)
+set_target_properties(render PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")

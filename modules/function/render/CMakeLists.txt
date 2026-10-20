@@ -1,45 +1,107 @@
-add_subdirectory(core)
+find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core)
+find_package(stdexec CONFIG REQUIRED)
+find_package(Vulkan 1.3 REQUIRED)
 
-add_subdirectory(commands)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../core/error/cmake/Values.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../resource/description/cmake/ValueTypes.cmake")
+include(cmake/ShaderTools.cmake)
+include(cmake/Vma.cmake)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/toolchain/shader/cmake/MetadataCompiler.cmake")
 
-if(LUX_RENDER_CLIENT_ONLY)
-    add_subdirectory(runtime)
+generate_visibility_header(
+    ENABLE_MACRO_NAME LUX_RENDER_LIBRARY
+    PUBLIC_MACRO_NAME LUX_RENDER_PUBLIC
+    DISABLE_DLL_MACRO_NAME LUX_RENDER_DLL_DISABLE
+    GENERATE_FILE_PATH lux/engine/render/visibility.h
+)
 
-    lux_engine_install_components(
-        PROJECT_NAME lux-engine-render
-        VERSION 0.0.1
-        NAMESPACE lux::engine::render
-        COMPONENTS render_core render_commands
-    )
-    if(BUILD_TESTING)
-        add_subdirectory(test)
+set(render_sources
+    src/core/Target.cpp src/core/RasterViewport.cpp
+    src/commands/Command.cpp
+    src/resource/Storage.cpp src/resource/ResourceRegistry.cpp src/resource/StorageSet.cpp
+    src/storage/IndexedTriangleMesh.cpp src/storage/RasterMaterialTable.cpp
+    src/graph/Builder.cpp src/graph/Analysis.cpp
+    src/features/Assemble.cpp src/features/RasterMeshParameters.cpp
+    src/features/MaterialMeshRaster.cpp src/features/MeshDepthRaster.cpp src/features/RasterMeshDraws.cpp
+    src/device/Error.cpp src/device/DeviceSession.cpp src/device/DescriptorArray.cpp
+    src/device/Device.cpp src/device/Vma.cpp src/device/Submission.cpp
+    src/execution/Frame.cpp src/execution/OffscreenTarget.cpp src/execution/Execution.cpp
+    src/graph/Compile.cpp src/graph/LayoutPlan.cpp src/graph/Shader.cpp
+    src/upload/UploadContext.cpp src/memory/StagingArena.cpp src/memory/BufferArena.cpp
+    src/storage/SampledTexture2DStorage.cpp src/storage/SampledTexture2DCommandHandler.cpp
+    src/storage/RasterMaterialTableStorage.cpp src/storage/RasterMaterialTableCommandHandler.cpp
+    src/storage/RasterMeshInstanceStorage.cpp src/storage/RasterMeshInstanceCommandHandler.cpp
+    src/storage/IndexedTriangleMeshStorage.cpp src/storage/IndexedTriangleMeshCommandHandler.cpp
+    src/runtime/RenderServer.cpp src/runtime/CommandRegistry.cpp src/runtime/ServerRegistration.cpp
+    src/runtime/ServerScene.cpp src/runtime/ServerEffect.cpp src/runtime/ServerCompletion.cpp
+    src/runtime/ServerLoop.cpp src/runtime/CommandDispatch.cpp
+)
+
+set(mesh_shader_headers)
+foreach(shader BasicMesh DepthOnly BasicMeshPaged DepthOnlyPaged)
+    set(defines)
+    if(shader MATCHES "^DepthOnly")
+        list(APPEND defines -DDEPTH_ONLY=1)
     endif()
-    return()
-endif()
+    if(shader MATCHES "Paged$")
+        list(APPEND defines -DPAGED_INSTANCES=1)
+    endif()
+    set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}Vertex.hpp")
+    set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}Vertex.spv")
+    add_custom_command(
+        OUTPUT "${header}"
+        BYPRODUCTS "${binary}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+        COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -S vert
+            ${defines} "${CMAKE_CURRENT_SOURCE_DIR}/shaders/mesh/IndexedTriangleMesh.vert" -o "${binary}"
+        COMMAND lux_shader_metadata "${binary}" "${header}" k${shader}Vertex
+        DEPENDS shaders/mesh/IndexedTriangleMesh.vert lux_shader_metadata
+        VERBATIM
+    )
+    list(APPEND mesh_shader_headers "${header}")
+endforeach()
 
-add_subdirectory(resource)
+add_component(
+    COMPONENT_NAME render
+    NAMESPACE lux::engine::function
+    OUTPUT_NAME lux_engine_render
+    SOURCE_FILES ${render_sources} ${mesh_shader_headers}
+)
 
-add_subdirectory(graph)
+component_include_directories(
+    render
+    BUILD_TIME_EXPORT "${CMAKE_CURRENT_SOURCE_DIR}/include" "${LUX_GENERATE_HEADER_DIR}"
+    INSTALL_TIME include
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sinclude" "${CMAKE_CURRENT_SOURCE_DIR}/pinclude"
+        "${CMAKE_CURRENT_BINARY_DIR}/shaders" "${LUX_VMA_INCLUDE_DIR}"
+)
 
-add_subdirectory(features)
+target_compile_definitions(render PRIVATE LUX_RENDER_LIBRARY LUX_GAPI_ENABLE_VMA=1)
+target_compile_features(render PUBLIC cxx_std_20)
+target_link_libraries(render
+    PUBLIC lux::cxx::container lux::cxx::compile_time lux::cxx::algorithm lux::cxx::core
+        lux::engine::core::error_values lux::engine::resource::description_types
+        lux::engine::resource::shader_metadata STDEXEC::stdexec
+        lux::engine::core::core_execution lux::engine::platform::platform_ipc
+    PRIVATE Vulkan::Vulkan lux::engine::platform::gapi lux_render_vma_headers
+        lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared
+        lux::engine::platform::platform_process
+)
 
-set(LUX_RENDER_BACKEND "VULKAN" CACHE STRING "Selected Render Native implementation")
-set_property(CACHE LUX_RENDER_BACKEND PROPERTY STRINGS VULKAN)
-
-if(NOT LUX_RENDER_BACKEND STREQUAL "VULKAN")
-    message(FATAL_ERROR "Unsupported LUX_RENDER_BACKEND: ${LUX_RENDER_BACKEND}")
-endif()
-
-add_subdirectory(native/vulkan)
-
-add_subdirectory(runtime)
+component_add_transitive_commands(render
+    "find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core)"
+    "find_package(stdexec CONFIG REQUIRED)"
+    "find_package(lux-engine-core CONFIG REQUIRED COMPONENTS error_values)"
+    "find_package(lux-engine-resource CONFIG REQUIRED COMPONENTS description_types shader_metadata)"
+    "find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)"
+    "find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_ipc)"
+)
 
 lux_engine_install_components(
     PROJECT_NAME lux-engine-render
     VERSION 0.0.1
-    NAMESPACE lux::engine::render
-    COMPONENTS render_core render_commands render_resource render_graph render_features render_native_vulkan
-        render_native_vulkan_extensions render_native_vulkan_features render_runtime
+    NAMESPACE lux::engine::function
+    COMPONENTS render
 )
 
 if(BUILD_TESTING)

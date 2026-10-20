@@ -9,7 +9,8 @@
 #include <latch>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/features/mesh/MeshFeature.hpp>
+#include <lux/engine/render/features/MaterialMeshRaster.hpp>
+#include <lux/engine/render/features/MeshDepthRaster.hpp>
 #include <source_location>
 #include <thread>
 
@@ -135,12 +136,13 @@ namespace mesh_sample
             std::uint64_t& next,
             StorageNameView name,
             std::string key,
-            VStorageOwner owner = {}
+            VStorageLocation owner = {}
         )
         {
             const auto directory = coldCall<ListStorages>(client, commands, next, {});
             const auto found = std::ranges::find(directory.storages, name.name(), &StorageInfo::name);
             check(found != directory.storages.end());
+            check(!found->description.empty());
             return coldCall<PrepareStorage>(client, commands, next, {{std::move(owner), found->id, std::move(key)}, {}})
                 .storage;
         }
@@ -150,6 +152,7 @@ namespace mesh_sample
             const auto directory = coldCall<ListFeatures>(client, commands, next, {});
             const auto found = std::ranges::find(directory.features, name.name(), &FeatureInfo::name);
             check(found != directory.features.end());
+            check(!found->description.empty());
             return found->id;
         }
 
@@ -305,8 +308,8 @@ namespace mesh_sample
         config.program = assets.program;
         config.group = {assets.mesh, assets.material};
         config.textures = {{16, 16, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}};
-        const auto basic = feature(main, main_commands, main_next, BasicMeshFeature::name);
-        const auto depth_feature = feature(main, main_commands, main_next, DepthOnlyFeature::name);
+        const auto basic = feature(main, main_commands, main_next, MaterialMeshRasterDescriptor::name);
+        const auto depth_feature = feature(main, main_commands, main_next, MeshDepthRasterDescriptor::name);
         CreateEffectRequest first_request{config.target}, second_request{config.target};
         first_request.features.push_back({basic, "main", take(ConfigValue::make(config))});
         second_request.features.push_back({depth_feature, "main", take(ConfigValue::make(config))});
@@ -370,9 +373,10 @@ namespace mesh_sample
         // Handler selection is Server-global and observed by the already bound Asset Client.
         const auto set_texture = command<CreateTexture>(main_commands);
         const auto choices = coldCall<ListCommandBindings>(main, main_commands, main_next, set_texture);
-        const auto alternate = std::ranges::find(choices.handlers, "example.TextureB", &HandlerInfo::name);
+        const auto alternate = std::ranges::find(choices.handlers, "B", &HandlerInfo::instance);
         check(alternate != choices.handlers.end() && choices.selected != alternate->id);
         (void)coldCall<SelectCommandBinding>(main, main_commands, main_next, {set_texture, alternate->id});
+        check(coldCall<ListCommandBindings>(main, main_commands, main_next, set_texture).selected == alternate->id);
         replace_texture.count_down();
         texture_ready.wait();
         check(!assets.texture.isNull());

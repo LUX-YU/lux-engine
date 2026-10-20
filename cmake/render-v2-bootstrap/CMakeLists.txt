@@ -15,7 +15,6 @@ endif()
 
 include(CTest)
 
-option(LUX_RENDER_CLIENT_ONLY "Build only the synchronous Client and its dependencies" OFF)
 
 find_package(lux-cmake-toolset CONFIG REQUIRED)
 
@@ -26,32 +25,7 @@ find_package(lux-cxx CONFIG REQUIRED COMPONENTS compile_time)
 include("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description/cmake/ValueTypes.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/error/cmake/Values.cmake")
 
-if(LUX_RENDER_CLIENT_ONLY)
-    # This is a real source build of the synchronous SDK, with no Native or async component selected.
-    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/ipc" ipc)
-    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render" render)
 
-    lux_engine_install_components(
-        PROJECT_NAME lux-engine-resource
-        VERSION ${PROJECT_VERSION}
-        NAMESPACE lux::engine::resource
-        COMPONENTS description_types
-    )
-
-    lux_engine_install_components(
-        PROJECT_NAME lux-engine-platform
-        VERSION ${PROJECT_VERSION}
-        NAMESPACE lux::engine::platform
-        COMPONENTS platform_ipc
-    )
-    lux_engine_install_components(
-        PROJECT_NAME lux-engine-core
-        VERSION ${PROJECT_VERSION}
-        NAMESPACE lux::engine::core
-        COMPONENTS error_values
-    )
-    return()
-endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description/cmake/ShaderMetadata.cmake")
 

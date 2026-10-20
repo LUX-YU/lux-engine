@@ -1,14 +1,4 @@
-# Runtime product assembly. Frozen Editor contributions are not active providers.
-if(TARGET render_features)
-    get_target_property(_render_declaration render_features LUX_PLUGIN_DESCRIPTION_INPUT)
-    get_target_property(_render_inputs render_features LUX_PLUGIN_SOURCE_INPUTS)
-    # Without packed content this target is only the content-provider library;
-    # it has no generated feature plugin to publish.
-    if(_render_declaration)
-        lux_add_plugin_exports(TARGET render_features MODULE_ID lux.builtin.render
-            DESCRIPTION "${_render_declaration}" INPUTS ${_render_inputs})
-    endif()
-endif()
+# Runtime product assembly. Render descriptions are explicitly registered by the application.
 
 if(TARGET physics2d_simulation)
     get_target_property(_physics_source physics2d_simulation SOURCE_DIR)

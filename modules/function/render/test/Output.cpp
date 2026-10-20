@@ -1,9 +1,10 @@
 #include "Support.hpp"
 #include <array>
+#include <cstring>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/execution/ExecutionContext.hpp>
+#include <lux/engine/render/execution/OffscreenTarget.hpp>
 #include <lux/engine/render/graph/Builder.hpp>
-#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
-#include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
-#include <lux/engine/render/native/vulkan/OffscreenTarget.hpp>
 using namespace foundation_test;
 
 static void copyBuffer(SubmissionQueue& queue, VkBuffer source, VkBuffer output, std::uint64_t bytes)
@@ -70,8 +71,33 @@ static void graphOutput(InstanceContext& bootstrap)
     auto physical = take(OffscreenTarget::create(*session, target));
     auto execution = take(session->prepare(graph, *physical));
     const std::array contexts{execution.get()};
-    auto output =
-        take(session->allocator().createBuffer(1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
+    const auto device = session->nativeDevice();
+    VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    buffer_info.size = 1024;
+    buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    VkBuffer output{};
+    CHECK(vkCreateBuffer(device, &buffer_info, nullptr, &output) == VK_SUCCESS);
+    VkMemoryRequirements requirements{};
+    vkGetBufferMemoryRequirements(device, output, &requirements);
+    const auto& memory_types = session->physicalDevice().memoryProperties().memoryProperties;
+    std::uint32_t memory_type = UINT32_MAX;
+    for (std::uint32_t i = 0; i < memory_types.memoryTypeCount; ++i)
+    {
+        const bool supported = (requirements.memoryTypeBits & (1u << i)) != 0;
+        const bool visible = (memory_types.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
+        if (supported && visible)
+        {
+            memory_type = i;
+            break;
+        }
+    }
+    CHECK(memory_type != UINT32_MAX);
+    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocation.allocationSize = requirements.size;
+    allocation.memoryTypeIndex = memory_type;
+    VkDeviceMemory memory{};
+    CHECK(vkAllocateMemory(device, &allocation, nullptr, &memory) == VK_SUCCESS);
+    CHECK(vkBindBufferMemory(device, output, memory, 0) == VK_SUCCESS);
     CHECK(take(session->render(contexts)) == 1);
     CHECK(take(session->render(contexts)) == 1);
     CHECK(take(session->render(contexts)) == 1);
@@ -80,13 +106,19 @@ static void graphOutput(InstanceContext& bootstrap)
     copyBuffer(
         session->queue(),
         execution->nativeBuffer(pixels.index, execution->progress().last_submitted_slot),
-        output.handle(),
+        output,
         1024
     );
     CHECK(session->drain());
     std::array<std::byte, 1024> bytes;
-    CHECK(output.invalidate(session->allocator().native(), 0, bytes.size()) == VK_SUCCESS);
-    std::ranges::copy(output.mappedBytes(session->allocator().native()), bytes.begin());
+    void* mapped = nullptr;
+    CHECK(vkMapMemory(device, memory, 0, VK_WHOLE_SIZE, 0, &mapped) == VK_SUCCESS);
+    VkMappedMemoryRange range{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+    range.memory = memory;
+    range.size = VK_WHOLE_SIZE;
+    CHECK(vkInvalidateMappedMemoryRanges(device, 1, &range) == VK_SUCCESS);
+    std::memcpy(bytes.data(), mapped, bytes.size());
+    vkUnmapMemory(device, memory);
     for (std::size_t i = 0; i < bytes.size(); i += 4)
     {
         CHECK(bytes[i] == std::byte{255} && bytes[i + 1] == std::byte{0});
@@ -96,7 +128,8 @@ static void graphOutput(InstanceContext& bootstrap)
     execution.reset(); // Physical resources outlive the business Context through Session cleanup.
     physical.reset();
     CHECK(session->drain());
-    output.release(session->allocator().native());
+    vkDestroyBuffer(device, output, nullptr);
+    vkFreeMemory(device, memory, nullptr);
     std::puts("Graph output: explicit external copy, correct pixels, Context detached in flight");
 }
 

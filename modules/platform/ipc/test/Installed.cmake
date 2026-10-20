@@ -8,8 +8,10 @@ function(run_checked)
     endif()
 endfunction()
 
-string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef nonce)
-set(root "${BUILD_DIR}/ipc-installed-${nonce}")
+get_filename_component(build_root "${BUILD_DIR}" ABSOLUTE)
+set(root "${build_root}/ipc-installed")
+# Reuse one consumer build. Only replace this test's generated installation prefixes.
+file(REMOVE_RECURSE "${root}/original" "${root}/relocated")
 run_checked("${CMAKE_COMMAND}" --install "${BUILD_DIR}" --prefix "${root}/original" --config "${CONFIG}")
 file(RENAME "${root}/original" "${root}/relocated")
 

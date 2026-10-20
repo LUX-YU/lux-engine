@@ -20,16 +20,9 @@ if(
 endif()
 
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
-    # EntityScene cooks materialize built-in 3D component schemas. Their
-    # schema-only ECS targets use the backend-neutral render client vocabulary
-    # and animation value types, but never render_graph/vulkan/features, UI,
-    # Input or Lua. Keep this list explicit so an offline-tool configure cannot
-    # discover Vulkan, GLFW, ImGui or a Runtime script backend by directory
-    # enumeration.
+    # Offline tools consume authoring and resource descriptions. Render is a runtime library;
+    # it is not pulled in through obsolete client/content component names.
     add_subdirectory(animation)
-    add_subdirectory(render/client)
-    include(render/features/cmake/feature_client.cmake)
-    add_subdirectory(render/standard_content)
     # Spatial3D EntityScene cooking emits the engine-owned LXNR payload through
     # navigation_detour3d's codec.  This lower-layer dependency is Recast-only
     # and must exist in the Toolchain profile without pulling Render/Vulkan.
@@ -52,9 +45,6 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
         graph
         navigation
         navigation_detour3d
-        render_client
-        render_feature_client
-        render_standard_content
         script_artifact
         script_core
     )
@@ -65,12 +55,6 @@ else()
         LUX_FUNCTION_COMPONENTS
         flowforge
         graph
-        render_client
-        render_feature_client
-        render_standard_content
-        render_graph
-        render_vulkan
-        render_runtime
         navigation
         navigation_detour3d
         input
@@ -82,9 +66,6 @@ else()
 
     if(TARGET script_lua)
         list(APPEND LUX_FUNCTION_COMPONENTS script_lua)
-    endif()
-    if(TARGET render_features)
-        list(APPEND LUX_FUNCTION_COMPONENTS render_features)
     endif()
     list(APPEND LUX_FUNCTION_COMPONENTS ui ui_input)
     if(TARGET ui_rendering)

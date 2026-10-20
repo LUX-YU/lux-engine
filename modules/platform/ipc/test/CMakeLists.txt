@@ -1,6 +1,6 @@
 add_executable(platform_ipc_test Ipc.cpp Allocation.cpp)
 
-target_link_libraries(platform_ipc_test PRIVATE platform_ipc render_commands)
+target_link_libraries(platform_ipc_test PRIVATE platform_ipc render)
 target_include_directories(platform_ipc_test PRIVATE ../pinclude)
 
 add_executable(platform_ipc_attachments_test Attachments.cpp)

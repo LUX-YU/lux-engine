@@ -3,14 +3,14 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
-#include <lux/engine/render/native/vulkan/device/Device.hpp>
+#include <lux/engine/render/device/Device.hpp>
 #include <source_location>
 #include <utility>
 
 namespace foundation_test
 {
     using namespace lux::render;
-    using namespace lux::render::vulkan;
+    using namespace lux::render::detail;
 
     inline void require(bool condition, int line)
     {

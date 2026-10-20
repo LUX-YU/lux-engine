@@ -113,7 +113,10 @@ namespace lux::render::detail
         }
     }
 
-    void FrameExecution::afterSubmit(void* receiver, void (*complete)(void*, RenderResult<void>) noexcept) noexcept
+    void FrameExecution::afterSubmit(
+        void* receiver,
+        void (*complete)(void*, std::uint32_t, RenderResult<void>) noexcept
+    ) noexcept
     {
         frame_receivers_.emplace_back(receiver, complete);
     }
@@ -137,12 +140,13 @@ namespace lux::render::detail
             uploads_->completeFrameCopies(result);
         }
         const auto boundary = frame_receivers_.size();
+        const auto slot = next_frame_;
         for (std::size_t i = 0; i < boundary; ++i)
         {
             // Remove this borrow before delivery. A callback may append work for the next
             // submission and grow the vector; no iterator or record reference crosses it.
             const auto [receiver, complete] = std::exchange(frame_receivers_[i], {});
-            complete(receiver, result);
+            complete(receiver, slot, result);
         }
         frame_receivers_.erase(frame_receivers_.begin(), frame_receivers_.begin() + boundary);
     }

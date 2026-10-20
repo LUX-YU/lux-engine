@@ -1,9 +1,9 @@
 #pragma once
 
+#include <array>
 #include <lux/engine/render/storage/IndexedTriangleMesh.hpp>
 #include <lux/engine/render/storage/RasterMaterialTable.hpp>
-#include <optional>
-#include <tuple>
+#include <span>
 
 namespace lux::render
 {
@@ -27,23 +27,22 @@ namespace lux::render
         MeshInstanceDescription description;
     };
 
+    // Borrowed arrays remain immutable and at stable addresses until the terminal Response.
+    // Abandon/connection loss is not completion; settle the Server and CPU producers before releasing input.
+    // The Client supplies unique changed identities and finite matrices. The Server validates current generations.
     struct MeshInstancesCreate final
     {
         StorageId storage;
-        std::vector<MeshInstanceDescription> descriptions;
+        std::span<const MeshInstanceDescription> descriptions;
     };
 
-    struct TransformUpdate final
-    {
-        MeshInstanceId instance;
-        TransformMatrix transform = kIdentityTransform;
-    };
-
+    // Equal-length, position-matched arrays. A failed enqueue takes no borrow.
     struct TransformBatch final
     {
         StorageId storage;
         std::uint64_t sequence = 0; // Caller revision echoed exactly, never acknowledges later dirty state.
-        std::vector<TransformUpdate> updates;
+        std::span<const cxx::SlotKey<MeshInstanceTag>> instances;
+        std::span<const TransformMatrix> transforms;
     };
 
     struct TransformApplied final
@@ -133,7 +132,7 @@ namespace lux::render
     {
         StorageId storage;
         std::uint64_t sequence = 0;
-        std::vector<MeshInstanceUpdate> updates;
+        std::span<const MeshInstanceUpdate> updates;
     };
 
     struct UpdateMeshInstances final

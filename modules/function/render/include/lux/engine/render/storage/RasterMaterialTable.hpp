@@ -14,6 +14,7 @@ namespace lux::render
     struct MaterialTag;
     using MaterialId = StorageResourceId<MaterialTag>;
     inline constexpr StorageNameView kMaterialStorageType("lux.render.storage.RasterMaterialTable");
+    // Client-supplied finite values in the Cooked parameter order; Render checks the actual layout and count.
     using MaterialParameters = std::vector<std::array<float, 4>>;
 
     // Immutable runtime projection of existing cooked MaterialGraph output. No author graph or compiler.

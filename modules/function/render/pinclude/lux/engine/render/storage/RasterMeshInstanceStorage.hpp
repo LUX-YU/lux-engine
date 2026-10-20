@@ -31,6 +31,13 @@ namespace lux::render::detail
         };
 
     public:
+        struct Selection final
+        {
+            MeshId mesh;
+            MaterialId material;
+            std::uint32_t submesh = 0;
+        };
+
         // A borrowed change node owned by the interested Feature's actual Context data. Storage
         // reports identity changes; only the Feature decides selection and indirect membership.
         class Observer final
@@ -41,7 +48,7 @@ namespace lux::render::detail
             Observer(const Observer&) = delete;
             Observer& operator=(const Observer&) = delete;
             void* receiver = nullptr;
-            void (*changed)(void*, MeshInstanceId, const MeshInstanceDescription*) noexcept = nullptr;
+            void (*changed)(void*, MeshInstanceId, const Selection*) noexcept = nullptr;
             void reset() noexcept;
 
         private:
@@ -57,7 +64,7 @@ namespace lux::render::detail
 
         [[nodiscard]] exec::task<RenderResult<MeshInstanceId>> create(MeshInstanceDescription) noexcept;
         [[nodiscard]] exec::task<
-            RenderResult<std::vector<MeshInstanceId>>> create(std::vector<MeshInstanceDescription>) noexcept;
+            RenderResult<std::vector<MeshInstanceId>>> create(std::span<const MeshInstanceDescription>) noexcept;
         [[nodiscard]] exec::task<RenderResult<TransformApplied>> update(TransformBatch) noexcept;
         [[nodiscard]] exec::task<RenderResult<TransformApplied>> update(MeshInstanceBatch) noexcept;
         [[nodiscard]] exec::task<RenderResult<Ack>> release(MeshInstanceId) noexcept;
@@ -69,7 +76,7 @@ namespace lux::render::detail
             {
                 if (!entry.key.isNull())
                 {
-                    visitor(MeshInstanceId{id_, entry.key}, describe(entry));
+                    visitor(MeshInstanceId{id_, entry.key}, selection(entry));
                 }
             }
         }
@@ -94,9 +101,11 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, ResourceUploader&) noexcept;
         [[nodiscard]] RenderResult<MeshInstanceGpuProperty> resolveReferences(const MeshInstanceDescription&)
             const noexcept;
-        [[nodiscard]] MeshInstanceDescription describe(const Entry&) const noexcept;
+        [[nodiscard]] Selection selection(const Entry&) const noexcept;
         void notify(const Entry&, bool removed) noexcept;
         void publishBuffers(std::uint32_t slot) noexcept;
+        void adoptFrameBuffers(std::uint32_t slot) noexcept;
+        void finishFramePreparation(std::uint32_t slot, RenderResult<void>) noexcept;
         void release(GpuPage&) noexcept;
         void release(PageTable&) noexcept;
         void mark(std::uint32_t frame, std::uint32_t record, std::uint8_t fields) noexcept;

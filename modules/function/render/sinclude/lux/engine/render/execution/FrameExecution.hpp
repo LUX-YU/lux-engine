@@ -104,7 +104,10 @@ namespace lux::render::detail
         }
 
         void dispatchWrites() noexcept;
-        void afterSubmit(void* receiver, void (*complete)(void*, RenderResult<void>) noexcept) noexcept;
+        void afterSubmit(
+            void* receiver,
+            void (*complete)(void*, std::uint32_t slot, RenderResult<void>) noexcept
+        ) noexcept;
         static void collectStorageUses(std::span<ExecutionContext* const>, std::vector<StorageFrameUse>&) noexcept;
         [[nodiscard]] RenderResult<
             std::uint32_t> render(std::span<ExecutionContext* const>, std::span<const StorageFrameUse>) noexcept;
@@ -141,7 +144,7 @@ namespace lux::render::detail
         std::uint32_t frame_count_;
         std::uint32_t next_frame_ = 0;
         std::uint8_t wait_queue_cursor_ = 0;
-        std::vector<std::pair<void*, void (*)(void*, RenderResult<void>) noexcept>> frame_receivers_;
+        std::vector<std::pair<void*, void (*)(void*, std::uint32_t, RenderResult<void>) noexcept>> frame_receivers_;
         WriteWaiter* frame_waiters_ = nullptr;
         WriteWaiter* frame_waiters_tail_ = nullptr;
     };

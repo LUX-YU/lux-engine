@@ -29,7 +29,7 @@ namespace lux::render::detail
         }
     }
 
-    bool RasterMeshDraws::selected(const MeshInstanceDescription& input) const noexcept
+    bool RasterMeshDraws::selected(const RasterMeshInstanceStorage::Selection& input) const noexcept
     {
         if (input.mesh != selection_.mesh || input.submesh != selection_.submesh ||
             input.material.storage != selection_.material.storage)
@@ -40,7 +40,7 @@ namespace lux::render::detail
         return material && (*material)->sameTable(input.material, selection_.material);
     }
 
-    void RasterMeshDraws::update(MeshInstanceId id, const MeshInstanceDescription* description) noexcept
+    void RasterMeshDraws::update(MeshInstanceId id, const RasterMeshInstanceStorage::Selection* description) noexcept
     {
         if (id.isNull())
         {
@@ -137,7 +137,7 @@ namespace lux::render::detail
                 }
                 frames_.afterSubmit(
                     &slice,
-                    [](void* value, RenderResult<void> accepted) noexcept
+                    [](void* value, std::uint32_t, RenderResult<void> accepted) noexcept
                     {
                         auto& slice = *static_cast<GpuSlice*>(value);
                         if (accepted)
@@ -237,11 +237,11 @@ namespace lux::render::detail
         }
         value->sections_ = *sections;
         (*instances)
-            ->forEach([&](MeshInstanceId id, const MeshInstanceDescription& input) noexcept
+            ->forEach([&](MeshInstanceId id, const RasterMeshInstanceStorage::Selection& input) noexcept
                       { value->update(id, &input); });
         value->observer_.receiver = value.get();
         value->observer_.changed =
-            [](void* pointer, MeshInstanceId id, const MeshInstanceDescription* description) noexcept
+            [](void* pointer, MeshInstanceId id, const RasterMeshInstanceStorage::Selection* description) noexcept
         {
             auto& self = *static_cast<RasterMeshDraws*>(pointer);
             self.update(id, description);

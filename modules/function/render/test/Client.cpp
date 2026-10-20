@@ -304,10 +304,12 @@ namespace mesh_sample
             prepare(main, main_commands, main_next, kMeshInstanceStorageType, "instances", scene);
         MeshInstanceDescription description{assets.mesh, assets.material};
         description.transform[12] = -.45f;
-        MeshInstancesCreate instances{instance_storage, {description}};
+        std::vector<MeshInstanceDescription> instance_descriptions{description};
         description.transform[12] = .45f;
-        instances.descriptions.push_back(description);
-        auto created = coldCall<CreateMeshInstances>(main, main_commands, main_next, std::move(instances));
+        instance_descriptions.push_back(description);
+        auto created =
+            coldCall<CreateMeshInstances>(main, main_commands, main_next, {instance_storage, instance_descriptions});
+        instance_descriptions.clear(); // Response ended the source borrow; capacity remains available to the Client.
         check(created.instances.size() == 2);
         const auto left = created.instances[0];
         const auto right = created.instances[1];
@@ -376,13 +378,22 @@ namespace mesh_sample
         const auto original_compiles = coldCall<QueryRenderStats>(main, main_commands, main_next, {}).compiled_graphs;
 
         // The application submits an already coalesced sparse update. The Scene retains the authoritative record.
-        TransformBatch batch{instance_storage, 7};
-        batch.updates.reserve(8);
+        std::vector<lux::cxx::SlotKey<MeshInstanceTag>> changed_instances;
+        std::vector<TransformMatrix> changed_transforms;
+        changed_instances.reserve(8);
+        changed_transforms.reserve(8);
         auto matrix = description.transform;
         matrix[12] = -.2f;
-        batch.updates.push_back({left, matrix});
-        auto applied =
-            call<UpdateTransforms>(main, main_next, command<UpdateTransforms>(main_commands), std::move(batch));
+        changed_instances.push_back(left.local);
+        changed_transforms.push_back(matrix);
+        auto applied = call<UpdateTransforms>(
+            main,
+            main_next,
+            command<UpdateTransforms>(main_commands),
+            {instance_storage, 7, changed_instances, changed_transforms}
+        );
+        changed_instances.clear();
+        changed_transforms.clear();
         check(applied.sequence == 7 && applied.changed == 1);
         await_frame();
 

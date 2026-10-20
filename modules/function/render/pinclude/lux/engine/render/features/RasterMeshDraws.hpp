@@ -25,8 +25,8 @@ namespace lux::render::detail
         RasterMeshDraws(DeviceSession&, FrameExecution&, ResourceRegistry&, MeshInstanceDrawGroup) noexcept;
         [[nodiscard]] RenderResult<FeatureFrameWork::Preparation> prepare(std::uint32_t, ResourceUploader&) noexcept;
         void record(nri::CommandBuffer&, std::uint32_t) noexcept;
-        void update(MeshInstanceId, const MeshInstanceDescription*) noexcept;
-        [[nodiscard]] bool selected(const MeshInstanceDescription&) const noexcept;
+        void update(MeshInstanceId, const RasterMeshInstanceStorage::Selection*) noexcept;
+        [[nodiscard]] bool selected(const RasterMeshInstanceStorage::Selection&) const noexcept;
         DeviceSession& session_;
         FrameExecution& frames_;
         ResourceRegistry& resources_;

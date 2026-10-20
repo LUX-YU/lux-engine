@@ -52,6 +52,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void>
         resolve(const CompiledResource&, const MaterialBinding&, StorageSubscription&, std::span<StorageResource>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
+        void finishFramePreparation(std::uint32_t frame, RenderResult<void>) noexcept;
         void markDirty(Table&, std::uint32_t frame, std::uint32_t record) noexcept;
         void removeDirty(Table&, std::uint32_t frame) noexcept;
         void releaseTable(Table&) noexcept;

@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <bit>
-#include <cmath>
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
@@ -18,13 +17,15 @@ namespace lux::render::detail
         MaterialProgram program;
         std::uint32_t stride = 0;
         std::vector<std::uint32_t> parameter_offsets, texture_offsets;
-        std::vector<std::byte> records; // The sole CPU parameter authority, in the reflected GPU layout.
+        std::vector<std::byte> records; // Adopted GPU-format bytes used to fill and repair every FIF replica.
         std::vector<Entry*> entries;
         std::vector<std::uint32_t> free_slots;
 
         struct GpuSlice final
         {
             nri::Buffer* parameters = nullptr;
+            nri::Buffer* pending_parameters = nullptr;
+            std::uint32_t pending_capacity = 0;
             std::uint32_t capacity = 0;
             DirtyRanges dirty;
             std::uint32_t position = UINT32_MAX;
@@ -182,6 +183,7 @@ namespace lux::render::detail
         {
             removeDirty(table, frame);
             releaseAfterGpu(session_, table.gpu[frame].parameters);
+            releaseAfterGpu(session_, table.gpu[frame].pending_parameters);
         }
     }
 
@@ -253,12 +255,7 @@ namespace lux::render::detail
         );
         const bool invalid_counts = input.parameters.size() != table.parameter_offsets.size() ||
                                     input.textures.size() != table.texture_offsets.size();
-        const bool invalid_values = std::ranges::any_of(
-            input.parameters,
-            [](const auto& lane)
-            { return !std::ranges::all_of(lane, [](float value) { return std::isfinite(value); }); }
-        );
-        if (invalid_counts || invalid_values)
+        if (invalid_counts)
         {
             co_return cxx::unexpected(RenderError{kStorageContract});
         }
@@ -273,6 +270,17 @@ namespace lux::render::detail
         if (total_bytes > session_.description().memory.storageBufferMaxRange || table.entries.size() >= UINT32_MAX)
         {
             co_return cxx::unexpected(RenderError{kStorageCapacity});
+        }
+        table.records.reserve(total_bytes);
+        if constexpr (std::same_as<Input, MaterialWrite>)
+        {
+            entries_.reserve(std::bit_ceil(entries_.size() + 1));
+            table.entries.reserve(capacity);
+        }
+        for (std::uint32_t frame = 0; frame < frame_execution_.frameCount(); ++frame)
+        {
+            table.gpu[frame].dirty.grow(capacity);
+            dirty_tables_[frame].reserve(std::bit_ceil(tables_.size()));
         }
         table.value_bytes.assign(table.stride, std::byte{});
         auto values = std::span(table.value_bytes);
@@ -356,6 +364,8 @@ namespace lux::render::detail
         }
         if (grow_gpu)
         {
+            releaseAfterGpu(session_, slice.pending_parameters);
+            slice.pending_capacity = 0;
             releaseAfterGpu(session_, slice.parameters);
             slice.parameters = std::exchange(candidate, nullptr);
             slice.capacity = static_cast<std::uint32_t>(capacity);
@@ -502,6 +512,23 @@ namespace lux::render::detail
 
     RenderResult<bool> RasterMaterialTableStorage::prepareFrame(std::uint32_t frame, ResourceUploader& uploads) noexcept
     {
+        bool copied_any = false;
+        cxx::scope_exit acknowledge(
+            [&]() noexcept
+            {
+                if (copied_any)
+                {
+                    frame_execution_.afterSubmit(
+                        this,
+                        [](void* value, std::uint32_t frame, RenderResult<void> accepted) noexcept
+                        {
+                            auto& storage = *static_cast<RasterMaterialTableStorage*>(value);
+                            storage.finishFramePreparation(frame, accepted);
+                        }
+                    );
+                }
+            }
+        );
         bool ready = true;
         auto& tables = dirty_tables_[frame];
         for (std::size_t i = 0; i < tables.size();)
@@ -515,7 +542,7 @@ namespace lux::render::detail
             }
             ++i;
             const auto capacity = static_cast<std::uint32_t>(table.records.size() / table.stride);
-            if (slice.capacity < capacity)
+            if (std::max(slice.capacity, slice.pending_capacity) < capacity)
             {
                 const nri::BufferDesc description{
                     table.records.size(),
@@ -529,14 +556,13 @@ namespace lux::render::detail
                 {
                     return cxx::unexpected(nativeError(result));
                 }
-                releaseAfterGpu(session_, slice.parameters);
-                slice.parameters = buffer;
-                slice.capacity = capacity;
+                releaseAfterGpu(session_, slice.pending_parameters);
+                slice.pending_parameters = buffer;
+                slice.pending_capacity = capacity;
                 slice.dirty.grow(capacity);
                 slice.dirty.markRange(0, capacity);
                 slice.partial_record = UINT32_MAX;
                 slice.partial_bytes = 0;
-                publish(table, frame);
             }
             slice.accepted.clear();
             slice.next_partial_record = slice.partial_record;
@@ -551,7 +577,8 @@ namespace lux::render::detail
                     const auto begin = std::size_t(first) * table.stride + offset;
                     const auto source = std::span<const std::byte>(table.records)
                                             .subspan(begin, std::size_t(count) * table.stride - offset);
-                    auto copied = uploads.stageBuffer({slice.parameters, begin, source});
+                    auto* target = slice.pending_parameters ? slice.pending_parameters : slice.parameters;
+                    auto copied = uploads.stageBuffer({target, begin, source});
                     if (!copied)
                     {
                         return cxx::unexpected(copied.error());
@@ -609,30 +636,46 @@ namespace lux::render::detail
                     staged = complete;
                 }
             }
-            if (progress)
-            {
-                frame_execution_.afterSubmit(
-                    &slice,
-                    [](void* value, RenderResult<void> accepted) noexcept
-                    {
-                        auto& slice = *static_cast<Table::GpuSlice*>(value);
-                        if (accepted)
-                        {
-                            slice.dirty.acknowledge(slice.accepted);
-                            slice.partial_record = slice.next_partial_record;
-                            slice.partial_bytes = slice.next_partial_bytes;
-                        }
-                        slice.accepted.clear();
-                    }
-                );
-            }
+            copied_any |= progress;
             if (!staged)
             {
                 return cxx::unexpected(staged.error());
             }
-            ready &= covered == slice.dirty.recordCount();
+            ready &= covered == slice.dirty.recordCount() && !slice.pending_parameters;
         }
         return ready;
+    }
+
+    void RasterMaterialTableStorage::finishFramePreparation(std::uint32_t frame, RenderResult<void> accepted) noexcept
+    {
+        auto& dirty = dirty_tables_[frame];
+        for (std::size_t index = 0; index < dirty.size();)
+        {
+            auto& table = *dirty[index];
+            auto& slice = table.gpu[frame];
+            if (accepted)
+            {
+                slice.dirty.acknowledge(slice.accepted);
+                slice.partial_record = slice.next_partial_record;
+                slice.partial_bytes = slice.next_partial_bytes;
+            }
+            slice.accepted.clear();
+            if (accepted && slice.dirty.empty())
+            {
+                if (slice.pending_parameters)
+                {
+                    releaseAfterGpu(session_, slice.parameters);
+                    slice.parameters = std::exchange(slice.pending_parameters, nullptr);
+                    slice.capacity = std::exchange(slice.pending_capacity, 0);
+                    publish(table, frame);
+                }
+                removeDirty(table, frame);
+            }
+            else
+            {
+                ++index;
+            }
+        }
     }
 
     StorageFactory materialStorageFactory() noexcept

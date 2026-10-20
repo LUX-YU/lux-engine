@@ -22,16 +22,12 @@ namespace lux::render::runtime_detail
     ) noexcept
     {
         const auto* input = &request;
-        const auto count = input->features.size();
+        const auto count = input->definition.features.size();
         std::vector<FeatureBuildInput> selected;
-        std::vector<PassProgram> programs;
-        std::vector<std::size_t> program_owners;
-        std::vector<StorageArgument> arguments;
-        std::vector<detail::FeatureFrameContribution> contexts;
         selected.reserve(count);
-        for (std::size_t i = 0; i < input->features.size(); ++i)
+        for (std::size_t i = 0; i < input->definition.features.size(); ++i)
         {
-            const auto& selection = input->features[i];
+            const auto& selection = input->definition.features[i];
             const auto* registration = registrations[i];
             selected.push_back(
                 {&registration->descriptor,
@@ -40,7 +36,13 @@ namespace lux::render::runtime_detail
                  selection.contribution_key}
             );
         }
-        auto assembly = assembleFeatures(selected, max_config_bytes);
+        auto assembly = composeFeatures(
+            selected,
+            max_config_bytes,
+            input->definition.connections,
+            input->definition.outputs,
+            input->definition.inputs
+        );
         if (!assembly)
         {
             return cxx::unexpected(assembly.error());
@@ -51,6 +53,10 @@ namespace lux::render::runtime_detail
         for (const auto& lifetime : assembly->analysis.lifetimes)
         {
             live_resources[lifetime.version.resource.index] = true;
+        }
+        for (auto parameter : assembly->analysis.parameter_inputs)
+        {
+            live_resources[parameter.index] = true;
         }
         const auto qualify = [&](const auto& group) noexcept
         {
@@ -81,128 +87,7 @@ namespace lux::render::runtime_detail
         {
             return cxx::unexpected(RenderError{kStorageFactory});
         }
-        const auto resources = assembly->definition.resources();
-        std::map<std::string_view, std::uint32_t, std::less<>> resource_names;
-        for (std::uint32_t i = 0; i < resources.size(); ++i)
-        {
-            resource_names.emplace(resources[i].key, i);
-        }
-        std::vector<bool> declared_storage(resources.size(), false);
-        for (const auto* group : {&external.global, &external.scene, &external.view, &external.attachment})
-        {
-            for (const auto& binding : *group)
-            {
-                declared_storage[binding.resource.index] = true;
-            }
-        }
-        std::vector<std::size_t> argument_indices(resources.size(), SIZE_MAX);
-        std::vector<std::size_t> pass_owners(assembly->definition.passes().size(), SIZE_MAX);
-        for (const auto& contribution : assembly->contributions)
-        {
-            const auto index = contribution.input_index;
-            if (!registrations[index]->programs)
-            {
-                const bool has_live_pass = std::ranges::any_of(
-                    assembly->analysis.execution_order,
-                    [&](auto pass)
-                    {
-                        return pass.index >= contribution.first_pass &&
-                               pass.index - contribution.first_pass < contribution.pass_count;
-                    }
-                );
-                if (has_live_pass)
-                {
-                    return cxx::unexpected(RenderError{kFeatureContract});
-                }
-                continue;
-            }
-            const auto& selection = selected[index];
-            auto values = registrations[index]->programs(
-                selection.config ? selection.config->data() : nullptr,
-                selection.contribution_key,
-                assembly->definition,
-                enabled
-            );
-            if (!values)
-            {
-                return cxx::unexpected(values.error());
-            }
-            const auto passes = assembly->definition.passes().subspan(contribution.first_pass, contribution.pass_count);
-            std::fill_n(pass_owners.begin() + contribution.first_pass, contribution.pass_count, index);
-            for (auto& value : values->contexts)
-            {
-                const bool is_declared = std::ranges::any_of(
-                    passes,
-                    [&](const auto& pass)
-                    {
-                        return std::ranges::any_of(
-                            pass.uses,
-                            [&](const auto& use) { return use.version.resource == value.resource; }
-                        );
-                    }
-                );
-                if (!is_declared)
-                {
-                    return cxx::unexpected(RenderError{kFeatureOwnership});
-                }
-                contexts.push_back(std::move(value));
-            }
-            for (auto& value : values->programs)
-            {
-                programs.push_back(std::move(value));
-                program_owners.push_back(index);
-            }
-            for (auto& argument : values->arguments)
-            {
-                const auto resource = resource_names.find(argument.resource_key);
-                if (resource == resource_names.end())
-                {
-                    return cxx::unexpected(RenderError{kStorageContract});
-                }
-                const auto resource_index = resource->second;
-                if (!declared_storage[resource_index])
-                {
-                    return cxx::unexpected(RenderError{kStorageContract});
-                }
-                if (!live_resources[resource_index])
-                {
-                    continue;
-                }
-                auto& existing = argument_indices[resource_index];
-                if (existing == SIZE_MAX)
-                {
-                    existing = arguments.size();
-                    arguments.push_back(std::move(argument));
-                }
-                else if (arguments[existing] != argument)
-                {
-                    return cxx::unexpected(RenderError{kStorageMismatch});
-                }
-            }
-        }
-        auto indexed = detail::indexPrograms(assembly->definition, programs);
-        if (!indexed)
-        {
-            const auto position = indexed.error().args[0];
-            const auto error = indexed.error().args[1] ? kFeatureDuplicate : kFeatureOwnership;
-            return cxx::unexpected(RenderError{error, {program_owners[position], position}});
-        }
-        for (std::size_t pass = 0; pass < indexed->size(); ++pass)
-        {
-            const auto* program = (*indexed)[pass];
-            if (program && program_owners[program - programs.data()] != pass_owners[pass])
-            {
-                return cxx::unexpected(RenderError{kFeatureOwnership, {pass}});
-            }
-        }
-        for (const auto pass : assembly->analysis.execution_order)
-        {
-            if (!(*indexed)[pass.index])
-            {
-                return cxx::unexpected(RenderError{kFeatureContract, {pass.index}});
-            }
-        }
-        auto compiled = detail::compileGraph(
+        auto compiled = detail::GraphCompiler::compile(
             device,
             nri_core,
             enabled,
@@ -211,18 +96,22 @@ namespace lux::render::runtime_detail
             queue_type,
             sampled_image_capacity,
             sampler_capacity,
-            (*assembly).definition,
-            (*assembly).analysis,
-            std::move(assembly->external_bindings),
-            *indexed,
-            input->description,
-            std::move(contexts)
+            assembly->definition,
+            assembly->analysis,
+            &input->description
         );
         if (!compiled)
         {
             return cxx::unexpected(compiled.error());
         }
-        return RenderEffect{std::make_unique<detail::CompiledGraph>(std::move(*compiled)), std::move(arguments)};
+        return RenderEffect{
+            std::make_unique<detail::RenderPlan>(std::move(*compiled)),
+            std::move(assembly->definition),
+            std::move(assembly->analysis),
+            std::move(assembly->external_bindings),
+            std::move(assembly->arguments),
+            std::move(assembly->bindings)
+        };
     }
 
 } // namespace lux::render::runtime_detail

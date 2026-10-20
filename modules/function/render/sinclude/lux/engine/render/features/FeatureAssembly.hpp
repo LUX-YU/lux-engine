@@ -2,20 +2,20 @@
 
 #include <lux/engine/render/visibility.h>
 
+#include <lux/engine/render/features/EffectDefinition.hpp>
+#include <lux/engine/render/features/FeatureBuildContext.hpp>
 #include <lux/engine/render/features/FeatureDescriptor.hpp>
-#include <lux/engine/render/features/ResourceClaims.hpp>
-#include <lux/engine/render/graph/Analysis.hpp>
-#include <lux/engine/render/graph/Builder.hpp>
+#include <lux/engine/render/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/graph/RenderGraphBuilder.hpp>
 
 namespace lux::render
 {
     // Synchronous cold contributions. Callbacks may append, never finish/move/retain the Builder.
     struct FeatureGraphOps final
     {
-        using Build = RenderResult<
-            void> (*)(const void*, std::string_view, std::span<const ResolvedResource>, RenderGraphBuilder&) noexcept;
+        using Build = RenderResult<void> (*)(const void*, std::string_view, FeatureBuildContext&) noexcept;
 
-        RenderResult<void> (*describe)(const void*, std::string_view, ResourceClaims&) noexcept;
+        RenderResult<void> (*describe)(const void*, std::string_view, FeaturePorts&) noexcept;
         Build build = nullptr;
     };
 
@@ -36,10 +36,12 @@ namespace lux::render
 
     struct FeatureAssembly final
     {
-        RenderGraphDefinition definition;
-        GraphAnalysis analysis;
+        RenderGraph definition;
+        RenderGraphAnalysis analysis;
         GraphStorageBindings external_bindings;
         std::vector<FeatureContribution> contributions;
+        std::vector<StorageArgument> arguments;
+        std::vector<detail::FeatureFrameContribution> bindings;
     };
 
     [[nodiscard]] LUX_RENDER_PUBLIC std::string featureKey(
@@ -48,9 +50,12 @@ namespace lux::render
         std::string_view local
     ) noexcept;
 
-    [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<FeatureAssembly> assembleFeatures(
+    [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<FeatureAssembly> composeFeatures(
         std::span<const FeatureBuildInput> instances,
-        std::size_t config_byte_limit
+        std::size_t config_byte_limit,
+        std::span<const FeatureConnection> connections,
+        std::span<const FeatureExport> outputs,
+        std::span<const FeatureInput> inputs = {}
     ) noexcept;
 
     // Arguments: canonical feature index, resource/group index, related index.

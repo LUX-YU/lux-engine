@@ -13,11 +13,9 @@ namespace lux::render::runtime_detail
         std::string name;
         FeatureDescriptor descriptor;
         FeatureGraphOps graph;
-        decltype(FeatureDefinition::programs) programs;
 
         FeatureEntry(FeatureDefinition input) noexcept
-            : name(input.descriptor->type.name()), descriptor(*input.descriptor), graph(*input.graph),
-              programs(input.programs)
+            : name(input.descriptor->type.name()), descriptor(*input.descriptor), graph(*input.graph)
         {
             descriptor.type = FeatureName(name);
         }

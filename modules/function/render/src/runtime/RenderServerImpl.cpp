@@ -84,12 +84,12 @@ namespace lux::render
     {
         RenderError initial_error;
         std::vector<const FeatureEntry*> registrations;
-        if (input.features.empty())
+        if (input.definition.features.empty())
         {
             initial_error = {kFeatureContract};
         }
-        registrations.reserve(input.features.size());
-        for (const auto& selection : input.features)
+        registrations.reserve(input.definition.features.size());
+        for (const auto& selection : input.definition.features)
         {
             const auto* found = features.find(selection.feature);
             if (!found)
@@ -202,38 +202,33 @@ namespace lux::render
         {
             detachAttachment(effect->attachments.back());
         }
-        device->deferRelease([code = std::move(effect->code)]() mutable noexcept { code.reset(); });
+        device->deferRelease([plan = std::move(effect->plan)]() mutable noexcept { plan.reset(); });
         effects.erase(input->effect);
         output_response = {};
     }
 
-    RenderResult<std::unique_ptr<detail::ExecutionContext>> RenderServer::Impl::createExecutionContext(
-        const detail::CompiledGraph& code,
+    RenderResult<std::unique_ptr<detail::RenderGraphInstance>> RenderServer::Impl::createRenderGraphInstance(
+        const RenderEffect& effect,
         detail::OffscreenTarget& output,
         StorageSet& scene,
         StorageSet& view,
-        std::span<const StorageArgument> arguments
+        StorageSet& attachment
     ) noexcept
     {
+        const auto& code = *effect.plan;
         auto dependencies = storageContext();
         std::vector<const StorageArgument*> resolved_arguments(code.resources().size());
-        for (const auto& argument : arguments)
+        for (const auto& argument : effect.arguments)
         {
-            const auto plan =
-                std::ranges::find(code.resources(), argument.resource_key, &detail::CompiledResource::key);
-            if (plan == code.resources().end())
+            const auto index = argument.resource.index;
+            if (index >= code.resources().size())
             {
                 return cxx::unexpected(RenderError{kStorageContract});
             }
-            if (!plan->used)
+            if (!code.resources()[index].used)
             {
                 continue;
             }
-            if (!plan->storage)
-            {
-                return cxx::unexpected(RenderError{kStorageContract});
-            }
-            const auto index = static_cast<std::size_t>(plan - code.resources().begin());
             const auto* previous = resolved_arguments[index];
             if (previous && *previous != argument)
             {
@@ -251,12 +246,13 @@ namespace lux::render
                 }
             }
         );
-        auto context =
-            std::make_unique<detail::ExecutionContext>(*device, *resources, frames->frameCount(), code, output);
-        const auto prepareGroup = [&](std::span<const std::uint32_t> indices, StorageSet* set) -> RenderResult<void>
+        auto context = std::make_unique<detail::RenderGraphInstance>(*device, frames->frameCount(), code, &output);
+        const auto prepareGroup = [&](std::span<const GraphStorageBinding> bindings,
+                                      StorageSet* set) -> RenderResult<void>
         {
-            for (auto i : indices)
+            for (const auto& binding : bindings)
             {
+                const auto i = binding.resource.index;
                 const auto& plan = code.resources()[i];
                 if (!plan.used)
                 {
@@ -266,8 +262,8 @@ namespace lux::render
                 {
                     return cxx::unexpected(RenderError{kStorageIdentity});
                 }
-                const auto* factory = dependencies.resources.factory(plan.storage->type.view());
-                const auto key = plan.storage->key.empty() ? plan.key : plan.storage->key;
+                const auto* factory = dependencies.resources.factory(binding.storage.type.view());
+                const auto key = binding.storage.key.empty() ? plan.key : binding.storage.key;
                 const auto* argument = resolved_arguments[i];
                 const auto type = argument ? argument->typeInfo() : CppType{};
                 if (type != factory->descriptor->binding_type)
@@ -276,15 +272,15 @@ namespace lux::render
                 }
                 const auto* value = argument ? argument->data() : nullptr;
                 const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->binding_ops);
-                const auto storage_type = dependencies.resources.typeId(plan.storage->type.view());
+                const auto storage_type = dependencies.resources.typeId(binding.storage.type.view());
                 const auto previous = set->find(storage_type, key);
-                auto instance = set->getOrCreate(dependencies, storage_type, key, plan.storage->config);
+                auto instance = set->getOrCreate(dependencies, storage_type, key, binding.storage.config);
                 if (!instance)
                 {
                     return cxx::unexpected(instance.error());
                 }
                 const auto id = *instance;
-                if (previous.isNull() && set != &context->attachmentStorages())
+                if (previous.isNull() && set != &attachment)
                 {
                     created_storages.emplace_back(set, id);
                 }
@@ -295,7 +291,7 @@ namespace lux::render
             }
             return {};
         };
-        const auto& groups = code.storageGroups();
+        const auto& groups = effect.storage_requirements;
         if (auto r = prepareGroup(groups.global, &*global_storages); !r)
         {
             return cxx::unexpected(r.error());
@@ -308,11 +304,29 @@ namespace lux::render
         {
             return cxx::unexpected(r.error());
         }
-        if (auto r = prepareGroup(groups.attachment, &context->attachmentStorages()); !r)
+        if (auto r = prepareGroup(groups.attachment, &attachment); !r)
         {
             return cxx::unexpected(r.error());
         }
-        if (auto ready = context->initialize(output, *frames, *resources); !ready)
+        std::vector<StorageId> resolved(code.resources().size());
+        for (std::uint32_t i = 0; i < resolved.size(); ++i)
+        {
+            resolved[i] = context->storageId(i);
+        }
+        for (const auto& binding : effect.bindings)
+        {
+            if (!code.resources()[binding.resource.index].used)
+            {
+                continue;
+            }
+            auto created = binding.create(*device, *frames, *resources, resolved, binding.configuration.data());
+            if (!created)
+            {
+                return cxx::unexpected(created.error());
+            }
+            context->addFeatureBinding(binding.resource, std::move(*created));
+        }
+        if (auto ready = context->initialize(); !ready)
         {
             return cxx::unexpected(ready.error());
         }
@@ -356,7 +370,7 @@ namespace lux::render
                     {
                         return cxx::unexpected(RenderError{kRuntimeIdentity});
                     }
-                    return &attachment->context->attachmentStorages();
+                    return attachment->storages.get();
                 }
             },
             address
@@ -434,7 +448,7 @@ namespace lux::render
     void RenderServer::Impl::detachAttachment(AttachmentId id) noexcept
     {
         auto& attachment = *attachments.find(id);
-        attachment.context.reset();
+        attachment.instance.reset();
         auto& view = *scenes.find(attachment.scene)->views.find(attachment.view);
         auto& effect = *effects.find(attachment.effect);
         auto& target = *targets.find(attachment.target);
@@ -480,19 +494,15 @@ namespace lux::render
             output_response.error = valid.error();
             return;
         }
-        auto prepared = createExecutionContext(
-            *effect->code,
-            *target->physical,
-            scene->storages,
-            view->storages,
-            effect->arguments
-        );
+        auto local_storages = std::make_unique<StorageSet>(*resources);
+        auto prepared =
+            createRenderGraphInstance(*effect, *target->physical, scene->storages, view->storages, *local_storages);
         if (!prepared)
         {
             output_response.error = prepared.error();
             return;
         }
-        if (auto values = (*prepared)->setContextParameters(_request.parameters); !values)
+        if (auto values = (*prepared)->setInstanceParameters(_request.parameters); !values)
         {
             output_response.error = values.error();
             return;
@@ -501,8 +511,9 @@ namespace lux::render
         output_response = {};
         (*prepared)->forEachStorage([&](std::string_view key, StorageId id) noexcept
                                     { output_response.storages.push_back({std::string(key), id}); });
-        const auto id =
-            attachments.emplace(EffectAttachment{effect_id, scene_id, view_id, target_id, std::move(*prepared)});
+        const auto id = attachments.emplace(
+            EffectAttachment{effect_id, scene_id, view_id, target_id, std::move(local_storages), std::move(*prepared)}
+        );
         auto& attachment = *attachments.find(id);
         attachment.view_position = view->attachments.size();
         attachment.effect_position = effect->attachments.size();
@@ -531,23 +542,23 @@ namespace lux::render
         {
             // One Target writer, proven on attach. Resize builds one candidate without recompilation.
             const auto& effect = *effects.find(group->effect);
-            auto candidate = createExecutionContext(
-                *effect.code,
+            auto candidate = createRenderGraphInstance(
+                effect,
                 **physical,
                 scenes.find(group->scene)->storages,
                 scenes.find(group->scene)->views.find(group->view)->storages,
-                effect.arguments
+                *group->storages
             );
             if (!candidate)
             {
                 return cxx::unexpected(candidate.error());
             }
-            if (auto values = (*candidate)->setContextParameters(group->context->contextParameters()); !values)
+            if (auto values = (*candidate)->setInstanceParameters(group->instance->instanceParameters()); !values)
             {
                 return cxx::unexpected(values.error());
             }
-            (*candidate)->setViewport(group->context->viewport());
-            group->context = std::move(*candidate);
+            (*candidate)->setViewport(group->instance->viewport());
+            group->instance = std::move(*candidate);
             frame_storages_dirty = true;
         }
         target.physical = std::move(*physical);
@@ -621,12 +632,12 @@ namespace lux::render
             return;
         }
         // Native validates the complete input size before changing any parameter bytes.
-        if (auto applied = attachment->context->setContextParameters(input.parameters); !applied)
+        if (auto applied = attachment->instance->setInstanceParameters(input.parameters); !applied)
         {
             output_response.error = applied.error();
             return;
         }
-        attachment->context->setViewport(input.viewport);
+        attachment->instance->setViewport(input.viewport);
         output_response = {};
     }
 
@@ -811,7 +822,7 @@ namespace lux::render
         for (std::size_t i = 0; i < active.size(); ++i)
         {
             const auto& target = *targets.find(active[(next_target + i) % active.size()]);
-            frame_contexts.push_back(attachments.find(target.attachment)->context.get());
+            frame_contexts.push_back(attachments.find(target.attachment)->instance.get());
         }
         if (frame_storages_dirty)
         {
@@ -839,7 +850,7 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        output_response = {{}, attachment->context->progress()};
+        output_response = {{}, attachment->instance->progress()};
     }
 
     void RenderServer::Impl::queryRenderStats(
@@ -951,7 +962,7 @@ namespace lux::render
         // after Scene/Global Storage and every other producer have transferred their resources.
         for (auto& effect : effects)
         {
-            device->deferRelease([code = std::move(effect.code)]() mutable noexcept { code.reset(); });
+            device->deferRelease([plan = std::move(effect.plan)]() mutable noexcept { plan.reset(); });
         }
         effects.clear();
         targets.clear();

@@ -63,3 +63,31 @@ endforeach()
 target_include_directories(render_output_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
 target_link_libraries(render_output_test PRIVATE NRI)
 set_target_properties(render PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+set(graph_shader_headers)
+foreach(spec GraphFill.comp GraphTriangle.vert GraphMrt.frag GraphPresent.frag GraphCount.comp GraphRed.frag)
+    get_filename_component(shader_name "${spec}" NAME_WE)
+    set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.hpp")
+    set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${spec}.spv")
+    add_custom_command(
+        OUTPUT "${header}"
+        BYPRODUCTS "${binary}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+        COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3
+            "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${spec}" -o "${binary}"
+        COMMAND lux_shader_metadata "${binary}" "${header}" "k${shader_name}"
+        DEPENDS "shaders/${spec}" lux_shader_metadata
+        VERBATIM
+    )
+    list(APPEND graph_shader_headers "${header}")
+endforeach()
+
+add_executable(render_graph_chain GraphChain.cpp ${graph_shader_headers})
+target_include_directories(render_graph_chain PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude"
+    "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+)
+target_link_libraries(render_graph_chain PRIVATE render NRI)
+set_target_properties(render_graph_chain PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+add_test(NAME render.graph.chain COMMAND render_graph_chain)
+set_tests_properties(render.graph.chain PROPERTIES TIMEOUT 90)

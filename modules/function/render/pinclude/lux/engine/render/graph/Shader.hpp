@@ -4,7 +4,7 @@
 
 #include <NRI.h>
 #include <array>
-#include <lux/engine/render/graph/Program.hpp>
+#include <lux/engine/render/graph/Work.hpp>
 
 namespace lux::render::detail
 {
@@ -39,7 +39,8 @@ namespace lux::render::detail
         nri::PipelineLayout&,
         const rdesc::SpirvArtifact&,
         const GraphicsState&,
-        nri::Format color,
-        nri::Format depth
+        std::span<const nri::Format> colors,
+        nri::Format depth,
+        std::uint32_t samples
     ) noexcept;
 } // namespace lux::render::detail

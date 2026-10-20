@@ -2,12 +2,15 @@
 
 namespace lux::render::detail
 {
-    void ExecutionContext::FrameResources::release(const nri::CoreInterface& nri_core) noexcept
+    void RenderGraphInstance::FrameResources::release(const nri::CoreInterface& nri_core) noexcept
     {
         nri_core.DestroyDescriptorPool(descriptor_pool);
-        for (auto& binding : bindings)
+        for (auto& pass : passes)
         {
-            nri_core.DestroyDescriptor(binding.buffer_view);
+            for (auto* view : pass.private_views)
+            {
+                nri_core.DestroyDescriptor(view);
+            }
         }
         for (auto* view : views)
         {

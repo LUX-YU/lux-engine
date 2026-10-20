@@ -35,11 +35,9 @@ namespace lux::render
         {
             return result;
         }
-        static const FeatureGraphOps graph{detail::describe<false>, detail::build<false>};
-        // Shader layout follows the selected instance representation, not the backend's
-        // automatically enabled BDA capability. Both paths retain the same public descriptor.
-        const auto programs = pagedInstances() ? detail::programs<false, true> : detail::programs<false, false>;
-        batch.addFeature({&MaterialMeshRasterDescriptor::descriptor, &graph, programs});
+        static const FeatureGraphOps contiguous{detail::describe<false>, detail::build<false, false>};
+        static const FeatureGraphOps paged{detail::describe<false>, detail::build<false, true>};
+        batch.addFeature({&MaterialMeshRasterDescriptor::descriptor, pagedInstances() ? &paged : &contiguous});
         return {};
     }
 

@@ -15,8 +15,7 @@ namespace lux::render
         bool sameFeature(FeatureDefinition left, FeatureDefinition right) noexcept
         {
             return left.descriptor->config == right.descriptor->config &&
-                   left.graph->describe == right.graph->describe && left.graph->build == right.graph->build &&
-                   left.programs == right.programs;
+                   left.graph->describe == right.graph->describe && left.graph->build == right.graph->build;
         }
     } // namespace
 
@@ -127,7 +126,7 @@ namespace lux::render
             if (installed != state.features_by_name.end())
             {
                 const auto& entry = *state.features.find(installed->second);
-                if (!sameFeature({&entry.descriptor, &entry.graph, entry.programs}, definition))
+                if (!sameFeature({&entry.descriptor, &entry.graph}, definition))
                 {
                     return cxx::unexpected(RenderError{kFeatureDuplicate});
                 }

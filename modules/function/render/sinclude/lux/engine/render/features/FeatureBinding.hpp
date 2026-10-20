@@ -18,7 +18,7 @@ namespace lux::render::detail
 
     // Actual Feature-derived per-attachment data. This is neither an async OperationState nor
     // a Storage binding owner. Native data decides whether the selected physical slice needs work.
-    struct FeatureFrameWork final
+    struct FeatureBinding final
     {
         enum class EPreparation : std::uint8_t
         {
@@ -27,25 +27,38 @@ namespace lux::render::detail
             WAITING
         };
 
+        struct BufferCopy final
+        {
+            nri::Buffer* source;
+            nri::Buffer* destination;
+            std::uint64_t source_offset, destination_offset, bytes;
+        };
+
         struct Preparation final
         {
             EPreparation state = EPreparation::READY;
             std::optional<StorageResource> changed_resource;
+            std::span<const BufferCopy> copies;
         };
 
         std::unique_ptr<void, void (*)(void*) noexcept> value{nullptr, [](void*) noexcept {}};
         RenderResult<Preparation> (*prepare)(void*, std::uint32_t, ResourceUploader&) noexcept = nullptr;
-        void (*record)(void*, nri::CommandBuffer&, std::uint32_t) noexcept = nullptr;
     };
 
     // Native-only cold factory contributed by a Feature. The existing GraphResourceId identifies
     // its output; no new resource table, identifier domain or author graph is introduced.
     struct FeatureFrameContribution final
     {
+        using Create = RenderResult<FeatureBinding> (*)(
+            DeviceSession&,
+            FrameExecution&,
+            ResourceRegistry&,
+            std::span<const StorageId>,
+            const void*
+        ) noexcept;
+
         GraphResourceId resource;
         ConfigValue configuration;
-        RenderResult<
-            FeatureFrameWork> (*create)(DeviceSession&, FrameExecution&, ResourceRegistry&, std::span<const StorageId>, const void*) noexcept =
-            nullptr;
+        Create create = nullptr;
     };
 } // namespace lux::render::detail

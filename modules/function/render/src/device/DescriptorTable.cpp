@@ -2,7 +2,7 @@
 #include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/graph/LayoutPlan.hpp>
+#include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 
 namespace lux::render::detail

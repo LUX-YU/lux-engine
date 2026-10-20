@@ -11,8 +11,8 @@
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
-#include <lux/engine/render/execution/ExecutionContext.hpp>
 #include <lux/engine/render/execution/FrameExecution.hpp>
+#include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/resource/StorageCreateContext.hpp>
 #include <lux/engine/render/runtime/CommandDispatchContext.hpp>
@@ -67,7 +67,7 @@ namespace lux::render
         stdexec::counting_scope command_scope_;
         execution::RunLoop render_loop_;
         std::size_t next_target = 0;
-        std::vector<detail::ExecutionContext*> frame_contexts;
+        std::vector<detail::RenderGraphInstance*> frame_contexts;
         std::vector<detail::StorageFrameUse> frame_storages;
         bool frame_storages_dirty = true;
         std::atomic<bool> stop_requested{false}, started{false}, running{false};
@@ -89,8 +89,13 @@ namespace lux::render
         void prepareStorage(const PrepareStorage::Request&, PrepareStorage::Response&) noexcept;
         void removeStorage(const RemoveStorage::Request&, RemoveStorage::Response&) noexcept;
 
-        RenderResult<std::unique_ptr<detail::ExecutionContext>>
-        createExecutionContext(const detail::CompiledGraph&, detail::OffscreenTarget&, StorageSet& scene, StorageSet& view, std::span<const StorageArgument>) noexcept;
+        RenderResult<std::unique_ptr<detail::RenderGraphInstance>> createRenderGraphInstance(
+            const runtime_detail::RenderEffect&,
+            detail::OffscreenTarget&,
+            StorageSet& scene,
+            StorageSet& view,
+            StorageSet& attachment
+        ) noexcept;
 
         void attachEffect(const Attach::Request&, Attach::Response&) noexcept;
 

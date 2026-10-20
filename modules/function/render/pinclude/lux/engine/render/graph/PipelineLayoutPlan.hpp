@@ -2,22 +2,24 @@
 
 #include <array>
 #include <lux/engine/render/graph/ShaderInterface.hpp>
-#include <map>
 
 #include <NRI.h>
-#include <lux/engine/render/graph/Analysis.hpp>
-#include <lux/engine/render/graph/Program.hpp>
+#include <lux/engine/render/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/graph/Work.hpp>
 
 namespace lux::render::detail
 {
-    using ResourceNames = std::map<std::string_view, std::uint32_t, std::less<>>;
-
     struct DescriptorUse final
     {
         std::uint32_t resource;
         std::uint32_t set;
         std::uint32_t binding;
         EDescriptorKind kind;
+        VGraphRange range;
+        std::uint32_t field = 0;
+        std::uint32_t element = 0;
+        std::uint32_t sampler = kGraphInvalidIndex;
+        bool whole_resource = false;
     };
 
     struct ParameterUse final
@@ -30,33 +32,32 @@ namespace lux::render::detail
     struct ProgramLayout final
     {
         std::vector<ShaderBinding> bindings;
+        std::vector<ShaderBinding> private_bindings;
         std::vector<DescriptorUse> uses;
+        nri::PipelineLayout* layout = nullptr;
+        std::uint32_t private_set = 0;
+        bool shared = false;
+        std::uint32_t parameter_bytes = 0;
+        nri::StageBits parameter_stages = nri::StageBits::NONE;
         std::vector<std::byte> initial_parameters;
         std::vector<ParameterUse> parameters;
     };
 
     // The sole cold physical placement decision. Shader relocation, native layouts and Context writes
     // consume this same value. Private resources are packed; a resource never consumes an entire set.
-    struct LayoutPlan final
+    struct PipelineLayoutPlan final
     {
         std::vector<ShaderBinding> shared_bindings;
-        std::vector<ShaderBinding> private_bindings;
         std::vector<ProgramLayout> programs; // Original GraphPassId indices; pruned entries stay empty.
-        std::uint32_t shared_set = kGraphInvalidIndex;
-        std::uint32_t private_set = kGraphInvalidIndex;
         rdesc::ShaderBlock context_parameters;
-        std::uint32_t parameter_bytes = 0;
-        nri::StageBits parameter_stages = nri::StageBits::NONE;
     };
 
     [[nodiscard]] const std::array<ShaderBinding, 2>& sampledImageTableBindings() noexcept;
 
-    [[nodiscard]] RenderResult<LayoutPlan> planLayouts(
+    [[nodiscard]] RenderResult<PipelineLayoutPlan> planLayouts(
         const nri::DeviceDesc& limits,
-        const RenderGraphDefinition& graph,
-        const GraphAnalysis& analysis,
-        std::span<const PassProgram* const> programs,
-        const ResourceNames& resource_names
+        const RenderGraph& graph,
+        const RenderGraphAnalysis& analysis
     ) noexcept;
 
     [[nodiscard]] RenderResult<rdesc::SpirvArtifact> relocateShader(

@@ -1,0 +1,66 @@
+#pragma once
+
+#include <lux/engine/render/visibility.h>
+
+#include <lux/engine/render/graph/RenderGraph.hpp>
+
+namespace lux::render
+{
+    class LUX_RENDER_PUBLIC RenderGraphBuilder final
+    {
+    public:
+        [[nodiscard]] std::size_t resourceCount() const noexcept
+        {
+            return candidate_.resources().size();
+        }
+
+        [[nodiscard]] std::size_t passCount() const noexcept
+        {
+            return candidate_.passes().size();
+        }
+
+        [[nodiscard]] std::size_t outputCount() const noexcept
+        {
+            return candidate_.outputs().size();
+        }
+
+        [[nodiscard]] std::size_t dependencyCount() const noexcept
+        {
+            return candidate_.dependencies().size();
+        }
+
+        [[nodiscard]] RenderResult<GraphResourceId> declareResource(GraphResource resource) noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> addProgram(rdesc::SpirvArtifact program) noexcept;
+        [[nodiscard]] RenderResult<PassResult> addRasterPass(
+            std::string key,
+            RasterWork work,
+            GraphPassOptions = {}
+        ) noexcept;
+        [[nodiscard]] RenderResult<PassResult> addComputePass(
+            std::string key,
+            ComputeWork work,
+            GraphPassOptions = {}
+        ) noexcept;
+        [[nodiscard]] RenderResult<PassResult> addTransferPass(
+            std::string key,
+            TransferWork work,
+            GraphPassOptions = {}
+        ) noexcept;
+        // Duplicate identical edges are canonicalized. Self edges are errors.
+        [[nodiscard]] RenderResult<void> dependsOn(GraphPassId before, GraphPassId after) noexcept;
+        [[nodiscard]] RenderResult<void> exportOutput(GraphExport output) noexcept;
+        // On success consumes the candidate; failure does not move its data.
+        [[nodiscard]] RenderResult<RenderGraph> finish() && noexcept;
+
+    private:
+        [[nodiscard]] RenderResult<PassResult> addWork(
+            std::string,
+            VPassWork,
+            EGraphPassKind,
+            GraphPassOptions
+        ) noexcept;
+        [[nodiscard]] RenderResult<GraphPassId> addPass(GraphPass pass) noexcept;
+        RenderGraph candidate_;
+        std::vector<std::uint32_t> versions_;
+    };
+} // namespace lux::render

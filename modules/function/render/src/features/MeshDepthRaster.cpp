@@ -30,9 +30,9 @@ namespace lux::render
         {
             return result;
         }
-        static const FeatureGraphOps graph{detail::describe<true>, detail::build<true>};
-        const auto programs = pagedInstances() ? detail::programs<true, true> : detail::programs<true, false>;
-        batch.addFeature({&MeshDepthRasterDescriptor::descriptor, &graph, programs});
+        static const FeatureGraphOps contiguous{detail::describe<true>, detail::build<true, false>};
+        static const FeatureGraphOps paged{detail::describe<true>, detail::build<true, true>};
+        batch.addFeature({&MeshDepthRasterDescriptor::descriptor, pagedInstances() ? &paged : &contiguous});
         return {};
     }
 

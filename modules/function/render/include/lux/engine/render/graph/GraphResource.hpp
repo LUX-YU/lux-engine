@@ -19,6 +19,15 @@ namespace lux::render
         bool operator==(const GraphBufferDesc&) const noexcept = default;
     };
 
+    struct ImageExtent final
+    {
+        bool target_relative = false;
+        std::uint32_t numerator = 1;
+        std::uint32_t denominator = 1;
+        std::uint32_t alignment = 1;
+        bool operator==(const ImageExtent&) const noexcept = default;
+    };
+
     struct GraphImageDesc final
     {
         std::uint32_t width = 1;
@@ -27,6 +36,7 @@ namespace lux::render
         std::uint32_t layers = 1;
         rdesc::ETextureFormat format = rdesc::ETextureFormat::RGBA8_UNORM;
         std::uint32_t samples = 1;
+        ImageExtent extent;
         bool operator==(const GraphImageDesc&) const noexcept = default;
     };
 
@@ -98,34 +108,30 @@ namespace lux::render
         VGraphResourceDesc description = GraphBufferDesc{};
         EGraphOrigin origin = EGraphOrigin::TRANSIENT;
         std::vector<VGraphRange> initial_ranges;
+        // Imported physical input state. UNSPECIFIED is legal only when no image contents are read.
+        EGraphUse initial_use = EGraphUse::UNSPECIFIED;
     };
 
-    struct GraphVersion final
+    struct ResourceVersion final
     {
         GraphResourceId resource;
         std::uint32_t number = 1; // 0 = explicitly available initial content
-        bool operator==(const GraphVersion&) const noexcept = default;
+        bool operator==(const ResourceVersion&) const noexcept = default;
     };
 
-    struct GraphResourceUse final
+    struct ResourceAccess final
     {
-        GraphVersion version;
+        ResourceVersion version;
         VGraphRange range;
         EGraphAccess access = EGraphAccess::READ;
         std::uint32_t input_version = 0; // READ_WRITE/LOAD reads this predecessor
         // Conditional write: preserve an earlier version of the SAME resource.
         // READ of unavailable previous history: select a compatible other source.
-        std::optional<GraphVersion> fallback;
+        std::optional<ResourceVersion> fallback;
         EGraphUse usage = EGraphUse::UNSPECIFIED;
-    };
-
-    struct GraphPass final
-    {
-        std::string key;
-        EGraphPassKind kind = EGraphPassKind::COMPUTE;
-        std::vector<GraphResourceUse> uses;
-        bool side_effect = false;
-        bool conditional = false;
+        // Set by typed ingestion before normalization. A whole imported Buffer view follows its actual slice;
+        // an explicitly authored byte range remains that exact range.
+        bool whole_resource = false;
     };
 
     struct GraphDependency final
@@ -144,59 +150,14 @@ namespace lux::render
         bool operator==(const GraphOutputRequirements&) const noexcept = default;
     };
 
-    struct GraphOutput final
+    struct GraphExport final
     {
-        GraphVersion version;
+        ResourceVersion version;
         VGraphRange range;
         // Logical output requirements contain no Runtime Target kind or ownership.
         std::optional<GraphOutputRequirements> target;
+        // Requested physical state after execution; absent leaves the final graph use unchanged.
+        std::optional<EGraphUse> final_use;
     };
 
-    class RenderGraphBuilder;
-
-    class RenderGraphDefinition final
-    {
-    public:
-        [[nodiscard]] std::span<const GraphResource> resources() const noexcept
-        {
-            return resources_;
-        }
-
-        [[nodiscard]] std::span<const GraphPass> passes() const noexcept
-        {
-            return passes_;
-        }
-
-        [[nodiscard]] std::span<const GraphDependency> dependencies() const noexcept
-        {
-            return dependencies_;
-        }
-
-        [[nodiscard]] std::span<const GraphOutput> outputs() const noexcept
-        {
-            return outputs_;
-        }
-
-    private:
-        friend class RenderGraphBuilder;
-        std::vector<GraphResource> resources_;
-        std::vector<GraphPass> passes_;
-        std::vector<GraphDependency> dependencies_;
-        std::vector<GraphOutput> outputs_;
-    };
-
-    // Error args: {pass index (or invalid), resource index (or invalid), detail}.
-    inline constexpr auto kGraphUnknownResource = error::errorId("lux.render.graph.unknown_resource");
-    inline constexpr auto kGraphUnknownPass = error::errorId("lux.render.graph.unknown_pass");
-    inline constexpr auto kGraphInvalidDescriptor = error::errorId("lux.render.graph.invalid_descriptor");
-    inline constexpr auto kGraphInvalidRange = error::errorId("lux.render.graph.invalid_range");
-    inline constexpr auto kGraphDuplicateKey = error::errorId("lux.render.graph.duplicate_key");
-    inline constexpr auto kGraphConflictingOutput = error::errorId("lux.render.graph.conflicting_output");
-    inline constexpr auto kGraphUndefinedRead = error::errorId("lux.render.graph.undefined_read");
-    inline constexpr auto kGraphAmbiguousProducer = error::errorId("lux.render.graph.ambiguous_producer");
-    inline constexpr auto kGraphDependencyCycle = error::errorId("lux.render.graph.dependency_cycle");
-    inline constexpr auto kGraphMissingFallback = error::errorId("lux.render.graph.missing_fallback");
-    inline constexpr auto kGraphMissingInitial = error::errorId("lux.render.graph.missing_initial");
-
-    [[nodiscard]] std::span<const error::ErrorDescriptor> renderGraphErrorDescriptors() noexcept;
 } // namespace lux::render

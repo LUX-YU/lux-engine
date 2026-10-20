@@ -1,4 +1,4 @@
-#include <lux/engine/render/graph/Analysis.hpp>
+#include <lux/engine/render/graph/RenderGraphAnalysis.hpp>
 
 #include <lux/engine/render/graph/Range.hpp>
 #include <queue>
@@ -14,7 +14,7 @@ namespace lux::render
         struct Write final
         {
             GraphPassId pass;
-            const GraphResourceUse* use;
+            const ResourceAccess* use;
             std::vector<Box> ranges;
         };
 
@@ -152,11 +152,11 @@ namespace lux::render
         }
     } // namespace
 
-    RenderResult<GraphAnalysis> analyze(const RenderGraphDefinition& definition) noexcept
+    RenderResult<RenderGraphAnalysis> analyzeRenderGraph(const RenderGraph& definition) noexcept
     {
         const auto resources = definition.resources();
         const auto passes = definition.passes();
-        GraphAnalysis result;
+        RenderGraphAnalysis result;
         Edges edges(passes.size());
         Edges predecessors(passes.size());
         for (const auto& dependency : definition.dependencies())
@@ -194,7 +194,7 @@ namespace lux::render
             }
         };
 
-        auto resolve = [&](GraphVersion version, const VGraphRange& range, GraphPassId consumer, bool fallback
+        auto resolve = [&](ResourceVersion version, const VGraphRange& range, GraphPassId consumer, bool fallback
                        ) -> RenderResult<void>
         {
             const auto& resource = resources[version.resource.index];
@@ -521,6 +521,37 @@ namespace lux::render
                     cells.push_back({box, position, position});
                 }
                 appendLifetimes(writer.use->version.number, std::move(cells));
+            }
+        }
+        std::vector<bool> parameters(resources.size(), false);
+        for (auto id : result.execution_order)
+        {
+            const PassInterface* input = nullptr;
+            if (const auto* raster = std::get_if<RasterWork>(&passes[id.index].work))
+            {
+                input = &raster->interface;
+            }
+            if (const auto* compute = std::get_if<ComputeWork>(&passes[id.index].work))
+            {
+                input = &compute->interface;
+            }
+            if (!input)
+            {
+                continue;
+            }
+            for (const auto& field : input->parameters.fields)
+            {
+                if (field.resource.index != kGraphInvalidIndex)
+                {
+                    parameters[field.resource.index] = true;
+                }
+            }
+        }
+        for (std::uint32_t i = 0; i < parameters.size(); ++i)
+        {
+            if (parameters[i])
+            {
+                result.parameter_inputs.push_back({i});
             }
         }
         return result;

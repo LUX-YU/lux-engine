@@ -12,9 +12,11 @@ namespace lux::render::detail
             for (const auto& source : set.bindings)
             {
                 const bool is_buffer = source.type == rdesc::EDescriptorType::STORAGE_BUFFER;
+                const bool is_uniform = source.type == rdesc::EDescriptorType::UNIFORM_BUFFER;
+                const bool is_storage_image = source.type == rdesc::EDescriptorType::STORAGE_IMAGE;
                 const bool is_images = source.type == rdesc::EDescriptorType::SAMPLED_IMAGE;
                 const bool is_samplers = source.type == rdesc::EDescriptorType::SAMPLER;
-                if (!is_buffer && !is_images && !is_samplers)
+                if (!is_buffer && !is_uniform && !is_storage_image && !is_images && !is_samplers)
                 {
                     return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
@@ -24,9 +26,11 @@ namespace lux::render::detail
                 result.bindings.push_back(
                     {source.set,
                      source.binding,
-                     is_buffer   ? EDescriptorKind::STORAGE_BUFFER
-                     : is_images ? EDescriptorKind::SAMPLED_IMAGE_ARRAY
-                                 : EDescriptorKind::SAMPLER_ARRAY,
+                     is_uniform         ? EDescriptorKind::UNIFORM_BUFFER
+                     : is_storage_image ? EDescriptorKind::STORAGE_IMAGE
+                     : is_buffer        ? EDescriptorKind::STORAGE_BUFFER
+                     : is_images        ? EDescriptorKind::SAMPLED_IMAGE_ARRAY
+                                        : EDescriptorKind::SAMPLER_ARRAY,
                      source.count,
                      source.block,
                      source.name,

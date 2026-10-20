@@ -8,7 +8,7 @@
 #include <cstddef>
 #include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/render/features/FeatureDescriptor.hpp>
-#include <lux/engine/render/graph/Graph.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/storage/RasterMeshInstances.hpp>
 #include <span>
 #include <type_traits>

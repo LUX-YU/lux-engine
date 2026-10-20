@@ -193,6 +193,30 @@ namespace lux::toolchain
         }
         // Layout values come from SPIR-V decorations. Unsupported element shapes retain byte facts,
         // but have no member contract; consumers requiring typed members reject them at their boundary.
+        if (result.runtime_records && record->basetype != sc::SPIRType::Struct)
+        {
+            const bool is_numeric = record->basetype == sc::SPIRType::Float || record->basetype == sc::SPIRType::Int ||
+                                    record->basetype == sc::SPIRType::UInt;
+            const bool is_supported = is_numeric && record->width == 32 &&
+                                      !compiler.has_member_decoration(type.self, 0, spv::DecorationRowMajor);
+            if (is_supported)
+            {
+                const auto scalar = record->basetype == sc::SPIRType::Float ? rdesc::EDataScalar::FLOAT
+                                    : record->basetype == sc::SPIRType::Int ? rdesc::EDataScalar::SINT
+                                                                            : rdesc::EDataScalar::UINT;
+                const auto matrix_stride = record->columns > 1 ? compiler.type_struct_member_matrix_stride(type, 0) : 0;
+                result.fields.push_back(
+                    {compiler.get_member_name(type.self, 0),
+                     scalar,
+                     0,
+                     record->vecsize,
+                     record->columns,
+                     0,
+                     matrix_stride}
+                );
+            }
+            return result;
+        }
         if (!reflectFields(compiler, *record, "", 0, 0, result.fields))
         {
             result.fields.clear();

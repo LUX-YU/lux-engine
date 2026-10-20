@@ -2,7 +2,7 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/features/RasterMeshDraws.hpp>
-#include <lux/engine/render/graph/CompiledGraph.hpp>
+#include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>
 #include <lux/engine/render/storage/RasterMaterialTableStorage.hpp>
@@ -76,7 +76,7 @@ namespace lux::render::detail
         ++revision_;
     }
 
-    RenderResult<FeatureFrameWork::Preparation> RasterMeshDraws::prepare(
+    RenderResult<FeatureBinding::Preparation> RasterMeshDraws::prepare(
         std::uint32_t slot,
         ResourceUploader& uploads
     ) noexcept
@@ -87,19 +87,23 @@ namespace lux::render::detail
         }
         auto& slice = gpu_[slot];
         slice.pending_revision = 0;
-        const auto prepared = [&](FeatureFrameWork::EPreparation state) noexcept
+        const auto prepared = [&](FeatureBinding::EPreparation state) noexcept
         {
-            FeatureFrameWork::Preparation result{state};
+            FeatureBinding::Preparation result{state};
             if (std::exchange(slice.binding_changed, false))
             {
                 result.changed_resource =
                     StorageResource{slice.buffer, 0, session_.nriCore().GetBufferDesc(*slice.buffer).size};
             }
+            if (state == FeatureBinding::EPreparation::RECORD)
+            {
+                result.copies = slice.copies;
+            }
             return result;
         };
         if (slice.uploaded_revision == revision_)
         {
-            return prepared(FeatureFrameWork::EPreparation::READY);
+            return prepared(FeatureBinding::EPreparation::READY);
         }
         const auto bytes = std::max<std::size_t>(24, words_.size() * sizeof(std::uint32_t));
         if ((!slice.buffer || session_.nriCore().GetBufferDesc(*slice.buffer).size < bytes))
@@ -163,41 +167,21 @@ namespace lux::render::detail
             }
             if (*copied == 0)
             {
-                return prepared(FeatureFrameWork::EPreparation::WAITING);
+                return prepared(FeatureBinding::EPreparation::WAITING);
             }
             slice.pending_bytes += *copied;
         }
         slice.pending_revision = revision_;
-        return prepared(FeatureFrameWork::EPreparation::RECORD);
-    }
-
-    void RasterMeshDraws::record(nri::CommandBuffer& command, std::uint32_t slot) noexcept
-    {
-        auto& slice = gpu_[slot];
-        if (!slice.pending_revision)
-        {
-            return;
-        }
-        const auto& nri_core = session_.nriCore();
-        nri::BufferBarrierDesc barrier{
-            slice.buffer,
-            {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
-            {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
-        };
-        const nri::BarrierDesc dependency{nullptr, 0, &barrier, 1};
-        nri_core.CmdBarrier(command, dependency);
         const auto section = sections_.offset + std::uint64_t(selection_.submesh) * sizeof(MeshGpuSection);
-        nri_core.CmdCopyBuffer(command, *slice.buffer, 0, *sections_.buffer, section, 4);
-        nri_core.CmdCopyBuffer(command, *slice.buffer, 8, *sections_.buffer, section + 4, 4);
-        nri_core.CmdCopyBuffer(command, *slice.buffer, 12, *sections_.buffer, section + 8, 4);
-        barrier.after = {
-            nri::AccessBits::SHADER_RESOURCE_STORAGE | nri::AccessBits::ARGUMENT_BUFFER,
-            nri::StageBits::ALL
+        slice.copies = {
+            {{sections_.buffer, slice.buffer, section, 0, 4},
+             {sections_.buffer, slice.buffer, section + 4, 8, 4},
+             {sections_.buffer, slice.buffer, section + 8, 12, 4}}
         };
-        nri_core.CmdBarrier(command, dependency);
+        return prepared(FeatureBinding::EPreparation::RECORD);
     }
 
-    RenderResult<FeatureFrameWork> RasterMeshDraws::create(
+    RenderResult<FeatureBinding> RasterMeshDraws::create(
         DeviceSession& session,
         FrameExecution& frames,
         ResourceRegistry& registry,
@@ -247,12 +231,10 @@ namespace lux::render::detail
             self.update(id, description);
         };
         (*instances)->observe(value->observer_);
-        return FeatureFrameWork{
+        return FeatureBinding{
             {value.release(), [](void* pointer) noexcept { delete static_cast<RasterMeshDraws*>(pointer); }},
             [](void* pointer, std::uint32_t slot, ResourceUploader& uploads) noexcept
-            { return static_cast<RasterMeshDraws*>(pointer)->prepare(slot, uploads); },
-            [](void* pointer, nri::CommandBuffer& command, std::uint32_t slot) noexcept
-            { static_cast<RasterMeshDraws*>(pointer)->record(command, slot); }
+            { return static_cast<RasterMeshDraws*>(pointer)->prepare(slot, uploads); }
         };
     }
 } // namespace lux::render::detail

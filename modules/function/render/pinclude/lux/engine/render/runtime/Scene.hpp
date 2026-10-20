@@ -4,6 +4,8 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
+#include <lux/engine/render/features/FeatureBinding.hpp>
+#include <lux/engine/render/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/resource/StorageSet.hpp>
 #include <memory>
@@ -11,8 +13,8 @@
 
 namespace lux::render::detail
 {
-    class CompiledGraph;
-    class ExecutionContext;
+    class RenderPlan;
+    class RenderGraphInstance;
 } // namespace lux::render::detail
 
 namespace lux::render::runtime_detail
@@ -51,8 +53,12 @@ namespace lux::render::runtime_detail
 
     struct RenderEffect final
     {
-        std::unique_ptr<detail::CompiledGraph> code;
+        std::unique_ptr<detail::RenderPlan> plan;
+        RenderGraph graph;
+        RenderGraphAnalysis analysis;
+        GraphStorageBindings storage_requirements;
         std::vector<StorageArgument> arguments;
+        std::vector<detail::FeatureFrameContribution> bindings;
         std::vector<AttachmentId> attachments;
     };
 
@@ -62,7 +68,8 @@ namespace lux::render::runtime_detail
         SceneId scene;
         ViewId view;
         TargetId target;
-        std::unique_ptr<detail::ExecutionContext> context;
+        std::unique_ptr<StorageSet> storages;
+        std::unique_ptr<detail::RenderGraphInstance> instance;
         std::size_t view_position = 0;
         std::size_t effect_position = 0;
     };

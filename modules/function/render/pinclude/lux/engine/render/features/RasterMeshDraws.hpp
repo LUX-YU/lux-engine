@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/features/FeatureFrameContribution.hpp>
+#include <lux/engine/render/features/FeatureBinding.hpp>
 #include <lux/engine/render/features/RasterMeshParameters.hpp>
 #include <lux/engine/render/storage/RasterMeshInstanceStorage.hpp>
 
@@ -17,14 +17,13 @@ namespace lux::render::detail
     class RasterMeshDraws final
     {
     public:
-        [[nodiscard]] static RenderResult<FeatureFrameWork>
+        [[nodiscard]] static RenderResult<FeatureBinding>
         create(DeviceSession&, FrameExecution&, ResourceRegistry&, std::span<const StorageId>, const void*) noexcept;
         ~RasterMeshDraws() noexcept;
 
     private:
         RasterMeshDraws(DeviceSession&, FrameExecution&, ResourceRegistry&, MeshInstanceDrawGroup) noexcept;
-        [[nodiscard]] RenderResult<FeatureFrameWork::Preparation> prepare(std::uint32_t, ResourceUploader&) noexcept;
-        void record(nri::CommandBuffer&, std::uint32_t) noexcept;
+        [[nodiscard]] RenderResult<FeatureBinding::Preparation> prepare(std::uint32_t, ResourceUploader&) noexcept;
         void update(MeshInstanceId, const RasterMeshInstanceStorage::Selection*) noexcept;
         [[nodiscard]] bool selected(const RasterMeshInstanceStorage::Selection&) const noexcept;
         DeviceSession& session_;
@@ -37,6 +36,7 @@ namespace lux::render::detail
         struct GpuSlice final
         {
             nri::Buffer* buffer = nullptr;
+            std::array<FeatureBinding::BufferCopy, 3> copies;
             bool binding_changed = false;
             std::uint64_t uploaded_revision = 0, pending_revision = 0;
             std::size_t uploaded_bytes = 0, pending_bytes = 0;

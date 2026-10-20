@@ -1,0 +1,20 @@
+#version 460
+layout(local_size_x = 1) in;
+layout(set = 3, binding = 0, std430) writeonly buffer Commands { uint words[]; } commands;
+layout(set = 3, binding = 1, std430) writeonly buffer Count { uint value; } count;
+layout(set = 3, binding = 2, std430) writeonly buffer Indices { uint words[]; } indices;
+layout(push_constant) uniform Parameters { uint requested; } parameters;
+void main()
+{
+    for (uint i = 0; i < 3; ++i)
+    {
+        uint offset = i * 5;
+        commands.words[offset] = 3;
+        commands.words[offset + 1] = 1;
+        commands.words[offset + 2] = 0;
+        commands.words[offset + 3] = 0;
+        commands.words[offset + 4] = 0;
+        indices.words[i] = i;
+    }
+    count.value = parameters.requested;
+}

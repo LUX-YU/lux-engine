@@ -7,7 +7,7 @@
 namespace lux::render::detail
 {
     class DeviceSession;
-    class ExecutionContext;
+    class RenderGraphInstance;
 
     class LUX_RENDER_PUBLIC FrameExecution final
     {
@@ -108,9 +108,9 @@ namespace lux::render::detail
             void* receiver,
             void (*complete)(void*, std::uint32_t slot, RenderResult<void>) noexcept
         ) noexcept;
-        static void collectStorageUses(std::span<ExecutionContext* const>, std::vector<StorageFrameUse>&) noexcept;
+        static void collectStorageUses(std::span<RenderGraphInstance* const>, std::vector<StorageFrameUse>&) noexcept;
         [[nodiscard]] RenderResult<
-            std::uint32_t> render(std::span<ExecutionContext* const>, std::span<const StorageFrameUse>) noexcept;
+            std::uint32_t> render(std::span<RenderGraphInstance* const>, std::span<const StorageFrameUse>) noexcept;
         [[nodiscard]] RenderResult<bool> waitForProgress(std::uint64_t timeout_ns) noexcept;
 
     private:

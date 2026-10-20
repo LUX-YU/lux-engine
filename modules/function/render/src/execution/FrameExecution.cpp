@@ -1,8 +1,8 @@
 #include <algorithm>
 #include <lux/engine/render/device/DeviceSession.hpp>
-#include <lux/engine/render/execution/ExecutionContext.hpp>
 #include <lux/engine/render/execution/FrameExecution.hpp>
-#include <lux/engine/render/execution/RecordGraph.hpp>
+#include <lux/engine/render/execution/RenderExecutor.hpp>
+#include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
@@ -187,7 +187,7 @@ namespace lux::render::detail
     }
 
     void FrameExecution::collectStorageUses(
-        std::span<ExecutionContext* const> contexts,
+        std::span<RenderGraphInstance* const> contexts,
         std::vector<StorageFrameUse>& output
     ) noexcept
     {
@@ -217,7 +217,7 @@ namespace lux::render::detail
     }
 
     RenderResult<std::uint32_t> FrameExecution::render(
-        std::span<ExecutionContext* const> contexts,
+        std::span<RenderGraphInstance* const> contexts,
         std::span<const StorageFrameUse> storages
     ) noexcept
     {
@@ -299,7 +299,7 @@ namespace lux::render::detail
                     return cxx::unexpected(prepared.error());
                 }
                 contexts_ready &= *prepared;
-                native_records |= !context->prepared_data_.empty();
+                native_records |= !context->prepared_copies_.empty();
             }
         }
         const bool has_copies = uploads_ && uploads_->hasFrameCopies();
@@ -319,14 +319,14 @@ namespace lux::render::detail
                 {
                     for (auto* context : contexts)
                     {
-                        recordGraphPreparation(*context, command, next_frame_);
+                        RenderExecutor::recordPreparation(*context, command);
                     }
                 }
                 if (contexts_ready)
                 {
                     for (auto* context : contexts)
                     {
-                        recordGraph(*context, command, next_frame_);
+                        RenderExecutor::record(*context, command, next_frame_);
                     }
                 }
                 return {};

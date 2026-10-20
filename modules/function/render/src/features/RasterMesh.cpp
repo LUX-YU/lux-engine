@@ -37,7 +37,7 @@ namespace lux::render::detail
     }
 
     template <bool Depth>
-    RenderResult<void> describe(const void* value, std::string_view instance, ResourceClaims& claims) noexcept
+    RenderResult<void> describe(const void* value, std::string_view instance, FeaturePorts& claims) noexcept
     {
         const auto& config = *static_cast<const MeshFeatureConfig*>(value);
         if (auto valid = config.target.validate(); !valid)
@@ -86,7 +86,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(bytes.error());
         }
-        const auto key = [&](std::string_view local) { return featureKey(type<Depth>(), instance, local); };
+        const auto key = [](std::string_view local) { return std::string(local); };
         const auto buffer = [&](auto& group,
                                 std::string_view local,
                                 std::uint64_t size,
@@ -95,7 +95,7 @@ namespace lux::render::detail
         {
             group.push_back(
                 {key(local),
-                 EResourceClaim::PROVIDE,
+                 EFeaturePort::OUTPUT,
                  GraphBufferDesc{size},
                  EGraphOrigin::IMPORTED,
                  {GraphBufferRange{0, size}},
@@ -140,15 +140,17 @@ namespace lux::render::detail
         // Feature-derived indirect membership, prepared once per Attachment. It is not a Storage.
         claims.resources.push_back(
             {key("members"),
-             EResourceClaim::PROVIDE,
+             EFeaturePort::OUTPUT,
              GraphBufferDesc{24},
              EGraphOrigin::IMPORTED,
              {GraphBufferRange{0, 24}}}
         );
-        const GraphImageDesc color{config.target.width, config.target.height, 1, 1, config.target.format};
-        const GraphImageDesc depth{config.target.width, config.target.height, 1, 1, rdesc::ETextureFormat::D32_SFLOAT};
-        claims.resources.push_back({key("color"), EResourceClaim::PROVIDE, color});
-        claims.resources.push_back({key("depth"), EResourceClaim::PROVIDE, depth});
+        GraphImageDesc color{config.target.width, config.target.height, 1, 1, config.target.format};
+        GraphImageDesc depth{config.target.width, config.target.height, 1, 1, rdesc::ETextureFormat::D32_SFLOAT};
+        color.extent.target_relative = true;
+        depth.extent.target_relative = true;
+        claims.resources.push_back({key("color"), EFeaturePort::OUTPUT, color});
+        claims.resources.push_back({key("depth"), EFeaturePort::OUTPUT, depth});
         if constexpr (!Depth)
         {
             buffer(
@@ -163,7 +165,7 @@ namespace lux::render::detail
                 const auto& image = config.textures[i];
                 claims.storage.global.push_back(
                     {key("texture" + std::to_string(i)),
-                     EResourceClaim::PROVIDE,
+                     EFeaturePort::OUTPUT,
                      image,
                      EGraphOrigin::IMPORTED,
                      {GraphImageRange{1, 0, image.mips, 0, image.layers}},
@@ -174,69 +176,6 @@ namespace lux::render::detail
         return {};
     }
 
-    template <bool Depth>
-    RenderResult<void> build(
-        const void* value,
-        std::string_view instance,
-        std::span<const ResolvedResource> resources,
-        RenderGraphBuilder& builder
-    ) noexcept
-    {
-        const auto& config = *static_cast<const MeshFeatureConfig*>(value);
-        const auto key = [&](std::string_view local) { return featureKey(type<Depth>(), instance, local); };
-        const auto resource = [&](std::string_view local) { return findResource(resources, key(local))->version; };
-        GraphPass draw{
-            key("draw"),
-            EGraphPassKind::GRAPHICS,
-            {{resource("vertices"), {}, EGraphAccess::READ, 0, {}, EGraphUse::VERTEX},
-             {resource("indices"), {}, EGraphAccess::READ, 0, {}, EGraphUse::INDEX},
-             {resource("matrices"), {}, EGraphAccess::READ, 0, {}, EGraphUse::STORAGE_READ},
-             {resource("properties"), {}, EGraphAccess::READ, 0, {}, EGraphUse::STORAGE_READ},
-             {resource("alive"), {}, EGraphAccess::READ, 0, {}, EGraphUse::STORAGE_READ},
-             {resource("members"), {}, EGraphAccess::READ, 0, {}, EGraphUse::STORAGE_READ},
-             {resource("members"), {}, EGraphAccess::READ, 0, {}, EGraphUse::INDIRECT},
-             {resource("depth"), {}, EGraphAccess::WRITE, 0, {}, EGraphUse::DEPTH_ATTACHMENT}}
-        };
-        if constexpr (!Depth)
-        {
-            draw.uses.push_back({resource("color"), {}, EGraphAccess::WRITE, 0, {}, EGraphUse::COLOR_ATTACHMENT});
-            draw.uses.push_back({resource("material"), {}, EGraphAccess::READ, 0, {}, EGraphUse::STORAGE_READ});
-            for (std::size_t i = 0; i < config.textures.size(); ++i)
-            {
-                draw.uses.push_back(
-                    {resource("texture" + std::to_string(i)), {}, EGraphAccess::READ, 0, {}, EGraphUse::SAMPLED}
-                );
-            }
-        }
-        if (auto added = builder.addPass(std::move(draw)); !added)
-        {
-            return cxx::unexpected(added.error());
-        }
-        if constexpr (Depth)
-        {
-            if (auto cleared = builder.addPass(
-                    {key("clear"),
-                     EGraphPassKind::TRANSFER,
-                     {{resource("color"), {}, EGraphAccess::WRITE, 0, {}, EGraphUse::TRANSFER_DESTINATION}}}
-                );
-                !cleared)
-            {
-                return cxx::unexpected(cleared.error());
-            }
-        }
-        if (auto output = builder.exportOutput(
-                {resource("color"), {}, GraphOutputRequirements{config.target.format, config.target.samples}}
-            );
-            !output)
-        {
-            return output;
-        }
-        if (auto output = builder.exportOutput({resource("depth")}); !output)
-        {
-            return output;
-        }
-        return {};
-    }
 } // namespace lux::render::detail
 
 #include <algorithm>
@@ -254,39 +193,35 @@ namespace lux::render::detail
 namespace lux::render::detail
 {
     template <bool Depth, bool Paged>
-    RenderResult<ProgramContribution>
-    programs(const void* value, std::string_view instance, const RenderGraphDefinition& graph, const EnabledDeviceFeatures&) noexcept
+    RenderResult<void> build(const void* value, std::string_view instance, FeatureBuildContext& context) noexcept
     {
         const auto& config = *static_cast<const MeshFeatureConfig*>(value);
         const auto type = Depth ? MeshDepthRasterDescriptor::name : MaterialMeshRasterDescriptor::name;
         const auto key = [&](std::string_view local) { return featureKey(type, instance, local); };
-        const auto resource = [&](std::string_view local) { return "shared:" + key(local); };
-        ProgramContribution result;
-        PassProgram draw{key("draw")};
+        const auto resource = [&](std::string_view local) { return context.resource(local); };
+        RasterWork draw;
+        rdesc::SpirvArtifact shader;
         const auto vertex = Paged ? (Depth ? std::span<const std::uint32_t>(kDepthOnlyPagedVertex)
                                            : std::span<const std::uint32_t>(kBasicMeshPagedVertex))
                                   : (Depth ? std::span<const std::uint32_t>(kDepthOnlyVertex)
                                            : std::span<const std::uint32_t>(kBasicMeshVertex));
-        draw.shader.stages.push_back({rdesc::EShaderType::VERTEX, "main", {vertex.begin(), vertex.end()}});
+        shader.stages.push_back({rdesc::EShaderType::VERTEX, "main", {vertex.begin(), vertex.end()}});
         const auto reflection = Paged ? (Depth ? std::span<const std::byte>(kDepthOnlyPagedVertexReflection)
                                                : std::span<const std::byte>(kBasicMeshPagedVertexReflection))
                                       : (Depth ? std::span<const std::byte>(kDepthOnlyVertexReflection)
                                                : std::span<const std::byte>(kBasicMeshVertexReflection));
-        if (!rdesc::ShaderInfo::deserialize(reflection, draw.shader.interface))
+        if (!rdesc::ShaderInfo::deserialize(reflection, shader.interface))
         {
             return cxx::unexpected(RenderError{kFeatureContract});
         }
-        draw.context_parameters = meshViewParameterBlock();
-        draw.parameter_values.resize(128);
-        draw.parameters = {
-            {"view", "", "view", EParameterSource::CONTEXT},
-            {"projection", "", "projection", EParameterSource::CONTEXT}
-        };
-        draw.resources = {
-            {"transforms", resource("matrices")},
-            {"properties", resource("properties")},
-            {"alive", resource("alive")},
-            {"members", resource("members")}
+        draw.interface.parameters.instance_layout = meshViewParameterBlock();
+        draw.interface.parameters.values.resize(128);
+        draw.interface.parameters.fields = {{"view", {}, "view"}, {"projection", {}, "projection"}};
+        draw.interface.resources = {
+            {"transforms", {resource("matrices"), {}, EGraphAccess::READ}},
+            {"properties", {resource("properties"), {}, EGraphAccess::READ}},
+            {"alive", {resource("alive"), {}, EGraphAccess::READ}},
+            {"members", {resource("members"), {}, EGraphAccess::READ}}
         };
         draw.graphics.vertex_bindings = {{0, config.geometry.vertex_stride}};
         for (const auto& attribute : config.geometry.attributes)
@@ -305,7 +240,7 @@ namespace lux::render::detail
             resource("members")
         };
         const auto argument = [&](std::string_view local, auto binding)
-        { result.arguments.push_back(StorageArgument::make(resource(local), std::move(binding))); };
+        { context.arguments.push_back(StorageArgument::make(resource(local).resource, std::move(binding))); };
         argument(
             "vertices",
             MeshBinding{
@@ -316,46 +251,35 @@ namespace lux::render::detail
             }
         );
         argument("indices", MeshBinding{config.group.mesh, EMeshBuffer::INDICES, config.geometry.index_stride});
-        result.arguments.push_back(
-            StorageArgument::make(resource("matrices"), MeshInstanceBinding{EMeshInstanceBinding::TRANSFORMS})
+        context.arguments.push_back(
+            StorageArgument::make(resource("matrices").resource, MeshInstanceBinding{EMeshInstanceBinding::TRANSFORMS})
         );
-        result.arguments.push_back(
-            StorageArgument::make(resource("properties"), MeshInstanceBinding{EMeshInstanceBinding::PROPERTIES})
+        context.arguments.push_back(StorageArgument::make(
+            resource("properties").resource,
+            MeshInstanceBinding{EMeshInstanceBinding::PROPERTIES}
+        ));
+        context.arguments.push_back(
+            StorageArgument::make(resource("alive").resource, MeshInstanceBinding{EMeshInstanceBinding::ALIVE})
         );
-        result.arguments.push_back(
-            StorageArgument::make(resource("alive"), MeshInstanceBinding{EMeshInstanceBinding::ALIVE})
-        );
-        GraphResourceId matrices, members;
-        const auto matrices_key = resource("matrices"), members_key = resource("members");
-        for (std::uint32_t index = 0; index < graph.resources().size(); ++index)
-        {
-            const auto& name = graph.resources()[index].key;
-            if (name == matrices_key)
-            {
-                matrices = {index};
-            }
-            if (name == members_key)
-            {
-                members = {index};
-            }
-        }
+        const auto matrices = resource("matrices").resource;
+        const auto members = resource("members").resource;
         auto configuration = ConfigValue::make(MeshDrawConfiguration{matrices, config.group});
         if (!configuration)
         {
             return cxx::unexpected(configuration.error());
         }
-        result.contexts.push_back({members, std::move(*configuration), &RasterMeshDraws::create});
+        context.bindings.push_back({members, std::move(*configuration), &RasterMeshDraws::create});
         if constexpr (!Depth)
         {
             // describe already qualified the typed cooked contract. Native reflection checks the actual code ABI.
             const auto& material = config.program;
-            draw.shader.stages.push_back(material.fragment);
-            draw.shader.interface.entry_points.insert(
-                draw.shader.interface.entry_points.end(),
+            shader.stages.push_back(material.fragment);
+            shader.interface.entry_points.insert(
+                shader.interface.entry_points.end(),
                 material.interface.entry_points.begin(),
                 material.interface.entry_points.end()
             );
-            // Project the actual cooked descriptor facts; LayoutPlan still assigns final locations.
+            // Project the actual cooked descriptor facts; PipelineLayoutPlan still assigns final locations.
             for (const auto& set : material.interface.sets)
             {
                 for (const auto& binding : set.bindings)
@@ -368,18 +292,17 @@ namespace lux::render::detail
                     {
                         return cxx::unexpected(RenderError{kFeatureContract});
                     }
-                    auto destination = std::ranges::find(
-                        draw.shader.interface.sets,
-                        binding.set,
-                        &rdesc::DescriptorSetLayoutInfo::set
-                    );
-                    if (destination == draw.shader.interface.sets.end())
+                    auto destination =
+                        std::ranges::find(shader.interface.sets, binding.set, &rdesc::DescriptorSetLayoutInfo::set);
+                    if (destination == shader.interface.sets.end())
                     {
-                        draw.shader.interface.sets.emplace_back(binding.set);
-                        destination = std::prev(draw.shader.interface.sets.end());
+                        shader.interface.sets.emplace_back(binding.set);
+                        destination = std::prev(shader.interface.sets.end());
                     }
                     destination->bindings.push_back(binding);
-                    draw.resources.push_back({binding.name, resource(is_table ? "material" : "texture0")});
+                    draw.interface.resources.push_back(
+                        {binding.name, {resource(is_table ? "material" : "texture0"), {}, EGraphAccess::READ}}
+                    );
                 }
             }
             argument("material", MaterialBinding{config.group.material, *material.parameterLayout()});
@@ -388,41 +311,50 @@ namespace lux::render::detail
                 argument("texture" + std::to_string(i), MaterialBinding{config.group.material, {}, i});
             }
         }
-        result.programs.push_back(std::move(draw));
+        auto program = context.graph.addProgram(std::move(shader));
+        if (!program)
+        {
+            return cxx::unexpected(program.error());
+        }
+        draw.interface.program = *program;
+        draw.depth = RasterAttachment{{resource("depth")}};
+        if constexpr (!Depth)
+        {
+            draw.colors.push_back({{resource("color")}});
+        }
+        auto raster = context.graph.addRasterPass(key("draw"), std::move(draw));
+        if (!raster)
+        {
+            return cxx::unexpected(raster.error());
+        }
+        if (auto published = context.publish("depth", raster->written.back()); !published)
+        {
+            return published;
+        }
         if constexpr (Depth)
         {
-            result.programs.push_back({key("clear")});
+            TransferWork clear;
+            clear.operations.push_back(ClearImage{{resource("color")}});
+            auto cleared = context.graph.addTransferPass(key("clear"), std::move(clear));
+            if (!cleared)
+            {
+                return cxx::unexpected(cleared.error());
+            }
+            return context.publish("color", cleared->written.front());
         }
-        return result;
+        else
+        {
+            return context.publish("color", raster->written.front());
+        }
     }
 } // namespace lux::render::detail
 
 namespace lux::render::detail
 {
-    template RenderResult<void> describe<false>(const void*, std::string_view, ResourceClaims&) noexcept;
-    template RenderResult<void> describe<true>(const void*, std::string_view, ResourceClaims&) noexcept;
-    template RenderResult<void> build<false>(
-        const void* value,
-        std::string_view instance,
-        std::span<const ResolvedResource> resources,
-        RenderGraphBuilder& builder
-    ) noexcept;
-    template RenderResult<void> build<true>(
-        const void* value,
-        std::string_view instance,
-        std::span<const ResolvedResource> resources,
-        RenderGraphBuilder& builder
-    ) noexcept;
-    template RenderResult<ProgramContribution> programs<
-        false,
-        false>(const void*, std::string_view, const RenderGraphDefinition&, const EnabledDeviceFeatures&) noexcept;
-    template RenderResult<ProgramContribution> programs<
-        false,
-        true>(const void*, std::string_view, const RenderGraphDefinition&, const EnabledDeviceFeatures&) noexcept;
-    template RenderResult<ProgramContribution> programs<
-        true,
-        false>(const void*, std::string_view, const RenderGraphDefinition&, const EnabledDeviceFeatures&) noexcept;
-    template RenderResult<ProgramContribution> programs<
-        true,
-        true>(const void*, std::string_view, const RenderGraphDefinition&, const EnabledDeviceFeatures&) noexcept;
+    template RenderResult<void> describe<false>(const void*, std::string_view, FeaturePorts&) noexcept;
+    template RenderResult<void> describe<true>(const void*, std::string_view, FeaturePorts&) noexcept;
+    template RenderResult<void> build<false, false>(const void*, std::string_view, FeatureBuildContext&) noexcept;
+    template RenderResult<void> build<false, true>(const void*, std::string_view, FeatureBuildContext&) noexcept;
+    template RenderResult<void> build<true, false>(const void*, std::string_view, FeatureBuildContext&) noexcept;
+    template RenderResult<void> build<true, true>(const void*, std::string_view, FeatureBuildContext&) noexcept;
 } // namespace lux::render::detail

@@ -25,9 +25,11 @@ set(render_sources
     src/resource/StorageSet.cpp
     src/storage/IndexedTriangleMesh.cpp
     src/storage/RasterMaterialTable.cpp
-    src/graph/Builder.cpp
-    src/graph/Analysis.cpp
+    src/graph/RenderGraphBuilder.cpp
+    src/graph/RenderGraphAnalysis.cpp
+    src/graph/GraphDump.cpp
     src/features/FeatureAssembly.cpp
+    src/features/FeatureBuildContext.cpp
     src/features/RasterMeshParameters.cpp
     src/features/RasterMesh.cpp
     src/features/MaterialMeshRaster.cpp
@@ -41,11 +43,14 @@ set(render_sources
     src/execution/FrameExecution.cpp
     src/execution/FrameResources.cpp
     src/execution/OffscreenTarget.cpp
-    src/execution/ExecutionContext.cpp
-    src/execution/RecordGraph.cpp
-    src/graph/CompiledGraph.cpp
+    src/execution/RenderGraphInstance.cpp
+    src/execution/RenderExecutor.cpp
+    src/graph/RenderPlan.cpp
+    src/graph/RenderPlanDump.cpp
     src/graph/GraphCompiler.cpp
-    src/graph/LayoutPlan.cpp
+    src/graph/RenderingPlan.cpp
+    src/graph/BarrierPlan.cpp
+    src/graph/PipelineLayoutPlan.cpp
     src/graph/Shader.cpp
     src/graph/ShaderInterface.cpp
     src/upload/ResourceUploader.cpp

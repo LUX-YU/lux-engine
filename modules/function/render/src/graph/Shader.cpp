@@ -212,12 +212,41 @@ namespace lux::render::detail
                     return false;
                 }
                 record = spvc_compiler_get_type_handle(compiler, spvc_type_get_member_type(block, 0));
-                const bool wrong_record = spvc_type_get_basetype(record) != SPVC_BASETYPE_STRUCT ||
-                                          spvc_type_get_num_array_dimensions(record) != 1 ||
-                                          spvc_type_get_array_dimension(record, 0) != 0;
+                const bool wrong_record =
+                    spvc_type_get_num_array_dimensions(record) != 1 || spvc_type_get_array_dimension(record, 0) != 0;
                 if (wrong_record)
                 {
                     return false;
+                }
+                if (spvc_type_get_basetype(record) != SPVC_BASETYPE_STRUCT)
+                {
+                    const auto scalar = spvc_type_get_basetype(record);
+                    const bool numeric =
+                        scalar == SPVC_BASETYPE_FP32 || scalar == SPVC_BASETYPE_INT32 || scalar == SPVC_BASETYPE_UINT32;
+                    if (!numeric || spvc_type_get_bit_width(record) != 32 || expected.fields.size() != 1)
+                    {
+                        return false;
+                    }
+                    const auto structure = spvc_type_get_base_type_id(block);
+                    if (spvc_compiler_has_member_decoration(compiler, structure, 0, SpvDecorationRowMajor))
+                    {
+                        return false;
+                    }
+                    unsigned matrix_stride = 0;
+                    if (spvc_type_get_columns(record) > 1 &&
+                        !check(spvc_compiler_type_struct_member_matrix_stride(compiler, block, 0, &matrix_stride)))
+                    {
+                        return false;
+                    }
+                    const auto kind = scalar == SPVC_BASETYPE_FP32    ? rdesc::EDataScalar::FLOAT
+                                      : scalar == SPVC_BASETYPE_INT32 ? rdesc::EDataScalar::SINT
+                                                                      : rdesc::EDataScalar::UINT;
+                    const auto& field = expected.fields.front();
+                    return field.path == spvc_compiler_get_member_name(compiler, structure, 0) &&
+                           field.scalar == kind && field.offset == 0 &&
+                           field.rows == spvc_type_get_vector_size(record) &&
+                           field.columns == spvc_type_get_columns(record) && field.array_stride == 0 &&
+                           field.matrix_stride == matrix_stride;
                 }
             }
             std::size_t size = 0, cursor = 0;
@@ -241,7 +270,7 @@ namespace lux::render::detail
             const nri::DeviceDesc& limits,
             const GraphicsState* graphics = nullptr,
             StageIo* io = nullptr,
-            bool color = true,
+            std::uint32_t color_count = 1,
             bool device_address = false
         ) noexcept
         {
@@ -313,7 +342,17 @@ namespace lux::render::detail
                      capability == SpvCapabilityImageQuery);
                 const bool physical_addresses =
                     device_address && capability == SpvCapabilityPhysicalStorageBufferAddresses;
-                if (capability != SpvCapabilityShader && !sampled && !physical_addresses)
+                const bool image_query =
+                    capability == SpvCapabilityImageQuery &&
+                    std::ranges::any_of(
+                        interface.bindings,
+                        [&](const auto& value)
+                        {
+                            return (value.stages & stage_bit) && (value.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY ||
+                                                                  value.kind == EDescriptorKind::STORAGE_IMAGE);
+                        }
+                    );
+                if (capability != SpvCapabilityShader && !sampled && !physical_addresses && !image_query)
                 {
                     return false;
                 }
@@ -341,15 +380,28 @@ namespace lux::render::detail
                 const auto mode_list = std::span(modes, mode_count);
                 const bool has_local = std::ranges::find(mode_list, SpvExecutionModeLocalSize) != mode_list.end();
                 const bool specialized = std::ranges::find(mode_list, SpvExecutionModeLocalSizeId) != mode_list.end();
-                if (!has_local || specialized)
+                if (!has_local && !specialized)
+                {
+                    return false;
+                }
+                spvc_specialization_constant sizes[3]{};
+                spvc_compiler_get_work_group_size_specialization_constants(compiler, &sizes[0], &sizes[1], &sizes[2]);
+                if (specialized && (sizes[0].id || sizes[1].id || sizes[2].id))
                 {
                     return false;
                 }
                 std::uint64_t invocations = 1;
                 for (unsigned axis = 0; axis < 3; ++axis)
                 {
+                    const auto argument = spvc_compiler_get_execution_mode_argument_by_index(
+                        compiler,
+                        specialized ? SpvExecutionModeLocalSizeId : SpvExecutionModeLocalSize,
+                        axis
+                    );
                     const auto size =
-                        spvc_compiler_get_execution_mode_argument_by_index(compiler, SpvExecutionModeLocalSize, axis);
+                        specialized
+                            ? spvc_constant_get_scalar_u32(spvc_compiler_get_constant_handle(compiler, argument), 0, 0)
+                            : argument;
                     if (!size || size > limits.shaderStage.compute.workGroupMaxDim[axis])
                     {
                         return false;
@@ -401,11 +453,14 @@ namespace lux::render::detail
                     }
                 }
                 else if (kind == SPVC_RESOURCE_TYPE_SEPARATE_IMAGE || kind == SPVC_RESOURCE_TYPE_SEPARATE_SAMPLERS ||
-                         kind == SPVC_RESOURCE_TYPE_STORAGE_BUFFER)
+                         kind == SPVC_RESOURCE_TYPE_STORAGE_BUFFER || kind == SPVC_RESOURCE_TYPE_UNIFORM_BUFFER ||
+                         kind == SPVC_RESOURCE_TYPE_STORAGE_IMAGE)
                 {
                     const auto expected_kind =
                         kind == SPVC_RESOURCE_TYPE_SEPARATE_IMAGE      ? EDescriptorKind::SAMPLED_IMAGE_ARRAY
                         : kind == SPVC_RESOURCE_TYPE_SEPARATE_SAMPLERS ? EDescriptorKind::SAMPLER_ARRAY
+                        : kind == SPVC_RESOURCE_TYPE_UNIFORM_BUFFER    ? EDescriptorKind::UNIFORM_BUFFER
+                        : kind == SPVC_RESOURCE_TYPE_STORAGE_IMAGE     ? EDescriptorKind::STORAGE_IMAGE
                                                                        : EDescriptorKind::STORAGE_BUFFER;
                     const auto expected_count = std::ranges::count_if(
                         interface.bindings,
@@ -433,14 +488,19 @@ namespace lux::render::detail
                             return false;
                         }
                         const auto type = spvc_compiler_get_type_handle(compiler, list[i].type_id);
-                        if (expected_kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY)
+                        if (expected_kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY ||
+                            expected_kind == EDescriptorKind::STORAGE_IMAGE)
                         {
-                            const bool invalid_array = spvc_type_get_num_array_dimensions(type) != 1 ||
-                                                       spvc_type_get_array_dimension(type, 0) != expected->count;
-                            const bool invalid_image =
-                                spvc_type_get_image_dimension(type) != SpvDim2D || spvc_type_get_image_arrayed(type) ||
-                                spvc_type_get_image_is_depth(type) || spvc_type_get_image_multisampled(type) ||
-                                spvc_type_get_image_is_storage(type);
+                            const auto dimensions = spvc_type_get_num_array_dimensions(type);
+                            const bool invalid_array =
+                                dimensions == 0
+                                    ? expected->count != 1
+                                    : dimensions != 1 || spvc_type_get_array_dimension(type, 0) != expected->count;
+                            const bool invalid_image = spvc_type_get_image_dimension(type) != SpvDim2D ||
+                                                       spvc_type_get_image_arrayed(type) ||
+                                                       spvc_type_get_image_multisampled(type) ||
+                                                       bool(spvc_type_get_image_is_storage(type)) !=
+                                                           (expected_kind == EDescriptorKind::STORAGE_IMAGE);
                             const auto sampled =
                                 spvc_compiler_get_type_handle(compiler, spvc_type_get_image_sampled_type(type));
                             if (invalid_array || invalid_image || spvc_type_get_basetype(sampled) != SPVC_BASETYPE_FP32)
@@ -450,8 +510,10 @@ namespace lux::render::detail
                         }
                         else if (expected_kind == EDescriptorKind::SAMPLER_ARRAY)
                         {
-                            if (spvc_type_get_num_array_dimensions(type) != 1 ||
-                                spvc_type_get_array_dimension(type, 0) != expected->count)
+                            const auto dimensions = spvc_type_get_num_array_dimensions(type);
+                            if (dimensions == 0
+                                    ? expected->count != 1
+                                    : dimensions != 1 || spvc_type_get_array_dimension(type, 0) != expected->count)
                             {
                                 return false;
                             }
@@ -474,14 +536,18 @@ namespace lux::render::detail
                             const bool write = std::ranges::find(flags, SpvDecorationNonWritable) == flags.end();
                             const bool access_mismatch = read != (expected->access != EStorageAccess::WRITE_ONLY) ||
                                                          write != (expected->access != EStorageAccess::READ_ONLY);
-                            if (access_mismatch)
+                            if (expected_kind == EDescriptorKind::STORAGE_BUFFER && access_mismatch)
                             {
                                 return false;
                             }
                             const auto structure = spvc_compiler_get_type_handle(compiler, list[i].base_type_id);
-                            const bool invalid_block = spvc_type_get_num_array_dimensions(type) != 0 ||
-                                                       expected->count != 1 ||
-                                                       !validateBlock(compiler, structure, expected->block);
+                            const auto dimensions = spvc_type_get_num_array_dimensions(type);
+                            const bool wrong_array =
+                                dimensions == 0
+                                    ? expected->count != 1
+                                    : dimensions != 1 || spvc_type_get_array_dimension(type, 0) != expected->count;
+                            const bool invalid_block =
+                                wrong_array || !validateBlock(compiler, structure, expected->block);
                             if (invalid_block)
                             {
                                 return false;
@@ -550,20 +616,21 @@ namespace lux::render::detail
                 }
                 else if (stage == SpvExecutionModelFragment && kind == SPVC_RESOURCE_TYPE_STAGE_OUTPUT)
                 {
-                    if (count != unsigned(color))
+                    if (count != color_count)
                     {
                         return false;
                     }
-                    if (!color)
+                    std::vector<bool> locations(color_count, false);
+                    for (std::size_t i = 0; i < count; ++i)
                     {
-                        continue;
-                    }
-                    const bool is_output_mismatch =
-                        !float4(spvc_compiler_get_type_handle(compiler, list[0].type_id)) ||
-                        spvc_compiler_get_decoration(compiler, list[0].id, SpvDecorationLocation) != 0;
-                    if (is_output_mismatch)
-                    {
-                        return false;
+                        const auto location = spvc_compiler_get_decoration(compiler, list[i].id, SpvDecorationLocation);
+                        const bool invalid = location >= color_count ||
+                                             !float4(spvc_compiler_get_type_handle(compiler, list[i].type_id));
+                        if (invalid || locations[location])
+                        {
+                            return false;
+                        }
+                        locations[location] = true;
                     }
                 }
                 else if (count != 0)
@@ -604,14 +671,18 @@ namespace lux::render::detail
         for (const auto& binding : contract)
         {
             const auto type = binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY ? nri::DescriptorType::TEXTURE
-                              : binding.kind == EDescriptorKind::SAMPLER_ARRAY
-                                  ? nri::DescriptorType::SAMPLER
+                              : binding.kind == EDescriptorKind::SAMPLER_ARRAY     ? nri::DescriptorType::SAMPLER
+                              : binding.kind == EDescriptorKind::UNIFORM_BUFFER ? nri::DescriptorType::CONSTANT_BUFFER
+                              : binding.kind == EDescriptorKind::STORAGE_IMAGE  ? nri::DescriptorType::STORAGE_TEXTURE
+                              : binding.kind == EDescriptorKind::TYPED_STORAGE_BUFFER
+                                  ? nri::DescriptorType::STORAGE_BUFFER
                                   : nri::DescriptorType::STORAGE_STRUCTURED_BUFFER;
             const bool runtime = binding.count == 0;
             const auto runtime_count = type == nri::DescriptorType::SAMPLER ? sampler_count : image_count;
             const auto flags = runtime ? nri::DescriptorRangeBits::ARRAY | nri::DescriptorRangeBits::PARTIALLY_BOUND |
                                              nri::DescriptorRangeBits::ALLOW_UPDATE_AFTER_SET
-                                       : nri::DescriptorRangeBits::NONE;
+                               : binding.count > 1 ? nri::DescriptorRangeBits::ARRAY
+                                                   : nri::DescriptorRangeBits::NONE;
             ranges.push_back(
                 {binding.binding, runtime ? runtime_count : binding.count, type, shaderStages(binding.stages), flags}
             );
@@ -667,8 +738,9 @@ namespace lux::render::detail
         nri::PipelineLayout& layout,
         const rdesc::SpirvArtifact& shader,
         const GraphicsState& graphics,
-        nri::Format color,
-        nri::Format depth
+        std::span<const nri::Format> colors,
+        nri::Format depth,
+        std::uint32_t samples
     ) noexcept
     {
         auto projected = shaderInterface(shader.interface);
@@ -684,8 +756,8 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
-        const bool wrong_count = shader.stages.empty() || shader.stages.size() > 2 ||
-                                 (color != nri::Format::UNKNOWN && shader.stages.size() != 2);
+        const bool wrong_count =
+            shader.stages.empty() || shader.stages.size() > 2 || (!colors.empty() && shader.stages.size() != 2);
         const bool invalid_depth = graphics.depth_compare > EDepthCompare::ALWAYS ||
                                    ((graphics.depth_test || graphics.depth_write) && depth == nri::Format::UNKNOWN);
         if (wrong_count || invalid_depth)
@@ -709,7 +781,7 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }
         }
-        if (!vertex_stage || (color != nri::Format::UNKNOWN && !fragment_stage))
+        if (!vertex_stage || (!colors.empty() && !fragment_stage))
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
@@ -732,7 +804,7 @@ namespace lux::render::detail
                                                            limits,
                                                            &graphics,
                                                            &fragment_io,
-                                                           color != nri::Format::UNKNOWN
+                                                           static_cast<std::uint32_t>(colors.size())
                                                        );
         if (!valid_vertex || !valid_fragment)
         {
@@ -819,9 +891,14 @@ namespace lux::render::detail
             streams.data(),
             static_cast<std::uint8_t>(streams.size())
         };
-        nri::ColorAttachmentDesc attachment{};
-        attachment.format = color;
-        attachment.colorWriteMask = nri::ColorWriteBits::RGBA;
+        std::vector<nri::ColorAttachmentDesc> attachments;
+        for (auto color : colors)
+        {
+            nri::ColorAttachmentDesc attachment{};
+            attachment.format = color;
+            attachment.colorWriteMask = nri::ColorWriteBits::RGBA;
+            attachments.push_back(attachment);
+        }
         constexpr std::array comparisons{
             nri::CompareOp::NEVER,
             nri::CompareOp::LESS,
@@ -837,8 +914,10 @@ namespace lux::render::detail
         description.vertexInput = streams.empty() ? nullptr : &input;
         description.inputAssembly.topology = nri::Topology::TRIANGLE_LIST;
         description.rasterization.frontCounterClockwise = true;
-        description.outputMerger.colors = &attachment;
-        description.outputMerger.colorNum = color != nri::Format::UNKNOWN;
+        const nri::MultisampleDesc multisample{UINT32_MAX, static_cast<nri::Sample_t>(samples)};
+        description.multisample = samples > 1 ? &multisample : nullptr;
+        description.outputMerger.colors = attachments.data();
+        description.outputMerger.colorNum = static_cast<std::uint32_t>(attachments.size());
         description.outputMerger.depthStencilFormat = depth;
         description.outputMerger.depth.compareOp = graphics.depth_test
                                                        ? comparisons[static_cast<unsigned>(graphics.depth_compare)]

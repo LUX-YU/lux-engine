@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <lux/engine/description/Image.hpp>
-#include <string>
+#include <lux/engine/render/graph/GraphResource.hpp>
 #include <variant>
 #include <vector>
 
@@ -57,7 +57,7 @@ namespace lux::render
 
     struct ProgramVertexBuffer final
     {
-        std::string resource_key;
+        ResourceVersion resource;
         std::uint32_t binding = 0;
         std::uint64_t offset = 0;
     };
@@ -69,7 +69,7 @@ namespace lux::render
 
     struct DrawIndexed final
     {
-        std::string index_resource;
+        ResourceVersion index_resource;
         std::uint64_t offset = 0;
         EIndexType type = EIndexType::UINT32;
         std::uint32_t count = 0, instances = 1, first = 0, first_instance = 0;
@@ -78,12 +78,14 @@ namespace lux::render
 
     struct DrawIndexedIndirect final
     {
-        std::string index_resource;
+        ResourceVersion index_resource;
         std::uint64_t index_offset = 0;
         EIndexType type = EIndexType::UINT32;
-        std::string commands_resource;
+        ResourceVersion commands_resource;
         std::uint64_t commands_offset = 0;
         std::uint32_t count = 1, stride = 20;
+        std::optional<ResourceVersion> count_resource;
+        std::uint64_t count_offset = 0;
     };
 
     using VDrawCommand = std::variant<DrawVertices, DrawIndexed, DrawIndexedIndirect>;

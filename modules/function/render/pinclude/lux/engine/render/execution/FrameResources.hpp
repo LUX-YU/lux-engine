@@ -1,12 +1,12 @@
 #pragma once
 
-#include <lux/engine/render/execution/ExecutionContext.hpp>
+#include <lux/engine/render/execution/RenderGraphInstance.hpp>
 
 namespace lux::render::detail
 {
     // These are physical GPU objects, independent of the Context's subscriptions and CPU recipes.
     // Stable descriptor banks are never rewritten while their prior submission is in flight.
-    struct ExecutionContext::FrameResources final
+    struct RenderGraphInstance::FrameResources final
     {
         void release(const nri::CoreInterface&) noexcept;
 
@@ -18,6 +18,8 @@ namespace lux::render::detail
         std::vector<nri::Texture*> images;
         std::vector<nri::Descriptor*> views;
         nri::DescriptorPool* descriptor_pool = nullptr;
+        std::vector<nri::TextureBarrierDesc> final_images;
+        std::vector<nri::BufferBarrierDesc> final_buffers;
     };
 
 } // namespace lux::render::detail

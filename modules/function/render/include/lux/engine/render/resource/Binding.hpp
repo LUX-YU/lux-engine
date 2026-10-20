@@ -38,15 +38,15 @@ namespace lux::render
     class StorageArgument final
     {
     public:
-        std::string resource_key;
+        GraphResourceId resource;
 
         StorageArgument() noexcept = default;
         StorageArgument(const StorageArgument&) = delete;
         StorageArgument& operator=(const StorageArgument&) = delete;
 
         StorageArgument(StorageArgument&& other) noexcept
-            : resource_key(std::move(other.resource_key)), value_(std::move(other.value_)),
-              type_(std::exchange(other.type_, {})), equal_(std::exchange(other.equal_, nullptr))
+            : resource(other.resource), value_(std::move(other.value_)), type_(std::exchange(other.type_, {})),
+              equal_(std::exchange(other.equal_, nullptr))
         {
         }
 
@@ -54,7 +54,7 @@ namespace lux::render
         {
             if (this != &other)
             {
-                resource_key = std::move(other.resource_key);
+                resource = other.resource;
                 value_ = std::move(other.value_);
                 type_ = std::exchange(other.type_, {});
                 equal_ = std::exchange(other.equal_, nullptr);
@@ -62,11 +62,11 @@ namespace lux::render
             return *this;
         }
 
-        template <class T> [[nodiscard]] static StorageArgument make(std::string key, T value) noexcept
+        template <class T> [[nodiscard]] static StorageArgument make(GraphResourceId resource, T value) noexcept
         {
             static_assert(std::is_nothrow_move_constructible_v<T> && std::is_nothrow_destructible_v<T>);
             StorageArgument result;
-            result.resource_key = std::move(key);
+            result.resource = resource;
             result.value_ = {
                 new const T(std::move(value)),
                 [](const void* object) noexcept { delete static_cast<const T*>(object); }
@@ -94,7 +94,7 @@ namespace lux::render
 
         [[nodiscard]] bool operator==(const StorageArgument& other) const noexcept
         {
-            return type_ == other.type_ && resource_key == other.resource_key &&
+            return type_ == other.type_ && resource == other.resource &&
                    (data() == other.data() || (equal_ && equal_(data(), other.data())));
         }
 

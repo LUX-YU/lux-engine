@@ -329,8 +329,16 @@ namespace mesh_sample
         const auto basic = feature(main, main_commands, main_next, MaterialMeshRasterDescriptor::name);
         const auto depth_feature = feature(main, main_commands, main_next, MeshDepthRasterDescriptor::name);
         CreateEffectRequest first_request{config.target}, second_request{config.target};
-        first_request.features.push_back({basic, "main", take(ConfigValue::make(config))});
-        second_request.features.push_back({depth_feature, "main", take(ConfigValue::make(config))});
+        first_request.definition.features.push_back({basic, "main", take(ConfigValue::make(config))});
+        second_request.definition.features.push_back({depth_feature, "main", take(ConfigValue::make(config))});
+        first_request.definition.outputs.push_back(
+            {{0, "color"}, GraphOutputRequirements{config.target.format, config.target.samples}}
+        );
+        second_request.definition.outputs.push_back(
+            {{0, "color"}, GraphOutputRequirements{config.target.format, config.target.samples}}
+        );
+        second_request.definition.outputs.push_back({{0, "depth"}, {}});
+
         const auto first_effect =
             coldCall<CreateEffect>(main, main_commands, main_next, std::move(first_request)).effect;
         const auto second_effect =

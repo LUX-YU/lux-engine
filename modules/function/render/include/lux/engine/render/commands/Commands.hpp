@@ -7,6 +7,7 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/features/EffectDefinition.hpp>
 #include <memory>
 #include <optional>
 #include <span>
@@ -17,13 +18,6 @@
 
 namespace lux::render
 {
-    struct FeatureUse final
-    {
-        FeatureId feature;
-        std::string contribution_key;
-        ConfigValue config;
-    };
-
     struct EmptyRequest final
     {
     };
@@ -174,7 +168,7 @@ namespace lux::render
     struct CreateEffectRequest final
     {
         TargetDesc description;
-        std::vector<FeatureUse> features;
+        EffectDefinition definition;
     };
 
     struct FeatureInfo final

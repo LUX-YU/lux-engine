@@ -4,7 +4,7 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/graph/CompiledGraph.hpp>
+#include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
 #include <lux/engine/render/storage/RasterMaterialTableStorage.hpp>

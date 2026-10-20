@@ -20,7 +20,10 @@ namespace lux::render::detail
     {
         SAMPLED_IMAGE_ARRAY,
         SAMPLER_ARRAY,
-        STORAGE_BUFFER
+        STORAGE_BUFFER,
+        UNIFORM_BUFFER,
+        STORAGE_IMAGE,
+        TYPED_STORAGE_BUFFER
     };
 
     // Native layout projection of cooked reflection. No member offset or stride is inferred here.

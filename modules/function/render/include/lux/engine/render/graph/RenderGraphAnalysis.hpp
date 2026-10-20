@@ -2,7 +2,7 @@
 
 #include <lux/engine/render/visibility.h>
 
-#include <lux/engine/render/graph/Graph.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 
 namespace lux::render
 {
@@ -30,7 +30,7 @@ namespace lux::render
     // retain their selected source; no borrowed GraphPass/GraphResource pointers.
     struct GraphVersionUse final
     {
-        GraphVersion version;
+        ResourceVersion version;
         VGraphRange range;
         GraphPassId producer;
         GraphPassId consumer;
@@ -40,7 +40,7 @@ namespace lux::render
 
     struct GraphLifetime final
     {
-        GraphVersion version;
+        ResourceVersion version;
         VGraphRange range;
         EGraphOrigin origin = EGraphOrigin::TRANSIENT;
         std::uint32_t first = 0;
@@ -48,16 +48,18 @@ namespace lux::render
         bool operator==(const GraphLifetime&) const noexcept = default;
     };
 
-    struct GraphAnalysis final
+    struct RenderGraphAnalysis final
     {
         std::vector<GraphPassId> execution_order;
         std::vector<GraphDependency> dependencies;
         std::vector<GraphHazard> hazards;
         std::vector<GraphVersionUse> versions;
         std::vector<GraphLifetime> lifetimes;
-        bool operator==(const GraphAnalysis&) const noexcept = default;
+        // Live CPU parameter inputs are not GPU memory reads and introduce no synthetic barriers.
+        std::vector<GraphResourceId> parameter_inputs;
+        bool operator==(const RenderGraphAnalysis&) const noexcept = default;
     };
 
-    [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<GraphAnalysis> analyze(const RenderGraphDefinition& definition
-    ) noexcept;
+    [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<RenderGraphAnalysis>
+    analyzeRenderGraph(const RenderGraph& definition) noexcept;
 } // namespace lux::render

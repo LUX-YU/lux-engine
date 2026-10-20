@@ -70,22 +70,54 @@ synchronously. Dynamic configuration cost counts actual owned capacity, not exte
 ## Graph and Features
 
 `RenderGraphBuilder` owns candidate arrays. `finish()` produces one self-contained immutable Definition;
-`analyze()` produces independent analysis data. Graph resource/pass IDs are indices within that Definition, not
+`analyzeRenderGraph()` produces independent analysis data. Graph resource/pass IDs are indices within that Definition, not
 global generational identities. Version zero describes explicit initial contents; positive versions name writes.
 Reads, read/write predecessors, conditional fallbacks and overlapping ranges are explicit. Exports and side effects
 root culling. Invalid ranges, live cycles, ambiguous producers and incomplete reads fail with structured errors.
 Logical lifetime disjointness does not authorize physical memory aliasing or implement runtime history rotation.
 
-Features contribute to that same Builder. Assembly sorts full type/contribution keys, resolves resource claims,
-declares shared resources once, builds, finishes once, audits authorship and analyzes once. Only the provider may
-write its shared output. Imported and previous-history ports use v0; graph-produced shared ports use v1.
-Contribution ranges determine Program authorship. Zero-pass Features require no dummy Program callback.
+`addRasterPass`, `addComputePass` and `addTransferPass` derive accesses from the work's actual inputs,
+attachments and operations. They return the new written versions; authors do not repeat the same accesses
+in a separate Program callback. Raster attachment load/store operations are explicit. A partial texture copy
+preserves its predecessor; it cannot manufacture initialized contents outside the copied rectangle.
 
-`FeatureDefinition` holds project-side graph and Program callbacks. The public FeatureDescriptor only describes
+`EffectDefinition` selects Feature contributions and connects their named ports explicitly. Identical port names
+do not connect implicitly. `composeFeatures` sorts ready contributions by full type/contribution key, invokes each
+build once, audits its appended resource/pass interval and analyzes the finished graph once. A consumer may read
+the supplied version, while only its producer may write that output. Output versions are not restricted to v1.
+Zero-pass resource Features need no dummy build callback.
+
+`FeatureDefinition` holds project-side describe/build callbacks. The public FeatureDescriptor only describes
 identity/configuration and purpose. `MaterialMeshRasterDescriptor` and `MeshDepthRasterDescriptor` share the
 documented raster mesh parameter ABI; their implementation and dependency lists remain private. Features describe
 draws, compilation lowers them, and execution records them. No Feature build callback or graph analysis runs in a
 stable frame. Cooked shader reflection remains the source of parameter layouts.
+
+`GraphCompiler::compile` consumes the immutable graph and its analysis, without a Storage registry or Feature
+factory. `PipelineLayoutPlan` determines SPIR-V relocation, PipelineLayout and Descriptor writes together.
+Private descriptor arrays retain their actual type/count/stages; the shared image/sampler table always uses its
+complete allocation shape. Ordinary sampler inputs are separate dense graph-local input slots: supply borrowed
+samplers through `RenderGraphInstance::bindSampler` before initialization. They do not create image hazards.
+
+The Effect keeps Storage requirements and cold Feature creation data. Attach resolves those inputs and creates
+professional bindings before initializing the `RenderGraphInstance`. The instance allocates graph resources and
+descriptors per existing FIF slot; it neither discovers Storage nor runs factories. Standalone project GPU consumers
+can bind physical inputs directly without creating a Registry or Server.
+
+The `RenderPlan` contains typed recording work, range transitions and rendering groups. Legacy's consecutive-pass
+grouping and execution-order last-use rules are reused with stricter attachment identity, range and dependency
+checks. Only compatible LOAD successors share a rendering scope; sampling an earlier attachment requires the
+corresponding barrier outside rendering. The NRI backend has no discard load operation, so author DISCARD is
+lowered to a clear, while discard stores remain native discard stores.
+
+`RenderExecutor` records work into FrameExecution's existing shared Graphics submission. Professional preparation
+may contribute bounded Buffer copies; it cannot hide arbitrary GPU dispatch behind a recording callback.
+Graph async compute, History rotation and memory aliasing are not enabled. Explicit Buffer/Texture copies are
+available; there is no production Readback service or implicit extra rendering.
+
+`dumpRenderGraph` and the project-side `dumpRenderPlan` synchronously emit JSON or DOT into a borrowed sink.
+They do not open files, wait for the GPU or trace stable frames. Compiled plan counts are distinct from measured
+execution counters.
 
 ## Resources and frame lifetime
 

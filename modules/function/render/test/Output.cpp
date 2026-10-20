@@ -2,11 +2,11 @@
 #include <array>
 #include <cstring>
 #include <lux/engine/render/device/DeviceSession.hpp>
-#include <lux/engine/render/execution/ExecutionContext.hpp>
 #include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
-#include <lux/engine/render/graph/Builder.hpp>
+#include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>
+#include <lux/engine/render/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 using namespace foundation_test;
 
@@ -31,37 +31,24 @@ static void graphOutput(Validation& validation)
 {
     auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
     auto frames = take(FrameExecution::create(*session, nullptr, 3));
-    ResourceRegistry resources{0};
     const TargetDesc target{16, 16, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     RenderGraphBuilder builder;
     const auto color = take(builder.declareResource({"color", GraphImageDesc{16, 16}}));
-    const auto pixels = take(builder.declareResource({"pixels", GraphBufferDesc{1024}}));
-    const auto copied = take(builder.declareResource({"copied", GraphBufferDesc{1024}}));
-    take(builder.addPass(
-        {"clear",
-         EGraphPassKind::TRANSFER,
-         {{{color, 1}, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::TRANSFER_DESTINATION}}}
+    const auto pixels = take(builder.declareResource({"pixels", GraphBufferDesc{4096}}));
+    const auto copied = take(builder.declareResource({"copied", GraphBufferDesc{4096}}));
+    auto clear = take(builder.addTransferPass("clear", TransferWork{{ClearImage{{{color, 0}}, {1, 0, 1, 1}}}}));
+    auto copy = take(builder.addTransferPass(
+        "copy",
+        TransferWork{{CopyImageBuffer{{clear.written.front()}, {{pixels, 0}}, 256, 4096}}}
     ));
-    take(builder.addPass(
-        {"copy",
-         EGraphPassKind::TRANSFER,
-         {{{color, 1}, {}, EGraphAccess::READ, 0, {}, EGraphUse::TRANSFER_SOURCE},
-          {{pixels, 1}, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::TRANSFER_DESTINATION}}}
-    ));
-    CHECK(builder.exportOutput({{color, 1}, {}, GraphOutputRequirements{target.format, target.samples}}));
-    CHECK(builder.exportOutput({{pixels, 1}}));
-    take(builder.addPass(
-        {"copy-buffer",
-         EGraphPassKind::TRANSFER,
-         {{{pixels, 1}, {}, EGraphAccess::READ, 0, {}, EGraphUse::TRANSFER_SOURCE},
-          {{copied, 1}, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::TRANSFER_DESTINATION}}}
-    ));
-    CHECK(builder.exportOutput({{copied, 1}}));
+    auto copied_pass =
+        take(builder.addTransferPass("copy-buffer", TransferWork{{CopyBuffer{{copy.written.front()}, {{copied, 0}}}}}));
+    CHECK(builder.exportOutput({clear.written.front(), {}, GraphOutputRequirements{target.format, target.samples}}));
+    CHECK(builder.exportOutput({copy.written.front()}));
+    CHECK(builder.exportOutput({copied_pass.written.front()}));
     auto definition = take(std::move(builder).finish());
-    auto analysis = take(analyze(definition));
-    const std::array programs{PassProgram{"clear", {}, {1, 0, 1, 1}}, PassProgram{"copy"}, PassProgram{"copy-buffer"}};
-    auto indexed = take(indexPrograms(definition, programs));
-    auto graph = take(compileGraph(
+    auto analysis = take(analyzeRenderGraph(definition));
+    auto graph = take(GraphCompiler::compile(
         session->device(),
         session->nriCore(),
         session->enabledFeatures(),
@@ -72,18 +59,16 @@ static void graphOutput(Validation& validation)
         0,
         definition,
         analysis,
-        {},
-        indexed,
-        target
+        &target
     ));
     auto physical = take(OffscreenTarget::create(*session, target, frames->frameCount()));
-    auto execution = std::make_unique<ExecutionContext>(*session, resources, frames->frameCount(), graph, *physical);
-    CHECK(execution->initialize(*physical, *frames, resources));
+    auto execution = std::make_unique<RenderGraphInstance>(*session, frames->frameCount(), graph, physical.get());
+    CHECK(execution->initialize());
     const std::array contexts{execution.get()};
     std::vector<StorageFrameUse> storage_preparation;
     FrameExecution::collectStorageUses(contexts, storage_preparation);
     nri::Buffer* output = nullptr;
-    const nri::BufferDesc description{1024, 0, nri::BufferUsageBits::NONE};
+    const nri::BufferDesc description{4096, 0, nri::BufferUsageBits::NONE};
     CHECK(
         session->nriCore().CreatePlacedBuffer(session->device(), NriHostReadbackHeap, description, output) ==
         nri::Result::SUCCESS
@@ -99,16 +84,20 @@ static void graphOutput(Validation& validation)
             *session,
             *execution->nativeBuffer(id.index, execution->progress().last_submitted_slot),
             *output,
-            1024
+            4096
         );
         CHECK(session->drain());
-        auto* mapped = static_cast<const std::byte*>(session->nriCore().MapBuffer(*output, 0, 1024));
+        auto* mapped = static_cast<const std::byte*>(session->nriCore().MapBuffer(*output, 0, 4096));
         CHECK(mapped);
-        CHECK(session->invalidateMappedRange(*output, 0, 1024) == nri::Result::SUCCESS);
-        for (std::size_t i = 0; i < 1024; i += 4)
+        CHECK(session->invalidateMappedRange(*output, 0, 4096) == nri::Result::SUCCESS);
+        for (std::size_t row = 0; row < 16; ++row)
         {
-            CHECK(mapped[i] == std::byte{255} && mapped[i + 1] == std::byte{0});
-            CHECK(mapped[i + 2] == std::byte{255} && mapped[i + 3] == std::byte{255});
+            for (std::size_t column = 0; column < 16; ++column)
+            {
+                const auto i = row * 256 + column * 4;
+                CHECK(mapped[i] == std::byte{255} && mapped[i + 1] == std::byte{0});
+                CHECK(mapped[i + 2] == std::byte{255} && mapped[i + 3] == std::byte{255});
+            }
         }
         session->nriCore().UnmapBuffer(*output);
     }

@@ -4,7 +4,7 @@
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
-#include <lux/engine/render/graph/CompiledGraph.hpp>
+#include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/memory/BufferArena.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>

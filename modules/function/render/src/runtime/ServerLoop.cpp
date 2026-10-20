@@ -19,7 +19,12 @@ namespace lux::render
             const auto& target = *targets.find(active[(next_target + i) % active.size()]);
             frame_contexts.push_back(attachments.find(target.attachment)->context.get());
         }
-        auto accepted = device->render(frame_contexts);
+        if (frame_storages_dirty)
+        {
+            device->collectFrameStorages(frame_contexts, frame_storages);
+            frame_storages_dirty = false;
+        }
+        auto accepted = device->render(frame_contexts, frame_storages);
         if (!accepted)
         {
             return cxx::unexpected(accepted.error());

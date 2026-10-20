@@ -73,16 +73,18 @@ static void graphOutput(Validation& validation)
     auto physical = take(OffscreenTarget::create(*session, target));
     auto execution = take(session->prepare(graph, *physical));
     const std::array contexts{execution.get()};
+    std::vector<StorageFrameUse> storage_preparation;
+    DeviceSession::collectFrameStorages(contexts, storage_preparation);
     nri::Buffer* output = nullptr;
     const nri::BufferDesc description{1024, 0, nri::BufferUsageBits::NONE};
     CHECK(
         session->api().CreatePlacedBuffer(session->device(), NriHostReadbackHeap, description, output) ==
         nri::Result::SUCCESS
     );
-    CHECK(take(session->render(contexts)) == 1);
-    CHECK(take(session->render(contexts)) == 1);
-    CHECK(take(session->render(contexts)) == 1);
-    CHECK(take(session->render(contexts)) == 0);
+    CHECK(take(session->render(contexts, storage_preparation)) == 1);
+    CHECK(take(session->render(contexts, storage_preparation)) == 1);
+    CHECK(take(session->render(contexts, storage_preparation)) == 1);
+    CHECK(take(session->render(contexts, storage_preparation)) == 0);
     CHECK(session->drain());
     for (auto id : {pixels, copied})
     {
@@ -103,7 +105,7 @@ static void graphOutput(Validation& validation)
         }
         session->api().UnmapBuffer(*output);
     }
-    CHECK(take(session->render(contexts)) == 1);
+    CHECK(take(session->render(contexts, storage_preparation)) == 1);
     execution.reset(); // Physical resources outlive the business Context through Session cleanup.
     physical.reset();
     CHECK(session->drain());

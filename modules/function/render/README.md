@@ -104,6 +104,15 @@ staging windows and batches Copy work. Frame preparation contributes missing ran
 recordings enter the shared submission. Dirty-word batching and contiguous Transform input avoid per-element Copy
 construction. There is no per-frame Sender for unchanged drawing and no unconditional sleep in the event loop.
 
+FIF replica preparation coalesces adjacent dirty words before splitting at physical pages and finite staging
+windows. Submission acceptance acknowledges only copied records; failed windows remain dirty. CPU preparation
+and descriptor updates finish before `SubmissionQueue::recordAndSubmit` begins recording.
+
+The Runtime rebuilds its non-owning Storage preparation list when Attachment membership or Context identity
+changes. Project GPU consumers likewise call `DeviceSession::collectFrameStorages` at those changes and supply
+the resulting span to `render`. Preparation callbacks are synchronous: they do not submit, suspend or dispatch
+completion callbacks. Stable frames neither rebuild this list nor sort Storage relationships.
+
 Buffers and ordinary sampled textures use the backend's concurrent sharing across discovered
 queue families; frame-local attachments use exclusive sharing. Execution dependencies and access
 barriers remain explicit. Texture creation checks the complete pinned Vulkan image-create key

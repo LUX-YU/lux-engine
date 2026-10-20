@@ -130,6 +130,7 @@ namespace lux::render
         effect.attachments.pop_back();
         target.attachment = {};
         active_targets.erase(attachment.target);
+        frame_storages_dirty = true;
         attachments.erase(id);
     }
 
@@ -186,6 +187,7 @@ namespace lux::render
         target->attachment = id;
         output_response.attachment = id;
         active_targets.emplace(target_id);
+        frame_storages_dirty = true;
         storages_created.store(device->resources().creations());
         return;
     }
@@ -222,6 +224,7 @@ namespace lux::render
             }
             (*candidate)->setViewport(group->context->viewport());
             group->context = std::move(*candidate);
+            frame_storages_dirty = true;
         }
         target.physical = std::move(*physical);
         target.description = description;

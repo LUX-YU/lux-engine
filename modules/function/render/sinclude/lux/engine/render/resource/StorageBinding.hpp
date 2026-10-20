@@ -125,8 +125,16 @@ namespace lux::render::detail
 
     struct StorageBindingOps final
     {
-        RenderResult<
-            void> (*resolve)(void*, const CompiledResource&, const void*, StorageSubscription&, std::span<StorageResource>) noexcept;
+        using Resolve = RenderResult<
+            void> (*)(void*, const CompiledResource&, const void*, StorageSubscription&, std::span<StorageResource>) noexcept;
+        Resolve resolve;
         RenderResult<bool> (*prepareFrame)(void*, std::uint32_t slot, UploadContext&) noexcept = nullptr;
+    };
+
+    // A cold-qualified preparation borrow. The active execution list owns its lifetime.
+    struct StorageFrameUse final
+    {
+        void* storage;
+        const StorageBindingOps* ops;
     };
 } // namespace lux::render::detail

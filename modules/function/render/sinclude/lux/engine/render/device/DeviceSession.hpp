@@ -29,6 +29,7 @@ namespace lux::render::detail
     struct ImageTransferRegion;
     struct TransferStats;
     struct StorageBindingOps;
+    struct StorageFrameUse;
 
     // Backend capabilities used by the compiler, queried once from the successfully created device.
     struct EnabledDeviceFeatures final
@@ -129,7 +130,15 @@ namespace lux::render::detail
         }
 
         // Call after collect/dispatch on the device thread. Contexts are borrowed for this call only.
-        [[nodiscard]] RenderResult<std::uint32_t> render(std::span<ExecutionContext* const> contexts) noexcept;
+        // Rebuild after Context membership changes; does not retain Contexts or Storage.
+        static void collectFrameStorages(
+            std::span<ExecutionContext* const> contexts,
+            std::vector<StorageFrameUse>& output
+        ) noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> render(
+            std::span<ExecutionContext* const> contexts,
+            std::span<const StorageFrameUse> storages
+        ) noexcept;
         [[nodiscard]] RenderResult<void> collect() noexcept;
         // Explicit RenderThread safe point, separate from polling and resource admission/collection.
         void dispatchCompletions() noexcept;
@@ -273,7 +282,6 @@ namespace lux::render::detail
         std::array<FrameSlot, 3> frames_;
         std::uint32_t frame_count_ = 1;
         std::uint32_t next_frame_ = 0;
-        std::vector<std::pair<void*, const StorageBindingOps*>> frame_storages_;
         std::vector<std::pair<void*, void (*)(void*, RenderResult<void>) noexcept>> frame_receivers_;
         FrameWriteWaiter* frame_waiters_ = nullptr;
         FrameWriteWaiter* frame_waiters_tail_ = nullptr;

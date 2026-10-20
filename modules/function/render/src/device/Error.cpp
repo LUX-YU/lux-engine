@@ -9,7 +9,7 @@ namespace lux::render
         static constexpr std::array descriptors{
             error::ErrorDescriptor{
                 "lux.render.device.native_failure",
-                "NRI failure (Result, operation)",
+                "Native failure (backend result, operation; Vulkan image qualification=1)",
                 error::ERecovery::PERMANENT,
                 {error::EArgument::HEX, error::EArgument::UNSIGNED}
             },

@@ -158,6 +158,11 @@ namespace lux::render::detail
             return options.window_regions;
         }
 
+        [[nodiscard]] std::size_t windowByteLimit() const noexcept
+        {
+            return options.chunk_bytes * options.staging_pages;
+        }
+
         [[nodiscard]] TransferStats statistics() const noexcept
         {
             return stats;

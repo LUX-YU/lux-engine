@@ -561,9 +561,7 @@ namespace lux::render::detail
                     const auto records = static_cast<std::uint32_t>(total / table.stride);
                     if (records)
                     {
-                        const auto mask =
-                            records == 64 ? UINT64_MAX : ((std::uint64_t{1} << records) - 1) << (first % 64);
-                        slice.accepted.push_back({first / 64, mask});
+                        DirtyRanges::appendRange(slice.accepted, first, records);
                         covered += records;
                     }
                     first += records;
@@ -581,30 +579,30 @@ namespace lux::render::detail
             }
             if (staged && *staged)
             {
-                slice.dirty.select(uploads.windowRegionLimit(), slice.selected);
-                for (auto mask : slice.selected)
+                const auto word_limit =
+                    (uploads.windowByteLimit() / table.stride + 63) / 64 + uploads.windowRegionLimit();
+                slice.dirty.select(word_limit, slice.selected);
+                if (slice.partial_record != UINT32_MAX)
                 {
-                    auto bits = mask.bits;
-                    if (slice.partial_record != UINT32_MAX && slice.partial_record / 64 == mask.word_index)
+                    const auto partial_word = slice.partial_record / 64;
+                    const auto found = std::ranges::find(slice.selected, partial_word, &DirtyWordMask::word_index);
+                    if (found != slice.selected.end())
                     {
-                        bits &= ~(std::uint64_t{1} << (slice.partial_record % 64));
+                        found->bits &= ~(std::uint64_t{1} << (slice.partial_record % 64));
                     }
-                    while (bits)
+                }
+                const bool complete = DirtyRanges::visitRanges(
+                    slice.selected,
+                    UINT32_MAX,
+                    [&](std::uint32_t first, std::uint32_t count) noexcept
                     {
-                        const auto first = static_cast<unsigned>(std::countr_zero(bits));
-                        const auto count = static_cast<unsigned>(std::countr_one(bits >> first));
-                        staged = stage(mask.word_index * 64 + first, count, 0);
-                        if (!staged || !*staged)
-                        {
-                            break;
-                        }
-                        const auto done = count == 64 ? UINT64_MAX : ((std::uint64_t{1} << count) - 1) << first;
-                        bits &= ~done;
+                        staged = stage(first, count, 0);
+                        return staged && *staged;
                     }
-                    if (!staged || !*staged)
-                    {
-                        break;
-                    }
+                );
+                if (staged)
+                {
+                    staged = complete;
                 }
             }
             if (progress)

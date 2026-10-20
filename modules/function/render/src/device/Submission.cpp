@@ -241,6 +241,11 @@ namespace lux::render::detail
         return batch.command;
     }
 
+    bool SubmissionQueue::hasCapacity() const noexcept
+    {
+        return backing_->submitted - backing_->completed < capacity();
+    }
+
     RenderResult<void> SubmissionQueue::finishRecording() noexcept
     {
         const auto slot = static_cast<std::uint32_t>(backing_->submitted % capacity());

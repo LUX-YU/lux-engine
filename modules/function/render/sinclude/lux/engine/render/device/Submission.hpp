@@ -111,6 +111,8 @@ namespace lux::render::detail
         // Detach the ready prefix before invoking callbacks; a callback may destroy its own node.
         void dispatchCompleted() noexcept;
         [[nodiscard]] std::uint32_t capacity() const noexcept;
+        // Cached frontier only; preparing a frame never polls or dispatches callbacks.
+        [[nodiscard]] bool hasCapacity() const noexcept;
         [[nodiscard]] bool recording() const noexcept;
         [[nodiscard]] bool idle() const noexcept;
         [[nodiscard]] bool deviceLost() const noexcept;

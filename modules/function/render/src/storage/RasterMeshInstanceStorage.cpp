@@ -158,22 +158,6 @@ namespace lux::render::detail
             return session.api().GetBufferDeviceAddress(*buffer);
         }
 
-        template <class Visit> bool visitRuns(DirtyWordMask mask, Visit visit) noexcept
-        {
-            auto bits = mask.bits;
-            while (bits)
-            {
-                const auto first = static_cast<unsigned>(std::countr_zero(bits));
-                const auto count = static_cast<unsigned>(std::countr_one(bits >> first));
-                if (!visit(mask.word_index * 64 + first, count))
-                {
-                    return false;
-                }
-                const auto done = count == 64 ? UINT64_MAX : ((std::uint64_t{1} << count) - 1) << first;
-                bits &= ~done;
-            }
-            return true;
-        }
     } // namespace
 
     RasterMeshInstanceStorage::RasterMeshInstanceStorage(DeviceSession& session, StorageId id) noexcept
@@ -1079,48 +1063,50 @@ namespace lux::render::detail
         bool copied_any = false;
         // Every source is authoritative CPU data or an address table for this physical slice.
         // The selected masks are bounded by the current staging window, never all live records.
-        auto stage = [&](DirtyRanges& dirty, std::vector<DirtyWordMask>& accepted, auto source
-                     ) noexcept -> RenderResult<bool>
+        auto stage = [&](DirtyRanges& dirty,
+                         std::vector<DirtyWordMask>& accepted,
+                         std::size_t stride,
+                         std::uint32_t page_records,
+                         auto source) noexcept -> RenderResult<bool>
         {
             accepted.clear();
-            dirty.select(uploads.windowRegionLimit(), slice.selected);
+            const auto word_limit = (uploads.windowByteLimit() / stride + 63) / 64 + uploads.windowRegionLimit();
+            dirty.select(word_limit, slice.selected);
             std::uint64_t covered = 0;
-            RenderResult<bool> result = true;
-            for (auto mask : slice.selected)
-            {
-                const auto completed = visitRuns(
-                    mask,
-                    [&](std::uint32_t first, std::uint32_t count) noexcept
+            RenderResult<void> result;
+            const bool complete = DirtyRanges::visitRanges(
+                slice.selected,
+                page_records,
+                [&](std::uint32_t first, std::uint32_t count) noexcept
+                {
+                    while (count)
                     {
-                        auto [write, stride] = source(first, count);
-                        auto copied = uploads.prepareBuffer(write, stride);
+                        auto [write, unit] = source(first, count);
+                        auto copied = uploads.prepareBuffer(write, unit);
                         if (!copied)
                         {
                             result = cxx::unexpected(copied.error());
                             return false;
                         }
-                        const auto records = static_cast<unsigned>(*copied / stride);
-                        if (records)
+                        const auto records = static_cast<std::uint32_t>(*copied / stride);
+                        if (records == 0)
                         {
-                            copied_any = true;
-                            const auto bits =
-                                records == 64 ? UINT64_MAX : ((std::uint64_t{1} << records) - 1) << (first % 64);
-                            accepted.push_back({first / 64, bits});
-                            covered += records;
+                            return false;
                         }
-                        return records == count;
+                        copied_any = true;
+                        DirtyRanges::appendRange(accepted, first, records);
+                        covered += records;
+                        first += records;
+                        count -= records;
                     }
-                );
-                if (!completed)
-                {
-                    break;
+                    return true;
                 }
-            }
+            );
             if (!result)
             {
-                return result;
+                return cxx::unexpected(result.error());
             }
-            return covered == dirty.recordCount();
+            return complete && covered == dirty.recordCount();
         };
         // Register only real work, still before the caller can submit this synchronous segment.
         // This also runs on failure so any already prepared ranges receive the failed acknowledgement.
@@ -1167,6 +1153,8 @@ namespace lux::render::detail
             auto roots = stage(
                 table.roots_dirty,
                 table.roots_accepted,
+                sizeof(std::uint64_t),
+                static_cast<std::uint32_t>(table.addresses.size()),
                 [&](std::uint32_t first, std::uint32_t count) noexcept
                 {
                     return std::pair{
@@ -1187,6 +1175,8 @@ namespace lux::render::detail
             auto pages = stage(
                 table.pages_dirty,
                 table.pages_accepted,
+                sizeof(MeshInstancePageGpu),
+                kMeshInstanceTableAxis,
                 [&](std::uint32_t first, std::uint32_t count) noexcept
                 {
                     auto& leaf = table.leaves[first / kMeshInstanceTableAxis];
@@ -1212,6 +1202,8 @@ namespace lux::render::detail
             auto fields = stage(
                 slice.dirty[field],
                 slice.accepted[field],
+                kStride[field],
+                kMeshInstancePageSlots,
                 [&](std::uint32_t first, std::uint32_t count) noexcept
                 {
                     const auto local = first % kMeshInstancePageSlots;

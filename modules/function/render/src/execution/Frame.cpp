@@ -145,7 +145,40 @@ namespace lux::render::detail
         }
     }
 
-    RenderResult<std::uint32_t> DeviceSession::render(std::span<ExecutionContext* const> contexts) noexcept
+    void DeviceSession::collectFrameStorages(
+        std::span<ExecutionContext* const> contexts,
+        std::vector<StorageFrameUse>& output
+    ) noexcept
+    {
+        output.clear();
+        for (auto* context : contexts)
+        {
+            for (const auto& use : context->storage_uses_)
+            {
+                if (use.ops->prepareFrame)
+                {
+                    output.push_back({use.native, use.ops});
+                }
+            }
+        }
+        std::ranges::sort(
+            output,
+            [](const auto& left, const auto& right) noexcept { return std::less<void*>{}(left.storage, right.storage); }
+        );
+        output.erase(
+            std::unique(
+                output.begin(),
+                output.end(),
+                [](const auto& left, const auto& right) noexcept { return left.storage == right.storage; }
+            ),
+            output.end()
+        );
+    }
+
+    RenderResult<std::uint32_t> DeviceSession::render(
+        std::span<ExecutionContext* const> contexts,
+        std::span<const StorageFrameUse> storages
+    ) noexcept
     {
         rendering_ = !contexts.empty();
         auto& frame = frames_[next_frame_];
@@ -185,71 +218,54 @@ namespace lux::render::detail
         {
             return outcome(EExecutionOutcome::RECORDING_BUSY);
         }
-        // Scratch contains only the actual cold-qualified borrows used in this frame. It is
-        // rebuilt from active Contexts, never an owning or global professional resource table.
-        frame_storages_.clear();
-        for (auto* context : contexts)
+        if (!graphics.hasCapacity())
         {
-            for (const auto& use : context->storage_uses_)
+            return outcome(EExecutionOutcome::QUEUE_FULL);
+        }
+        // This synchronous phase may fill staging and update descriptors, but may not
+        // submit, suspend or dispatch callbacks. Only the following recording segment owns a CommandBuffer.
+        if (!storages.empty() && !uploads_)
+        {
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        bool resources_ready = true;
+        for (const auto& use : storages)
+        {
+            auto prepared = use.ops->prepareFrame(use.storage, next_frame_, *uploads_);
+            if (!prepared)
             {
-                if (use.ops->prepareFrame)
+                finishFrameSubmission(cxx::unexpected(prepared.error()));
+                sealFrame(frame);
+                return cxx::unexpected(prepared.error());
+            }
+            resources_ready &= *prepared;
+        }
+        bool contexts_ready = resources_ready;
+        bool native_records = false;
+        if (resources_ready)
+        {
+            for (auto* context : contexts)
+            {
+                auto prepared = context->prepareFrame(next_frame_, uploads_.get());
+                if (!prepared)
                 {
-                    frame_storages_.emplace_back(use.native, use.ops);
+                    finishFrameSubmission(cxx::unexpected(prepared.error()));
+                    sealFrame(frame);
+                    return cxx::unexpected(prepared.error());
                 }
+                contexts_ready &= *prepared;
+                native_records |= !context->prepared_data_.empty();
             }
         }
-        std::ranges::sort(
-            frame_storages_,
-            [](const auto& left, const auto& right) { return std::less<void*>{}(left.first, right.first); }
-        );
-        frame_storages_.erase(
-            std::unique(
-                frame_storages_.begin(),
-                frame_storages_.end(),
-                [](const auto& left, const auto& right) { return left.first == right.first; }
-            ),
-            frame_storages_.end()
-        );
-        bool prepared = false;
-        bool contexts_ready = false;
+        const bool has_copies = uploads_ && uploads_->hasFrameCopies();
+        if (!contexts_ready && !has_copies && !native_records)
+        {
+            finishFrameSubmission(cxx::unexpected(RenderError{kDeviceBusy}));
+            return outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
+        }
         auto accepted = graphics.recordAndSubmit(
             [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
             {
-                prepared = true;
-                if (!frame_storages_.empty() && !uploads_)
-                {
-                    return cxx::unexpected(RenderError{kDeviceArgument});
-                }
-                bool resources_ready = true;
-                for (const auto& [storage, ops] : frame_storages_)
-                {
-                    auto prepared = ops->prepareFrame(storage, next_frame_, *uploads_);
-                    if (!prepared)
-                    {
-                        return cxx::unexpected(prepared.error());
-                    }
-                    resources_ready &= *prepared;
-                }
-                contexts_ready = resources_ready;
-                bool native_records = false;
-                if (resources_ready)
-                {
-                    for (auto* context : contexts)
-                    {
-                        auto prepared = context->prepareFrame(next_frame_, uploads_.get());
-                        if (!prepared)
-                        {
-                            return cxx::unexpected(prepared.error());
-                        }
-                        contexts_ready &= *prepared;
-                        native_records |= !context->prepared_data_.empty();
-                    }
-                }
-                const bool has_copies = uploads_ && uploads_->hasFrameCopies();
-                if (!contexts_ready && !has_copies && !native_records)
-                {
-                    return cxx::unexpected(RenderError{kDeviceBusy});
-                }
                 if (uploads_)
                 {
                     uploads_->recordFrame(command);
@@ -274,14 +290,6 @@ namespace lux::render::detail
         if (!accepted)
         {
             finishFrameSubmission(accepted);
-            if (!prepared && accepted.error().type == kDeviceCapacity)
-            {
-                return outcome(EExecutionOutcome::QUEUE_FULL);
-            }
-            if (accepted.error().type == kDeviceBusy)
-            {
-                return outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
-            }
             sealFrame(frame);
             return cxx::unexpected(accepted.error());
         }

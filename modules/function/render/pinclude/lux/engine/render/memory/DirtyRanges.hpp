@@ -98,6 +98,72 @@ namespace lux::render::detail
             std::ranges::sort(output, {}, &DirtyWordMask::word_index);
         }
 
+        // Selected words are sorted. Coalesce across word boundaries, then split only at
+        // the caller's physical page boundary. No live-record scan or range allocation.
+        template <class Visit>
+        static bool visitRanges(std::span<const DirtyWordMask> masks, std::uint32_t page_records, Visit visit) noexcept
+        {
+            std::uint64_t first = 0, count = 0;
+            const auto flush = [&]() noexcept
+            {
+                while (count)
+                {
+                    const auto length =
+                        static_cast<std::uint32_t>(std::min<std::uint64_t>(count, page_records - first % page_records));
+                    if (!visit(static_cast<std::uint32_t>(first), length))
+                    {
+                        return false;
+                    }
+                    first += length;
+                    count -= length;
+                }
+                return true;
+            };
+            for (auto mask : masks)
+            {
+                auto bits = mask.bits;
+                while (bits)
+                {
+                    const auto offset = static_cast<unsigned>(std::countr_zero(bits));
+                    const auto length = static_cast<unsigned>(std::countr_one(bits >> offset));
+                    const auto next = std::uint64_t(mask.word_index) * 64 + offset;
+                    if (count && first + count != next && !flush())
+                    {
+                        return false;
+                    }
+                    if (count == 0)
+                    {
+                        first = next;
+                    }
+                    count += length;
+                    const auto selected = length == 64 ? UINT64_MAX : ((std::uint64_t{1} << length) - 1) << offset;
+                    bits &= ~selected;
+                }
+            }
+            return flush();
+        }
+
+        static void appendRange(std::vector<DirtyWordMask>& output, std::uint32_t first, std::uint32_t count) noexcept
+        {
+            while (count)
+            {
+                const auto offset = first % 64;
+                const auto length = std::min(count, 64 - offset);
+                const auto bits = length == 64 ? UINT64_MAX : ((std::uint64_t{1} << length) - 1) << offset;
+                const auto word = first / 64;
+                if (!output.empty() && output.back().word_index == word)
+                {
+                    output.back().bits |= bits;
+                }
+                else
+                {
+                    output.push_back({word, bits});
+                }
+                first += length;
+                count -= length;
+            }
+        }
+
         void acknowledge(DirtyWordMask mask) noexcept
         {
             auto& word = words_[mask.word_index];

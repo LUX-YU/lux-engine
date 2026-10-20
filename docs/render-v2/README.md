@@ -1,20 +1,28 @@
 # Render V2 架构与使用入口
 
 Render V2 的源码位于 `modules/function/render`，通信使用独立的 Platform IPC。
-模块按逻辑图、Feature、资源和执行职责组合，不依赖 Engine 或 Editor 产品。
+Render 作为一个共享库提供逻辑图、Feature、资源和执行能力，不依赖 Engine 或 Editor 产品。
+设计与审查遵守 [Render 设计哲学与工程规范](design-principles.md)；
+当前 API 和运行合同见 [Render README](../../modules/function/render/README.md)。
 
-## 模块边界
+## 目录与职责
 
-| 模块 | 职责 |
+顶级目录统一为 `include/`、`sinclude/`、`pinclude/` 和 `src/`，分别表示安装公开头、
+项目扩展头、模块私有头和实现。下表是库内职责目录，不是多套独立库 target。
+
+| 职责目录 | 内容 |
 |---|---|
 | core | 基础身份、结构化错误、独占配置值和执行统计 |
 | commands | 中立 Command 声明、请求和结果值 |
 | graph | 唯一逻辑 Graph、Builder、Analysis 和冷态 PassProgram |
 | features | 冷态资源供需解析和单 Graph 装配 |
 | resource | 专业资源合同、StorageSet 所有权与 ResourceRegistry 非拥有索引 |
-| native/vulkan | DeviceSession、编译、帧资源、批量上传、提交和物理清理 |
+| storage | 用途明确的专业 Storage 描述、数据合同及私有实现 |
+| device / memory / upload / execution | NRI 设备设施、分配、上传、帧资源、录制提交和物理清理 |
 | runtime | Server 对象、Command 路由、关联与请求终态 |
-| platform/ipc | 进程内拥有型消息、独立双向 SPSC 与来源关联 |
+
+当前选择 NRI Vulkan 后端。NRI/Vulkan 类型不进入安装公共头；需要 GPU 的项目扩展显式使用
+`sinclude/` 接缝。Platform IPC 位于独立模块，提供进程内类型化消息、SPSC 和来源关联。
 
 稳定名称用于冷态发现；Command、Handler、Scene、View、Effect、Storage 等运行时身份各有独立身份域。
 Scene 拥有 View，Effect 拥有不可变 CompiledGraph，Attachment 拥有 ExecutionContext。
@@ -27,16 +35,15 @@ Session 的 `cleanup_scope_`。资源在 Copy/Acquire 接纳、使用顺序成�
 
 帧槽在参与的物理 Queue 完成且 CPU 写入结束后复用。默认两个在途帧，可配置一到三个。
 动态 Storage、Context 和 Target 使用对应物理 slice；CPU 业务数据、Shader 和 Pipeline 保持唯一。
-Session 统一关闭输入批次、准备帧资源、合并兼容 Context 的录制并提交。详见
-[Native 所有权和执行合同](../../modules/function/render/native/vulkan/README.md)。
+当前帧准备与提交入口位于 DeviceSession；具体职责收窄仍待后续方案确定，不能把现有类划分当作永久
+要求。上传保持 stdexec，物理清理只有一个 `cleanup_scope_`。
 
 ## 宿主与 Client
 
-宿主创建一个 Core `ExecutionRuntime`，通过选定的
-[`vulkan::createRenderServer`](../../modules/function/render/runtime/include/lux/engine/render/runtime/VulkanServer.hpp)
-装配 Server，并在冷态安装 Feature/Storage 提供者。宿主拥有线程；Server 借用同一个 CPU scheduler。
-[`RenderServer.hpp`](../../modules/function/render/runtime/include/lux/engine/render/runtime/RenderServer.hpp)
-本身不暴露 Vulkan 配置。
+应用创建一个 Core `ExecutionRuntime`，调用
+[`createRenderServer`](../../modules/function/render/include/lux/engine/render/runtime/RenderServer.hpp)
+装配 Server，并在冷态注册 Feature/Storage 描述。应用拥有线程；Server 借用同一个 CPU scheduler。
+具体内置实现不公开，不需要应用构造 Provider 或包含专业 Storage 实现头。
 
 Client 直接使用 `IpcRequester` 和 `IpcMessage`，自行生成 RequestId，通过普通目录请求取得 CommandId。
 没有单独的 RenderClient 包装。两个 Client 的 RequestId 数值可以相同，回复仍沿原 Link 返回。
@@ -46,20 +53,20 @@ Client 直接使用 `IpcRequester` 和 `IpcMessage`，自行生成 RequestId，�
 
 上传源是借用：Client 从提交成功到收到 Response 保持源地址、范围和内容有效。
 FAILED/CANCELLED 同样在最后一次 CPU 读取结束后产生；abandon 或断连不证明读取已经结束。
-没有 Response 时，Host 清偿 Server 和 Producer 后才能释放源。Native 独立管理 Staging 和已提交资源。
+没有 Response 时，应用清偿 Server 和 Producer 后才能释放源。Render 独立管理 Staging 和已提交资源。
 
 IPC 使用同进程、同受控 C++ 构建合同。`get<T>()` 的调用者必须知道消息内的实际类型。
 宿主必须保持提供类型操作与回调的模块已加载，直到所有相关值析构及回调栈返回。
 
 Server 同步请求直接结算；异步 Command 的 OperationState 由 `counting_scope + spawn` 管理。
-Owner RunLoop 将完成交回 RenderThread，ResponseOutbox 统一发布并处理背压，不重复执行 Handler。
-停止时先关闭准入，清偿 CPU/GPU、Owner 事件、Producer 尾栈和回复，再释放 Responder、设备和 Instance。
-详见 [Runtime 使用合同](../../modules/function/render/runtime/README.md)。
+既有 RunLoop 将完成交回 RenderThread，ResponseOutbox 统一发布并处理背压，不重复执行 Handler。
+停止时先关闭准入，清偿 CPU/GPU、RenderThread 事件、Producer 尾栈和回复；逻辑资源移交清理，
+相关完成条件结算后再释放设备设施。
 
 ## 构建与可运行消费者
 
 独立构建入口是 [`cmake/render-v2-bootstrap`](../../cmake/render-v2-bootstrap/CMakeLists.txt)。
-需要安装同级 lux-cmake-toolset、lux-cxx，以及 Native/异步路径所需的 Vulkan、stdexec 等依赖。
+需要安装同级 lux-cmake-toolset、lux-cxx 及实际后端/异步依赖；NRI 使用锁定版本和共享依赖缓存。
 
 ```sh
 cmake -S cmake/render-v2-bootstrap -B ../build/render -G Ninja \
@@ -70,11 +77,13 @@ ctest --test-dir ../build/render --output-on-failure -j 1
 cmake --install ../build/render --prefix ../install/render
 ```
 
-`LUX_RENDER_CLIENT_ONLY=ON` 选择同步 Client 所需的中立值与 IPC，不选择 Vulkan 或异步实现。
+安装消费者通过 `find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render)`，
+链接唯一 `lux::engine::function::render`。中立 Command/资源声明不需要 GPU 类型；
+Server 的异步接口按实际需要使用 stdexec。
 完整 Engine/Editor 产品接线是独立构建范围，不能用 Render bootstrap 成功替代。
 
 [`render/test`](../../modules/function/render/test/CMakeLists.txt) 保留同步 Client、Native 输出和
-Host/Main/Asset 双 Client 的 Mesh/Material 场景。Client 翻译单元不包含 Native 头；测试自行进行
+Main/Asset 双 Client 的 Mesh/Material 场景。Client 翻译单元不包含后端头；测试自行进行
 普通 Copy 和映射来检查输出，不在生产 API 中添加 Readback。
 
 [色彩空间约定](color-space.md) 说明采样与工作色转换；

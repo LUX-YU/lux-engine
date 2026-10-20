@@ -119,11 +119,11 @@ namespace lux::render::detail
         {
             const auto* image = std::get_if<GraphImageDesc>(&resources[i].description);
             states[i].resize(image ? std::size_t(image->mips) * image->layers * 3 : 1);
-            if (image && resources[i].memory_used && resources[i].origin == EGraphOrigin::IMPORTED &&
+            if (resources[i].memory_used && resources[i].origin == EGraphOrigin::IMPORTED &&
                 !resources[i].shared_table)
             {
                 const auto usage = graph.resources()[i].initial_use;
-                if (usage == EGraphUse::UNSPECIFIED && !graph.resources()[i].initial_ranges.empty())
+                if (image && usage == EGraphUse::UNSPECIFIED && !graph.resources()[i].initial_ranges.empty())
                 {
                     return cxx::unexpected(RenderError{kDeviceArgument});
                 }
@@ -131,8 +131,8 @@ namespace lux::render::detail
                 {
                     for (std::size_t cell = 0; cell < states[i].size(); ++cell)
                     {
-                        const auto plane = cell / (image->mips * image->layers);
-                        if (rdesc::textureAspectMask(image->format) & (1u << plane))
+                        const auto plane = image ? cell / (image->mips * image->layers) : 0;
+                        if (!image || (rdesc::textureAspectMask(image->format) & (1u << plane)))
                         {
                             states[i][cell] = externalState(GraphResourceId{static_cast<std::uint32_t>(i)}, usage);
                         }

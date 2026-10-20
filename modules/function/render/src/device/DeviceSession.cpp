@@ -120,10 +120,31 @@ namespace lux::render::detail
 
     RenderResult<bool> DeviceSession::waitForProgress(std::uint64_t timeout_ns) noexcept
     {
-        for (const auto& queue : physical_queues_)
+        const auto count = physical_queues_.size();
+        const auto& frame = frames_[next_frame_];
+        if (frame.phase == EFramePhase::SUBMITTED)
         {
+            for (std::size_t offset = 0; offset < count; ++offset)
+            {
+                const auto index = (wait_queue_cursor_ + offset) % count;
+                auto& queue = *physical_queues_[index];
+                const auto serial = frame.accepted_serials[index];
+                if (serial > queue.completed())
+                {
+                    wait_queue_cursor_ = static_cast<std::uint8_t>((index + 1) % count);
+                    return queue.wait(serial, timeout_ns);
+                }
+            }
+        }
+        // No submitted frame is blocking reuse. Rotate through the actual Queue frontiers
+        // so background uploads and cleanup do not always wait behind physical queue zero.
+        for (std::size_t offset = 0; offset < count; ++offset)
+        {
+            const auto index = (wait_queue_cursor_ + offset) % count;
+            auto& queue = physical_queues_[index];
             if (!queue->idle())
             {
+                wait_queue_cursor_ = static_cast<std::uint8_t>((index + 1) % count);
                 return queue->wait(queue->completed() + 1, timeout_ns);
             }
         }

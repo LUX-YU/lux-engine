@@ -298,6 +298,7 @@ namespace lux::render::detail
         std::uint32_t vertex_stride_limit_ = 0, vertex_offset_limit_ = 0, bindless_capacity_ = 0;
         std::vector<std::unique_ptr<SubmissionQueue>> physical_queues_;
         std::array<std::uint8_t, 3> queue_roles_{};
+        std::uint8_t wait_queue_cursor_ = 0;
         // Close settles Sets and cleanup before upload/staging and descriptors; queues outlive all callbacks.
         // The NRI Device is destroyed last by member order.
         std::unique_ptr<DescriptorArray> sampled_images_;

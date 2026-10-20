@@ -10,7 +10,6 @@
 
 namespace lux::render::detail
 {
-    class BufferArena;
     [[nodiscard]] StorageFactory meshStorageFactory() noexcept;
 
     class IndexedTriangleMeshStorage final

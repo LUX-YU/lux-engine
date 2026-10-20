@@ -1,12 +1,11 @@
 #pragma once
 
-#include <lux/cxx/container/SlotMap.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
-#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/StorageSet.hpp>
 #include <memory>
 #include <vector>
 

@@ -1,4 +1,5 @@
 #include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
 
@@ -20,7 +21,12 @@ namespace lux::render::detail
         }
         if (description.kind != ETargetKind::OFFSCREEN)
         {
-            return cxx::unexpected(RenderError{kUnsupported});
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
+        }
+        const auto maximum = session.description().dimensions.attachmentMaxDim;
+        if (description.width > maximum || description.height > maximum)
+        {
+            return cxx::unexpected(RenderError{kInvalidTargetExtent});
         }
         auto result = std::unique_ptr<OffscreenTarget>(new OffscreenTarget(session, description));
         const auto count = session.framesInFlight();
@@ -29,26 +35,29 @@ namespace lux::render::detail
         const auto format = imageFormat(description.format);
         for (std::uint32_t slot = 0; slot < count; ++slot)
         {
-            auto image = session.allocator().createImage(
-                {{description.width, description.height},
-                 format.native,
-                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                     VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                 static_cast<VkSampleCountFlagBits>(description.samples)}
-            );
-            if (!image)
+            const nri::TextureDesc image_description{
+                nri::TextureType::TEXTURE_2D,
+                nri::TextureUsageBits::COLOR_ATTACHMENT,
+                format.native,
+                static_cast<nri::Dim_t>(description.width),
+                static_cast<nri::Dim_t>(description.height),
+                1,
+                1,
+                1,
+                static_cast<nri::Sample_t>(description.samples),
+                nri::SharingMode::EXCLUSIVE
+            };
+            nri::Texture* image = nullptr;
+            const auto created =
+                session.api().CreatePlacedTexture(session.device(), NriDeviceHeap, image_description, image);
+            if (created != nri::Result::SUCCESS)
             {
-                return cxx::unexpected(image.error());
+                return cxx::unexpected(nativeError(created));
             }
-            result->images_.push_back(std::move(*image));
-            VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-            view.image = result->images_.back().handle();
-            view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            view.format = format.native;
-            view.subresourceRange = {format.aspects, 0, 1, 0, 1};
-            VkImageView handle{};
-            if (auto created = vkCreateImageView(session.nativeDevice(), &view, nullptr, &handle);
-                created != VK_SUCCESS)
+            result->images_.push_back(image);
+            const nri::TextureViewDesc view{image, nri::TextureView::COLOR_ATTACHMENT, format.native, 0, 1, 0, 1};
+            nri::Descriptor* handle = nullptr;
+            if (const auto created = session.api().CreateTextureView(view, handle); created != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(created));
             }
@@ -64,18 +73,15 @@ namespace lux::render::detail
             return;
         }
         session_.deferRelease(
-            [device = session_.nativeDevice(),
-             allocator = session_.allocator().native(),
-             images = std::move(images_),
-             views = std::move(views_)]() mutable noexcept
+            [api = &session_.api(), images = std::move(images_), views = std::move(views_)]() mutable noexcept
             {
                 for (auto view : views)
                 {
-                    vkDestroyImageView(device, view, nullptr);
+                    api->DestroyDescriptor(view);
                 }
                 for (auto& image : images)
                 {
-                    image.release(allocator);
+                    api->DestroyTexture(image);
                 }
             }
         );

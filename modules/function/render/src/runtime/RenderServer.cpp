@@ -31,36 +31,26 @@ namespace lux::render
         addBuiltin<SelectCommandBinding, &Impl::selectCommandBinding>();
     }
 
-    VKAPI_ATTR VkBool32 VKAPI_CALL RenderServer::Impl::diagnostic(
-        VkDebugUtilsMessageSeverityFlagBitsEXT severity,
-        VkDebugUtilsMessageTypeFlagsEXT,
-        const VkDebugUtilsMessengerCallbackDataEXT*,
-        void* user
-    ) noexcept
+    void NRI_CALL
+    RenderServer::Impl::diagnostic(nri::Message severity, const char*, std::uint32_t, const char*, void* user) noexcept
     {
         auto& state = *static_cast<Impl*>(user);
-        if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+        if (severity == nri::Message::ERROR)
         {
             ++state.validation_errors;
         }
-        if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+        if (severity == nri::Message::WARNING)
         {
             ++state.validation_warnings;
         }
-        return VK_FALSE;
     }
 
     RenderResult<void> RenderServer::Impl::initialize(DeviceOptions options) noexcept
     {
         auto& s = *this;
-        auto instance = detail::InstanceContext::create({{}, s.config.validation, Impl::diagnostic, &s});
-        if (!instance)
-        {
-            return cxx::unexpected(instance.error());
-        }
-        s.instance.emplace(std::move(*instance));
-        options.host_query_reset |= s.config.uploads && s.config.uploads->measure_gpu;
-        auto device = detail::DeviceSession::create(*s.instance, options, 3, s.config.frames_in_flight);
+        const nri::CallbackInterface diagnostic{Impl::diagnostic, [](void*) noexcept {}, &s};
+        auto device =
+            detail::DeviceSession::create(options, diagnostic, s.config.validation, 3, s.config.frames_in_flight);
         if (!device)
         {
             return cxx::unexpected(device.error());

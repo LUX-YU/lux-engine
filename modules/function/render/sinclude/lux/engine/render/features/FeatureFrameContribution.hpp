@@ -2,12 +2,12 @@
 
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Ids.hpp>
-#include <vulkan/vulkan.h>
+#include <lux/engine/render/resource/StorageBinding.hpp>
+#include <optional>
 
 namespace lux::render::detail
 {
     class DeviceSession;
-    class ExecutionContext;
     class UploadContext;
 
     // Actual Feature-derived per-attachment data. This is neither an async OperationState nor
@@ -21,9 +21,15 @@ namespace lux::render::detail
             WAITING
         };
 
+        struct Preparation final
+        {
+            EPreparation state = EPreparation::READY;
+            std::optional<StorageResource> changed_resource;
+        };
+
         std::unique_ptr<void, void (*)(void*) noexcept> value{nullptr, [](void*) noexcept {}};
-        RenderResult<EPreparation> (*prepare)(void*, std::uint32_t, UploadContext&) noexcept = nullptr;
-        void (*record)(void*, VkCommandBuffer, std::uint32_t) noexcept = nullptr;
+        RenderResult<Preparation> (*prepare)(void*, std::uint32_t, UploadContext&) noexcept = nullptr;
+        void (*record)(void*, nri::CommandBuffer&, std::uint32_t) noexcept = nullptr;
     };
 
     // Native-only cold factory contributed by a Feature. The existing GraphResourceId identifies
@@ -32,8 +38,7 @@ namespace lux::render::detail
     {
         GraphResourceId resource;
         ConfigValue configuration;
-        RenderResult<
-            FeatureFrameWork> (*create)(DeviceSession&, ExecutionContext&, GraphResourceId, const void*) noexcept =
+        RenderResult<FeatureFrameWork> (*create)(DeviceSession&, std::span<const StorageId>, const void*) noexcept =
             nullptr;
     };
 } // namespace lux::render::detail

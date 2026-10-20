@@ -4,7 +4,7 @@
 
 #include <exec/task.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
-#include <lux/engine/render/device/Device.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Submission.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <span>
@@ -12,7 +12,7 @@
 namespace lux::render::detail
 {
     class DeviceSession;
-    class StagingRange;
+    struct StagingRange;
 
     struct TransferStats final
     {
@@ -20,57 +20,52 @@ namespace lux::render::detail
         std::uint64_t prepare_windows = 0, copy_submissions = 0, acquire_submissions = 0;
         std::uint64_t staging_bytes = 0, pending_bytes = 0, pending_peak = 0;
         std::uint64_t gpu_ns = 0, gpu_samples = 0, gpu_query_errors = 0;
+        // Optional sampling never backpressures uploads. A Copy pair stays reserved until an
+        // existing Graphics submission resolves it; later batches may therefore be unsampled.
+        std::uint64_t gpu_samples_skipped = 0;
     };
 
     struct ImageTransferRegion final
     {
         std::uint64_t source_offset = 0, source_row_pitch = 0;
         std::uint32_t block_extent = 1, block_bytes = 4;
-        VkImageSubresourceLayers subresource{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        VkOffset3D offset{};
-        VkExtent3D extent{};
+        nri::TextureRegionDesc texture{};
     };
 
     struct BufferWrite final
     {
-        gapi::vk::VmaBuffer* target = nullptr;
-        VkDeviceSize offset = 0;
+        nri::Buffer* target = nullptr;
+        std::uint64_t offset = 0;
         std::span<const std::byte> source;
     };
 
-    struct BufferFill final
+    struct BufferZero final
     {
-        gapi::vk::VmaBuffer* target = nullptr;
-        VkDeviceSize offset = 0, size = 0;
-        std::uint32_t value = 0;
+        nri::Buffer* target = nullptr;
+        std::uint64_t offset = 0, size = 0;
     };
 
     // One device's upload facilities. Tasks borrow their source and operation-owned targets; this object
     // owns neither professional candidates nor running tasks. Start with the RenderThread scheduler.
     class LUX_RENDER_PUBLIC UploadContext final
     {
-        class FrameWriteSender final
+        class FrameWriteAdmissionSender final
         {
         public:
-            struct Node final
-            {
-                Node* next = nullptr;
-                void* operation = nullptr;
-                bool (*stopping)(void*) noexcept = nullptr;
-                void (*complete)(void*) noexcept = nullptr;
-            };
-
             using sender_concept = stdexec::sender_t;
             using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(RenderResult<void>)>;
 
-            FrameWriteSender(UploadContext& uploads, std::size_t bytes) noexcept : uploads_(uploads), bytes_(bytes) {}
+            FrameWriteAdmissionSender(UploadContext& uploads, std::size_t bytes) noexcept
+                : uploads_(uploads), bytes_(bytes)
+            {
+            }
 
             template <class Receiver> struct Operation final
             {
                 using operation_state_concept = stdexec::operation_state_t;
                 UploadContext& uploads;
                 Receiver receiver;
-                Node node;
+                DeviceSession::FrameWriteWaiter node;
                 std::size_t bytes;
                 std::size_t reserved_bytes = 0;
 
@@ -85,7 +80,7 @@ namespace lux::render::detail
                     {
                         stdexec::set_value(
                             std::move(receiver),
-                            RenderResult<void>{cxx::unexpected(RenderError{kCapacity})}
+                            RenderResult<void>{cxx::unexpected(RenderError{kDeviceCapacity})}
                         );
                         return;
                     }
@@ -100,11 +95,11 @@ namespace lux::render::detail
                     {
                         auto& self = *static_cast<Operation*>(value);
                         const bool stopped = self.node.stopping(value);
-                        auto result = stopped ? RenderResult<void>{cxx::unexpected(RenderError{kWorkStopped})}
+                        auto result = stopped ? RenderResult<void>{cxx::unexpected(RenderError{kUploadStopped})}
                                               : RenderResult<void>{};
                         stdexec::set_value(std::move(self.receiver), std::move(result));
                     };
-                    uploads.enqueueFrame(node);
+                    uploads.session.enqueueFrameWrite(node);
                 }
             };
 
@@ -128,17 +123,14 @@ namespace lux::render::detail
 
         // Success means all required Copy/Acquire submissions were accepted. The caller retains targets or retires
         // failed candidates; success does not wait for the final fence observation.
-        [[nodiscard]] FrameWriteSender whenFrameWritable(std::size_t source_bytes) noexcept
+        [[nodiscard]] FrameWriteAdmissionSender whenFrameWritable(std::size_t source_bytes) noexcept
         {
-            return FrameWriteSender{*this, source_bytes};
+            return FrameWriteAdmissionSender{*this, source_bytes};
         }
-
-        [[nodiscard]] bool tryBeginFrameWrite(std::uint32_t& slot) noexcept;
-        void finishFrameWrite(std::uint32_t slot) noexcept;
 
         [[nodiscard]] Task writeBuffers(
             std::span<const BufferWrite> writes,
-            std::span<const BufferFill> fills = {},
+            std::span<const BufferZero> fills = {},
             std::uint32_t frame_slot = UINT32_MAX
         ) noexcept;
         // Each source spans the first element through the last element's end, including stride gaps.
@@ -151,18 +143,15 @@ namespace lux::render::detail
             std::uint32_t frame_slot
         ) noexcept;
         [[nodiscard]] Task writeImage(
-            gapi::vk::VmaImage& target,
+            nri::Texture& target,
             std::span<const std::byte> source,
             std::vector<ImageTransferRegion> regions,
-            const gapi::vk::VmaImage* clone = nullptr
+            const nri::Texture* clone = nullptr
         ) noexcept;
 
         // Owner-only preparation of already published data. A short result means this finite
         // staging window is full; no Sender or per-frame operation state is created.
         [[nodiscard]] RenderResult<std::size_t> prepareBuffer(const BufferWrite&, std::size_t unit = 4) noexcept;
-        // Contributed work only. The borrowed receiver survives this synchronous submission segment;
-        // the callback acknowledges acceptance, never GPU completion or physical cleanup.
-        void afterFrameSubmit(void* receiver, void (*complete)(void*, RenderResult<void>) noexcept) noexcept;
 
         [[nodiscard]] std::size_t windowRegionLimit() const noexcept
         {
@@ -182,23 +171,21 @@ namespace lux::render::detail
         struct Measurement;
         void enqueue(BatchEntry&) noexcept;
         [[nodiscard]] bool canStage(std::uint32_t frame_slot) const noexcept;
-        void enqueueFrame(FrameWriteSender::Node&) noexcept;
         [[nodiscard]] bool reserveBytes(std::size_t bytes) noexcept;
         void releaseBytes(std::size_t bytes) noexcept;
         void flush() noexcept;
-        void recordFrame(CommandBatch&) noexcept;
+        void recordFrame(nri::CommandBuffer&) noexcept;
         void finishFrameCopies(RenderResult<void>) noexcept;
         [[nodiscard]] bool hasFrameCopies() const noexcept;
         std::vector<Copy> frame_copies_;
-        std::vector<std::pair<void*, void (*)(void*, Result) noexcept>> frame_receivers_;
         UploadContext(DeviceSession&, TransferOptions, execution::CpuScheduler) noexcept;
         [[nodiscard]] Task write(
             std::span<const BufferWrite>,
-            std::span<const BufferFill>,
-            gapi::vk::VmaImage*,
+            std::span<const BufferZero>,
+            nri::Texture*,
             std::span<const std::byte>,
             std::vector<ImageTransferRegion>,
-            const gapi::vk::VmaImage*,
+            const nri::Texture*,
             std::uint32_t frame_slot,
             std::uint32_t element_bytes = 0,
             std::uint32_t source_stride = 0
@@ -210,8 +197,6 @@ namespace lux::render::detail
         TransferOptions options;
         execution::CpuScheduler cpu;
         TransferStats stats;
-        FrameWriteSender::Node* frame_waiters_ = nullptr;
-        FrameWriteSender::Node* frame_waiters_tail_ = nullptr;
         BatchEntry* ready_head_ = nullptr;
         BatchEntry* ready_tail_ = nullptr;
         BatchEntry* range_waiters_ = nullptr;
@@ -219,7 +204,10 @@ namespace lux::render::detail
         std::vector<BatchEntry*> batch_entries_;
         std::unique_ptr<Measurement[]> measurements_;
         std::size_t graphics_measurement_base_ = 0;
-        VkQueryPool timestamps = VK_NULL_HANDLE;
+        std::uint64_t query_result_stride_ = 16;
+        std::array<nri::QueryPool*, 2> timestamps_{};
+        nri::Buffer* timestamp_results_ = nullptr;
+        std::uint64_t* mapped_timestamps_ = nullptr;
         std::uint32_t copy_timestamp_bits = 0, graphics_timestamp_bits = 0;
     };
 } // namespace lux::render::detail

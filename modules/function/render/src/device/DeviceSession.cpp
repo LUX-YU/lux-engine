@@ -6,6 +6,7 @@
 #include <lux/engine/render/upload/UploadContext.hpp>
 
 #include <exception>
+#include <lux/engine/render/device/Error.hpp>
 
 namespace lux::render::detail
 {
@@ -29,13 +30,12 @@ namespace lux::render::detail
     } // namespace
 
     DeviceSession::DeviceSession(
-        gapi::vk::PhysicalDevice physical,
-        gapi::vk::LogicalDevice logical,
-        EnabledDeviceFeatures enabled,
-        VulkanAllocator memory
+        std::unique_ptr<nri::Device, decltype(&nri::nriDestroyDevice)> device,
+        nri::CoreInterface api,
+        nri::WrapperVKInterface vk,
+        EnabledDeviceFeatures enabled
     ) noexcept
-        : physical_device_(std::move(physical)), logical_device_(std::move(logical)), enabled_features_(enabled),
-          allocator_(std::move(memory)),
+        : device_(std::move(device)), api_(api), vk_(vk), enabled_features_(enabled),
           resources_(this, (enabled.texture_descriptors ? 1u : 0u) | (enabled.texture_compression_bc ? 2u : 0u)),
           global_storages_(resources_)
     {
@@ -48,8 +48,8 @@ namespace lux::render::detail
 
     void DeviceSession::requireCleanupComplete(const RenderResult<void>& result) noexcept
     {
-        const bool device_lost = !result && result.error().type == kNativeFailure &&
-                                 result.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
+        const bool device_lost = !result && result.error().type == kDeviceFailure &&
+                                 result.error().args[0] == static_cast<std::uint32_t>(nri::Result::DEVICE_LOST);
         if (!result && !device_lost)
         {
             std::terminate();
@@ -92,7 +92,7 @@ namespace lux::render::detail
                 }
                 else if (!*result)
                 {
-                    failure = nativeError(VK_TIMEOUT);
+                    failure = RenderError{kDeviceBusy};
                 }
             }
         }

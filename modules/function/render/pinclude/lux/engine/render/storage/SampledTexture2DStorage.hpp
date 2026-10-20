@@ -31,17 +31,16 @@ namespace lux::render::detail
                 return descriptor_.index;
             }
 
-            [[nodiscard]] const gapi::vk::VmaImage& image() const noexcept
+            [[nodiscard]] const nri::Texture& image() const noexcept
             {
-                return image_;
+                return *image_;
             }
 
         private:
             friend class SampledTexture2DStorage;
-            void release(VkDevice, VmaAllocator, DescriptorArray&) noexcept;
-            gapi::vk::VmaImage image_;
-            VkImageView view_ = VK_NULL_HANDLE;
-            gapi::vk::Sampler sampler_;
+            nri::Texture* image_ = nullptr;
+            nri::Descriptor* view_ = nullptr;
+            nri::Descriptor* sampler_ = nullptr;
             DescriptorArray::Slot descriptor_{};
             TextureGpuRef reference_{};
         };
@@ -66,7 +65,7 @@ namespace lux::render::detail
         friend StorageFactory textureStorageFactory() noexcept;
         friend struct lux::render::StorageTraits<SampledTexture2DStorage>;
         using UploadResult = exec::task<RenderResult<TextureId>>;
-        using ImagePreparation = std::pair<gapi::vk::VmaImage, std::vector<ImageTransferRegion>>;
+        using ImagePreparation = std::pair<nri::Texture*, std::vector<ImageTransferRegion>>;
         SampledTexture2DStorage(DeviceSession&, StorageId) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] UploadResult upload(TextureWrite) noexcept;
@@ -75,9 +74,10 @@ namespace lux::render::detail
         prepareImage(const rdesc::TextureInfo&, std::span<const std::byte>) noexcept;
         [[nodiscard]] RenderResult<ImagePreparation>
         preparePatched(const SampledImage&, const TextureRegion&, std::span<const std::byte>) noexcept;
-        [[nodiscard]] RenderResult<SampledImage> sampledImage(gapi::vk::VmaImage, std::uint32_t color_space) noexcept;
+        [[nodiscard]] RenderResult<SampledImage> sampledImage(nri::Texture*, std::uint32_t color_space) noexcept;
         [[nodiscard]] RenderResult<StorageResource>
         resolve(const CompiledResource&, const TextureBinding&, StorageSubscription&) noexcept;
+        static void releaseImage(const nri::CoreInterface&, DescriptorArray&, SampledImage&) noexcept;
         void retire(SampledImage&) noexcept;
         DeviceSession& session_;
         StorageId id_;

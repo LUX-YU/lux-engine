@@ -18,9 +18,9 @@ namespace lux::render::detail
 
     IndexedTriangleMeshStorage::IndexedTriangleMeshStorage(DeviceSession& session, StorageId id) noexcept
         : session_(session), id_(id),
-          vertices_(std::make_unique<BufferArena>(session, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)),
-          indices_(std::make_unique<BufferArena>(session, VK_BUFFER_USAGE_INDEX_BUFFER_BIT)),
-          sections_(std::make_unique<BufferArena>(session, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 65536))
+          vertices_(std::make_unique<BufferArena>(session, nri::BufferUsageBits::VERTEX_BUFFER)),
+          indices_(std::make_unique<BufferArena>(session, nri::BufferUsageBits::INDEX_BUFFER)),
+          sections_(std::make_unique<BufferArena>(session, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE, 65536))
     {
     }
 
@@ -42,14 +42,14 @@ namespace lux::render::detail
         std::span<const std::byte> source
     ) const noexcept
     {
-        const auto& limits = session_.physicalDevice().properties().properties.limits;
+        const auto& limits = session_.description();
         const bool invalid_vertices = !description.vertex_count || !description.vertex_stride ||
-                                      description.vertex_stride > limits.maxVertexInputBindingStride ||
+                                      description.vertex_stride > session_.vertexStrideLimit() ||
                                       description.vertex_stride % 4;
         const bool invalid_indices =
             !description.index_count || (description.index_stride != 2 && description.index_stride != 4);
         const bool invalid_attributes =
-            description.attributes.empty() || description.attributes.size() > limits.maxVertexInputAttributes;
+            description.attributes.empty() || description.attributes.size() > limits.shaderStage.vertex.attributeMaxNum;
         if (invalid_vertices || invalid_indices || invalid_attributes || description.submeshes.empty())
         {
             return cxx::unexpected(RenderError{kStorageContract});
@@ -73,11 +73,11 @@ namespace lux::render::detail
         {
             const auto& attribute = description.attributes[i];
             const auto format = vertexFormat(attribute.format);
-            const bool invalid_attribute =
-                format.native == VK_FORMAT_UNDEFINED || attribute.location >= limits.maxVertexInputAttributes ||
-                attribute.offset % 4 || attribute.offset > limits.maxVertexInputAttributeOffset ||
-                attribute.offset > description.vertex_stride ||
-                format.bytes() > description.vertex_stride - attribute.offset;
+            const bool invalid_attribute = format.native == nri::Format::UNKNOWN ||
+                                           attribute.location >= limits.shaderStage.vertex.attributeMaxNum ||
+                                           attribute.offset % 4 || attribute.offset > session_.vertexOffsetLimit() ||
+                                           attribute.offset > description.vertex_stride ||
+                                           format.bytes() > description.vertex_stride - attribute.offset;
             if (invalid_attribute)
             {
                 return cxx::unexpected(RenderError{kStorageContract});
@@ -89,10 +89,10 @@ namespace lux::render::detail
                     return cxx::unexpected(RenderError{kStorageContract});
                 }
             }
-            const auto supported = session_.physicalDevice().formatProperties(format.native);
-            if (!(supported.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT))
+            const auto supported = session_.formatSupport(format.native);
+            if ((supported & nri::FormatSupportBits::VERTEX_BUFFER) == 0)
             {
-                return cxx::unexpected(RenderError{kUnsupported});
+                return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
         }
         for (const auto& submesh : description.submeshes)
@@ -243,7 +243,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        return StorageResource{range.buffer->handle(), range.offset, range.size};
+        return StorageResource{range.buffer, range.offset, range.size};
     }
 
     void IndexedTriangleMeshStorage::retire(std::unique_ptr<Geometry>& geometry) noexcept

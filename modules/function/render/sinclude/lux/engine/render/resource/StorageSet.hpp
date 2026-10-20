@@ -29,7 +29,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<StorageId> getOrCreate(std::string_view key, const ConfigValue& config = {}) noexcept
         {
             return getOrCreateImpl(
-                T::description,
+                T::descriptor,
                 key,
                 config,
                 []() noexcept
@@ -70,7 +70,6 @@ namespace lux::render
         void clear() noexcept;
 
     private:
-        friend class ResourceRegistry;
         using NameKey = std::tuple<std::uint32_t, std::uint32_t, std::string>;
         using NameIndex = std::map<NameKey, StorageId, std::less<>>;
 

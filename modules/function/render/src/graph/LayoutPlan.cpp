@@ -14,10 +14,11 @@ namespace lux::render::detail
             for (const auto& source : set.bindings)
             {
                 const bool is_buffer = source.type == rdesc::EDescriptorType::STORAGE_BUFFER;
-                const bool is_images = source.type == rdesc::EDescriptorType::COMBINED_IMAGE_SAMPLER;
-                if (!is_buffer && !is_images)
+                const bool is_images = source.type == rdesc::EDescriptorType::SAMPLED_IMAGE;
+                const bool is_samplers = source.type == rdesc::EDescriptorType::SAMPLER;
+                if (!is_buffer && !is_images && !is_samplers)
                 {
-                    return cxx::unexpected(RenderError{kUnsupported});
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
                 const auto access = source.writable
                                         ? (source.readable ? EStorageAccess::READ_WRITE : EStorageAccess::WRITE_ONLY)
@@ -25,7 +26,9 @@ namespace lux::render::detail
                 result.bindings.push_back(
                     {source.set,
                      source.binding,
-                     is_buffer ? EDescriptorKind::STORAGE_BUFFER : EDescriptorKind::SAMPLED_IMAGE_ARRAY,
+                     is_buffer   ? EDescriptorKind::STORAGE_BUFFER
+                     : is_images ? EDescriptorKind::SAMPLED_IMAGE_ARRAY
+                                 : EDescriptorKind::SAMPLER_ARRAY,
                      source.count,
                      source.block,
                      source.name,
@@ -50,15 +53,18 @@ namespace lux::render::detail
         return result;
     }
 
-    const ShaderBinding& sampledImageTableBinding() noexcept
+    const std::array<ShaderBinding, 2>& sampledImageTableBindings() noexcept
     {
-        // Complete shape of the existing device table, not a reflected subset or a Storage decision.
-        static const ShaderBinding shape{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, {}, {}, 7};
+        // One complete shared set, consumed by allocation, SPIR-V relocation and every PipelineLayout.
+        static const std::array<ShaderBinding, 2> shape{
+            {{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, {}, {}, 7},
+             {0, 1, EDescriptorKind::SAMPLER_ARRAY, 0, {}, {}, 7}}
+        };
         return shape;
     }
 
     RenderResult<LayoutPlan> planLayouts(
-        const VkPhysicalDeviceLimits& limits,
+        const nri::DeviceDesc& limits,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
         std::span<const PassProgram* const> programs,
@@ -74,7 +80,7 @@ namespace lux::render::detail
             const auto* source = programs[id.index];
             if (!source)
             {
-                return cxx::unexpected(RenderError{kInvalidArgument, {id.index}});
+                return cxx::unexpected(RenderError{kDeviceArgument, {id.index}});
             }
             const auto& pass = graph.passes()[id.index];
             auto& output = plan.programs[id.index];
@@ -102,14 +108,14 @@ namespace lux::render::detail
             const auto& interface = *projected;
             if (interface.bindings.size() > UINT32_MAX)
             {
-                return cxx::unexpected(RenderError{kCapacity});
+                return cxx::unexpected(RenderError{kDeviceCapacity});
             }
             const auto& parameters = interface.parameters;
             const auto stages = interface.parameter_stages;
-            const bool invalid_parameters = source->parameter_values.size() != parameters.size ||
-                                            (parameters.size == 0) != (stages == 0) || (stages & ~present_stages) ||
-                                            parameters.size % 4 || parameters.size > limits.maxPushConstantsSize ||
-                                            parameters.runtime_records;
+            const bool invalid_parameters =
+                source->parameter_values.size() != parameters.size || (parameters.size == 0) != (stages == 0) ||
+                (stages & ~present_stages) || parameters.size % 4 ||
+                parameters.size > limits.pipelineLayout.rootConstantMaxSize || parameters.runtime_records;
             if (invalid_parameters)
             {
                 return cxx::unexpected(RenderError{kStorageContract});
@@ -117,15 +123,21 @@ namespace lux::render::detail
             plan.parameter_bytes = std::max(plan.parameter_bytes, parameters.size);
             if (stages & 1)
             {
-                plan.parameter_stages |= VK_SHADER_STAGE_VERTEX_BIT;
+                plan.parameter_stages =
+                    (plan.parameter_stages == nri::StageBits::NONE ? nri::StageBits::ALL : plan.parameter_stages) |
+                    nri::StageBits::VERTEX_SHADER;
             }
             if (stages & 2)
             {
-                plan.parameter_stages |= VK_SHADER_STAGE_FRAGMENT_BIT;
+                plan.parameter_stages =
+                    (plan.parameter_stages == nri::StageBits::NONE ? nri::StageBits::ALL : plan.parameter_stages) |
+                    nri::StageBits::FRAGMENT_SHADER;
             }
             if (stages & 4)
             {
-                plan.parameter_stages |= VK_SHADER_STAGE_COMPUTE_BIT;
+                plan.parameter_stages =
+                    (plan.parameter_stages == nri::StageBits::NONE ? nri::StageBits::ALL : plan.parameter_stages) |
+                    nri::StageBits::COMPUTE_SHADER;
             }
             output.initial_parameters = source->parameter_values;
             if (source->context_parameters.size)
@@ -192,7 +204,7 @@ namespace lux::render::detail
                                               binding.access > EStorageAccess::READ_WRITE;
                 const bool invalid_shape = binding.kind > EDescriptorKind::STORAGE_BUFFER ||
                                            (binding.kind == EDescriptorKind::STORAGE_BUFFER && binding.count != 1) ||
-                                           (binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY &&
+                                           (binding.kind != EDescriptorKind::STORAGE_BUFFER &&
                                             (binding.count != 0 || binding.access != EStorageAccess::READ_ONLY));
                 if (invalid_identity || invalid_shape)
                 {
@@ -231,23 +243,24 @@ namespace lux::render::detail
                     return cxx::unexpected(RenderError{kStorageContract});
                 }
                 const auto index = resource->second;
-                const auto usage = binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY ? EGraphUse::SAMPLED
-                                   : binding.access == EStorageAccess::READ_ONLY        ? EGraphUse::STORAGE_READ
-                                   : binding.access == EStorageAccess::WRITE_ONLY       ? EGraphUse::STORAGE_WRITE
-                                                                                        : EGraphUse::STORAGE_READ_WRITE;
+                const auto usage = binding.kind != EDescriptorKind::STORAGE_BUFFER ? EGraphUse::SAMPLED
+                                   : binding.access == EStorageAccess::READ_ONLY   ? EGraphUse::STORAGE_READ
+                                   : binding.access == EStorageAccess::WRITE_ONLY  ? EGraphUse::STORAGE_WRITE
+                                                                                   : EGraphUse::STORAGE_READ_WRITE;
                 const bool declared = std::ranges::any_of(
                     pass.uses,
                     [&](const auto& use) { return use.version.resource.index == index && use.usage == usage; }
                 );
                 const bool image = std::holds_alternative<GraphImageDesc>(graph.resources()[index].description);
-                const bool wrong_kind = image != (binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY);
+                const bool wrong_kind = image != (binding.kind != EDescriptorKind::STORAGE_BUFFER);
                 const bool invalid_size =
                     !image && binding.block.size > std::get<GraphBufferDesc>(graph.resources()[index].description).size;
                 if (!declared || wrong_kind || invalid_size)
                 {
                     return cxx::unexpected(RenderError{kStorageContract});
                 }
-                output.uses.push_back({index, 0, 0, binding.kind});
+                output.uses.push_back({index, 0, binding.kind == EDescriptorKind::SAMPLER_ARRAY ? 1u : 0u, binding.kind}
+                );
                 if (image)
                 {
                     has_shared = true;
@@ -283,16 +296,17 @@ namespace lux::render::detail
             }
         }
         const auto set_count = unsigned(has_shared) + unsigned(private_count != 0);
-        const bool too_many = set_count > limits.maxBoundDescriptorSets ||
-                              private_count > limits.maxDescriptorSetStorageBuffers || private_count > UINT32_MAX;
+        const bool too_many = set_count > limits.pipelineLayout.descriptorSetMaxNum ||
+                              private_count > limits.descriptorSet.storageBufferMaxNum || private_count > UINT32_MAX;
         if (too_many)
         {
-            return cxx::unexpected(RenderError{kUnsupported});
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
         if (has_shared)
         {
             plan.shared_set = 0;
-            plan.shared_bindings.push_back(sampledImageTableBinding());
+            const auto& shape = sampledImageTableBindings();
+            plan.shared_bindings.assign(shape.begin(), shape.end());
         }
         if (private_count)
         {
@@ -310,7 +324,7 @@ namespace lux::render::detail
             {
                 auto& use = output.uses[field];
                 auto& binding = output.bindings[field];
-                use.set = use.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY ? plan.shared_set : plan.private_set;
+                use.set = use.kind != EDescriptorKind::STORAGE_BUFFER ? plan.shared_set : plan.private_set;
                 binding.set = use.set;
                 binding.binding = use.binding;
                 if (use.kind == EDescriptorKind::STORAGE_BUFFER)
@@ -325,9 +339,9 @@ namespace lux::render::detail
                 plan.private_bindings,
                 [&](const auto& value) { return (value.stages & stage) != 0; }
             );
-            if (count > limits.maxPerStageDescriptorStorageBuffers)
+            if (count > limits.shaderStage.descriptorStorageBufferMaxNum)
             {
-                return cxx::unexpected(RenderError{kUnsupported});
+                return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
         }
         return plan;
@@ -385,7 +399,7 @@ namespace lux::render::detail
                                         words[4] != 0;
             if (invalid_header)
             {
-                return cxx::unexpected(RenderError{kInvalidArgument});
+                return cxx::unexpected(RenderError{kDeviceArgument});
             }
 
             struct Decoration final
@@ -404,19 +418,19 @@ namespace lux::render::detail
                 const bool invalid_length = length == 0 || length > words.size() - cursor;
                 if (invalid_length)
                 {
-                    return cxx::unexpected(RenderError{kInvalidArgument});
+                    return cxx::unexpected(RenderError{kDeviceArgument});
                 }
                 const bool unsupported_decoration =
                     opcode == 73 || opcode == 74 || opcode == 75 || opcode == 332 || opcode == 5632 || opcode == 5633;
                 if (unsupported_decoration)
                 {
-                    return cxx::unexpected(RenderError{kUnsupported});
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
                 if (opcode == 59) // OpVariable
                 {
                     if (length < 4 || words[cursor + 2] >= decorations.size())
                     {
-                        return cxx::unexpected(RenderError{kInvalidArgument});
+                        return cxx::unexpected(RenderError{kDeviceArgument});
                     }
                     decorations[words[cursor + 2]].variable = true;
                 }
@@ -424,24 +438,24 @@ namespace lux::render::detail
                 {
                     if (length < 3 || words[cursor + 1] >= decorations.size())
                     {
-                        return cxx::unexpected(RenderError{kInvalidArgument});
+                        return cxx::unexpected(RenderError{kDeviceArgument});
                     }
                     const auto kind = words[cursor + 2];
                     if (kind == 20)
                     {
-                        return cxx::unexpected(RenderError{kUnsupported}); // Aliased
+                        return cxx::unexpected(RenderError{kDeviceUnsupported}); // Aliased
                     }
                     if (kind == 33 || kind == 34)
                     {
                         if (length != 4)
                         {
-                            return cxx::unexpected(RenderError{kInvalidArgument});
+                            return cxx::unexpected(RenderError{kDeviceArgument});
                         }
                         auto& record = decorations[words[cursor + 1]];
                         auto& position = kind == 33 ? record.binding : record.set;
                         if (position)
                         {
-                            return cxx::unexpected(RenderError{kInvalidArgument});
+                            return cxx::unexpected(RenderError{kDeviceArgument});
                         }
                         position = cursor + 3;
                     }
@@ -461,7 +475,7 @@ namespace lux::render::detail
             }
             if (valid != SPV_SUCCESS)
             {
-                return cxx::unexpected(RenderError{kInvalidArgument});
+                return cxx::unexpected(RenderError{kDeviceArgument});
             }
             const auto stage_bit = stage.stage == rdesc::EShaderType::VERTEX     ? 1u
                                    : stage.stage == rdesc::EShaderType::FRAGMENT ? 2u
@@ -484,7 +498,7 @@ namespace lux::render::detail
                 const bool invalid_pair = !record.variable || !record.set || !record.binding;
                 if (invalid_pair)
                 {
-                    return cxx::unexpected(RenderError{kInvalidArgument});
+                    return cxx::unexpected(RenderError{kDeviceArgument});
                 }
                 const auto found = std::ranges::find_if(
                     bindings,

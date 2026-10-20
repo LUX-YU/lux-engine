@@ -3,7 +3,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
-#include <lux/engine/render/device/Device.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <source_location>
 #include <utility>
 
@@ -49,28 +49,23 @@ namespace foundation_test
         std::atomic<unsigned> warnings{};
     };
 
-    inline VKAPI_ATTR VkBool32 VKAPI_CALL diagnostic(
-        VkDebugUtilsMessageSeverityFlagBitsEXT severity,
-        VkDebugUtilsMessageTypeFlagsEXT,
-        const VkDebugUtilsMessengerCallbackDataEXT* data,
-        void* user
-    )
+    inline void NRI_CALL
+    diagnostic(nri::Message severity, const char*, std::uint32_t, const char* message, void* user) noexcept
     {
         auto& validation = *static_cast<Validation*>(user);
-        if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+        if (severity == nri::Message::ERROR)
         {
             ++validation.errors;
         }
-        else
+        if (severity == nri::Message::WARNING)
         {
             ++validation.warnings;
         }
-        std::fprintf(stderr, "VALIDATION %u %s\n", severity, data->pMessage);
-        return VK_FALSE;
+        std::fprintf(stderr, "NRI %u %s\n", unsigned(severity), message);
     }
 
-    inline InstanceContext instance(Validation& validation)
+    inline nri::CallbackInterface diagnostics(Validation& validation)
     {
-        return take(InstanceContext::create({{}, true, diagnostic, &validation}));
+        return {diagnostic, [](void*) noexcept {}, &validation};
     }
 } // namespace foundation_test

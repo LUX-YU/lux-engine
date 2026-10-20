@@ -5,7 +5,7 @@ find_package(Vulkan 1.3 REQUIRED)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../core/error/cmake/Values.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../resource/description/cmake/ValueTypes.cmake")
 include(cmake/ShaderTools.cmake)
-include(cmake/Vma.cmake)
+include(cmake/Nri.cmake)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/toolchain/shader/cmake/MetadataCompiler.cmake")
 
 generate_visibility_header(
@@ -24,7 +24,7 @@ set(render_sources
     src/features/Assemble.cpp src/features/RasterMeshParameters.cpp
     src/features/MaterialMeshRaster.cpp src/features/MeshDepthRaster.cpp src/features/RasterMeshDraws.cpp
     src/device/Error.cpp src/device/DeviceSession.cpp src/device/DescriptorArray.cpp
-    src/device/Device.cpp src/device/Vma.cpp src/device/Submission.cpp
+    src/device/Device.cpp src/device/Submission.cpp
     src/execution/Frame.cpp src/execution/OffscreenTarget.cpp src/execution/Execution.cpp
     src/graph/Compile.cpp src/graph/LayoutPlan.cpp src/graph/Shader.cpp
     src/upload/UploadContext.cpp src/memory/StagingArena.cpp src/memory/BufferArena.cpp
@@ -73,17 +73,17 @@ component_include_directories(
     BUILD_TIME_EXPORT "${CMAKE_CURRENT_SOURCE_DIR}/include" "${LUX_GENERATE_HEADER_DIR}"
     INSTALL_TIME include
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sinclude" "${CMAKE_CURRENT_SOURCE_DIR}/pinclude"
-        "${CMAKE_CURRENT_BINARY_DIR}/shaders" "${LUX_VMA_INCLUDE_DIR}"
+        "${CMAKE_CURRENT_BINARY_DIR}/shaders" "${LUX_NRI_VMA_HEADERS}" "${LUX_NRI_VULKAN_HEADERS}"
 )
 
-target_compile_definitions(render PRIVATE LUX_RENDER_LIBRARY LUX_GAPI_ENABLE_VMA=1)
+target_compile_definitions(render PRIVATE LUX_RENDER_LIBRARY)
 target_compile_features(render PUBLIC cxx_std_20)
 target_link_libraries(render
     PUBLIC lux::cxx::container lux::cxx::compile_time lux::cxx::algorithm lux::cxx::core
         lux::engine::core::error_values lux::engine::resource::description_types
         lux::engine::resource::shader_metadata STDEXEC::stdexec
         lux::engine::core::core_execution lux::engine::platform::platform_ipc
-    PRIVATE Vulkan::Vulkan lux::engine::platform::gapi lux_render_vma_headers
+    PRIVATE NRI
         lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared
         lux::engine::platform::platform_process
 )

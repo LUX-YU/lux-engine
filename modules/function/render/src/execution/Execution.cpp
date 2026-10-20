@@ -1,14 +1,17 @@
 #include <algorithm>
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
+#include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/device/DescriptorArray.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/execution/ExecutionContext.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
+#include <lux/engine/render/execution/RecordGraph.hpp>
 #include <lux/engine/render/graph/LayoutPlan.hpp>
 #include <lux/engine/render/upload/UploadContext.hpp>
+#include <numeric>
 
 namespace lux::render::detail
 {
@@ -16,23 +19,24 @@ namespace lux::render::detail
     // Stable descriptor banks are never rewritten while their prior submission is in flight.
     struct ExecutionContext::FrameResources final
     {
-        void release(VkDevice device, VmaAllocator allocator) noexcept
+        void release(const nri::CoreInterface& api) noexcept
         {
-            if (descriptor_pool)
+            api.DestroyDescriptorPool(descriptor_pool);
+            for (auto& binding : bindings)
             {
-                vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
+                api.DestroyDescriptor(binding.buffer_view);
             }
-            for (auto view : views)
+            for (auto* view : views)
             {
-                vkDestroyImageView(device, view, nullptr);
+                api.DestroyDescriptor(view);
             }
-            for (auto& image : images)
+            for (auto* image : images)
             {
-                image.release(allocator);
+                api.DestroyTexture(image);
             }
-            for (auto& buffer : buffers)
+            for (auto* buffer : buffers)
             {
-                buffer.release(allocator);
+                api.DestroyBuffer(buffer);
             }
         }
 
@@ -40,10 +44,10 @@ namespace lux::render::detail
         std::vector<Pass> passes;
         std::vector<std::uint32_t> changed_resources;
         std::size_t unavailable_buffers = 0;
-        std::vector<gapi::vk::VmaBuffer> buffers;
-        std::vector<gapi::vk::VmaImage> images;
-        std::vector<VkImageView> views;
-        VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+        std::vector<nri::Buffer*> buffers;
+        std::vector<nri::Texture*> images;
+        std::vector<nri::Descriptor*> views;
+        nri::DescriptorPool* descriptor_pool = nullptr;
     };
 
     ExecutionContext::ExecutionContext(
@@ -71,11 +75,18 @@ namespace lux::render::detail
             frame->unavailable_buffers = std::ranges::count_if(
                 code.resources(),
                 [](const auto& resource)
-                { return resource.buffer_usage && (resource.storage || resource.context_data != kGraphInvalidIndex); }
+                {
+                    return resource.used && std::holds_alternative<GraphBufferDesc>(resource.description) &&
+                           (resource.storage || resource.context_data != kGraphInvalidIndex);
+                }
             );
             frame->images.reserve(std::ranges::count_if(
                 code.resources(),
-                [](const auto& resource) { return resource.image_usage && !resource.storage; }
+                [](const auto& resource)
+                {
+                    return resource.used && std::holds_alternative<GraphImageDesc>(resource.description) &&
+                           !resource.storage;
+                }
             ));
         }
     }
@@ -85,14 +96,13 @@ namespace lux::render::detail
         withdraw();
         // Physical cleanup is owned by the Session; it never calls back into this Context.
         session_->deferRelease(
-            [frames = std::move(frames_), device = device(), allocator = session_->allocator().native()](
-            ) mutable noexcept
+            [frames = std::move(frames_), api = &session_->api()]() mutable noexcept
             {
                 for (auto& frame : frames)
                 {
                     if (frame)
                     {
-                        frame->release(device, allocator);
+                        frame->release(*api);
                     }
                 }
             }
@@ -121,17 +131,17 @@ namespace lux::render::detail
     ) noexcept
     {
         const auto& target = output.description();
-        const auto max_extent = physical_device_.properties().properties.limits.maxImageDimension2D;
-        const bool invalid = &output.session() != this || code.device() != nativeDevice() || !code.compatible(target) ||
+        const auto max_extent = description().dimensions.texture2DMaxDim;
+        const bool invalid = &output.session() != this || code.device() != &device() || !code.compatible(target) ||
                              target.width == 0 || target.height == 0 || target.width > max_extent ||
                              target.height > max_extent;
         if (invalid)
         {
-            return cxx::unexpected(RenderError{kInvalidArgument});
+            return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        const bool is_wrong_owner =
+        const bool is_foreign_registry =
             (scene && &scene->registry() != &resources_) || (view && &view->registry() != &resources_);
-        if (is_wrong_owner)
+        if (is_foreign_registry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
@@ -143,7 +153,7 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(RenderError{kStorageContract});
             }
-            if (!plan->image_usage && !plan->buffer_usage)
+            if (!plan->used)
             {
                 continue;
             }
@@ -175,7 +185,7 @@ namespace lux::render::detail
             for (auto i : indices)
             {
                 const auto& plan = context->code_->resources()[i];
-                if (!plan.image_usage && !plan.buffer_usage)
+                if (!plan.used)
                 {
                     continue;
                 }
@@ -246,9 +256,14 @@ namespace lux::render::detail
         {
             return cxx::unexpected(r.error());
         }
+        std::vector<StorageId> resolved_storages(code.resources().size());
+        for (const auto& use : context->storage_uses_)
+        {
+            resolved_storages[use.resource] = use.storage_id;
+        }
         for (const auto& contribution : code.contexts_)
         {
-            auto value = contribution.create(*this, *context, contribution.resource, contribution.configuration.data());
+            auto value = contribution.create(*this, resolved_storages, contribution.configuration.data());
             if (!value)
             {
                 return cxx::unexpected(value.error());
@@ -262,8 +277,7 @@ namespace lux::render::detail
             {
                 auto& binding = frame.bindings[i];
                 const auto& plan = context->code_->resources()[i];
-                if ((!plan.image_usage && !plan.buffer_usage) || plan.storage ||
-                    plan.context_data != kGraphInvalidIndex)
+                if ((!plan.used) || plan.storage || plan.context_data != kGraphInvalidIndex)
                 {
                     continue;
                 }
@@ -276,29 +290,46 @@ namespace lux::render::detail
                 }
                 if (const auto* image = std::get_if<GraphImageDesc>(&plan.description))
                 {
-                    const VkExtent2D extent{
-                        plan.target_sized ? target.width : image->width,
-                        plan.target_sized ? target.height : image->height
-                    };
-                    const auto format = imageFormat(image->format);
-                    auto backing = allocator_.createImage({extent, format.native, plan.image_usage});
-                    if (!backing)
+                    const auto width = plan.target_sized ? target.width : image->width;
+                    const auto height = plan.target_sized ? target.height : image->height;
+                    if (width > max_extent || height > max_extent)
                     {
-                        return cxx::unexpected(backing.error());
+                        return cxx::unexpected(RenderError{kInvalidTargetExtent});
                     }
-                    frame.images.push_back(std::move(*backing));
-                    binding.image = &frame.images.back();
-                    VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-                    view.image = binding.image->handle();
-                    view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-                    view.format = format.native;
-                    view.subresourceRange = {format.aspects, 0, 1, 0, 1};
-                    const bool attachment = plan.image_usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                                                                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
-                    if (attachment)
+                    const auto format = imageFormat(image->format);
+                    const bool color = (plan.image_usage & nri::TextureUsageBits::COLOR_ATTACHMENT) != 0;
+                    const bool depth = (plan.image_usage & nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT) != 0;
+                    const nri::TextureDesc description{
+                        nri::TextureType::TEXTURE_2D,
+                        plan.image_usage,
+                        format.native,
+                        static_cast<nri::Dim_t>(width),
+                        static_cast<nri::Dim_t>(height),
+                        1,
+                        1,
+                        1,
+                        1,
+                        color || depth ? nri::SharingMode::EXCLUSIVE : nri::SharingMode::CONCURRENT
+                    };
+                    const auto created = api().CreatePlacedTexture(device(), NriDeviceHeap, description, binding.image);
+                    if (created != nri::Result::SUCCESS)
                     {
-                        const auto status = vkCreateImageView(nativeDevice(), &view, nullptr, &binding.view);
-                        if (status != VK_SUCCESS)
+                        return cxx::unexpected(nativeError(created));
+                    }
+                    frame.images.push_back(binding.image);
+                    if (color || depth)
+                    {
+                        const nri::TextureViewDesc view{
+                            binding.image,
+                            depth ? nri::TextureView::DEPTH_STENCIL_ATTACHMENT : nri::TextureView::COLOR_ATTACHMENT,
+                            format.native,
+                            0,
+                            1,
+                            0,
+                            1
+                        };
+                        const auto status = api().CreateTextureView(view, binding.view);
+                        if (status != nri::Result::SUCCESS)
                         {
                             return cxx::unexpected(nativeError(status));
                         }
@@ -308,14 +339,14 @@ namespace lux::render::detail
                 else
                 {
                     const auto size = std::get<GraphBufferDesc>(plan.description).size;
-                    auto buffer = allocator_.createBuffer(size, plan.buffer_usage, EMemoryAccess::DEVICE);
-                    if (!buffer)
+                    const nri::BufferDesc description{size, 4, plan.buffer_usage};
+                    const auto created = api().CreatePlacedBuffer(device(), NriDeviceHeap, description, binding.buffer);
+                    if (created != nri::Result::SUCCESS)
                     {
-                        return cxx::unexpected(buffer.error());
+                        return cxx::unexpected(nativeError(created));
                     }
-                    binding.buffer = buffer->handle();
                     binding.buffer_size = size;
-                    frame.buffers.push_back(std::move(*buffer));
+                    frame.buffers.push_back(binding.buffer);
                 }
             }
             for (const auto& recipe : context->code_->passes())
@@ -324,13 +355,22 @@ namespace lux::render::detail
                 for (const auto& barrier : recipe.images)
                 {
                     auto native = barrier.native;
-                    native.image = frame.bindings[barrier.resource].image->handle();
-                    if (native.oldLayout == VK_IMAGE_LAYOUT_UNDEFINED)
+                    native.texture = frame.bindings[barrier.resource].image;
+                    if (native.before.layout == nri::Layout::UNDEFINED)
                     {
-                        // A full overwrite may discard prior frame content, but must
-                        // still order previous uses of this reusable physical image.
-                        native.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-                        native.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+                        // The slot's previous execution is complete; order its reusable physical writes
+                        // before discarding content. No prior layout or business identity is inferred here.
+                        const auto usage = api().GetTextureDesc(*native.texture).usage;
+                        native.before.stages = nri::StageBits::ALL;
+                        native.before.access = nri::AccessBits::COPY_DESTINATION;
+                        if ((usage & nri::TextureUsageBits::COLOR_ATTACHMENT) != 0)
+                        {
+                            native.before.access |= nri::AccessBits::COLOR_ATTACHMENT;
+                        }
+                        if ((usage & nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT) != 0)
+                        {
+                            native.before.access |= nri::AccessBits::DEPTH_STENCIL_ATTACHMENT;
+                        }
                     }
                     pass.images.push_back(native);
                 }
@@ -338,7 +378,42 @@ namespace lux::render::detail
                 {
                     auto native = barrier.native;
                     native.buffer = frame.bindings[barrier.resource].buffer;
+                    if (native.buffer && native.before.stages == nri::StageBits::ALL &&
+                        native.before.access == nri::AccessBits::NONE)
+                    {
+                        native.before.access = bufferAccess(api().GetBufferDesc(*native.buffer).usage);
+                    }
                     pass.buffers.push_back(native);
+                }
+                if (recipe.recipe == ERecipe::COPY_IMAGE_BUFFER)
+                {
+                    const auto& image = api().GetTextureDesc(*frame.bindings[recipe.source].image);
+                    const auto pixel =
+                        imageFormat(std::get<GraphImageDesc>(code.resources()[recipe.source].description).format);
+                    const auto row = std::uint32_t(image.width) * pixel.bytes;
+                    const auto& alignment = description().memoryAlignment;
+                    const auto pitch = (row + alignment.uploadBufferTextureRow - 1) / alignment.uploadBufferTextureRow *
+                                       alignment.uploadBufferTextureRow;
+                    const auto slice_unit = std::lcm(pitch, alignment.uploadBufferTextureSlice);
+                    const auto slice = (std::uint64_t(pitch) * image.height + slice_unit - 1) / slice_unit * slice_unit;
+                    if (slice > UINT32_MAX)
+                    {
+                        return cxx::unexpected(RenderError{kDeviceCapacity});
+                    }
+                    pass.copy_row_pitch = pitch;
+                    pass.copy_slice_pitch = static_cast<std::uint32_t>(slice);
+                    if (pitch != row ||
+                        frame.bindings[recipe.destination].buffer_offset % alignment.uploadBufferTextureSlice != 0)
+                    {
+                        const nri::BufferDesc temporary{slice, 0, nri::BufferUsageBits::NONE};
+                        const auto created =
+                            api().CreatePlacedBuffer(device(), NriDeviceHeap, temporary, pass.copy_scratch);
+                        if (created != nri::Result::SUCCESS)
+                        {
+                            return cxx::unexpected(nativeError(created));
+                        }
+                        frame.buffers.push_back(pass.copy_scratch);
+                    }
                 }
                 frame.passes.push_back(std::move(pass));
             }
@@ -365,16 +440,15 @@ namespace lux::render::detail
             }
             for (const auto& mapping : layout.programs[recipe.layout_program].parameters)
             {
-                const auto& source =
-                    mapping.resource == kGraphInvalidIndex
-                        ? StorageResource{VK_NULL_HANDLE, 0, 0, context_values_, &layout.context_parameters}
-                        : StorageResource{
-                              VK_NULL_HANDLE,
-                              0,
-                              0,
-                              frames_[0]->bindings[mapping.resource].parameters,
-                              frames_[0]->bindings[mapping.resource].parameter_layout
-                          };
+                const auto& source = mapping.resource == kGraphInvalidIndex
+                                         ? StorageResource{nullptr, 0, 0, context_values_, &layout.context_parameters}
+                                         : StorageResource{
+                                               nullptr,
+                                               0,
+                                               0,
+                                               frames_[0]->bindings[mapping.resource].parameters,
+                                               frames_[0]->bindings[mapping.resource].parameter_layout
+                                           };
                 if (!source.parameter_layout)
                 {
                     return cxx::unexpected(RenderError{kStorageContract});
@@ -421,22 +495,20 @@ namespace lux::render::detail
         const auto descriptors = std::uint64_t(draws) * layout.private_bindings.size();
         if (std::uint64_t(draws) > UINT32_MAX || descriptors > UINT32_MAX)
         {
-            return cxx::unexpected(RenderError{kCapacity});
+            return cxx::unexpected(RenderError{kDeviceCapacity});
         }
         for (std::uint32_t slot = 0; slot < session_->framesInFlight(); ++slot)
         {
             auto& frame = *frames_[slot];
             if (!layout.private_bindings.empty() && draws)
             {
-                const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, std::uint32_t(descriptors)};
-                VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-                pool.maxSets = std::uint32_t(draws);
-                pool.poolSizeCount = 1;
-                pool.pPoolSizes = &size;
-                if (auto result = vkCreateDescriptorPool(device(), &pool, nullptr, &frame.descriptor_pool);
-                    result != VK_SUCCESS)
+                nri::DescriptorPoolDesc pool{};
+                pool.descriptorSetMaxNum = static_cast<std::uint32_t>(draws);
+                pool.storageStructuredBufferMaxNum = static_cast<std::uint32_t>(descriptors);
+                const auto created = session_->api().CreateDescriptorPool(*device(), pool, frame.descriptor_pool);
+                if (created != nri::Result::SUCCESS)
                 {
-                    return cxx::unexpected(nativeError(result));
+                    return cxx::unexpected(nativeError(created));
                 }
             }
             for (auto& pass : frame.passes)
@@ -445,22 +517,26 @@ namespace lux::render::detail
                 {
                     continue;
                 }
-                pass.descriptors.resize(code_->descriptor_layouts_.size());
+                pass.descriptors.resize(
+                    unsigned(!layout.shared_bindings.empty()) + unsigned(!layout.private_bindings.empty())
+                );
                 if (shared)
                 {
                     pass.descriptors[layout.shared_set] = shared->descriptors();
                 }
                 if (frame.descriptor_pool)
                 {
-                    const auto native_layout = code_->descriptor_layouts_[layout.private_set];
-                    VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-                    allocate.descriptorPool = frame.descriptor_pool;
-                    allocate.descriptorSetCount = 1;
-                    allocate.pSetLayouts = &native_layout;
-                    if (auto result = vkAllocateDescriptorSets(device(), &allocate, &pass.private_descriptors);
-                        result != VK_SUCCESS)
+                    const auto created = session_->api().AllocateDescriptorSets(
+                        *frame.descriptor_pool,
+                        *code_->layout(),
+                        layout.private_set,
+                        &pass.private_descriptors,
+                        1,
+                        0
+                    );
+                    if (created != nri::Result::SUCCESS)
                     {
-                        return cxx::unexpected(nativeError(result));
+                        return cxx::unexpected(nativeError(created));
                     }
                     pass.descriptors[layout.private_set] = pass.private_descriptors;
                 }
@@ -474,7 +550,10 @@ namespace lux::render::detail
                     frame.changed_resources.push_back(i);
                 }
             }
-            rebind(slot);
+            if (auto rebound = rebind(slot); !rebound)
+            {
+                return cxx::unexpected(rebound.error());
+            }
         }
         return {};
     }
@@ -485,7 +564,7 @@ namespace lux::render::detail
         return index == kGraphInvalidIndex ? StorageId{} : storage_uses_[index].storage_id;
     }
 
-    VkBuffer ExecutionContext::nativeBuffer(std::uint32_t resource, std::uint32_t slot) const noexcept
+    nri::Buffer* ExecutionContext::nativeBuffer(std::uint32_t resource, std::uint32_t slot) const noexcept
     {
         return frames_[slot]->bindings[resource].buffer;
     }
@@ -502,7 +581,7 @@ namespace lux::render::detail
         {
             auto& frame = *frames_[current];
             auto& binding = frame.bindings[resource];
-            if (code_->resources()[resource].buffer_usage)
+            if (std::holds_alternative<GraphBufferDesc>(code_->resources()[resource].description))
             {
                 if (!binding.buffer && value.buffer)
                 {
@@ -526,51 +605,70 @@ namespace lux::render::detail
         }
     }
 
-    void ExecutionContext::rebind(std::uint32_t slot) noexcept
+    RenderResult<void> ExecutionContext::rebind(std::uint32_t slot) noexcept
     {
         auto& frame = *frames_[slot];
         const auto& layout = *code_->descriptor_plan_;
+        const auto& api = session_->api();
         for (auto resource : frame.changed_resources)
         {
             auto& source = frame.bindings[resource];
-            source.dirty = false;
-            // The real handle is published by replica preparation before this slice can be recorded.
+            if (!source.dirty)
+            {
+                continue;
+            }
             if (!source.buffer)
             {
+                source.dirty = false;
                 continue;
             }
             const auto& uses = code_->resources()[resource];
             for (const auto [p, index] : uses.barrier_uses)
             {
-                auto& pass = frame.passes[p];
-                const auto& recipe = pass.recipe->buffers[index].native;
-                auto& barrier = pass.buffers[index];
+                auto& barrier = frame.passes[p].buffers[index];
+                const auto& recipe = frame.passes[p].recipe->buffers[index].native;
                 barrier.buffer = source.buffer;
-                barrier.offset = source.buffer_offset + recipe.offset;
-                barrier.size = recipe.size == VK_WHOLE_SIZE ? source.buffer_size - recipe.offset : recipe.size;
+                if (recipe.before.stages == nri::StageBits::ALL && recipe.before.access == nri::AccessBits::NONE)
+                {
+                    barrier.before.access = bufferAccess(api.GetBufferDesc(*source.buffer).usage);
+                }
             }
-            for (const auto [p, index] : uses.descriptor_uses)
+            if (!uses.descriptor_uses.empty())
             {
-                auto& pass = frame.passes[p];
-                const auto& use = layout.programs[pass.recipe->layout_program].uses[index];
-                const VkDescriptorBufferInfo info{source.buffer, source.buffer_offset, source.buffer_size};
-                VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-                write.dstSet = pass.private_descriptors;
-                write.dstBinding = use.binding;
-                write.descriptorCount = 1;
-                write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                write.pBufferInfo = &info;
-                vkUpdateDescriptorSets(device(), 1, &write, 0, nullptr);
+                const nri::BufferViewDesc description{
+                    source.buffer,
+                    nri::BufferView::STORAGE_BYTE_ADDRESS_BUFFER,
+                    source.buffer_offset,
+                    source.buffer_size
+                };
+                nri::Descriptor* candidate = nullptr;
+                const auto created = api.CreateBufferView(description, candidate);
+                if (created != nri::Result::SUCCESS)
+                {
+                    return cxx::unexpected(nativeError(created));
+                }
+                // Only the selected reusable FIF slice is changed. Other slices keep their descriptors.
+                api.DestroyDescriptor(std::exchange(source.buffer_view, candidate));
+                for (const auto [p, index] : uses.descriptor_uses)
+                {
+                    auto& pass = frame.passes[p];
+                    const auto& use = layout.programs[pass.recipe->layout_program].uses[index];
+                    const nri::UpdateDescriptorRangeDesc
+                        update{pass.private_descriptors, use.binding, 0, &source.buffer_view, 1};
+                    api.UpdateDescriptorRanges(&update, 1);
+                }
             }
+            source.dirty = false;
         }
         frame.changed_resources.clear();
+        return {};
     }
 
     RenderResult<void> ExecutionContext::setContextParameters(std::span<const std::byte> bytes) noexcept
     {
         if (bytes.size() != context_values_.size())
         {
-            return cxx::unexpected(RenderError{kInvalidArgument});
+            return cxx::unexpected(RenderError{kDeviceArgument});
         }
         std::ranges::copy(bytes, context_values_.begin());
         return {};
@@ -581,7 +679,7 @@ namespace lux::render::detail
         const auto index = id.index < code_->pass_indices_.size() ? code_->pass_indices_[id.index] : kGraphInvalidIndex;
         if (index == kGraphInvalidIndex || bytes.size() != pass_parameters_[index].size())
         {
-            return cxx::unexpected(RenderError{kInvalidArgument});
+            return cxx::unexpected(RenderError{kDeviceArgument});
         }
         std::ranges::copy(bytes, pass_parameters_[index].begin());
         return {};
@@ -598,7 +696,7 @@ namespace lux::render::detail
         prepared_data_.clear();
         if (!context_data_.empty() && !uploads)
         {
-            return cxx::unexpected(RenderError{kInvalidArgument});
+            return cxx::unexpected(RenderError{kDeviceArgument});
         }
         bool ready = true;
         for (std::uint32_t index = 0; index < context_data_.size(); ++index)
@@ -609,8 +707,12 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(prepared.error());
             }
-            ready &= *prepared != FeatureFrameWork::EPreparation::WAITING;
-            if (*prepared == FeatureFrameWork::EPreparation::RECORD)
+            if (prepared->changed_resource)
+            {
+                setResource(code_->contexts_[index].resource.index, slot, *prepared->changed_resource);
+            }
+            ready &= prepared->state != FeatureFrameWork::EPreparation::WAITING;
+            if (prepared->state == FeatureFrameWork::EPreparation::RECORD)
             {
                 prepared_data_.push_back(index);
             }
@@ -626,272 +728,258 @@ namespace lux::render::detail
         }
         if (!frame.changed_resources.empty())
         {
-            rebind(slot);
+            if (auto rebound = rebind(slot); !rebound)
+            {
+                return cxx::unexpected(rebound.error());
+            }
         }
         return true;
     }
 
-    void ExecutionContext::recordPreparation(CommandBatch& batch, std::uint32_t slot) noexcept
+    void recordGraphPreparation(ExecutionContext& context, nri::CommandBuffer& command, std::uint32_t slot) noexcept
     {
-        for (auto index : prepared_data_)
+        for (auto index : context.prepared_data_)
         {
-            auto& data = context_data_[index];
-            data.record(data.value.get(), batch.native(), slot);
+            auto& data = context.context_data_[index];
+            data.record(data.value.get(), command, slot);
         }
-        prepared_data_.clear();
+        context.prepared_data_.clear();
     }
 
-    void ExecutionContext::record(CommandBatch& batch, std::uint32_t slot) noexcept
+    void recordGraph(ExecutionContext& context, nri::CommandBuffer& command, std::uint32_t slot) noexcept
     {
-        const auto command = batch.native();
-        auto& frame = *frames_[slot];
+        const auto& api = context.session_->api();
+        const auto& code = *context.code_;
+        const auto& frame = *context.frames_[slot];
         const auto& bindings = frame.bindings;
+        nri::BindPoint active_layout = nri::BindPoint::INHERIT;
         for (std::size_t p = 0; p < frame.passes.size(); ++p)
         {
             const auto& pass = frame.passes[p];
-            auto& parameters = pass_parameters_[p];
-            for (const auto& copy : parameter_copies_[p])
+            const auto& recipe = *pass.recipe;
+            auto& parameters = context.pass_parameters_[p];
+            for (const auto& copy : context.parameter_copies_[p])
             {
-                const auto* source = copy.resource == kGraphInvalidIndex ? context_values_.data()
+                const auto* source = copy.resource == kGraphInvalidIndex ? context.context_values_.data()
                                                                          : bindings[copy.resource].parameters.data();
                 std::memcpy(parameters.data() + copy.destination_offset, source + copy.source_offset, copy.bytes);
             }
-            VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-            dependency.imageMemoryBarrierCount = static_cast<std::uint32_t>(pass.images.size());
-            dependency.pImageMemoryBarriers = pass.images.data();
-            dependency.bufferMemoryBarrierCount = static_cast<std::uint32_t>(pass.buffers.size());
-            dependency.pBufferMemoryBarriers = pass.buffers.data();
             if (!pass.images.empty() || !pass.buffers.empty())
             {
-                vkCmdPipelineBarrier2(command, &dependency);
+                const nri::BarrierDesc barriers{
+                    nullptr,
+                    0,
+                    pass.buffers.data(),
+                    static_cast<std::uint32_t>(pass.buffers.size()),
+                    pass.images.data(),
+                    static_cast<std::uint32_t>(pass.images.size())
+                };
+                api.CmdBarrier(command, barriers);
             }
-            const auto& recipe = *pass.recipe;
             const auto& destination = bindings[recipe.destination];
+            if (recipe.recipe == ERecipe::DRAW || recipe.recipe == ERecipe::DISPATCH)
+            {
+                const auto point = recipe.recipe == ERecipe::DRAW ? nri::BindPoint::GRAPHICS : nri::BindPoint::COMPUTE;
+                if (point != active_layout)
+                {
+                    api.CmdSetPipelineLayout(command, point, *code.layout());
+                    active_layout = point;
+                }
+                if (recipe.recipe == ERecipe::DISPATCH || recipe.bind_pipeline)
+                {
+                    api.CmdSetPipeline(command, *recipe.pipeline);
+                }
+                for (std::uint32_t set = 0; set < pass.descriptors.size(); ++set)
+                {
+                    api.CmdSetDescriptorSet(command, {set, pass.descriptors[set], point});
+                }
+                if (!parameters.empty())
+                {
+                    api.CmdSetRootConstants(
+                        command,
+                        {0, parameters.data(), static_cast<std::uint32_t>(parameters.size()), 0, point}
+                    );
+                }
+            }
             switch (recipe.recipe)
             {
             case ERecipe::DRAW:
             {
                 if (recipe.begin_rendering)
                 {
-                    VkRenderingAttachmentInfo attachment{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+                    nri::AttachmentDesc color{};
                     if (recipe.color != kGraphInvalidIndex)
                     {
-                        attachment.imageView = bindings[recipe.color].view;
+                        color.descriptor = bindings[recipe.color].view;
                     }
-                    attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                    attachment.loadOp = recipe.load;
-                    attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-                    std::copy(
-                        recipe.clear_color.begin(),
-                        recipe.clear_color.end(),
-                        attachment.clearValue.color.float32
-                    );
-                    VkRenderingAttachmentInfo depth{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+                    color.loadOp = recipe.load;
+                    color.clearValue.color.f =
+                        {recipe.clear_color[0], recipe.clear_color[1], recipe.clear_color[2], recipe.clear_color[3]};
+                    nri::RenderingDesc rendering{};
+                    rendering.colors = &color;
+                    rendering.colorNum = recipe.color != kGraphInvalidIndex;
                     if (recipe.depth != kGraphInvalidIndex)
                     {
-                        depth.imageView = bindings[recipe.depth].view;
+                        rendering.depth.descriptor = bindings[recipe.depth].view;
+                        rendering.depth.loadOp = recipe.depth_load;
+                        rendering.depth.clearValue.depthStencil.depth = recipe.clear_depth;
                     }
-                    depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                    depth.loadOp = recipe.depth_load;
-                    depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-                    depth.clearValue.depthStencil = {recipe.clear_depth, 0};
-                    const auto extent = destination.image->extent();
-                    VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
-                    rendering.renderArea = {{0, 0}, {extent.width, extent.height}};
-                    rendering.layerCount = 1;
-                    rendering.colorAttachmentCount = unsigned(recipe.color != kGraphInvalidIndex);
-                    rendering.pColorAttachments = &attachment;
-                    if (recipe.depth != kGraphInvalidIndex)
-                    {
-                        rendering.pDepthAttachment = &depth;
-                    }
-                    vkCmdBeginRendering(command, &rendering);
-                    const VkViewport viewport{
-                        viewport_.x * extent.width,
-                        viewport_.y * extent.height,
-                        viewport_.width * extent.width,
-                        viewport_.height * extent.height,
-                        viewport_.min_depth,
-                        viewport_.max_depth
+                    api.CmdBeginRendering(command, rendering);
+                    const auto& image = api.GetTextureDesc(*destination.image);
+                    const auto& area = context.viewport_;
+                    // Preserve the existing Vulkan clip/viewport convention. NRI's default flips Y.
+                    const nri::Viewport viewport{
+                        area.x * image.width,
+                        area.y * image.height,
+                        area.width * image.width,
+                        area.height * image.height,
+                        area.min_depth,
+                        area.max_depth,
+                        true
                     };
-                    const VkRect2D scissor{{0, 0}, {extent.width, extent.height}};
-                    vkCmdSetViewport(command, 0, 1, &viewport);
-                    vkCmdSetScissor(command, 0, 1, &scissor);
-                }
-                if (recipe.bind_pipeline)
-                {
-                    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, recipe.pipeline);
-                }
-                if (!pass.descriptors.empty())
-                {
-                    vkCmdBindDescriptorSets(
-                        command,
-                        VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        code_->layout(),
-                        0,
-                        std::uint32_t(pass.descriptors.size()),
-                        pass.descriptors.data(),
-                        0,
-                        nullptr
-                    );
-                }
-                if (!parameters.empty())
-                {
-                    vkCmdPushConstants(
-                        command,
-                        code_->layout(),
-                        code_->descriptor_plan_->parameter_stages,
-                        0,
-                        std::uint32_t(parameters.size()),
-                        parameters.data()
-                    );
+                    const nri::Rect scissor{0, 0, image.width, image.height};
+                    api.CmdSetViewports(command, &viewport, 1);
+                    api.CmdSetScissors(command, &scissor, 1);
                 }
                 for (const auto& source : recipe.vertices)
                 {
-                    const auto buffer = bindings[source.resource].buffer;
-                    const auto offset = bindings[source.resource].buffer_offset + source.offset;
-                    vkCmdBindVertexBuffers(command, source.binding, 1, &buffer, &offset);
+                    const auto& binding = bindings[source.resource];
+                    const nri::VertexBufferDesc buffer{
+                        binding.buffer,
+                        binding.buffer_offset + source.offset,
+                        source.stride
+                    };
+                    api.CmdSetVertexBuffers(command, source.binding, &buffer, 1);
                 }
                 if (recipe.draw != EDrawRecipe::VERTICES)
                 {
-                    vkCmdBindIndexBuffer(
+                    const auto& index = bindings[recipe.index_resource];
+                    api.CmdSetIndexBuffer(
                         command,
-                        bindings[recipe.index_resource].buffer,
-                        bindings[recipe.index_resource].buffer_offset + recipe.index_offset,
+                        *index.buffer,
+                        index.buffer_offset + recipe.index_offset,
                         recipe.index_type
                     );
                 }
                 if (recipe.draw == EDrawRecipe::VERTICES)
                 {
-                    vkCmdDraw(command, recipe.count, recipe.instances, recipe.first, recipe.first_instance);
+                    api.CmdDraw(command, {recipe.count, recipe.instances, recipe.first, recipe.first_instance});
                 }
                 else if (recipe.draw == EDrawRecipe::INDEXED)
                 {
-                    vkCmdDrawIndexed(
+                    api.CmdDrawIndexed(
                         command,
-                        recipe.count,
-                        recipe.instances,
-                        recipe.first,
-                        recipe.vertex_offset,
-                        recipe.first_instance
+                        {recipe.count, recipe.instances, recipe.first, recipe.vertex_offset, recipe.first_instance}
                     );
                 }
                 else
                 {
-                    vkCmdDrawIndexedIndirect(
+                    const auto& indirect = bindings[recipe.indirect_resource];
+                    api.CmdDrawIndexedIndirect(
                         command,
-                        bindings[recipe.indirect_resource].buffer,
-                        bindings[recipe.indirect_resource].buffer_offset + recipe.indirect_offset,
+                        *indirect.buffer,
+                        indirect.buffer_offset + recipe.indirect_offset,
                         recipe.count,
-                        recipe.indirect_stride
+                        recipe.indirect_stride,
+                        nullptr,
+                        0
                     );
                 }
                 if (recipe.end_rendering)
                 {
-                    vkCmdEndRendering(command);
+                    api.CmdEndRendering(command);
                 }
                 break;
             }
             case ERecipe::DISPATCH:
-                vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, recipe.pipeline);
-                if (!pass.descriptors.empty())
-                {
-                    vkCmdBindDescriptorSets(
-                        command,
-                        VK_PIPELINE_BIND_POINT_COMPUTE,
-                        code_->layout(),
-                        0,
-                        std::uint32_t(pass.descriptors.size()),
-                        pass.descriptors.data(),
-                        0,
-                        nullptr
-                    );
-                }
-                if (!parameters.empty())
-                {
-                    vkCmdPushConstants(
-                        command,
-                        code_->layout(),
-                        code_->descriptor_plan_->parameter_stages,
-                        0,
-                        std::uint32_t(parameters.size()),
-                        parameters.data()
-                    );
-                }
-                vkCmdDispatch(command, recipe.dispatch[0], recipe.dispatch[1], recipe.dispatch[2]);
+                api.CmdDispatch(command, {recipe.dispatch[0], recipe.dispatch[1], recipe.dispatch[2]});
                 break;
             case ERecipe::CLEAR_IMAGE:
             {
-                VkClearColorValue value;
-                std::copy(recipe.clear_color.begin(), recipe.clear_color.end(), value.float32);
+                nri::RenderingDesc rendering{};
+                nri::AttachmentDesc attachment{};
+                attachment.descriptor = destination.view;
+                attachment.loadOp = nri::LoadOp::CLEAR;
                 const auto format =
-                    imageFormat(std::get<GraphImageDesc>(code_->resources()[recipe.destination].description).format);
-                const VkImageSubresourceRange range{format.aspects, 0, 1, 0, 1};
-                if (format.aspects == VK_IMAGE_ASPECT_DEPTH_BIT)
+                    imageFormat(std::get<GraphImageDesc>(code.resources()[recipe.destination].description).format);
+                if (format.aspects == nri::PlaneBits::DEPTH)
                 {
-                    const VkClearDepthStencilValue depth{recipe.clear_depth, 0};
-                    vkCmdClearDepthStencilImage(
-                        command,
-                        destination.image->handle(),
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        &depth,
-                        1,
-                        &range
-                    );
+                    attachment.clearValue.depthStencil.depth = recipe.clear_depth;
+                    rendering.depth = attachment;
                 }
                 else
                 {
-                    vkCmdClearColorImage(
-                        command,
-                        destination.image->handle(),
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        &value,
-                        1,
-                        &range
-                    );
+                    attachment.clearValue.color.f =
+                        {recipe.clear_color[0], recipe.clear_color[1], recipe.clear_color[2], recipe.clear_color[3]};
+                    rendering.colors = &attachment;
+                    rendering.colorNum = 1;
                 }
+                api.CmdBeginRendering(command, rendering);
+                api.CmdEndRendering(command);
                 break;
             }
             case ERecipe::FILL_BUFFER:
-                vkCmdFillBuffer(
+                api.CmdZeroBuffer(
                     command,
-                    destination.buffer,
+                    *destination.buffer,
                     destination.buffer_offset,
-                    std::get<GraphBufferDesc>(code_->resources()[recipe.destination].description).size,
-                    0
+                    std::get<GraphBufferDesc>(code.resources()[recipe.destination].description).size
                 );
                 break;
             case ERecipe::COPY_IMAGE_BUFFER:
             {
-                const auto& image = *bindings[recipe.source].image;
-                VkBufferImageCopy region{};
-                region.bufferOffset = destination.buffer_offset;
-                region.imageSubresource = {
-                    imageFormat(std::get<GraphImageDesc>(code_->resources()[recipe.source].description).format).aspects,
-                    0,
-                    0,
-                    1
+                const auto* texture = bindings[recipe.source].image;
+                const auto& image = api.GetTextureDesc(*texture);
+                const auto format =
+                    imageFormat(std::get<GraphImageDesc>(code.resources()[recipe.source].description).format);
+                const nri::TextureRegionDesc region{0, 0, 0, image.width, image.height, 1, 0, 0, format.aspects};
+                const nri::TextureDataLayoutDesc layout{
+                    pass.copy_scratch ? 0 : destination.buffer_offset,
+                    pass.copy_row_pitch,
+                    pass.copy_slice_pitch
                 };
-                region.imageExtent = {image.extent().width, image.extent().height, 1};
-                vkCmdCopyImageToBuffer(
-                    command,
-                    image.handle(),
-                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    destination.buffer,
-                    1,
-                    &region
-                );
+                if (pass.copy_scratch)
+                {
+                    nri::BufferBarrierDesc scratch{
+                        pass.copy_scratch,
+                        {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY},
+                        {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
+                    };
+                    const nri::BarrierDesc barrier{nullptr, 0, &scratch, 1};
+                    api.CmdBarrier(command, barrier);
+                    api.CmdReadbackTextureToBuffer(command, *pass.copy_scratch, layout, *texture, region);
+                    std::swap(scratch.before, scratch.after);
+                    api.CmdBarrier(command, barrier);
+                    const auto row_bytes = std::uint64_t(image.width) * format.bytes;
+                    for (std::uint32_t row = 0; row < image.height; ++row)
+                    {
+                        api.CmdCopyBuffer(
+                            command,
+                            *destination.buffer,
+                            destination.buffer_offset + row * row_bytes,
+                            *pass.copy_scratch,
+                            std::uint64_t(row) * pass.copy_row_pitch,
+                            row_bytes
+                        );
+                    }
+                }
+                else
+                {
+                    api.CmdReadbackTextureToBuffer(command, *destination.buffer, layout, *texture, region);
+                }
                 break;
             }
             case ERecipe::COPY_BUFFER:
             {
-                const auto source = bindings[recipe.source].buffer;
-                const VkBufferCopy region{
-                    bindings[recipe.source].buffer_offset,
+                const auto& source = bindings[recipe.source];
+                api.CmdCopyBuffer(
+                    command,
+                    *destination.buffer,
                     destination.buffer_offset,
-                    std::get<GraphBufferDesc>(code_->resources()[recipe.source].description).size
-                };
-                vkCmdCopyBuffer(command, source, destination.buffer, 1, &region);
+                    *source.buffer,
+                    source.buffer_offset,
+                    std::get<GraphBufferDesc>(code.resources()[recipe.source].description).size
+                );
                 break;
             }
             }

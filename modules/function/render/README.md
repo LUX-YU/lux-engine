@@ -4,6 +4,10 @@ Render is one shared library. Applications link `lux::engine::function::render` 
 `find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render)`. Loading the library does not create a GPU
 device. Backend resources and implementation dependencies stay inside the library.
 
+The backend is pinned NRI v180 with Vulkan selected at build time. NRI owns the native device and physical
+allocations; Render owns its submission, upload and frame policies. NRI and Vulkan types appear only in project
+extension or private headers. Checked backend failures remain structured Render errors.
+
 ## Public and project contracts
 
 - `include/` contains installed values, Commands, graph declarations, descriptors and Server APIs.
@@ -99,6 +103,12 @@ Storage upload Senders use the existing CPU scheduler and RenderThread resumptio
 staging windows and batches Copy work. Frame preparation contributes missing ranges before compatible graph
 recordings enter the shared submission. Dirty-word batching and contiguous Transform input avoid per-element Copy
 construction. There is no per-frame Sender for unchanged drawing and no unconditional sleep in the event loop.
+
+Optional upload timestamps use bounded Query slots. The CPU resets only reusable pairs; Copy queues write the
+timestamps, and existing Graphics upload submissions resolve them after the required GPU dependency. Sampling
+does not add submissions or CPU waits. Occupied pairs cause skipped samples, reported by `gpu_samples_skipped`;
+`gpu_ns` is the sum of measured samples, not an estimate of unmeasured uploads. Results are read only after the
+resolving Graphics submission completes. The default upload path has measurement disabled.
 
 Physical release transfers removed resources into the Session's single cleanup scope. Conditions are captured and
 registered for all relevant physical Queues in one device-thread segment. Equal completion values preserve

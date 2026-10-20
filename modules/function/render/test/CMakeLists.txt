@@ -61,6 +61,5 @@ endforeach()
 
 # Explicit project GPU diagnostic surface, never inherited by an installed application.
 target_include_directories(render_output_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
-target_link_libraries(render_output_test PRIVATE lux::engine::platform::gapi Vulkan::Vulkan lux_render_vma_headers)
-target_compile_definitions(render_output_test PRIVATE LUX_GAPI_ENABLE_VMA=1)
+target_link_libraries(render_output_test PRIVATE NRI)
 set_target_properties(render PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")

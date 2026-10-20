@@ -17,7 +17,7 @@ namespace lux::asset
 {
     namespace
     {
-        inline constexpr std::uint32_t kMaterialVersion = 6U;
+        inline constexpr std::uint32_t kMaterialVersion = 7U; // Cooked shaders use separate texture/sampler arrays.
         inline constexpr std::uint32_t kMaterialInstanceVersion = 2U;
 
         [[nodiscard]] AssetDecodeFailure decodeFailure(EAssetDecodeError code) noexcept

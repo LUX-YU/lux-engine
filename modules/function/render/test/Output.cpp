@@ -7,26 +7,26 @@
 #include <lux/engine/render/graph/Builder.hpp>
 using namespace foundation_test;
 
-static void copyBuffer(SubmissionQueue& queue, VkBuffer source, VkBuffer output, std::uint64_t bytes)
+static void copyBuffer(DeviceSession& session, nri::Buffer& source, nri::Buffer& output, std::uint64_t bytes)
 {
-    auto batch = take(queue.begin());
-    const VkBufferCopy copy{0, 0, bytes};
-    vkCmdCopyBuffer(batch.native(), source, output, 1, &copy);
-    VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
-    barrier.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
-    barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-    barrier.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
-    barrier.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
-    VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-    dependency.memoryBarrierCount = 1;
-    dependency.pMemoryBarriers = &barrier;
-    vkCmdPipelineBarrier2(batch.native(), &dependency);
-    CHECK(std::move(batch).submit());
+    CHECK(session.queue().recordAndSubmit(
+        [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
+        {
+            const nri::BufferBarrierDesc source_ready{
+                &source,
+                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
+                {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY}
+            };
+            session.api().CmdBarrier(command, {nullptr, 0, &source_ready, 1});
+            session.api().CmdCopyBuffer(command, output, 0, source, 0, bytes);
+            return {};
+        }
+    ));
 }
 
-static void graphOutput(InstanceContext& bootstrap)
+static void graphOutput(Validation& validation)
 {
-    auto session = take(DeviceSession::create(bootstrap, {}, 3, 3));
+    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3, 3));
     const TargetDesc target{16, 16, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     RenderGraphBuilder builder;
     const auto color = take(builder.declareResource({"color", GraphImageDesc{16, 16}}));
@@ -57,10 +57,12 @@ static void graphOutput(InstanceContext& bootstrap)
     const std::array programs{PassProgram{"clear", {}, {1, 0, 1, 1}}, PassProgram{"copy"}, PassProgram{"copy-buffer"}};
     auto indexed = take(indexPrograms(definition, programs));
     auto graph = take(compileGraph(
-        session->physicalDevice(),
-        session->nativeDevice(),
+        session->device(),
+        session->api(),
         session->enabledFeatures(),
-        session->queue().nativeQueue().flags,
+        session->formatSupport(),
+        {session->vertexStrideLimit(), session->vertexOffsetLimit()},
+        session->queue().properties().type,
         0,
         definition,
         analysis,
@@ -71,65 +73,41 @@ static void graphOutput(InstanceContext& bootstrap)
     auto physical = take(OffscreenTarget::create(*session, target));
     auto execution = take(session->prepare(graph, *physical));
     const std::array contexts{execution.get()};
-    const auto device = session->nativeDevice();
-    VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    buffer_info.size = 1024;
-    buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    VkBuffer output{};
-    CHECK(vkCreateBuffer(device, &buffer_info, nullptr, &output) == VK_SUCCESS);
-    VkMemoryRequirements requirements{};
-    vkGetBufferMemoryRequirements(device, output, &requirements);
-    const auto& memory_types = session->physicalDevice().memoryProperties().memoryProperties;
-    std::uint32_t memory_type = UINT32_MAX;
-    for (std::uint32_t i = 0; i < memory_types.memoryTypeCount; ++i)
-    {
-        const bool supported = (requirements.memoryTypeBits & (1u << i)) != 0;
-        const bool visible = (memory_types.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
-        if (supported && visible)
-        {
-            memory_type = i;
-            break;
-        }
-    }
-    CHECK(memory_type != UINT32_MAX);
-    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-    allocation.allocationSize = requirements.size;
-    allocation.memoryTypeIndex = memory_type;
-    VkDeviceMemory memory{};
-    CHECK(vkAllocateMemory(device, &allocation, nullptr, &memory) == VK_SUCCESS);
-    CHECK(vkBindBufferMemory(device, output, memory, 0) == VK_SUCCESS);
+    nri::Buffer* output = nullptr;
+    const nri::BufferDesc description{1024, 0, nri::BufferUsageBits::NONE};
+    CHECK(
+        session->api().CreatePlacedBuffer(session->device(), NriHostReadbackHeap, description, output) ==
+        nri::Result::SUCCESS
+    );
     CHECK(take(session->render(contexts)) == 1);
     CHECK(take(session->render(contexts)) == 1);
     CHECK(take(session->render(contexts)) == 1);
     CHECK(take(session->render(contexts)) == 0);
     CHECK(session->drain());
-    copyBuffer(
-        session->queue(),
-        execution->nativeBuffer(pixels.index, execution->progress().last_submitted_slot),
-        output,
-        1024
-    );
-    CHECK(session->drain());
-    std::array<std::byte, 1024> bytes;
-    void* mapped = nullptr;
-    CHECK(vkMapMemory(device, memory, 0, VK_WHOLE_SIZE, 0, &mapped) == VK_SUCCESS);
-    VkMappedMemoryRange range{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
-    range.memory = memory;
-    range.size = VK_WHOLE_SIZE;
-    CHECK(vkInvalidateMappedMemoryRanges(device, 1, &range) == VK_SUCCESS);
-    std::memcpy(bytes.data(), mapped, bytes.size());
-    vkUnmapMemory(device, memory);
-    for (std::size_t i = 0; i < bytes.size(); i += 4)
+    for (auto id : {pixels, copied})
     {
-        CHECK(bytes[i] == std::byte{255} && bytes[i + 1] == std::byte{0});
-        CHECK(bytes[i + 2] == std::byte{255} && bytes[i + 3] == std::byte{255});
+        copyBuffer(
+            *session,
+            *execution->nativeBuffer(id.index, execution->progress().last_submitted_slot),
+            *output,
+            1024
+        );
+        CHECK(session->drain());
+        auto* mapped = static_cast<const std::byte*>(session->api().MapBuffer(*output, 0, 1024));
+        CHECK(mapped);
+        CHECK(session->vk().InvalidateBufferRangeVK(*output, 0, 1024) == nri::Result::SUCCESS);
+        for (std::size_t i = 0; i < 1024; i += 4)
+        {
+            CHECK(mapped[i] == std::byte{255} && mapped[i + 1] == std::byte{0});
+            CHECK(mapped[i + 2] == std::byte{255} && mapped[i + 3] == std::byte{255});
+        }
+        session->api().UnmapBuffer(*output);
     }
     CHECK(take(session->render(contexts)) == 1);
     execution.reset(); // Physical resources outlive the business Context through Session cleanup.
     physical.reset();
     CHECK(session->drain());
-    vkDestroyBuffer(device, output, nullptr);
-    vkFreeMemory(device, memory, nullptr);
+    session->api().DestroyBuffer(output);
     std::puts("Graph output: explicit external copy, correct pixels, Context detached in flight");
 }
 
@@ -137,8 +115,7 @@ int main()
 {
     Validation validation;
     {
-        auto bootstrap = instance(validation);
-        graphOutput(bootstrap);
+        graphOutput(validation);
     }
     CHECK(validation.errors == 0);
 }

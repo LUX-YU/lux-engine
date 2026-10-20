@@ -3,6 +3,7 @@
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/CompiledGraph.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/storage/SampledTexture2DStorage.hpp>
@@ -11,27 +12,24 @@
 namespace lux::render::detail
 {
     SampledTexture2DStorage::SampledImage::SampledImage(SampledImage&& other) noexcept
-        : image_(std::move(other.image_)), view_(std::exchange(other.view_, VK_NULL_HANDLE)),
-          sampler_(std::move(other.sampler_)), descriptor_(std::exchange(other.descriptor_, {})),
+        : image_(std::exchange(other.image_, nullptr)), view_(std::exchange(other.view_, nullptr)),
+          sampler_(std::exchange(other.sampler_, nullptr)), descriptor_(std::exchange(other.descriptor_, {})),
           reference_(other.reference_)
     {
     }
 
-    void SampledTexture2DStorage::SampledImage::release(
-        VkDevice device,
-        VmaAllocator allocator,
-        DescriptorArray& array
+    void SampledTexture2DStorage::releaseImage(
+        const nri::CoreInterface& api,
+        DescriptorArray& array,
+        SampledImage& image
     ) noexcept
     {
-        if (view_)
+        api.DestroyDescriptor(std::exchange(image.view_, nullptr));
+        api.DestroyDescriptor(std::exchange(image.sampler_, nullptr));
+        api.DestroyTexture(std::exchange(image.image_, nullptr));
+        if (!image.descriptor_.isNull())
         {
-            vkDestroyImageView(device, std::exchange(view_, VK_NULL_HANDLE), nullptr);
-        }
-        sampler_.release(device);
-        image_.release(allocator);
-        if (!descriptor_.isNull())
-        {
-            array.release(std::exchange(descriptor_, {}));
+            array.release(std::exchange(image.descriptor_, {}));
         }
     }
 
@@ -39,7 +37,7 @@ namespace lux::render::detail
     {
         struct Format final
         {
-            VkFormat native;
+            nri::Format native;
             std::uint32_t extent, bytes;
             bool srgb;
         };
@@ -49,11 +47,11 @@ namespace lux::render::detail
             switch (value)
             {
             case rdesc::ETexturePixelFormat::RGBA8_UNORM:
-                return {VK_FORMAT_R8G8B8A8_UNORM, 1, 4, false};
+                return {nri::Format::RGBA8_UNORM, 1, 4, false};
             case rdesc::ETexturePixelFormat::RGBA8_SRGB:
-                return {VK_FORMAT_R8G8B8A8_SRGB, 1, 4, true};
+                return {nri::Format::RGBA8_SRGB, 1, 4, true};
             case rdesc::ETexturePixelFormat::BC1_SRGB:
-                return {VK_FORMAT_BC1_RGBA_SRGB_BLOCK, 4, 8, true};
+                return {nri::Format::BC1_RGBA_SRGB, 4, 8, true};
             default:
                 return {};
             }
@@ -67,7 +65,7 @@ namespace lux::render::detail
     {
         auto& session = session_;
         const auto layout = format(info.pixel_format);
-        const auto max_dimension = session.physicalDevice().properties().properties.limits.maxImageDimension2D;
+        const auto max_dimension = session.description().dimensions.texture2DMaxDim;
         const bool bad_extent = info.width <= 0 || info.height <= 0 || std::uint32_t(info.width) > max_dimension ||
                                 std::uint32_t(info.height) > max_dimension;
         const bool bad_count = info.layers != 1 || info.mip_count == 0 || info.mip_count > rdesc::kTextureMaxMipCount;
@@ -80,26 +78,26 @@ namespace lux::render::detail
             (info.flags & ~7u) != 0 ||
             (rdesc::hasTextureFlag(info.flags, rdesc::ETextureAssetFlags::COMPRESSED) != (layout.extent == 4)) ||
             (rdesc::hasTextureFlag(info.flags, rdesc::ETextureAssetFlags::NO_MIPS) && info.mip_count != 1);
-        if (layout.native == VK_FORMAT_UNDEFINED)
+        if (layout.native == nri::Format::UNKNOWN)
         {
-            return cxx::unexpected(RenderError{kUnsupported});
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
         if (bad_extent || bad_count || bad_color || bad_flags || info.channel != 4)
         {
-            return cxx::unexpected(RenderError{kInvalidArgument});
+            return cxx::unexpected(RenderError{kDeviceArgument});
         }
         if (layout.extent == 4 && !session.enabledFeatures().texture_compression_bc)
         {
-            return cxx::unexpected(RenderError{kUnsupported});
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
         if (premultiplied_srgb)
         {
-            return cxx::unexpected(RenderError{kUnsupported});
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
         const auto max_mips = std::bit_width(std::max(std::uint32_t(info.width), std::uint32_t(info.height)));
         if (info.mip_count > max_mips)
         {
-            return cxx::unexpected(RenderError{kInvalidArgument});
+            return cxx::unexpected(RenderError{kDeviceArgument});
         }
         std::uint64_t expected_offset = 0;
         for (std::uint32_t mip = 0; mip < info.mip_count; ++mip)
@@ -111,40 +109,42 @@ namespace lux::render::detail
             const auto size = cxx::checkedMul<std::uint64_t>(row, std::uint64_t(rows));
             if (!size)
             {
-                return cxx::unexpected(RenderError{kInvalidArgument});
+                return cxx::unexpected(RenderError{kDeviceArgument});
             }
             const auto& input = info.mip_ranges[mip];
             const bool mismatch = input.width != width || input.height != height || input.size != *size ||
                                   input.offset != expected_offset;
             if (mismatch)
             {
-                return cxx::unexpected(RenderError{kInvalidArgument});
+                return cxx::unexpected(RenderError{kDeviceArgument});
             }
             auto total = cxx::checkedAdd(expected_offset, *size);
             if (!total)
             {
-                return cxx::unexpected(RenderError{kInvalidArgument});
+                return cxx::unexpected(RenderError{kDeviceArgument});
             }
             expected_offset = *total;
         }
         if (expected_offset != source.size() || source.empty())
         {
-            return cxx::unexpected(RenderError{kInvalidArgument});
+            return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        const auto properties = session.physicalDevice().formatProperties(layout.native);
-        constexpr auto required = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT |
-                                  VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
-        if ((properties.optimalTilingFeatures & required) != required)
+        const auto support = session.formatSupport(layout.native);
+        if ((support & nri::FormatSupportBits::TEXTURE) == 0)
         {
-            return cxx::unexpected(RenderError{kUnsupported});
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
-        const ImageDescription description{
-            {std::uint32_t(info.width), std::uint32_t(info.height)},
+        const nri::TextureDesc description{
+            nri::TextureType::TEXTURE_2D,
+            nri::TextureUsageBits::SHADER_RESOURCE,
             layout.native,
-            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            VK_SAMPLE_COUNT_1_BIT,
-            info.mip_count,
-            1
+            static_cast<nri::Dim_t>(info.width),
+            static_cast<nri::Dim_t>(info.height),
+            1,
+            static_cast<nri::Dim_t>(info.mip_count),
+            1,
+            1,
+            nri::SharingMode::CONCURRENT
         };
         std::vector<ImageTransferRegion> regions;
         for (std::uint32_t mip = 0; mip < info.mip_count; ++mip)
@@ -156,18 +156,25 @@ namespace lux::render::detail
                  pitch,
                  layout.extent,
                  layout.bytes,
-                 {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, 1},
-                 {},
-                 {input.width, input.height, 1}}
+                 {0,
+                  0,
+                  0,
+                  static_cast<nri::Dim_t>(input.width),
+                  static_cast<nri::Dim_t>(input.height),
+                  1,
+                  static_cast<nri::Dim_t>(mip),
+                  0,
+                  nri::PlaneBits::COLOR}}
             );
         }
 
-        auto image = session.allocator().createImage(description);
-        if (!image)
+        nri::Texture* image = nullptr;
+        const auto created = session.api().CreatePlacedTexture(session.device(), NriDeviceHeap, description, image);
+        if (created != nri::Result::SUCCESS)
         {
-            return cxx::unexpected(image.error());
+            return cxx::unexpected(nativeError(created));
         }
-        return ImagePreparation{std::move(*image), std::move(regions)};
+        return ImagePreparation{image, std::move(regions)};
     }
 
     RenderResult<SampledTexture2DStorage::ImagePreparation> SampledTexture2DStorage::preparePatched(
@@ -176,43 +183,42 @@ namespace lux::render::detail
         std::span<const std::byte> source
     ) noexcept
     {
-        const auto& original = source_image.image_;
-        const bool compressed = original.format() == VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
+        const auto& original = session_.api().GetTextureDesc(*source_image.image_);
+        const bool compressed = original.format == nri::Format::BC1_RGBA_SRGB;
+        // Check wide Client values before narrowing into NRI's dimension fields.
+        const bool invalid = region.mip >= original.mipNum || region.x > original.width || region.y > original.height ||
+                             region.width > original.width || region.height > original.height;
+        if (invalid)
+        {
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        }
         const ImageTransferRegion patch{
             0,
             region.row_pitch,
             compressed ? 4u : 1u,
             compressed ? 8u : 4u,
-            {VK_IMAGE_ASPECT_COLOR_BIT, region.mip, 0, 1},
-            {std::int32_t(region.x), std::int32_t(region.y), 0},
-            {region.width, region.height, 1}
+            {static_cast<nri::Dim_t>(region.x),
+             static_cast<nri::Dim_t>(region.y),
+             0,
+             static_cast<nri::Dim_t>(region.width),
+             static_cast<nri::Dim_t>(region.height),
+             1,
+             static_cast<nri::Dim_t>(region.mip),
+             0,
+             nri::PlaneBits::COLOR}
         };
-        const auto size = imageRegionBytes(
-            original.extent(),
-            original.mipLevels(),
-            original.arrayLayers(),
-            patch,
-            source.size(),
-            UINT64_MAX
-        );
+        const auto size = imageRegionBytes(original, patch, source.size(), UINT64_MAX);
         if (!size || *size != source.size())
         {
-            return cxx::unexpected(RenderError{kInvalidArgument});
+            return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        auto image = session_.allocator().createImage(
-            {{original.extent().width, original.extent().height},
-             original.format(),
-             original.usage(),
-             original.samples(),
-             original.mipLevels(),
-             original.arrayLayers()}
-        );
-        if (!image)
+        nri::Texture* image = nullptr;
+        const auto created = session_.api().CreatePlacedTexture(session_.device(), NriDeviceHeap, original, image);
+        if (created != nri::Result::SUCCESS)
         {
-            return cxx::unexpected(image.error());
+            return cxx::unexpected(nativeError(created));
         }
-        std::vector<ImageTransferRegion> regions{patch};
-        return ImagePreparation{std::move(*image), std::move(regions)};
+        return ImagePreparation{image, {patch}};
     }
 
     SampledTexture2DStorage::SampledTexture2DStorage(DeviceSession& session, StorageId id) noexcept
@@ -258,15 +264,13 @@ namespace lux::render::detail
     }
 
     RenderResult<SampledTexture2DStorage::SampledImage> SampledTexture2DStorage::sampledImage(
-        gapi::vk::VmaImage image,
+        nri::Texture* image,
         std::uint32_t color_space
     ) noexcept
     {
         SampledImage candidate;
-        candidate.image_ = std::move(image);
-        cxx::scope_exit rollback(
-            [&]() noexcept { candidate.release(session_.nativeDevice(), session_.allocator().native(), *descriptors_); }
-        );
+        candidate.image_ = image;
+        cxx::scope_exit rollback([&]() noexcept { releaseImage(session_.api(), *descriptors_, candidate); });
         auto descriptor = descriptors_->allocate();
         if (!descriptor)
         {
@@ -274,23 +278,21 @@ namespace lux::render::detail
         }
         candidate.descriptor_ = *descriptor;
         candidate.reference_ = {descriptor->index, color_space};
-        VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-        view.image = candidate.image_.handle();
-        view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        view.format = candidate.image_.format();
-        view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, candidate.image_.mipLevels(), 0, 1};
-        auto status = vkCreateImageView(session_.nativeDevice(), &view, nullptr, &candidate.view_);
-        if (status != VK_SUCCESS)
+        const auto& description = session_.api().GetTextureDesc(*candidate.image_);
+        const nri::TextureViewDesc
+            view{candidate.image_, nri::TextureView::TEXTURE, description.format, 0, description.mipNum, 0, 1};
+        auto status = session_.api().CreateTextureView(view, candidate.view_);
+        if (status != nri::Result::SUCCESS)
         {
             return cxx::unexpected(nativeError(status));
         }
-        VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-        sampler.magFilter = sampler.minFilter = VK_FILTER_NEAREST;
-        sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-        sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        sampler.maxLod = float(candidate.image_.mipLevels() - 1);
-        status = candidate.sampler_.tryCreate(session_.nativeDevice(), sampler);
-        if (status != VK_SUCCESS)
+        nri::SamplerDesc sampler{};
+        sampler.filters = {nri::Filter::NEAREST, nri::Filter::NEAREST, nri::Filter::NEAREST};
+        sampler.addressModes =
+            {nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE};
+        sampler.mipMax = float(description.mipNum - 1);
+        status = session_.api().CreateSampler(session_.device(), sampler, candidate.sampler_);
+        if (status != nri::Result::SUCCESS)
         {
             return cxx::unexpected(nativeError(status));
         }
@@ -305,11 +307,8 @@ namespace lux::render::detail
         {
             return;
         }
-        session_.deferRelease([value = std::move(value),
-                               device = session_.nativeDevice(),
-                               allocator = session_.allocator().native(),
-                               descriptors = descriptors_]() mutable noexcept
-                              { value.release(device, allocator, *descriptors); });
+        session_.deferRelease([value = std::move(value), api = &session_.api(), descriptors = descriptors_](
+                              ) mutable noexcept { releaseImage(*api, *descriptors, value); });
     }
 
     SampledTexture2DStorage::UploadResult SampledTexture2DStorage::upload(TextureWrite input) noexcept
@@ -323,14 +322,14 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(prepared.error());
         }
-        auto candidate = sampledImage(std::move(prepared->first), std::uint32_t(input.info.color_space));
+        auto candidate = sampledImage(std::exchange(prepared->first, nullptr), std::uint32_t(input.info.color_space));
         if (!candidate)
         {
             co_return cxx::unexpected(candidate.error());
         }
         cxx::scope_exit rollback([&]() noexcept { retire(*candidate); });
         auto accepted =
-            co_await session_.uploads().writeImage(candidate->image_, input.source, std::move(prepared->second));
+            co_await session_.uploads().writeImage(*candidate->image_, input.source, std::move(prepared->second));
         if (!accepted)
         {
             co_return cxx::unexpected(accepted.error());
@@ -338,7 +337,7 @@ namespace lux::render::detail
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested())
         {
-            co_return cxx::unexpected(RenderError{kWorkStopped});
+            co_return cxx::unexpected(RenderError{kUploadStopped});
         }
         co_return TextureId{id_, textures_.emplace(std::move(*candidate))};
     }
@@ -356,7 +355,7 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(prepared.error());
         }
-        auto candidate = sampledImage(std::move(prepared->first), original->reference_.color_space);
+        auto candidate = sampledImage(std::exchange(prepared->first, nullptr), original->reference_.color_space);
         if (!candidate)
         {
             co_return cxx::unexpected(candidate.error());
@@ -364,7 +363,7 @@ namespace lux::render::detail
         cxx::scope_exit rollback([&]() noexcept { retire(*candidate); });
         auto accepted =
             co_await session_.uploads()
-                .writeImage(candidate->image_, input.source, std::move(prepared->second), &original->image_);
+                .writeImage(*candidate->image_, input.source, std::move(prepared->second), original->image_);
         if (!accepted)
         {
             co_return cxx::unexpected(accepted.error());
@@ -372,7 +371,7 @@ namespace lux::render::detail
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         if (stop.stop_requested())
         {
-            co_return cxx::unexpected(RenderError{kWorkStopped});
+            co_return cxx::unexpected(RenderError{kUploadStopped});
         }
         co_return TextureId{id_, textures_.emplace(std::move(*candidate))};
     }
@@ -402,14 +401,13 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        const auto native_format = expected->format == rdesc::ETextureFormat::RGBA8_UNORM ? VK_FORMAT_R8G8B8A8_UNORM
-                                   : expected->format == rdesc::ETextureFormat::RGBA8_SRGB
-                                       ? VK_FORMAT_R8G8B8A8_SRGB
-                                       : VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
-        const auto& image = backing->image_;
-        const bool is_mismatch = expected->width != image.extent().width || expected->height != image.extent().height ||
-                                 expected->mips != image.mipLevels() || expected->layers != image.arrayLayers() ||
-                                 native_format != image.format();
+        const auto native_format = expected->format == rdesc::ETextureFormat::RGBA8_UNORM  ? nri::Format::RGBA8_UNORM
+                                   : expected->format == rdesc::ETextureFormat::RGBA8_SRGB ? nri::Format::RGBA8_SRGB
+                                                                                           : nri::Format::BC1_RGBA_SRGB;
+        const auto& image = session_.api().GetTextureDesc(*backing->image_);
+        const bool is_mismatch = expected->width != image.width || expected->height != image.height ||
+                                 expected->mips != image.mipNum || expected->layers != image.layerNum ||
+                                 native_format != image.format;
         if (is_mismatch)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
@@ -424,7 +422,7 @@ namespace lux::render::detail
             return result;
         }();
         // Texture identities are immutable. The Client ends bindings before release; there is no update subscription.
-        return StorageResource{VK_NULL_HANDLE, 0, 0, std::as_bytes(std::span(&backing->reference_, 1)), &layout};
+        return StorageResource{nullptr, 0, 0, std::as_bytes(std::span(&backing->reference_, 1)), &layout};
     }
 
     StorageFactory textureStorageFactory() noexcept

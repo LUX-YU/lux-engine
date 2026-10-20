@@ -26,12 +26,12 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
-        const auto* installed = registry_.types_.find(type);
+        const auto* installed = registry_.factory(type);
         if (!installed)
         {
             return cxx::unexpected(RenderError{kStorageFactory});
         }
-        const auto& factory = installed->factory;
+        const auto& factory = *installed;
         const bool is_wrong_config = requested_ops.size && requested_config != factory.config_type;
         const bool is_wrong_ops = requested_ops.size && requested_ops != factory.ops_type;
         if (is_wrong_config || is_wrong_ops)
@@ -46,35 +46,31 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
         }
-        const auto& selected_config = config ? config : installed->configuration;
+        const auto& selected_config = config ? config : *registry_.configuration(type);
         if (factory.config_type.size && !selected_config)
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
         if (const auto id = find(type, key); !id.isNull())
         {
-            const auto& entry = *registry_.entries_.find(id);
-            if (factory.compatible_config && !factory.compatible_config(entry.native, selected_config.data()))
+            if (factory.compatible_config && !factory.compatible_config(registry_.native(id), selected_config.data()))
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
             return id;
         }
-        const auto id = registry_.entries_.emplace(ResourceRegistry::Entry{this, 0, type});
-        auto native = factory.create(registry_.native_, id, selected_config.data());
+        const auto id = registry_.reserve(*this, type);
+        auto native = registry_.create(id, selected_config.data());
         if (!native || !*native)
         {
             const auto error = native ? RenderError{kStorageFactory} : native.error();
-            registry_.entries_.erase(id);
+            registry_.revoke(id);
             return cxx::unexpected(error);
         }
-        // Native creation may grow another Set. Reacquire the index entry after the callback.
-        auto& entry = *registry_.entries_.find(id);
-        entry.position = records_.size();
+        // Native creation may grow either Set. Publish only after insertion, using the current position.
         const auto name = instances_by_name_.emplace(NameKey{type.index, type.gen, std::string(key)}, id).first;
         records_.push_back(Record{id, name, std::move(*native)});
-        entry.native = records_.back().native.get();
-        ++registry_.creations_;
+        registry_.publish(id, records_.size() - 1, records_.back().native.get());
         return id;
     }
 
@@ -110,12 +106,12 @@ namespace lux::render
 
     RenderResult<void> StorageSet::remove(StorageId id) noexcept
     {
-        const auto* entry = registry_.entries_.find(id);
-        if (!entry || entry->storage_set != this || !entry->native)
+        const auto position = registry_.position(id, *this);
+        if (!position)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        erase(entry->position);
+        erase(*position);
         return {};
     }
 
@@ -123,12 +119,12 @@ namespace lux::render
     {
         const auto& record = records_[position];
         instances_by_name_.erase(record.name);
-        registry_.entries_.erase(record.id);
+        registry_.revoke(record.id);
         auto native = std::move(records_[position].native);
         if (position + 1 != records_.size())
         {
             records_[position] = std::move(records_.back());
-            registry_.entries_.find(records_[position].id)->position = position;
+            registry_.relocate(records_[position].id, position);
         }
         records_.pop_back();
         // All indexes are repaired before a Native destructor can release another actual instance.
@@ -138,7 +134,7 @@ namespace lux::render
     {
         for (const auto& record : records_)
         {
-            registry_.entries_.erase(record.id);
+            registry_.revoke(record.id);
         }
         instances_by_name_.clear();
         // Revoke the entire set before any destructor runs. No temporary container or allocation is needed.

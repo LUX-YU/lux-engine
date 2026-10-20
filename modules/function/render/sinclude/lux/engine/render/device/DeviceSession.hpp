@@ -1,8 +1,12 @@
 #pragma once
 
+#include <NRI.h>
+
+#include <Extensions/NRIDeviceCreation.h>
+#include <Extensions/NRIRayTracing.h>
+#include <Extensions/NRIWrapperVK.h>
+
 #include <lux/engine/core/execution/Scheduler.hpp>
-#include <lux/engine/gapi/vk/LogicalDevice.hpp>
-#include <lux/engine/gapi/vk/PhysicalDevice.hpp>
 #include <lux/engine/render/visibility.h>
 
 #include <functional>
@@ -12,6 +16,7 @@
 #include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
+#include <lux/engine/render/runtime/DeviceOptions.hpp>
 
 namespace lux::render::detail
 {
@@ -25,20 +30,45 @@ namespace lux::render::detail
     struct TransferStats;
     struct StorageBindingOps;
 
-    // Stable Native lifetime root. Bootstrap owns InstanceContext and outlives this object.
-    // Queue roles that alias the same VkQueue borrow the same SubmissionQueue owner.
+    // Backend capabilities used by the compiler, queried once from the successfully created device.
+    struct EnabledDeviceFeatures final
+    {
+        bool multiview = false;
+        bool local_read = false;
+        bool texture_compression_bc = false;
+        bool texture_descriptors = false;
+        bool buffer_device_address = false;
+    };
+
+    // NRI owns the sole native Instance, Device and physical allocator. Aliased roles share
+    // one SubmissionQueue and completion frontier. All physical cleanup uses cleanup_scope_.
     class LUX_RENDER_PUBLIC DeviceSession final
     {
     public:
         [[nodiscard]] static RenderResult<std::unique_ptr<DeviceSession>> create(
-            const InstanceContext& instance,
-            const DeviceOptions& options = {},
+            const DeviceOptions& options,
+            const nri::CallbackInterface& diagnostic,
+            bool validation = false,
             std::uint32_t slots = 3,
             std::uint32_t frames_in_flight = 2
         ) noexcept;
         ~DeviceSession() noexcept;
         DeviceSession(const DeviceSession&) = delete;
         DeviceSession& operator=(const DeviceSession&) = delete;
+
+        // Embedded in the existing upload admission operation; this list owns no operation state.
+        struct FrameWriteWaiter final
+        {
+            FrameWriteWaiter* next = nullptr;
+            void* operation = nullptr;
+            bool (*stopping)(void*) noexcept = nullptr;
+            void (*complete)(void*) noexcept = nullptr;
+        };
+
+        [[nodiscard]] bool tryBeginFrameWrite(std::uint32_t& slot) noexcept;
+        void finishFrameWrite(std::uint32_t slot) noexcept;
+        void enqueueFrameWrite(FrameWriteWaiter&) noexcept;
+        void afterFrameSubmit(void* receiver, void (*complete)(void*, RenderResult<void>) noexcept) noexcept;
 
         [[nodiscard]] RenderResult<void> drain() noexcept;
         // External Context/Storage owners and upload producers must be settled before final close.
@@ -124,19 +154,49 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<std::uint32_t> sampledImageCapacity() const noexcept;
         [[nodiscard]] RenderResult<DescriptorArray*> sampledImageArray() noexcept;
 
-        [[nodiscard]] VulkanAllocator& allocator() noexcept
+        [[nodiscard]] nri::Device& device() const noexcept
         {
-            return allocator_;
+            return *device_;
         }
 
-        [[nodiscard]] const gapi::vk::PhysicalDevice& physicalDevice() const noexcept
+        [[nodiscard]] const nri::CoreInterface& api() const noexcept
         {
-            return physical_device_;
+            return api_;
         }
 
-        [[nodiscard]] VkDevice nativeDevice() const noexcept
+        [[nodiscard]] const nri::WrapperVKInterface& vk() const noexcept
         {
-            return logical_device_.handle();
+            return vk_;
+        }
+
+        [[nodiscard]] const nri::DeviceDesc& description() const noexcept
+        {
+            return api_.GetDeviceDesc(*device_);
+        }
+
+        [[nodiscard]] std::span<const nri::FormatSupportBits> formatSupport() const noexcept
+        {
+            return format_support_;
+        }
+
+        [[nodiscard]] nri::FormatSupportBits formatSupport(nri::Format format) const noexcept
+        {
+            return format_support_[static_cast<std::size_t>(format)];
+        }
+
+        [[nodiscard]] std::uint32_t vertexStrideLimit() const noexcept
+        {
+            return vertex_stride_limit_;
+        }
+
+        [[nodiscard]] std::uint32_t vertexOffsetLimit() const noexcept
+        {
+            return vertex_offset_limit_;
+        }
+
+        [[nodiscard]] bool pagedInstances() const noexcept
+        {
+            return paged_instances_;
         }
 
         [[nodiscard]] const EnabledDeviceFeatures& enabledFeatures() const noexcept
@@ -180,10 +240,10 @@ namespace lux::render::detail
         friend class ExecutionContext;
         static void requireCleanupComplete(const RenderResult<void>&) noexcept;
         DeviceSession(
-            gapi::vk::PhysicalDevice physical,
-            gapi::vk::LogicalDevice logical,
-            EnabledDeviceFeatures enabled,
-            VulkanAllocator allocator
+            std::unique_ptr<nri::Device, decltype(&nri::nriDestroyDevice)>,
+            nri::CoreInterface,
+            nri::WrapperVKInterface,
+            EnabledDeviceFeatures
         ) noexcept;
         enum class EFramePhase : std::uint8_t
         {
@@ -203,20 +263,32 @@ namespace lux::render::detail
         };
 
         void sealFrame(FrameSlot&) noexcept;
+        void dispatchFrameWrites() noexcept;
+        [[nodiscard]] bool backgroundUploadsAllowed() const noexcept;
+        void acceptFrameSubmission(std::uint32_t, const SubmissionQueue&) noexcept;
+        void finishFrameSubmission(RenderResult<void>) noexcept;
         std::array<FrameSlot, 3> frames_;
         std::uint32_t frame_count_ = 1;
         std::uint32_t next_frame_ = 0;
         std::vector<std::pair<void*, const StorageBindingOps*>> frame_storages_;
+        std::vector<std::pair<void*, void (*)(void*, RenderResult<void>) noexcept>> frame_receivers_;
+        FrameWriteWaiter* frame_waiters_ = nullptr;
+        FrameWriteWaiter* frame_waiters_tail_ = nullptr;
         bool rendering_ = false; // Reserves one existing Staging page while actual frame consumers are active.
 
-        gapi::vk::PhysicalDevice physical_device_;
-        gapi::vk::LogicalDevice logical_device_;
-        EnabledDeviceFeatures enabled_features_;
-        VulkanAllocator allocator_;
+        // Declared before all dependent members, destroyed after their complete cleanup.
+        std::unique_ptr<nri::Device, decltype(&nri::nriDestroyDevice)> device_{nullptr, &nri::nriDestroyDevice};
+        nri::CoreInterface api_{};
+        nri::WrapperVKInterface vk_{};
+        std::array<nri::FormatSupportBits, static_cast<std::size_t>(nri::Format::MAX_NUM)> format_support_{};
+        EnabledDeviceFeatures enabled_features_{};
+        bool paged_instances_ = false;
+        std::uint64_t upload_alignment_ = 4;
+        std::uint32_t vertex_stride_limit_ = 0, vertex_offset_limit_ = 0, bindless_capacity_ = 0;
         std::vector<std::unique_ptr<SubmissionQueue>> physical_queues_;
         std::array<std::uint8_t, 3> queue_roles_{};
-        // Reverse destruction: Sets -> Registry -> retired objects -> upload measurements/staging ->
-        // descriptor table -> physical Queues -> Allocator -> LogicalDevice.
+        // Close settles Sets and cleanup before upload/staging and descriptors; queues outlive all callbacks.
+        // The NRI Device is destroyed last by member order.
         std::unique_ptr<DescriptorArray> sampled_images_;
         std::unique_ptr<StagingArena> staging_arena_;
         std::unique_ptr<UploadContext> uploads_;

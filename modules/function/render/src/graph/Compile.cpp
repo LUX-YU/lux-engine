@@ -1,5 +1,3 @@
-#include <lux/engine/gapi/vk/PhysicalDevice.hpp>
-#include <lux/engine/gapi/vk/Pipeline.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/graph/CompiledGraph.hpp>
@@ -15,7 +13,10 @@
 
 namespace lux::render::detail
 {
-    CompiledGraph::CompiledGraph(VkDevice device, TargetDesc target) noexcept : device_(device), target_(target) {}
+    CompiledGraph::CompiledGraph(nri::Device& device, const nri::CoreInterface& api, TargetDesc target) noexcept
+        : device_(&device), api_(&api), target_(target)
+    {
+    }
 
     CompiledGraph::~CompiledGraph() noexcept
     {
@@ -25,25 +26,20 @@ namespace lux::render::detail
         }
         for (auto pipeline : pipelines_)
         {
-            vkDestroyPipeline(device_, pipeline, nullptr);
+            api_->DestroyPipeline(pipeline);
         }
         if (layout_)
         {
-            vkDestroyPipelineLayout(device_, layout_, nullptr);
-        }
-        for (const auto layout : descriptor_layouts_)
-        {
-            vkDestroyDescriptorSetLayout(device_, layout, nullptr);
+            api_->DestroyPipelineLayout(layout_);
         }
     }
 
     CompiledGraph::CompiledGraph(CompiledGraph&& other) noexcept
-        : descriptor_plan_(std::move(other.descriptor_plan_)), device_(std::exchange(other.device_, VK_NULL_HANDLE)),
-          target_(other.target_), layout_(other.layout_), resources_(std::move(other.resources_)),
+        : descriptor_plan_(std::move(other.descriptor_plan_)), device_(std::exchange(other.device_, nullptr)),
+          api_(other.api_), target_(other.target_), layout_(other.layout_), resources_(std::move(other.resources_)),
           contexts_(std::move(other.contexts_)), storage_groups_(std::move(other.storage_groups_)),
           passes_(std::move(other.passes_)), pass_indices_(std::move(other.pass_indices_)),
-          pipelines_(std::move(other.pipelines_)), descriptor_layouts_(std::move(other.descriptor_layouts_)),
-          output_(other.output_), resizable_output_(other.resizable_output_)
+          pipelines_(std::move(other.pipelines_)), output_(other.output_), resizable_output_(other.resizable_output_)
     {
     }
 
@@ -79,9 +75,9 @@ namespace lux::render::detail
     {
         struct Access final
         {
-            VkPipelineStageFlags2 stage = VK_PIPELINE_STAGE_2_NONE;
-            VkAccessFlags2 access = VK_ACCESS_2_NONE;
-            VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+            nri::StageBits stage = nri::StageBits::NONE;
+            nri::AccessBits access = nri::AccessBits::NONE;
+            nri::Layout layout = nri::Layout::UNDEFINED;
         };
 
         Access accessFor(const GraphResourceUse& use) noexcept
@@ -90,50 +86,40 @@ namespace lux::render::detail
             {
             case EGraphUse::COLOR_ATTACHMENT:
                 return {
-                    VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                    VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
-                        (use.access == EGraphAccess::ATTACHMENT_LOAD ? VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT : 0),
-                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                    nri::StageBits::COLOR_ATTACHMENT,
+                    nri::AccessBits::COLOR_ATTACHMENT_WRITE |
+                        (use.access == EGraphAccess::ATTACHMENT_LOAD ? nri::AccessBits::COLOR_ATTACHMENT_READ
+                                                                     : nri::AccessBits::NONE),
+                    nri::Layout::COLOR_ATTACHMENT
                 };
             case EGraphUse::DEPTH_ATTACHMENT:
                 return {
-                    VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-                    VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
-                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                    nri::StageBits::DEPTH_STENCIL_ATTACHMENT,
+                    nri::AccessBits::DEPTH_STENCIL_ATTACHMENT,
+                    nri::Layout::DEPTH_STENCIL_ATTACHMENT
                 };
             case EGraphUse::TRANSFER_SOURCE:
-                return {
-                    VK_PIPELINE_STAGE_2_COPY_BIT,
-                    VK_ACCESS_2_TRANSFER_READ_BIT,
-                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-                };
+                return {nri::StageBits::COPY, nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE};
             case EGraphUse::VERTEX:
-                return {VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT};
+                return {nri::StageBits::VERTEX_SHADER, nri::AccessBits::VERTEX_BUFFER};
             case EGraphUse::INDEX:
-                return {VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT, VK_ACCESS_2_INDEX_READ_BIT};
+                return {nri::StageBits::INDEX_INPUT, nri::AccessBits::INDEX_BUFFER};
             case EGraphUse::INDIRECT:
-                return {VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT, VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT};
+                return {nri::StageBits::INDIRECT, nri::AccessBits::ARGUMENT_BUFFER};
             case EGraphUse::STORAGE_WRITE:
-                return {VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT};
+                return {nri::StageBits::COMPUTE_SHADER, nri::AccessBits::SHADER_RESOURCE_STORAGE};
             case EGraphUse::STORAGE_READ_WRITE:
-                return {
-                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                    VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
-                };
+                return {nri::StageBits::COMPUTE_SHADER, nri::AccessBits::SHADER_RESOURCE_STORAGE};
             case EGraphUse::STORAGE_READ:
-                return {VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT};
+                return {nri::StageBits::FRAGMENT_SHADER, nri::AccessBits::SHADER_RESOURCE_STORAGE};
             case EGraphUse::SAMPLED:
                 return {
-                    VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                    VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                    nri::StageBits::FRAGMENT_SHADER,
+                    nri::AccessBits::SHADER_RESOURCE,
+                    nri::Layout::SHADER_RESOURCE
                 };
             default:
-                return {
-                    VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-                    VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-                };
+                return {nri::StageBits::COPY, nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION};
             }
         }
 
@@ -142,7 +128,7 @@ namespace lux::render::detail
             const GraphPass& pass,
             std::span<const CompiledResource> resources,
             const ResourceNames& resource_names,
-            const VkPhysicalDeviceLimits& limits,
+            const nri::DeviceDesc& limits,
             CompiledPass& result
         ) noexcept
         {
@@ -189,15 +175,15 @@ namespace lux::render::detail
                 const auto size = std::get<GraphBufferDesc>(resources[*resource].description).size;
                 if (source.offset >= size || source.offset % 4)
                 {
-                    return cxx::unexpected(RenderError{kInvalidArgument});
+                    return cxx::unexpected(RenderError{kDeviceArgument});
                 }
-                result.vertices.push_back({source.binding, *resource, source.offset});
+                result.vertices.push_back({source.binding, *resource, binding->stride, source.offset});
             }
             const auto index = [&](std::string_view key, std::uint64_t offset, EIndexType type) -> RenderResult<void>
             {
                 if (type > EIndexType::UINT32)
                 {
-                    return cxx::unexpected(RenderError{kInvalidArgument});
+                    return cxx::unexpected(RenderError{kDeviceArgument});
                 }
                 auto resource = find(key, EGraphUse::INDEX);
                 if (!resource)
@@ -208,11 +194,11 @@ namespace lux::render::detail
                 const auto size = std::get<GraphBufferDesc>(resources[*resource].description).size;
                 if (offset >= size || offset % bytes || size - offset < bytes)
                 {
-                    return cxx::unexpected(RenderError{kInvalidArgument});
+                    return cxx::unexpected(RenderError{kDeviceArgument});
                 }
                 result.index_resource = *resource;
                 result.index_offset = offset;
-                result.index_type = type == EIndexType::UINT16 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
+                result.index_type = type == EIndexType::UINT16 ? nri::IndexType::UINT16 : nri::IndexType::UINT32;
                 return {};
             };
             if (const auto* draw = std::get_if<DrawVertices>(&program.draw))
@@ -233,7 +219,7 @@ namespace lux::render::detail
                 const auto element = draw->type == EIndexType::UINT16 ? 2u : 4u;
                 if (std::uint64_t(draw->first) + draw->count > (size - draw->offset) / element)
                 {
-                    return cxx::unexpected(RenderError{kInvalidArgument});
+                    return cxx::unexpected(RenderError{kDeviceArgument});
                 }
                 result.draw = EDrawRecipe::INDEXED;
                 result.count = draw->count;
@@ -257,23 +243,22 @@ namespace lux::render::detail
                 }
                 const auto size = std::get<GraphBufferDesc>(resources[*resource].description).size;
                 const bool invalid = !indirect.count || indirect.commands_offset % 4 || indirect.stride % 4 ||
-                                     indirect.stride < sizeof(VkDrawIndexedIndirectCommand) ||
-                                     indirect.commands_offset > size;
+                                     indirect.stride < sizeof(nri::DrawIndexedDesc) || indirect.commands_offset > size;
                 if (invalid)
                 {
-                    return cxx::unexpected(RenderError{kInvalidArgument});
+                    return cxx::unexpected(RenderError{kDeviceArgument});
                 }
                 const auto remaining = size - indirect.commands_offset;
-                if (remaining < sizeof(VkDrawIndexedIndirectCommand) ||
-                    indirect.count - 1 > (remaining - sizeof(VkDrawIndexedIndirectCommand)) / indirect.stride)
+                if (remaining < sizeof(nri::DrawIndexedDesc) ||
+                    indirect.count - 1 > (remaining - sizeof(nri::DrawIndexedDesc)) / indirect.stride)
                 {
-                    return cxx::unexpected(RenderError{kInvalidArgument});
+                    return cxx::unexpected(RenderError{kDeviceArgument});
                 }
                 // This Device currently enables single indirect indirect. Multiple commands require the
                 // actual multiDrawIndirect feature, not merely a larger author-provided count.
-                if (indirect.count > 1 || indirect.count > limits.maxDrawIndirectCount)
+                if (indirect.count > 1 || indirect.count > limits.other.drawIndirectMaxNum)
                 {
-                    return cxx::unexpected(RenderError{kUnsupported});
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
                 result.draw = EDrawRecipe::INDEXED_INDIRECT;
                 result.indirect_resource = *resource;
@@ -283,7 +268,7 @@ namespace lux::render::detail
             }
             if (!result.count || !result.instances)
             {
-                return cxx::unexpected(RenderError{kInvalidArgument});
+                return cxx::unexpected(RenderError{kDeviceArgument});
             }
             // Exact direct-vertex bounds; indexed values are trusted GPU/validated asset data, not read back here.
             for (const auto& source : result.vertices)
@@ -301,7 +286,7 @@ namespace lux::render::detail
                     const auto bytes = vertexFormat(attribute.format).bytes();
                     if (!bytes || attribute.offset > size || bytes > size - attribute.offset)
                     {
-                        return cxx::unexpected(RenderError{kInvalidArgument});
+                        return cxx::unexpected(RenderError{kDeviceArgument});
                     }
                     std::uint64_t last = 0;
                     if (result.draw == EDrawRecipe::VERTICES && layout.rate == EVertexRate::VERTEX)
@@ -314,7 +299,7 @@ namespace lux::render::detail
                     }
                     if (last > (size - attribute.offset - bytes) / layout.stride)
                     {
-                        return cxx::unexpected(RenderError{kInvalidArgument});
+                        return cxx::unexpected(RenderError{kDeviceArgument});
                     }
                 }
             }
@@ -349,11 +334,11 @@ namespace lux::render::detail
             const auto found = names.find(programs[i].pass_key);
             if (found == names.end())
             {
-                return cxx::unexpected(RenderError{kInvalidArgument, {i, 0}});
+                return cxx::unexpected(RenderError{kDeviceArgument, {i, 0}});
             }
             if (result[found->second])
             {
-                return cxx::unexpected(RenderError{kInvalidArgument, {i, 1}});
+                return cxx::unexpected(RenderError{kDeviceArgument, {i, 1}});
             }
             result[found->second] = &programs[i];
         }
@@ -361,10 +346,12 @@ namespace lux::render::detail
     }
 
     RenderResult<CompiledGraph> compileGraph(
-        const gapi::vk::PhysicalDevice& physical,
-        VkDevice device,
+        nri::Device& device,
+        const nri::CoreInterface& api,
         const EnabledDeviceFeatures& enabled,
-        VkQueueFlags queue_flags,
+        std::span<const nri::FormatSupportBits> formats,
+        std::array<std::uint32_t, 2> vertex_limits,
+        nri::QueueType queue_type,
         std::uint32_t sampled_image_capacity,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
@@ -378,21 +365,21 @@ namespace lux::render::detail
         {
             return cxx::unexpected(result.error());
         }
-        const auto& limits = physical.properties().properties.limits;
+        const auto& limits = api.GetDeviceDesc(device);
         const bool is_unsupported_target = target.kind != ETargetKind::OFFSCREEN || target.samples != 1 ||
-                                           imageFormat(target.format).native == VK_FORMAT_UNDEFINED ||
-                                           target.width > limits.maxImageDimension2D ||
-                                           target.height > limits.maxImageDimension2D;
+                                           imageFormat(target.format).native == nri::Format::UNKNOWN ||
+                                           target.width > limits.dimensions.texture2DMaxDim ||
+                                           target.height > limits.dimensions.texture2DMaxDim;
         if (is_unsupported_target)
         {
-            return cxx::unexpected(RenderError{kUnsupported});
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
 
         struct PipelineIdentity final
         {
             rdesc::SpirvArtifact shader;
             GraphicsState graphics;
-            VkFormat color = VK_FORMAT_UNDEFINED, depth = VK_FORMAT_UNDEFINED;
+            nri::Format color = nri::Format::UNKNOWN, depth = nri::Format::UNKNOWN;
             bool operator==(const PipelineIdentity&) const noexcept = default;
         };
 
@@ -402,10 +389,10 @@ namespace lux::render::detail
         {
             resource_names.emplace(graph.resources()[index].key, index);
         }
-        CompiledGraph result(device, target);
+        CompiledGraph result(device, api, target);
         if (pass_programs.size() != graph.passes().size())
         {
-            return cxx::unexpected(RenderError{kInvalidArgument});
+            return cxx::unexpected(RenderError{kDeviceArgument});
         }
         std::vector<bool> live_resources(graph.resources().size(), false);
         for (const auto pass : analysis.execution_order)
@@ -423,6 +410,7 @@ namespace lux::render::detail
         {
             const auto index = result.resources_.size();
             result.resources_.push_back({resource.key, resource.description, resource.origin});
+            result.resources_.back().used = live_resources[index];
             if (!live_resources[index])
             {
                 continue;
@@ -431,7 +419,7 @@ namespace lux::render::detail
                 resource.origin == EGraphOrigin::HISTORY_PREVIOUS || resource.origin == EGraphOrigin::HISTORY_CURRENT;
             if (is_history)
             {
-                return cxx::unexpected(RenderError{kUnsupported});
+                return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
             if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
             {
@@ -443,11 +431,11 @@ namespace lux::render::detail
                     image->layers != 1 || image->samples != 1 ||
                     (is_imported
                          ? !sampled_format
-                         : image->mips != 1 || imageFormat(image->format).native == VK_FORMAT_UNDEFINED ||
+                         : image->mips != 1 || imageFormat(image->format).native == nri::Format::UNKNOWN ||
                                imageFormat(image->format).block != 1 || resource.origin != EGraphOrigin::TRANSIENT);
                 if (is_unsupported_image)
                 {
-                    return cxx::unexpected(RenderError{kUnsupported});
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
             }
         }
@@ -458,7 +446,7 @@ namespace lux::render::detail
             {
                 if (binding.resource.index >= result.resources_.size())
                 {
-                    return cxx::unexpected(RenderError{kInvalidArgument});
+                    return cxx::unexpected(RenderError{kDeviceArgument});
                 }
                 if (!live_resources[binding.resource.index])
                 {
@@ -467,7 +455,7 @@ namespace lux::render::detail
                 auto& resource = result.resources_[binding.resource.index];
                 if (resource.storage)
                 {
-                    return cxx::unexpected(RenderError{kInvalidArgument});
+                    return cxx::unexpected(RenderError{kDeviceArgument});
                 }
                 resource.storage = std::move(binding.storage);
                 indices.push_back(binding.resource.index);
@@ -521,7 +509,7 @@ namespace lux::render::detail
             }
             if (plan.origin != EGraphOrigin::TRANSIENT)
             {
-                return cxx::unexpected(RenderError{kUnsupported});
+                return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
             const auto& required = *output.target;
             const auto& image = std::get<GraphImageDesc>(plan.description);
@@ -532,7 +520,7 @@ namespace lux::render::detail
                 (!relative && (required.width != target.width || required.height != target.height));
             if (incompatible || result.output_ != kGraphInvalidIndex)
             {
-                return cxx::unexpected(RenderError{kInvalidArgument});
+                return cxx::unexpected(RenderError{kDeviceArgument});
             }
             result.output_ = output.version.resource.index;
             result.resizable_output_ = relative;
@@ -540,7 +528,7 @@ namespace lux::render::detail
         }
         if (result.output_ == kGraphInvalidIndex)
         {
-            return cxx::unexpected(RenderError{kInvalidArgument});
+            return cxx::unexpected(RenderError{kDeviceArgument});
         }
         // All attachments in one rendering scope have the same resize contract. Propagate only this
         // physical extent constraint across shared Depth attachments; execution order/analysis is untouched.
@@ -576,7 +564,7 @@ namespace lux::render::detail
                 const auto& d = std::get<GraphImageDesc>(depth->description);
                 if (c.width != d.width || c.height != d.height)
                 {
-                    return cxx::unexpected(RenderError{kInvalidArgument});
+                    return cxx::unexpected(RenderError{kDeviceArgument});
                 }
                 if (color->target_sized != depth->target_sized)
                 {
@@ -592,27 +580,9 @@ namespace lux::render::detail
         }
         result.descriptor_plan_ = std::make_unique<LayoutPlan>(std::move(*planned));
         const auto& layout_plan = *result.descriptor_plan_;
-        if (!layout_plan.shared_bindings.empty())
+        if (!layout_plan.shared_bindings.empty() && !sampled_image_capacity)
         {
-            if (!sampled_image_capacity)
-            {
-                return cxx::unexpected(RenderError{kUnsupported});
-            }
-            auto layout = createDescriptorLayout(device, layout_plan.shared_bindings, sampled_image_capacity);
-            if (!layout)
-            {
-                return cxx::unexpected(layout.error());
-            }
-            result.descriptor_layouts_.push_back(*layout);
-        }
-        if (!layout_plan.private_bindings.empty())
-        {
-            auto layout = createDescriptorLayout(device, layout_plan.private_bindings, 0);
-            if (!layout)
-            {
-                return cxx::unexpected(layout.error());
-            }
-            result.descriptor_layouts_.push_back(*layout);
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
         std::vector<Access> previous(result.resources_.size());
         std::vector<bool> used(result.resources_.size(), false);
@@ -623,38 +593,39 @@ namespace lux::render::detail
             const auto* binding = pass_programs[id.index];
             if (!binding)
             {
-                return cxx::unexpected(RenderError{kInvalidArgument, {id.index}});
+                return cxx::unexpected(RenderError{kDeviceArgument, {id.index}});
             }
             const bool is_unsupported_pass = pass.conditional || pass.uses.empty();
             if (is_unsupported_pass)
             {
-                return cxx::unexpected(RenderError{kUnsupported, {id.index}});
+                return cxx::unexpected(RenderError{kDeviceUnsupported, {id.index}});
             }
             if (!std::ranges::all_of(binding->clear_color, [](float x) { return std::isfinite(x); }))
             {
-                return cxx::unexpected(RenderError{kInvalidArgument});
+                return cxx::unexpected(RenderError{kDeviceArgument});
             }
             CompiledPass compiled{};
             compiled.layout_program = id.index;
             compiled.clear_color = binding->clear_color;
             if (!std::isfinite(binding->clear_depth) || binding->clear_depth < 0 || binding->clear_depth > 1)
             {
-                return cxx::unexpected(RenderError{kInvalidArgument});
+                return cxx::unexpected(RenderError{kDeviceArgument});
             }
             compiled.clear_depth = binding->clear_depth;
             compiled.dispatch = binding->dispatch;
             const bool compute = pass.kind == EGraphPassKind::COMPUTE;
             if (compute)
             {
-                if (!(queue_flags & VK_QUEUE_COMPUTE_BIT))
+                if (queue_type == nri::QueueType::COPY)
                 {
-                    return cxx::unexpected(RenderError{kUnsupported});
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
                 for (unsigned axis = 0; axis < 3; ++axis)
                 {
-                    if (!binding->dispatch[axis] || binding->dispatch[axis] > limits.maxComputeWorkGroupCount[axis])
+                    if (!binding->dispatch[axis] ||
+                        binding->dispatch[axis] > limits.shaderStage.compute.dispatchMaxDim[axis])
                     {
-                        return cxx::unexpected(RenderError{kInvalidArgument});
+                        return cxx::unexpected(RenderError{kDeviceArgument});
                     }
                 }
             }
@@ -667,14 +638,14 @@ namespace lux::render::detail
                     use.usage == EGraphUse::UNSPECIFIED || use.fallback || !fullRange(use, resource);
                 if (is_unsupported_use)
                 {
-                    return cxx::unexpected(RenderError{kUnsupported, {id.index, index}});
+                    return cxx::unexpected(RenderError{kDeviceUnsupported, {id.index, index}});
                 }
                 if (use.usage == EGraphUse::COLOR_ATTACHMENT || use.usage == EGraphUse::DEPTH_ATTACHMENT)
                 {
                     auto& attachment = use.usage == EGraphUse::COLOR_ATTACHMENT ? compiled.color : compiled.depth;
                     if (attachment != kGraphInvalidIndex)
                     {
-                        return cxx::unexpected(RenderError{kUnsupported});
+                        return cxx::unexpected(RenderError{kDeviceUnsupported});
                     }
                     attachment = index;
                 }
@@ -690,7 +661,7 @@ namespace lux::render::detail
                 }
                 if (resource.origin == EGraphOrigin::IMPORTED && use.access != EGraphAccess::READ)
                 {
-                    return cxx::unexpected(RenderError{kUnsupported});
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
                 const bool storage_use = use.usage == EGraphUse::STORAGE_READ ||
                                          use.usage == EGraphUse::STORAGE_WRITE ||
@@ -708,7 +679,7 @@ namespace lux::render::detail
                     }
                     if (is_image)
                     {
-                        resource.image_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+                        resource.image_usage = nri::TextureUsageBits::SHADER_RESOURCE;
                         // Published storage images already have Graphics ownership and SHADER_READ layout.
                         used[index] = true;
                         previous[index] = accessFor(use);
@@ -718,12 +689,12 @@ namespace lux::render::detail
                 if (resource.origin == EGraphOrigin::IMPORTED &&
                     std::holds_alternative<GraphImageDesc>(resource.description))
                 {
-                    return cxx::unexpected(RenderError{kUnsupported});
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
                 auto current = accessFor(use);
                 if (storage_use)
                 {
-                    current.stage = VK_PIPELINE_STAGE_2_NONE;
+                    current.stage = nri::StageBits::ALL; // Accumulate an exact shader mask from zero.
                     const auto& program = layout_plan.programs[id.index];
                     for (std::size_t field = 0; field < program.uses.size(); ++field)
                     {
@@ -734,68 +705,78 @@ namespace lux::render::detail
                         const auto stages = program.bindings[field].stages;
                         if (stages & 1)
                         {
-                            current.stage |= VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+                            current.stage |= nri::StageBits::VERTEX_SHADER;
                         }
                         if (stages & 2)
                         {
-                            current.stage |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                            current.stage |= nri::StageBits::FRAGMENT_SHADER;
                         }
                         if (stages & 4)
                         {
-                            current.stage |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+                            current.stage |= nri::StageBits::COMPUTE_SHADER;
                         }
                     }
                 }
                 const auto source = previous[index];
                 if (std::holds_alternative<GraphImageDesc>(resource.description))
                 {
-                    VkImageMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-                    barrier.srcStageMask = source.stage;
-                    barrier.srcAccessMask = source.access;
-                    barrier.dstStageMask = current.stage;
-                    barrier.dstAccessMask = current.access;
-                    barrier.oldLayout = source.layout;
-                    barrier.newLayout = current.layout;
-                    barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    barrier.subresourceRange =
-                        {imageFormat(std::get<GraphImageDesc>(resource.description).format).aspects, 0, 1, 0, 1};
+                    const auto image_format = imageFormat(std::get<GraphImageDesc>(resource.description).format);
+                    const bool clear = pass.kind == EGraphPassKind::TRANSFER &&
+                                       use.usage == EGraphUse::TRANSFER_DESTINATION &&
+                                       std::ranges::none_of(
+                                           pass.uses,
+                                           [](const auto& item) { return item.access == EGraphAccess::READ; }
+                                       );
+                    if (clear)
+                    {
+                        current =
+                            image_format.aspects == nri::PlaneBits::DEPTH
+                                ? Access{nri::StageBits::DEPTH_STENCIL_ATTACHMENT, nri::AccessBits::DEPTH_STENCIL_ATTACHMENT, nri::Layout::DEPTH_STENCIL_ATTACHMENT}
+                                : Access{
+                                      nri::StageBits::COLOR_ATTACHMENT,
+                                      nri::AccessBits::COLOR_ATTACHMENT_WRITE,
+                                      nri::Layout::COLOR_ATTACHMENT
+                                  };
+                    }
+                    nri::TextureBarrierDesc barrier{};
+                    barrier.before = {source.access, source.layout, source.stage};
+                    barrier.after = {current.access, current.layout, current.stage};
+                    barrier.mipNum = barrier.layerNum = 1;
+                    barrier.planes = image_format.aspects;
                     compiled.images.push_back({index, barrier});
-                    resource.image_usage |=
-                        use.usage == EGraphUse::COLOR_ATTACHMENT   ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-                        : use.usage == EGraphUse::DEPTH_ATTACHMENT ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-                        : use.usage == EGraphUse::TRANSFER_SOURCE  ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-                                                                   : VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+                    if (use.usage == EGraphUse::COLOR_ATTACHMENT ||
+                        (clear && image_format.aspects == nri::PlaneBits::COLOR))
+                    {
+                        resource.image_usage |= nri::TextureUsageBits::COLOR_ATTACHMENT;
+                    }
+                    if (use.usage == EGraphUse::DEPTH_ATTACHMENT ||
+                        (clear && image_format.aspects == nri::PlaneBits::DEPTH))
+                    {
+                        resource.image_usage |= nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT;
+                    }
                     if (use.access == EGraphAccess::ATTACHMENT_LOAD)
                     {
                         auto& load = use.usage == EGraphUse::DEPTH_ATTACHMENT ? compiled.depth_load : compiled.load;
-                        load = VK_ATTACHMENT_LOAD_OP_LOAD;
+                        load = nri::LoadOp::LOAD;
                     }
                 }
                 else
                 {
-                    VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
-                    barrier.srcStageMask = source.stage;
-                    barrier.srcAccessMask = source.access;
+                    nri::BufferBarrierDesc barrier{};
+                    barrier.before = {source.access, source.stage};
                     if (!used[index])
                     {
-                        // The same physical transient Buffer is reused on the next Execute. Order prior
-                        // device accesses as well as imported host/transfer publication before its first use.
-                        barrier.srcStageMask = VK_PIPELINE_STAGE_2_HOST_BIT | VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-                        barrier.srcAccessMask =
-                            VK_ACCESS_2_HOST_WRITE_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+                        // First-use execution order also covers a reused slice's prior reads and writes.
+                        // CPU visibility for uploads is established at their explicit flush/submit boundary.
+                        barrier.before = {nri::AccessBits::NONE, nri::StageBits::ALL};
                     }
-                    barrier.dstStageMask = current.stage;
-                    barrier.dstAccessMask = current.access;
-                    barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    barrier.size = VK_WHOLE_SIZE;
+                    barrier.after = {current.access, current.stage};
                     compiled.buffers.push_back({index, barrier});
-                    resource.buffer_usage |= storage_use                        ? VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-                                             : use.usage == EGraphUse::VERTEX   ? VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
-                                             : use.usage == EGraphUse::INDEX    ? VK_BUFFER_USAGE_INDEX_BUFFER_BIT
-                                             : use.usage == EGraphUse::INDIRECT ? VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT
-                                             : use.usage == EGraphUse::TRANSFER_SOURCE
-                                                 ? VK_BUFFER_USAGE_TRANSFER_SRC_BIT
-                                                 : VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+                    resource.buffer_usage |= storage_use ? nri::BufferUsageBits::SHADER_RESOURCE_STORAGE
+                                             : use.usage == EGraphUse::VERTEX   ? nri::BufferUsageBits::VERTEX_BUFFER
+                                             : use.usage == EGraphUse::INDEX    ? nri::BufferUsageBits::INDEX_BUFFER
+                                             : use.usage == EGraphUse::INDIRECT ? nri::BufferUsageBits::ARGUMENT_BUFFER
+                                                                                : nri::BufferUsageBits::NONE;
                 }
                 used[index] = true;
                 previous[index] = current;
@@ -814,7 +795,7 @@ namespace lux::render::detail
                 (pass.kind == EGraphPassKind::TRANSFER && !binding->shader.stages.empty());
             if (is_unsupported_recipe)
             {
-                return cxx::unexpected(RenderError{kUnsupported});
+                return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
             const bool writes_image =
                 std::holds_alternative<GraphImageDesc>(result.resources_[compiled.destination].description);
@@ -835,19 +816,43 @@ namespace lux::render::detail
                 }
                 if (!result.layout_)
                 {
-                    const VkPushConstantRange range{layout_plan.parameter_stages, 0, layout_plan.parameter_bytes};
-                    VkPipelineLayoutCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-                    info.pushConstantRangeCount = unsigned(layout_plan.parameter_bytes != 0);
-                    info.pPushConstantRanges = &range;
-                    info.setLayoutCount = std::uint32_t(result.descriptor_layouts_.size());
-                    info.pSetLayouts = result.descriptor_layouts_.data();
-                    gapi::vk::PipelineLayout layout;
-                    const auto created = layout.tryCreate(device, info);
-                    if (created != VK_SUCCESS)
+                    const auto shared_ranges = descriptorRanges(layout_plan.shared_bindings, sampled_image_capacity);
+                    const auto private_ranges = descriptorRanges(layout_plan.private_bindings, 0);
+                    std::vector<nri::DescriptorSetDesc> sets;
+                    if (!shared_ranges.empty())
+                    {
+                        sets.push_back(
+                            {layout_plan.shared_set,
+                             shared_ranges.data(),
+                             std::uint32_t(shared_ranges.size()),
+                             nri::DescriptorSetBits::ALLOW_UPDATE_AFTER_SET}
+                        );
+                    }
+                    if (!private_ranges.empty())
+                    {
+                        sets.push_back(
+                            {layout_plan.private_set, private_ranges.data(), std::uint32_t(private_ranges.size())}
+                        );
+                    }
+                    const nri::RootConstantDesc parameters{
+                        0,
+                        layout_plan.parameter_bytes,
+                        layout_plan.parameter_stages
+                    };
+                    nri::PipelineLayoutDesc description{};
+                    description.rootRegisterSpace = static_cast<std::uint32_t>(sets.size());
+                    description.rootConstants = &parameters;
+                    description.rootConstantNum = layout_plan.parameter_bytes != 0;
+                    description.descriptorSets = sets.data();
+                    description.descriptorSetNum = static_cast<std::uint32_t>(sets.size());
+                    description.shaderStages = nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER |
+                                               nri::StageBits::COMPUTE_SHADER;
+                    description.flags = nri::PipelineLayoutBits::IGNORE_GLOBAL_SPIRV_OFFSETS;
+                    const auto created = api.CreatePipelineLayout(device, description, result.layout_);
+                    if (created != nri::Result::SUCCESS)
                     {
                         return cxx::unexpected(nativeError(created));
                     }
-                    result.layout_ = layout.handle(); // CompiledGraph is the aggregate lifetime owner.
                 }
                 // The Graph owns one compatible physical descriptor/parameter layout. Compare complete
                 // stage bytes + ABI; draw count and clear color are not Pipeline identity.
@@ -878,12 +883,14 @@ namespace lux::render::detail
                 }
                 else
                 {
-                    auto pipeline = compute ? compileCompute(device, limits, result.layout_, identity.shader)
+                    auto pipeline = compute ? compileCompute(device, api, *result.layout_, identity.shader)
                                             : compileGraphics(
                                                   device,
-                                                  physical,
+                                                  api,
                                                   enabled,
-                                                  result.layout_,
+                                                  formats,
+                                                  vertex_limits,
+                                                  *result.layout_,
                                                   identity.shader,
                                                   identity.graphics,
                                                   identity.color,
@@ -903,7 +910,7 @@ namespace lux::render::detail
                 if (!writes_image &&
                     std::get<GraphBufferDesc>(result.resources_[compiled.destination].description).size % 4 != 0)
                 {
-                    return cxx::unexpected(RenderError{kUnsupported});
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
                 compiled.recipe = writes_image ? ERecipe::CLEAR_IMAGE : ERecipe::FILL_BUFFER;
             }
@@ -911,7 +918,7 @@ namespace lux::render::detail
             {
                 if (writes_image)
                 {
-                    return cxx::unexpected(RenderError{kUnsupported});
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
                 const auto& source = result.resources_[compiled.source];
                 auto& destination = result.resources_[compiled.destination];
@@ -920,7 +927,7 @@ namespace lux::render::detail
                 {
                     if (size != std::uint64_t(image->width) * image->height * imageFormat(image->format).bytes)
                     {
-                        return cxx::unexpected(RenderError{kInvalidArgument});
+                        return cxx::unexpected(RenderError{kDeviceArgument});
                     }
                     compiled.recipe = ERecipe::COPY_IMAGE_BUFFER;
                 }
@@ -928,7 +935,7 @@ namespace lux::render::detail
                 {
                     if (size != std::get<GraphBufferDesc>(source.description).size)
                     {
-                        return cxx::unexpected(RenderError{kInvalidArgument});
+                        return cxx::unexpected(RenderError{kDeviceArgument});
                     }
                     compiled.recipe = ERecipe::COPY_BUFFER;
                 }
@@ -941,12 +948,16 @@ namespace lux::render::detail
             result.passes_.push_back(std::move(compiled));
         }
         // Lower the fixed legal execution order to static record decisions. No Pass reordering.
-        VkPipeline bound = VK_NULL_HANDLE;
+        nri::Pipeline* bound = nullptr;
         for (std::size_t i = 0; i < result.passes_.size(); ++i)
         {
             auto& current = result.passes_[i];
             if (current.recipe != ERecipe::DRAW)
             {
+                if (current.recipe == ERecipe::DISPATCH)
+                {
+                    bound = nullptr; // NRI tracks the currently selected pipeline across bind points.
+                }
                 continue;
             }
             current.bind_pipeline = bound != current.pipeline;
@@ -958,9 +969,9 @@ namespace lux::render::detail
             auto& previous = result.passes_[i - 1];
             const bool same_attachment = previous.recipe == ERecipe::DRAW && previous.color == current.color &&
                                          previous.depth == kGraphInvalidIndex && current.depth == kGraphInvalidIndex;
-            const bool preserves_content = current.load == VK_ATTACHMENT_LOAD_OP_LOAD;
+            const bool preserves_content = current.load == nri::LoadOp::LOAD;
             const bool attachment_only = current.images.size() == 1 && current.buffers.empty() &&
-                                         current.images[0].native.oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                                         current.images[0].native.before.layout == nri::Layout::COLOR_ATTACHMENT;
             // Sampled inputs are immutable, disjoint Global images, with no read/read barriers.
             // Rasterization-order color attachment access preserves LOAD within one scope.
             const bool can_merge = same_attachment && preserves_content && attachment_only;
@@ -978,32 +989,29 @@ namespace lux::render::detail
             if (used[i] && resource.origin == EGraphOrigin::IMPORTED && !resource.storage &&
                 resource.context_data == kGraphInvalidIndex)
             {
-                return cxx::unexpected(RenderError{kUnsupported});
+                return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
-            if (used[i] && resource.image_usage)
+            if (used[i] && std::holds_alternative<GraphImageDesc>(resource.description))
             {
                 const auto format = imageFormat(std::get<GraphImageDesc>(resource.description).format).native;
-                const auto properties = physical.formatProperties(format);
-                VkFormatFeatureFlags required = 0;
-                if (resource.image_usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+                auto required = nri::FormatSupportBits::UNSUPPORTED;
+                if ((resource.image_usage & nri::TextureUsageBits::COLOR_ATTACHMENT) != 0)
                 {
-                    required |= VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT;
+                    required |= nri::FormatSupportBits::COLOR_ATTACHMENT;
                 }
-                if (resource.image_usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+                if ((resource.image_usage & nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT) != 0)
                 {
-                    required |= VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
+                    required |= nri::FormatSupportBits::DEPTH_STENCIL_ATTACHMENT;
                 }
-                if (resource.image_usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+                if ((resource.image_usage & nri::TextureUsageBits::SHADER_RESOURCE) != 0)
                 {
-                    required |= VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
+                    required |= nri::FormatSupportBits::TEXTURE;
                 }
-                if (resource.image_usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+                const auto supported = formats[static_cast<std::size_t>(format)];
+                if (supported == nri::FormatSupportBits::UNSUPPORTED ||
+                    (supported & required) != static_cast<std::uint16_t>(required))
                 {
-                    required |= VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
-                }
-                if ((properties.optimalTilingFeatures & required) != required)
-                {
-                    return cxx::unexpected(RenderError{kUnsupported});
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
             }
         }

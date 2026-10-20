@@ -4,13 +4,13 @@
 
 namespace lux::render::detail
 {
-    inline void releaseAfterGpu(DeviceSession& session, gapi::vk::VmaBuffer& buffer) noexcept
+    inline void releaseAfterGpu(DeviceSession& session, nri::Buffer*& buffer) noexcept
     {
         if (!buffer)
         {
             return;
         }
-        session.deferRelease([value = std::move(buffer), allocator = session.allocator().native()]() mutable noexcept
-                             { value.release(allocator); });
+        session.deferRelease([value = std::exchange(buffer, nullptr), destroy = session.api().DestroyBuffer]() noexcept
+                             { destroy(value); });
     }
 } // namespace lux::render::detail

@@ -119,6 +119,42 @@ namespace lux::render
         return ids;
     }
 
+    StorageId ResourceRegistry::reserve(StorageSet& set, StorageTypeId type) noexcept
+    {
+        return entries_.emplace(Entry{&set, 0, type});
+    }
+
+    RenderResult<StorageInstance> ResourceRegistry::create(StorageId id, const void* configuration) noexcept
+    {
+        const auto type = entries_.find(id)->type;
+        return types_.find(type)->factory.create(native_, id, configuration);
+    }
+
+    void ResourceRegistry::publish(StorageId id, std::size_t position, void* instance) noexcept
+    {
+        // A factory may have reentered another Set and grown the index. Reacquire after it returns.
+        auto& entry = *entries_.find(id);
+        entry.position = position;
+        entry.native = instance;
+        ++creations_;
+    }
+
+    void ResourceRegistry::relocate(StorageId id, std::size_t position) noexcept
+    {
+        entries_.find(id)->position = position;
+    }
+
+    void ResourceRegistry::revoke(StorageId id) noexcept
+    {
+        entries_.erase(id);
+    }
+
+    std::optional<std::size_t> ResourceRegistry::position(StorageId id, const StorageSet& set) const noexcept
+    {
+        const auto* entry = entries_.find(id);
+        return entry && entry->native && entry->storage_set == &set ? std::optional{entry->position} : std::nullopt;
+    }
+
     void* ResourceRegistry::native(StorageId id) const noexcept
     {
         const auto* entry = entries_.find(id);

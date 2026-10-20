@@ -5,48 +5,25 @@
 
 namespace lux::render::detail
 {
-    class StagingArena;
+    class DeviceSession;
 
-    // A disjoint mapped range borrowed by CPU preparation until commit or cancellation.
-    // Accepted ranges are reclaimed by their page's existing Queue completion nodes.
-    class StagingRange final
+    // A range value, not an Arena controller. The owning upload window returns or submits it once.
+    struct StagingRange final
     {
-    public:
-        ~StagingRange() noexcept;
-        StagingRange(StagingRange&&) noexcept;
-        StagingRange& operator=(StagingRange&&) = delete;
-        StagingRange(const StagingRange&) = delete;
-        StagingRange& operator=(const StagingRange&) = delete;
-
-        [[nodiscard]] VkBuffer buffer() const noexcept;
-
-        [[nodiscard]] VkDeviceSize offset() const noexcept
-        {
-            return offset_;
-        }
-
-        [[nodiscard]] std::span<std::byte> bytes() const noexcept;
-        [[nodiscard]] VkResult flush() const noexcept;
-        void commit(SubmissionQueue&) noexcept;
-
-    private:
-        friend class StagingArena;
-        StagingRange(StagingArena&, std::size_t, VkDeviceSize, std::size_t) noexcept;
-        StagingArena* arena_;
-        std::size_t page_;
-        VkDeviceSize offset_;
-        std::size_t bytes_;
+        std::size_t page = SIZE_MAX;
+        std::uint64_t offset = 0;
+        nri::Buffer* buffer = nullptr;
+        std::span<std::byte> bytes;
     };
 
     class StagingArena final
     {
     public:
         [[nodiscard]] static RenderResult<std::unique_ptr<StagingArena>> create(
-            VulkanAllocator& allocator,
+            DeviceSession& session,
             std::size_t page_bytes,
             std::size_t page_count,
-            std::span<const std::uint32_t> families,
-            VkDeviceSize alignment
+            std::uint64_t alignment
         ) noexcept;
 
         ~StagingArena() noexcept;
@@ -61,8 +38,11 @@ namespace lux::render::detail
         ) noexcept;
         [[nodiscard]] bool canAcquire(std::size_t unit, bool reserve_frame_page = false) const noexcept;
 
+        [[nodiscard]] RenderResult<void> flush(const StagingRange&) noexcept;
+        void markSubmitted(StagingRange&, SubmissionQueue&) noexcept;
+        void cancel(StagingRange&) noexcept;
+
     private:
-        friend class StagingRange;
         struct Page;
 
         struct Completion final
@@ -76,21 +56,22 @@ namespace lux::render::detail
 
         struct Page final
         {
-            gapi::vk::VmaBuffer buffer;
+            nri::Buffer* buffer = nullptr;
             std::byte* mapped = nullptr;
-            VkDeviceSize head = 0;
+            std::uint64_t head = 0;
             std::size_t cpu_ranges = 0;
             std::array<Completion, 3> completions;
         };
 
-        StagingArena(VmaAllocator allocator, std::size_t count, VkDeviceSize alignment) noexcept;
+        StagingArena(DeviceSession&, std::size_t bytes, std::size_t count, std::uint64_t alignment) noexcept;
         static void completed(void*, RenderResult<void>) noexcept;
         void release(std::size_t) noexcept;
         void reclaim(Page&) noexcept;
         void commit(std::size_t, SubmissionQueue&) noexcept;
 
-        VmaAllocator allocator_;
-        VkDeviceSize alignment_;
+        DeviceSession& session_;
+        std::uint64_t page_bytes_;
+        std::uint64_t alignment_;
         std::vector<Page> pages_;
     };
 } // namespace lux::render::detail

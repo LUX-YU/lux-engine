@@ -72,7 +72,19 @@ namespace mesh_sample
             const RequestId request{next++};
             ipc::IpcMessage message;
             message.emplace<typename C::Request>(std::move(input));
-            check(bool(client.trySend(commandTag(id), request.value, message)));
+            const auto sent = client.trySend(commandTag(id), request.value, message);
+            if (!sent)
+            {
+                std::fprintf(
+                    stderr,
+                    "Command %.*s request=%llu send failed code=%u\n",
+                    int(C::name.size()),
+                    C::name.data(),
+                    static_cast<unsigned long long>(request.value),
+                    static_cast<unsigned>(sent.error())
+                );
+            }
+            check(bool(sent));
             const auto deadline = Clock::now() + 20s;
             for (;;)
             {

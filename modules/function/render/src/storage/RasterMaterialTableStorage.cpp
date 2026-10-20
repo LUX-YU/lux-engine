@@ -4,6 +4,7 @@
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/CompiledGraph.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
@@ -22,7 +23,7 @@ namespace lux::render::detail
 
         struct GpuSlice final
         {
-            gapi::vk::VmaBuffer parameters;
+            nri::Buffer* parameters = nullptr;
             std::uint32_t capacity = 0;
             DirtyRanges dirty;
             std::uint32_t position = UINT32_MAX;
@@ -189,7 +190,11 @@ namespace lux::render::detail
         {
             if (entry)
             {
-                StorageSubscription::publish(entry->bindings, frame, {buffer.handle(), 0, buffer.size()});
+                StorageSubscription::publish(
+                    entry->bindings,
+                    frame,
+                    {buffer, 0, std::uint64_t(table.gpu[frame].capacity) * table.stride}
+                );
             }
         }
     }
@@ -226,10 +231,10 @@ namespace lux::render::detail
         auto& table = *selected;
         if (table.updating)
         {
-            co_return cxx::unexpected(RenderError{kBusy});
+            co_return cxx::unexpected(RenderError{kDeviceBusy});
         }
         table.updating = true;
-        gapi::vk::VmaBuffer candidate;
+        nri::Buffer* candidate = nullptr;
         cxx::scope_exit rollback(
             [&]() noexcept
             {
@@ -263,8 +268,7 @@ namespace lux::render::detail
         const auto capacity =
             growing ? std::max<std::uint64_t>(16, std::bit_ceil(std::uint64_t(slot) + 1)) : current_capacity;
         const auto total_bytes = capacity * table.stride;
-        if (total_bytes > session_.physicalDevice().properties().properties.limits.maxStorageBufferRange ||
-            table.entries.size() >= UINT32_MAX)
+        if (total_bytes > session_.description().memory.storageBufferMaxRange || table.entries.size() >= UINT32_MAX)
         {
             co_return cxx::unexpected(RenderError{kStorageCapacity});
         }
@@ -286,29 +290,25 @@ namespace lux::render::detail
             std::memcpy(values.data() + table.texture_offsets[t], &reference, sizeof(reference));
         }
         std::uint32_t frame_slot = 0;
-        while (!session_.uploads().tryBeginFrameWrite(frame_slot))
+        while (!session_.tryBeginFrameWrite(frame_slot))
         {
             if (auto ready = co_await session_.uploads().whenFrameWritable(values.size()); !ready)
             {
                 co_return cxx::unexpected(ready.error());
             }
         }
-        cxx::scope_exit finish_frame([&]() noexcept { session_.uploads().finishFrameWrite(frame_slot); });
+        cxx::scope_exit finish_frame([&]() noexcept { session_.finishFrameWrite(frame_slot); });
         auto& slice = table.gpu[frame_slot];
         const bool grow_gpu = slice.capacity < capacity;
         if (grow_gpu)
         {
-            auto allocated = session_.allocator().createBuffer(
-                total_bytes,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                    VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                EMemoryAccess::DEVICE
-            );
-            if (!allocated)
+            const nri::BufferDesc description{total_bytes, 4, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE};
+            const auto result =
+                session_.api().CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, candidate);
+            if (result != nri::Result::SUCCESS)
             {
-                co_return cxx::unexpected(allocated.error());
+                co_return cxx::unexpected(nativeError(result));
             }
-            candidate = std::move(*allocated);
         }
         auto& target = grow_gpu ? candidate : slice.parameters;
         cxx::scope_exit restore(
@@ -324,13 +324,13 @@ namespace lux::render::detail
         std::size_t write_count = 0;
         if (grow_gpu && !table.records.empty())
         {
-            writes[write_count++] = {&target, 0, table.records};
+            writes[write_count++] = {target, 0, table.records};
         }
-        writes[write_count++] = {&target, std::uint64_t(slot) * table.stride, values};
-        const BufferFill fill{&target, 0, target.size(), 0};
+        writes[write_count++] = {target, std::uint64_t(slot) * table.stride, values};
+        const BufferZero fill{target, 0, total_bytes};
         auto uploaded = co_await session_.uploads().writeBuffers(
             std::span(writes).first(write_count),
-            grow_gpu ? std::span(&fill, 1) : std::span<const BufferFill>{},
+            grow_gpu ? std::span(&fill, 1) : std::span<const BufferZero>{},
             frame_slot
         );
         if (!uploaded)
@@ -352,7 +352,7 @@ namespace lux::render::detail
         if (grow_gpu)
         {
             releaseAfterGpu(session_, slice.parameters);
-            slice.parameters = std::move(candidate);
+            slice.parameters = std::exchange(candidate, nullptr);
             slice.capacity = static_cast<std::uint32_t>(capacity);
             slice.dirty.clear(); // The actual growth copy covered the complete CPU table plus this record.
             slice.partial_record = UINT32_MAX;
@@ -435,7 +435,7 @@ namespace lux::render::detail
         }
         if (entry->table->updating)
         {
-            return cxx::unexpected(RenderError{kBusy});
+            return cxx::unexpected(RenderError{kDeviceBusy});
         }
         auto& table = *entry->table;
         StorageSubscription::disconnect(entry->bindings);
@@ -489,7 +489,8 @@ namespace lux::render::detail
         for (std::uint32_t frame = 0; frame < output.size(); ++frame)
         {
             const auto& buffer = table.gpu[frame].parameters;
-            output[frame] = {buffer.handle(), 0, buffer ? buffer.size() : table.records.size()};
+            output[frame] =
+                {buffer, 0, buffer ? std::uint64_t(table.gpu[frame].capacity) * table.stride : table.records.size()};
         }
         return {};
     }
@@ -511,18 +512,20 @@ namespace lux::render::detail
             const auto capacity = static_cast<std::uint32_t>(table.records.size() / table.stride);
             if (slice.capacity < capacity)
             {
-                auto buffer = session_.allocator().createBuffer(
+                const nri::BufferDesc description{
                     table.records.size(),
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                        VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                    EMemoryAccess::DEVICE
-                );
-                if (!buffer)
+                    4,
+                    nri::BufferUsageBits::SHADER_RESOURCE_STORAGE
+                };
+                nri::Buffer* buffer = nullptr;
+                const auto result =
+                    session_.api().CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, buffer);
+                if (result != nri::Result::SUCCESS)
                 {
-                    return cxx::unexpected(buffer.error());
+                    return cxx::unexpected(nativeError(result));
                 }
                 releaseAfterGpu(session_, slice.parameters);
-                slice.parameters = std::move(*buffer);
+                slice.parameters = buffer;
                 slice.capacity = capacity;
                 slice.dirty.grow(capacity);
                 slice.dirty.markRange(0, capacity);
@@ -543,7 +546,7 @@ namespace lux::render::detail
                     const auto begin = std::size_t(first) * table.stride + offset;
                     const auto source = std::span<const std::byte>(table.records)
                                             .subspan(begin, std::size_t(count) * table.stride - offset);
-                    auto copied = uploads.prepareBuffer({&slice.parameters, begin, source});
+                    auto copied = uploads.prepareBuffer({slice.parameters, begin, source});
                     if (!copied)
                     {
                         return cxx::unexpected(copied.error());
@@ -605,7 +608,7 @@ namespace lux::render::detail
             }
             if (progress)
             {
-                uploads.afterFrameSubmit(
+                session_.afterFrameSubmit(
                     &slice,
                     [](void* value, RenderResult<void> accepted) noexcept
                     {

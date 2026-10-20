@@ -69,7 +69,6 @@ namespace lux::render
         cxx::SlotMap<RenderEffect, EffectTag> effects;
         cxx::SlotMap<EffectAttachment, AttachmentTag> attachments;
         cxx::SlotKeySparseSet<TargetId, std::monostate> active_targets;
-        std::optional<detail::InstanceContext> instance;
         std::unique_ptr<detail::DeviceSession> device;
         ResponseOutbox response_outbox_;
         stdexec::counting_scope command_scope_;
@@ -101,12 +100,8 @@ namespace lux::render
 
         RenderResult<void> advanceRendering() noexcept;
 
-        static VKAPI_ATTR VkBool32 VKAPI_CALL diagnostic(
-            VkDebugUtilsMessageSeverityFlagBitsEXT severity,
-            VkDebugUtilsMessageTypeFlagsEXT,
-            const VkDebugUtilsMessengerCallbackDataEXT*,
-            void* user
-        ) noexcept;
+        static void NRI_CALL
+        diagnostic(nri::Message severity, const char*, std::uint32_t, const char*, void* user) noexcept;
 
         void createScene(const CreateScene::Request&, CreateScene::Response&) noexcept;
 

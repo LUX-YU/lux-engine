@@ -73,18 +73,22 @@ namespace lux::rdesc
         PARTIALLY_BOUND = 1u << 1,
         VARIABLE_COUNT = 1u << 2, ///< Trailing binding; actual count is derived from the device
     };
+
     [[nodiscard]] constexpr uint8_t operator|(EBindingFlags a, EBindingFlags b) noexcept
     {
         return static_cast<uint8_t>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
     }
+
     [[nodiscard]] constexpr uint8_t operator|(uint8_t a, EBindingFlags b) noexcept
     {
         return static_cast<uint8_t>(a | static_cast<uint8_t>(b));
     }
+
     [[nodiscard]] constexpr uint8_t operator|(EStageBits a, EStageBits b) noexcept
     {
         return static_cast<uint8_t>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
     }
+
     [[nodiscard]] constexpr uint8_t operator|(uint8_t a, EStageBits b) noexcept
     {
         return static_cast<uint8_t>(a | static_cast<uint8_t>(b));
@@ -147,10 +151,19 @@ namespace lux::rdesc
         //    the shape table (at the end of EngineSetShapes.hpp).
         {"uTex",
          EBindFrequency::BINDLESS,
-         EDescriptorType::COMBINED_IMAGE_SAMPLER,
+         EDescriptorType::SAMPLED_IMAGE,
          /*count*/ 0,
          /*set*/ 2,
          /*binding*/ 0,
+         static_cast<uint8_t>(EStageBits::FRAGMENT),
+         EBindingFlags::PARTIALLY_BOUND | EBindingFlags::UPDATE_AFTER_BIND,
+         /*engine_set*/ true},
+        {"uTexSamplers",
+         EBindFrequency::BINDLESS,
+         EDescriptorType::SAMPLER,
+         /*count*/ 0,
+         /*set*/ 2,
+         /*binding*/ 2,
          static_cast<uint8_t>(EStageBits::FRAGMENT),
          EBindingFlags::PARTIALLY_BOUND | EBindingFlags::UPDATE_AFTER_BIND,
          /*engine_set*/ true},
@@ -469,8 +482,12 @@ namespace lux::rdesc
     [[nodiscard]] constexpr const LogicalResourceDesc* findLogicalResource(std::string_view name) noexcept
     {
         for (const auto& e : kLayoutContractV0)
+        {
             if (name == e.name)
+            {
                 return &e;
+            }
+        }
         return nullptr;
     }
 
@@ -482,8 +499,12 @@ namespace lux::rdesc
     [[nodiscard]] constexpr std::uint32_t logicalResourceIndex(std::string_view name) noexcept
     {
         for (std::size_t i = 0; i < kLayoutContractV0.size(); ++i)
+        {
             if (name == kLayoutContractV0[i].name)
+            {
                 return static_cast<std::uint32_t>(i);
+            }
+        }
         return kInvalidLogicalResourceIndex;
     }
 
@@ -491,7 +512,9 @@ namespace lux::rdesc
     [[nodiscard]] constexpr const LogicalResourceDesc* logicalResourceAt(std::uint32_t index) noexcept
     {
         if (index >= kLayoutContractV0.size())
+        {
             return nullptr;
+        }
         return &kLayoutContractV0[index];
     }
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/execution/ExecutionContext.hpp>
+#include <lux/engine/render/features/FeatureFrameContribution.hpp>
 #include <lux/engine/render/features/RasterMeshParameters.hpp>
 #include <lux/engine/render/storage/RasterMeshInstanceStorage.hpp>
 
@@ -18,25 +18,24 @@ namespace lux::render::detail
     {
     public:
         [[nodiscard]] static RenderResult<FeatureFrameWork>
-        create(DeviceSession&, ExecutionContext&, GraphResourceId, const void*) noexcept;
+        create(DeviceSession&, std::span<const StorageId>, const void*) noexcept;
         ~RasterMeshDraws() noexcept;
 
     private:
-        RasterMeshDraws(DeviceSession&, ExecutionContext&, GraphResourceId, MeshInstanceDrawGroup) noexcept;
-        [[nodiscard]] RenderResult<FeatureFrameWork::EPreparation> prepare(std::uint32_t, UploadContext&) noexcept;
-        void record(VkCommandBuffer, std::uint32_t) noexcept;
+        RasterMeshDraws(DeviceSession&, MeshInstanceDrawGroup) noexcept;
+        [[nodiscard]] RenderResult<FeatureFrameWork::Preparation> prepare(std::uint32_t, UploadContext&) noexcept;
+        void record(nri::CommandBuffer&, std::uint32_t) noexcept;
         void update(MeshInstanceId, const MeshInstanceDescription*) noexcept;
         [[nodiscard]] bool selected(const MeshInstanceDescription&) const noexcept;
         DeviceSession& session_;
-        ExecutionContext& context_;
-        GraphResourceId resource_;
         StorageResource sections_;
         MeshInstanceDrawGroup selection_;
         RasterMeshInstanceStorage::Observer observer_;
 
         struct GpuSlice final
         {
-            gapi::vk::VmaBuffer buffer;
+            nri::Buffer* buffer = nullptr;
+            bool binding_changed = false;
             std::uint64_t uploaded_revision = 0, pending_revision = 0;
             std::size_t uploaded_bytes = 0, pending_bytes = 0;
         };

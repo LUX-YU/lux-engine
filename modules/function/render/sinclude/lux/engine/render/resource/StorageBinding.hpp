@@ -2,8 +2,9 @@
 
 #include <lux/engine/render/visibility.h>
 
+#include <NRI.h>
 #include <lux/engine/description/ShaderBlock.hpp>
-#include <lux/engine/render/device/Device.hpp>
+#include <lux/engine/render/core/Error.hpp>
 #include <utility>
 
 namespace lux::render::detail
@@ -15,8 +16,8 @@ namespace lux::render::detail
     // pending upload, descriptor placement, or mutable parameter envelope lives in this value.
     struct StorageResource final
     {
-        VkBuffer buffer = VK_NULL_HANDLE;
-        VkDeviceSize offset = 0, size = 0;
+        nri::Buffer* buffer = nullptr;
+        std::uint64_t offset = 0, size = 0;
         std::span<const std::byte> parameters;
         const rdesc::ShaderBlock* parameter_layout = nullptr;
     };

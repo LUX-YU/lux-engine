@@ -1,9 +1,10 @@
 #pragma once
 
+#include <array>
 #include <lux/engine/render/graph/ShaderInterface.hpp>
 #include <map>
 
-#include <lux/engine/render/device/Device.hpp>
+#include <NRI.h>
 #include <lux/engine/render/graph/Analysis.hpp>
 #include <lux/engine/render/graph/Program.hpp>
 
@@ -45,13 +46,13 @@ namespace lux::render::detail
         std::uint32_t private_set = kGraphInvalidIndex;
         rdesc::ShaderBlock context_parameters;
         std::uint32_t parameter_bytes = 0;
-        VkShaderStageFlags parameter_stages = 0;
+        nri::StageBits parameter_stages = nri::StageBits::NONE;
     };
 
-    [[nodiscard]] const ShaderBinding& sampledImageTableBinding() noexcept;
+    [[nodiscard]] const std::array<ShaderBinding, 2>& sampledImageTableBindings() noexcept;
 
     [[nodiscard]] RenderResult<LayoutPlan> planLayouts(
-        const VkPhysicalDeviceLimits& limits,
+        const nri::DeviceDesc& limits,
         const RenderGraphDefinition& graph,
         const GraphAnalysis& analysis,
         std::span<const PassProgram* const> programs,

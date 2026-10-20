@@ -71,7 +71,7 @@ namespace lux::render
             }
             const auto& factory = types_.find(entry->type)->factory;
             const bool is_wrong_interface =
-                factory.descriptor->type != T::description.type || factory.ops_type != cppType<typename T::Ops>();
+                factory.descriptor->type != T::descriptor.type || factory.ops_type != cppType<typename T::Ops>();
             if (is_wrong_interface)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
@@ -106,9 +106,15 @@ namespace lux::render
             return creations_;
         }
 
-    private:
-        friend class StorageSet;
+        // StorageSet owns instances; this index alone mutates their identities and borrowed locations.
+        [[nodiscard]] StorageId reserve(StorageSet&, StorageTypeId) noexcept;
+        [[nodiscard]] RenderResult<StorageInstance> create(StorageId, const void* configuration) noexcept;
+        void publish(StorageId, std::size_t position, void* instance) noexcept;
+        void relocate(StorageId, std::size_t position) noexcept;
+        void revoke(StorageId) noexcept;
+        [[nodiscard]] std::optional<std::size_t> position(StorageId, const StorageSet&) const noexcept;
 
+    private:
         struct Type final
         {
             StorageTypeId id;

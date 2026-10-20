@@ -2,15 +2,15 @@
 
 #include <lux/engine/render/graph/ShaderInterface.hpp>
 
-#include <lux/engine/gapi/vk/PhysicalDevice.hpp>
-#include <lux/engine/render/device/Device.hpp>
+#include <NRI.h>
+#include <array>
 #include <lux/engine/render/graph/Program.hpp>
 
 namespace lux::render::detail
 {
     struct VertexFormat final
     {
-        VkFormat native = VK_FORMAT_UNDEFINED;
+        nri::Format native = nri::Format::UNKNOWN;
         rdesc::EDataScalar scalar = rdesc::EDataScalar::FLOAT;
         std::uint32_t components = 0;
 
@@ -21,25 +21,24 @@ namespace lux::render::detail
     };
 
     [[nodiscard]] VertexFormat vertexFormat(rdesc::ETextureFormat) noexcept;
-    [[nodiscard]] RenderResult<VkDescriptorSetLayout> createDescriptorLayout(
-        VkDevice,
+    struct EnabledDeviceFeatures;
+    [[nodiscard]] nri::StageBits shaderStages(std::uint32_t stages) noexcept;
+    [[nodiscard]] std::vector<nri::DescriptorRangeDesc> descriptorRanges(
         std::span<const ShaderBinding>,
         std::uint32_t runtime_count
     ) noexcept;
-    [[nodiscard]] RenderResult<VkPipeline> compileCompute(
-        VkDevice device,
-        const VkPhysicalDeviceLimits& limits,
-        VkPipelineLayout layout,
-        const rdesc::SpirvArtifact& shader
-    ) noexcept;
-    [[nodiscard]] RenderResult<VkPipeline> compileGraphics(
-        VkDevice device,
-        const gapi::vk::PhysicalDevice& physical,
-        const EnabledDeviceFeatures& enabled,
-        VkPipelineLayout layout,
-        const rdesc::SpirvArtifact& shader,
-        const GraphicsState& graphics,
-        VkFormat color,
-        VkFormat depth
+    [[nodiscard]] RenderResult<nri::Pipeline*>
+    compileCompute(nri::Device&, const nri::CoreInterface&, nri::PipelineLayout&, const rdesc::SpirvArtifact&) noexcept;
+    [[nodiscard]] RenderResult<nri::Pipeline*> compileGraphics(
+        nri::Device&,
+        const nri::CoreInterface&,
+        const EnabledDeviceFeatures&,
+        std::span<const nri::FormatSupportBits>,
+        std::array<std::uint32_t, 2> vertex_limits,
+        nri::PipelineLayout&,
+        const rdesc::SpirvArtifact&,
+        const GraphicsState&,
+        nri::Format color,
+        nri::Format depth
     ) noexcept;
 } // namespace lux::render::detail

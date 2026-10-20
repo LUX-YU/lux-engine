@@ -13,7 +13,6 @@ namespace lux::render::detail
 {
     class OffscreenTarget;
     class UploadContext;
-    class CommandBatch;
 
     class LUX_RENDER_PUBLIC ExecutionContext final
     {
@@ -22,7 +21,7 @@ namespace lux::render::detail
         ExecutionContext(const ExecutionContext&) = delete;
         ExecutionContext& operator=(const ExecutionContext&) = delete;
 
-        [[nodiscard]] VkDevice device() const noexcept
+        [[nodiscard]] nri::Device* device() const noexcept
         {
             return code_->device();
         }
@@ -59,8 +58,6 @@ namespace lux::render::detail
 
         // DeviceSession selects the reusable slot and owns the recording/submission segment.
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, UploadContext*) noexcept;
-        void recordPreparation(CommandBatch&, std::uint32_t slot) noexcept;
-        void record(CommandBatch&, std::uint32_t slot) noexcept;
 
         [[nodiscard]] const ExecutionProgress& progress() const noexcept
         {
@@ -83,21 +80,24 @@ namespace lux::render::detail
         // Trusted compiled resource index and Session slot, not a business resource lookup.
         void setResource(std::uint32_t resource, std::uint32_t slot, const StorageResource&) noexcept;
         [[nodiscard]] StorageId storageId(std::uint32_t resource) const noexcept;
-        [[nodiscard]] VkBuffer nativeBuffer(std::uint32_t resource, std::uint32_t slot) const noexcept;
+        [[nodiscard]] nri::Buffer* nativeBuffer(std::uint32_t resource, std::uint32_t slot) const noexcept;
 
     private:
         friend class DeviceSession;
+        friend void recordGraph(ExecutionContext&, nri::CommandBuffer&, std::uint32_t) noexcept;
+        friend void recordGraphPreparation(ExecutionContext&, nri::CommandBuffer&, std::uint32_t) noexcept;
         void withdraw() noexcept;
         void submitted(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareDescriptors() noexcept;
-        void rebind(std::uint32_t slot) noexcept;
+        [[nodiscard]] RenderResult<void> rebind(std::uint32_t slot) noexcept;
 
         struct Binding final
         {
-            gapi::vk::VmaImage* image = nullptr;
-            VkImageView view{};
-            VkBuffer buffer = VK_NULL_HANDLE;
-            VkDeviceSize buffer_offset = 0, buffer_size = 0;
+            nri::Texture* image = nullptr;
+            nri::Descriptor* view = nullptr;
+            nri::Descriptor* buffer_view = nullptr;
+            nri::Buffer* buffer = nullptr;
+            std::uint64_t buffer_offset = 0, buffer_size = 0;
             std::span<const std::byte> parameters;
             const rdesc::ShaderBlock* parameter_layout = nullptr;
             bool dirty = false;
@@ -106,10 +106,12 @@ namespace lux::render::detail
         struct Pass final
         {
             const CompiledPass* recipe;
-            std::vector<VkImageMemoryBarrier2> images;
-            std::vector<VkBufferMemoryBarrier2> buffers;
-            std::vector<VkDescriptorSet> descriptors;
-            VkDescriptorSet private_descriptors = VK_NULL_HANDLE;
+            std::vector<nri::TextureBarrierDesc> images;
+            std::vector<nri::BufferBarrierDesc> buffers;
+            std::vector<nri::DescriptorSet*> descriptors;
+            nri::DescriptorSet* private_descriptors = nullptr;
+            nri::Buffer* copy_scratch = nullptr; // Only for packed image copies whose native row alignment differs.
+            std::uint32_t copy_row_pitch = 0, copy_slice_pitch = 0;
         };
 
         struct ParameterCopy final

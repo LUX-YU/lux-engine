@@ -1,17 +1,36 @@
 #pragma once
 
+#include <NRI.h>
+#include <array>
+#include <functional>
+#include <lux/cxx/core/scope_exit.hpp>
+#include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/visibility.h>
-
-#include <lux/engine/render/device/Device.hpp>
 #include <memory>
 #include <span>
 #include <stdexec/execution.hpp>
 
 namespace lux::render::detail
 {
-    class SubmissionQueue;
     class DeviceSession;
+    class SubmissionQueue;
     using SubmissionCallbackFn = void (*)(void*, RenderResult<void>) noexcept;
+
+    enum class EQueueRole : std::uint8_t
+    {
+        GRAPHICS,
+        COMPUTE,
+        TRANSFER
+    };
+
+    // Cold physical queue facts needed by uploads and timestamp interpretation.
+    struct QueueProperties final
+    {
+        nri::QueueType type = nri::QueueType::GRAPHICS;
+        std::uint32_t family = 0;
+        std::array<std::uint32_t, 3> image_transfer_granularity{1, 1, 1};
+        std::uint32_t timestamp_bits = 0;
+    };
 
     // Address-stable, non-owning completion node. Unlinked before invoking user code.
     class LUX_RENDER_PUBLIC SubmissionCallback final
@@ -37,116 +56,85 @@ namespace lux::render::detail
         bool armed_ = false;
     };
 
-    // Begin, record and submit run in one synchronous Owner execution segment.
-    class LUX_RENDER_PUBLIC CommandBatch final
-    {
-    public:
-        ~CommandBatch() noexcept;
-        CommandBatch(CommandBatch&& other) noexcept;
-        CommandBatch& operator=(CommandBatch&&) = delete;
-        CommandBatch(const CommandBatch&) = delete;
-        CommandBatch& operator=(const CommandBatch&) = delete;
-
-        [[nodiscard]] VkCommandBuffer native() const noexcept
-        {
-            return command_;
-        }
-
-        [[nodiscard]] const SubmissionQueue& owner() const noexcept
-        {
-            return *owner_;
-        }
-
-        [[nodiscard]] std::uint32_t slot() const noexcept
-        {
-            return slot_;
-        }
-
-        [[nodiscard]] std::uint64_t recordingId() const noexcept
-        {
-            return recording_id_;
-        }
-
-        [[nodiscard]] RenderResult<void> submit() && noexcept;
-
-        [[nodiscard]] RenderResult<void> submit(
-            SubmissionCallback& completion,
-            SubmissionCallbackFn function,
-            void* user
-        ) && noexcept;
-
-        [[nodiscard]] RenderResult<void> submitAfter(
-            const SubmissionQueue& source,
-            VkPipelineStageFlags2 stages
-        ) && noexcept;
-
-        [[nodiscard]] RenderResult<void> submit(VkSemaphore acquired, VkSemaphore present) && noexcept;
-
-    private:
-        friend class SubmissionQueue;
-        CommandBatch(SubmissionQueue&, VkCommandBuffer, std::uint32_t slot, std::uint64_t recording) noexcept;
-        SubmissionQueue* owner_;
-        VkCommandBuffer command_;
-        std::uint32_t slot_;
-        std::uint64_t recording_id_;
-    };
-
-    // One physical queue and its slots. Submission identity stays in Native progress/retirement state.
     class LUX_RENDER_PUBLIC SubmissionQueue final
     {
     public:
         class CompletionSender;
 
         [[nodiscard]] static RenderResult<std::unique_ptr<SubmissionQueue>> create(
-            VkDevice device,
-            NativeQueue native_queue,
-            bool timeline_enabled,
+            DeviceSession&,
+            nri::Queue&,
+            QueueProperties,
             std::uint32_t capacity
         ) noexcept;
         ~SubmissionQueue() noexcept;
         SubmissionQueue(const SubmissionQueue&) = delete;
         SubmissionQueue& operator=(const SubmissionQueue&) = delete;
 
-        [[nodiscard]] RenderResult<CommandBatch> begin() noexcept;
+        // The queue keeps recording and submission in one non-suspending device-thread segment.
+        // Record must balance its rendering scopes even when it returns a recoverable error.
+        template <class Record>
+        [[nodiscard]] RenderResult<void> recordAndSubmit(
+            Record&& record,
+            std::span<const nri::FenceSubmitDesc> waits = {}
+        ) noexcept
+        {
+            static_assert(std::is_nothrow_invocable_r_v<
+                          RenderResult<void>,
+                          Record&,
+                          nri::CommandBuffer&,
+                          std::uint32_t>);
+            std::uint32_t slot = 0;
+            auto commands = begin(slot);
+            if (!commands)
+            {
+                return cxx::unexpected(commands.error());
+            }
+            cxx::scope_exit release([this]() noexcept { cancel(); });
+            auto recorded = std::invoke(record, **commands, slot);
+            auto ended = finishRecording();
+            if (!ended)
+            {
+                return ended;
+            }
+            if (!recorded)
+            {
+                return recorded;
+            }
+            return submit(waits);
+        }
+
         [[nodiscard]] RenderResult<void> poll() noexcept;
         [[nodiscard]] RenderResult<bool> waitIdle(std::uint64_t timeout_ns) noexcept;
         [[nodiscard]] CompletionSender whenIdle() noexcept;
         [[nodiscard]] CompletionSender whenAvailable() noexcept;
-        // Only this explicit Owner safe point invokes callbacks, never poll/begin/wait.
+        // Detach the ready prefix before invoking callbacks; a callback may destroy its own node.
         void dispatchCompleted() noexcept;
         [[nodiscard]] std::uint32_t capacity() const noexcept;
-        [[nodiscard]] VkDevice device() const noexcept;
         [[nodiscard]] bool recording() const noexcept;
         [[nodiscard]] bool idle() const noexcept;
         [[nodiscard]] bool deviceLost() const noexcept;
-        [[nodiscard]] NativeQueue nativeQueue() const noexcept;
+        [[nodiscard]] nri::Queue& native() const noexcept;
+        [[nodiscard]] const QueueProperties& properties() const noexcept;
 
     private:
-        friend class CommandBatch;
         friend class DeviceSession;
         friend class StagingArena;
         friend class UploadContext;
-        friend class ExecutionContext;
         friend class SubmissionCallback;
         struct Backing;
         explicit SubmissionQueue(std::unique_ptr<Backing>) noexcept;
-        [[nodiscard]] RenderResult<CommandBatch> beginAfterPoll() noexcept;
-        [[nodiscard]] RenderResult<void> submit(
-            std::span<const VkSemaphoreSubmitInfo> waits = {},
-            VkSemaphore acquired = {},
-            VkSemaphore present = {},
-            SubmissionCallback* completion = nullptr,
-            SubmissionCallbackFn function = nullptr,
-            void* user = nullptr
-        ) noexcept;
-        [[nodiscard]] RenderResult<VkSemaphoreSubmitInfo> dependency(VkPipelineStageFlags2 stages) const noexcept;
+        [[nodiscard]] RenderResult<nri::CommandBuffer*> begin(std::uint32_t& slot) noexcept;
+        [[nodiscard]] RenderResult<void> finishRecording() noexcept;
+        [[nodiscard]] RenderResult<void> submit(std::span<const nri::FenceSubmitDesc>) noexcept;
+        [[nodiscard]] RenderResult<nri::FenceSubmitDesc> dependency(nri::StageBits) const noexcept;
         [[nodiscard]] RenderResult<bool> wait(std::uint64_t serial, std::uint64_t timeout_ns) noexcept;
         [[nodiscard]] std::uint64_t completed() const noexcept;
         [[nodiscard]] std::uint64_t submitted() const noexcept;
         void arm(std::uint64_t serial, SubmissionCallback&, SubmissionCallbackFn, void*) noexcept;
         void cancel() noexcept;
         void completePending() noexcept;
-        RenderError failure(VkResult) noexcept;
+        RenderError failure(nri::Result) noexcept;
         std::unique_ptr<Backing> backing_;
     };
 

@@ -19,6 +19,7 @@ namespace lux::render::detail
     enum class EDescriptorKind : std::uint8_t
     {
         SAMPLED_IMAGE_ARRAY,
+        SAMPLER_ARRAY,
         STORAGE_BUFFER
     };
 

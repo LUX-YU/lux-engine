@@ -1,10 +1,12 @@
 #include <algorithm>
-#include <lux/engine/gapi/vk/Descriptor.hpp>
+#include <cstring>
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/DescriptorArray.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/LayoutPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
+#include <numeric>
 #include <utility>
 
 namespace lux::render::detail
@@ -13,19 +15,12 @@ namespace lux::render::detail
     {
         if (!enabled_features_.texture_descriptors)
         {
-            return cxx::unexpected(RenderError{kUnsupported});
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
-        const auto& limits = physical_device_.descriptorIndexingProperties();
-        const auto maximum = std::min(
-            {limits.maxDescriptorSetUpdateAfterBindSamplers,
-             limits.maxDescriptorSetUpdateAfterBindSampledImages,
-             limits.maxPerStageDescriptorUpdateAfterBindSamplers,
-             limits.maxPerStageDescriptorUpdateAfterBindSampledImages,
-             limits.maxUpdateAfterBindDescriptorsInAllPools}
-        );
-        if (!maximum)
+        const auto maximum = bindless_capacity_;
+        if (maximum == 0)
         {
-            return cxx::unexpected(RenderError{kUnsupported});
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
         return maximum;
     }
@@ -41,13 +36,12 @@ namespace lux::render::detail
         {
             return cxx::unexpected(capacity.error());
         }
-        auto result =
-            std::unique_ptr<DescriptorArray>(new DescriptorArray(nativeDevice(), allocator_.native(), *capacity));
+        auto result = std::unique_ptr<DescriptorArray>(new DescriptorArray(*this, *capacity));
         if (auto ready = result->initialize(); !ready)
         {
             return cxx::unexpected(ready.error());
         }
-        if (auto ready = result->initializeDefault(*this); !ready)
+        if (auto ready = result->initializeDefault(); !ready)
         {
             return cxx::unexpected(ready.error());
         }
@@ -57,31 +51,37 @@ namespace lux::render::detail
 
     RenderResult<void> DescriptorArray::initialize() noexcept
     {
-        auto layout = createDescriptorLayout(device_, std::span(&sampledImageTableBinding(), 1), capacity_);
-        if (!layout)
+        const auto ranges = descriptorRanges(sampledImageTableBindings(), capacity_);
+        const nri::DescriptorSetDesc set{
+            0,
+            ranges.data(),
+            static_cast<std::uint32_t>(ranges.size()),
+            nri::DescriptorSetBits::ALLOW_UPDATE_AFTER_SET
+        };
+        nri::PipelineLayoutDesc layout{};
+        layout.descriptorSets = &set;
+        layout.descriptorSetNum = 1;
+        layout.shaderStages =
+            nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER;
+        layout.flags = nri::PipelineLayoutBits::IGNORE_GLOBAL_SPIRV_OFFSETS;
+        const auto& api = session_.api();
+        auto status = api.CreatePipelineLayout(session_.device(), layout, allocation_layout_);
+        if (status != nri::Result::SUCCESS)
         {
-            return cxx::unexpected(layout.error());
+            return cxx::unexpected(nativeError(status));
         }
-        layout_ = *layout;
-        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, capacity_};
-        VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-        pool.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
-        pool.maxSets = 1;
-        pool.poolSizeCount = 1;
-        pool.pPoolSizes = &size;
-        gapi::vk::DescriptorPool handle;
-        auto result = handle.tryCreate(device_, pool);
-        if (result != VK_SUCCESS)
+        nri::DescriptorPoolDesc pool{};
+        pool.descriptorSetMaxNum = 1;
+        pool.textureMaxNum = capacity_;
+        pool.samplerMaxNum = capacity_;
+        pool.flags = nri::DescriptorPoolBits::ALLOW_UPDATE_AFTER_SET;
+        status = api.CreateDescriptorPool(session_.device(), pool, pool_);
+        if (status != nri::Result::SUCCESS)
         {
-            return cxx::unexpected(nativeError(result));
+            return cxx::unexpected(nativeError(status));
         }
-        pool_ = handle.handle(); // The array owns the complete pool and its allocated set.
-        VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-        allocate.descriptorPool = pool_;
-        allocate.descriptorSetCount = 1;
-        allocate.pSetLayouts = &layout_;
-        result = vkAllocateDescriptorSets(device_, &allocate, &descriptors_);
-        return result == VK_SUCCESS ? RenderResult<void>{} : cxx::unexpected(nativeError(result));
+        status = api.AllocateDescriptorSets(*pool_, *allocation_layout_, 0, &descriptors_, 1, 0);
+        return status == nri::Result::SUCCESS ? RenderResult<void>{} : cxx::unexpected(nativeError(status));
     }
 
     DescriptorArray::~DescriptorArray() noexcept
@@ -94,112 +94,127 @@ namespace lux::render::detail
         {
             std::terminate();
         }
-        if (pool_)
-        {
-            vkDestroyDescriptorPool(device_, pool_, nullptr);
-        }
-        if (layout_)
-        {
-            vkDestroyDescriptorSetLayout(device_, layout_, nullptr);
-        }
-        if (white_view_)
-        {
-            vkDestroyImageView(device_, white_view_, nullptr);
-        }
-        if (white_sampler_)
-        {
-            white_sampler_.release(device_);
-        }
-        white_image_.release(allocator_);
+        const auto& api = session_.api();
+        api.DestroyDescriptorPool(pool_);
+        api.DestroyPipelineLayout(allocation_layout_);
+        api.DestroyDescriptor(white_view_);
+        api.DestroyDescriptor(white_sampler_);
+        api.DestroyTexture(white_image_);
     }
 
-    RenderResult<void> DescriptorArray::initializeDefault(DeviceSession& session) noexcept
+    RenderResult<void> DescriptorArray::initializeDefault() noexcept
     {
-        auto image = session.allocator().createImage(
-            {{1, 1}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT}
-        );
-        if (!image)
-        {
-            return cxx::unexpected(image.error());
-        }
-        white_image_ = std::move(*image);
-        VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-        view.image = white_image_.handle();
-        view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        view.format = white_image_.format();
-        view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        auto status = vkCreateImageView(device_, &view, nullptr, &white_view_);
-        if (status != VK_SUCCESS)
-        {
-            return cxx::unexpected(nativeError(status));
-        }
-        VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-        sampler.magFilter = sampler.minFilter = VK_FILTER_NEAREST;
-        sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-        sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        status = white_sampler_.tryCreate(device_, sampler);
-        if (status != VK_SUCCESS)
+        const auto& api = session_.api();
+        const nri::TextureDesc description{
+            nri::TextureType::TEXTURE_2D,
+            nri::TextureUsageBits::SHADER_RESOURCE,
+            nri::Format::RGBA8_UNORM,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            nri::SharingMode::CONCURRENT
+        };
+        auto status = api.CreatePlacedTexture(session_.device(), NriDeviceHeap, description, white_image_);
+        if (status != nri::Result::SUCCESS)
         {
             return cxx::unexpected(nativeError(status));
         }
-        white_slot_ = slots_.emplace(); // Slot zero is reserved for this Session's fallback texture.
+        const nri::TextureViewDesc view{white_image_, nri::TextureView::TEXTURE, description.format, 0, 1, 0, 1};
+        status = api.CreateTextureView(view, white_view_);
+        if (status != nri::Result::SUCCESS)
+        {
+            return cxx::unexpected(nativeError(status));
+        }
+        nri::SamplerDesc sampler{};
+        sampler.addressModes =
+            {nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE};
+        status = api.CreateSampler(session_.device(), sampler, white_sampler_);
+        if (status != nri::Result::SUCCESS)
+        {
+            return cxx::unexpected(nativeError(status));
+        }
+        white_slot_ = slots_.emplace();
         write(white_slot_, white_view_, white_sampler_);
-        auto batch = session.queue().begin();
-        if (!batch)
+        const auto& alignment = session_.description().memoryAlignment;
+        const auto row_pitch = std::max(4u, alignment.uploadBufferTextureRow);
+        const auto bytes = std::lcm(row_pitch, alignment.uploadBufferTextureSlice);
+        nri::Buffer* staging = nullptr;
+        const nri::BufferDesc buffer{bytes, 0, nri::BufferUsageBits::NONE};
+        status = api.CreatePlacedBuffer(session_.device(), NriHostUploadHeap, buffer, staging);
+        if (status != nri::Result::SUCCESS)
         {
-            return cxx::unexpected(batch.error());
+            return cxx::unexpected(nativeError(status));
         }
-        VkImageMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-        barrier.dstStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT;
-        barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-        barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = white_image_.handle();
-        barrier.subresourceRange = view.subresourceRange;
-        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-        dependency.imageMemoryBarrierCount = 1;
-        dependency.pImageMemoryBarriers = &barrier;
-        vkCmdPipelineBarrier2(batch->native(), &dependency);
-        const VkClearColorValue white{{1, 1, 1, 1}};
-        vkCmdClearColorImage(batch->native(), barrier.image, barrier.newLayout, &white, 1, &barrier.subresourceRange);
-        barrier.srcStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT;
-        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-        barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        barrier.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
-        barrier.oldLayout = barrier.newLayout;
-        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        vkCmdPipelineBarrier2(batch->native(), &dependency);
-        return std::move(*batch).submit();
+        cxx::scope_exit rollback([&]() noexcept { api.DestroyBuffer(staging); });
+        auto* mapped = api.MapBuffer(*staging, 0, bytes);
+        if (!mapped)
+        {
+            return cxx::unexpected(nativeError(nri::Result::FAILURE));
+        }
+        std::memset(mapped, 255, 4);
+        status = session_.vk().FlushBufferRangeVK(*staging, 0, 4);
+        api.UnmapBuffer(*staging);
+        if (status != nri::Result::SUCCESS)
+        {
+            return cxx::unexpected(nativeError(status));
+        }
+        auto submitted = session_.queue().recordAndSubmit(
+            [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
+            {
+                nri::TextureBarrierDesc barrier{};
+                barrier.texture = white_image_;
+                barrier.mipNum = barrier.layerNum = 1;
+                barrier.before = {nri::AccessBits::NONE, nri::Layout::UNDEFINED, nri::StageBits::NONE};
+                barrier
+                    .after = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION, nri::StageBits::COPY};
+                const nri::BarrierDesc dependency{nullptr, 0, nullptr, 0, &barrier, 1};
+                api.CmdBarrier(command, dependency);
+                const nri::TextureRegionDesc region{0, 0, 0, 1, 1, 1, 0, 0, nri::PlaneBits::COLOR};
+                const nri::TextureDataLayoutDesc layout{0, row_pitch, bytes};
+                api.CmdUploadBufferToTexture(command, *white_image_, region, *staging, layout);
+                barrier.before = barrier.after;
+                barrier.after = {nri::AccessBits::SHADER_RESOURCE, nri::Layout::SHADER_RESOURCE, nri::StageBits::ALL};
+                api.CmdBarrier(command, dependency);
+                return {};
+            }
+        );
+        if (!submitted)
+        {
+            return submitted;
+        }
+        rollback.release();
+        session_.deferRelease(
+            session_.queue(),
+            [staging, destroy = api.DestroyBuffer]() noexcept { destroy(staging); }
+        );
+        return {};
     }
 
     RenderResult<cxx::SlotKey<DescriptorSlotTag>> DescriptorArray::allocate() noexcept
     {
         if (slots_.size() == capacity_)
         {
-            return cxx::unexpected(RenderError{kCapacity});
+            return cxx::unexpected(RenderError{kDeviceCapacity});
         }
         const auto slot = slots_.emplace();
-        // Exhausted generations are never recycled by SlotMap, including at the physical array bound.
         if (slot.index >= capacity_)
         {
             slots_.erase(slot);
-            return cxx::unexpected(RenderError{kCapacity});
+            return cxx::unexpected(RenderError{kDeviceCapacity});
         }
         return slot;
     }
 
-    void DescriptorArray::write(Slot slot, VkImageView image, VkSampler sampler) noexcept
+    void DescriptorArray::write(Slot slot, nri::Descriptor* image, nri::Descriptor* sampler) noexcept
     {
-        const VkDescriptorImageInfo info{sampler, image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-        VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        write.dstSet = descriptors_;
-        write.dstBinding = sampledImageTableBinding().binding;
-        write.dstArrayElement = slot.index;
-        write.descriptorCount = 1;
-        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        write.pImageInfo = &info;
-        vkUpdateDescriptorSets(device_, 1, &write, 0, nullptr);
+        const nri::UpdateDescriptorRangeDesc updates[]{
+            {descriptors_, 0, slot.index, &image, 1},
+            {descriptors_, 1, slot.index, &sampler, 1}
+        };
+        session_.api().UpdateDescriptorRanges(updates, 2);
     }
 
     void DescriptorArray::release(Slot slot) noexcept

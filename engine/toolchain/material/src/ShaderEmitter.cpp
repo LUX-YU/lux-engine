@@ -551,7 +551,8 @@ namespace lux::shadergen::glsl
                 material_record();
                 if (em.tex_mode)
                 {
-                    out << "layout(set = 2, binding = 0) uniform sampler2D uTex[];\n";
+                    out << "layout(set = 2, binding = 0) uniform texture2D uTex[];\n";
+                    out << "layout(set = 2, binding = 2) uniform sampler uTexSamplers[];\n";
                     out << "#include \"texture_sampling.glsl\"\n";
                 }
                 out << "layout(set = 4, binding = 4, std430) readonly buffer MatBuf {\n"

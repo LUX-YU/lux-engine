@@ -4,11 +4,13 @@
 #include <cstring>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
+#include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/memory/StagingArena.hpp>
 #include <lux/engine/render/upload/ImageTransfer.hpp>
 #include <lux/engine/render/upload/UploadContext.hpp>
+#include <numeric>
 
 namespace lux::render::detail
 {
@@ -35,20 +37,21 @@ namespace lux::render::detail
         UploadContext* uploads = nullptr;
         std::size_t index = 0;
         std::uint32_t bits = 0;
+        std::uint64_t pending_copy_serial = 0;
     };
 
     struct UploadContext::Copy final
     {
         StagingRange staging;
-        gapi::vk::VmaBuffer* buffer = nullptr;
-        gapi::vk::VmaImage* image = nullptr;
-        const gapi::vk::VmaImage* clone = nullptr;
-        VkDeviceSize offset = 0;
+        nri::Buffer* buffer = nullptr;
+        nri::Texture* image = nullptr;
+        const nri::Texture* clone = nullptr;
+        std::uint64_t offset = 0;
         ImageTransferRegion region;
         std::span<const std::byte> source;
         std::span<const BufferWrite> inputs;
         std::size_t input_offset = 0, bytes = 0;
-        std::uint32_t row = 0, rows = 0;
+        std::uint32_t row = 0, rows = 0, row_pitch = 0;
         bool first = false, final = false;
     };
 
@@ -57,7 +60,7 @@ namespace lux::render::detail
         UploadContext* uploads;
         SubmissionQueue* queue;
         std::span<Copy> copies;
-        std::span<const BufferFill> fills;
+        std::span<const BufferZero> fills;
         BatchEntry* next = nullptr;
         void* receiver = nullptr;
         void (*complete)(void*, RenderResult<void>) noexcept = nullptr;
@@ -119,9 +122,18 @@ namespace lux::render::detail
 
     UploadContext::~UploadContext() noexcept
     {
-        if (timestamps)
+        for (auto& copy : frame_copies_)
         {
-            vkDestroyQueryPool(session.nativeDevice(), timestamps, nullptr);
+            session.staging_arena_->cancel(copy.staging);
+        }
+        if (mapped_timestamps_)
+        {
+            session.api().UnmapBuffer(*timestamp_results_);
+        }
+        session.api().DestroyBuffer(timestamp_results_);
+        for (auto* pool : timestamps_)
+        {
+            session.api().DestroyQueryPool(pool);
         }
     }
 
@@ -136,29 +148,17 @@ namespace lux::render::detail
                              options.batch_entries == 0 || options.window_regions == 0;
         if (invalid)
         {
-            return cxx::unexpected(RenderError{kInvalidArgument});
-        }
-        if (options.measure_gpu && !enabled_features_.host_query_reset)
-        {
-            return cxx::unexpected(RenderError{kUnsupported});
+            return cxx::unexpected(RenderError{kDeviceArgument});
         }
         auto state = std::unique_ptr<UploadContext>(new UploadContext(*this, options, cpu));
-        const auto& families_info = physical_device_.queueFamilyProperties();
         auto& transfer = queue(EQueueRole::TRANSFER);
-        const auto granularity =
-            families_info[transfer.nativeQueue().family].queueFamilyProperties.minImageTransferGranularity;
-        // This row-chunk algorithm requires independently transferable texel/block rows. Other hardware
-        // uses the existing Graphics queue; do not emit invalid sub-image transfers on restrictive families.
-        const bool row_chunks = granularity.width == 1 && granularity.height == 1 && granularity.depth == 1;
+        const auto& granularity = transfer.properties().image_transfer_granularity;
+        const bool row_chunks = granularity[0] == 1 && granularity[1] == 1 && granularity[2] == 1;
         state->copy_queue = row_chunks ? &transfer : &queue();
-        state->copy_timestamp_bits =
-            families_info[state->copy_queue->nativeQueue().family].queueFamilyProperties.timestampValidBits;
-        state->graphics_timestamp_bits =
-            families_info[queue().nativeQueue().family].queueFamilyProperties.timestampValidBits;
+        state->copy_timestamp_bits = state->copy_queue->properties().timestamp_bits;
+        state->graphics_timestamp_bits = queue().properties().timestamp_bits;
         if (options.measure_gpu && (state->copy_timestamp_bits || state->graphics_timestamp_bits))
         {
-            VkQueryPoolCreateInfo query{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
-            query.queryType = VK_QUERY_TYPE_TIMESTAMP;
             state->graphics_measurement_base_ = state->copy_queue == &queue() ? 0 : state->copy_queue->capacity();
             const auto query_slots = state->graphics_measurement_base_ + queue().capacity();
             state->measurements_ = std::make_unique<UploadContext::Measurement[]>(query_slots);
@@ -167,22 +167,44 @@ namespace lux::render::detail
                 state->measurements_[i].uploads = state.get();
                 state->measurements_[i].index = i;
             }
-            query.queryCount = std::uint32_t(query_slots * 2);
-            const auto result = vkCreateQueryPool(nativeDevice(), &query, nullptr, &state->timestamps);
-            if (result != VK_SUCCESS)
+            const std::array queues{state->copy_queue, &queue()};
+            for (std::size_t i = 0; i < queues.size(); ++i)
+            {
+                if (i == 1 && state->graphics_measurement_base_ == 0)
+                {
+                    continue;
+                }
+                if (queues[i]->properties().timestamp_bits == 0)
+                {
+                    continue;
+                }
+                const auto type = queues[i]->properties().type == nri::QueueType::COPY
+                                      ? nri::QueryType::TIMESTAMP_COPY_QUEUE
+                                      : nri::QueryType::TIMESTAMP;
+                const nri::QueryPoolDesc query{type, queues[i]->capacity() * 2};
+                const auto result = api().CreateQueryPool(device(), query, state->timestamps_[i]);
+                if (result != nri::Result::SUCCESS)
+                {
+                    return cxx::unexpected(nativeError(result));
+                }
+            }
+            // Distinct in-flight pairs must not share a non-coherent memory atom.
+            state->query_result_stride_ = std::lcm<std::uint64_t>(upload_alignment_, 16);
+            const nri::BufferDesc description{query_slots * state->query_result_stride_, 0, nri::BufferUsageBits::NONE};
+            const auto result =
+                api().CreatePlacedBuffer(device(), NriHostReadbackHeap, description, state->timestamp_results_);
+            if (result != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));
             }
+            state->mapped_timestamps_ =
+                static_cast<std::uint64_t*>(api().MapBuffer(*state->timestamp_results_, 0, description.size));
+            if (!state->mapped_timestamps_)
+            {
+                return cxx::unexpected(nativeError(nri::Result::FAILURE));
+            }
         }
-        const std::array families{queue().nativeQueue().family, state->copy_queue->nativeQueue().family};
-        const auto sharing = families[0] == families[1] ? std::span<const std::uint32_t>{} : std::span(families);
-        auto arena = StagingArena::create(
-            allocator_,
-            options.chunk_bytes,
-            options.staging_pages,
-            sharing,
-            std::max<VkDeviceSize>(4, physical_device_.properties().properties.limits.nonCoherentAtomSize)
-        );
+        auto arena = StagingArena::create(*this, options.chunk_bytes, options.staging_pages, upload_alignment_);
         if (!arena)
         {
             return cxx::unexpected(arena.error());
@@ -191,7 +213,7 @@ namespace lux::render::detail
         state->stats.staging_bytes = options.chunk_bytes * options.staging_pages;
         state->batch_entries_.reserve(options.batch_entries);
         state->frame_copies_.reserve(options.window_regions);
-        state->frame_receivers_.reserve(options.window_regions);
+        frame_receivers_.reserve(options.window_regions);
         uploads_ = std::move(state);
         return {};
     }
@@ -217,52 +239,66 @@ namespace lux::render::detail
         stats.pending_bytes -= bytes;
     }
 
+    static void bufferBarrier(
+        const nri::CoreInterface& api,
+        nri::CommandBuffer& command,
+        nri::Buffer& buffer,
+        nri::AccessStage before,
+        nri::AccessStage after
+    ) noexcept
+    {
+        const nri::BufferBarrierDesc barrier{&buffer, before, after};
+        const nri::BarrierDesc dependency{nullptr, 0, &barrier, 1};
+        api.CmdBarrier(command, dependency);
+    }
+
     static void recordBuffer(
-        VkCommandBuffer command,
-        gapi::vk::VmaBuffer& target,
-        StagingRange& range,
+        const nri::CoreInterface& api,
+        nri::CommandBuffer& command,
+        nri::Buffer& target,
+        const StagingRange& range,
         std::size_t offset,
-        std::size_t chunk_size,
-        SubmissionQueue& copy,
-        SubmissionQueue& graphics,
+        std::size_t bytes,
         bool acquiring,
         bool final
     ) noexcept
     {
-        const bool distinct = &copy != &graphics;
-        const bool cross_family = copy.nativeQueue().family != graphics.nativeQueue().family;
+        const auto access = bufferAccess(api.GetBufferDesc(target).usage);
         if (!acquiring)
         {
-            const VkBufferCopy copy{range.offset(), offset, chunk_size};
-            vkCmdCopyBuffer(command, range.buffer(), target.handle(), 1, &copy);
+            bufferBarrier(
+                api,
+                command,
+                target,
+                {access, nri::StageBits::ALL},
+                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
+            );
+            api.CmdCopyBuffer(command, target, offset, *range.buffer, range.offset, bytes);
         }
-        if (!final)
+        if (final)
         {
-            return;
+            bufferBarrier(
+                api,
+                command,
+                target,
+                {acquiring ? nri::AccessBits::NONE : nri::AccessBits::COPY_DESTINATION,
+                 acquiring ? nri::StageBits::NONE : nri::StageBits::COPY},
+                {access, nri::StageBits::ALL}
+            );
         }
-        VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
-        barrier.buffer = target.handle();
-        barrier.size = VK_WHOLE_SIZE;
-        barrier.srcStageMask = acquiring ? VK_PIPELINE_STAGE_2_NONE : VK_PIPELINE_STAGE_2_COPY_BIT;
-        barrier.srcAccessMask = acquiring ? VK_ACCESS_2_NONE : VK_ACCESS_2_TRANSFER_WRITE_BIT;
-        barrier.dstStageMask = !distinct || acquiring ? VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_2_NONE;
-        barrier.dstAccessMask = !distinct || acquiring ? VK_ACCESS_2_MEMORY_READ_BIT : VK_ACCESS_2_NONE;
-        barrier.srcQueueFamilyIndex = cross_family ? copy.nativeQueue().family : VK_QUEUE_FAMILY_IGNORED;
-        barrier.dstQueueFamilyIndex = cross_family ? graphics.nativeQueue().family : VK_QUEUE_FAMILY_IGNORED;
-        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-        dependency.bufferMemoryBarrierCount = 1;
-        dependency.pBufferMemoryBarriers = &barrier;
-        vkCmdPipelineBarrier2(command, &dependency);
     }
 
     static void recordImage(
-        VkCommandBuffer command,
-        gapi::vk::VmaImage& target,
-        StagingRange& range,
+        const nri::CoreInterface& api,
+        nri::CommandBuffer& command,
+        nri::Texture& target,
+        const StagingRange& range,
         const ImageTransferRegion& input,
-        const gapi::vk::VmaImage* clone,
+        const nri::Texture* clone,
         std::uint32_t row,
         std::uint32_t rows,
+        std::uint32_t row_pitch,
+        std::uint32_t slice_alignment,
         bool first,
         SubmissionQueue& copy,
         SubmissionQueue& graphics,
@@ -271,135 +307,97 @@ namespace lux::render::detail
     ) noexcept
     {
         const bool distinct = &copy != &graphics;
-        const bool cross_family = copy.nativeQueue().family != graphics.nativeQueue().family;
-        const auto& description = target;
-        VkImageMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-        barrier.image = target.handle();
-        barrier
-            .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, description.mipLevels(), 0, description.arrayLayers()};
-        barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-        dependency.imageMemoryBarrierCount = 1;
-        dependency.pImageMemoryBarriers = &barrier;
+        const auto& description = api.GetTextureDesc(target);
+        const bool cross_family = description.sharingMode == nri::SharingMode::EXCLUSIVE &&
+                                  copy.properties().family != graphics.properties().family;
+        nri::TextureBarrierDesc barrier{};
+        barrier.texture = &target;
+        barrier.mipNum = description.mipNum;
+        barrier.layerNum = description.layerNum;
+        barrier.planes = nri::PlaneBits::COLOR;
+        auto emit = [&](const nri::TextureBarrierDesc& value) noexcept
+        {
+            const nri::BarrierDesc dependency{nullptr, 0, nullptr, 0, &value, 1};
+            api.CmdBarrier(command, dependency);
+        };
         if (!acquiring)
         {
             if (first)
             {
-                barrier.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
-                barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-                barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-                vkCmdPipelineBarrier2(command, &dependency);
+                barrier.before = {nri::AccessBits::NONE, nri::Layout::UNDEFINED, nri::StageBits::NONE};
+                barrier
+                    .after = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION, nri::StageBits::COPY};
+                emit(barrier);
                 if (clone)
                 {
                     auto original = barrier;
-                    original.image = clone->handle();
-                    // The device sampled-image table is visible to every supported shader stage.
-                    original.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-                    original.srcAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
-                    original.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
-                    original.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
-                    original.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    original.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-                    dependency.pImageMemoryBarriers = &original;
-                    vkCmdPipelineBarrier2(command, &dependency);
-                    for (std::uint32_t mip = 0; mip < description.mipLevels(); ++mip)
+                    original.texture = const_cast<nri::Texture*>(clone);
+                    original
+                        .before = {nri::AccessBits::SHADER_RESOURCE, nri::Layout::SHADER_RESOURCE, nri::StageBits::ALL};
+                    original.after = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE, nri::StageBits::COPY};
+                    emit(original);
+                    for (nri::Dim_t mip = 0; mip < description.mipNum; ++mip)
                     {
-                        VkImageCopy copy{};
-                        copy.srcSubresource =
-                            copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, description.arrayLayers()};
-                        copy.extent = {
-                            std::max(1u, description.extent().width >> mip),
-                            std::max(1u, description.extent().height >> mip),
-                            1
-                        };
-                        vkCmdCopyImage(
-                            command,
-                            original.image,
-                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                            barrier.image,
-                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                            1,
-                            &copy
-                        );
+                        for (nri::Dim_t layer = 0; layer < description.layerNum; ++layer)
+                        {
+                            nri::TextureRegionDesc region{};
+                            region.width = std::max(1u, std::uint32_t(description.width) >> mip);
+                            region.height = std::max(1u, std::uint32_t(description.height) >> mip);
+                            region.depth = 1;
+                            region.mipOffset = mip;
+                            region.layerOffset = layer;
+                            region.planes = nri::PlaneBits::COLOR;
+                            api.CmdCopyTexture(command, target, &region, *clone, &region);
+                        }
                     }
-                    original.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
-                    original.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
-                    original.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-                    original.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
-                    original.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-                    original.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    vkCmdPipelineBarrier2(command, &dependency);
-                    dependency.pImageMemoryBarriers = &barrier;
-                    barrier.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
-                    barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-                    barrier.oldLayout = barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-                    vkCmdPipelineBarrier2(command, &dependency);
+                    std::swap(original.before, original.after);
+                    emit(original);
+                    barrier.before = barrier.after;
+                    emit(barrier); // Clone writes precede region patch writes.
                 }
             }
-            VkBufferImageCopy region{};
-            region.bufferOffset = range.offset();
-            region.imageSubresource = input.subresource;
-            region.imageOffset = input.offset;
-            region.imageOffset.y += std::int32_t(row * input.block_extent);
-            region.imageExtent = {
-                input.extent.width,
-                std::uint32_t(std::min(
-                    std::uint64_t(rows) * input.block_extent,
-                    std::uint64_t(input.extent.height - row * input.block_extent)
-                )),
-                1
-            };
-            vkCmdCopyBufferToImage(
-                command,
-                range.buffer(),
-                barrier.image,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                1,
-                &region
-            );
+            auto region = input.texture;
+            region.y += row * input.block_extent;
+            region.height =
+                std::min(rows * input.block_extent, std::uint32_t(input.texture.height - row * input.block_extent));
+            const auto slice_unit = std::lcm(row_pitch, slice_alignment);
+            const auto slice_pitch = ((row_pitch * rows + slice_unit - 1) / slice_unit) * slice_unit;
+            const nri::TextureDataLayoutDesc layout{range.offset, row_pitch, slice_pitch};
+            api.CmdUploadBufferToTexture(command, target, region, *range.buffer, layout);
         }
         if (final)
         {
-            barrier.srcStageMask = acquiring ? VK_PIPELINE_STAGE_2_NONE : VK_PIPELINE_STAGE_2_COPY_BIT;
-            barrier.srcAccessMask = acquiring ? VK_ACCESS_2_NONE : VK_ACCESS_2_TRANSFER_WRITE_BIT;
-            barrier.dstStageMask =
-                !distinct || acquiring ? VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_2_NONE;
-            barrier.dstAccessMask = !distinct || acquiring ? VK_ACCESS_2_SHADER_SAMPLED_READ_BIT : VK_ACCESS_2_NONE;
-            barrier.oldLayout = acquiring && !cross_family ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                                                           : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            barrier.before = {
+                acquiring ? nri::AccessBits::NONE : nri::AccessBits::COPY_DESTINATION,
+                acquiring && !cross_family ? nri::Layout::SHADER_RESOURCE : nri::Layout::COPY_DESTINATION,
+                acquiring ? nri::StageBits::NONE : nri::StageBits::COPY
+            };
+            barrier.after = {
+                !distinct || acquiring ? nri::AccessBits::SHADER_RESOURCE : nri::AccessBits::NONE,
+                nri::Layout::SHADER_RESOURCE,
+                !distinct || acquiring ? nri::StageBits::ALL : nri::StageBits::NONE
+            };
             if (cross_family)
             {
-                barrier.srcQueueFamilyIndex = copy.nativeQueue().family;
-                barrier.dstQueueFamilyIndex = graphics.nativeQueue().family;
+                barrier.srcQueue = &copy.native();
+                barrier.dstQueue = &graphics.native();
             }
-            vkCmdPipelineBarrier2(command, &dependency);
+            emit(barrier);
         }
     }
 
-    RenderResult<void> UploadContext::measure(std::size_t page, std::uint32_t bits) noexcept
+    RenderResult<void> UploadContext::measure(std::size_t index, std::uint32_t bits) noexcept
     {
-        std::array<std::uint64_t, 2> values{};
-        const auto result = vkGetQueryPoolResults(
-            session.nativeDevice(),
-            timestamps,
-            std::uint32_t(page * 2),
-            2,
-            sizeof(values),
-            values.data(),
-            sizeof(std::uint64_t),
-            VK_QUERY_RESULT_64_BIT
-        );
-        if (result != VK_SUCCESS)
+        const auto result = session.vk().InvalidateBufferRangeVK(*timestamp_results_, index * query_result_stride_, 16);
+        if (result != nri::Result::SUCCESS)
         {
             ++stats.gpu_query_errors;
             return cxx::unexpected(nativeError(result));
         }
+        const auto* values = mapped_timestamps_ + index * (query_result_stride_ / sizeof(std::uint64_t));
         const auto mask = bits == 64 ? UINT64_MAX : (std::uint64_t{1} << bits) - 1;
         stats.gpu_ns += std::uint64_t(
-            double((values[1] - values[0]) & mask) *
-            session.physicalDevice().properties().properties.limits.timestampPeriod
+            double((values[1] - values[0]) & mask) * 1'000'000'000.0 / session.description().other.timestampFrequencyHz
         );
         ++stats.gpu_samples;
         return {};
@@ -416,11 +414,12 @@ namespace lux::render::detail
         {
             return 0;
         }
-        const auto bytes = range->bytes().size();
-        std::memcpy(range->bytes().data(), write.source.data(), bytes);
-        if (auto result = range->flush(); result != VK_SUCCESS)
+        const auto bytes = range->bytes.size();
+        std::memcpy(range->bytes.data(), write.source.data(), bytes);
+        if (auto result = session.staging_arena_->flush(*range); !result)
         {
-            return cxx::unexpected(nativeError(result));
+            session.staging_arena_->cancel(*range);
+            return cxx::unexpected(result.error());
         }
         Copy copy{std::move(*range)};
         copy.buffer = write.target;
@@ -432,82 +431,34 @@ namespace lux::render::detail
         return bytes;
     }
 
-    void UploadContext::afterFrameSubmit(void* receiver, void (*complete)(void*, RenderResult<void>) noexcept) noexcept
-    {
-        frame_receivers_.emplace_back(receiver, complete);
-    }
-
     bool UploadContext::hasFrameCopies() const noexcept
     {
         return !frame_copies_.empty();
     }
 
-    void UploadContext::recordFrame(CommandBatch& batch) noexcept
+    void UploadContext::recordFrame(nri::CommandBuffer& command) noexcept
     {
-        if (frame_copies_.empty())
+        for (const auto& copy : frame_copies_)
         {
-            return;
+            recordBuffer(session.api(), command, *copy.buffer, copy.staging, copy.offset, copy.bytes, false, true);
         }
-        VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
-        barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
-        barrier.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
-        barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-        dependency.memoryBarrierCount = 1;
-        dependency.pMemoryBarriers = &barrier;
-        vkCmdPipelineBarrier2(batch.native(), &dependency);
-        for (auto& copy : frame_copies_)
-        {
-            recordBuffer(
-                batch.native(),
-                *copy.buffer,
-                copy.staging,
-                copy.offset,
-                copy.bytes,
-                session.queue(),
-                session.queue(),
-                false,
-                false
-            );
-        }
-        barrier.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
-        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-        barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
-        vkCmdPipelineBarrier2(batch.native(), &dependency);
     }
 
     void UploadContext::finishFrameCopies(RenderResult<void> result) noexcept
     {
-        if (result)
+        for (auto& copy : frame_copies_)
         {
-            for (auto& copy : frame_copies_)
+            if (result)
             {
-                copy.staging.commit(session.queue());
+                session.staging_arena_->markSubmitted(copy.staging, session.queue());
                 ++stats.copy_regions;
+            }
+            else
+            {
+                session.staging_arena_->cancel(copy.staging);
             }
         }
         frame_copies_.clear();
-        for (auto [receiver, complete] : frame_receivers_)
-        {
-            complete(receiver, result);
-        }
-        frame_receivers_.clear();
-    }
-
-    void UploadContext::enqueueFrame(FrameWriteSender::Node& node) noexcept
-    {
-        node.next = nullptr;
-        if (frame_waiters_tail_)
-        {
-            frame_waiters_tail_->next = &node;
-        }
-        else
-        {
-            frame_waiters_ = &node;
-        }
-        frame_waiters_tail_ = &node;
     }
 
     bool UploadContext::canStage(std::uint32_t frame_slot) const noexcept
@@ -516,8 +467,7 @@ namespace lux::render::detail
         {
             return true;
         }
-        const auto& frame = session.frames_[session.next_frame_];
-        return frame.phase != DeviceSession::EFramePhase::PREPARING && frame.pending_writes == 0;
+        return session.backgroundUploadsAllowed();
     }
 
     void UploadContext::enqueue(BatchEntry& entry) noexcept
@@ -551,57 +501,21 @@ namespace lux::render::detail
 
     void UploadContext::flush() noexcept
     {
-        // A bounded prefix only. Completing a Sender may enqueue later work, never extend this flush.
+        // Complete only this bounded prefix. Receiver reentry may append work for the next flush.
         auto* boundary = ready_tail_;
         BatchEntry* blocked_head = nullptr;
         BatchEntry* blocked_tail = nullptr;
         while (ready_head_ && boundary)
         {
             auto& first = *ready_head_;
-            auto& queue = first.acquiring ? session.queue() : *first.queue;
-            auto batch = queue.deviceLost()
-                             ? RenderResult<CommandBatch>{cxx::unexpected(nativeError(VK_ERROR_DEVICE_LOST))}
-                             : queue.beginAfterPoll();
-            if (!batch && batch.error().type == kCapacity)
-            {
-                // Temporarily detach blocked groups from this flush's original prefix.
-                // Restore them ahead of newly enqueued work, preserving per-Queue FIFO even
-                // when groups for the same Queue were separated by another Queue's entries.
-                auto* begin = ready_head_;
-                auto* end = begin;
-                while (end != boundary && end->next && end->next->queue == begin->queue &&
-                       end->next->acquiring == begin->acquiring)
-                {
-                    end = end->next;
-                }
-                ready_head_ = end->next;
-                if (!ready_head_)
-                {
-                    ready_tail_ = nullptr;
-                }
-                end->next = nullptr;
-                if (blocked_tail)
-                {
-                    blocked_tail->next = begin;
-                }
-                else
-                {
-                    blocked_head = begin;
-                }
-                blocked_tail = end;
-                if (end == boundary)
-                {
-                    boundary = nullptr;
-                }
-                continue;
-            }
-            batch_entries_.clear();
             const bool acquiring = first.acquiring;
-            const auto* source_queue = first.queue;
+            auto& source_queue = *first.queue;
+            auto& queue = acquiring ? session.queue() : source_queue;
+            batch_entries_.clear();
             while (ready_head_ && batch_entries_.size() < batch_entries_.capacity())
             {
                 auto* entry = ready_head_;
-                const bool same_submission = entry->queue == source_queue && entry->acquiring == acquiring;
+                const bool same_submission = entry->queue == &source_queue && entry->acquiring == acquiring;
                 if (!same_submission)
                 {
                     break;
@@ -620,160 +534,184 @@ namespace lux::render::detail
                 ready_tail_ = nullptr;
             }
             RenderResult<void> accepted;
-            if (!batch)
+            nri::FenceSubmitDesc wait{};
+            if (acquiring)
             {
-                accepted = cxx::unexpected(batch.error());
-            }
-            else
-            {
-                const auto started = UploadClock::now();
-                const auto bits = &queue == &session.queue() ? graphics_timestamp_bits : copy_timestamp_bits;
-                const auto query_index = (&queue == &session.queue() ? graphics_measurement_base_ : 0) + batch->slot();
-                const bool timestamp = timestamps && bits && !acquiring;
-                if (timestamp)
+                auto dependency = source_queue.dependency(nri::StageBits::ALL);
+                if (dependency)
                 {
-                    vkResetQueryPool(session.nativeDevice(), timestamps, std::uint32_t(query_index * 2), 2);
-                    vkCmdWriteTimestamp2(
-                        batch->native(),
-                        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-                        timestamps,
-                        std::uint32_t(query_index * 2)
-                    );
+                    wait = *dependency;
                 }
+                else
+                {
+                    accepted = cxx::unexpected(dependency.error());
+                }
+            }
+            const auto bits = &queue == &session.queue() ? graphics_timestamp_bits : copy_timestamp_bits;
+            const auto pool_index = &queue == &session.queue() && graphics_measurement_base_ ? 1 : 0;
+            auto* query_pool = timestamps_[pool_index];
+            const bool timestamp_requested = query_pool && bits && !acquiring;
+            bool timestamp = false;
+            // NRI/Vulkan permits timestamp writes on a pure Copy queue, but query result Copy
+            // requires Graphics/Compute. Resolve in existing Graphics work only: its normal
+            // upload dependency or an already observed Copy frontier proves availability.
+            auto resolve_through = copy_queue->completed();
+            if (acquiring && &source_queue == copy_queue)
+            {
+                resolve_through = std::max(resolve_through, wait.value);
+            }
+            std::size_t query_index = 0;
+            const auto started = UploadClock::now();
+            if (accepted)
+            {
+                accepted = queue.recordAndSubmit(
+                    [&](nri::CommandBuffer& command, std::uint32_t slot) noexcept -> RenderResult<void>
+                    {
+                        const auto& api = session.api();
+                        query_index = (pool_index ? graphics_measurement_base_ : 0) + slot;
+                        if (timestamp_requested)
+                        {
+                            const auto& measurement = measurements_[query_index];
+                            timestamp = !measurement.pending_copy_serial && !measurement.completion.armed();
+                        }
+                        if (timestamp)
+                        {
+                            // The pair's preceding GPU use and CPU read have both ended.
+                            api.ResetQueries(*query_pool, slot * 2, 2);
+                            api.CmdEndQuery(command, *query_pool, slot * 2);
+                        }
+                        for (auto* entry : batch_entries_)
+                        {
+                            for (const auto& fill : entry->fills)
+                            {
+                                const auto access = bufferAccess(api.GetBufferDesc(*fill.target).usage);
+                                bufferBarrier(
+                                    api,
+                                    command,
+                                    *fill.target,
+                                    {access, nri::StageBits::ALL},
+                                    {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
+                                );
+                                api.CmdZeroBuffer(command, *fill.target, fill.offset, fill.size);
+                                bufferBarrier(
+                                    api,
+                                    command,
+                                    *fill.target,
+                                    {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
+                                    {access, nri::StageBits::ALL}
+                                );
+                            }
+                            for (auto& copy : entry->copies)
+                            {
+                                if (acquiring && !copy.final)
+                                {
+                                    continue;
+                                }
+                                if (copy.buffer)
+                                {
+                                    recordBuffer(
+                                        api,
+                                        command,
+                                        *copy.buffer,
+                                        copy.staging,
+                                        copy.offset,
+                                        copy.bytes,
+                                        acquiring,
+                                        copy.final
+                                    );
+                                }
+                                else
+                                {
+                                    recordImage(
+                                        api,
+                                        command,
+                                        *copy.image,
+                                        copy.staging,
+                                        copy.region,
+                                        copy.clone,
+                                        copy.row,
+                                        copy.rows,
+                                        copy.row_pitch,
+                                        session.description().memoryAlignment.uploadBufferTextureSlice,
+                                        copy.first,
+                                        source_queue,
+                                        session.queue(),
+                                        acquiring,
+                                        copy.final
+                                    );
+                                }
+                            }
+                        }
+                        if (timestamp)
+                        {
+                            api.CmdEndQuery(command, *query_pool, slot * 2 + 1);
+                            if (&queue == &session.queue())
+                            {
+                                api.CmdCopyQueries(
+                                    command,
+                                    *query_pool,
+                                    slot * 2,
+                                    2,
+                                    *timestamp_results_,
+                                    query_index * query_result_stride_
+                                );
+                            }
+                        }
+                        if (&queue == &session.queue())
+                        {
+                            for (std::uint32_t i = 0; i < graphics_measurement_base_; ++i)
+                            {
+                                const auto serial = measurements_[i].pending_copy_serial;
+                                if (serial && serial <= resolve_through)
+                                {
+                                    api.CmdCopyQueries(
+                                        command,
+                                        *timestamps_[0],
+                                        i * 2,
+                                        2,
+                                        *timestamp_results_,
+                                        i * query_result_stride_
+                                    );
+                                }
+                            }
+                        }
+                        return {};
+                    },
+                    acquiring ? std::span<const nri::FenceSubmitDesc>(&wait, 1)
+                              : std::span<const nri::FenceSubmitDesc>{}
+                );
+            }
+            stats.record_submit_ns += elapsed(started);
+            if (!accepted && (accepted.error().type == kDeviceCapacity || accepted.error().type == kDeviceBusy))
+            {
+                // Put blocked entries ahead of work appended by later completions. They keep their
+                // prepared bytes and original receivers; a failed admission has no GPU side effect.
                 for (auto* entry : batch_entries_)
                 {
-                    const auto bufferBarrier = [&](VkPipelineStageFlags2 source_stage,
-                                                   VkAccessFlags2 source_access,
-                                                   VkPipelineStageFlags2 target_stage,
-                                                   VkAccessFlags2 target_access)
+                    if (blocked_tail)
                     {
-                        VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
-                        barrier.srcStageMask = source_stage;
-                        barrier.srcAccessMask = source_access;
-                        barrier.dstStageMask = target_stage;
-                        barrier.dstAccessMask = target_access;
-                        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-                        dependency.memoryBarrierCount = 1;
-                        dependency.pMemoryBarriers = &barrier;
-                        vkCmdPipelineBarrier2(batch->native(), &dependency);
-                    };
-                    if (!entry->fills.empty())
-                    {
-                        bufferBarrier(
-                            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                            VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                            VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-                            VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT
-                        );
-                        for (const auto& fill : entry->fills)
-                        {
-                            vkCmdFillBuffer(batch->native(), fill.target->handle(), fill.offset, fill.size, fill.value);
-                        }
-                        if (!entry->fills.empty())
-                        {
-                            bufferBarrier(
-                                VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-                                VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                                VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-                                VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT
-                            );
-                        }
-                        bufferBarrier(
-                            VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-                            VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                            VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT
-                        );
+                        blocked_tail->next = entry;
                     }
-                    for (auto& copy : entry->copies)
+                    else
                     {
-                        if (acquiring && !copy.final)
-                        {
-                            continue;
-                        }
-                        if (copy.buffer)
-                        {
-                            // Existing arena/slice ranges use Graphics; queue order and this dependency
-                            // cover prior reads without a Host fence wait.
-                            if (!acquiring)
-                            {
-                                VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
-                                barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-                                barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
-                                barrier.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
-                                barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-                                barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                                barrier.buffer = copy.buffer->handle();
-                                barrier.offset = copy.offset;
-                                barrier.size = copy.bytes;
-                                VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-                                dependency.bufferMemoryBarrierCount = 1;
-                                dependency.pBufferMemoryBarriers = &barrier;
-                                vkCmdPipelineBarrier2(batch->native(), &dependency);
-                            }
-                            recordBuffer(
-                                batch->native(),
-                                *copy.buffer,
-                                copy.staging,
-                                copy.offset,
-                                copy.bytes,
-                                queue,
-                                session.queue(),
-                                acquiring,
-                                copy.final
-                            );
-                        }
-                        else
-                        {
-                            recordImage(
-                                batch->native(),
-                                *copy.image,
-                                copy.staging,
-                                copy.region,
-                                copy.clone,
-                                copy.row,
-                                copy.rows,
-                                copy.first,
-                                *entry->queue,
-                                session.queue(),
-                                acquiring,
-                                copy.final
-                            );
-                        }
+                        blocked_head = entry;
+                    }
+                    blocked_tail = entry;
+                }
+                continue;
+            }
+            if (accepted)
+            {
+                acquiring ? ++stats.acquire_submissions : ++stats.copy_submissions;
+                for (auto* entry : batch_entries_)
+                {
+                    if (entry->frame_slot != UINT32_MAX)
+                    {
+                        session.acceptFrameSubmission(entry->frame_slot, queue);
                     }
                 }
-                if (timestamp)
+                const auto observe_measurement = [&](Measurement& measurement) noexcept
                 {
-                    vkCmdWriteTimestamp2(
-                        batch->native(),
-                        VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                        timestamps,
-                        std::uint32_t(query_index * 2 + 1)
-                    );
-                }
-                accepted = acquiring
-                               ? std::move(*batch).submitAfter(*source_queue, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT)
-                               : std::move(*batch).submit();
-                stats.record_submit_ns += elapsed(started);
-                if (accepted)
-                {
-                    acquiring ? ++stats.acquire_submissions : ++stats.copy_submissions;
-                }
-                if (accepted)
-                {
-                    for (auto* entry : batch_entries_)
-                    {
-                        if (entry->frame_slot != UINT32_MAX)
-                        {
-                            session.frames_[entry->frame_slot].accepted_serials[session.queue_roles_[0]] =
-                                queue.submitted();
-                        }
-                    }
-                }
-                if (accepted && timestamp)
-                {
-                    auto& measurement = measurements_[query_index];
-                    measurement.bits = bits;
                     queue.arm(
                         queue.submitted(),
                         measurement.completion,
@@ -787,14 +725,43 @@ namespace lux::render::detail
                         },
                         &measurement
                     );
+                };
+                if (&queue == &session.queue())
+                {
+                    for (std::uint32_t i = 0; i < graphics_measurement_base_; ++i)
+                    {
+                        auto& measurement = measurements_[i];
+                        if (measurement.pending_copy_serial && measurement.pending_copy_serial <= resolve_through)
+                        {
+                            measurement.pending_copy_serial = 0;
+                            observe_measurement(measurement);
+                        }
+                    }
                 }
-                if (accepted && !acquiring)
+                if (timestamp)
+                {
+                    auto& measurement = measurements_[query_index];
+                    measurement.bits = bits;
+                    if (&queue == &session.queue())
+                    {
+                        observe_measurement(measurement);
+                    }
+                    else
+                    {
+                        measurement.pending_copy_serial = queue.submitted();
+                    }
+                }
+                else if (timestamp_requested)
+                {
+                    ++stats.gpu_samples_skipped;
+                }
+                if (!acquiring)
                 {
                     for (auto* entry : batch_entries_)
                     {
                         for (auto& copy : entry->copies)
                         {
-                            copy.staging.commit(queue);
+                            session.staging_arena_->markSubmitted(copy.staging, queue);
                             ++stats.copy_regions;
                         }
                     }
@@ -815,7 +782,7 @@ namespace lux::render::detail
                     const auto complete = entry->complete;
                     auto* receiver = entry->receiver;
                     complete(receiver, accepted);
-                    // The operation and its borrowed entry may be gone.
+                    // Neither the operation nor its borrowed entry is read after completion.
                 }
             }
         }
@@ -828,30 +795,7 @@ namespace lux::render::detail
                 ready_tail_ = blocked_tail;
             }
         }
-        const auto phase = session.frames_[session.next_frame_].phase;
-        const bool can_write =
-            phase == DeviceSession::EFramePhase::FREE || phase == DeviceSession::EFramePhase::COLLECTING;
-        auto* frame_boundary = frame_waiters_tail_;
-        while (frame_waiters_ && frame_boundary)
-        {
-            auto* node = frame_waiters_;
-            if (!can_write && !node->stopping(node->operation))
-            {
-                break;
-            }
-            frame_waiters_ = node->next;
-            if (!frame_waiters_)
-            {
-                frame_waiters_tail_ = nullptr;
-            }
-            if (node == frame_boundary)
-            {
-                frame_boundary = nullptr;
-            }
-            const auto complete = node->complete;
-            auto* operation = node->operation;
-            complete(operation);
-        }
+        session.dispatchFrameWrites();
         auto* range_boundary = range_waiters_tail_;
         while (range_waiters_ && range_boundary)
         {
@@ -879,8 +823,8 @@ namespace lux::render::detail
             auto* receiver = entry->receiver;
             complete(
                 receiver,
-                session.deviceLost() ? RenderResult<void>{cxx::unexpected(nativeError(VK_ERROR_DEVICE_LOST))}
-                : stopping           ? RenderResult<void>{cxx::unexpected(RenderError{kWorkStopped})}
+                session.deviceLost() ? RenderResult<void>{cxx::unexpected(nativeError(nri::Result::DEVICE_LOST))}
+                : stopping           ? RenderResult<void>{cxx::unexpected(RenderError{kUploadStopped})}
                                      : RenderResult<void>{}
             );
         }
@@ -888,7 +832,7 @@ namespace lux::render::detail
 
     UploadContext::Task UploadContext::writeBuffers(
         std::span<const BufferWrite> writes,
-        std::span<const BufferFill> fills,
+        std::span<const BufferZero> fills,
         std::uint32_t frame_slot
     ) noexcept
     {
@@ -896,10 +840,10 @@ namespace lux::render::detail
     }
 
     UploadContext::Task UploadContext::writeImage(
-        gapi::vk::VmaImage& target,
+        nri::Texture& target,
         std::span<const std::byte> source,
         std::vector<ImageTransferRegion> regions,
-        const gapi::vk::VmaImage* clone
+        const nri::Texture* clone
     ) noexcept
     {
         return write({}, {}, &target, source, std::move(regions), clone, UINT32_MAX);
@@ -917,11 +861,11 @@ namespace lux::render::detail
 
     UploadContext::Task UploadContext::write(
         std::span<const BufferWrite> writes,
-        std::span<const BufferFill> fills,
-        gapi::vk::VmaImage* image,
+        std::span<const BufferZero> fills,
+        nri::Texture* image,
         std::span<const std::byte> source,
         std::vector<ImageTransferRegion> regions,
-        const gapi::vk::VmaImage* clone,
+        const nri::Texture* clone,
         std::uint32_t frame_slot,
         std::uint32_t element_bytes,
         std::uint32_t source_stride
@@ -931,38 +875,38 @@ namespace lux::render::detail
         const bool invalid_layout = strided && (!element_bytes || element_bytes % 4 || source_stride < element_bytes);
         if (invalid_layout)
         {
-            co_return cxx::unexpected(RenderError{kInvalidArgument});
+            co_return cxx::unexpected(RenderError{kDeviceArgument});
         }
         std::size_t pending_bytes = 0;
         std::size_t buffer_runs = 0;
-        const gapi::vk::VmaBuffer* previous_target = nullptr;
-        VkDeviceSize previous_end = 0;
+        const nri::Buffer* previous_target = nullptr;
+        std::uint64_t previous_end = 0;
         if (!image)
         {
             for (const auto& input : writes)
             {
                 if (!input.target)
                 {
-                    co_return cxx::unexpected(RenderError{kInvalidArgument});
+                    co_return cxx::unexpected(RenderError{kDeviceArgument});
                 }
                 const bool invalid_source = strided ? input.source.size() < element_bytes ||
                                                           (input.source.size() - element_bytes) % source_stride != 0
                                                     : input.source.empty();
                 if (invalid_source)
                 {
-                    co_return cxx::unexpected(RenderError{kInvalidArgument});
+                    co_return cxx::unexpected(RenderError{kDeviceArgument});
                 }
                 const auto bytes = bufferBytes(input, element_bytes, source_stride);
-                const bool invalid = bytes % 4 || input.offset % 4 || input.offset > input.target->size() ||
-                                     bytes > input.target->size() - input.offset ||
-                                     !(input.target->usage() & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+                const bool invalid = bytes % 4 || input.offset % 4 ||
+                                     input.offset > session.api().GetBufferDesc(*input.target).size ||
+                                     bytes > session.api().GetBufferDesc(*input.target).size - input.offset;
                 if (invalid)
                 {
-                    co_return cxx::unexpected(RenderError{kInvalidArgument});
+                    co_return cxx::unexpected(RenderError{kDeviceArgument});
                 }
                 if (bytes > options.pending_bytes - pending_bytes)
                 {
-                    co_return cxx::unexpected(RenderError{kCapacity});
+                    co_return cxx::unexpected(RenderError{kDeviceCapacity});
                 }
                 pending_bytes += bytes;
                 buffer_runs += input.target != previous_target || input.offset != previous_end;
@@ -974,27 +918,26 @@ namespace lux::render::detail
         {
             if (!image || source.empty() || regions.empty())
             {
-                co_return cxx::unexpected(RenderError{kInvalidArgument});
+                co_return cxx::unexpected(RenderError{kDeviceArgument});
             }
-            const bool invalid =
-                image->samples() != VK_SAMPLE_COUNT_1_BIT || !(image->usage() & VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+            const auto& description = session.api().GetTextureDesc(*image);
+            const bool invalid = description.sampleNum != 1;
             if (invalid)
             {
-                co_return cxx::unexpected(RenderError{kInvalidArgument});
+                co_return cxx::unexpected(RenderError{kDeviceArgument});
             }
             for (const auto& region : regions)
             {
-                if (auto valid = imageRegionBytes(
-                        image->extent(),
-                        image->mipLevels(),
-                        image->arrayLayers(),
-                        region,
-                        source.size(),
-                        options.chunk_bytes
-                    );
-                    !valid)
+                if (auto valid = imageRegionBytes(description, region, source.size(), options.chunk_bytes); !valid)
                 {
                     co_return cxx::unexpected(valid.error());
+                }
+                const auto bytes =
+                    std::size_t((region.texture.width - 1) / region.block_extent + 1) * region.block_bytes;
+                const auto alignment = session.description().memoryAlignment.uploadBufferTextureRow;
+                if ((bytes + alignment - 1) / alignment * alignment > options.chunk_bytes)
+                {
+                    co_return cxx::unexpected(RenderError{kDeviceArgument});
                 }
             }
             pending_bytes = source.size();
@@ -1003,23 +946,23 @@ namespace lux::render::detail
         {
             if (!fill.target)
             {
-                co_return cxx::unexpected(RenderError{kInvalidArgument});
+                co_return cxx::unexpected(RenderError{kDeviceArgument});
             }
-            const bool invalid = !fill.size || (fill.offset | fill.size) % 4 || fill.offset > fill.target->size() ||
-                                 fill.size > fill.target->size() - fill.offset ||
-                                 !(fill.target->usage() & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+            const bool invalid = !fill.size || (fill.offset | fill.size) % 4 ||
+                                 fill.offset > session.api().GetBufferDesc(*fill.target).size ||
+                                 fill.size > session.api().GetBufferDesc(*fill.target).size - fill.offset;
             if (invalid)
             {
-                co_return cxx::unexpected(RenderError{kInvalidArgument});
+                co_return cxx::unexpected(RenderError{kDeviceArgument});
             }
         }
         if (!image && writes.empty() && fills.empty())
         {
-            co_return cxx::unexpected(RenderError{kInvalidArgument});
+            co_return cxx::unexpected(RenderError{kDeviceArgument});
         }
         if (!reserveBytes(pending_bytes))
         {
-            co_return cxx::unexpected(RenderError{kCapacity});
+            co_return cxx::unexpected(RenderError{kDeviceCapacity});
         }
         cxx::scope_exit budget([&]() noexcept { releaseBytes(pending_bytes); });
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
@@ -1028,10 +971,19 @@ namespace lux::render::detail
         const auto failure = [&](RenderError error) noexcept
         {
             const bool lost =
-                error.type == kNativeFailure && error.args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
+                error.type == kDeviceFailure && error.args[0] == static_cast<std::uint32_t>(nri::Result::DEVICE_LOST);
             return cxx::unexpected(accepted_any && lost ? RenderError{kOutcomeUnknown} : error);
         };
         std::vector<Copy> copies;
+        cxx::scope_exit release_ranges(
+            [&]() noexcept
+            {
+                for (auto& copy : copies)
+                {
+                    session.staging_arena_->cancel(copy.staging);
+                }
+            }
+        );
         const auto ranges = image ? regions.size() : buffer_runs;
         copies.reserve(std::min(options.window_regions, std::max(options.staging_pages, ranges)));
         std::size_t index = 0, offset = 0, run_end = 0, run_remaining = 0;
@@ -1041,15 +993,17 @@ namespace lux::render::detail
         {
             if (stop.stop_requested())
             {
-                co_return failure(RenderError{kWorkStopped});
+                co_return failure(RenderError{kUploadStopped});
             }
             copies.clear();
             while (index < count && copies.size() < copies.capacity() && canStage(frame_slot))
             {
                 const auto* region = image ? &regions[index] : nullptr;
                 const auto row_bytes =
-                    region ? std::size_t((region->extent.width - 1) / region->block_extent + 1) * region->block_bytes
+                    region ? std::size_t((region->texture.width - 1) / region->block_extent + 1) * region->block_bytes
                            : 0;
+                const auto row_alignment = session.description().memoryAlignment.uploadBufferTextureRow;
+                const auto row_pitch = region ? (row_bytes + row_alignment - 1) / row_alignment * row_alignment : 0;
                 if (!region && run_remaining == 0)
                 {
                     run_end = index + 1;
@@ -1065,18 +1019,18 @@ namespace lux::render::detail
                     }
                 }
                 const auto remaining =
-                    region ? std::size_t((region->extent.height - 1) / region->block_extent + 1 - row) * row_bytes
+                    region ? std::size_t((region->texture.height - 1) / region->block_extent + 1 - row) * row_pitch
                            : run_remaining;
                 auto range = session.staging_arena_->acquire(
                     std::min(remaining, options.chunk_bytes),
-                    region ? row_bytes : 4,
+                    region ? row_pitch : 4,
                     frame_slot == UINT32_MAX && session.rendering_
                 );
                 if (!range)
                 {
                     break;
                 }
-                const auto bytes = range->bytes().size();
+                const auto bytes = range->bytes.size();
                 Copy chunk{std::move(*range)};
                 chunk.bytes = bytes;
                 chunk.buffer = region ? nullptr : writes[index].target;
@@ -1089,7 +1043,8 @@ namespace lux::render::detail
                     chunk.region = *region;
                     chunk.source = source;
                     chunk.row = row;
-                    chunk.rows = static_cast<std::uint32_t>(bytes / row_bytes);
+                    chunk.rows = static_cast<std::uint32_t>(bytes / row_pitch);
+                    chunk.row_pitch = static_cast<std::uint32_t>(row_pitch);
                     chunk.final = bytes == remaining && index + 1 == count;
                     row += chunk.rows;
                     if (bytes == remaining)
@@ -1129,8 +1084,10 @@ namespace lux::render::detail
                 if (image)
                 {
                     const auto& region = regions[index];
-                    wait.minimum_range =
-                        std::size_t((region.extent.width - 1) / region.block_extent + 1) * region.block_bytes;
+                    const auto bytes =
+                        std::size_t((region.texture.width - 1) / region.block_extent + 1) * region.block_bytes;
+                    const auto alignment = session.description().memoryAlignment.uploadBufferTextureRow;
+                    wait.minimum_range = (bytes + alignment - 1) / alignment * alignment;
                 }
                 auto available = co_await BatchSender{wait};
                 if (!available)
@@ -1150,7 +1107,7 @@ namespace lux::render::detail
                             const auto started = UploadClock::now();
                             for (auto& copy : copies)
                             {
-                                auto target = copy.staging.bytes();
+                                auto target = copy.staging.bytes;
                                 if (copy.buffer)
                                 {
                                     auto offset = copy.input_offset;
@@ -1187,13 +1144,15 @@ namespace lux::render::detail
                                 }
                                 else
                                 {
-                                    const auto row_bytes = target.size() / copy.rows;
+                                    const auto row_bytes =
+                                        std::size_t((copy.region.texture.width - 1) / copy.region.block_extent + 1) *
+                                        copy.region.block_bytes;
                                     const auto* input = copy.source.data() + copy.region.source_offset +
                                                         copy.row * copy.region.source_row_pitch;
                                     for (std::uint32_t r = 0; r < copy.rows; ++r)
                                     {
                                         std::memcpy(
-                                            target.data() + r * row_bytes,
+                                            target.data() + r * copy.row_pitch,
                                             input + r * copy.region.source_row_pitch,
                                             row_bytes
                                         );
@@ -1222,16 +1181,20 @@ namespace lux::render::detail
                 stats.prepare_ns += *prepared;
                 for (auto& copy : copies)
                 {
-                    stats.copied_bytes += copy.staging.bytes().size();
-                    if (auto flushed = copy.staging.flush(); flushed != VK_SUCCESS)
+                    stats.copied_bytes +=
+                        copy.buffer
+                            ? copy.bytes
+                            : copy.rows * std::size_t((copy.region.texture.width - 1) / copy.region.block_extent + 1) *
+                                  copy.region.block_bytes;
+                    if (auto flushed = session.staging_arena_->flush(copy.staging); !flushed)
                     {
-                        co_return failure(nativeError(flushed));
+                        co_return failure(flushed.error());
                     }
                 }
             }
             if (stop.stop_requested())
             {
-                co_return failure(RenderError{kWorkStopped});
+                co_return failure(RenderError{kUploadStopped});
             }
             BatchEntry entry{this, &copy_queue, copies};
             entry.frame_slot = frame_slot;

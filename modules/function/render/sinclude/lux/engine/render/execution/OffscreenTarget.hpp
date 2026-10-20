@@ -2,7 +2,9 @@
 
 #include <lux/engine/render/visibility.h>
 
-#include <lux/engine/render/device/Device.hpp>
+#include <NRI.h>
+#include <lux/engine/render/core/Target.hpp>
+#include <memory>
 #include <vector>
 
 namespace lux::render::detail
@@ -11,8 +13,8 @@ namespace lux::render::detail
 
     struct TargetFrame final
     {
-        gapi::vk::VmaImage* image = nullptr;
-        VkImageView view = VK_NULL_HANDLE;
+        nri::Texture* image = nullptr;
+        nri::Descriptor* view = nullptr;
     };
 
     // One actual output owner. Contexts only borrow the matching frame slice.
@@ -37,14 +39,14 @@ namespace lux::render::detail
 
         [[nodiscard]] TargetFrame frame(std::uint32_t slot) noexcept
         {
-            return {&images_[slot], views_[slot]};
+            return {images_[slot], views_[slot]};
         }
 
     private:
         OffscreenTarget(DeviceSession&, TargetDesc) noexcept;
         DeviceSession& session_;
         TargetDesc description_;
-        std::vector<gapi::vk::VmaImage> images_;
-        std::vector<VkImageView> views_;
+        std::vector<nri::Texture*> images_;
+        std::vector<nri::Descriptor*> views_;
     };
 } // namespace lux::render::detail

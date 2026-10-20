@@ -1,6 +1,9 @@
 #include <lux/engine/render/memory/BufferArena.hpp>
 
 #include <algorithm>
+#include <exception>
+#include <lux/cxx/core/scope_exit.hpp>
+#include <lux/engine/render/device/Error.hpp>
 #include <utility>
 
 namespace lux::render::detail
@@ -16,6 +19,10 @@ namespace lux::render::detail
     {
         if (this != &other)
         {
+            if (allocation_ != VK_NULL_HANDLE)
+            {
+                std::terminate(); // An occupied range must be returned by its Arena before replacement.
+            }
             buffer = std::exchange(other.buffer, nullptr);
             offset = other.offset;
             size = other.size;
@@ -37,6 +44,15 @@ namespace lux::render::detail
         session_.deferRelease([segment, allocation]() noexcept { vmaVirtualFree(segment->block, allocation); });
     }
 
+    void BufferArena::destroySegment(const nri::CoreInterface& api, Segment& segment) noexcept
+    {
+        if (segment.block)
+        {
+            vmaDestroyVirtualBlock(std::exchange(segment.block, VK_NULL_HANDLE));
+        }
+        api.DestroyBuffer(std::exchange(segment.buffer, nullptr));
+    }
+
     BufferArena::~BufferArena() noexcept
     {
         // Every range release has already registered its waits. Stable equal-serial ordering on
@@ -46,19 +62,18 @@ namespace lux::render::detail
             return;
         }
         session_.deferRelease(
-            [segments = std::move(segments_), allocator = session_.allocator().native()]() mutable noexcept
+            [segments = std::move(segments_), api = &session_.api()]() mutable noexcept
             {
                 for (auto& segment : segments)
                 {
-                    vmaDestroyVirtualBlock(std::exchange(segment->block, VK_NULL_HANDLE));
-                    segment->buffer.release(allocator);
+                    destroySegment(*api, *segment);
                 }
                 segments.clear();
             }
         );
     }
 
-    BufferArena::Range BufferArena::allocate(Segment& segment, VkDeviceSize bytes, VkDeviceSize alignment) noexcept
+    BufferArena::Range BufferArena::allocate(Segment& segment, std::uint64_t bytes, std::uint64_t alignment) noexcept
     {
         VmaVirtualAllocationCreateInfo info{};
         info.size = bytes;
@@ -68,13 +83,13 @@ namespace lux::render::detail
         {
             return result;
         }
-        result.buffer = &segment.buffer;
+        result.buffer = segment.buffer;
         result.size = bytes;
         result.segment_ = &segment;
         return result;
     }
 
-    RenderResult<BufferArena::Range> BufferArena::allocate(VkDeviceSize bytes, VkDeviceSize alignment) noexcept
+    RenderResult<BufferArena::Range> BufferArena::allocate(std::uint64_t bytes, std::uint64_t alignment) noexcept
     {
         if (!bytes)
         {
@@ -103,24 +118,27 @@ namespace lux::render::detail
         const auto status = vmaCreateVirtualBlock(&info, &candidate->block);
         if (status != VK_SUCCESS)
         {
-            return cxx::unexpected(nativeError(status));
+            if (status == VK_ERROR_OUT_OF_HOST_MEMORY)
+            {
+                std::terminate();
+            }
+            // Virtual metadata uses the existing VMA algorithm, not a second physical allocator.
+            return cxx::unexpected(RenderError{kStorageCapacity});
         }
-        auto buffer = session_.allocator().createBuffer(
-            size,
-            usage_ | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            EMemoryAccess::DEVICE
-        );
-        if (!buffer)
+        cxx::scope_exit rollback([&]() noexcept { destroySegment(session_.api(), *candidate); });
+        const nri::BufferDesc description{size, 4, usage_};
+        const auto created =
+            session_.api().CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, candidate->buffer);
+        if (created != nri::Result::SUCCESS)
         {
-            return cxx::unexpected(buffer.error());
+            return cxx::unexpected(nativeError(created));
         }
-        candidate->buffer = std::move(*buffer);
         auto result = allocate(*candidate, bytes, alignment);
         if (!result.buffer)
         {
-            candidate->buffer.release(session_.allocator().native());
             return cxx::unexpected(RenderError{kStorageCapacity});
         }
+        rollback.release();
         capacity_ += size;
         segments_.push_back(std::move(candidate));
         return result;

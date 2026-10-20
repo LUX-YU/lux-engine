@@ -1,0 +1,351 @@
+diff --git a/Include/Extensions/NRIWrapperVK.h b/Include/Extensions/NRIWrapperVK.h
+index d037f5b..0fe8bdd 100644
+--- a/Include/Extensions/NRIWrapperVK.h
++++ b/Include/Extensions/NRIWrapperVK.h
+@@ -5,6 +5,7 @@
+ #pragma once
+ 
+ #define NRI_WRAPPER_VK_H 1
++#define NRI_VK_CHECKED_OPERATIONS_VERSION 1
+ 
+ #include "NRIDeviceCreation.h"
+ 
+@@ -128,6 +129,15 @@ NriStruct(WrapperVKInterface) {
+     VKHandle    (NRI_CALL *GetInstanceVK)                   (const NriRef(Device) device);
+     void*       (NRI_CALL *GetInstanceProcAddrVK)           (const NriRef(Device) device);
+     void*       (NRI_CALL *GetDeviceProcAddrVK)             (const NriRef(Device) device);
++
++    // Checked operations. Timeout is SUCCESS with completed=false, never a completed fence.
++    Nri(Result) (NRI_CALL *GetFenceValueCheckedVK)         (const NriRef(Fence) fence, NriOut NonNriRef(uint64_t) value);
++    Nri(Result) (NRI_CALL *WaitFenceCheckedVK)             (NriRef(Fence) fence, uint64_t value, uint64_t timeoutNs, NriOut NonNriRef(bool) completed);
++    Nri(Result) (NRI_CALL *ResetCommandAllocatorCheckedVK) (NriRef(CommandAllocator) allocator);
++    // Explicit byte ranges on persistently mapped buffers. Non-coherent external/manual
++    // allocations are unsupported: the wrapper cannot prove their mapped allocation bounds.
++    Nri(Result) (NRI_CALL *FlushBufferRangeVK)             (NriRef(Buffer) buffer, uint64_t offset, uint64_t size);
++    Nri(Result) (NRI_CALL *InvalidateBufferRangeVK)        (NriRef(Buffer) buffer, uint64_t offset, uint64_t size);
+ };
+ 
+ NRI_API Nri(Result) NRI_CALL nriCreateDeviceFromVKDevice(const NriRef(DeviceCreationVKDesc) deviceDesc, NriOut NriRef(Device*) device);
+diff --git a/Source/VK/BufferVK.h b/Source/VK/BufferVK.h
+index ff12461..e52b2b8 100644
+--- a/Source/VK/BufferVK.h
++++ b/Source/VK/BufferVK.h
+@@ -45,6 +45,7 @@ struct BufferVK final : public DebugNameBase {
+ 
+     void* Map(uint64_t offset, uint64_t size);
+     void Unmap();
++    Result SynchronizeMappedRange(uint64_t offset, uint64_t size, bool invalidate);
+ 
+ private:
+     DeviceVK& m_Device;
+diff --git a/Source/VK/BufferVK.hpp b/Source/VK/BufferVK.hpp
+index 1a29f03..4aa6e8e 100644
+--- a/Source/VK/BufferVK.hpp
++++ b/Source/VK/BufferVK.hpp
+@@ -182,3 +182,22 @@ NRI_INLINE void BufferVK::Unmap() {
+         NRI_RETURN_VOID_ON_BAD_VKRESULT(&m_Device, vkResult, "vkFlushMappedMemoryRanges");
+     }
+ }
++
++NRI_INLINE Result BufferVK::SynchronizeMappedRange(uint64_t offset, uint64_t size, bool invalidate) {
++    if (!m_MappedMemory || offset > m_Desc.size)
++        return Result::INVALID_ARGUMENT;
++    if (size == WHOLE_SIZE)
++        size = m_Desc.size - offset;
++    if (size > m_Desc.size - offset)
++        return Result::INVALID_ARGUMENT;
++    if (!size)
++        return Result::SUCCESS;
++    if (m_VmaAllocation) {
++        // VMA accounts for the allocation's offset, atom alignment and memory bounds.
++        const VkResult result = invalidate
++            ? vmaInvalidateAllocation(m_Device.GetVma(), m_VmaAllocation, offset, size)
++            : vmaFlushAllocation(m_Device.GetVma(), m_VmaAllocation, offset, size);
++        return GetResultFromVkResult(result);
++    }
++    return m_NonCoherentDeviceMemory ? Result::UNSUPPORTED : Result::SUCCESS;
++}
+diff --git a/Source/VK/CommandAllocatorVK.h b/Source/VK/CommandAllocatorVK.h
+index f6fcadf..72608f2 100644
+--- a/Source/VK/CommandAllocatorVK.h
++++ b/Source/VK/CommandAllocatorVK.h
+@@ -34,6 +34,7 @@ struct CommandAllocatorVK final : public DebugNameBase {
+ 
+     Result CreateCommandBuffer(CommandBuffer*& commandBuffer);
+     void Reset();
++    Result ResetChecked();
+ 
+ private:
+     DeviceVK& m_Device;
+diff --git a/Source/VK/CommandAllocatorVK.hpp b/Source/VK/CommandAllocatorVK.hpp
+index 5404af6..d5a7004 100644
+--- a/Source/VK/CommandAllocatorVK.hpp
++++ b/Source/VK/CommandAllocatorVK.hpp
+@@ -59,3 +59,9 @@ NRI_INLINE void CommandAllocatorVK::Reset() {
+     VkResult vkResult = vk.ResetCommandPool(m_Device, m_Handle, (VkCommandPoolResetFlags)0);
+     NRI_RETURN_VOID_ON_BAD_VKRESULT(&m_Device, vkResult, "vkResetCommandPool");
+ }
++
++NRI_INLINE Result CommandAllocatorVK::ResetChecked() {
++    ExclusiveScope lock(m_Lock);
++    const auto& vk = m_Device.GetDispatchTable();
++    return GetResultFromVkResult(vk.ResetCommandPool(m_Device, m_Handle, (VkCommandPoolResetFlags)0));
++}
+diff --git a/Source/VK/FenceVK.h b/Source/VK/FenceVK.h
+index 4d4889c..6007643 100644
+--- a/Source/VK/FenceVK.h
++++ b/Source/VK/FenceVK.h
+@@ -34,6 +34,8 @@ struct FenceVK final : public DebugNameBase {
+ 
+     uint64_t GetFenceValue() const;
+     void Wait(uint64_t value);
++    Result GetFenceValueChecked(uint64_t& value) const;
++    Result WaitChecked(uint64_t value, uint64_t timeoutNs, bool& completed);
+ 
+ private:
+     DeviceVK& m_Device;
+diff --git a/Source/VK/FenceVK.hpp b/Source/VK/FenceVK.hpp
+index dde8a9e..f0b261a 100644
+--- a/Source/VK/FenceVK.hpp
++++ b/Source/VK/FenceVK.hpp
+@@ -51,3 +51,23 @@ NRI_INLINE void FenceVK::Wait(uint64_t value) {
+     const auto& vk = m_Device.GetDispatchTable();
+     vk.WaitSemaphores((VkDevice)m_Device, &semaphoreWaitInfo, MsToUs(NRI_TIMEOUT_FENCE));
+ }
++
++NRI_INLINE Result FenceVK::GetFenceValueChecked(uint64_t& value) const {
++    value = 0;
++    const auto& vk = m_Device.GetDispatchTable();
++    return GetResultFromVkResult(vk.GetSemaphoreCounterValue((VkDevice)m_Device, m_Handle, &value));
++}
++
++NRI_INLINE Result FenceVK::WaitChecked(uint64_t value, uint64_t timeoutNs, bool& completed) {
++    completed = false;
++    VkSemaphoreWaitInfo info = {VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
++    info.semaphoreCount = 1;
++    info.pSemaphores = &m_Handle;
++    info.pValues = &value;
++    const auto& vk = m_Device.GetDispatchTable();
++    const VkResult result = vk.WaitSemaphores((VkDevice)m_Device, &info, timeoutNs);
++    if (result == VK_TIMEOUT)
++        return Result::SUCCESS;
++    completed = result == VK_SUCCESS;
++    return GetResultFromVkResult(result);
++}
+diff --git a/Source/VK/ImplVK.cpp b/Source/VK/ImplVK.cpp
+index f84162e..908476d 100644
+--- a/Source/VK/ImplVK.cpp
++++ b/Source/VK/ImplVK.cpp
+@@ -1333,6 +1333,26 @@ static Result NRI_CALL CreateAccelerationStructureVK(Device& device, const Accel
+     return ((DeviceVK&)device).CreateImplementation<AccelerationStructureVK>(accelerationStructure, accelerationStructureVKDesc);
+ }
+ 
++static Result NRI_CALL GetFenceValueCheckedVK(const Fence& fence, uint64_t& value) {
++    return ((const FenceVK&)fence).GetFenceValueChecked(value);
++}
++
++static Result NRI_CALL WaitFenceCheckedVK(Fence& fence, uint64_t value, uint64_t timeoutNs, bool& completed) {
++    return ((FenceVK&)fence).WaitChecked(value, timeoutNs, completed);
++}
++
++static Result NRI_CALL ResetCommandAllocatorCheckedVK(CommandAllocator& allocator) {
++    return ((CommandAllocatorVK&)allocator).ResetChecked();
++}
++
++static Result NRI_CALL FlushBufferRangeVK(Buffer& buffer, uint64_t offset, uint64_t size) {
++    return ((BufferVK&)buffer).SynchronizeMappedRange(offset, size, false);
++}
++
++static Result NRI_CALL InvalidateBufferRangeVK(Buffer& buffer, uint64_t offset, uint64_t size) {
++    return ((BufferVK&)buffer).SynchronizeMappedRange(offset, size, true);
++}
++
+ static uint32_t NRI_CALL GetQueueFamilyIndexVK(const Queue& queue) {
+     return ((QueueVK&)queue).GetFamilyIndex();
+ }
+@@ -1369,6 +1389,11 @@ Result DeviceVK::FillFunctionTable(WrapperVKInterface& table) const {
+     table.GetInstanceVK = ::GetInstanceVK;
+     table.GetDeviceProcAddrVK = ::GetDeviceProcAddrVK;
+     table.GetInstanceProcAddrVK = ::GetInstanceProcAddrVK;
++    table.GetFenceValueCheckedVK = ::GetFenceValueCheckedVK;
++    table.WaitFenceCheckedVK = ::WaitFenceCheckedVK;
++    table.ResetCommandAllocatorCheckedVK = ::ResetCommandAllocatorCheckedVK;
++    table.FlushBufferRangeVK = ::FlushBufferRangeVK;
++    table.InvalidateBufferRangeVK = ::InvalidateBufferRangeVK;
+ 
+     return Result::SUCCESS;
+ }
+diff --git a/Source/VK/PipelineLayoutVK.h b/Source/VK/PipelineLayoutVK.h
+index 0ec4507..9345b5b 100644
+--- a/Source/VK/PipelineLayoutVK.h
++++ b/Source/VK/PipelineLayoutVK.h
+@@ -60,7 +60,7 @@ struct PipelineLayoutVK final : public DebugNameBase {
+     void SetDebugName(const char* name) NRI_DEBUG_NAME_OVERRIDE;
+ 
+ private:
+-    void CreateSetLayout(VkDescriptorSetLayout* setLayout, const DescriptorSetDesc& descriptorSetDesc, const RootSamplerDesc* rootSamplers, uint32_t rootSamplerNum, bool ignoreGlobalSPIRVOffsets, bool isPush);
++    Result CreateSetLayout(VkDescriptorSetLayout* setLayout, const DescriptorSetDesc& descriptorSetDesc, const RootSamplerDesc* rootSamplers, uint32_t rootSamplerNum, bool ignoreGlobalSPIRVOffsets, bool isPush);
+ 
+ private:
+     DeviceVK& m_Device;
+diff --git a/Source/VK/PipelineLayoutVK.hpp b/Source/VK/PipelineLayoutVK.hpp
+index d71fb41..3d602a8 100644
+--- a/Source/VK/PipelineLayoutVK.hpp
++++ b/Source/VK/PipelineLayoutVK.hpp
+@@ -53,7 +53,9 @@ Result PipelineLayoutVK::Create(const PipelineLayoutDesc& pipelineLayoutDesc) {
+ 
+         // Create "non-push" set layout
+         VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+-        CreateSetLayout(&descriptorSetLayout, descriptorSetDesc, nullptr, 0, ignoreGlobalSPIRVOffsets, false);
++        const Result layoutResult = CreateSetLayout(&descriptorSetLayout, descriptorSetDesc, nullptr, 0, ignoreGlobalSPIRVOffsets, false);
++        if (layoutResult != Result::SUCCESS)
++            return layoutResult;
+ 
+         m_DescriptorSetLayouts.push_back(descriptorSetLayout);
+         setNum = std::max(setNum, descriptorSetDesc.registerSpace);
+@@ -123,7 +125,9 @@ Result PipelineLayoutVK::Create(const PipelineLayoutDesc& pipelineLayoutDesc) {
+ 
+         // Create "push" set layout
+         VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+-        CreateSetLayout(&descriptorSetLayout, rootSet, pipelineLayoutDesc.rootSamplers, pipelineLayoutDesc.rootSamplerNum, ignoreGlobalSPIRVOffsets, true);
++        const Result layoutResult = CreateSetLayout(&descriptorSetLayout, rootSet, pipelineLayoutDesc.rootSamplers, pipelineLayoutDesc.rootSamplerNum, ignoreGlobalSPIRVOffsets, true);
++        if (layoutResult != Result::SUCCESS)
++            return layoutResult;
+ 
+         m_DescriptorSetLayouts.push_back(descriptorSetLayout);
+         setNum = std::max(setNum, pipelineLayoutDesc.rootRegisterSpace);
+@@ -137,7 +141,9 @@ Result PipelineLayoutVK::Create(const PipelineLayoutDesc& pipelineLayoutDesc) {
+     if (hasGaps) {
+         // Create a "dummy" set layout
+         VkDescriptorSetLayout dummyDescriptorSetLayout = VK_NULL_HANDLE;
+-        CreateSetLayout(&dummyDescriptorSetLayout, {}, nullptr, 0, ignoreGlobalSPIRVOffsets, false);
++        const Result layoutResult = CreateSetLayout(&dummyDescriptorSetLayout, {}, nullptr, 0, ignoreGlobalSPIRVOffsets, false);
++        if (layoutResult != Result::SUCCESS)
++            return layoutResult;
+ 
+         m_DescriptorSetLayouts.push_back(dummyDescriptorSetLayout);
+ 
+@@ -170,7 +176,7 @@ Result PipelineLayoutVK::Create(const PipelineLayoutDesc& pipelineLayoutDesc) {
+     return Result::SUCCESS;
+ }
+ 
+-void PipelineLayoutVK::CreateSetLayout(VkDescriptorSetLayout* setLayout, const DescriptorSetDesc& descriptorSetDesc, const RootSamplerDesc* rootSamplers, uint32_t rootSamplerNum, bool ignoreGlobalSPIRVOffsets, bool isPush) {
++Result PipelineLayoutVK::CreateSetLayout(VkDescriptorSetLayout* setLayout, const DescriptorSetDesc& descriptorSetDesc, const RootSamplerDesc* rootSamplers, uint32_t rootSamplerNum, bool ignoreGlobalSPIRVOffsets, bool isPush) {
+     const DeviceDesc& deviceDesc = m_Device.GetDesc();
+ 
+     // Binding offsets
+@@ -265,7 +271,7 @@ void PipelineLayoutVK::CreateSetLayout(VkDescriptorSetLayout* setLayout, const D
+ 
+         const auto& vk = m_Device.GetDispatchTable();
+         VkResult vkResult = vk.CreateSampler(m_Device, &info, m_Device.GetVkAllocationCallbacks(), &immutableSamplers[i]);
+-        NRI_RETURN_VOID_ON_BAD_VKRESULT(&m_Device, vkResult, "vkCreateSampler");
++        NRI_RETURN_ON_BAD_VKRESULT(&m_Device, vkResult, "vkCreateSampler");
+ 
+         m_ImmutableSamplers.push_back(immutableSamplers[i]);
+ 
+@@ -304,7 +310,9 @@ void PipelineLayoutVK::CreateSetLayout(VkDescriptorSetLayout* setLayout, const D
+ 
+     const auto& vk = m_Device.GetDispatchTable();
+     VkResult vkResult = vk.CreateDescriptorSetLayout(m_Device, &info, m_Device.GetVkAllocationCallbacks(), setLayout);
+-    NRI_RETURN_VOID_ON_BAD_VKRESULT(&m_Device, vkResult, "vkCreateDescriptorSetLayout");
++    NRI_RETURN_ON_BAD_VKRESULT(&m_Device, vkResult, "vkCreateDescriptorSetLayout");
++
++    return Result::SUCCESS;
+ }
+ 
+ NRI_INLINE void PipelineLayoutVK::SetDebugName(const char* name) {
+diff --git a/Source/Validation/DeviceVal.h b/Source/Validation/DeviceVal.h
+index 7663cfd..951e42d 100644
+--- a/Source/Validation/DeviceVal.h
++++ b/Source/Validation/DeviceVal.h
+@@ -195,7 +195,7 @@ private:
+     char* m_Name = nullptr; // .natvis
+     DeviceDesc m_Desc = {}; // .natvis
+     Device& m_Impl;
+-    std::array<QueueVal*, (size_t)QueueType::MAX_NUM> m_Queues = {};
++    Vector<QueueVal*> m_Queues;
+     UnorderedMap<MemoryType, MemoryLocation> m_MemoryTypeMap;
+ 
+     // Validation
+diff --git a/Source/Validation/DeviceVal.hpp b/Source/Validation/DeviceVal.hpp
+index 0d674f8..e7ac3bd 100644
+--- a/Source/Validation/DeviceVal.hpp
++++ b/Source/Validation/DeviceVal.hpp
+@@ -110,6 +110,7 @@ static inline bool IsViewTypeSupported(const TextureDesc& textureDesc, TextureVi
+ DeviceVal::DeviceVal(const CallbackInterface& callbacks, const AllocationCallbacks& allocationCallbacks, DeviceBase& device)
+     : DeviceBase(callbacks, allocationCallbacks, NRI_OBJECT_SIGNATURE)
+     , m_Impl(*(Device*)&device)
++    , m_Queues(GetStdAllocator())
+     , m_MemoryTypeMap(GetStdAllocator()) {
+ }
+ 
+@@ -143,6 +144,10 @@ bool DeviceVal::Create() {
+     m_IsExtSupported.wrapperVK = deviceBaseImpl.FillFunctionTable(m_iWrapperVKImpl) == Result::SUCCESS;
+ 
+     m_Desc = GetDesc();
++    size_t queueNum = 0;
++    for (uint32_t count : m_Desc.adapterDesc.queueNum)
++        queueNum += count;
++    m_Queues.resize(queueNum, nullptr);
+ 
+     return FillFunctionTable(m_iCore) == Result::SUCCESS;
+ }
+@@ -193,7 +198,9 @@ NRI_INLINE Result DeviceVal::GetQueue(QueueType queueType, uint32_t queueIndex,
+ 
+     queue = nullptr;
+     if (result == Result::SUCCESS) {
+-        const uint32_t index = (uint32_t)queueType;
++        uint32_t index = queueIndex;
++        for (uint32_t i = 0; i < (uint32_t)queueType; i++)
++            index += m_Desc.adapterDesc.queueNum[i];
+         if (!m_Queues[index])
+             m_Queues[index] = Allocate<QueueVal>(GetAllocationCallbacks(), *this, queueImpl);
+ 
+diff --git a/Source/Validation/ImplVal.cpp b/Source/Validation/ImplVal.cpp
+index 7b3eb13..807a52c 100644
+--- a/Source/Validation/ImplVal.cpp
++++ b/Source/Validation/ImplVal.cpp
+@@ -1692,6 +1692,31 @@ static VKHandle NRI_CALL GetPhysicalDeviceVK(const Device& device) {
+     return ((DeviceVal&)device).GetWrapperVKInterfaceImpl().GetPhysicalDeviceVK(((DeviceVal&)device).GetImpl());
+ }
+ 
++static Result NRI_CALL GetFenceValueCheckedVK(const Fence& fence, uint64_t& value) {
++    const auto& object = (const FenceVal&)fence;
++    return object.GetWrapperVKInterfaceImpl().GetFenceValueCheckedVK(*object.GetImpl(), value);
++}
++
++static Result NRI_CALL WaitFenceCheckedVK(Fence& fence, uint64_t value, uint64_t timeoutNs, bool& completed) {
++    auto& object = (FenceVal&)fence;
++    return object.GetWrapperVKInterfaceImpl().WaitFenceCheckedVK(*object.GetImpl(), value, timeoutNs, completed);
++}
++
++static Result NRI_CALL ResetCommandAllocatorCheckedVK(CommandAllocator& allocator) {
++    auto& object = (CommandAllocatorVal&)allocator;
++    return object.GetWrapperVKInterfaceImpl().ResetCommandAllocatorCheckedVK(*object.GetImpl());
++}
++
++static Result NRI_CALL FlushBufferRangeVK(Buffer& buffer, uint64_t offset, uint64_t size) {
++    auto& object = (BufferVal&)buffer;
++    return object.GetWrapperVKInterfaceImpl().FlushBufferRangeVK(*object.GetImpl(), offset, size);
++}
++
++static Result NRI_CALL InvalidateBufferRangeVK(Buffer& buffer, uint64_t offset, uint64_t size) {
++    auto& object = (BufferVal&)buffer;
++    return object.GetWrapperVKInterfaceImpl().InvalidateBufferRangeVK(*object.GetImpl(), offset, size);
++}
++
+ static uint32_t NRI_CALL GetQueueFamilyIndexVK(const Queue& queue) {
+     const QueueVal& queueVal = (QueueVal&)queue;
+     return queueVal.GetWrapperVKInterfaceImpl().GetQueueFamilyIndexVK(*queueVal.GetImpl());
+@@ -1731,6 +1756,11 @@ Result DeviceVal::FillFunctionTable(WrapperVKInterface& table) const {
+     table.GetInstanceVK = ::GetInstanceVK;
+     table.GetDeviceProcAddrVK = ::GetDeviceProcAddrVK;
+     table.GetInstanceProcAddrVK = ::GetInstanceProcAddrVK;
++    table.GetFenceValueCheckedVK = ::GetFenceValueCheckedVK;
++    table.WaitFenceCheckedVK = ::WaitFenceCheckedVK;
++    table.ResetCommandAllocatorCheckedVK = ::ResetCommandAllocatorCheckedVK;
++    table.FlushBufferRangeVK = ::FlushBufferRangeVK;
++    table.InvalidateBufferRangeVK = ::InvalidateBufferRangeVK;
+ 
+     return Result::SUCCESS;
+ #else

@@ -154,7 +154,6 @@ namespace lux::render
         scenes.clear();
         command_registry_.clear(); // All operations ended; professional Handler borrows still have a live Device.
         device.reset();
-        instance.reset();
         running.store(false);
     }
 

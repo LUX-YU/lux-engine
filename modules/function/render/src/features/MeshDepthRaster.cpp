@@ -31,7 +31,8 @@ namespace lux::render
             return result;
         }
         static const FeatureGraphOps graph{detail::describe<true>, detail::build<true>};
-        batch.addFeature({&MeshDepthRasterDescriptor::descriptor, &graph, detail::programs<true>});
+        const auto programs = device().pagedInstances() ? detail::programs<true, true> : detail::programs<true, false>;
+        batch.addFeature({&MeshDepthRasterDescriptor::descriptor, &graph, programs});
         return {};
     }
 

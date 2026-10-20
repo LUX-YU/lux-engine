@@ -36,7 +36,11 @@ namespace lux::render
             return result;
         }
         static const FeatureGraphOps graph{detail::describe<false>, detail::build<false>};
-        batch.addFeature({&MaterialMeshRasterDescriptor::descriptor, &graph, detail::programs<false>});
+        // Shader layout follows the selected instance representation, not the backend's
+        // automatically enabled BDA capability. Both paths retain the same public descriptor.
+        const auto programs =
+            device().pagedInstances() ? detail::programs<false, true> : detail::programs<false, false>;
+        batch.addFeature({&MaterialMeshRasterDescriptor::descriptor, &graph, programs});
         return {};
     }
 

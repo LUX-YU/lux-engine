@@ -96,12 +96,8 @@ namespace lux::render::detail
         void release(GpuPage&) noexcept;
         void release(PageTable&) noexcept;
         void mark(std::uint32_t frame, std::uint32_t record, std::uint8_t fields) noexcept;
-        [[nodiscard]] gapi::vk::VmaBuffer& fieldBuffer(
-            std::uint32_t frame,
-            std::uint32_t page,
-            std::size_t field
-        ) noexcept;
-        [[nodiscard]] VkDeviceSize fieldOffset(std::uint32_t record, std::size_t stride) const noexcept;
+        [[nodiscard]] nri::Buffer* fieldBuffer(std::uint32_t frame, std::uint32_t page, std::size_t field) noexcept;
+        [[nodiscard]] std::uint64_t fieldOffset(std::uint32_t record, std::size_t stride) const noexcept;
         DeviceSession& session_;
         StorageId id_;
         const bool paged_;

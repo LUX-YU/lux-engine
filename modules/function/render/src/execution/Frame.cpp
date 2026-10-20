@@ -1,20 +1,21 @@
 #include <algorithm>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/execution/ExecutionContext.hpp>
+#include <lux/engine/render/execution/RecordGraph.hpp>
 #include <lux/engine/render/upload/UploadContext.hpp>
 
 namespace lux::render::detail
 {
-    bool UploadContext::tryBeginFrameWrite(std::uint32_t& slot) noexcept
+    bool DeviceSession::tryBeginFrameWrite(std::uint32_t& slot) noexcept
     {
-        slot = session.next_frame_;
-        auto& frame = session.frames_[slot];
-        if (frame.phase == DeviceSession::EFramePhase::FREE)
+        slot = next_frame_;
+        auto& frame = frames_[slot];
+        if (frame.phase == EFramePhase::FREE)
         {
             frame.accepted_serials.fill(0);
-            frame.phase = DeviceSession::EFramePhase::COLLECTING;
+            frame.phase = EFramePhase::COLLECTING;
         }
-        if (frame.phase != DeviceSession::EFramePhase::COLLECTING)
+        if (frame.phase != EFramePhase::COLLECTING)
         {
             return false;
         }
@@ -22,10 +23,91 @@ namespace lux::render::detail
         return true;
     }
 
-    void UploadContext::finishFrameWrite(std::uint32_t slot) noexcept
+    void DeviceSession::finishFrameWrite(std::uint32_t slot) noexcept
     {
-        auto& frame = session.frames_[slot];
+        auto& frame = frames_[slot];
         --frame.pending_writes;
+    }
+
+    void DeviceSession::enqueueFrameWrite(FrameWriteWaiter& node) noexcept
+    {
+        node.next = nullptr;
+        if (frame_waiters_tail_)
+        {
+            frame_waiters_tail_->next = &node;
+        }
+        else
+        {
+            frame_waiters_ = &node;
+        }
+        frame_waiters_tail_ = &node;
+    }
+
+    bool DeviceSession::backgroundUploadsAllowed() const noexcept
+    {
+        const auto& frame = frames_[next_frame_];
+        return frame.phase != EFramePhase::PREPARING && frame.pending_writes == 0;
+    }
+
+    void DeviceSession::dispatchFrameWrites() noexcept
+    {
+        const auto phase = frames_[next_frame_].phase;
+        const bool can_write = phase == EFramePhase::FREE || phase == EFramePhase::COLLECTING;
+        auto* frame_boundary = frame_waiters_tail_;
+        while (frame_waiters_ && frame_boundary)
+        {
+            auto* node = frame_waiters_;
+            if (!can_write && !node->stopping(node->operation))
+            {
+                break;
+            }
+            frame_waiters_ = node->next;
+            if (!frame_waiters_)
+            {
+                frame_waiters_tail_ = nullptr;
+            }
+            if (node == frame_boundary)
+            {
+                frame_boundary = nullptr;
+            }
+            const auto complete = node->complete;
+            auto* operation = node->operation;
+            complete(operation);
+        }
+    }
+
+    void DeviceSession::afterFrameSubmit(void* receiver, void (*complete)(void*, RenderResult<void>) noexcept) noexcept
+    {
+        frame_receivers_.emplace_back(receiver, complete);
+    }
+
+    void DeviceSession::acceptFrameSubmission(std::uint32_t slot, const SubmissionQueue& queue) noexcept
+    {
+        for (std::size_t i = 0; i < physical_queues_.size(); ++i)
+        {
+            if (physical_queues_[i].get() == &queue)
+            {
+                frames_[slot].accepted_serials[i] = queue.submitted();
+                return;
+            }
+        }
+    }
+
+    void DeviceSession::finishFrameSubmission(RenderResult<void> result) noexcept
+    {
+        if (uploads_)
+        {
+            uploads_->finishFrameCopies(result);
+        }
+        const auto boundary = frame_receivers_.size();
+        for (std::size_t i = 0; i < boundary; ++i)
+        {
+            // Remove this borrow before delivery. A callback may append work for the next
+            // submission and grow the vector; no iterator or record reference crosses it.
+            const auto [receiver, complete] = std::exchange(frame_receivers_[i], {});
+            complete(receiver, result);
+        }
+        frame_receivers_.erase(frame_receivers_.begin(), frame_receivers_.begin() + boundary);
     }
 
     void DeviceSession::sealFrame(FrameSlot& frame) noexcept
@@ -103,21 +185,6 @@ namespace lux::render::detail
         {
             return outcome(EExecutionOutcome::RECORDING_BUSY);
         }
-        auto batch = graphics.beginAfterPoll();
-        if (!batch)
-        {
-            return batch.error().type == kCapacity ? outcome(EExecutionOutcome::QUEUE_FULL)
-                                                   : RenderResult<std::uint32_t>{cxx::unexpected(batch.error())};
-        }
-        const auto failed = [&](RenderError error) noexcept -> RenderResult<std::uint32_t>
-        {
-            if (uploads_)
-            {
-                uploads_->finishFrameCopies(cxx::unexpected(error));
-            }
-            sealFrame(frame);
-            return cxx::unexpected(error);
-        };
         // Scratch contains only the actual cold-qualified borrows used in this frame. It is
         // rebuilt from active Contexts, never an owning or global professional resource table.
         frame_storages_.clear();
@@ -143,72 +210,83 @@ namespace lux::render::detail
             ),
             frame_storages_.end()
         );
-        if (!frame_storages_.empty() && !uploads_)
-        {
-            return failed(RenderError{kInvalidArgument});
-        }
-        bool resources_ready = true;
-        for (const auto& [storage, ops] : frame_storages_)
-        {
-            auto prepared = ops->prepareFrame(storage, next_frame_, *uploads_);
-            if (!prepared)
+        bool prepared = false;
+        bool contexts_ready = false;
+        auto accepted = graphics.recordAndSubmit(
+            [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
             {
-                return failed(prepared.error());
-            }
-            resources_ready &= *prepared;
-        }
-        bool contexts_ready = resources_ready;
-        bool native_records = false;
-        if (resources_ready)
-        {
-            for (auto* context : contexts)
-            {
-                auto prepared = context->prepareFrame(next_frame_, uploads_.get());
-                if (!prepared)
+                prepared = true;
+                if (!frame_storages_.empty() && !uploads_)
                 {
-                    return failed(prepared.error());
+                    return cxx::unexpected(RenderError{kDeviceArgument});
                 }
-                contexts_ready &= *prepared;
-                native_records |= !context->prepared_data_.empty();
+                bool resources_ready = true;
+                for (const auto& [storage, ops] : frame_storages_)
+                {
+                    auto prepared = ops->prepareFrame(storage, next_frame_, *uploads_);
+                    if (!prepared)
+                    {
+                        return cxx::unexpected(prepared.error());
+                    }
+                    resources_ready &= *prepared;
+                }
+                contexts_ready = resources_ready;
+                bool native_records = false;
+                if (resources_ready)
+                {
+                    for (auto* context : contexts)
+                    {
+                        auto prepared = context->prepareFrame(next_frame_, uploads_.get());
+                        if (!prepared)
+                        {
+                            return cxx::unexpected(prepared.error());
+                        }
+                        contexts_ready &= *prepared;
+                        native_records |= !context->prepared_data_.empty();
+                    }
+                }
+                const bool has_copies = uploads_ && uploads_->hasFrameCopies();
+                if (!contexts_ready && !has_copies && !native_records)
+                {
+                    return cxx::unexpected(RenderError{kDeviceBusy});
+                }
+                if (uploads_)
+                {
+                    uploads_->recordFrame(command);
+                }
+                if (resources_ready)
+                {
+                    for (auto* context : contexts)
+                    {
+                        recordGraphPreparation(*context, command, next_frame_);
+                    }
+                }
+                if (contexts_ready)
+                {
+                    for (auto* context : contexts)
+                    {
+                        recordGraph(*context, command, next_frame_);
+                    }
+                }
+                return {};
             }
-        }
-        const bool has_copies = uploads_ && uploads_->hasFrameCopies();
-        if (!contexts_ready && !has_copies && !native_records)
-        {
-            if (uploads_)
-            {
-                uploads_->finishFrameCopies(cxx::unexpected(RenderError{kCapacity}));
-            }
-            return outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
-        }
-        if (uploads_)
-        {
-            uploads_->recordFrame(*batch);
-        }
-        if (resources_ready)
-        {
-            for (auto* context : contexts)
-            {
-                context->recordPreparation(*batch, next_frame_);
-            }
-        }
-        if (contexts_ready)
-        {
-            for (auto* context : contexts)
-            {
-                context->record(*batch, next_frame_);
-            }
-        }
-        auto accepted = std::move(*batch).submit();
+        );
         if (!accepted)
         {
-            return failed(accepted.error());
+            finishFrameSubmission(accepted);
+            if (!prepared && accepted.error().type == kDeviceCapacity)
+            {
+                return outcome(EExecutionOutcome::QUEUE_FULL);
+            }
+            if (accepted.error().type == kDeviceBusy)
+            {
+                return outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
+            }
+            sealFrame(frame);
+            return cxx::unexpected(accepted.error());
         }
-        frame.accepted_serials[queue_roles_[static_cast<std::size_t>(EQueueRole::GRAPHICS)]] = graphics.submitted();
-        if (uploads_)
-        {
-            uploads_->finishFrameCopies({});
-        }
+        acceptFrameSubmission(next_frame_, graphics);
+        finishFrameSubmission({});
         if (!contexts_ready)
         {
             (void)outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);

@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
+#include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/CompiledGraph.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
@@ -16,9 +17,9 @@ namespace lux::render::detail
 {
     struct RasterMeshInstanceStorage::GpuPage final
     {
-        gapi::vk::VmaBuffer transforms, properties, alive;
+        nri::Buffer *transforms = nullptr, *properties = nullptr, *alive = nullptr;
 
-        gapi::vk::VmaBuffer& field(std::size_t index) noexcept
+        nri::Buffer*& field(std::size_t index) noexcept
         {
             return index == 0 ? transforms : index == 1 ? properties : alive;
         }
@@ -36,11 +37,11 @@ namespace lux::render::detail
     {
         struct Leaf final
         {
-            gapi::vk::VmaBuffer buffer;
+            nri::Buffer* buffer = nullptr;
             std::array<MeshInstancePageGpu, kMeshInstanceTableAxis> addresses{};
         };
 
-        gapi::vk::VmaBuffer root;
+        nri::Buffer* root = nullptr;
         std::array<std::uint64_t, kMeshInstanceTableAxis> addresses{};
         std::vector<Leaf> leaves;
         DirtyRanges roots_dirty, pages_dirty;
@@ -152,11 +153,9 @@ namespace lux::render::detail
             return std::as_bytes(std::span(alive));
         }
 
-        std::uint64_t address(DeviceSession& session, const gapi::vk::VmaBuffer& buffer) noexcept
+        std::uint64_t address(DeviceSession& session, const nri::Buffer* buffer) noexcept
         {
-            VkBufferDeviceAddressInfo info{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
-            info.buffer = buffer.handle();
-            return vkGetBufferDeviceAddress(session.nativeDevice(), &info);
+            return session.api().GetBufferDeviceAddress(*buffer);
         }
 
         template <class Visit> bool visitRuns(DirtyWordMask mask, Visit visit) noexcept
@@ -178,8 +177,7 @@ namespace lux::render::detail
     } // namespace
 
     RasterMeshInstanceStorage::RasterMeshInstanceStorage(DeviceSession& session, StorageId id) noexcept
-        : session_(session), id_(id), paged_(session.enabledFeatures().buffer_device_address),
-          frames_(std::make_unique<FrameData>())
+        : session_(session), id_(id), paged_(session.pagedInstances()), frames_(std::make_unique<FrameData>())
     {
     }
 
@@ -190,11 +188,11 @@ namespace lux::render::detail
             return;
         }
         session_.deferRelease(
-            [page = std::move(page), allocator = session_.allocator().native()]() mutable noexcept
+            [page = std::exchange(page, {}), destroy = session_.api().DestroyBuffer]() mutable noexcept
             {
-                page.transforms.release(allocator);
-                page.properties.release(allocator);
-                page.alive.release(allocator);
+                destroy(page.transforms);
+                destroy(page.properties);
+                destroy(page.alive);
             }
         );
     }
@@ -202,14 +200,15 @@ namespace lux::render::detail
     void RasterMeshInstanceStorage::release(PageTable& table) noexcept
     {
         session_.deferRelease(
-            [root = std::move(table.root), leaves = std::move(table.leaves), allocator = session_.allocator().native()](
-            ) mutable noexcept
+            [root = std::exchange(table.root, nullptr),
+             leaves = std::move(table.leaves),
+             destroy = session_.api().DestroyBuffer]() mutable noexcept
             {
                 for (auto& leaf : leaves)
                 {
-                    leaf.buffer.release(allocator);
+                    destroy(leaf.buffer);
                 }
-                root.release(allocator);
+                destroy(root);
             }
         );
     }
@@ -255,32 +254,33 @@ namespace lux::render::detail
             {
                 for (std::size_t field = 0; field < kStride.size(); ++field)
                 {
-                    candidate.field(field).release(session_.allocator().native());
+                    session_.api().DestroyBuffer(candidate.field(field));
                 }
             }
         );
-        const auto usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                           VK_BUFFER_USAGE_TRANSFER_SRC_BIT | (paged_ ? VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT : 0);
+        const auto usage = nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
         for (std::size_t field = 0; field < kStride.size(); ++field)
         {
             const auto bytes = slots * kStride[field];
-            if (bytes > session_.physicalDevice().properties().properties.limits.maxStorageBufferRange)
+            if (bytes > session_.description().memory.storageBufferMaxRange)
             {
                 return cxx::unexpected(RenderError{kStorageCapacity});
             }
-            auto buffer = session_.allocator().createBuffer(bytes, usage, EMemoryAccess::DEVICE);
-            if (!buffer)
+            const nri::BufferDesc description{bytes, 4, usage};
+            const auto created =
+                session_.api()
+                    .CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, candidate.field(field));
+            if (created != nri::Result::SUCCESS)
             {
-                return cxx::unexpected(buffer.error());
+                return cxx::unexpected(nativeError(created));
             }
-            candidate.field(field) = std::move(*buffer);
         }
         output = std::move(candidate);
         rollback.release();
         return {};
     }
 
-    gapi::vk::VmaBuffer& RasterMeshInstanceStorage::fieldBuffer(
+    nri::Buffer* RasterMeshInstanceStorage::fieldBuffer(
         std::uint32_t frame,
         std::uint32_t page,
         std::size_t field
@@ -289,7 +289,7 @@ namespace lux::render::detail
         return paged_ ? pages_[page]->gpu[frame].field(field) : frames_->slices[frame].flat.field(field);
     }
 
-    VkDeviceSize RasterMeshInstanceStorage::fieldOffset(std::uint32_t record, std::size_t stride) const noexcept
+    std::uint64_t RasterMeshInstanceStorage::fieldOffset(std::uint32_t record, std::size_t stride) const noexcept
     {
         return std::uint64_t(paged_ ? record % kMeshInstancePageSlots : record) * stride;
     }
@@ -300,7 +300,11 @@ namespace lux::render::detail
         for (std::size_t field = 0; field < bindings_.size(); ++field)
         {
             auto& buffer = paged_ ? slice.table->root : slice.flat.field(field);
-            StorageSubscription::publish(bindings_[field], frame, {buffer.handle(), 0, buffer.size()});
+            StorageSubscription::publish(
+                bindings_[field],
+                frame,
+                {buffer, 0, session_.api().GetBufferDesc(*buffer).size}
+            );
         }
     }
 
@@ -329,7 +333,8 @@ namespace lux::render::detail
         const auto first_page = slice.known_pages;
         if (!paged_)
         {
-            if (slice.flat.transforms.size() < std::max<std::uint64_t>(capacity(), 2) * sizeof(TransformMatrix))
+            if ((slice.flat.transforms ? session_.api().GetBufferDesc(*slice.flat.transforms).size : 0) <
+                std::max<std::uint64_t>(capacity(), 2) * sizeof(TransformMatrix))
             {
                 GpuPage candidate;
                 if (auto result = allocate(candidate, std::max<std::uint64_t>(capacity(), 2)); !result)
@@ -353,16 +358,16 @@ namespace lux::render::detail
                 slice.table = std::make_unique<PageTable>();
             }
             auto& table = *slice.table;
-            const auto usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+            const auto usage = nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
             if (!table.root)
             {
-                auto root = session_.allocator().createBuffer(sizeof(table.addresses), usage, EMemoryAccess::DEVICE);
-                if (!root)
+                const nri::BufferDesc description{sizeof(table.addresses), 4, usage};
+                const auto created =
+                    session_.api().CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, table.root);
+                if (created != nri::Result::SUCCESS)
                 {
-                    return cxx::unexpected(root.error());
+                    return cxx::unexpected(nativeError(created));
                 }
-                table.root = std::move(*root);
                 table.roots_dirty.grow(kMeshInstanceTableAxis);
                 table.roots_dirty.markRange(0, kMeshInstanceTableAxis);
                 publishBuffers(frame);
@@ -371,12 +376,13 @@ namespace lux::render::detail
             while (table.leaves.size() < leaf_count)
             {
                 PageTable::Leaf leaf;
-                auto buffer = session_.allocator().createBuffer(sizeof(leaf.addresses), usage, EMemoryAccess::DEVICE);
-                if (!buffer)
+                const nri::BufferDesc description{sizeof(leaf.addresses), 4, usage};
+                const auto created =
+                    session_.api().CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, leaf.buffer);
+                if (created != nri::Result::SUCCESS)
                 {
-                    return cxx::unexpected(buffer.error());
+                    return cxx::unexpected(nativeError(created));
                 }
-                leaf.buffer = std::move(*buffer);
                 const auto index = table.leaves.size();
                 table.addresses[index] = address(session_, leaf.buffer);
                 table.roots_dirty.mark(static_cast<std::uint32_t>(index));
@@ -514,7 +520,7 @@ namespace lux::render::detail
     {
         if (updating_)
         {
-            co_return cxx::unexpected(RenderError{kBusy});
+            co_return cxx::unexpected(RenderError{kDeviceBusy});
         }
         const auto descriptions = [&]() noexcept -> std::span<const MeshInstanceDescription>
         {
@@ -652,7 +658,7 @@ namespace lux::render::detail
             }
         }
         std::uint32_t frame = 0;
-        while (!session_.uploads().tryBeginFrameWrite(frame))
+        while (!session_.tryBeginFrameWrite(frame))
         {
             auto ready = co_await session_.uploads().whenFrameWritable(
                 descriptions.size() *
@@ -663,7 +669,7 @@ namespace lux::render::detail
                 co_return cxx::unexpected(ready.error());
             }
         }
-        cxx::scope_exit finish([&]() noexcept { session_.uploads().finishFrameWrite(frame); });
+        cxx::scope_exit finish([&]() noexcept { session_.finishFrameWrite(frame); });
         if (auto prepared = ensureFrame(frame); !prepared)
         {
             co_return cxx::unexpected(prepared.error());
@@ -682,7 +688,7 @@ namespace lux::render::detail
                                        : field == 1 ? std::as_bytes(std::span(&data.properties[i], 1))
                                                     : std::as_bytes(std::span(&alive, 1));
                     data.writes.push_back(
-                        {&fieldBuffer(frame, record / kMeshInstancePageSlots, field),
+                        {fieldBuffer(frame, record / kMeshInstancePageSlots, field),
                          fieldOffset(record, kStride[field]),
                          bytes}
                     );
@@ -736,7 +742,7 @@ namespace lux::render::detail
     {
         if (updating_)
         {
-            co_return cxx::unexpected(RenderError{kBusy});
+            co_return cxx::unexpected(RenderError{kDeviceBusy});
         }
         if (input.storage != id_ || input.updates.size() > UINT32_MAX)
         {
@@ -775,7 +781,7 @@ namespace lux::render::detail
             }
         );
         std::uint32_t frame = 0;
-        while (!session_.uploads().tryBeginFrameWrite(frame))
+        while (!session_.tryBeginFrameWrite(frame))
         {
             auto ready = co_await session_.uploads().whenFrameWritable(input.updates.size() * sizeof(TransformMatrix));
             if (!ready)
@@ -783,7 +789,7 @@ namespace lux::render::detail
                 co_return cxx::unexpected(ready.error());
             }
         }
-        cxx::scope_exit finish([&]() noexcept { session_.uploads().finishFrameWrite(frame); });
+        cxx::scope_exit finish([&]() noexcept { session_.finishFrameWrite(frame); });
         if (auto prepared = ensureFrame(frame); !prepared)
         {
             co_return cxx::unexpected(prepared.error());
@@ -802,7 +808,7 @@ namespace lux::render::detail
             for (std::size_t i = 0; i < input.updates.size();)
             {
                 const auto record = input.updates[i].instance.local.index;
-                auto* buffer = &fieldBuffer(frame, record / kMeshInstancePageSlots, 0);
+                auto* buffer = fieldBuffer(frame, record / kMeshInstancePageSlots, 0);
                 const auto offset = fieldOffset(record, kStride[0]);
                 const auto count = std::min<std::size_t>(
                     input.updates.size() - i,
@@ -832,7 +838,7 @@ namespace lux::render::detail
                 [&](std::uint32_t record, std::size_t i) noexcept
                 {
                     data.writes.push_back(
-                        {&fieldBuffer(frame, record / kMeshInstancePageSlots, 0),
+                        {fieldBuffer(frame, record / kMeshInstancePageSlots, 0),
                          fieldOffset(record, kStride[0]),
                          std::as_bytes(std::span(input.updates[i].transform))}
                     );
@@ -895,7 +901,7 @@ namespace lux::render::detail
     {
         if (updating_)
         {
-            co_return cxx::unexpected(RenderError{kBusy});
+            co_return cxx::unexpected(RenderError{kDeviceBusy});
         }
         if (input.storage != id_ || input.updates.size() > UINT32_MAX)
         {
@@ -931,7 +937,7 @@ namespace lux::render::detail
             }
         );
         std::uint32_t frame = 0;
-        while (!session_.uploads().tryBeginFrameWrite(frame))
+        while (!session_.tryBeginFrameWrite(frame))
         {
             auto ready = co_await session_.uploads().whenFrameWritable(
                 input.updates.size() * (sizeof(TransformMatrix) + sizeof(MeshInstanceGpuProperty))
@@ -941,7 +947,7 @@ namespace lux::render::detail
                 co_return cxx::unexpected(ready.error());
             }
         }
-        cxx::scope_exit finish([&]() noexcept { session_.uploads().finishFrameWrite(frame); });
+        cxx::scope_exit finish([&]() noexcept { session_.finishFrameWrite(frame); });
         if (auto prepared = ensureFrame(frame); !prepared)
         {
             co_return cxx::unexpected(prepared.error());
@@ -960,7 +966,7 @@ namespace lux::render::detail
                     const auto bytes = field == 0 ? std::as_bytes(std::span(input.updates[i].description.transform))
                                                   : std::as_bytes(std::span(&data.properties[i], 1));
                     data.writes.push_back(
-                        {&fieldBuffer(frame, record / kMeshInstancePageSlots, field),
+                        {fieldBuffer(frame, record / kMeshInstancePageSlots, field),
                          fieldOffset(record, kStride[field]),
                          bytes}
                     );
@@ -1006,7 +1012,7 @@ namespace lux::render::detail
     {
         if (updating_)
         {
-            co_return cxx::unexpected(RenderError{kBusy});
+            co_return cxx::unexpected(RenderError{kDeviceBusy});
         }
         const auto* entry = input.storage == id_ ? entries_.find(input.local) : nullptr;
         if (!entry || entry->key.isNull())
@@ -1016,7 +1022,7 @@ namespace lux::render::detail
         updating_ = true;
         cxx::scope_exit cleanup([&]() noexcept { updating_ = false; });
         std::uint32_t frame = 0;
-        while (!session_.uploads().tryBeginFrameWrite(frame))
+        while (!session_.tryBeginFrameWrite(frame))
         {
             auto ready = co_await session_.uploads().whenFrameWritable(sizeof(std::uint32_t));
             if (!ready)
@@ -1024,7 +1030,7 @@ namespace lux::render::detail
                 co_return cxx::unexpected(ready.error());
             }
         }
-        cxx::scope_exit finish([&]() noexcept { session_.uploads().finishFrameWrite(frame); });
+        cxx::scope_exit finish([&]() noexcept { session_.finishFrameWrite(frame); });
         if (auto prepared = ensureFrame(frame); !prepared)
         {
             co_return cxx::unexpected(prepared.error());
@@ -1032,7 +1038,7 @@ namespace lux::render::detail
         const auto record = input.local.index;
         const std::uint32_t dead = 0;
         const BufferWrite write{
-            &fieldBuffer(frame, record / kMeshInstancePageSlots, 2),
+            fieldBuffer(frame, record / kMeshInstancePageSlots, 2),
             fieldOffset(record, sizeof(dead)),
             std::as_bytes(std::span(&dead, 1))
         };
@@ -1125,7 +1131,7 @@ namespace lux::render::detail
                 {
                     return;
                 }
-                uploads.afterFrameSubmit(
+                session_.afterFrameSubmit(
                     &slice,
                     [](void* value, RenderResult<void> accepted) noexcept
                     {
@@ -1165,7 +1171,7 @@ namespace lux::render::detail
                 {
                     return std::pair{
                         BufferWrite{
-                            &table.root,
+                            table.root,
                             std::uint64_t(first) * sizeof(std::uint64_t),
                             std::as_bytes(std::span(table.addresses).subspan(first, count))
                         },
@@ -1187,7 +1193,7 @@ namespace lux::render::detail
                     const auto local = first % kMeshInstanceTableAxis;
                     return std::pair{
                         BufferWrite{
-                            &leaf.buffer,
+                            leaf.buffer,
                             std::uint64_t(local) * sizeof(MeshInstancePageGpu),
                             std::as_bytes(std::span(leaf.addresses).subspan(local, count))
                         },
@@ -1228,7 +1234,7 @@ namespace lux::render::detail
                     }();
                     return std::pair{
                         BufferWrite{
-                            &fieldBuffer(frame, first / kMeshInstancePageSlots, field),
+                            fieldBuffer(frame, first / kMeshInstancePageSlots, field),
                             fieldOffset(first, kStride[field]),
                             source.subspan(local * kStride[field], count * kStride[field])
                         },
@@ -1268,8 +1274,7 @@ namespace lux::render::detail
         for (std::uint32_t frame = 0; frame < output.size(); ++frame)
         {
             auto& slice = frames_->slices[frame];
-            const auto handle =
-                paged_ ? (slice.table ? slice.table->root.handle() : VK_NULL_HANDLE) : slice.flat.field(field).handle();
+            const auto handle = paged_ ? (slice.table ? slice.table->root : nullptr) : slice.flat.field(field);
             output[frame] = {handle, 0, bytes};
         }
         return {};

@@ -253,13 +253,9 @@ namespace lux::render::detail
 
 namespace lux::render::detail
 {
-    template <bool Depth>
-    RenderResult<ProgramContribution> programs(
-        const void* value,
-        std::string_view instance,
-        const RenderGraphDefinition& graph,
-        const EnabledDeviceFeatures& enabled
-    ) noexcept
+    template <bool Depth, bool Paged>
+    RenderResult<ProgramContribution>
+    programs(const void* value, std::string_view instance, const RenderGraphDefinition& graph, const EnabledDeviceFeatures&) noexcept
     {
         const auto& config = *static_cast<const MeshFeatureConfig*>(value);
         const auto type = Depth ? MeshDepthRasterDescriptor::name : MaterialMeshRasterDescriptor::name;
@@ -267,17 +263,15 @@ namespace lux::render::detail
         const auto resource = [&](std::string_view local) { return "shared:" + key(local); };
         ProgramContribution result;
         PassProgram draw{key("draw")};
-        const auto vertex = enabled.buffer_device_address
-                                ? (Depth ? std::span<const std::uint32_t>(kDepthOnlyPagedVertex)
-                                         : std::span<const std::uint32_t>(kBasicMeshPagedVertex))
-                                : (Depth ? std::span<const std::uint32_t>(kDepthOnlyVertex)
-                                         : std::span<const std::uint32_t>(kBasicMeshVertex));
+        const auto vertex = Paged ? (Depth ? std::span<const std::uint32_t>(kDepthOnlyPagedVertex)
+                                           : std::span<const std::uint32_t>(kBasicMeshPagedVertex))
+                                  : (Depth ? std::span<const std::uint32_t>(kDepthOnlyVertex)
+                                           : std::span<const std::uint32_t>(kBasicMeshVertex));
         draw.shader.stages.push_back({rdesc::EShaderType::VERTEX, "main", {vertex.begin(), vertex.end()}});
-        const auto reflection = enabled.buffer_device_address
-                                    ? (Depth ? std::span<const std::byte>(kDepthOnlyPagedVertexReflection)
-                                             : std::span<const std::byte>(kBasicMeshPagedVertexReflection))
-                                    : (Depth ? std::span<const std::byte>(kDepthOnlyVertexReflection)
-                                             : std::span<const std::byte>(kBasicMeshVertexReflection));
+        const auto reflection = Paged ? (Depth ? std::span<const std::byte>(kDepthOnlyPagedVertexReflection)
+                                               : std::span<const std::byte>(kBasicMeshPagedVertexReflection))
+                                      : (Depth ? std::span<const std::byte>(kDepthOnlyVertexReflection)
+                                               : std::span<const std::byte>(kBasicMeshVertexReflection));
         if (!rdesc::ShaderInfo::deserialize(reflection, draw.shader.interface))
         {
             return cxx::unexpected(RenderError{kFeatureContract});
@@ -368,7 +362,8 @@ namespace lux::render::detail
                 {
                     const bool is_table = binding.type == rdesc::EDescriptorType::STORAGE_BUFFER &&
                                           binding.name == rdesc::kMaterialTableName;
-                    const bool is_images = binding.type == rdesc::EDescriptorType::COMBINED_IMAGE_SAMPLER;
+                    const bool is_images = binding.type == rdesc::EDescriptorType::SAMPLED_IMAGE ||
+                                           binding.type == rdesc::EDescriptorType::SAMPLER;
                     if (!is_table && !is_images)
                     {
                         return cxx::unexpected(RenderError{kFeatureContract});

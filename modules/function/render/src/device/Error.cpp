@@ -2,49 +2,49 @@
 
 #include <array>
 
-namespace lux::render::detail
+namespace lux::render
 {
-    std::span<const error::ErrorDescriptor> vulkanErrorDescriptors() noexcept
+    std::span<const error::ErrorDescriptor> deviceErrorDescriptors() noexcept
     {
         static constexpr std::array descriptors{
             error::ErrorDescriptor{
-                "lux.render.vulkan.native_failure",
-                "Vulkan failure (VkResult bits, operation)",
+                "lux.render.device.native_failure",
+                "NRI failure (Result, operation)",
                 error::ERecovery::PERMANENT,
                 {error::EArgument::HEX, error::EArgument::UNSIGNED}
             },
             error::ErrorDescriptor{
-                "lux.render.vulkan.invalid_argument",
+                "lux.render.device.invalid_argument",
                 "Invalid native configuration or range",
                 error::ERecovery::PERMANENT,
                 {}
             },
             error::ErrorDescriptor{
-                "lux.render.vulkan.unsupported",
-                "Required native capability is unavailable (VkResult bits)",
+                "lux.render.device.unsupported",
+                "Required native capability is unavailable (NRI Result)",
                 error::ERecovery::PERMANENT,
                 {error::EArgument::HEX}
             },
             error::ErrorDescriptor{
-                "lux.render.vulkan.capacity",
+                "lux.render.device.capacity",
                 "Bounded native capacity exhausted",
                 error::ERecovery::PERMANENT,
                 {}
             },
             error::ErrorDescriptor{
-                "lux.render.vulkan.wrong_owner",
-                "Foreign submission or native resource owner",
+                "lux.render.device.device_mismatch",
+                "Resource or submission belongs to a different device",
                 error::ERecovery::PERMANENT,
                 {}
             },
             error::ErrorDescriptor{
-                "lux.render.vulkan.busy",
+                "lux.render.device.busy",
                 "Native work or recording still active",
                 error::ERecovery::PERMANENT,
                 {}
             },
             error::ErrorDescriptor{
-                "lux.render.vulkan.work_stopped",
+                "lux.render.device.work_stopped",
                 "Native work publication stopped; accepted submissions still drain",
                 error::ERecovery::PERMANENT,
                 {}
@@ -52,4 +52,4 @@ namespace lux::render::detail
         };
         return descriptors;
     }
-} // namespace lux::render::detail
+} // namespace lux::render

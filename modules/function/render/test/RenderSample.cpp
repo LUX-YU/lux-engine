@@ -26,9 +26,13 @@ namespace
 
 int main(int argc, char** argv)
 {
-    if (argc != 2)
+    if (argc < 2)
     {
-        std::fprintf(stderr, "usage: render_basic_mesh <CookedTexturedUnlit.frag.spv>\n");
+        std::fprintf(
+            stderr,
+            "usage: render_basic_mesh <CookedTexturedUnlit.frag.spv> "
+            "[--paged] [--single-queue|--same-family] [--fif=1|2|3]\n"
+        );
         return 2;
     }
     auto created = lux::execution::ExecutionRuntime::create({2, 128, 128, {128}});
@@ -37,11 +41,35 @@ int main(int argc, char** argv)
         return 3;
     }
     auto execution = std::move(*created);
-    DeviceOptions options{.dynamic_rendering = true};
+    DeviceOptions options{};
     RenderServerConfig config{"example.offscreen3d", true};
     options.texture_descriptors = true;
     options.multiple_queues = true;
     config.uploads = TransferOptions{65536, 2, 2 * 1024 * 1024};
+    for (int i = 2; i < argc; ++i)
+    {
+        const std::string_view argument{argv[i]};
+        if (argument == "--paged")
+        {
+            options.buffer_device_address = true;
+        }
+        else if (argument == "--single-queue")
+        {
+            options.multiple_queues = false;
+        }
+        else if (argument == "--same-family")
+        {
+            options.prefer_dedicated_queues = false;
+        }
+        else if (argument == "--fif=1" || argument == "--fif=2" || argument == "--fif=3")
+        {
+            config.frames_in_flight = static_cast<std::uint32_t>(argument.back() - '0');
+        }
+        else
+        {
+            return 2;
+        }
+    }
     auto server = require(createRenderServer(config, execution, options));
     (void)require(server->registerFeature<MaterialMeshRasterDescriptor>());
     (void)require(server->registerFeature<MeshDepthRasterDescriptor>());
@@ -49,7 +77,22 @@ int main(int argc, char** argv)
 
     const auto directory_id = require(server->commandId<lux::render::ListCommands>());
     bool ran = false;
-    std::thread render([&] { ran = bool(server->run()); });
+    std::thread render(
+        [&]
+        {
+            auto result = server->run();
+            ran = bool(result);
+            if (!result)
+            {
+                std::fprintf(
+                    stderr,
+                    "Render loop failed error=%llu argument=%llu\n",
+                    static_cast<unsigned long long>(result.error().type),
+                    static_cast<unsigned long long>(result.error().args[0])
+                );
+            }
+        }
+    );
     mesh_sample::runClients(config.channel_name, directory_id, argv[1]);
     server->stop();
     render.join();

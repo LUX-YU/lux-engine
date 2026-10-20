@@ -7,10 +7,12 @@
 namespace lux::render
 {
     static RenderResult<RenderEffect> compileEffect(
-        const gapi::vk::PhysicalDevice& physical,
-        VkDevice device,
+        nri::Device& device,
+        const nri::CoreInterface& api,
         const detail::EnabledDeviceFeatures& enabled,
-        VkQueueFlags queue_flags,
+        std::span<const nri::FormatSupportBits> formats,
+        std::array<std::uint32_t, 2> vertex_limits,
+        nri::QueueType queue_type,
         std::uint32_t sampled_image_capacity,
         std::span<const StorageNameView> storage_types,
         const CreateEffectRequest& request,
@@ -200,10 +202,12 @@ namespace lux::render
             }
         }
         auto compiled = detail::compileGraph(
-            physical,
             device,
+            api,
             enabled,
-            queue_flags,
+            formats,
+            vertex_limits,
+            queue_type,
             sampled_image_capacity,
             (*assembly).definition,
             (*assembly).analysis,
@@ -270,10 +274,12 @@ namespace lux::render
         auto compiled =
             stdexec::schedule(scheduler) |
             stdexec::then(
-                [physical = std::addressof(device->physicalDevice()),
-                 native = device->nativeDevice(),
+                [native = &device->device(),
+                 api = &device->api(),
                  enabled = device->enabledFeatures(),
-                 queue_flags = device->queue().nativeQueue().flags,
+                 formats = device->formatSupport(),
+                 vertex_limits = std::array{device->vertexStrideLimit(), device->vertexOffsetLimit()},
+                 queue_type = device->queue().properties().type,
                  sampled_image_capacity,
                  storage_types = std::move(storage_types),
                  request = std::move(input),
@@ -281,10 +287,12 @@ namespace lux::render
                  limit = config.max_config_bytes]() noexcept
                 {
                     return compileEffect(
-                        *physical,
-                        native,
+                        *native,
+                        *api,
                         enabled,
-                        queue_flags,
+                        formats,
+                        vertex_limits,
+                        queue_type,
                         sampled_image_capacity,
                         storage_types,
                         request,

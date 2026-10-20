@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/device/DeviceSession.hpp>
+#include <vk_mem_alloc.h>
 
 namespace lux::render::detail
 {
@@ -20,8 +21,8 @@ namespace lux::render::detail
             Range(const Range&) = delete;
             Range& operator=(const Range&) = delete;
 
-            gapi::vk::VmaBuffer* buffer = nullptr;
-            VkDeviceSize offset = 0, size = 0;
+            nri::Buffer* buffer = nullptr;
+            std::uint64_t offset = 0, size = 0;
 
         private:
             friend class BufferArena;
@@ -31,8 +32,8 @@ namespace lux::render::detail
 
         BufferArena(
             DeviceSession& session,
-            VkBufferUsageFlags usage,
-            VkDeviceSize segment_bytes = 4 * 1024 * 1024
+            nri::BufferUsageBits usage,
+            std::uint64_t segment_bytes = 4 * 1024 * 1024
         ) noexcept
             : session_(session), usage_(usage), segment_bytes_(segment_bytes)
         {
@@ -41,7 +42,7 @@ namespace lux::render::detail
         ~BufferArena() noexcept;
         BufferArena(const BufferArena&) = delete;
         BufferArena& operator=(const BufferArena&) = delete;
-        [[nodiscard]] RenderResult<Range> allocate(VkDeviceSize bytes, VkDeviceSize alignment) noexcept;
+        [[nodiscard]] RenderResult<Range> allocate(std::uint64_t bytes, std::uint64_t alignment) noexcept;
         void release(Range&) noexcept;
 
         [[nodiscard]] std::uint64_t capacity() const noexcept
@@ -57,23 +58,16 @@ namespace lux::render::detail
     private:
         struct Segment final
         {
-            gapi::vk::VmaBuffer buffer;
+            nri::Buffer* buffer = nullptr;
             VmaVirtualBlock block = VK_NULL_HANDLE;
-
-            ~Segment() noexcept
-            {
-                if (block)
-                {
-                    vmaDestroyVirtualBlock(block);
-                }
-            }
         };
 
-        [[nodiscard]] static Range allocate(Segment&, VkDeviceSize bytes, VkDeviceSize alignment) noexcept;
+        static void destroySegment(const nri::CoreInterface&, Segment&) noexcept;
+        [[nodiscard]] static Range allocate(Segment&, std::uint64_t bytes, std::uint64_t alignment) noexcept;
         DeviceSession& session_;
-        VkBufferUsageFlags usage_;
+        nri::BufferUsageBits usage_;
         std::uint64_t capacity_ = 0;
-        VkDeviceSize segment_bytes_;
+        std::uint64_t segment_bytes_;
         std::vector<std::unique_ptr<Segment>> segments_;
     };
 } // namespace lux::render::detail

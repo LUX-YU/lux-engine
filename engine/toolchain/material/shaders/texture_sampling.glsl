@@ -9,7 +9,8 @@ vec4 luxSampleTexture(TextureRefGPU reference, vec2 uv)
     if (reference.representation_index == 0u)
     {
         return texture(
-            uTex[nonuniformEXT(reference.resource_index)],
+            sampler2D(uTex[nonuniformEXT(reference.resource_index)],
+                uTexSamplers[nonuniformEXT(reference.resource_index)]),
             uv);
     }
     return vec4(1.0, 0.0, 1.0, 1.0);

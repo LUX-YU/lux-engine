@@ -271,11 +271,17 @@ namespace lux::render::detail
                         for (const auto& operation : transfer->operations)
                         {
                             const auto* fill = std::get_if<FillBuffer>(&operation);
-                            if (fill && fill->value && fill->destination.version.resource.index == index)
+                            if (fill && fill->destination.version.resource.index == index)
                             {
-                                current.access = nri::AccessBits::CLEAR_STORAGE;
-                                current.stages = nri::StageBits::CLEAR_STORAGE;
-                                resource.buffer_usage |= nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
+                                // NRI v180 implements ZeroBuffer with vkCmdFillBuffer on Vulkan.
+                                // Cover both the API's copy operation and its native clear stage.
+                                current.stages = nri::StageBits::COPY | nri::StageBits::CLEAR_STORAGE;
+                                if (fill->value)
+                                {
+                                    current.access = nri::AccessBits::CLEAR_STORAGE;
+                                    current.stages = nri::StageBits::CLEAR_STORAGE;
+                                    resource.buffer_usage |= nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
+                                }
                             }
                         }
                     }

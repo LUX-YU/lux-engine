@@ -1,14 +1,14 @@
 #include <algorithm>
 #include <lux/engine/render/graph/DumpText.hpp>
-#include <lux/engine/render/graph/GraphDump.hpp>
+#include <lux/engine/render/graph/Diagnostics.hpp>
 
 namespace lux::render
 {
-    bool dumpRenderGraph(
+    bool dumpGraph(
         const RenderGraph& graph,
         const RenderGraphAnalysis& analysis,
         EGraphDumpFormat format,
-        GraphDumpSink sink
+        DumpSink sink
     ) noexcept
     {
         if (!sink.write || format > EGraphDumpFormat::DOT)

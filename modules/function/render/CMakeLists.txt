@@ -27,7 +27,7 @@ set(render_sources
     src/storage/RasterMaterialTable.cpp
     src/graph/RenderGraphBuilder.cpp
     src/graph/RenderGraphAnalysis.cpp
-    src/graph/GraphDump.cpp
+    src/graph/Diagnostics.cpp
     src/features/FeatureAssembly.cpp
     src/features/FeatureBuildContext.cpp
     src/features/RasterMeshParameters.cpp
@@ -46,7 +46,7 @@ set(render_sources
     src/execution/RenderGraphInstance.cpp
     src/execution/RenderExecutor.cpp
     src/graph/RenderPlan.cpp
-    src/graph/RenderPlanDump.cpp
+    src/graph/PlanDiagnostics.cpp
     src/graph/GraphCompiler.cpp
     src/graph/RenderingPlan.cpp
     src/graph/BarrierPlan.cpp

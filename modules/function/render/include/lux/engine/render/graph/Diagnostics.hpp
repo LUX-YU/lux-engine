@@ -12,16 +12,16 @@ namespace lux::render
     };
 
     // Synchronous borrowed output. The caller owns opening, flushing and closing its destination.
-    struct GraphDumpSink final
+    struct DumpSink final
     {
         void* destination = nullptr;
         bool (*write)(void*, std::string_view) noexcept = nullptr;
     };
 
-    [[nodiscard]] LUX_RENDER_PUBLIC bool dumpRenderGraph(
+    [[nodiscard]] LUX_RENDER_PUBLIC bool dumpGraph(
         const RenderGraph&,
         const RenderGraphAnalysis&,
         EGraphDumpFormat,
-        GraphDumpSink
+        DumpSink
     ) noexcept;
 } // namespace lux::render

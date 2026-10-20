@@ -115,7 +115,7 @@ may contribute bounded Buffer copies; it cannot hide arbitrary GPU dispatch behi
 Graph async compute, History rotation and memory aliasing are not enabled. Explicit Buffer/Texture copies are
 available; there is no production Readback service or implicit extra rendering.
 
-`dumpRenderGraph` and the project-side `dumpRenderPlan` synchronously emit JSON or DOT into a borrowed sink.
+`dumpGraph` and the project-side `dumpPlan` synchronously emit JSON or DOT into a borrowed sink.
 They do not open files, wait for the GPU or trace stable frames. Compiled plan counts are distinct from measured
 execution counters.
 

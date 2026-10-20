@@ -4,7 +4,7 @@
 
 #include <NRI.h>
 #include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/graph/GraphDump.hpp>
+#include <lux/engine/render/graph/Diagnostics.hpp>
 #include <lux/engine/render/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/graph/Work.hpp>
 #include <memory>
@@ -14,7 +14,7 @@ namespace lux::render::detail
     struct PipelineLayoutPlan;
     struct EnabledDeviceFeatures;
     class RenderPlan;
-    [[nodiscard]] LUX_RENDER_PUBLIC bool dumpRenderPlan(const RenderPlan&, EGraphDumpFormat, GraphDumpSink) noexcept;
+    [[nodiscard]] LUX_RENDER_PUBLIC bool dumpPlan(const RenderPlan&, EGraphDumpFormat, DumpSink) noexcept;
 
     struct CompiledResource final
     {
@@ -67,6 +67,7 @@ namespace lux::render::detail
         std::uint32_t binding;
         std::uint64_t offset;
         std::uint32_t stride;
+        bool operator==(const VertexSource&) const noexcept = default;
     };
 
     // Recording values contain neither author names, Shader artifacts nor pipeline construction state.
@@ -151,7 +152,7 @@ namespace lux::render::detail
         friend class RenderGraphInstance;
         friend class GraphCompiler;
         friend class RenderExecutor;
-        friend LUX_RENDER_PUBLIC bool dumpRenderPlan(const RenderPlan&, EGraphDumpFormat, GraphDumpSink) noexcept;
+        friend LUX_RENDER_PUBLIC bool dumpPlan(const RenderPlan&, EGraphDumpFormat, DumpSink) noexcept;
 
         RenderPlan(nri::Device& device, const nri::CoreInterface&, TargetDesc target) noexcept;
         std::unique_ptr<PipelineLayoutPlan> descriptor_plan_;

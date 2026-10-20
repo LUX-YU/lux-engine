@@ -96,7 +96,7 @@ namespace lux::render::detail
         void setResource(std::uint32_t resource, std::uint32_t slot, const StorageResource&) noexcept;
         [[nodiscard]] StorageId storageId(std::uint32_t resource) const noexcept;
         // Cold diagnostics: sum actual NRI allocation requirements for this instance's owned resources.
-        [[nodiscard]] bool dumpResources(GraphDumpSink) const noexcept;
+        [[nodiscard]] bool dumpResources(DumpSink) const noexcept;
         [[nodiscard]] nri::Buffer* nativeBuffer(std::uint32_t resource, std::uint32_t slot) const noexcept;
 
     private:

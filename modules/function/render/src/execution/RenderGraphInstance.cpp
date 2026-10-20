@@ -684,7 +684,7 @@ namespace lux::render::detail
         return {};
     }
 
-    bool RenderGraphInstance::dumpResources(GraphDumpSink sink) const noexcept
+    bool RenderGraphInstance::dumpResources(DumpSink sink) const noexcept
     {
         if (!sink.write)
         {

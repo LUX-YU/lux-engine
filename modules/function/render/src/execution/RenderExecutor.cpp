@@ -3,6 +3,7 @@
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
+#include <lux/engine/render/execution/BindingState.hpp>
 #include <lux/engine/render/execution/FrameResources.hpp>
 #include <lux/engine/render/execution/RenderExecutor.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
@@ -44,9 +45,7 @@ namespace lux::render::detail
         const auto& plan = *instance.plan_;
         const auto& frame = instance.frames_[slot];
         const auto& bindings = frame.bindings;
-        nri::PipelineLayout* active_layout = nullptr;
-        nri::Pipeline* active_pipeline = nullptr;
-        nri::BindPoint active_point = nri::BindPoint::INHERIT;
+        BindingState binding_state;
         auto region = [&](const ResourceAccess& access, const std::optional<ImageCopyRegion>& rectangle = {})
         {
             const auto& range = std::get<GraphImageRange>(access.range);
@@ -100,16 +99,16 @@ namespace lux::render::detail
             {
                 const auto point = raster ? nri::BindPoint::GRAPHICS : nri::BindPoint::COMPUTE;
                 const auto& program = plan.descriptor_plan_->programs[compiled.layout_program];
-                if (active_layout != program.layout || active_point != point)
+                if (binding_state.layout != program.layout || binding_state.point != point)
                 {
                     core.CmdSetPipelineLayout(command, point, *program.layout);
-                    active_layout = program.layout;
-                    active_point = point;
+                    binding_state.layout = program.layout;
+                    binding_state.point = point;
                 }
-                if (compiled.pipeline && active_pipeline != compiled.pipeline)
+                if (compiled.pipeline && binding_state.pipeline != compiled.pipeline)
                 {
                     core.CmdSetPipeline(command, *compiled.pipeline);
-                    active_pipeline = compiled.pipeline;
+                    binding_state.pipeline = compiled.pipeline;
                 }
                 for (std::uint32_t set = 0; set < pass.descriptors.size(); ++set)
                 {
@@ -152,16 +151,20 @@ namespace lux::render::detail
                     core.CmdSetViewports(command, &viewport, 1);
                     core.CmdSetScissors(command, &scissor, 1);
                 }
-                for (const auto& source : raster->vertices)
+                if (!std::ranges::equal(binding_state.vertices, raster->vertices))
                 {
-                    const auto& binding = bindings[source.resource.index];
-                    const nri::VertexBufferDesc buffer{
-                        binding.buffer,
-                        binding.buffer_offset + source.offset,
-                        source.stride
-                    };
-                    core.CmdSetVertexBuffers(command, source.binding, &buffer, 1);
+                    for (const auto& source : raster->vertices)
+                    {
+                        const auto& binding = bindings[source.resource.index];
+                        const nri::VertexBufferDesc buffer{
+                            binding.buffer,
+                            binding.buffer_offset + source.offset,
+                            source.stride
+                        };
+                        core.CmdSetVertexBuffers(command, source.binding, &buffer, 1);
+                    }
                 }
+                binding_state.vertices = raster->vertices;
                 std::visit(
                     [&](const auto& draw)
                     {
@@ -184,12 +187,19 @@ namespace lux::render::detail
                                     return draw.index_offset;
                                 }
                             }();
-                            core.CmdSetIndexBuffer(
-                                command,
-                                *index.buffer,
-                                index.buffer_offset + offset,
-                                draw.type == EIndexType::UINT16 ? nri::IndexType::UINT16 : nri::IndexType::UINT32
-                            );
+                            const auto index_offset = index.buffer_offset + offset;
+                            const auto index_type =
+                                draw.type == EIndexType::UINT16 ? nri::IndexType::UINT16 : nri::IndexType::UINT32;
+                            const bool index_changed = binding_state.index != index.buffer ||
+                                                       binding_state.index_offset != index_offset ||
+                                                       binding_state.index_type != index_type;
+                            if (index_changed)
+                            {
+                                core.CmdSetIndexBuffer(command, *index.buffer, index_offset, index_type);
+                                binding_state.index = index.buffer;
+                                binding_state.index_offset = index_offset;
+                                binding_state.index_type = index_type;
+                            }
                             if constexpr (std::is_same_v<Draw, DrawIndexed>)
                             {
                                 core.CmdDrawIndexed(
@@ -229,6 +239,8 @@ namespace lux::render::detail
             }
             else if (compute)
             {
+                binding_state.vertices = {};
+                binding_state.index = nullptr;
                 std::visit(
                     [&](const auto& dispatch)
                     {
@@ -248,6 +260,8 @@ namespace lux::render::detail
             }
             else
             {
+                binding_state.vertices = {};
+                binding_state.index = nullptr;
                 const auto& transfer = std::get<TransferWork>(compiled.work);
                 std::uint32_t fill_binding = 0;
                 for (std::size_t i = 0; i < transfer.operations.size(); ++i)

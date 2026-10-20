@@ -1,10 +1,10 @@
 #include <lux/engine/render/graph/DumpText.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
-#include <lux/engine/render/graph/RenderPlanDump.hpp>
+#include <lux/engine/render/graph/PlanDiagnostics.hpp>
 
 namespace lux::render::detail
 {
-    bool dumpRenderPlan(const RenderPlan& plan, EGraphDumpFormat format, GraphDumpSink sink) noexcept
+    bool dumpPlan(const RenderPlan& plan, EGraphDumpFormat format, DumpSink sink) noexcept
     {
         if (!sink.write || format > EGraphDumpFormat::DOT)
         {

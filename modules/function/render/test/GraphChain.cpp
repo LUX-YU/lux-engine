@@ -6,7 +6,7 @@
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>
 #include <lux/engine/render/graph/RenderGraphBuilder.hpp>
-#include <lux/engine/render/graph/RenderPlanDump.hpp>
+#include <lux/engine/render/graph/PlanDiagnostics.hpp>
 #include <string>
 
 #include "GraphCount.hpp"
@@ -199,7 +199,7 @@ static void imageChain(Validation& validation, std::uint32_t fif)
     auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, &target);
     std::string dump;
-    const GraphDumpSink sink{
+    const DumpSink sink{
         &dump,
         [](void* pointer, std::string_view data) noexcept
         {
@@ -207,8 +207,8 @@ static void imageChain(Validation& validation, std::uint32_t fif)
             return true;
         }
     };
-    CHECK(dumpRenderGraph(graph, analysis, EGraphDumpFormat::JSON, sink));
-    CHECK(dumpRenderPlan(plan, EGraphDumpFormat::JSON, sink));
+    CHECK(dumpGraph(graph, analysis, EGraphDumpFormat::JSON, sink));
+    CHECK(dumpPlan(plan, EGraphDumpFormat::JSON, sink));
     CHECK(dump.find("\"mip\":1") != std::string::npos);
     CHECK(dump.find("\"colors\":2") != std::string::npos);
     nri::Descriptor* sampler = nullptr;

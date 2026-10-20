@@ -438,9 +438,46 @@ namespace lux::render::detail
 
     void UploadContext::recordFrame(nri::CommandBuffer& command) noexcept
     {
-        for (const auto& copy : frame_copies_)
+        const auto& api = session.api();
+        std::size_t first = 0;
+        while (first < frame_copies_.size())
         {
-            recordBuffer(session.api(), command, *copy.buffer, copy.staging, copy.offset, copy.bytes, false, true);
+            auto* target = frame_copies_[first].buffer;
+            auto end = frame_copies_[first].offset + frame_copies_[first].bytes;
+            auto last = first + 1;
+            while (last < frame_copies_.size())
+            {
+                const auto& next = frame_copies_[last];
+                if (next.buffer != target || next.offset < end)
+                {
+                    break;
+                }
+                end = next.offset + next.bytes;
+                ++last;
+            }
+            // NRI barriers cover a whole Buffer. Disjoint, ordered writes share one transition;
+            // overlapping or reverse ranges start another segment and retain their write dependency.
+            const auto access = bufferAccess(api.GetBufferDesc(*target).usage);
+            bufferBarrier(
+                api,
+                command,
+                *target,
+                {access, nri::StageBits::ALL},
+                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
+            );
+            for (auto i = first; i < last; ++i)
+            {
+                const auto& copy = frame_copies_[i];
+                api.CmdCopyBuffer(command, *target, copy.offset, *copy.staging.buffer, copy.staging.offset, copy.bytes);
+            }
+            bufferBarrier(
+                api,
+                command,
+                *target,
+                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
+                {access, nri::StageBits::ALL}
+            );
+            first = last;
         }
     }
 

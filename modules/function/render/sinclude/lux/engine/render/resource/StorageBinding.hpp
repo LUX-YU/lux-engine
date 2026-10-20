@@ -10,7 +10,7 @@
 namespace lux::render::detail
 {
     struct CompiledResource;
-    class UploadContext;
+    class ResourceUploader;
 
     // Current physical data borrowed at Attach or a device-thread publication point. No owner, task,
     // pending upload, descriptor placement, or mutable parameter envelope lives in this value.
@@ -128,7 +128,7 @@ namespace lux::render::detail
         using Resolve = RenderResult<
             void> (*)(void*, const CompiledResource&, const void*, StorageSubscription&, std::span<StorageResource>) noexcept;
         Resolve resolve;
-        RenderResult<bool> (*prepareFrame)(void*, std::uint32_t slot, UploadContext&) noexcept = nullptr;
+        RenderResult<bool> (*prepareFrame)(void*, std::uint32_t slot, ResourceUploader&) noexcept = nullptr;
     };
 
     // A cold-qualified preparation borrow. The active execution list owns its lifetime.

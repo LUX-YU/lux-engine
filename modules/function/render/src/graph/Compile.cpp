@@ -14,7 +14,7 @@
 namespace lux::render::detail
 {
     CompiledGraph::CompiledGraph(nri::Device& device, const nri::CoreInterface& api, TargetDesc target) noexcept
-        : device_(&device), api_(&api), target_(target)
+        : device_(&device), nri_core_(&api), target_(target)
     {
     }
 
@@ -26,20 +26,21 @@ namespace lux::render::detail
         }
         for (auto pipeline : pipelines_)
         {
-            api_->DestroyPipeline(pipeline);
+            nri_core_->DestroyPipeline(pipeline);
         }
         if (layout_)
         {
-            api_->DestroyPipelineLayout(layout_);
+            nri_core_->DestroyPipelineLayout(layout_);
         }
     }
 
     CompiledGraph::CompiledGraph(CompiledGraph&& other) noexcept
         : descriptor_plan_(std::move(other.descriptor_plan_)), device_(std::exchange(other.device_, nullptr)),
-          api_(other.api_), target_(other.target_), layout_(other.layout_), resources_(std::move(other.resources_)),
-          contexts_(std::move(other.contexts_)), storage_groups_(std::move(other.storage_groups_)),
-          passes_(std::move(other.passes_)), pass_indices_(std::move(other.pass_indices_)),
-          pipelines_(std::move(other.pipelines_)), output_(other.output_), resizable_output_(other.resizable_output_)
+          nri_core_(other.nri_core_), target_(other.target_), layout_(other.layout_),
+          resources_(std::move(other.resources_)), frame_contributions_(std::move(other.frame_contributions_)),
+          storage_groups_(std::move(other.storage_groups_)), passes_(std::move(other.passes_)),
+          pass_indices_(std::move(other.pass_indices_)), pipelines_(std::move(other.pipelines_)),
+          output_(other.output_), resizable_output_(other.resizable_output_)
     {
     }
 
@@ -497,8 +498,8 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(RenderError{kStorageContract});
             }
-            resource.context_data = static_cast<std::uint32_t>(result.contexts_.size());
-            result.contexts_.push_back(std::move(contribution));
+            resource.context_data = static_cast<std::uint32_t>(result.frame_contributions_.size());
+            result.frame_contributions_.push_back(std::move(contribution));
         }
         for (const auto& output : graph.outputs())
         {

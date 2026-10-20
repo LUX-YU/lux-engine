@@ -17,7 +17,15 @@ namespace lux::render
     class LUX_RENDER_PUBLIC StorageSet final
     {
     public:
-        explicit StorageSet(ResourceRegistry& registry) noexcept : registry_(registry) {}
+        explicit StorageSet(ResourceRegistry& registry, bool global = false) noexcept
+            : registry_(registry), global_(global)
+        {
+        }
+
+        [[nodiscard]] bool isGlobal() const noexcept
+        {
+            return global_;
+        }
 
         ~StorageSet() noexcept;
         StorageSet(const StorageSet&) = delete;
@@ -26,9 +34,14 @@ namespace lux::render
         StorageSet& operator=(StorageSet&&) = delete;
 
         template <class T>
-        [[nodiscard]] RenderResult<StorageId> getOrCreate(std::string_view key, const ConfigValue& config = {}) noexcept
+        [[nodiscard]] RenderResult<StorageId> getOrCreate(
+            StorageCreateContext& dependencies,
+            std::string_view key,
+            const ConfigValue& config = {}
+        ) noexcept
         {
             return getOrCreateImpl(
+                dependencies,
                 T::descriptor,
                 key,
                 config,
@@ -48,6 +61,7 @@ namespace lux::render
         }
 
         [[nodiscard]] RenderResult<StorageId> getOrCreate(
+            StorageCreateContext&,
             StorageTypeId type,
             std::string_view key,
             const ConfigValue& config = {}
@@ -81,6 +95,7 @@ namespace lux::render
         };
 
         [[nodiscard]] RenderResult<StorageId> getOrCreateImpl(
+            StorageCreateContext&,
             const StorageDescriptor&,
             std::string_view,
             const ConfigValue&,
@@ -88,6 +103,7 @@ namespace lux::render
             CppType
         ) noexcept;
         [[nodiscard]] RenderResult<StorageId> ensure(
+            StorageCreateContext&,
             StorageTypeId,
             std::string_view,
             const ConfigValue&,
@@ -96,6 +112,7 @@ namespace lux::render
         ) noexcept;
         void erase(std::size_t position) noexcept;
         ResourceRegistry& registry_;
+        bool global_;
         std::vector<Record> records_;
         NameIndex instances_by_name_;
     };

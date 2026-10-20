@@ -6,12 +6,17 @@
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>
 #include <lux/engine/render/storage/RasterMaterialTableStorage.hpp>
-#include <lux/engine/render/upload/UploadContext.hpp>
+#include <lux/engine/render/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {
-    RasterMeshDraws::RasterMeshDraws(DeviceSession& session, MeshInstanceDrawGroup selection) noexcept
-        : session_(session), selection_(selection), words_(5)
+    RasterMeshDraws::RasterMeshDraws(
+        DeviceSession& session,
+        FrameExecution& frames,
+        ResourceRegistry& resources,
+        MeshInstanceDrawGroup selection
+    ) noexcept
+        : session_(session), frames_(frames), resources_(resources), selection_(selection), words_(5)
     {
     }
 
@@ -31,7 +36,7 @@ namespace lux::render::detail
         {
             return false;
         }
-        auto material = session_.resources().borrow<RasterMaterialTableStorage>(selection_.material.storage);
+        auto material = resources_.borrow<RasterMaterialTableStorage>(selection_.material.storage);
         return material && (*material)->sameTable(input.material, selection_.material);
     }
 
@@ -73,7 +78,7 @@ namespace lux::render::detail
 
     RenderResult<FeatureFrameWork::Preparation> RasterMeshDraws::prepare(
         std::uint32_t slot,
-        UploadContext& uploads
+        ResourceUploader& uploads
     ) noexcept
     {
         if (!available_)
@@ -88,7 +93,7 @@ namespace lux::render::detail
             if (std::exchange(slice.binding_changed, false))
             {
                 result.changed_resource =
-                    StorageResource{slice.buffer, 0, session_.api().GetBufferDesc(*slice.buffer).size};
+                    StorageResource{slice.buffer, 0, session_.nriCore().GetBufferDesc(*slice.buffer).size};
             }
             return result;
         };
@@ -97,7 +102,7 @@ namespace lux::render::detail
             return prepared(FeatureFrameWork::EPreparation::READY);
         }
         const auto bytes = std::max<std::size_t>(24, words_.size() * sizeof(std::uint32_t));
-        if ((!slice.buffer || session_.api().GetBufferDesc(*slice.buffer).size < bytes))
+        if ((!slice.buffer || session_.nriCore().GetBufferDesc(*slice.buffer).size < bytes))
         {
             const auto capacity = std::bit_ceil(bytes);
             if (capacity > session_.description().memory.storageBufferMaxRange)
@@ -111,7 +116,7 @@ namespace lux::render::detail
             };
             nri::Buffer* buffer = nullptr;
             const auto created =
-                session_.api().CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, buffer);
+                session_.nriCore().CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, buffer);
             if (created != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(created));
@@ -130,7 +135,7 @@ namespace lux::render::detail
                 {
                     return;
                 }
-                session_.afterFrameSubmit(
+                frames_.afterSubmit(
                     &slice,
                     [](void* value, RenderResult<void> accepted) noexcept
                     {
@@ -151,8 +156,7 @@ namespace lux::render::detail
         );
         while (slice.pending_bytes < source.size())
         {
-            auto copied =
-                uploads.prepareBuffer({slice.buffer, slice.pending_bytes, source.subspan(slice.pending_bytes)});
+            auto copied = uploads.stageBuffer({slice.buffer, slice.pending_bytes, source.subspan(slice.pending_bytes)});
             if (!copied)
             {
                 return cxx::unexpected(copied.error());
@@ -174,7 +178,7 @@ namespace lux::render::detail
         {
             return;
         }
-        const auto& api = session_.api();
+        const auto& api = session_.nriCore();
         nri::BufferBarrierDesc barrier{
             slice.buffer,
             {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
@@ -195,13 +199,14 @@ namespace lux::render::detail
 
     RenderResult<FeatureFrameWork> RasterMeshDraws::create(
         DeviceSession& session,
+        FrameExecution& frames,
+        ResourceRegistry& registry,
         std::span<const StorageId> storages,
         const void* argument
     ) noexcept
     {
         const auto& configuration = *static_cast<const MeshDrawConfiguration*>(argument);
         const auto& group = configuration.selection;
-        auto& registry = session.resources();
         auto instances = registry.borrow<RasterMeshInstanceStorage>(storages[configuration.instances.index]);
         auto mesh = registry.borrow<IndexedTriangleMeshStorage>(group.mesh.storage);
         auto material = registry.borrow<RasterMaterialTableStorage>(group.material.storage);
@@ -214,7 +219,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        auto value = std::unique_ptr<RasterMeshDraws>(new RasterMeshDraws(session, group));
+        auto value = std::unique_ptr<RasterMeshDraws>(new RasterMeshDraws(session, frames, registry, group));
         const CompiledResource section_plan{
             "sections",
             GraphBufferDesc{description->submeshes.size() * sizeof(MeshGpuSection)},
@@ -244,7 +249,7 @@ namespace lux::render::detail
         (*instances)->observe(value->observer_);
         return FeatureFrameWork{
             {value.release(), [](void* pointer) noexcept { delete static_cast<RasterMeshDraws*>(pointer); }},
-            [](void* pointer, std::uint32_t slot, UploadContext& uploads) noexcept
+            [](void* pointer, std::uint32_t slot, ResourceUploader& uploads) noexcept
             { return static_cast<RasterMeshDraws*>(pointer)->prepare(slot, uploads); },
             [](void* pointer, nri::CommandBuffer& command, std::uint32_t slot) noexcept
             { static_cast<RasterMeshDraws*>(pointer)->record(command, slot); }

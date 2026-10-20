@@ -4,6 +4,7 @@
 
 #include <concepts>
 #include <lux/engine/render/core/CppType.hpp>
+#include <lux/engine/render/resource/StorageCreateContext.hpp>
 #include <lux/engine/render/resource/StorageDescriptor.hpp>
 #include <memory>
 
@@ -32,7 +33,7 @@ namespace lux::render
     {
         const StorageDescriptor* const descriptor;
         const void* const ops;
-        RenderResult<StorageInstance> (*const create)(void* device, StorageId id, const void* config) noexcept;
+        RenderResult<StorageInstance> (*const create)(void* dependencies, StorageId id, const void* config) noexcept;
         bool (*const compatible_config)(const void* instance, const void* config) noexcept;
         const void* const binding_ops; // API-specific immutable preparation functions; never a second owner
         const CppType config_type;
@@ -40,7 +41,7 @@ namespace lux::render
         const CppType native_type;
 
     private:
-        template <class Declaration, class Native, class Device, auto Create, auto Compatible>
+        template <class Declaration, class Native, class CreationContext, auto Create, auto Compatible>
         friend StorageFactory makeStorageFactory(StorageOpsArgument<typename Declaration::Ops>, const void*) noexcept;
 
         StorageFactory(
@@ -60,7 +61,7 @@ namespace lux::render
     };
 
     // Create and compatible callbacks are typed before the only erasure boundary.
-    template <class Declaration, class Native, class Device, auto Create, auto Compatible = nullptr>
+    template <class Declaration, class Native, class CreationContext, auto Create, auto Compatible = nullptr>
     [[nodiscard]] StorageFactory makeStorageFactory(
         StorageOpsArgument<typename Declaration::Ops> ops,
         const void* binding_ops = nullptr
@@ -101,7 +102,7 @@ namespace lux::render
         return {
             &Declaration::descriptor,
             ops_pointer,
-            [](void* device, StorageId id, const void* config) noexcept -> RenderResult<StorageInstance>
+            [](void* dependencies, StorageId id, const void* config) noexcept -> RenderResult<StorageInstance>
             {
                 auto candidate = [&]() noexcept
                 {
@@ -109,16 +110,20 @@ namespace lux::render
                     {
                         static_assert(std::same_as<
                                       decltype(Create),
-                                      RenderResult<
-                                          std::unique_ptr<Native>> (*)(Device&, StorageId, const Config&) noexcept>);
-                        return Create(*static_cast<Device*>(device), id, *static_cast<const Config*>(config));
+                                      RenderResult<std::unique_ptr<
+                                          Native>> (*)(CreationContext&, StorageId, const Config&) noexcept>);
+                        return Create(
+                            *static_cast<CreationContext*>(dependencies),
+                            id,
+                            *static_cast<const Config*>(config)
+                        );
                     }
                     else
                     {
                         static_assert(std::same_as<
                                       decltype(Create),
-                                      RenderResult<std::unique_ptr<Native>> (*)(Device&, StorageId) noexcept>);
-                        return Create(*static_cast<Device*>(device), id);
+                                      RenderResult<std::unique_ptr<Native>> (*)(CreationContext&, StorageId) noexcept>);
+                        return Create(*static_cast<CreationContext*>(dependencies), id);
                     }
                 }();
                 if (!candidate)

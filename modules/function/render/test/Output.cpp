@@ -3,8 +3,10 @@
 #include <cstring>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/execution/ExecutionContext.hpp>
+#include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
 #include <lux/engine/render/graph/Builder.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 using namespace foundation_test;
 
 static void copyBuffer(DeviceSession& session, nri::Buffer& source, nri::Buffer& output, std::uint64_t bytes)
@@ -17,8 +19,8 @@ static void copyBuffer(DeviceSession& session, nri::Buffer& source, nri::Buffer&
                 {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
                 {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY}
             };
-            session.api().CmdBarrier(command, {nullptr, 0, &source_ready, 1});
-            session.api().CmdCopyBuffer(command, output, 0, source, 0, bytes);
+            session.nriCore().CmdBarrier(command, {nullptr, 0, &source_ready, 1});
+            session.nriCore().CmdCopyBuffer(command, output, 0, source, 0, bytes);
             return {};
         }
     ));
@@ -26,7 +28,9 @@ static void copyBuffer(DeviceSession& session, nri::Buffer& source, nri::Buffer&
 
 static void graphOutput(Validation& validation)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3, 3));
+    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto frames = take(FrameExecution::create(*session, nullptr, 3));
+    ResourceRegistry resources{0};
     const TargetDesc target{16, 16, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     RenderGraphBuilder builder;
     const auto color = take(builder.declareResource({"color", GraphImageDesc{16, 16}}));
@@ -58,7 +62,7 @@ static void graphOutput(Validation& validation)
     auto indexed = take(indexPrograms(definition, programs));
     auto graph = take(compileGraph(
         session->device(),
-        session->api(),
+        session->nriCore(),
         session->enabledFeatures(),
         session->formatSupport(),
         {session->vertexStrideLimit(), session->vertexOffsetLimit()},
@@ -70,21 +74,22 @@ static void graphOutput(Validation& validation)
         indexed,
         target
     ));
-    auto physical = take(OffscreenTarget::create(*session, target));
-    auto execution = take(session->prepare(graph, *physical));
+    auto physical = take(OffscreenTarget::create(*session, target, frames->frameCount()));
+    auto execution = std::make_unique<ExecutionContext>(*session, resources, frames->frameCount(), graph, *physical);
+    CHECK(execution->initialize(*physical, *frames, resources));
     const std::array contexts{execution.get()};
     std::vector<StorageFrameUse> storage_preparation;
-    DeviceSession::collectFrameStorages(contexts, storage_preparation);
+    FrameExecution::collectStorageUses(contexts, storage_preparation);
     nri::Buffer* output = nullptr;
     const nri::BufferDesc description{1024, 0, nri::BufferUsageBits::NONE};
     CHECK(
-        session->api().CreatePlacedBuffer(session->device(), NriHostReadbackHeap, description, output) ==
+        session->nriCore().CreatePlacedBuffer(session->device(), NriHostReadbackHeap, description, output) ==
         nri::Result::SUCCESS
     );
-    CHECK(take(session->render(contexts, storage_preparation)) == 1);
-    CHECK(take(session->render(contexts, storage_preparation)) == 1);
-    CHECK(take(session->render(contexts, storage_preparation)) == 1);
-    CHECK(take(session->render(contexts, storage_preparation)) == 0);
+    CHECK(take(frames->render(contexts, storage_preparation)) == 1);
+    CHECK(take(frames->render(contexts, storage_preparation)) == 1);
+    CHECK(take(frames->render(contexts, storage_preparation)) == 1);
+    CHECK(take(frames->render(contexts, storage_preparation)) == 0);
     CHECK(session->drain());
     for (auto id : {pixels, copied})
     {
@@ -95,21 +100,21 @@ static void graphOutput(Validation& validation)
             1024
         );
         CHECK(session->drain());
-        auto* mapped = static_cast<const std::byte*>(session->api().MapBuffer(*output, 0, 1024));
+        auto* mapped = static_cast<const std::byte*>(session->nriCore().MapBuffer(*output, 0, 1024));
         CHECK(mapped);
-        CHECK(session->vk().InvalidateBufferRangeVK(*output, 0, 1024) == nri::Result::SUCCESS);
+        CHECK(session->invalidateMappedRange(*output, 0, 1024) == nri::Result::SUCCESS);
         for (std::size_t i = 0; i < 1024; i += 4)
         {
             CHECK(mapped[i] == std::byte{255} && mapped[i + 1] == std::byte{0});
             CHECK(mapped[i + 2] == std::byte{255} && mapped[i + 3] == std::byte{255});
         }
-        session->api().UnmapBuffer(*output);
+        session->nriCore().UnmapBuffer(*output);
     }
-    CHECK(take(session->render(contexts, storage_preparation)) == 1);
+    CHECK(take(frames->render(contexts, storage_preparation)) == 1);
     execution.reset(); // Physical resources outlive the business Context through Session cleanup.
     physical.reset();
     CHECK(session->drain());
-    session->api().DestroyBuffer(output);
+    session->nriCore().DestroyBuffer(output);
     std::puts("Graph output: explicit external copy, correct pixels, Context detached in flight");
 }
 

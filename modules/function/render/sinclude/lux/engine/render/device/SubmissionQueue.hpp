@@ -7,11 +7,18 @@
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/visibility.h>
 #include <memory>
+#include <optional>
 #include <span>
 #include <stdexec/execution.hpp>
+#include <vector>
 
 namespace lux::render::detail
 {
+    struct SubmissionFrontiers final
+    {
+        std::array<std::uint64_t, 3> serials{};
+    };
+
     class DeviceSession;
     class SubmissionQueue;
     using SubmissionCallbackFn = void (*)(void*, RenderResult<void>) noexcept;
@@ -106,7 +113,7 @@ namespace lux::render::detail
 
         [[nodiscard]] RenderResult<void> poll() noexcept;
         [[nodiscard]] RenderResult<bool> waitIdle(std::uint64_t timeout_ns) noexcept;
-        [[nodiscard]] CompletionSender whenIdle() noexcept;
+        [[nodiscard]] CompletionSender whenSubmittedWorkCompletes() noexcept;
         [[nodiscard]] CompletionSender whenAvailable() noexcept;
         // Detach the ready prefix before invoking callbacks; a callback may destroy its own node.
         void dispatchCompleted() noexcept;
@@ -120,24 +127,40 @@ namespace lux::render::detail
         [[nodiscard]] const QueueProperties& properties() const noexcept;
 
     private:
-        friend class DeviceSession;
-        friend class StagingArena;
-        friend class UploadContext;
         friend class SubmissionCallback;
-        struct Backing;
-        explicit SubmissionQueue(std::unique_ptr<Backing>) noexcept;
+        SubmissionQueue(DeviceSession&, nri::Queue&, QueueProperties, std::uint32_t capacity) noexcept;
         [[nodiscard]] RenderResult<nri::CommandBuffer*> begin(std::uint32_t& slot) noexcept;
         [[nodiscard]] RenderResult<void> finishRecording() noexcept;
         [[nodiscard]] RenderResult<void> submit(std::span<const nri::FenceSubmitDesc>) noexcept;
+
+    public:
         [[nodiscard]] RenderResult<nri::FenceSubmitDesc> dependency(nri::StageBits) const noexcept;
         [[nodiscard]] RenderResult<bool> wait(std::uint64_t serial, std::uint64_t timeout_ns) noexcept;
         [[nodiscard]] std::uint64_t completed() const noexcept;
         [[nodiscard]] std::uint64_t submitted() const noexcept;
         void arm(std::uint64_t serial, SubmissionCallback&, SubmissionCallbackFn, void*) noexcept;
+
+    private:
         void cancel() noexcept;
         void completePending() noexcept;
         RenderError failure(nri::Result) noexcept;
-        std::unique_ptr<Backing> backing_;
+
+        struct SubmittedBatch final
+        {
+            nri::CommandAllocator* allocator = nullptr;
+            nri::CommandBuffer* command = nullptr;
+        };
+
+        DeviceSession& session_;
+        nri::Queue& queue_;
+        QueueProperties properties_;
+        nri::Fence* fence_ = nullptr;
+        std::vector<SubmittedBatch> batches_;
+        std::uint64_t submitted_ = 0, completed_ = 0;
+        bool recording_ = false;
+        std::optional<RenderError> terminal_;
+        SubmissionCallback* callbacks_ = nullptr;
+        SubmissionCallback* callbacks_tail_ = nullptr;
     };
 
     class SubmissionQueue::CompletionSender final

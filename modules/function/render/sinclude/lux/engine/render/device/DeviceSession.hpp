@@ -3,31 +3,20 @@
 #include <NRI.h>
 
 #include <Extensions/NRIDeviceCreation.h>
-#include <Extensions/NRIRayTracing.h>
-#include <Extensions/NRIWrapperVK.h>
 
-#include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/engine/render/visibility.h>
 
 #include <functional>
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/device/Submission.hpp>
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
-#include <lux/engine/render/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/runtime/DeviceOptions.hpp>
 
 namespace lux::render::detail
 {
-    class CompiledGraph;
+    struct DeviceBackend;
     class DescriptorArray;
-    class ExecutionContext;
-    class OffscreenTarget;
-    class UploadContext;
-    class StagingArena;
-    struct ImageTransferRegion;
-    struct TransferStats;
     struct StorageBindingOps;
     struct StorageFrameUse;
 
@@ -50,26 +39,11 @@ namespace lux::render::detail
             const DeviceOptions& options,
             const nri::CallbackInterface& diagnostic,
             bool validation = false,
-            std::uint32_t slots = 3,
-            std::uint32_t frames_in_flight = 2
+            std::uint32_t slots = 3
         ) noexcept;
         ~DeviceSession() noexcept;
         DeviceSession(const DeviceSession&) = delete;
         DeviceSession& operator=(const DeviceSession&) = delete;
-
-        // Embedded in the existing upload admission operation; this list owns no operation state.
-        struct FrameWriteWaiter final
-        {
-            FrameWriteWaiter* next = nullptr;
-            void* operation = nullptr;
-            bool (*stopping)(void*) noexcept = nullptr;
-            void (*complete)(void*) noexcept = nullptr;
-        };
-
-        [[nodiscard]] bool tryBeginFrameWrite(std::uint32_t& slot) noexcept;
-        void finishFrameWrite(std::uint32_t slot) noexcept;
-        void enqueueFrameWrite(FrameWriteWaiter&) noexcept;
-        void afterFrameSubmit(void* receiver, void (*complete)(void*, RenderResult<void>) noexcept) noexcept;
 
         [[nodiscard]] RenderResult<void> drain() noexcept;
         // External Context/Storage owners and upload producers must be settled before final close.
@@ -88,23 +62,25 @@ namespace lux::render::detail
             {
             case 1:
                 stdexec::spawn(
-                    physical_queues_[0]->whenIdle() | stdexec::then(std::move(complete)),
+                    physical_queues_[0]->whenSubmittedWorkCompletes() | stdexec::then(std::move(complete)),
                     cleanup_scope_.get_token()
                 );
                 break;
             case 2:
                 stdexec::spawn(
-                    stdexec::when_all(physical_queues_[0]->whenIdle(), physical_queues_[1]->whenIdle()) |
-                        stdexec::then(std::move(complete)),
+                    stdexec::when_all(
+                        physical_queues_[0]->whenSubmittedWorkCompletes(),
+                        physical_queues_[1]->whenSubmittedWorkCompletes()
+                    ) | stdexec::then(std::move(complete)),
                     cleanup_scope_.get_token()
                 );
                 break;
             case 3:
                 stdexec::spawn(
                     stdexec::when_all(
-                        physical_queues_[0]->whenIdle(),
-                        physical_queues_[1]->whenIdle(),
-                        physical_queues_[2]->whenIdle()
+                        physical_queues_[0]->whenSubmittedWorkCompletes(),
+                        physical_queues_[1]->whenSubmittedWorkCompletes(),
+                        physical_queues_[2]->whenSubmittedWorkCompletes()
                     ) | stdexec::then(std::move(complete)),
                     cleanup_scope_.get_token()
                 );
@@ -118,7 +94,7 @@ namespace lux::render::detail
         template <class Release> void deferRelease(SubmissionQueue& queue, Release release) noexcept
         {
             stdexec::spawn(
-                queue.whenIdle() | stdexec::then(
+                queue.whenSubmittedWorkCompletes() | stdexec::then(
                                        [release = std::move(release)](RenderResult<void> result) mutable noexcept
                                        {
                                            requireCleanupComplete(result);
@@ -129,31 +105,37 @@ namespace lux::render::detail
             );
         }
 
-        // Call after collect/dispatch on the device thread. Contexts are borrowed for this call only.
-        // Rebuild after Context membership changes; does not retain Contexts or Storage.
-        static void collectFrameStorages(
-            std::span<ExecutionContext* const> contexts,
-            std::vector<StorageFrameUse>& output
-        ) noexcept;
-        [[nodiscard]] RenderResult<std::uint32_t> render(
-            std::span<ExecutionContext* const> contexts,
-            std::span<const StorageFrameUse> storages
-        ) noexcept;
-        [[nodiscard]] RenderResult<void> collect() noexcept;
-        // Explicit RenderThread safe point, separate from polling and resource admission/collection.
-        void dispatchCompletions() noexcept;
-        [[nodiscard]] RenderResult<std::unique_ptr<ExecutionContext>> prepare(
-            const CompiledGraph& code,
-            OffscreenTarget& target,
-            StorageSet* scene = nullptr,
-            StorageSet* view = nullptr,
-            std::span<const StorageArgument> arguments = {}
-        ) noexcept;
+        [[nodiscard]] RenderResult<void> pollQueues() noexcept;
+        void dispatchQueueCompletions() noexcept;
 
-        [[nodiscard]] std::uint32_t framesInFlight() const noexcept
+        [[nodiscard]] std::size_t queueCount() const noexcept
         {
-            return frame_count_;
+            return physical_queues_.size();
         }
+
+        [[nodiscard]] SubmissionQueue& physicalQueue(std::size_t index) noexcept
+        {
+            return *physical_queues_[index];
+        }
+
+        [[nodiscard]] const SubmissionQueue& physicalQueue(std::size_t index) const noexcept
+        {
+            return *physical_queues_[index];
+        }
+
+        [[nodiscard]] std::size_t queueIndex(const SubmissionQueue&) const noexcept;
+
+        [[nodiscard]] std::uint64_t uploadAlignment() const noexcept
+        {
+            return upload_alignment_;
+        }
+
+        // Backend operations absent from the core interface. No native API types escape.
+        [[nodiscard]] nri::Result queryFence(nri::Fence&, std::uint64_t&) const noexcept;
+        [[nodiscard]] nri::Result waitFence(nri::Fence&, std::uint64_t, std::uint64_t, bool&) const noexcept;
+        [[nodiscard]] nri::Result resetCommandAllocator(nri::CommandAllocator&) const noexcept;
+        [[nodiscard]] nri::Result flushMappedRange(nri::Buffer&, std::uint64_t, std::uint64_t) const noexcept;
+        [[nodiscard]] nri::Result invalidateMappedRange(nri::Buffer&, std::uint64_t, std::uint64_t) const noexcept;
 
         [[nodiscard]] SubmissionQueue& queue(EQueueRole role = EQueueRole::GRAPHICS) noexcept
         {
@@ -168,19 +150,14 @@ namespace lux::render::detail
             return *device_;
         }
 
-        [[nodiscard]] const nri::CoreInterface& api() const noexcept
+        [[nodiscard]] const nri::CoreInterface& nriCore() const noexcept
         {
-            return api_;
-        }
-
-        [[nodiscard]] const nri::WrapperVKInterface& vk() const noexcept
-        {
-            return vk_;
+            return nri_core_;
         }
 
         [[nodiscard]] const nri::DeviceDesc& description() const noexcept
         {
-            return api_.GetDeviceDesc(*device_);
+            return nri_core_.GetDeviceDesc(*device_);
         }
 
         [[nodiscard]] std::span<const nri::FormatSupportBits> formatSupport() const noexcept
@@ -206,11 +183,6 @@ namespace lux::render::detail
             return vertex_offset_limit_;
         }
 
-        [[nodiscard]] bool pagedInstances() const noexcept
-        {
-            return paged_instances_;
-        }
-
         [[nodiscard]] const EnabledDeviceFeatures& enabledFeatures() const noexcept
         {
             return enabled_features_;
@@ -223,90 +195,25 @@ namespace lux::render::detail
 
         [[nodiscard]] bool deviceLost() const noexcept;
         [[nodiscard]] bool pendingGpuWork() const noexcept;
-        [[nodiscard]] RenderResult<bool> waitForProgress(std::uint64_t timeout_ns) noexcept;
-        [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&, execution::CpuScheduler) noexcept;
-        [[nodiscard]] TransferStats uploadStats() const noexcept;
-
-        [[nodiscard]] UploadContext& uploads() noexcept
-        {
-            return *uploads_;
-        }
-
-        [[nodiscard]] ResourceRegistry& resources() noexcept
-        {
-            return resources_;
-        }
-
-        [[nodiscard]] const ResourceRegistry& resources() const noexcept
-        {
-            return resources_;
-        }
-
-        [[nodiscard]] StorageSet& globalStorages() noexcept
-        {
-            return global_storages_;
-        }
 
     private:
-        friend class UploadContext;
-        friend class ExecutionContext;
+        friend struct DeviceBackend;
         static void requireCleanupComplete(const RenderResult<void>&) noexcept;
-        DeviceSession(
-            std::unique_ptr<nri::Device, decltype(&nri::nriDestroyDevice)>,
-            nri::CoreInterface,
-            nri::WrapperVKInterface,
-            EnabledDeviceFeatures
-        ) noexcept;
-        enum class EFramePhase : std::uint8_t
-        {
-            FREE,
-            COLLECTING,
-            PREPARING,
-            SUBMITTED
-        };
-
-        struct FrameSlot final
-        {
-            EFramePhase phase = EFramePhase::FREE;
-            std::array<std::uint64_t, 3> accepted_serials{};
-            std::array<SubmissionCallback, 3> completions;
-            std::uint32_t pending_writes = 0;
-            std::uint8_t pending_queues = 0;
-        };
-
-        void sealFrame(FrameSlot&) noexcept;
-        void dispatchFrameWrites() noexcept;
-        [[nodiscard]] bool backgroundUploadsAllowed() const noexcept;
-        void acceptFrameSubmission(std::uint32_t, const SubmissionQueue&) noexcept;
-        void finishFrameSubmission(RenderResult<void>) noexcept;
-        std::array<FrameSlot, 3> frames_;
-        std::uint32_t frame_count_ = 1;
-        std::uint32_t next_frame_ = 0;
-        std::vector<std::pair<void*, void (*)(void*, RenderResult<void>) noexcept>> frame_receivers_;
-        FrameWriteWaiter* frame_waiters_ = nullptr;
-        FrameWriteWaiter* frame_waiters_tail_ = nullptr;
-        bool rendering_ = false; // Reserves one existing Staging page while actual frame consumers are active.
+        DeviceSession() noexcept;
 
         // Declared before all dependent members, destroyed after their complete cleanup.
-        std::unique_ptr<nri::Device, decltype(&nri::nriDestroyDevice)> device_{nullptr, &nri::nriDestroyDevice};
-        nri::CoreInterface api_{};
-        nri::WrapperVKInterface vk_{};
+        nri::Device* device_ = nullptr;
+        nri::CoreInterface nri_core_{};
+        std::unique_ptr<DeviceBackend> backend_;
         std::array<nri::FormatSupportBits, static_cast<std::size_t>(nri::Format::MAX_NUM)> format_support_{};
         EnabledDeviceFeatures enabled_features_{};
-        bool paged_instances_ = false;
         std::uint64_t upload_alignment_ = 4;
         std::uint32_t vertex_stride_limit_ = 0, vertex_offset_limit_ = 0, bindless_capacity_ = 0;
         std::vector<std::unique_ptr<SubmissionQueue>> physical_queues_;
         std::array<std::uint8_t, 3> queue_roles_{};
-        std::uint8_t wait_queue_cursor_ = 0;
-        // Close settles Sets and cleanup before upload/staging and descriptors; queues outlive all callbacks.
-        // The NRI Device is destroyed last by member order.
+        // External producers settle before close; descriptors and queues are explicitly destroyed before Device.
         std::unique_ptr<DescriptorArray> sampled_images_;
-        std::unique_ptr<StagingArena> staging_arena_;
-        std::unique_ptr<UploadContext> uploads_;
         stdexec::simple_counting_scope cleanup_scope_;
         bool closed_ = false;
-        ResourceRegistry resources_;
-        StorageSet global_storages_;
     };
 } // namespace lux::render::detail

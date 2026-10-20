@@ -173,7 +173,7 @@ namespace lux::render::detail
             return cxx::unexpected(valid.error());
         }
         nri::Texture* image = nullptr;
-        const auto created = session.api().CreatePlacedTexture(session.device(), NriDeviceHeap, description, image);
+        const auto created = session.nriCore().CreatePlacedTexture(session.device(), NriDeviceHeap, description, image);
         if (created != nri::Result::SUCCESS)
         {
             return cxx::unexpected(nativeError(created));
@@ -187,7 +187,7 @@ namespace lux::render::detail
         std::span<const std::byte> source
     ) noexcept
     {
-        const auto& original = session_.api().GetTextureDesc(*source_image.image_);
+        const auto& original = session_.nriCore().GetTextureDesc(*source_image.image_);
         const bool compressed = original.format == nri::Format::BC1_RGBA_SRGB;
         // Check wide Client values before narrowing into NRI's dimension fields.
         const bool invalid = region.mip >= original.mipNum || region.x > original.width || region.y > original.height ||
@@ -217,7 +217,7 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
         nri::Texture* image = nullptr;
-        const auto created = session_.api().CreatePlacedTexture(session_.device(), NriDeviceHeap, original, image);
+        const auto created = session_.nriCore().CreatePlacedTexture(session_.device(), NriDeviceHeap, original, image);
         if (created != nri::Result::SUCCESS)
         {
             return cxx::unexpected(nativeError(created));
@@ -225,17 +225,21 @@ namespace lux::render::detail
         return ImagePreparation{image, {patch}};
     }
 
-    SampledTexture2DStorage::SampledTexture2DStorage(DeviceSession& session, StorageId id) noexcept
-        : session_(session), id_(id)
+    SampledTexture2DStorage::SampledTexture2DStorage(StorageCreateContext& dependencies, StorageId id) noexcept
+        : session_(dependencies.device), uploads_(*dependencies.uploads), id_(id)
     {
     }
 
     RenderResult<std::unique_ptr<SampledTexture2DStorage>> SampledTexture2DStorage::create(
-        DeviceSession& session,
+        StorageCreateContext& dependencies,
         StorageId id
     ) noexcept
     {
-        auto result = std::unique_ptr<SampledTexture2DStorage>(new SampledTexture2DStorage(session, id));
+        if (!dependencies.uploads)
+        {
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        auto result = std::unique_ptr<SampledTexture2DStorage>(new SampledTexture2DStorage(dependencies, id));
         if (auto ready = result->initialize(); !ready)
         {
             return cxx::unexpected(ready.error());
@@ -274,7 +278,7 @@ namespace lux::render::detail
     {
         SampledImage candidate;
         candidate.image_ = image;
-        cxx::scope_exit rollback([&]() noexcept { releaseImage(session_.api(), *descriptors_, candidate); });
+        cxx::scope_exit rollback([&]() noexcept { releaseImage(session_.nriCore(), *descriptors_, candidate); });
         auto descriptor = descriptors_->allocate();
         if (!descriptor)
         {
@@ -282,10 +286,10 @@ namespace lux::render::detail
         }
         candidate.descriptor_ = *descriptor;
         candidate.reference_ = {descriptor->index, color_space};
-        const auto& description = session_.api().GetTextureDesc(*candidate.image_);
+        const auto& description = session_.nriCore().GetTextureDesc(*candidate.image_);
         const nri::TextureViewDesc
             view{candidate.image_, nri::TextureView::TEXTURE, description.format, 0, description.mipNum, 0, 1};
-        auto status = session_.api().CreateTextureView(view, candidate.view_);
+        auto status = session_.nriCore().CreateTextureView(view, candidate.view_);
         if (status != nri::Result::SUCCESS)
         {
             return cxx::unexpected(nativeError(status));
@@ -295,7 +299,7 @@ namespace lux::render::detail
         sampler.addressModes =
             {nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE};
         sampler.mipMax = float(description.mipNum - 1);
-        status = session_.api().CreateSampler(session_.device(), sampler, candidate.sampler_);
+        status = session_.nriCore().CreateSampler(session_.device(), sampler, candidate.sampler_);
         if (status != nri::Result::SUCCESS)
         {
             return cxx::unexpected(nativeError(status));
@@ -311,7 +315,7 @@ namespace lux::render::detail
         {
             return;
         }
-        session_.deferRelease([value = std::move(value), api = &session_.api(), descriptors = descriptors_](
+        session_.deferRelease([value = std::move(value), api = &session_.nriCore(), descriptors = descriptors_](
                               ) mutable noexcept { releaseImage(*api, *descriptors, value); });
     }
 
@@ -332,8 +336,7 @@ namespace lux::render::detail
             co_return cxx::unexpected(candidate.error());
         }
         cxx::scope_exit rollback([&]() noexcept { retire(*candidate); });
-        auto accepted =
-            co_await session_.uploads().writeImage(*candidate->image_, input.source, std::move(prepared->second));
+        auto accepted = co_await uploads_.writeImage(*candidate->image_, input.source, std::move(prepared->second));
         if (!accepted)
         {
             co_return cxx::unexpected(accepted.error());
@@ -366,7 +369,7 @@ namespace lux::render::detail
         }
         cxx::scope_exit rollback([&]() noexcept { retire(*candidate); });
         auto accepted =
-            co_await session_.uploads()
+            co_await uploads_
                 .writeImage(*candidate->image_, input.source, std::move(prepared->second), original->image_);
         if (!accepted)
         {
@@ -408,7 +411,7 @@ namespace lux::render::detail
         const auto native_format = expected->format == rdesc::ETextureFormat::RGBA8_UNORM  ? nri::Format::RGBA8_UNORM
                                    : expected->format == rdesc::ETextureFormat::RGBA8_SRGB ? nri::Format::RGBA8_SRGB
                                                                                            : nri::Format::BC1_RGBA_SRGB;
-        const auto& image = session_.api().GetTextureDesc(*backing->image_);
+        const auto& image = session_.nriCore().GetTextureDesc(*backing->image_);
         const bool is_mismatch = expected->width != image.width || expected->height != image.height ||
                                  expected->mips != image.mipNum || expected->layers != image.layerNum ||
                                  native_format != image.format;
@@ -451,7 +454,7 @@ namespace lux::render::detail
         static const auto factory = makeStorageFactory<
             render::SampledTexture2DStorageDescriptor,
             SampledTexture2DStorage,
-            DeviceSession,
+            StorageCreateContext,
             &SampledTexture2DStorage::create>(nullptr, &bindings);
         return factory;
     }

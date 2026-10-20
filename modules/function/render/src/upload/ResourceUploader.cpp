@@ -9,7 +9,7 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/memory/StagingArena.hpp>
 #include <lux/engine/render/upload/ImageTransfer.hpp>
-#include <lux/engine/render/upload/UploadContext.hpp>
+#include <lux/engine/render/upload/ResourceUploader.hpp>
 #include <numeric>
 
 namespace lux::render::detail
@@ -31,16 +31,16 @@ namespace lux::render::detail
                              : input.source.size();
     }
 
-    struct UploadContext::Measurement final
+    struct ResourceUploader::Measurement final
     {
         SubmissionCallback completion;
-        UploadContext* uploads = nullptr;
+        ResourceUploader* uploads = nullptr;
         std::size_t index = 0;
         std::uint32_t bits = 0;
         std::uint64_t pending_copy_serial = 0;
     };
 
-    struct UploadContext::Copy final
+    struct ResourceUploader::Copy final
     {
         StagingRange staging;
         nri::Buffer* buffer = nullptr;
@@ -55,9 +55,9 @@ namespace lux::render::detail
         bool first = false, final = false;
     };
 
-    struct UploadContext::BatchEntry final
+    struct ResourceUploader::BatchEntry final
     {
-        UploadContext* uploads;
+        ResourceUploader* uploads;
         SubmissionQueue* queue;
         std::span<Copy> copies;
         std::span<const BufferZero> fills;
@@ -69,9 +69,10 @@ namespace lux::render::detail
         bool acquiring = false;
         bool waiting_range = false;
         std::size_t minimum_range = 4;
+        SubmissionFrontiers* progress = nullptr;
     };
 
-    class UploadContext::BatchSender final
+    class ResourceUploader::BatchSender final
     {
     public:
         using sender_concept = stdexec::sender_t;
@@ -111,7 +112,7 @@ namespace lux::render::detail
         BatchEntry& entry_;
     };
 
-    UploadContext::UploadContext(
+    ResourceUploader::ResourceUploader(
         DeviceSession& device,
         TransferOptions settings,
         execution::CpuScheduler scheduler
@@ -120,29 +121,30 @@ namespace lux::render::detail
     {
     }
 
-    UploadContext::~UploadContext() noexcept
+    ResourceUploader::~ResourceUploader() noexcept
     {
         for (auto& copy : frame_copies_)
         {
-            session.staging_arena_->cancel(copy.staging);
+            staging_arena_->cancel(copy.staging);
         }
         if (mapped_timestamps_)
         {
-            session.api().UnmapBuffer(*timestamp_results_);
+            session.nriCore().UnmapBuffer(*timestamp_results_);
         }
-        session.api().DestroyBuffer(timestamp_results_);
+        session.nriCore().DestroyBuffer(timestamp_results_);
         for (auto* pool : timestamps_)
         {
-            session.api().DestroyQueryPool(pool);
+            session.nriCore().DestroyQueryPool(pool);
         }
     }
 
-    RenderResult<void> DeviceSession::configureUploads(
+    RenderResult<std::unique_ptr<ResourceUploader>> ResourceUploader::create(
+        DeviceSession& session,
         const TransferOptions& options,
         execution::CpuScheduler cpu
     ) noexcept
     {
-        const bool invalid = uploads_ || cpu == execution::CpuScheduler{} || options.chunk_bytes < 256 ||
+        const bool invalid = cpu == execution::CpuScheduler{} || options.chunk_bytes < 256 ||
                              options.chunk_bytes > 16 * 1024 * 1024 || options.staging_pages == 0 ||
                              options.staging_pages > 16 || options.pending_bytes < options.chunk_bytes ||
                              options.batch_entries == 0 || options.window_regions == 0;
@@ -150,24 +152,25 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        auto state = std::unique_ptr<UploadContext>(new UploadContext(*this, options, cpu));
-        auto& transfer = queue(EQueueRole::TRANSFER);
+        auto state = std::unique_ptr<ResourceUploader>(new ResourceUploader(session, options, cpu));
+        auto& transfer = session.queue(EQueueRole::TRANSFER);
         const auto& granularity = transfer.properties().image_transfer_granularity;
         const bool row_chunks = granularity[0] == 1 && granularity[1] == 1 && granularity[2] == 1;
-        state->copy_queue = row_chunks ? &transfer : &queue();
+        state->copy_queue = row_chunks ? &transfer : &session.queue();
         state->copy_timestamp_bits = state->copy_queue->properties().timestamp_bits;
-        state->graphics_timestamp_bits = queue().properties().timestamp_bits;
+        state->graphics_timestamp_bits = session.queue().properties().timestamp_bits;
         if (options.measure_gpu && (state->copy_timestamp_bits || state->graphics_timestamp_bits))
         {
-            state->graphics_measurement_base_ = state->copy_queue == &queue() ? 0 : state->copy_queue->capacity();
-            const auto query_slots = state->graphics_measurement_base_ + queue().capacity();
-            state->measurements_ = std::make_unique<UploadContext::Measurement[]>(query_slots);
+            state->graphics_measurement_base_ =
+                state->copy_queue == &session.queue() ? 0 : state->copy_queue->capacity();
+            const auto query_slots = state->graphics_measurement_base_ + session.queue().capacity();
+            state->measurements_ = std::make_unique<ResourceUploader::Measurement[]>(query_slots);
             for (std::size_t i = 0; i < query_slots; ++i)
             {
                 state->measurements_[i].uploads = state.get();
                 state->measurements_[i].index = i;
             }
-            const std::array queues{state->copy_queue, &queue()};
+            const std::array queues{state->copy_queue, &session.queue()};
             for (std::size_t i = 0; i < queues.size(); ++i)
             {
                 if (i == 1 && state->graphics_measurement_base_ == 0)
@@ -182,48 +185,44 @@ namespace lux::render::detail
                                       ? nri::QueryType::TIMESTAMP_COPY_QUEUE
                                       : nri::QueryType::TIMESTAMP;
                 const nri::QueryPoolDesc query{type, queues[i]->capacity() * 2};
-                const auto result = api().CreateQueryPool(device(), query, state->timestamps_[i]);
+                const auto result = session.nriCore().CreateQueryPool(session.device(), query, state->timestamps_[i]);
                 if (result != nri::Result::SUCCESS)
                 {
                     return cxx::unexpected(nativeError(result));
                 }
             }
             // Distinct in-flight pairs must not share a non-coherent memory atom.
-            state->query_result_stride_ = std::lcm<std::uint64_t>(upload_alignment_, 16);
+            state->query_result_stride_ = std::lcm<std::uint64_t>(session.uploadAlignment(), 16);
             const nri::BufferDesc description{query_slots * state->query_result_stride_, 0, nri::BufferUsageBits::NONE};
             const auto result =
-                api().CreatePlacedBuffer(device(), NriHostReadbackHeap, description, state->timestamp_results_);
+                session.nriCore()
+                    .CreatePlacedBuffer(session.device(), NriHostReadbackHeap, description, state->timestamp_results_);
             if (result != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));
             }
             state->mapped_timestamps_ =
-                static_cast<std::uint64_t*>(api().MapBuffer(*state->timestamp_results_, 0, description.size));
+                static_cast<std::uint64_t*>(session.nriCore().MapBuffer(*state->timestamp_results_, 0, description.size)
+                );
             if (!state->mapped_timestamps_)
             {
                 return cxx::unexpected(nativeError(nri::Result::FAILURE));
             }
         }
-        auto arena = StagingArena::create(*this, options.chunk_bytes, options.staging_pages, upload_alignment_);
+        auto arena =
+            StagingArena::create(session, options.chunk_bytes, options.staging_pages, session.uploadAlignment());
         if (!arena)
         {
             return cxx::unexpected(arena.error());
         }
-        staging_arena_ = std::move(*arena);
+        state->staging_arena_ = std::move(*arena);
         state->stats.staging_bytes = options.chunk_bytes * options.staging_pages;
         state->batch_entries_.reserve(options.batch_entries);
         state->frame_copies_.reserve(options.window_regions);
-        frame_receivers_.reserve(options.window_regions);
-        uploads_ = std::move(state);
-        return {};
+        return state;
     }
 
-    TransferStats DeviceSession::uploadStats() const noexcept
-    {
-        return uploads_ ? uploads_->stats : TransferStats{};
-    }
-
-    bool UploadContext::reserveBytes(std::size_t bytes) noexcept
+    bool ResourceUploader::reserveSourceBytes(std::size_t bytes) noexcept
     {
         if (bytes > options.pending_bytes - stats.pending_bytes)
         {
@@ -234,7 +233,7 @@ namespace lux::render::detail
         return true;
     }
 
-    void UploadContext::releaseBytes(std::size_t bytes) noexcept
+    void ResourceUploader::releaseSourceBytes(std::size_t bytes) noexcept
     {
         stats.pending_bytes -= bytes;
     }
@@ -386,9 +385,9 @@ namespace lux::render::detail
         }
     }
 
-    RenderResult<void> UploadContext::measure(std::size_t index, std::uint32_t bits) noexcept
+    RenderResult<void> ResourceUploader::measure(std::size_t index, std::uint32_t bits) noexcept
     {
-        const auto result = session.vk().InvalidateBufferRangeVK(*timestamp_results_, index * query_result_stride_, 16);
+        const auto result = session.invalidateMappedRange(*timestamp_results_, index * query_result_stride_, 16);
         if (result != nri::Result::SUCCESS)
         {
             ++stats.gpu_query_errors;
@@ -403,22 +402,22 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<std::size_t> UploadContext::prepareBuffer(const BufferWrite& write, std::size_t unit) noexcept
+    RenderResult<std::size_t> ResourceUploader::stageBuffer(const BufferWrite& write, std::size_t unit) noexcept
     {
         if (frame_copies_.size() == options.window_regions)
         {
             return 0;
         }
-        auto range = session.staging_arena_->acquire(std::min(write.source.size(), options.chunk_bytes), unit);
+        auto range = staging_arena_->acquire(std::min(write.source.size(), options.chunk_bytes), unit);
         if (!range)
         {
             return 0;
         }
         const auto bytes = range->bytes.size();
         std::memcpy(range->bytes.data(), write.source.data(), bytes);
-        if (auto result = session.staging_arena_->flush(*range); !result)
+        if (auto result = staging_arena_->flush(*range); !result)
         {
-            session.staging_arena_->cancel(*range);
+            staging_arena_->cancel(*range);
             return cxx::unexpected(result.error());
         }
         Copy copy{std::move(*range)};
@@ -431,14 +430,14 @@ namespace lux::render::detail
         return bytes;
     }
 
-    bool UploadContext::hasFrameCopies() const noexcept
+    bool ResourceUploader::hasFrameCopies() const noexcept
     {
         return !frame_copies_.empty();
     }
 
-    void UploadContext::recordFrame(nri::CommandBuffer& command) noexcept
+    void ResourceUploader::recordFrameCopies(nri::CommandBuffer& command) noexcept
     {
-        const auto& api = session.api();
+        const auto& api = session.nriCore();
         std::size_t first = 0;
         while (first < frame_copies_.size())
         {
@@ -481,33 +480,33 @@ namespace lux::render::detail
         }
     }
 
-    void UploadContext::finishFrameCopies(RenderResult<void> result) noexcept
+    void ResourceUploader::completeFrameCopies(RenderResult<void> result) noexcept
     {
         for (auto& copy : frame_copies_)
         {
             if (result)
             {
-                session.staging_arena_->markSubmitted(copy.staging, session.queue());
+                staging_arena_->markSubmitted(copy.staging, session.queue());
                 ++stats.copy_regions;
             }
             else
             {
-                session.staging_arena_->cancel(copy.staging);
+                staging_arena_->cancel(copy.staging);
             }
         }
         frame_copies_.clear();
     }
 
-    bool UploadContext::canStage(std::uint32_t frame_slot) const noexcept
+    bool ResourceUploader::canStage(std::uint32_t frame_slot) const noexcept
     {
         if (frame_slot != UINT32_MAX)
         {
             return true;
         }
-        return session.backgroundUploadsAllowed();
+        return background_allowed_;
     }
 
-    void UploadContext::enqueue(BatchEntry& entry) noexcept
+    void ResourceUploader::enqueue(BatchEntry& entry) noexcept
     {
         // Current-frame writers precede background range waiters in the same finite list.
         // The active render workload reserves one existing page for frame preparation; an
@@ -536,7 +535,7 @@ namespace lux::render::detail
         tail = &entry;
     }
 
-    void UploadContext::flush() noexcept
+    void ResourceUploader::submitReadyTransfers() noexcept
     {
         // Complete only this bounded prefix. Receiver reentry may append work for the next flush.
         auto* boundary = ready_tail_;
@@ -604,7 +603,7 @@ namespace lux::render::detail
                 accepted = queue.recordAndSubmit(
                     [&](nri::CommandBuffer& command, std::uint32_t slot) noexcept -> RenderResult<void>
                     {
-                        const auto& api = session.api();
+                        const auto& api = session.nriCore();
                         query_index = (pool_index ? graphics_measurement_base_ : 0) + slot;
                         if (timestamp_requested)
                         {
@@ -742,9 +741,11 @@ namespace lux::render::detail
                 acquiring ? ++stats.acquire_submissions : ++stats.copy_submissions;
                 for (auto* entry : batch_entries_)
                 {
-                    if (entry->frame_slot != UINT32_MAX)
+                    if (entry->progress)
                     {
-                        session.acceptFrameSubmission(entry->frame_slot, queue);
+                        const auto index = session.queueIndex(queue);
+                        auto& serial = entry->progress->serials[index];
+                        serial = std::max(serial, queue.submitted());
                     }
                 }
                 const auto observe_measurement = [&](Measurement& measurement) noexcept
@@ -798,7 +799,7 @@ namespace lux::render::detail
                     {
                         for (auto& copy : entry->copies)
                         {
-                            session.staging_arena_->markSubmitted(copy.staging, queue);
+                            staging_arena_->markSubmitted(copy.staging, queue);
                             ++stats.copy_regions;
                         }
                     }
@@ -832,16 +833,15 @@ namespace lux::render::detail
                 ready_tail_ = blocked_tail;
             }
         }
-        session.dispatchFrameWrites();
         auto* range_boundary = range_waiters_tail_;
         while (range_waiters_ && range_boundary)
         {
             auto* entry = range_waiters_;
             const bool stopping = entry->stopping(entry->receiver);
             if (!stopping && !session.deviceLost() &&
-                (!canStage(entry->frame_slot) || !session.staging_arena_->canAcquire(
+                (!canStage(entry->frame_slot) || !staging_arena_->canAcquire(
                                                      entry->minimum_range,
-                                                     entry->frame_slot == UINT32_MAX && session.rendering_
+                                                     entry->frame_slot == UINT32_MAX && reserve_frame_staging_
                                                  )))
             {
                 break;
@@ -867,16 +867,17 @@ namespace lux::render::detail
         }
     }
 
-    UploadContext::Task UploadContext::writeBuffers(
+    ResourceUploader::Task ResourceUploader::writeBuffers(
         std::span<const BufferWrite> writes,
         std::span<const BufferZero> fills,
-        std::uint32_t frame_slot
+        std::uint32_t frame_slot,
+        SubmissionFrontiers* progress
     ) noexcept
     {
-        return write(writes, fills, nullptr, {}, {}, nullptr, frame_slot);
+        return write(writes, fills, nullptr, {}, {}, nullptr, frame_slot, 0, 0, progress);
     }
 
-    UploadContext::Task UploadContext::writeImage(
+    ResourceUploader::Task ResourceUploader::writeImage(
         nri::Texture& target,
         std::span<const std::byte> source,
         std::vector<ImageTransferRegion> regions,
@@ -886,17 +887,18 @@ namespace lux::render::detail
         return write({}, {}, &target, source, std::move(regions), clone, UINT32_MAX);
     }
 
-    UploadContext::Task UploadContext::writeBuffers(
+    ResourceUploader::Task ResourceUploader::writeBuffers(
         std::span<const BufferWrite> writes,
         std::uint32_t element_bytes,
         std::uint32_t source_stride,
-        std::uint32_t frame_slot
+        std::uint32_t frame_slot,
+        SubmissionFrontiers* progress
     ) noexcept
     {
-        return write(writes, {}, nullptr, {}, {}, nullptr, frame_slot, element_bytes, source_stride);
+        return write(writes, {}, nullptr, {}, {}, nullptr, frame_slot, element_bytes, source_stride, progress);
     }
 
-    UploadContext::Task UploadContext::write(
+    ResourceUploader::Task ResourceUploader::write(
         std::span<const BufferWrite> writes,
         std::span<const BufferZero> fills,
         nri::Texture* image,
@@ -905,7 +907,8 @@ namespace lux::render::detail
         const nri::Texture* clone,
         std::uint32_t frame_slot,
         std::uint32_t element_bytes,
-        std::uint32_t source_stride
+        std::uint32_t source_stride,
+        SubmissionFrontiers* progress
     ) noexcept
     {
         const bool strided = element_bytes != 0 || source_stride != 0;
@@ -935,8 +938,8 @@ namespace lux::render::detail
                 }
                 const auto bytes = bufferBytes(input, element_bytes, source_stride);
                 const bool invalid = bytes % 4 || input.offset % 4 ||
-                                     input.offset > session.api().GetBufferDesc(*input.target).size ||
-                                     bytes > session.api().GetBufferDesc(*input.target).size - input.offset;
+                                     input.offset > session.nriCore().GetBufferDesc(*input.target).size ||
+                                     bytes > session.nriCore().GetBufferDesc(*input.target).size - input.offset;
                 if (invalid)
                 {
                     co_return cxx::unexpected(RenderError{kDeviceArgument});
@@ -957,7 +960,7 @@ namespace lux::render::detail
             {
                 co_return cxx::unexpected(RenderError{kDeviceArgument});
             }
-            const auto& description = session.api().GetTextureDesc(*image);
+            const auto& description = session.nriCore().GetTextureDesc(*image);
             const bool invalid = description.sampleNum != 1;
             if (invalid)
             {
@@ -986,8 +989,8 @@ namespace lux::render::detail
                 co_return cxx::unexpected(RenderError{kDeviceArgument});
             }
             const bool invalid = !fill.size || (fill.offset | fill.size) % 4 ||
-                                 fill.offset > session.api().GetBufferDesc(*fill.target).size ||
-                                 fill.size > session.api().GetBufferDesc(*fill.target).size - fill.offset;
+                                 fill.offset > session.nriCore().GetBufferDesc(*fill.target).size ||
+                                 fill.size > session.nriCore().GetBufferDesc(*fill.target).size - fill.offset;
             if (invalid)
             {
                 co_return cxx::unexpected(RenderError{kDeviceArgument});
@@ -997,11 +1000,11 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        if (!reserveBytes(pending_bytes))
+        if (!reserveSourceBytes(pending_bytes))
         {
             co_return cxx::unexpected(RenderError{kDeviceCapacity});
         }
-        cxx::scope_exit budget([&]() noexcept { releaseBytes(pending_bytes); });
+        cxx::scope_exit budget([&]() noexcept { releaseSourceBytes(pending_bytes); });
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         auto& copy_queue = !image || clone ? session.queue() : *this->copy_queue;
         bool accepted_any = false;
@@ -1017,7 +1020,7 @@ namespace lux::render::detail
             {
                 for (auto& copy : copies)
                 {
-                    session.staging_arena_->cancel(copy.staging);
+                    staging_arena_->cancel(copy.staging);
                 }
             }
         );
@@ -1058,10 +1061,10 @@ namespace lux::render::detail
                 const auto remaining =
                     region ? std::size_t((region->texture.height - 1) / region->block_extent + 1 - row) * row_pitch
                            : run_remaining;
-                auto range = session.staging_arena_->acquire(
+                auto range = staging_arena_->acquire(
                     std::min(remaining, options.chunk_bytes),
                     region ? row_pitch : 4,
-                    frame_slot == UINT32_MAX && session.rendering_
+                    frame_slot == UINT32_MAX && reserve_frame_staging_
                 );
                 if (!range)
                 {
@@ -1223,7 +1226,7 @@ namespace lux::render::detail
                             ? copy.bytes
                             : copy.rows * std::size_t((copy.region.texture.width - 1) / copy.region.block_extent + 1) *
                                   copy.region.block_bytes;
-                    if (auto flushed = session.staging_arena_->flush(copy.staging); !flushed)
+                    if (auto flushed = staging_arena_->flush(copy.staging); !flushed)
                     {
                         co_return failure(flushed.error());
                     }
@@ -1235,6 +1238,7 @@ namespace lux::render::detail
             }
             BatchEntry entry{this, &copy_queue, copies};
             entry.frame_slot = frame_slot;
+            entry.progress = progress;
             if (!accepted_any)
             {
                 entry.fills = fills;

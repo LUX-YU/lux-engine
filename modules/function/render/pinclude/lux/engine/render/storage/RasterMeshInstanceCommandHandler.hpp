@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+
 #include <exec/task.hpp>
 #include <lux/engine/render/commands/CommandMethod.hpp>
 
@@ -83,7 +85,7 @@ namespace lux::render::detail
 
         static constexpr std::string_view name = "lux.render.storage.RasterMeshInstanceCommandHandler";
 
-        explicit RasterMeshInstanceCommandHandler(DeviceSession& value) noexcept : device_(value) {}
+        explicit RasterMeshInstanceCommandHandler(ResourceRegistry& resources) noexcept : resources_(resources) {}
 
         CreateInstanceSender createInstance(CreateMeshInstance::Request&& input) noexcept
         {
@@ -125,7 +127,7 @@ namespace lux::render::detail
         exec::task<RenderResult<TransformApplied>> updateInstancesSource(UpdateMeshInstances::Request&&) noexcept;
         exec::task<RenderResult<Ack>> releaseInstanceSource(ReleaseMeshInstance::Request&&) noexcept;
 
-        DeviceSession& device_;
+        ResourceRegistry& resources_;
     };
 
 } // namespace lux::render::detail

@@ -244,10 +244,10 @@ namespace lux::render
         }
 
         std::vector<StorageNameView> storage_types;
-        device->resources().forEachType(
+        resources->forEachType(
             [&](StorageTypeId id, const StorageDescriptor& type, std::uint32_t) noexcept
             {
-                const auto* factory = device->resources().factory(id);
+                const auto* factory = resources->factory(id);
                 if (factory && factory->binding_ops &&
                     static_cast<const detail::StorageBindingOps*>(factory->binding_ops)->resolve)
                 {
@@ -275,7 +275,7 @@ namespace lux::render
             stdexec::schedule(scheduler) |
             stdexec::then(
                 [native = &device->device(),
-                 api = &device->api(),
+                 api = &device->nriCore(),
                  enabled = device->enabledFeatures(),
                  formats = device->formatSupport(),
                  vertex_limits = std::array{device->vertexStrideLimit(), device->vertexOffsetLimit()},

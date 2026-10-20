@@ -1,7 +1,121 @@
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/runtime/ServerImpl.hpp>
 
 namespace lux::render
 {
+    RenderResult<std::unique_ptr<detail::ExecutionContext>> RenderServer::Impl::createExecutionContext(
+        const detail::CompiledGraph& code,
+        detail::OffscreenTarget& output,
+        StorageSet& scene,
+        StorageSet& view,
+        std::span<const StorageArgument> arguments
+    ) noexcept
+    {
+        auto dependencies = storageContext();
+        std::vector<const StorageArgument*> resolved_arguments(code.resources().size());
+        for (const auto& argument : arguments)
+        {
+            const auto plan =
+                std::ranges::find(code.resources(), argument.resource_key, &detail::CompiledResource::key);
+            if (plan == code.resources().end())
+            {
+                return cxx::unexpected(RenderError{kStorageContract});
+            }
+            if (!plan->used)
+            {
+                continue;
+            }
+            if (!plan->storage)
+            {
+                return cxx::unexpected(RenderError{kStorageContract});
+            }
+            const auto index = static_cast<std::size_t>(plan - code.resources().begin());
+            const auto* previous = resolved_arguments[index];
+            if (previous && *previous != argument)
+            {
+                return cxx::unexpected(RenderError{kStorageMismatch});
+            }
+            resolved_arguments[index] = &argument;
+        }
+        std::vector<std::pair<StorageSet*, StorageId>> created_storages;
+        cxx::scope_exit rollback(
+            [&]() noexcept
+            {
+                for (const auto& [set, id] : created_storages)
+                {
+                    (void)set->remove(id);
+                }
+            }
+        );
+        auto context =
+            std::make_unique<detail::ExecutionContext>(*device, *resources, frames->frameCount(), code, output);
+        const auto prepareGroup = [&](std::span<const std::uint32_t> indices, StorageSet* set) -> RenderResult<void>
+        {
+            for (auto i : indices)
+            {
+                const auto& plan = code.resources()[i];
+                if (!plan.used)
+                {
+                    continue;
+                }
+                if (!set)
+                {
+                    return cxx::unexpected(RenderError{kStorageIdentity});
+                }
+                const auto* factory = dependencies.resources.factory(plan.storage->type.view());
+                const auto key = plan.storage->key.empty() ? plan.key : plan.storage->key;
+                const auto* argument = resolved_arguments[i];
+                const auto type = argument ? argument->typeInfo() : CppType{};
+                if (type != factory->descriptor->binding_type)
+                {
+                    return cxx::unexpected(RenderError{kStorageContract});
+                }
+                const auto* value = argument ? argument->data() : nullptr;
+                const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->binding_ops);
+                const auto storage_type = dependencies.resources.typeId(plan.storage->type.view());
+                const auto previous = set->find(storage_type, key);
+                auto instance = set->getOrCreate(dependencies, storage_type, key, plan.storage->config);
+                if (!instance)
+                {
+                    return cxx::unexpected(instance.error());
+                }
+                const auto id = *instance;
+                if (previous.isNull() && set != &context->attachmentStorages())
+                {
+                    created_storages.emplace_back(set, id);
+                }
+                if (auto bound = context->bindStorage(i, id, *ops, resources->native(id), value); !bound)
+                {
+                    return cxx::unexpected(bound.error());
+                }
+            }
+            return {};
+        };
+        const auto& groups = code.storageGroups();
+        if (auto r = prepareGroup(groups.global, &*global_storages); !r)
+        {
+            return cxx::unexpected(r.error());
+        }
+        if (auto r = prepareGroup(groups.scene, &scene); !r)
+        {
+            return cxx::unexpected(r.error());
+        }
+        if (auto r = prepareGroup(groups.view, &view); !r)
+        {
+            return cxx::unexpected(r.error());
+        }
+        if (auto r = prepareGroup(groups.attachment, &context->attachmentStorages()); !r)
+        {
+            return cxx::unexpected(r.error());
+        }
+        if (auto ready = context->initialize(output, *frames, *resources); !ready)
+        {
+            return cxx::unexpected(ready.error());
+        }
+        rollback.release();
+        return context;
+    }
+
     RenderResult<StorageSet*> RenderServer::Impl::findStorageSet(const VStorageLocation& address) noexcept
     {
         return std::visit(
@@ -10,7 +124,7 @@ namespace lux::render
                 using T = std::decay_t<decltype(location)>;
                 if constexpr (std::same_as<T, GlobalStorageLocation>)
                 {
-                    return &device->globalStorages();
+                    return &*global_storages;
                 }
                 else if constexpr (std::same_as<T, SceneId>)
                 {
@@ -57,7 +171,7 @@ namespace lux::render
             output_response.error = storage_set.error();
             return;
         }
-        if (!device->resources().factory(input.type))
+        if (!resources->factory(input.type))
         {
             output_response.error = RenderError{kStorageFactory};
             return;
@@ -83,7 +197,8 @@ namespace lux::render
             output_response.error = storage_set.error();
             return;
         }
-        auto id = (*storage_set)->getOrCreate(input.location.type, input.location.key, input.config);
+        auto dependencies = storageContext();
+        auto id = (*storage_set)->getOrCreate(dependencies, input.location.type, input.location.key, input.config);
         if (!id)
         {
             output_response.error = id.error();
@@ -98,7 +213,7 @@ namespace lux::render
     ) noexcept
     {
         const auto id = _request;
-        auto* storage_set = device->resources().storageSet(id);
+        auto* storage_set = resources->storageSet(id);
         if (!storage_set)
         {
             output_response.error = RenderError{kStorageIdentity};
@@ -161,8 +276,13 @@ namespace lux::render
             output_response.error = valid.error();
             return;
         }
-        auto prepared =
-            device->prepare(*effect->code, *target->physical, &scene->storages, &view->storages, effect->arguments);
+        auto prepared = createExecutionContext(
+            *effect->code,
+            *target->physical,
+            scene->storages,
+            view->storages,
+            effect->arguments
+        );
         if (!prepared)
         {
             output_response.error = prepared.error();
@@ -188,7 +308,7 @@ namespace lux::render
         output_response.attachment = id;
         active_targets.emplace(target_id);
         frame_storages_dirty = true;
-        storages_created.store(device->resources().creations());
+        storages_created.store(resources->creations());
         return;
     }
 
@@ -197,7 +317,7 @@ namespace lux::render
         const TargetDesc& description
     ) noexcept
     {
-        auto physical = detail::OffscreenTarget::create(*device, description);
+        auto physical = detail::OffscreenTarget::create(*device, description, frames->frameCount());
         if (!physical)
         {
             return cxx::unexpected(physical.error());
@@ -207,11 +327,11 @@ namespace lux::render
         {
             // One Target writer, proven on attach. Resize builds one candidate without recompilation.
             const auto& effect = *effects.find(group->effect);
-            auto candidate = device->prepare(
+            auto candidate = createExecutionContext(
                 *effect.code,
                 **physical,
-                &scenes.find(group->scene)->storages,
-                &scenes.find(group->scene)->views.find(group->view)->storages,
+                scenes.find(group->scene)->storages,
+                scenes.find(group->scene)->views.find(group->view)->storages,
                 effect.arguments
             );
             if (!candidate)
@@ -229,7 +349,7 @@ namespace lux::render
         target.physical = std::move(*physical);
         target.description = description;
         ++target.epoch;
-        storages_created.store(device->resources().creations());
+        storages_created.store(resources->creations());
         return {};
     }
 
@@ -238,7 +358,7 @@ namespace lux::render
         CreateScene::Response& output_response
     ) noexcept
     {
-        output_response = SceneCreated{{}, scenes.emplace(device->resources())};
+        output_response = SceneCreated{{}, scenes.emplace(*resources)};
     }
 
     void RenderServer::Impl::removeScene(
@@ -277,7 +397,7 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        output_response = ViewCreated{{}, scene->views.emplace(device->resources())};
+        output_response = ViewCreated{{}, scene->views.emplace(*resources)};
     }
 
     void RenderServer::Impl::updateAttachmentInputs(
@@ -343,7 +463,7 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeUnsupported};
             return;
         }
-        auto physical = detail::OffscreenTarget::create(*device, input->description);
+        auto physical = detail::OffscreenTarget::create(*device, input->description, frames->frameCount());
         if (!physical)
         {
             output_response.error = physical.error();

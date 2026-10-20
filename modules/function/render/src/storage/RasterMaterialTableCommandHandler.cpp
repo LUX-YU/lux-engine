@@ -13,7 +13,7 @@ namespace lux::render::detail
         CreateMaterial::Request&& input
     ) noexcept
     {
-        auto storage = device_.resources().borrow<RasterMaterialTableStorage>(input.storage);
+        auto storage = resources_.borrow<RasterMaterialTableStorage>(input.storage);
         if (!storage)
         {
             return rejected<RenderResult<MaterialId>>(storage.error());
@@ -25,7 +25,7 @@ namespace lux::render::detail
         UpdateMaterial::Request&& input
     ) noexcept
     {
-        auto storage = device_.resources().borrow<RasterMaterialTableStorage>(input.material.storage);
+        auto storage = resources_.borrow<RasterMaterialTableStorage>(input.material.storage);
         if (!storage)
         {
             return rejected<RenderResult<Ack>>(storage.error());
@@ -38,7 +38,7 @@ namespace lux::render::detail
         ReleaseMaterial::Response& response
     ) noexcept
     {
-        auto storage = device_.resources().borrow<RasterMaterialTableStorage>(input.storage);
+        auto storage = resources_.borrow<RasterMaterialTableStorage>(input.storage);
         if (!storage)
         {
             response.error = storage.error();

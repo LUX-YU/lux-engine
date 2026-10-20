@@ -12,7 +12,7 @@ namespace lux::render::detail
     exec::task<RenderResult<MeshId>> IndexedTriangleMeshCommandHandler::createMeshSource(CreateMesh::Request&& input
     ) noexcept
     {
-        auto storage = device_.resources().borrow<IndexedTriangleMeshStorage>(input.storage);
+        auto storage = resources_.borrow<IndexedTriangleMeshStorage>(input.storage);
         if (!storage)
         {
             return rejected<RenderResult<MeshId>>(storage.error());
@@ -25,7 +25,7 @@ namespace lux::render::detail
         ReleaseMesh::Response& response
     ) noexcept
     {
-        auto storage = device_.resources().borrow<IndexedTriangleMeshStorage>(input.storage);
+        auto storage = resources_.borrow<IndexedTriangleMeshStorage>(input.storage);
         if (!storage)
         {
             response.error = storage.error();

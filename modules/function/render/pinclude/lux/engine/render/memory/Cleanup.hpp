@@ -10,7 +10,7 @@ namespace lux::render::detail
         {
             return;
         }
-        session.deferRelease([value = std::exchange(buffer, nullptr), destroy = session.api().DestroyBuffer]() noexcept
-                             { destroy(value); });
+        session.deferRelease([value = std::exchange(buffer, nullptr),
+                              destroy = session.nriCore().DestroyBuffer]() noexcept { destroy(value); });
     }
 } // namespace lux::render::detail

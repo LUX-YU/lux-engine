@@ -64,7 +64,7 @@ namespace lux::render::detail
         layout.shaderStages =
             nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER;
         layout.flags = nri::PipelineLayoutBits::IGNORE_GLOBAL_SPIRV_OFFSETS;
-        const auto& api = session_.api();
+        const auto& api = session_.nriCore();
         auto status = api.CreatePipelineLayout(session_.device(), layout, allocation_layout_);
         if (status != nri::Result::SUCCESS)
         {
@@ -94,7 +94,7 @@ namespace lux::render::detail
         {
             std::terminate();
         }
-        const auto& api = session_.api();
+        const auto& api = session_.nriCore();
         api.DestroyDescriptorPool(pool_);
         api.DestroyPipelineLayout(allocation_layout_);
         api.DestroyDescriptor(white_view_);
@@ -104,7 +104,7 @@ namespace lux::render::detail
 
     RenderResult<void> DescriptorArray::initializeDefault() noexcept
     {
-        const auto& api = session_.api();
+        const auto& api = session_.nriCore();
         const nri::TextureDesc description{
             nri::TextureType::TEXTURE_2D,
             nri::TextureUsageBits::SHADER_RESOURCE,
@@ -159,7 +159,7 @@ namespace lux::render::detail
             return cxx::unexpected(nativeError(nri::Result::FAILURE));
         }
         std::memset(mapped, 255, 4);
-        status = session_.vk().FlushBufferRangeVK(*staging, 0, 4);
+        status = session_.flushMappedRange(*staging, 0, 4);
         api.UnmapBuffer(*staging);
         if (status != nri::Result::SUCCESS)
         {
@@ -218,7 +218,7 @@ namespace lux::render::detail
             {descriptors_, 0, slot.index, &image, 1},
             {descriptors_, 1, slot.index, &sampler, 1}
         };
-        session_.api().UpdateDescriptorRanges(updates, 2);
+        session_.nriCore().UpdateDescriptorRanges(updates, 2);
     }
 
     void DescriptorArray::release(Slot slot) noexcept

@@ -62,7 +62,7 @@ namespace lux::render::detail
             return;
         }
         session_.deferRelease(
-            [segments = std::move(segments_), api = &session_.api()]() mutable noexcept
+            [segments = std::move(segments_), api = &session_.nriCore()]() mutable noexcept
             {
                 for (auto& segment : segments)
                 {
@@ -125,10 +125,10 @@ namespace lux::render::detail
             // Virtual metadata uses the existing VMA algorithm, not a second physical allocator.
             return cxx::unexpected(RenderError{kStorageCapacity});
         }
-        cxx::scope_exit rollback([&]() noexcept { destroySegment(session_.api(), *candidate); });
+        cxx::scope_exit rollback([&]() noexcept { destroySegment(session_.nriCore(), *candidate); });
         const nri::BufferDesc description{size, 4, usage_};
         const auto created =
-            session_.api().CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, candidate->buffer);
+            session_.nriCore().CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, candidate->buffer);
         if (created != nri::Result::SUCCESS)
         {
             return cxx::unexpected(nativeError(created));

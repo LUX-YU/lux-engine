@@ -21,8 +21,11 @@ namespace lux::render::detail
     class LUX_RENDER_PUBLIC OffscreenTarget final
     {
     public:
-        [[nodiscard]] static RenderResult<std::unique_ptr<OffscreenTarget>>
-        create(DeviceSession&, const TargetDesc&) noexcept;
+        [[nodiscard]] static RenderResult<std::unique_ptr<OffscreenTarget>> create(
+            DeviceSession&,
+            const TargetDesc&,
+            std::uint32_t frame_count
+        ) noexcept;
         ~OffscreenTarget() noexcept;
         OffscreenTarget(const OffscreenTarget&) = delete;
         OffscreenTarget& operator=(const OffscreenTarget&) = delete;

@@ -17,7 +17,7 @@ namespace lux::render
     class LUX_RENDER_PUBLIC ResourceRegistry final
     {
     public:
-        ResourceRegistry(void* native, std::uint32_t capabilities) noexcept;
+        explicit ResourceRegistry(std::uint32_t capabilities) noexcept;
         ~ResourceRegistry() noexcept;
         ResourceRegistry(const ResourceRegistry&) = delete;
         ResourceRegistry& operator=(const ResourceRegistry&) = delete;
@@ -108,7 +108,11 @@ namespace lux::render
 
         // StorageSet owns instances; this index alone mutates their identities and borrowed locations.
         [[nodiscard]] StorageId reserve(StorageSet&, StorageTypeId) noexcept;
-        [[nodiscard]] RenderResult<StorageInstance> create(StorageId, const void* configuration) noexcept;
+        [[nodiscard]] RenderResult<StorageInstance> create(
+            StorageCreateContext&,
+            StorageId,
+            const void* configuration
+        ) noexcept;
         void publish(StorageId, std::size_t position, void* instance) noexcept;
         void relocate(StorageId, std::size_t position) noexcept;
         void revoke(StorageId) noexcept;
@@ -132,7 +136,6 @@ namespace lux::render
 
         [[nodiscard]] RenderResult<void> validateFactory(const StorageFactory&, const ConfigValue&) const noexcept;
         StorageTypeId publishFactory(StorageFactory, ConfigValue) noexcept;
-        void* native_;
         std::uint32_t capabilities_;
         cxx::StableSlotMap<Type, StorageTypeTag> types_;
         cxx::SlotMap<Entry, StorageTag> entries_;

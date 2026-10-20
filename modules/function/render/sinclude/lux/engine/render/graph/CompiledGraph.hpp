@@ -149,11 +149,11 @@ namespace lux::render::detail
         CompiledGraph(nri::Device& device, const nri::CoreInterface&, TargetDesc target) noexcept;
         std::unique_ptr<LayoutPlan> descriptor_plan_;
         nri::Device* device_;
-        const nri::CoreInterface* api_;
+        const nri::CoreInterface* nri_core_;
         TargetDesc target_;
         nri::PipelineLayout* layout_{};
         std::vector<CompiledResource> resources_;
-        std::vector<FeatureFrameContribution> contexts_;
+        std::vector<FeatureFrameContribution> frame_contributions_;
         StorageGroups<std::uint32_t> storage_groups_;
         std::vector<CompiledPass> passes_;
         std::vector<std::uint32_t> pass_indices_;

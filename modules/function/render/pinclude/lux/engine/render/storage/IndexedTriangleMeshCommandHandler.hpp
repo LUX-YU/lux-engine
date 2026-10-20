@@ -1,7 +1,9 @@
 #pragma once
 
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+
 #include <lux/engine/render/commands/CommandMethod.hpp>
-#include <lux/engine/render/upload/UploadContext.hpp>
+#include <lux/engine/render/upload/ResourceUploader.hpp>
 
 #include <lux/engine/render/resource/StorageFactory.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMesh.hpp>
@@ -29,7 +31,7 @@ namespace lux::render::detail
 
         static constexpr std::string_view name = "lux.render.storage.IndexedTriangleMeshCommandHandler";
 
-        explicit IndexedTriangleMeshCommandHandler(DeviceSession& device) noexcept : device_(device) {}
+        explicit IndexedTriangleMeshCommandHandler(ResourceRegistry& resources) noexcept : resources_(resources) {}
 
         CreateMeshSender createMesh(CreateMesh::Request&& input) noexcept
         {
@@ -44,7 +46,7 @@ namespace lux::render::detail
     private:
         exec::task<RenderResult<MeshId>> createMeshSource(CreateMesh::Request&&) noexcept;
 
-        DeviceSession& device_;
+        ResourceRegistry& resources_;
     };
 
 } // namespace lux::render::detail

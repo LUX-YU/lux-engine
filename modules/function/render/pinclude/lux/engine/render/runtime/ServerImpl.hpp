@@ -12,7 +12,10 @@
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/execution/ExecutionContext.hpp>
+#include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/features/FeatureDefinition.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/StorageCreateContext.hpp>
 #include <lux/engine/render/runtime/CommandDispatchContext.hpp>
 #include <lux/engine/render/runtime/CommandRegistry.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -70,6 +73,17 @@ namespace lux::render
         cxx::SlotMap<EffectAttachment, AttachmentTag> attachments;
         cxx::SlotKeySparseSet<TargetId, std::monostate> active_targets;
         std::unique_ptr<detail::DeviceSession> device;
+        std::unique_ptr<detail::ResourceUploader> uploads;
+        std::unique_ptr<detail::FrameExecution> frames;
+        std::optional<ResourceRegistry> resources;
+        std::optional<StorageSet> global_storages;
+        bool paged_instances = false;
+
+        [[nodiscard]] StorageCreateContext storageContext() noexcept
+        {
+            return {*device, uploads.get(), frames.get(), *resources, paged_instances};
+        }
+
         ResponseOutbox response_outbox_;
         stdexec::counting_scope command_scope_;
         execution::RunLoop render_loop_;
@@ -95,6 +109,9 @@ namespace lux::render
         void findStorage(const FindStorage::Request&, FindStorage::Response&) noexcept;
         void prepareStorage(const PrepareStorage::Request&, PrepareStorage::Response&) noexcept;
         void removeStorage(const RemoveStorage::Request&, RemoveStorage::Response&) noexcept;
+
+        RenderResult<std::unique_ptr<detail::ExecutionContext>>
+        createExecutionContext(const detail::CompiledGraph&, detail::OffscreenTarget&, StorageSet& scene, StorageSet& view, std::span<const StorageArgument>) noexcept;
 
         void attachEffect(const Attach::Request&, Attach::Response&) noexcept;
 

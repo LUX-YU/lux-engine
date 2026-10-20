@@ -11,11 +11,11 @@
 
 namespace lux::render::detail
 {
-    IndexedTriangleMeshStorage::IndexedTriangleMeshStorage(DeviceSession& session, StorageId id) noexcept
-        : session_(session), id_(id),
-          vertices_(std::make_unique<BufferArena>(session, nri::BufferUsageBits::VERTEX_BUFFER)),
-          indices_(std::make_unique<BufferArena>(session, nri::BufferUsageBits::INDEX_BUFFER)),
-          sections_(std::make_unique<BufferArena>(session, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE, 65536))
+    IndexedTriangleMeshStorage::IndexedTriangleMeshStorage(StorageCreateContext& dependencies, StorageId id) noexcept
+        : session_(dependencies.device), uploads_(*dependencies.uploads), id_(id),
+          vertices_(dependencies.device, nri::BufferUsageBits::VERTEX_BUFFER),
+          indices_(dependencies.device, nri::BufferUsageBits::INDEX_BUFFER),
+          sections_(dependencies.device, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE, 65536)
     {
     }
 
@@ -136,25 +136,25 @@ namespace lux::render::detail
         }
         const auto vertex_bytes = std::size_t(input.description.vertex_count) * input.description.vertex_stride;
         const auto index_bytes = std::size_t(input.description.index_count) * input.description.index_stride;
-        auto vertices = vertices_->allocate(vertex_bytes, 4);
+        auto vertices = vertices_.allocate(vertex_bytes, 4);
         if (!vertices)
         {
             co_return cxx::unexpected(vertices.error());
         }
-        cxx::scope_exit rollback_vertices([&]() noexcept { vertices_->release(*vertices); });
-        auto indices = indices_->allocate((index_bytes + 3) & ~std::size_t{3}, 4);
+        cxx::scope_exit rollback_vertices([&]() noexcept { vertices_.release(*vertices); });
+        auto indices = indices_.allocate((index_bytes + 3) & ~std::size_t{3}, 4);
         if (!indices)
         {
             co_return cxx::unexpected(indices.error());
         }
-        cxx::scope_exit rollback_indices([&]() noexcept { indices_->release(*indices); });
+        cxx::scope_exit rollback_indices([&]() noexcept { indices_.release(*indices); });
         std::vector<MeshGpuSection> records;
         records.reserve(input.description.submeshes.size());
         for (const auto& section : input.description.submeshes)
         {
             records.push_back({section.index_count, section.first_index, section.vertex_offset});
         }
-        auto sections = sections_->allocate(records.size() * sizeof(MeshGpuSection), 4);
+        auto sections = sections_.allocate(records.size() * sizeof(MeshGpuSection), 4);
         if (!sections)
         {
             co_return cxx::unexpected(sections.error());
@@ -177,7 +177,7 @@ namespace lux::render::detail
             writes[count++] = {geometry.indices.buffer, geometry.indices.offset + full_words, tail};
         }
         writes[count++] = {geometry.sections.buffer, geometry.sections.offset, std::as_bytes(std::span(records))};
-        if (auto uploaded = co_await session_.uploads().writeBuffers(std::span(writes).first(count)); !uploaded)
+        if (auto uploaded = co_await uploads_.writeBuffers(std::span(writes).first(count)); !uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
         }
@@ -243,9 +243,9 @@ namespace lux::render::detail
 
     void IndexedTriangleMeshStorage::retire(Geometry& geometry) noexcept
     {
-        vertices_->release(geometry.vertices);
-        indices_->release(geometry.indices);
-        sections_->release(geometry.sections);
+        vertices_.release(geometry.vertices);
+        indices_.release(geometry.indices);
+        sections_.release(geometry.sections);
     }
 
     StorageFactory meshStorageFactory() noexcept
@@ -267,13 +267,19 @@ namespace lux::render::detail
                 return {};
             }
         };
-        static const auto create = +[](DeviceSession& session, StorageId id
+        static const auto create = +[](StorageCreateContext& dependencies, StorageId id
                                     ) noexcept -> RenderResult<std::unique_ptr<IndexedTriangleMeshStorage>>
-        { return std::make_unique<IndexedTriangleMeshStorage>(session, id); };
+        {
+            if (!dependencies.uploads)
+            {
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            return std::make_unique<IndexedTriangleMeshStorage>(dependencies, id);
+        };
         return makeStorageFactory<
             render::IndexedTriangleMeshStorageDescriptor,
             IndexedTriangleMeshStorage,
-            DeviceSession,
+            StorageCreateContext,
             create>(nullptr, &binding);
     }
 } // namespace lux::render::detail

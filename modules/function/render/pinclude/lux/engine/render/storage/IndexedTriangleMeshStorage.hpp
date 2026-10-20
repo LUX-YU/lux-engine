@@ -1,12 +1,16 @@
 #pragma once
 
+#include <lux/engine/render/execution/FrameExecution.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/StorageCreateContext.hpp>
+
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/memory/BufferArena.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/resource/StorageFactory.hpp>
 #include <lux/engine/render/resource/Upload.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/upload/UploadContext.hpp>
+#include <lux/engine/render/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {
@@ -26,7 +30,7 @@ namespace lux::render::detail
         };
 
     public:
-        IndexedTriangleMeshStorage(DeviceSession&, StorageId) noexcept;
+        IndexedTriangleMeshStorage(StorageCreateContext&, StorageId) noexcept;
         ~IndexedTriangleMeshStorage() noexcept;
         IndexedTriangleMeshStorage(const IndexedTriangleMeshStorage&) = delete;
         IndexedTriangleMeshStorage& operator=(const IndexedTriangleMeshStorage&) = delete;
@@ -51,9 +55,11 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> validate(const MeshDescription&, std::span<const std::byte>) const noexcept;
         void retire(Geometry&) noexcept;
         DeviceSession& session_;
+        ResourceUploader& uploads_;
+
         StorageId id_;
         cxx::StableSlotMap<Entry, MeshTag> entries_;
-        std::unique_ptr<BufferArena> vertices_, indices_, sections_;
+        BufferArena vertices_, indices_, sections_;
     };
 } // namespace lux::render::detail
 

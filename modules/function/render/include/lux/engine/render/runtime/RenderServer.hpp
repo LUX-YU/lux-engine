@@ -27,6 +27,7 @@ namespace lux::render::runtime_detail
 namespace lux::render
 {
     struct StorageFactory;
+    class ResourceRegistry;
     struct FeatureDefinition;
 
     struct RenderServerConfig final
@@ -167,7 +168,8 @@ namespace lux::render
             std::string_view handler_key
         ) noexcept;
 
-        [[nodiscard]] detail::DeviceSession& device() noexcept;
+        [[nodiscard]] ResourceRegistry& resources() noexcept;
+        [[nodiscard]] bool pagedInstances() const noexcept;
 
         template <class H, class Make>
         RenderResult<void> prepareHandler(RegistrationBatch& batch, std::string_view instance, Make&& create) noexcept

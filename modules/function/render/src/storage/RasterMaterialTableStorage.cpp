@@ -38,8 +38,9 @@ namespace lux::render::detail
         bool updating = false;
     };
 
-    RasterMaterialTableStorage::RasterMaterialTableStorage(DeviceSession& session, StorageId id) noexcept
-        : session_(session), id_(id)
+    RasterMaterialTableStorage::RasterMaterialTableStorage(StorageCreateContext& dependencies, StorageId id) noexcept
+        : session_(dependencies.device), uploads_(*dependencies.uploads), frame_execution_(*dependencies.frames),
+          resources_(dependencies.resources), id_(id)
     {
     }
 
@@ -138,9 +139,9 @@ namespace lux::render::detail
 
     std::uint32_t RasterMaterialTableStorage::textureIndex(TextureId id) const noexcept
     {
-        auto& registry = session_.resources();
+        auto& registry = resources_;
         const auto* storage_set = registry.storageSet(id.storage);
-        if (!storage_set || (storage_set != registry.storageSet(id_) && storage_set != &session_.globalStorages()))
+        if (!storage_set || (storage_set != registry.storageSet(id_) && !storage_set->isGlobal()))
         {
             return 0;
         }
@@ -177,7 +178,7 @@ namespace lux::render::detail
 
     void RasterMaterialTableStorage::releaseTable(Table& table) noexcept
     {
-        for (std::uint32_t frame = 0; frame < session_.framesInFlight(); ++frame)
+        for (std::uint32_t frame = 0; frame < frame_execution_.frameCount(); ++frame)
         {
             removeDirty(table, frame);
             releaseAfterGpu(session_, table.gpu[frame].parameters);
@@ -291,21 +292,22 @@ namespace lux::render::detail
             std::memcpy(values.data() + table.texture_offsets[t], &reference, sizeof(reference));
         }
         std::uint32_t frame_slot = 0;
-        while (!session_.tryBeginFrameWrite(frame_slot))
+        while (!frame_execution_.tryBeginWrite(frame_slot))
         {
-            if (auto ready = co_await session_.uploads().whenFrameWritable(values.size()); !ready)
+            if (auto ready = co_await frame_execution_.whenWritable(values.size()); !ready)
             {
                 co_return cxx::unexpected(ready.error());
             }
         }
-        cxx::scope_exit finish_frame([&]() noexcept { session_.finishFrameWrite(frame_slot); });
+        SubmissionFrontiers progress;
+        cxx::scope_exit finish_frame([&]() noexcept { frame_execution_.finishWrite(frame_slot, progress); });
         auto& slice = table.gpu[frame_slot];
         const bool grow_gpu = slice.capacity < capacity;
         if (grow_gpu)
         {
             const nri::BufferDesc description{total_bytes, 4, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE};
             const auto result =
-                session_.api().CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, candidate);
+                session_.nriCore().CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, candidate);
             if (result != nri::Result::SUCCESS)
             {
                 co_return cxx::unexpected(nativeError(result));
@@ -329,10 +331,11 @@ namespace lux::render::detail
         }
         writes[write_count++] = {target, std::uint64_t(slot) * table.stride, values};
         const BufferZero fill{target, 0, total_bytes};
-        auto uploaded = co_await session_.uploads().writeBuffers(
+        auto uploaded = co_await uploads_.writeBuffers(
             std::span(writes).first(write_count),
             grow_gpu ? std::span(&fill, 1) : std::span<const BufferZero>{},
-            frame_slot
+            frame_slot,
+            &progress
         );
         if (!uploaded)
         {
@@ -343,7 +346,7 @@ namespace lux::render::detail
             table.records.resize(total_bytes);
         }
         std::memcpy(table.records.data() + std::size_t(slot) * table.stride, values.data(), values.size());
-        for (std::uint32_t frame = 0; frame < session_.framesInFlight(); ++frame)
+        for (std::uint32_t frame = 0; frame < frame_execution_.frameCount(); ++frame)
         {
             if (frame != frame_slot)
             {
@@ -496,7 +499,7 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<bool> RasterMaterialTableStorage::prepareFrame(std::uint32_t frame, UploadContext& uploads) noexcept
+    RenderResult<bool> RasterMaterialTableStorage::prepareFrame(std::uint32_t frame, ResourceUploader& uploads) noexcept
     {
         bool ready = true;
         auto& tables = dirty_tables_[frame];
@@ -520,7 +523,7 @@ namespace lux::render::detail
                 };
                 nri::Buffer* buffer = nullptr;
                 const auto result =
-                    session_.api().CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, buffer);
+                    session_.nriCore().CreatePlacedBuffer(session_.device(), NriDeviceHeap, description, buffer);
                 if (result != nri::Result::SUCCESS)
                 {
                     return cxx::unexpected(nativeError(result));
@@ -547,7 +550,7 @@ namespace lux::render::detail
                     const auto begin = std::size_t(first) * table.stride + offset;
                     const auto source = std::span<const std::byte>(table.records)
                                             .subspan(begin, std::size_t(count) * table.stride - offset);
-                    auto copied = uploads.prepareBuffer({slice.parameters, begin, source});
+                    auto copied = uploads.stageBuffer({slice.parameters, begin, source});
                     if (!copied)
                     {
                         return cxx::unexpected(copied.error());
@@ -607,7 +610,7 @@ namespace lux::render::detail
             }
             if (progress)
             {
-                session_.afterFrameSubmit(
+                frame_execution_.afterSubmit(
                     &slice,
                     [](void* value, RenderResult<void> accepted) noexcept
                     {
@@ -643,16 +646,22 @@ namespace lux::render::detail
                 return static_cast<RasterMaterialTableStorage*>(object)
                     ->resolve(plan, *static_cast<const MaterialBinding*>(argument), subscription, output);
             },
-            [](void* object, std::uint32_t slot, UploadContext& uploads) noexcept
+            [](void* object, std::uint32_t slot, ResourceUploader& uploads) noexcept
             { return static_cast<RasterMaterialTableStorage*>(object)->prepareFrame(slot, uploads); }
         };
-        static const auto create = +[](DeviceSession& session, StorageId id
+        static const auto create = +[](StorageCreateContext& dependencies, StorageId id
                                     ) noexcept -> RenderResult<std::unique_ptr<RasterMaterialTableStorage>>
-        { return std::make_unique<RasterMaterialTableStorage>(session, id); };
+        {
+            if (!dependencies.uploads || !dependencies.frames)
+            {
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            return std::make_unique<RasterMaterialTableStorage>(dependencies, id);
+        };
         return makeStorageFactory<
             render::RasterMaterialTableStorageDescriptor,
             RasterMaterialTableStorage,
-            DeviceSession,
+            StorageCreateContext,
             create>(nullptr, &binding);
     }
 } // namespace lux::render::detail

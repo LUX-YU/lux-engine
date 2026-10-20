@@ -4,11 +4,16 @@ namespace lux::render
 {
     RenderResult<void> RenderServer::Impl::advanceRendering() noexcept
     {
-        if (auto observed = device->collect(); !observed)
+        if (auto observed = device->pollQueues(); !observed)
         {
             return observed;
         }
-        device->dispatchCompletions();
+        device->dispatchQueueCompletions();
+        frames->dispatchWrites();
+        if (uploads)
+        {
+            uploads->submitReadyTransfers();
+        }
         // GPU reuse notifications resume admitted writers on RenderThread. Consume this ready
         // prefix before closing frame input, otherwise continuous drawing can starve retries.
         drainCompletions();
@@ -21,10 +26,10 @@ namespace lux::render
         }
         if (frame_storages_dirty)
         {
-            device->collectFrameStorages(frame_contexts, frame_storages);
+            frames->collectStorageUses(frame_contexts, frame_storages);
             frame_storages_dirty = false;
         }
-        auto accepted = device->render(frame_contexts, frame_storages);
+        auto accepted = frames->render(frame_contexts, frame_storages);
         if (!accepted)
         {
             return cxx::unexpected(accepted.error());
@@ -121,8 +126,16 @@ namespace lux::render
             response_outbox_.flushTo(responder, config.request_work_budget);
             if (device)
             {
-                auto collected = device->collect();
-                device->dispatchCompletions();
+                auto collected = device->pollQueues();
+                device->dispatchQueueCompletions();
+                if (frames)
+                {
+                    frames->dispatchWrites();
+                }
+                if (uploads)
+                {
+                    uploads->submitReadyTransfers();
+                }
                 if (!collected && !device->deviceLost())
                 {
                     std::terminate();
@@ -155,6 +168,19 @@ namespace lux::render
         targets.clear();
         scenes.clear();
         command_registry_.clear(); // All operations ended; professional Handler borrows still have a live Device.
+        if (global_storages)
+        {
+            global_storages->clear();
+        }
+        global_storages.reset();
+        resources.reset();
+        // Frame callback nodes and Staging outlive all accepted GPU submissions.
+        if (auto settled = device->drain(); !settled && !device->deviceLost())
+        {
+            std::terminate();
+        }
+        frames.reset();
+        uploads.reset();
         device.reset();
         running.store(false);
     }
@@ -212,7 +238,7 @@ namespace lux::render
                 }
                 if (s.device->pendingGpuWork())
                 {
-                    if (auto advanced = s.device->waitForProgress(s.config.gpu_wait_ns); !advanced)
+                    if (auto advanced = s.frames->waitForProgress(s.config.gpu_wait_ns); !advanced)
                     {
                         result = cxx::unexpected(advanced.error());
                         break;

@@ -106,7 +106,7 @@ namespace lux::render
     ) noexcept
     {
         StorageList result;
-        device->resources().forEachType(
+        resources->forEachType(
             [&](StorageTypeId id, const StorageDescriptor& type, std::uint32_t capabilities) noexcept
             {
                 result.storages.push_back(
@@ -125,9 +125,14 @@ namespace lux::render
         output_response = command_registry_.listCommands();
     }
 
-    detail::DeviceSession& RenderServer::device() noexcept
+    ResourceRegistry& RenderServer::resources() noexcept
     {
-        return *impl_->device;
+        return *impl_->resources;
+    }
+
+    bool RenderServer::pagedInstances() const noexcept
+    {
+        return impl_->paged_instances;
     }
 
     RenderResult<void> RenderServer::install(RegistrationBatch& transaction) noexcept
@@ -200,7 +205,7 @@ namespace lux::render
             }
         }
 
-        auto& resources = state.device->resources();
+        auto& resources = *state.resources;
         std::vector<StorageFactoryInstall> factories;
         factories.reserve(batch.storage_factories.size());
         std::map<std::string_view, std::size_t, std::less<>> storage_names;

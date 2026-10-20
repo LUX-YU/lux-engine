@@ -1,18 +1,46 @@
 #include <algorithm>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/execution/ExecutionContext.hpp>
+#include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/RecordGraph.hpp>
-#include <lux/engine/render/upload/UploadContext.hpp>
+#include <lux/engine/render/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {
-    bool DeviceSession::tryBeginFrameWrite(std::uint32_t& slot) noexcept
+    FrameExecution::FrameExecution(DeviceSession& device, ResourceUploader* uploads, std::uint32_t count) noexcept
+        : device_(device), uploads_(uploads), frame_count_(count)
+    {
+        frame_receivers_.reserve(uploads ? uploads->windowRegionLimit() : 0);
+    }
+
+    RenderResult<std::unique_ptr<FrameExecution>> FrameExecution::create(
+        DeviceSession& device,
+        ResourceUploader* uploads,
+        std::uint32_t count
+    ) noexcept
+    {
+        if (count == 0 || count > 3)
+        {
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        return std::unique_ptr<FrameExecution>(new FrameExecution(device, uploads, count));
+    }
+
+    FrameExecution::~FrameExecution() noexcept
+    {
+        if (frame_waiters_)
+        {
+            std::terminate();
+        }
+    }
+
+    bool FrameExecution::tryBeginWrite(std::uint32_t& slot) noexcept
     {
         slot = next_frame_;
         auto& frame = frames_[slot];
         if (frame.phase == EFramePhase::FREE)
         {
-            frame.accepted_serials.fill(0);
+            frame.accepted.serials.fill(0);
             frame.phase = EFramePhase::COLLECTING;
         }
         if (frame.phase != EFramePhase::COLLECTING)
@@ -20,16 +48,22 @@ namespace lux::render::detail
             return false;
         }
         ++frame.pending_writes;
+        updateUploadAdmission();
         return true;
     }
 
-    void DeviceSession::finishFrameWrite(std::uint32_t slot) noexcept
+    void FrameExecution::finishWrite(std::uint32_t slot, const SubmissionFrontiers& accepted) noexcept
     {
         auto& frame = frames_[slot];
+        for (std::size_t i = 0; i < device_.queueCount(); ++i)
+        {
+            frame.accepted.serials[i] = std::max(frame.accepted.serials[i], accepted.serials[i]);
+        }
         --frame.pending_writes;
+        updateUploadAdmission();
     }
 
-    void DeviceSession::enqueueFrameWrite(FrameWriteWaiter& node) noexcept
+    void FrameExecution::enqueueWrite(WriteWaiter& node) noexcept
     {
         node.next = nullptr;
         if (frame_waiters_tail_)
@@ -43,13 +77,16 @@ namespace lux::render::detail
         frame_waiters_tail_ = &node;
     }
 
-    bool DeviceSession::backgroundUploadsAllowed() const noexcept
+    void FrameExecution::updateUploadAdmission() noexcept
     {
-        const auto& frame = frames_[next_frame_];
-        return frame.phase != EFramePhase::PREPARING && frame.pending_writes == 0;
+        if (uploads_)
+        {
+            const auto& frame = frames_[next_frame_];
+            uploads_->setBackgroundTransfersAllowed(frame.phase != EFramePhase::PREPARING && frame.pending_writes == 0);
+        }
     }
 
-    void DeviceSession::dispatchFrameWrites() noexcept
+    void FrameExecution::dispatchWrites() noexcept
     {
         const auto phase = frames_[next_frame_].phase;
         const bool can_write = phase == EFramePhase::FREE || phase == EFramePhase::COLLECTING;
@@ -76,28 +113,28 @@ namespace lux::render::detail
         }
     }
 
-    void DeviceSession::afterFrameSubmit(void* receiver, void (*complete)(void*, RenderResult<void>) noexcept) noexcept
+    void FrameExecution::afterSubmit(void* receiver, void (*complete)(void*, RenderResult<void>) noexcept) noexcept
     {
         frame_receivers_.emplace_back(receiver, complete);
     }
 
-    void DeviceSession::acceptFrameSubmission(std::uint32_t slot, const SubmissionQueue& queue) noexcept
+    void FrameExecution::acceptSubmission(std::uint32_t slot, const SubmissionQueue& queue) noexcept
     {
-        for (std::size_t i = 0; i < physical_queues_.size(); ++i)
+        for (std::size_t i = 0; i < device_.queueCount(); ++i)
         {
-            if (physical_queues_[i].get() == &queue)
+            if (&device_.physicalQueue(i) == &queue)
             {
-                frames_[slot].accepted_serials[i] = queue.submitted();
+                frames_[slot].accepted.serials[i] = std::max(frames_[slot].accepted.serials[i], queue.submitted());
                 return;
             }
         }
     }
 
-    void DeviceSession::finishFrameSubmission(RenderResult<void> result) noexcept
+    void FrameExecution::finishSubmission(RenderResult<void> result) noexcept
     {
         if (uploads_)
         {
-            uploads_->finishFrameCopies(result);
+            uploads_->completeFrameCopies(result);
         }
         const auto boundary = frame_receivers_.size();
         for (std::size_t i = 0; i < boundary; ++i)
@@ -110,11 +147,11 @@ namespace lux::render::detail
         frame_receivers_.erase(frame_receivers_.begin(), frame_receivers_.begin() + boundary);
     }
 
-    void DeviceSession::sealFrame(FrameSlot& frame) noexcept
+    void FrameExecution::sealFrame(FrameSlot& frame) noexcept
     {
         frame.phase = EFramePhase::SUBMITTED;
         frame.pending_queues = 0;
-        for (auto serial : frame.accepted_serials)
+        for (auto serial : frame.accepted.serials)
         {
             frame.pending_queues += serial != 0;
         }
@@ -123,14 +160,14 @@ namespace lux::render::detail
             frame.phase = EFramePhase::FREE;
             return;
         }
-        for (std::size_t i = 0; i < physical_queues_.size(); ++i)
+        for (std::size_t i = 0; i < device_.queueCount(); ++i)
         {
-            if (frame.accepted_serials[i] == 0)
+            if (frame.accepted.serials[i] == 0)
             {
                 continue;
             }
-            physical_queues_[i]->arm(
-                frame.accepted_serials[i],
+            device_.physicalQueue(i).arm(
+                frame.accepted.serials[i],
                 frame.completions[i],
                 [](void* value, RenderResult<void>) noexcept
                 {
@@ -145,7 +182,7 @@ namespace lux::render::detail
         }
     }
 
-    void DeviceSession::collectFrameStorages(
+    void FrameExecution::collectStorageUses(
         std::span<ExecutionContext* const> contexts,
         std::vector<StorageFrameUse>& output
     ) noexcept
@@ -175,12 +212,16 @@ namespace lux::render::detail
         );
     }
 
-    RenderResult<std::uint32_t> DeviceSession::render(
+    RenderResult<std::uint32_t> FrameExecution::render(
         std::span<ExecutionContext* const> contexts,
         std::span<const StorageFrameUse> storages
     ) noexcept
     {
-        rendering_ = !contexts.empty();
+        if (uploads_)
+        {
+            uploads_->reserveFrameStaging(!contexts.empty());
+        }
+        cxx::scope_exit update_admission([this]() noexcept { updateUploadAdmission(); });
         auto& frame = frames_[next_frame_];
         if (contexts.empty() && frame.phase == EFramePhase::FREE)
         {
@@ -200,7 +241,7 @@ namespace lux::render::detail
         }
         if (frame.phase == EFramePhase::FREE)
         {
-            frame.accepted_serials.fill(0);
+            frame.accepted.serials.fill(0);
         }
         frame.phase = EFramePhase::PREPARING;
         if (frame.pending_writes != 0)
@@ -213,7 +254,7 @@ namespace lux::render::detail
             next_frame_ = (next_frame_ + 1) % frame_count_;
             return 0;
         }
-        auto& graphics = queue();
+        auto& graphics = device_.queue();
         if (graphics.recording())
         {
             return outcome(EExecutionOutcome::RECORDING_BUSY);
@@ -234,7 +275,7 @@ namespace lux::render::detail
             auto prepared = use.ops->prepareFrame(use.storage, next_frame_, *uploads_);
             if (!prepared)
             {
-                finishFrameSubmission(cxx::unexpected(prepared.error()));
+                finishSubmission(cxx::unexpected(prepared.error()));
                 sealFrame(frame);
                 return cxx::unexpected(prepared.error());
             }
@@ -246,10 +287,10 @@ namespace lux::render::detail
         {
             for (auto* context : contexts)
             {
-                auto prepared = context->prepareFrame(next_frame_, uploads_.get());
+                auto prepared = context->prepareFrame(next_frame_, uploads_);
                 if (!prepared)
                 {
-                    finishFrameSubmission(cxx::unexpected(prepared.error()));
+                    finishSubmission(cxx::unexpected(prepared.error()));
                     sealFrame(frame);
                     return cxx::unexpected(prepared.error());
                 }
@@ -260,7 +301,7 @@ namespace lux::render::detail
         const bool has_copies = uploads_ && uploads_->hasFrameCopies();
         if (!contexts_ready && !has_copies && !native_records)
         {
-            finishFrameSubmission(cxx::unexpected(RenderError{kDeviceBusy}));
+            finishSubmission(cxx::unexpected(RenderError{kDeviceBusy}));
             return outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
         }
         auto accepted = graphics.recordAndSubmit(
@@ -268,7 +309,7 @@ namespace lux::render::detail
             {
                 if (uploads_)
                 {
-                    uploads_->recordFrame(command);
+                    uploads_->recordFrameCopies(command);
                 }
                 if (resources_ready)
                 {
@@ -289,12 +330,12 @@ namespace lux::render::detail
         );
         if (!accepted)
         {
-            finishFrameSubmission(accepted);
+            finishSubmission(accepted);
             sealFrame(frame);
             return cxx::unexpected(accepted.error());
         }
-        acceptFrameSubmission(next_frame_, graphics);
-        finishFrameSubmission({});
+        acceptSubmission(next_frame_, graphics);
+        finishSubmission({});
         if (!contexts_ready)
         {
             (void)outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
@@ -308,4 +349,38 @@ namespace lux::render::detail
         next_frame_ = (next_frame_ + 1) % frame_count_;
         return 1;
     }
+
+    RenderResult<bool> FrameExecution::waitForProgress(std::uint64_t timeout_ns) noexcept
+    {
+        const auto count = device_.queueCount();
+        const auto& frame = frames_[next_frame_];
+        if (frame.phase == EFramePhase::SUBMITTED)
+        {
+            for (std::size_t offset = 0; offset < count; ++offset)
+            {
+                const auto index = (wait_queue_cursor_ + offset) % count;
+                auto& queue = device_.physicalQueue(index);
+                const auto serial = frame.accepted.serials[index];
+                if (serial > queue.completed())
+                {
+                    wait_queue_cursor_ = static_cast<std::uint8_t>((index + 1) % count);
+                    return queue.wait(serial, timeout_ns);
+                }
+            }
+        }
+        // No submitted frame is blocking reuse. Rotate through the actual Queue frontiers
+        // so background uploads and cleanup do not always wait behind physical queue zero.
+        for (std::size_t offset = 0; offset < count; ++offset)
+        {
+            const auto index = (wait_queue_cursor_ + offset) % count;
+            auto& queue = device_.physicalQueue(index);
+            if (!queue.idle())
+            {
+                wait_queue_cursor_ = static_cast<std::uint8_t>((index + 1) % count);
+                return queue.wait(queue.completed() + 1, timeout_ns);
+            }
+        }
+        return false;
+    }
+
 } // namespace lux::render::detail

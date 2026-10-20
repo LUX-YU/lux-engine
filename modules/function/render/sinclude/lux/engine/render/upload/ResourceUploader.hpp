@@ -5,7 +5,7 @@
 #include <exec/task.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
-#include <lux/engine/render/device/Submission.hpp>
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <span>
 
@@ -13,6 +13,7 @@ namespace lux::render::detail
 {
     class DeviceSession;
     struct StagingRange;
+    class StagingArena;
 
     struct TransferStats final
     {
@@ -47,91 +48,47 @@ namespace lux::render::detail
 
     // One device's upload facilities. Tasks borrow their source and operation-owned targets; this object
     // owns neither professional candidates nor running tasks. Start with the RenderThread scheduler.
-    class LUX_RENDER_PUBLIC UploadContext final
+    class LUX_RENDER_PUBLIC ResourceUploader final
     {
-        class FrameWriteAdmissionSender final
-        {
-        public:
-            using sender_concept = stdexec::sender_t;
-            using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(RenderResult<void>)>;
-
-            FrameWriteAdmissionSender(UploadContext& uploads, std::size_t bytes) noexcept
-                : uploads_(uploads), bytes_(bytes)
-            {
-            }
-
-            template <class Receiver> struct Operation final
-            {
-                using operation_state_concept = stdexec::operation_state_t;
-                UploadContext& uploads;
-                Receiver receiver;
-                DeviceSession::FrameWriteWaiter node;
-                std::size_t bytes;
-                std::size_t reserved_bytes = 0;
-
-                ~Operation() noexcept
-                {
-                    uploads.releaseBytes(reserved_bytes);
-                }
-
-                void start() & noexcept
-                {
-                    if (!uploads.reserveBytes(bytes))
-                    {
-                        stdexec::set_value(
-                            std::move(receiver),
-                            RenderResult<void>{cxx::unexpected(RenderError{kDeviceCapacity})}
-                        );
-                        return;
-                    }
-                    reserved_bytes = bytes;
-                    node.operation = this;
-                    node.stopping = [](void* value) noexcept
-                    {
-                        auto& self = *static_cast<Operation*>(value);
-                        return stdexec::get_stop_token(stdexec::get_env(self.receiver)).stop_requested();
-                    };
-                    node.complete = [](void* value) noexcept
-                    {
-                        auto& self = *static_cast<Operation*>(value);
-                        const bool stopped = self.node.stopping(value);
-                        auto result = stopped ? RenderResult<void>{cxx::unexpected(RenderError{kUploadStopped})}
-                                              : RenderResult<void>{};
-                        stdexec::set_value(std::move(self.receiver), std::move(result));
-                    };
-                    uploads.session.enqueueFrameWrite(node);
-                }
-            };
-
-            template <class Receiver> [[nodiscard]] auto connect(Receiver receiver) const noexcept
-            {
-                return Operation<Receiver>{uploads_, std::move(receiver), {}, bytes_};
-            }
-
-        private:
-            UploadContext& uploads_;
-            std::size_t bytes_;
-        };
-
     public:
         using Result = RenderResult<void>;
         using Task = exec::task<Result>;
 
-        ~UploadContext() noexcept;
-        UploadContext(const UploadContext&) = delete;
-        UploadContext& operator=(const UploadContext&) = delete;
+        ~ResourceUploader() noexcept;
+        ResourceUploader(const ResourceUploader&) = delete;
+        ResourceUploader& operator=(const ResourceUploader&) = delete;
 
         // Success means all required Copy/Acquire submissions were accepted. The caller retains targets or retires
         // failed candidates; success does not wait for the final fence observation.
-        [[nodiscard]] FrameWriteAdmissionSender whenFrameWritable(std::size_t source_bytes) noexcept
+        [[nodiscard]] static RenderResult<std::unique_ptr<ResourceUploader>> create(
+            DeviceSession&,
+            const TransferOptions&,
+            execution::CpuScheduler
+        ) noexcept;
+
+        [[nodiscard]] bool reserveSourceBytes(std::size_t bytes) noexcept;
+        void releaseSourceBytes(std::size_t bytes) noexcept;
+
+        void setBackgroundTransfersAllowed(bool allowed) noexcept
         {
-            return FrameWriteAdmissionSender{*this, source_bytes};
+            background_allowed_ = allowed;
         }
+
+        void reserveFrameStaging(bool reserve) noexcept
+        {
+            reserve_frame_staging_ = reserve;
+        }
+
+        void submitReadyTransfers() noexcept;
+        void recordFrameCopies(nri::CommandBuffer&) noexcept;
+        void completeFrameCopies(RenderResult<void>) noexcept;
+        [[nodiscard]] bool hasFrameCopies() const noexcept;
 
         [[nodiscard]] Task writeBuffers(
             std::span<const BufferWrite> writes,
             std::span<const BufferZero> fills = {},
-            std::uint32_t frame_slot = UINT32_MAX
+            std::uint32_t frame_slot = UINT32_MAX,
+            SubmissionFrontiers* progress = nullptr
         ) noexcept;
         // Each source spans the first element through the last element's end, including stride gaps.
         // Pack only element_bytes per element; destination ranges and byte admission use packed sizes.
@@ -140,7 +97,8 @@ namespace lux::render::detail
             std::span<const BufferWrite> writes,
             std::uint32_t element_bytes,
             std::uint32_t source_stride,
-            std::uint32_t frame_slot
+            std::uint32_t frame_slot,
+            SubmissionFrontiers* progress = nullptr
         ) noexcept;
         [[nodiscard]] Task writeImage(
             nri::Texture& target,
@@ -151,7 +109,7 @@ namespace lux::render::detail
 
         // Device-thread preparation of already published data. A short result means this finite
         // staging window is full; no Sender or per-frame operation state is created.
-        [[nodiscard]] RenderResult<std::size_t> prepareBuffer(const BufferWrite&, std::size_t unit = 4) noexcept;
+        [[nodiscard]] RenderResult<std::size_t> stageBuffer(const BufferWrite&, std::size_t unit = 4) noexcept;
 
         [[nodiscard]] std::size_t windowRegionLimit() const noexcept
         {
@@ -169,21 +127,14 @@ namespace lux::render::detail
         }
 
     private:
-        friend class DeviceSession;
         struct Copy;
         struct BatchEntry;
         class BatchSender;
         struct Measurement;
         void enqueue(BatchEntry&) noexcept;
         [[nodiscard]] bool canStage(std::uint32_t frame_slot) const noexcept;
-        [[nodiscard]] bool reserveBytes(std::size_t bytes) noexcept;
-        void releaseBytes(std::size_t bytes) noexcept;
-        void flush() noexcept;
-        void recordFrame(nri::CommandBuffer&) noexcept;
-        void finishFrameCopies(RenderResult<void>) noexcept;
-        [[nodiscard]] bool hasFrameCopies() const noexcept;
         std::vector<Copy> frame_copies_;
-        UploadContext(DeviceSession&, TransferOptions, execution::CpuScheduler) noexcept;
+        ResourceUploader(DeviceSession&, TransferOptions, execution::CpuScheduler) noexcept;
         [[nodiscard]] Task write(
             std::span<const BufferWrite>,
             std::span<const BufferZero>,
@@ -193,10 +144,14 @@ namespace lux::render::detail
             const nri::Texture*,
             std::uint32_t frame_slot,
             std::uint32_t element_bytes = 0,
-            std::uint32_t source_stride = 0
+            std::uint32_t source_stride = 0,
+            SubmissionFrontiers* progress = nullptr
         ) noexcept;
         [[nodiscard]] RenderResult<void> measure(std::size_t page, std::uint32_t bits) noexcept;
 
+        std::unique_ptr<StagingArena> staging_arena_;
+        bool background_allowed_ = true;
+        bool reserve_frame_staging_ = false;
         DeviceSession& session;
         SubmissionQueue* copy_queue = nullptr;
         TransferOptions options;

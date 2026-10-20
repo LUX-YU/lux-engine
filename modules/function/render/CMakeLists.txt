@@ -24,10 +24,11 @@ set(render_sources
     src/features/Assemble.cpp src/features/RasterMeshParameters.cpp
     src/features/MaterialMeshRaster.cpp src/features/MeshDepthRaster.cpp src/features/RasterMeshDraws.cpp
     src/device/Error.cpp src/device/DeviceSession.cpp src/device/DescriptorArray.cpp
-    src/device/Device.cpp src/device/Submission.cpp
-    src/execution/Frame.cpp src/execution/OffscreenTarget.cpp src/execution/Execution.cpp
+    src/device/vulkan/DeviceBackend.cpp src/device/SubmissionQueue.cpp
+    src/execution/FrameExecution.cpp
+    src/execution/FrameResources.cpp src/execution/OffscreenTarget.cpp src/execution/ExecutionContext.cpp src/execution/RecordGraph.cpp
     src/graph/Compile.cpp src/graph/LayoutPlan.cpp src/graph/Shader.cpp
-    src/upload/UploadContext.cpp src/memory/StagingArena.cpp src/memory/BufferArena.cpp
+    src/upload/ResourceUploader.cpp src/memory/StagingArena.cpp src/memory/BufferArena.cpp
     src/storage/SampledTexture2DStorage.cpp src/storage/SampledTexture2DCommandHandler.cpp
     src/storage/RasterMaterialTableStorage.cpp src/storage/RasterMaterialTableCommandHandler.cpp
     src/storage/RasterMeshInstanceStorage.cpp src/storage/RasterMeshInstanceCommandHandler.cpp

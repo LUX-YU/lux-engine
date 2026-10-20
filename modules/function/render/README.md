@@ -99,7 +99,7 @@ material parameters, descriptor records, indirect data and Target outputs have p
 data and immutable programs remain single authorities. A frame slot is reusable only after its CPU writers end
 and every actual participating physical Queue completes.
 
-Storage upload Senders use the existing CPU scheduler and RenderThread resumption. UploadContext packs finite
+Storage upload Senders use the existing CPU scheduler and RenderThread resumption. ResourceUploader packs finite
 staging windows and batches Copy work. Frame preparation contributes missing ranges before compatible graph
 recordings enter the shared submission. Dirty-word batching and contiguous Transform input avoid per-element Copy
 construction. There is no per-frame Sender for unchanged drawing and no unconditional sleep in the event loop.

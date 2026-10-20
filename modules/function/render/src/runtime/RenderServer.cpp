@@ -49,8 +49,7 @@ namespace lux::render
     {
         auto& s = *this;
         const nri::CallbackInterface diagnostic{Impl::diagnostic, [](void*) noexcept {}, &s};
-        auto device =
-            detail::DeviceSession::create(options, diagnostic, s.config.validation, 3, s.config.frames_in_flight);
+        auto device = detail::DeviceSession::create(options, diagnostic, s.config.validation, 3);
         if (!device)
         {
             return cxx::unexpected(device.error());
@@ -58,12 +57,23 @@ namespace lux::render
         s.device = std::move(*device);
         if (s.config.uploads)
         {
-            auto uploads = s.device->configureUploads(*s.config.uploads, s.scheduler);
+            auto uploads = detail::ResourceUploader::create(*s.device, *s.config.uploads, s.scheduler);
             if (!uploads)
             {
                 return cxx::unexpected(uploads.error());
             }
+            s.uploads = std::move(*uploads);
         }
+        auto frames = detail::FrameExecution::create(*s.device, s.uploads.get(), s.config.frames_in_flight);
+        if (!frames)
+        {
+            return cxx::unexpected(frames.error());
+        }
+        s.frames = std::move(*frames);
+        const auto& enabled = s.device->enabledFeatures();
+        s.resources.emplace((enabled.texture_descriptors ? 1u : 0u) | (enabled.texture_compression_bc ? 2u : 0u));
+        s.global_storages.emplace(*s.resources, true);
+        s.paged_instances = options.buffer_device_address;
         return {};
     }
 
@@ -87,8 +97,9 @@ namespace lux::render
         DeviceOptions options
     ) noexcept
     {
-        const bool invalid =
-            config.request_work_budget == 0 || config.max_config_bytes == 0 || config.gpu_wait_ns > 1'000'000;
+        const bool invalid = config.frames_in_flight == 0 || config.frames_in_flight > 3 ||
+                             config.request_work_budget == 0 || config.max_config_bytes == 0 ||
+                             config.gpu_wait_ns > 1'000'000;
         if (invalid)
         {
             return cxx::unexpected(RenderError{kRuntimeCapacity});

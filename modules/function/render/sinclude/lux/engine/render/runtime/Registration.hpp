@@ -158,7 +158,7 @@ namespace lux::render
             return prepareHandler<Handler>(
                 batch,
                 handler_key,
-                [&]() noexcept { return std::make_unique<Handler>(device()); }
+                [&]() noexcept { return std::make_unique<Handler>(resources()); }
             );
         }
         return {};

@@ -12,7 +12,8 @@ namespace lux::render::detail
 
     RenderResult<std::unique_ptr<OffscreenTarget>> OffscreenTarget::create(
         DeviceSession& session,
-        const TargetDesc& description
+        const TargetDesc& description,
+        std::uint32_t frame_count
     ) noexcept
     {
         if (auto valid = description.validate(); !valid)
@@ -29,7 +30,7 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kInvalidTargetExtent});
         }
         auto result = std::unique_ptr<OffscreenTarget>(new OffscreenTarget(session, description));
-        const auto count = session.framesInFlight();
+        const auto count = frame_count;
         result->images_.reserve(count);
         result->views_.reserve(count);
         const auto format = imageFormat(description.format);
@@ -56,7 +57,7 @@ namespace lux::render::detail
             }
             nri::Texture* image = nullptr;
             const auto created =
-                session.api().CreatePlacedTexture(session.device(), NriDeviceHeap, image_description, image);
+                session.nriCore().CreatePlacedTexture(session.device(), NriDeviceHeap, image_description, image);
             if (created != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(created));
@@ -64,7 +65,7 @@ namespace lux::render::detail
             result->images_.push_back(image);
             const nri::TextureViewDesc view{image, nri::TextureView::COLOR_ATTACHMENT, format.native, 0, 1, 0, 1};
             nri::Descriptor* handle = nullptr;
-            if (const auto created = session.api().CreateTextureView(view, handle); created != nri::Result::SUCCESS)
+            if (const auto created = session.nriCore().CreateTextureView(view, handle); created != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(created));
             }
@@ -80,7 +81,7 @@ namespace lux::render::detail
             return;
         }
         session_.deferRelease(
-            [api = &session_.api(), images = std::move(images_), views = std::move(views_)]() mutable noexcept
+            [api = &session_.nriCore(), images = std::move(images_), views = std::move(views_)]() mutable noexcept
             {
                 for (auto view : views)
                 {

@@ -7,16 +7,27 @@
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/graph/CompiledGraph.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/StorageCreateContext.hpp>
 #include <lux/engine/render/resource/StorageSet.hpp>
 
 namespace lux::render::detail
 {
     class OffscreenTarget;
-    class UploadContext;
+    class FrameExecution;
+    class ResourceUploader;
 
     class LUX_RENDER_PUBLIC ExecutionContext final
     {
     public:
+        ExecutionContext(DeviceSession&, ResourceRegistry&, std::uint32_t frame_count, const CompiledGraph&, OffscreenTarget&) noexcept;
+        [[nodiscard]] RenderResult<void> bindStorage(
+            std::uint32_t resource,
+            StorageId,
+            const StorageBindingOps&,
+            void* native,
+            const void* argument
+        ) noexcept;
+        [[nodiscard]] RenderResult<void> initialize(OffscreenTarget&, FrameExecution&, ResourceRegistry&) noexcept;
         ~ExecutionContext() noexcept;
         ExecutionContext(const ExecutionContext&) = delete;
         ExecutionContext& operator=(const ExecutionContext&) = delete;
@@ -56,8 +67,8 @@ namespace lux::render::detail
             return viewport_;
         }
 
-        // DeviceSession selects the reusable slot and owns the recording/submission segment.
-        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, UploadContext*) noexcept;
+        // FrameExecution selects the reusable slot and owns the recording/submission segment.
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, ResourceUploader*) noexcept;
 
         [[nodiscard]] const ExecutionProgress& progress() const noexcept
         {
@@ -83,10 +94,10 @@ namespace lux::render::detail
         [[nodiscard]] nri::Buffer* nativeBuffer(std::uint32_t resource, std::uint32_t slot) const noexcept;
 
     private:
-        friend class DeviceSession;
+        friend class FrameExecution;
         friend void recordGraph(ExecutionContext&, nri::CommandBuffer&, std::uint32_t) noexcept;
         friend void recordGraphPreparation(ExecutionContext&, nri::CommandBuffer&, std::uint32_t) noexcept;
-        void withdraw() noexcept;
+        void disconnectStorageBindings() noexcept;
         void submitted(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareDescriptors() noexcept;
         [[nodiscard]] RenderResult<void> rebind(std::uint32_t slot) noexcept;
@@ -120,10 +131,9 @@ namespace lux::render::detail
             std::uint32_t source_offset, destination_offset, bytes;
         };
 
-        ExecutionContext(DeviceSession&, const CompiledGraph&, OffscreenTarget&) noexcept;
         DeviceSession* session_;
         struct FrameResources;
-        std::array<std::unique_ptr<FrameResources>, 3> frames_;
+        std::vector<FrameResources> frames_;
         const CompiledGraph* code_;
         TargetDesc target_;
         RasterViewport viewport_;

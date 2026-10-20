@@ -1,9 +1,7 @@
 #include <algorithm>
 #include <lux/engine/render/device/DescriptorArray.hpp>
+#include <lux/engine/render/device/DeviceBackend.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
-#include <lux/engine/render/execution/ExecutionContext.hpp>
-#include <lux/engine/render/memory/StagingArena.hpp>
-#include <lux/engine/render/upload/UploadContext.hpp>
 
 #include <exception>
 #include <lux/engine/render/device/Error.hpp>
@@ -29,16 +27,34 @@ namespace lux::render::detail
         };
     } // namespace
 
-    DeviceSession::DeviceSession(
-        std::unique_ptr<nri::Device, decltype(&nri::nriDestroyDevice)> device,
-        nri::CoreInterface api,
-        nri::WrapperVKInterface vk,
-        EnabledDeviceFeatures enabled
+    DeviceSession::DeviceSession() noexcept : backend_(std::make_unique<DeviceBackend>()) {}
+
+    RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(
+        const DeviceOptions& options,
+        const nri::CallbackInterface& diagnostic,
+        bool validation,
+        std::uint32_t slots
     ) noexcept
-        : device_(std::move(device)), api_(api), vk_(vk), enabled_features_(enabled),
-          resources_(this, (enabled.texture_descriptors ? 1u : 0u) | (enabled.texture_compression_bc ? 2u : 0u)),
-          global_storages_(resources_)
     {
+        auto result = std::unique_ptr<DeviceSession>(new DeviceSession);
+        auto initialized = DeviceBackend::initialize(*result, options, diagnostic, validation, slots);
+        if (!initialized)
+        {
+            return cxx::unexpected(initialized.error());
+        }
+        return result;
+    }
+
+    std::size_t DeviceSession::queueIndex(const SubmissionQueue& queue) const noexcept
+    {
+        for (std::size_t index = 0; index < physical_queues_.size(); ++index)
+        {
+            if (physical_queues_[index].get() == &queue)
+            {
+                return index;
+            }
+        }
+        std::terminate(); // Internal submissions always belong to this device.
     }
 
     DeviceSession::~DeviceSession() noexcept
@@ -63,7 +79,6 @@ namespace lux::render::detail
             return;
         }
         // Members that can produce cleanup are emptied while admission is still open.
-        global_storages_.clear();
         cleanup_scope_.close();
         bool joined = false;
         auto join = stdexec::connect(cleanup_scope_.join(), CloseReceiver{joined});
@@ -72,9 +87,12 @@ namespace lux::render::detail
         {
             requireCleanupComplete(drain());
         } while (!joined);
-        uploads_.reset();
-        staging_arena_.reset();
         sampled_images_.reset();
+        physical_queues_.clear();
+        if (device_)
+        {
+            nri::nriDestroyDevice(std::exchange(device_, nullptr));
+        }
         closed_ = true;
     }
 
@@ -96,8 +114,8 @@ namespace lux::render::detail
                 }
             }
         }
-        auto collected = collect();
-        dispatchCompletions();
+        auto collected = pollQueues();
+        dispatchQueueCompletions();
         return failure ? RenderResult<void>{cxx::unexpected(*failure)} : collected;
     }
 
@@ -118,40 +136,7 @@ namespace lux::render::detail
         return std::ranges::any_of(physical_queues_, [](const auto& queue) { return !queue->idle(); });
     }
 
-    RenderResult<bool> DeviceSession::waitForProgress(std::uint64_t timeout_ns) noexcept
-    {
-        const auto count = physical_queues_.size();
-        const auto& frame = frames_[next_frame_];
-        if (frame.phase == EFramePhase::SUBMITTED)
-        {
-            for (std::size_t offset = 0; offset < count; ++offset)
-            {
-                const auto index = (wait_queue_cursor_ + offset) % count;
-                auto& queue = *physical_queues_[index];
-                const auto serial = frame.accepted_serials[index];
-                if (serial > queue.completed())
-                {
-                    wait_queue_cursor_ = static_cast<std::uint8_t>((index + 1) % count);
-                    return queue.wait(serial, timeout_ns);
-                }
-            }
-        }
-        // No submitted frame is blocking reuse. Rotate through the actual Queue frontiers
-        // so background uploads and cleanup do not always wait behind physical queue zero.
-        for (std::size_t offset = 0; offset < count; ++offset)
-        {
-            const auto index = (wait_queue_cursor_ + offset) % count;
-            auto& queue = physical_queues_[index];
-            if (!queue->idle())
-            {
-                wait_queue_cursor_ = static_cast<std::uint8_t>((index + 1) % count);
-                return queue->wait(queue->completed() + 1, timeout_ns);
-            }
-        }
-        return false;
-    }
-
-    RenderResult<void> DeviceSession::collect() noexcept
+    RenderResult<void> DeviceSession::pollQueues() noexcept
     {
         std::optional<RenderError> failure;
         for (auto& queue : physical_queues_)
@@ -168,15 +153,11 @@ namespace lux::render::detail
         return {};
     }
 
-    void DeviceSession::dispatchCompletions() noexcept
+    void DeviceSession::dispatchQueueCompletions() noexcept
     {
         for (auto& queue : physical_queues_)
         {
             queue->dispatchCompleted();
-        }
-        if (uploads_)
-        {
-            uploads_->flush();
         }
     }
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+
 #include <exec/task.hpp>
 #include <lux/engine/render/commands/CommandMethod.hpp>
 
@@ -46,7 +48,7 @@ namespace lux::render::detail
 
         static constexpr std::string_view name = "lux.render.storage.SampledTexture2DCommandHandler";
 
-        explicit SampledTexture2DCommandHandler(DeviceSession& device) noexcept : device_(device) {}
+        explicit SampledTexture2DCommandHandler(ResourceRegistry& resources) noexcept : resources_(resources) {}
 
         CreateTextureSender createTexture(CreateTexture::Request&& input) noexcept
         {
@@ -68,7 +70,7 @@ namespace lux::render::detail
         exec::task<RenderResult<TextureId>> createTextureSource(CreateTexture::Request&&) noexcept;
         exec::task<RenderResult<TextureId>> createPatchedTextureSource(CreatePatchedTexture::Request&&) noexcept;
 
-        DeviceSession& device_;
+        ResourceRegistry& resources_;
     };
 
 } // namespace lux::render::detail

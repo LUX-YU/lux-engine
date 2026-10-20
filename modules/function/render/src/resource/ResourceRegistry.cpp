@@ -3,10 +3,7 @@
 
 namespace lux::render
 {
-    ResourceRegistry::ResourceRegistry(void* native, std::uint32_t capabilities) noexcept
-        : native_(native), capabilities_(capabilities)
-    {
-    }
+    ResourceRegistry::ResourceRegistry(std::uint32_t capabilities) noexcept : capabilities_(capabilities) {}
 
     ResourceRegistry::~ResourceRegistry() noexcept
     {
@@ -124,10 +121,14 @@ namespace lux::render
         return entries_.emplace(Entry{&set, 0, type});
     }
 
-    RenderResult<StorageInstance> ResourceRegistry::create(StorageId id, const void* configuration) noexcept
+    RenderResult<StorageInstance> ResourceRegistry::create(
+        StorageCreateContext& dependencies,
+        StorageId id,
+        const void* configuration
+    ) noexcept
     {
         const auto type = entries_.find(id)->type;
-        return types_.find(type)->factory.create(native_, id, configuration);
+        return types_.find(type)->factory.create(&dependencies, id, configuration);
     }
 
     void ResourceRegistry::publish(StorageId id, std::size_t position, void* instance) noexcept

@@ -13,7 +13,7 @@ namespace lux::render::detail
         CreateTexture::Request&& input
     ) noexcept
     {
-        auto storage = device_.resources().borrow<SampledTexture2DStorage>(input.storage);
+        auto storage = resources_.borrow<SampledTexture2DStorage>(input.storage);
         if (!storage)
         {
             return rejected<RenderResult<TextureId>>(storage.error());
@@ -25,7 +25,7 @@ namespace lux::render::detail
         CreatePatchedTexture::Request&& input
     ) noexcept
     {
-        auto storage = device_.resources().borrow<SampledTexture2DStorage>(input.texture.storage);
+        auto storage = resources_.borrow<SampledTexture2DStorage>(input.texture.storage);
         if (!storage)
         {
             return rejected<RenderResult<TextureId>>(storage.error());
@@ -38,7 +38,7 @@ namespace lux::render::detail
         ReleaseTexture::Response& response
     ) noexcept
     {
-        auto storage = device_.resources().borrow<SampledTexture2DStorage>(input.storage);
+        auto storage = resources_.borrow<SampledTexture2DStorage>(input.storage);
         if (!storage)
         {
             response.error = storage.error();

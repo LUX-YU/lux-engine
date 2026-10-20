@@ -1,5 +1,9 @@
 #pragma once
 
+#include <lux/engine/render/execution/FrameExecution.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/StorageCreateContext.hpp>
+
 #include <exec/task.hpp>
 
 #include <lux/engine/render/device/DeviceSession.hpp>
@@ -46,7 +50,7 @@ namespace lux::render::detail
             std::size_t position_ = 0;
         };
 
-        RasterMeshInstanceStorage(DeviceSession&, StorageId) noexcept;
+        RasterMeshInstanceStorage(StorageCreateContext&, StorageId) noexcept;
         ~RasterMeshInstanceStorage() noexcept;
         RasterMeshInstanceStorage(const RasterMeshInstanceStorage&) = delete;
         RasterMeshInstanceStorage& operator=(const RasterMeshInstanceStorage&) = delete;
@@ -87,7 +91,7 @@ namespace lux::render::detail
         resolve(const CompiledResource&, const MeshInstanceBinding&, StorageSubscription&, std::span<StorageResource>) noexcept;
         [[nodiscard]] RenderResult<void> allocate(GpuPage&, std::size_t slots) noexcept;
         [[nodiscard]] RenderResult<void> ensureFrame(std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, UploadContext&) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, ResourceUploader&) noexcept;
         [[nodiscard]] RenderResult<MeshInstanceGpuProperty> resolveReferences(const MeshInstanceDescription&)
             const noexcept;
         [[nodiscard]] MeshInstanceDescription describe(const Entry&) const noexcept;
@@ -99,6 +103,10 @@ namespace lux::render::detail
         [[nodiscard]] nri::Buffer* fieldBuffer(std::uint32_t frame, std::uint32_t page, std::size_t field) noexcept;
         [[nodiscard]] std::uint64_t fieldOffset(std::uint32_t record, std::size_t stride) const noexcept;
         DeviceSession& session_;
+        ResourceUploader& uploads_;
+        FrameExecution& frame_execution_;
+        ResourceRegistry& resources_;
+
         StorageId id_;
         const bool paged_;
         bool updating_ = false;

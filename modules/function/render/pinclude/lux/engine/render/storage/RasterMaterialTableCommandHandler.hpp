@@ -1,7 +1,9 @@
 #pragma once
 
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+
 #include <lux/engine/render/commands/CommandMethod.hpp>
-#include <lux/engine/render/upload/UploadContext.hpp>
+#include <lux/engine/render/upload/ResourceUploader.hpp>
 
 #include <lux/engine/render/resource/StorageFactory.hpp>
 #include <lux/engine/render/storage/RasterMaterialTable.hpp>
@@ -37,7 +39,7 @@ namespace lux::render::detail
 
         static constexpr std::string_view name = "lux.render.storage.RasterMaterialTableCommandHandler";
 
-        explicit RasterMaterialTableCommandHandler(DeviceSession& device) noexcept : device_(device) {}
+        explicit RasterMaterialTableCommandHandler(ResourceRegistry& resources) noexcept : resources_(resources) {}
 
         CreateMaterialSender createMaterial(CreateMaterial::Request&& input) noexcept
         {
@@ -59,7 +61,7 @@ namespace lux::render::detail
         exec::task<RenderResult<MaterialId>> createMaterialSource(CreateMaterial::Request&&) noexcept;
         exec::task<RenderResult<Ack>> updateMaterialSource(UpdateMaterial::Request&&) noexcept;
 
-        DeviceSession& device_;
+        ResourceRegistry& resources_;
     };
 
 } // namespace lux::render::detail

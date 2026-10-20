@@ -1,6 +1,7 @@
 #include <NRI.h>
 
 #include <Extensions/NRIHelper.h>
+#include <lux/engine/render/device/DeviceBackend.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 
@@ -67,9 +68,10 @@ namespace lux::render::detail
         {
             input.flags |= VK_IMAGE_CREATE_SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_BIT_EXT;
         }
-        const auto instance = static_cast<VkInstance>(vk_.GetInstanceVK(device()));
-        const auto physical = static_cast<VkPhysicalDevice>(vk_.GetPhysicalDeviceVK(device()));
-        const auto get_proc = reinterpret_cast<PFN_vkGetInstanceProcAddr>(vk_.GetInstanceProcAddrVK(device()));
+        const auto instance = static_cast<VkInstance>(backend_->vulkan.GetInstanceVK(device()));
+        const auto physical = static_cast<VkPhysicalDevice>(backend_->vulkan.GetPhysicalDeviceVK(device()));
+        const auto get_proc =
+            reinterpret_cast<PFN_vkGetInstanceProcAddr>(backend_->vulkan.GetInstanceProcAddrVK(device()));
         const auto query = reinterpret_cast<PFN_vkGetPhysicalDeviceImageFormatProperties2>(
             get_proc(instance, "vkGetPhysicalDeviceImageFormatProperties2")
         );
@@ -97,15 +99,15 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(
+    RenderResult<void> DeviceBackend::initialize(
+        DeviceSession& session,
         const DeviceOptions& options,
         const nri::CallbackInterface& diagnostic,
         bool validation,
-        std::uint32_t slots,
-        std::uint32_t frames_in_flight
+        std::uint32_t slots
     ) noexcept
     {
-        const bool invalid_capacity = slots == 0 || frames_in_flight == 0 || frames_in_flight > 3;
+        const bool invalid_capacity = slots == 0;
         if (invalid_capacity || !diagnostic.MessageCallback)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
@@ -231,9 +233,11 @@ namespace lux::render::detail
         query_families(physical, &family_count, nullptr);
         std::vector<VkQueueFamilyProperties> queue_properties(family_count);
         query_families(physical, &family_count, queue_properties.data());
-        auto result = std::unique_ptr<DeviceSession>(new DeviceSession(std::move(device), api, vk, enabled));
-        result->paged_instances_ = options.buffer_device_address;
-        result->frame_count_ = frames_in_flight;
+        session.device_ = device.release();
+        session.nri_core_ = api;
+        session.backend_->vulkan = vk;
+        session.enabled_features_ = enabled;
+        auto* result = &session;
         const auto query_properties =
             reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(get_proc(instance, "vkGetPhysicalDeviceProperties"));
         VkPhysicalDeviceProperties properties{};
@@ -300,6 +304,34 @@ namespace lux::render::detail
             }
             result->queue_roles_[role] = index;
         }
-        return result;
+        return {};
+    }
+
+    nri::Result DeviceSession::queryFence(nri::Fence& fence, std::uint64_t& value) const noexcept
+    {
+        return backend_->vulkan.GetFenceValueCheckedVK(fence, value);
+    }
+
+    nri::Result DeviceSession::waitFence(nri::Fence& fence, std::uint64_t value, std::uint64_t timeout, bool& ready)
+        const noexcept
+    {
+        return backend_->vulkan.WaitFenceCheckedVK(fence, value, timeout, ready);
+    }
+
+    nri::Result DeviceSession::resetCommandAllocator(nri::CommandAllocator& allocator) const noexcept
+    {
+        return backend_->vulkan.ResetCommandAllocatorCheckedVK(allocator);
+    }
+
+    nri::Result DeviceSession::flushMappedRange(nri::Buffer& buffer, std::uint64_t offset, std::uint64_t size)
+        const noexcept
+    {
+        return backend_->vulkan.FlushBufferRangeVK(buffer, offset, size);
+    }
+
+    nri::Result DeviceSession::invalidateMappedRange(nri::Buffer& buffer, std::uint64_t offset, std::uint64_t size)
+        const noexcept
+    {
+        return backend_->vulkan.InvalidateBufferRangeVK(buffer, offset, size);
     }
 } // namespace lux::render::detail

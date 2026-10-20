@@ -15,6 +15,7 @@ namespace lux::render
     }
 
     RenderResult<StorageId> StorageSet::ensure(
+        StorageCreateContext& dependencies,
         StorageTypeId type,
         std::string_view key,
         const ConfigValue& config,
@@ -60,7 +61,7 @@ namespace lux::render
             return id;
         }
         const auto id = registry_.reserve(*this, type);
-        auto native = registry_.create(id, selected_config.data());
+        auto native = registry_.create(dependencies, id, selected_config.data());
         if (!native || !*native)
         {
             const auto error = native ? RenderError{kStorageFactory} : native.error();
@@ -75,6 +76,7 @@ namespace lux::render
     }
 
     RenderResult<StorageId> StorageSet::getOrCreateImpl(
+        StorageCreateContext& dependencies,
         const StorageDescriptor& description,
         std::string_view key,
         const ConfigValue& config,
@@ -92,16 +94,17 @@ namespace lux::render
         {
             return cxx::unexpected(compatible.error());
         }
-        return ensure(type, key, config, config_type, ops_type);
+        return ensure(dependencies, type, key, config, config_type, ops_type);
     }
 
     RenderResult<StorageId> StorageSet::getOrCreate(
+        StorageCreateContext& dependencies,
         StorageTypeId type,
         std::string_view key,
         const ConfigValue& config
     ) noexcept
     {
-        return ensure(type, key, config);
+        return ensure(dependencies, type, key, config);
     }
 
     RenderResult<void> StorageSet::remove(StorageId id) noexcept

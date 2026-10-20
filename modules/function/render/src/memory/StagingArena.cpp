@@ -36,12 +36,12 @@ namespace lux::render::detail
             auto& page = arena->pages_[i];
             const nri::BufferDesc description{page_bytes, 0, nri::BufferUsageBits::NONE};
             const auto result =
-                session.api().CreatePlacedBuffer(session.device(), NriHostUploadHeap, description, page.buffer);
+                session.nriCore().CreatePlacedBuffer(session.device(), NriHostUploadHeap, description, page.buffer);
             if (result != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));
             }
-            page.mapped = static_cast<std::byte*>(session.api().MapBuffer(*page.buffer, 0, page_bytes));
+            page.mapped = static_cast<std::byte*>(session.nriCore().MapBuffer(*page.buffer, 0, page_bytes));
             if (!page.mapped)
             {
                 return cxx::unexpected(nativeError(nri::Result::FAILURE));
@@ -72,9 +72,9 @@ namespace lux::render::detail
             }
             if (page.mapped)
             {
-                session_.api().UnmapBuffer(*page.buffer);
+                session_.nriCore().UnmapBuffer(*page.buffer);
             }
-            session_.api().DestroyBuffer(page.buffer);
+            session_.nriCore().DestroyBuffer(page.buffer);
         }
     }
 
@@ -182,7 +182,7 @@ namespace lux::render::detail
 
     RenderResult<void> StagingArena::flush(const StagingRange& range) noexcept
     {
-        const auto result = session_.vk().FlushBufferRangeVK(*range.buffer, range.offset, range.bytes.size());
+        const auto result = session_.flushMappedRange(*range.buffer, range.offset, range.bytes.size());
         return result == nri::Result::SUCCESS ? RenderResult<void>{} : cxx::unexpected(nativeError(result));
     }
 

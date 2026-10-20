@@ -5,10 +5,16 @@
 #include <lux/engine/render/resource/StorageBinding.hpp>
 #include <optional>
 
+namespace lux::render
+{
+    class ResourceRegistry;
+}
+
 namespace lux::render::detail
 {
     class DeviceSession;
-    class UploadContext;
+    class ResourceUploader;
+    class FrameExecution;
 
     // Actual Feature-derived per-attachment data. This is neither an async OperationState nor
     // a Storage binding owner. Native data decides whether the selected physical slice needs work.
@@ -28,7 +34,7 @@ namespace lux::render::detail
         };
 
         std::unique_ptr<void, void (*)(void*) noexcept> value{nullptr, [](void*) noexcept {}};
-        RenderResult<Preparation> (*prepare)(void*, std::uint32_t, UploadContext&) noexcept = nullptr;
+        RenderResult<Preparation> (*prepare)(void*, std::uint32_t, ResourceUploader&) noexcept = nullptr;
         void (*record)(void*, nri::CommandBuffer&, std::uint32_t) noexcept = nullptr;
     };
 
@@ -38,7 +44,8 @@ namespace lux::render::detail
     {
         GraphResourceId resource;
         ConfigValue configuration;
-        RenderResult<FeatureFrameWork> (*create)(DeviceSession&, std::span<const StorageId>, const void*) noexcept =
+        RenderResult<
+            FeatureFrameWork> (*create)(DeviceSession&, FrameExecution&, ResourceRegistry&, std::span<const StorageId>, const void*) noexcept =
             nullptr;
     };
 } // namespace lux::render::detail

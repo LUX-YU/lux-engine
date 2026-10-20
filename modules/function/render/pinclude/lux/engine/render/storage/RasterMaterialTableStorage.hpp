@@ -1,5 +1,9 @@
 #pragma once
 
+#include <lux/engine/render/execution/FrameExecution.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/StorageCreateContext.hpp>
+
 #include <exec/task.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
@@ -22,7 +26,7 @@ namespace lux::render::detail
         };
 
     public:
-        RasterMaterialTableStorage(DeviceSession&, StorageId) noexcept;
+        RasterMaterialTableStorage(StorageCreateContext&, StorageId) noexcept;
         ~RasterMaterialTableStorage() noexcept;
         RasterMaterialTableStorage(const RasterMaterialTableStorage&) = delete;
         RasterMaterialTableStorage& operator=(const RasterMaterialTableStorage&) = delete;
@@ -47,7 +51,7 @@ namespace lux::render::detail
         [[nodiscard]] exec::task<RenderResult<Ack>> upload(MaterialUpdate) noexcept;
         [[nodiscard]] RenderResult<void>
         resolve(const CompiledResource&, const MaterialBinding&, StorageSubscription&, std::span<StorageResource>) noexcept;
-        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, UploadContext&) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
         void markDirty(Table&, std::uint32_t frame, std::uint32_t record) noexcept;
         void removeDirty(Table&, std::uint32_t frame) noexcept;
         void releaseTable(Table&) noexcept;
@@ -55,6 +59,10 @@ namespace lux::render::detail
         [[nodiscard]] std::uint32_t textureIndex(TextureId) const noexcept;
         static void publish(Table&, std::uint32_t frame) noexcept;
         DeviceSession& session_;
+        ResourceUploader& uploads_;
+        FrameExecution& frame_execution_;
+        ResourceRegistry& resources_;
+
         StorageId id_;
         cxx::StableSlotMap<Entry, MaterialTag> entries_;
         std::vector<std::unique_ptr<Table>> tables_;

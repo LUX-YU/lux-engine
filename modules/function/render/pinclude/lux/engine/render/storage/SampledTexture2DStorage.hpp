@@ -1,12 +1,16 @@
 #pragma once
 
+#include <lux/engine/render/execution/FrameExecution.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/StorageCreateContext.hpp>
+
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/device/DescriptorArray.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/resource/StorageFactory.hpp>
 #include <lux/engine/render/resource/Upload.hpp>
 #include <lux/engine/render/storage/SampledTexture2D.hpp>
-#include <lux/engine/render/upload/UploadContext.hpp>
+#include <lux/engine/render/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {
@@ -46,7 +50,7 @@ namespace lux::render::detail
         };
 
         [[nodiscard]] static RenderResult<std::unique_ptr<SampledTexture2DStorage>> create(
-            DeviceSession&,
+            StorageCreateContext&,
             StorageId
         ) noexcept;
         ~SampledTexture2DStorage() noexcept;
@@ -66,7 +70,7 @@ namespace lux::render::detail
         friend struct lux::render::StorageTraits<SampledTexture2DStorage>;
         using UploadResult = exec::task<RenderResult<TextureId>>;
         using ImagePreparation = std::pair<nri::Texture*, std::vector<ImageTransferRegion>>;
-        SampledTexture2DStorage(DeviceSession&, StorageId) noexcept;
+        SampledTexture2DStorage(StorageCreateContext&, StorageId) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] UploadResult upload(TextureWrite) noexcept;
         [[nodiscard]] UploadResult upload(TextureRegionWrite) noexcept;
@@ -80,6 +84,8 @@ namespace lux::render::detail
         static void releaseImage(const nri::CoreInterface&, DescriptorArray&, SampledImage&) noexcept;
         void retire(SampledImage&) noexcept;
         DeviceSession& session_;
+        ResourceUploader& uploads_;
+
         StorageId id_;
         DescriptorArray* descriptors_ = nullptr;
         cxx::StableSlotMap<SampledImage, TextureTag> textures_;

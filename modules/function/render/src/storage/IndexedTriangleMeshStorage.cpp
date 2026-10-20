@@ -11,11 +11,6 @@
 
 namespace lux::render::detail
 {
-    struct IndexedTriangleMeshStorage::Geometry final
-    {
-        BufferArena::Range vertices, indices, sections;
-    };
-
     IndexedTriangleMeshStorage::IndexedTriangleMeshStorage(DeviceSession& session, StorageId id) noexcept
         : session_(session), id_(id),
           vertices_(std::make_unique<BufferArena>(session, nri::BufferUsageBits::VERTEX_BUFFER)),
@@ -164,24 +159,24 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(sections.error());
         }
-        auto geometry = std::make_unique<Geometry>(std::move(*vertices), std::move(*indices), std::move(*sections));
+        Geometry geometry{std::move(*vertices), std::move(*indices), std::move(*sections)};
         cxx::scope_exit rollback([&]() noexcept { retire(geometry); });
         std::array<BufferWrite, 4> writes;
         std::size_t count = 0;
-        writes[count++] = {geometry->vertices.buffer, geometry->vertices.offset, input.source.first(vertex_bytes)};
+        writes[count++] = {geometry.vertices.buffer, geometry.vertices.offset, input.source.first(vertex_bytes)};
         const auto index_source = input.source.subspan(input.description.index_offset, index_bytes);
         const auto full_words = index_bytes & ~std::size_t{3};
         if (full_words)
         {
-            writes[count++] = {geometry->indices.buffer, geometry->indices.offset, index_source.first(full_words)};
+            writes[count++] = {geometry.indices.buffer, geometry.indices.offset, index_source.first(full_words)};
         }
         std::array<std::byte, 4> tail{};
         if (full_words != index_bytes)
         {
             std::memcpy(tail.data(), index_source.data() + full_words, index_bytes - full_words);
-            writes[count++] = {geometry->indices.buffer, geometry->indices.offset + full_words, tail};
+            writes[count++] = {geometry.indices.buffer, geometry.indices.offset + full_words, tail};
         }
-        writes[count++] = {geometry->sections.buffer, geometry->sections.offset, std::as_bytes(std::span(records))};
+        writes[count++] = {geometry.sections.buffer, geometry.sections.offset, std::as_bytes(std::span(records))};
         if (auto uploaded = co_await session_.uploads().writeBuffers(std::span(writes).first(count)); !uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
@@ -196,13 +191,13 @@ namespace lux::render::detail
     const MeshDescription* IndexedTriangleMeshStorage::find(MeshId id) const noexcept
     {
         const auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
-        return entry && entry->geometry ? &entry->description : nullptr;
+        return entry ? &entry->description : nullptr;
     }
 
     RenderResult<void> IndexedTriangleMeshStorage::release(MeshId id) noexcept
     {
         auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
-        if (!entry || !entry->geometry)
+        if (!entry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
@@ -215,7 +210,7 @@ namespace lux::render::detail
         resolve(const CompiledResource& plan, const MeshBinding& argument, StorageSubscription&) noexcept
     {
         auto* entry = argument.mesh.storage == id_ ? entries_.find(argument.mesh.local) : nullptr;
-        if (!entry || !entry->geometry)
+        if (!entry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
@@ -236,9 +231,9 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        const auto& range = vertex  ? entry->geometry->vertices
-                            : index ? entry->geometry->indices
-                                    : entry->geometry->sections;
+        const auto& range = vertex  ? entry->geometry.vertices
+                            : index ? entry->geometry.indices
+                                    : entry->geometry.sections;
         if (description->size > range.size)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
@@ -246,16 +241,11 @@ namespace lux::render::detail
         return StorageResource{range.buffer, range.offset, range.size};
     }
 
-    void IndexedTriangleMeshStorage::retire(std::unique_ptr<Geometry>& geometry) noexcept
+    void IndexedTriangleMeshStorage::retire(Geometry& geometry) noexcept
     {
-        if (!geometry)
-        {
-            return;
-        }
-        vertices_->release(geometry->vertices);
-        indices_->release(geometry->indices);
-        sections_->release(geometry->sections);
-        geometry.reset();
+        vertices_->release(geometry.vertices);
+        indices_->release(geometry.indices);
+        sections_->release(geometry.sections);
     }
 
     StorageFactory meshStorageFactory() noexcept

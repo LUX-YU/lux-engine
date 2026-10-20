@@ -342,7 +342,7 @@ namespace lux::render::detail
                     return result;
                 }
                 release(slice.flat);
-                slice.flat = std::move(candidate);
+                slice.flat = std::exchange(candidate, {});
                 for (auto& dirty : slice.dirty)
                 {
                     dirty.grow(std::max<std::uint64_t>(capacity(), 2));

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/cxx/container/StableSlotMap.hpp>
+#include <lux/engine/render/memory/BufferArena.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/resource/StorageFactory.hpp>
 #include <lux/engine/render/resource/Upload.hpp>
@@ -14,12 +15,15 @@ namespace lux::render::detail
 
     class IndexedTriangleMeshStorage final
     {
-        struct Geometry;
+        struct Geometry final
+        {
+            BufferArena::Range vertices, indices, sections;
+        };
 
         struct Entry final
         {
             MeshDescription description;
-            std::unique_ptr<Geometry> geometry;
+            Geometry geometry;
         };
 
     public:
@@ -46,7 +50,7 @@ namespace lux::render::detail
         using UploadResult = exec::task<RenderResult<MeshId>>;
         [[nodiscard]] UploadResult upload(MeshWrite) noexcept;
         [[nodiscard]] RenderResult<void> validate(const MeshDescription&, std::span<const std::byte>) const noexcept;
-        void retire(std::unique_ptr<Geometry>&) noexcept;
+        void retire(Geometry&) noexcept;
         DeviceSession& session_;
         StorageId id_;
         cxx::StableSlotMap<Entry, MeshTag> entries_;

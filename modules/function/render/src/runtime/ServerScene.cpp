@@ -112,29 +112,34 @@ namespace lux::render
         output_response = {};
     }
 
-    RenderResult<void> RenderServer::Impl::detachAttachment(AttachmentId id) noexcept
+    void RenderServer::Impl::detachAttachment(AttachmentId id) noexcept
     {
         auto& attachment = *attachments.find(id);
         attachment.context.reset();
         auto& view = *scenes.find(attachment.scene)->views.find(attachment.view);
         auto& effect = *effects.find(attachment.effect);
         auto& target = *targets.find(attachment.target);
-        attachment.unlink(attachments, view, effect, target);
-        if (target.attachment.isNull())
-        {
-            active_targets.erase(attachment.target);
-        }
+        const auto last_view = view.attachments.back();
+        view.attachments[attachment.view_position] = last_view;
+        attachments.find(last_view)->view_position = attachment.view_position;
+        view.attachments.pop_back();
+
+        const auto last_effect = effect.attachments.back();
+        effect.attachments[attachment.effect_position] = last_effect;
+        attachments.find(last_effect)->effect_position = attachment.effect_position;
+        effect.attachments.pop_back();
+        target.attachment = {};
+        active_targets.erase(attachment.target);
         attachments.erase(id);
-        return {};
     }
 
     void RenderServer::Impl::attachEffect(const Attach::Request& _request, Attach::Response& output_response) noexcept
     {
-        const auto* decoded = &_request;
-        const auto& scene_id = decoded->scene;
-        const auto& view_id = decoded->view;
-        const auto& target_id = decoded->target;
-        const auto& effect_id = decoded->effect;
+
+        const auto& scene_id = _request.scene;
+        const auto& view_id = _request.view;
+        const auto& target_id = _request.target;
+        const auto& effect_id = _request.effect;
         auto* scene = scenes.find(scene_id);
         auto* view = scene ? scene->views.find(view_id) : nullptr;
         auto* target = targets.find(target_id);
@@ -150,7 +155,7 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeState};
             return;
         }
-        if (auto valid = decoded->viewport.validate(); !valid)
+        if (auto valid = _request.viewport.validate(); !valid)
         {
             output_response.error = valid.error();
             return;
@@ -162,18 +167,23 @@ namespace lux::render
             output_response.error = prepared.error();
             return;
         }
-        if (auto values = (*prepared)->setContextParameters(decoded->parameters); !values)
+        if (auto values = (*prepared)->setContextParameters(_request.parameters); !values)
         {
             output_response.error = values.error();
             return;
         }
-        (*prepared)->setViewport(decoded->viewport);
+        (*prepared)->setViewport(_request.viewport);
         output_response = {};
         (*prepared)->forEachStorage([&](std::string_view key, StorageId id) noexcept
                                     { output_response.storages.push_back({std::string(key), id}); });
         const auto id =
             attachments.emplace(EffectAttachment{effect_id, scene_id, view_id, target_id, std::move(*prepared)});
-        attachments.find(id)->link(id, *view, *effect, *target);
+        auto& attachment = *attachments.find(id);
+        attachment.view_position = view->attachments.size();
+        attachment.effect_position = effect->attachments.size();
+        view->attachments.push_back(id);
+        effect->attachments.push_back(id);
+        target->attachment = id;
         output_response.attachment = id;
         active_targets.emplace(target_id);
         storages_created.store(device->resources().creations());
@@ -245,11 +255,7 @@ namespace lux::render
         {
             while (!view.attachments.empty())
             {
-                if (auto result = detachAttachment(view.attachments.back()); !result)
-                {
-                    output_response.error = result.error();
-                    return;
-                }
+                detachAttachment(view.attachments.back());
             }
         }
         scenes.erase(scene_id);
@@ -312,11 +318,7 @@ namespace lux::render
         }
         while (!view->attachments.empty())
         {
-            if (auto result = detachAttachment(view->attachments.back()); !result)
-            {
-                output_response.error = result.error();
-                return;
-            }
+            detachAttachment(view->attachments.back());
         }
         scene->views.erase(input->view);
         output_response = {};
@@ -390,11 +392,7 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        if (auto result = detachAttachment(_request); !result)
-        {
-            output_response.error = result.error();
-            return;
-        }
+        detachAttachment(_request);
         output_response = {};
     }
 } // namespace lux::render

@@ -12,9 +12,8 @@ namespace lux::render
     // Synchronous cold contributions. Callbacks may append, never finish/move/retain the Builder.
     struct FeatureGraphOps final
     {
-        using Build = RenderResult<void> (*)(
-            const void*, std::string_view, std::span<const ResolvedResource>, RenderGraphBuilder&
-        ) noexcept;
+        using Build = RenderResult<
+            void> (*)(const void*, std::string_view, std::span<const ResolvedResource>, RenderGraphBuilder&) noexcept;
 
         RenderResult<void> (*describe)(const void*, std::string_view, ResourceClaims&) noexcept;
         Build build = nullptr;

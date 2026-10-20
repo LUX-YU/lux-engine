@@ -1,3 +1,6 @@
+#include <NRI.h>
+
+#include <Extensions/NRIHelper.h>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 
@@ -8,6 +11,92 @@
 
 namespace lux::render::detail
 {
+    RenderResult<void> DeviceSession::validateTexture(const nri::TextureDesc& texture) const noexcept
+    {
+        const auto& properties = *nri::nriGetFormatProps(texture.format);
+        const auto format = properties.isSrgb ? static_cast<nri::Format>(static_cast<std::uint32_t>(texture.format) - 1)
+                                              : texture.format;
+        // Match v180 DeviceVK::FillCreateInfo, including flags added by the backend.
+        VkPhysicalDeviceImageFormatInfo2 input{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2};
+        input.format = static_cast<VkFormat>(nri::nriConvertNRIFormatToVK(format));
+        switch (texture.type)
+        {
+        case nri::TextureType::TEXTURE_1D:
+            input.type = VK_IMAGE_TYPE_1D;
+            break;
+        case nri::TextureType::TEXTURE_2D:
+            input.type = VK_IMAGE_TYPE_2D;
+            break;
+        case nri::TextureType::TEXTURE_3D:
+            input.type = VK_IMAGE_TYPE_3D;
+            break;
+        }
+        input.tiling = VK_IMAGE_TILING_OPTIMAL;
+        input.flags =
+            VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT | VK_IMAGE_CREATE_ALIAS_BIT;
+        input.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        const auto add_usage = [&](nri::TextureUsageBits use, VkImageUsageFlags native) noexcept
+        {
+            if ((texture.usage & use) != 0)
+            {
+                input.usage |= native;
+            }
+        };
+        add_usage(nri::TextureUsageBits::SHADER_RESOURCE, VK_IMAGE_USAGE_SAMPLED_BIT);
+        add_usage(nri::TextureUsageBits::SHADER_RESOURCE_STORAGE, VK_IMAGE_USAGE_STORAGE_BIT);
+        add_usage(nri::TextureUsageBits::COLOR_ATTACHMENT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+        add_usage(nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+        add_usage(
+            nri::TextureUsageBits::SHADING_RATE_ATTACHMENT,
+            VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
+        );
+        add_usage(nri::TextureUsageBits::INPUT_ATTACHMENT, VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
+        if (properties.blockWidth > 1 && (texture.usage & nri::TextureUsageBits::SHADER_RESOURCE_STORAGE) != 0)
+        {
+            input.flags |= VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT;
+        }
+        if (texture.layerNum >= 6 && texture.width == texture.height)
+        {
+            input.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+        }
+        if (texture.type == nri::TextureType::TEXTURE_3D)
+        {
+            input.flags |= VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
+        }
+        if (description().tiers.sampleLocations && properties.isDepth)
+        {
+            input.flags |= VK_IMAGE_CREATE_SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_BIT_EXT;
+        }
+        const auto instance = static_cast<VkInstance>(vk_.GetInstanceVK(device()));
+        const auto physical = static_cast<VkPhysicalDevice>(vk_.GetPhysicalDeviceVK(device()));
+        const auto get_proc = reinterpret_cast<PFN_vkGetInstanceProcAddr>(vk_.GetInstanceProcAddrVK(device()));
+        const auto query = reinterpret_cast<PFN_vkGetPhysicalDeviceImageFormatProperties2>(
+            get_proc(instance, "vkGetPhysicalDeviceImageFormatProperties2")
+        );
+        VkImageFormatProperties2 output{VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2};
+        const auto status = query(physical, &input, &output);
+        if (status == VK_ERROR_FORMAT_NOT_SUPPORTED)
+        {
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
+        }
+        if (status != VK_SUCCESS)
+        {
+            return cxx::unexpected(RenderError{kDeviceFailure, {std::uint64_t(std::uint32_t(status)), 1}});
+        }
+        const auto& limits = output.imageFormatProperties;
+        const bool unsupported = texture.width > limits.maxExtent.width ||
+                                 std::max(texture.height, nri::Dim_t{1}) > limits.maxExtent.height ||
+                                 std::max(texture.depth, nri::Dim_t{1}) > limits.maxExtent.depth ||
+                                 std::max(texture.mipNum, nri::Dim_t{1}) > limits.maxMipLevels ||
+                                 std::max(texture.layerNum, nri::Dim_t{1}) > limits.maxArrayLayers ||
+                                 (limits.sampleCounts & std::max(texture.sampleNum, nri::Sample_t{1})) == 0;
+        if (unsupported)
+        {
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
+        }
+        return {};
+    }
+
     RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(
         const DeviceOptions& options,
         const nri::CallbackInterface& diagnostic,
@@ -172,7 +261,7 @@ namespace lux::render::detail
             result->format_support_[i] = api.GetFormatSupport(result->device(), static_cast<nri::Format>(i));
         }
         // Get every requested queue before creating buffers. NRI uses the discovered family set
-        // for concurrent buffer sharing. Texture ownership transfers remain explicit.
+        // for concurrent sharing. Frame-local attachments explicitly select exclusive sharing.
         std::array<nri::Queue*, 3> queues{};
         for (std::size_t role = 0; role < queues.size(); ++role)
         {

@@ -63,17 +63,3 @@ namespace lux::render::detail
     };
 
 } // namespace lux::render::detail
-
-// Registered by this implementation TU; no concrete Handler is exposed by the SDK.
-#include <lux/engine/render/runtime/RenderServer.hpp>
-
-namespace lux::render
-{
-    template <>
-    RenderResult<void> RenderServer::prepareStorage<RasterMaterialTableStorageDescriptor>(
-        RegistrationBatch&,
-        ConfigValue,
-        bool,
-        std::string_view
-    ) noexcept;
-}

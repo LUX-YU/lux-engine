@@ -352,11 +352,7 @@ namespace lux::render
         }
         while (!effect->attachments.empty())
         {
-            if (auto result = detachAttachment(effect->attachments.back()); !result)
-            {
-                output_response.error = result.error();
-                return;
-            }
+            detachAttachment(effect->attachments.back());
         }
         device->deferRelease([code = std::move(effect->code)]() mutable noexcept { code.reset(); });
         effects.erase(input->effect);

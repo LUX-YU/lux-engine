@@ -47,6 +47,13 @@ namespace lux::render::detail
                 static_cast<nri::Sample_t>(description.samples),
                 nri::SharingMode::EXCLUSIVE
             };
+            if (slot == 0)
+            {
+                if (auto valid = session.validateTexture(image_description); !valid)
+                {
+                    return cxx::unexpected(valid.error());
+                }
+            }
             nri::Texture* image = nullptr;
             const auto created =
                 session.api().CreatePlacedTexture(session.device(), NriDeviceHeap, image_description, image);

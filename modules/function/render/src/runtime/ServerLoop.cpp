@@ -138,10 +138,7 @@ namespace lux::render
         while (!active_targets.empty())
         {
             auto& target = *targets.find(active_targets.keys().back());
-            if (!detachAttachment(target.attachment))
-            {
-                std::terminate();
-            }
+            detachAttachment(target.attachment);
         }
         // End plan owners while physical cleanup is still admitted. The Session closes only
         // after Scene/Global Storage and every other producer have transferred their resources.

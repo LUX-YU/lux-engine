@@ -1,10 +1,10 @@
 #pragma once
 
+#include <exec/task.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/resource/Upload.hpp>
 #include <lux/engine/render/storage/RasterMaterialTable.hpp>
-#include <lux/engine/render/storage/SampledTexture2DStorage.hpp>
 
 namespace lux::render::detail
 {

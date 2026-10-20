@@ -23,9 +23,8 @@ namespace lux::render
     // Cold graph and program contribution functions; no execution state.
     struct FeatureDefinition final
     {
-        using Programs = RenderResult<ProgramContribution> (*)(
-            const void*, std::string_view, const RenderGraphDefinition&, const detail::EnabledDeviceFeatures&
-        ) noexcept;
+        using Programs = RenderResult<
+            ProgramContribution> (*)(const void*, std::string_view, const RenderGraphDefinition&, const detail::EnabledDeviceFeatures&) noexcept;
 
         const FeatureDescriptor* descriptor;
         const FeatureGraphOps* graph;

@@ -66,33 +66,5 @@ namespace lux::render::runtime_detail
         std::unique_ptr<detail::ExecutionContext> context;
         std::size_t view_position = 0;
         std::size_t effect_position = 0;
-
-        void link(AttachmentId id, RenderView& render_view, RenderEffect& render_effect, RenderTarget& output) noexcept
-        {
-            view_position = render_view.attachments.size();
-            effect_position = render_effect.attachments.size();
-            render_view.attachments.push_back(id);
-            render_effect.attachments.push_back(id);
-            output.attachment = id;
-        }
-
-        void unlink(
-            cxx::SlotMap<EffectAttachment, AttachmentTag>& attachments,
-            RenderView& render_view,
-            RenderEffect& render_effect,
-            RenderTarget& output
-        ) noexcept
-        {
-            const auto last_view = render_view.attachments.back();
-            render_view.attachments[view_position] = last_view;
-            attachments.find(last_view)->view_position = view_position;
-            render_view.attachments.pop_back();
-
-            const auto last_effect = render_effect.attachments.back();
-            render_effect.attachments[effect_position] = last_effect;
-            attachments.find(last_effect)->effect_position = effect_position;
-            render_effect.attachments.pop_back();
-            output.attachment = {};
-        }
     };
 } // namespace lux::render::runtime_detail

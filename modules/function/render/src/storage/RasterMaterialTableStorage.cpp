@@ -9,6 +9,7 @@
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
 #include <lux/engine/render/storage/RasterMaterialTableStorage.hpp>
+#include <lux/engine/render/storage/SampledTexture2DStorage.hpp>
 
 namespace lux::render::detail
 {

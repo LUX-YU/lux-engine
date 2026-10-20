@@ -117,6 +117,10 @@ namespace lux::render::detail
             1,
             nri::SharingMode::CONCURRENT
         };
+        if (auto valid = session_.validateTexture(description); !valid)
+        {
+            return valid;
+        }
         auto status = api.CreatePlacedTexture(session_.device(), NriDeviceHeap, description, white_image_);
         if (status != nri::Result::SUCCESS)
         {

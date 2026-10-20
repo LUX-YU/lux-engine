@@ -179,6 +179,9 @@ namespace lux::render::detail
             return format_support_;
         }
 
+        // Cold creation qualification using the pinned backend's complete image-create key.
+        [[nodiscard]] RenderResult<void> validateTexture(const nri::TextureDesc&) const noexcept;
+
         [[nodiscard]] nri::FormatSupportBits formatSupport(nri::Format format) const noexcept
         {
             return format_support_[static_cast<std::size_t>(format)];

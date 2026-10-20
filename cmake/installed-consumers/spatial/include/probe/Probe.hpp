@@ -1,18 +1,41 @@
 #pragma once
-#include <cstdint>
-#include <lux/engine/meta/MetaAnnotations.hpp>
+
+#include <lux/engine/render/core/Error.hpp>
+#include <lux/engine/render/core/Ids.hpp>
+#include <probe/visibility.hpp>
+#include <string_view>
+#include <vector>
+
+namespace lux::render
+{
+    class RenderServer;
+}
 
 namespace probe
 {
-    struct LUX_TYPE_INFO(both)
-        LUX_COMM_CONFIG(prefix = ExternalProbe, id = test.external.probe.v1, display = ExternalProbe,
-                        feature = UnusedBackend, feature_header = probe / UnusedBackend.hpp) Configuration
+    struct Value final
     {
+        std::uint64_t sequence;
+        double amount;
     };
 
-    struct LUX_OP(lane = program, kind = bulk, name = ExternalProbeSet, method = set) Value
+    struct SetValues final
     {
-        std::uint64_t sequence{};
-        double amount{};
+        static constexpr std::string_view name = "test.external.probe.set_values";
+
+        struct Request final
+        {
+            std::vector<Value> values;
+        };
+
+        struct Response final
+        {
+            lux::render::RenderError error;
+            std::uint64_t sequence = 0;
+            double sum = 0;
+        };
     };
+
+    [[nodiscard]] PROBE_PUBLIC lux::render::RenderResult<lux::render::HandlerId> install(lux::render::
+                                                                                             RenderServer&) noexcept;
 } // namespace probe

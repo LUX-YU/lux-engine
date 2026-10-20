@@ -5,6 +5,59 @@
 
 namespace lux::render
 {
+
+    // DLL specializations are visible before generic registration is instantiated.
+    class SampledTexture2DStorageDescriptor;
+    class IndexedTriangleMeshStorageDescriptor;
+    class RasterMaterialTableStorageDescriptor;
+    class RasterMeshInstanceStorageDescriptor;
+    struct MaterialMeshRasterDescriptor;
+    struct MeshDepthRasterDescriptor;
+
+    template <>
+    LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareStorage<SampledTexture2DStorageDescriptor>(
+        RegistrationBatch&,
+        ConfigValue,
+        bool,
+        std::string_view
+    ) noexcept;
+
+    template <>
+    LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareStorage<IndexedTriangleMeshStorageDescriptor>(
+        RegistrationBatch&,
+        ConfigValue,
+        bool,
+        std::string_view
+    ) noexcept;
+
+    template <>
+    LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareStorage<RasterMaterialTableStorageDescriptor>(
+        RegistrationBatch&,
+        ConfigValue,
+        bool,
+        std::string_view
+    ) noexcept;
+
+    template <>
+    LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareStorage<RasterMeshInstanceStorageDescriptor>(
+        RegistrationBatch&,
+        ConfigValue,
+        bool,
+        std::string_view
+    ) noexcept;
+
+    template <>
+    LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareFeature<MaterialMeshRasterDescriptor>(
+        RegistrationBatch&,
+        std::string_view
+    ) noexcept;
+
+    template <>
+    LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareFeature<MeshDepthRasterDescriptor>(
+        RegistrationBatch&,
+        std::string_view
+    ) noexcept;
+
     template <class Descriptor>
         requires(!std::is_void_v<typename Descriptor::Config>)
     RenderResult<StorageTypeId> RenderServer::registerStorage(

@@ -87,7 +87,7 @@ namespace lux::render
             command_registry_.registerCommand(CommandBinding::bind<C, Method>(*this));
         }
 
-        RenderResult<void> detachAttachment(AttachmentId id) noexcept;
+        void detachAttachment(AttachmentId id) noexcept;
 
         RenderResult<StorageSet*> findStorageSet(const VStorageLocation&) noexcept;
         void findStorage(const FindStorage::Request&, FindStorage::Response&) noexcept;

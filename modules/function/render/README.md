@@ -104,6 +104,11 @@ staging windows and batches Copy work. Frame preparation contributes missing ran
 recordings enter the shared submission. Dirty-word batching and contiguous Transform input avoid per-element Copy
 construction. There is no per-frame Sender for unchanged drawing and no unconditional sleep in the event loop.
 
+Buffers and ordinary sampled textures use the backend's concurrent sharing across discovered
+queue families; frame-local attachments use exclusive sharing. Execution dependencies and access
+barriers remain explicit. Texture creation checks the complete pinned Vulkan image-create key
+on the cold path, including usage, samples and backend-added flags.
+
 NRI Buffer barriers cover the whole resource. Adjacent, ordered frame copies to disjoint ranges of one Buffer
 share a transition pair; overlapping or reverse ranges retain separate write dependencies. This uses the existing
 finite Copy window without sorting, a temporary allocation or a second submission path.

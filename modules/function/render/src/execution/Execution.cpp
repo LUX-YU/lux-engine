@@ -311,6 +311,13 @@ namespace lux::render::detail
                         1,
                         color || depth ? nri::SharingMode::EXCLUSIVE : nri::SharingMode::CONCURRENT
                     };
+                    if (slot == 0)
+                    {
+                        if (auto valid = validateTexture(description); !valid)
+                        {
+                            return cxx::unexpected(valid.error());
+                        }
+                    }
                     const auto created = api().CreatePlacedTexture(device(), NriDeviceHeap, description, binding.image);
                     if (created != nri::Result::SUCCESS)
                     {

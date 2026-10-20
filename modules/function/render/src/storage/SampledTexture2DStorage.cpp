@@ -168,6 +168,10 @@ namespace lux::render::detail
             );
         }
 
+        if (auto valid = session.validateTexture(description); !valid)
+        {
+            return cxx::unexpected(valid.error());
+        }
         nri::Texture* image = nullptr;
         const auto created = session.api().CreatePlacedTexture(session.device(), NriDeviceHeap, description, image);
         if (created != nri::Result::SUCCESS)

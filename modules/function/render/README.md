@@ -113,6 +113,11 @@ changes. Project GPU consumers likewise call `DeviceSession::collectFrameStorage
 the resulting span to `render`. Preparation callbacks are synchronous: they do not submit, suspend or dispatch
 completion callbacks. Stable frames neither rebuild this list nor sort Storage relationships.
 
+When GPU work prevents progress, the loop first waits on the conditions preventing the next frame slot's reuse,
+then rotates other in-flight physical Queues. IPC, ready work and stop are checked between waits. The default
+`gpu_wait_ns` remains 1 ms; it bounds the requested GPU wait, not end-to-end Command latency. Fully idle operation
+uses the existing wakeable IPC wait.
+
 Buffers and ordinary sampled textures use the backend's concurrent sharing across discovered
 queue families; frame-local attachments use exclusive sharing. Execution dependencies and access
 barriers remain explicit. Texture creation checks the complete pinned Vulkan image-create key

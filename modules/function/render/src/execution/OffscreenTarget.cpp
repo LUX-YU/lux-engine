@@ -81,15 +81,15 @@ namespace lux::render::detail
             return;
         }
         session_.deferRelease(
-            [api = &session_.nriCore(), images = std::move(images_), views = std::move(views_)]() mutable noexcept
+            [nri_core = &session_.nriCore(), images = std::move(images_), views = std::move(views_)]() mutable noexcept
             {
                 for (auto view : views)
                 {
-                    api->DestroyDescriptor(view);
+                    nri_core->DestroyDescriptor(view);
                 }
                 for (auto& image : images)
                 {
-                    api->DestroyTexture(image);
+                    nri_core->DestroyTexture(image);
                 }
             }
         );

@@ -1,14 +1,14 @@
 #include <algorithm>
-#include <exec/variant_sender.hpp>
+#include <lux/engine/render/graph/GraphCompiler.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
-#include <lux/engine/render/runtime/ServerImpl.hpp>
+#include <lux/engine/render/runtime/EffectCompilation.hpp>
 #include <map>
 
-namespace lux::render
+namespace lux::render::runtime_detail
 {
-    static RenderResult<RenderEffect> compileEffect(
+    RenderResult<RenderEffect> compileEffect(
         nri::Device& device,
-        const nri::CoreInterface& api,
+        const nri::CoreInterface& nri_core,
         const detail::EnabledDeviceFeatures& enabled,
         std::span<const nri::FormatSupportBits> formats,
         std::array<std::uint32_t, 2> vertex_limits,
@@ -204,7 +204,7 @@ namespace lux::render
         }
         auto compiled = detail::compileGraph(
             device,
-            api,
+            nri_core,
             enabled,
             formats,
             vertex_limits,
@@ -225,130 +225,4 @@ namespace lux::render
         return RenderEffect{std::make_unique<detail::CompiledGraph>(std::move(*compiled)), std::move(arguments)};
     }
 
-    auto RenderServer::Impl::createEffect(CreateEffect::Request&& input) noexcept
-    {
-        RenderError initial_error;
-        std::vector<const FeatureEntry*> registrations;
-        if (input.features.empty())
-        {
-            initial_error = {kFeatureContract};
-        }
-        registrations.reserve(input.features.size());
-        for (const auto& selection : input.features)
-        {
-            const auto* found = features.find(selection.feature);
-            if (!found)
-            {
-                initial_error = {kRuntimeIdentity};
-                break;
-            }
-            registrations.push_back(found);
-        }
-
-        std::vector<StorageNameView> storage_types;
-        resources->forEachType(
-            [&](StorageTypeId id, const StorageDescriptor& type, std::uint32_t) noexcept
-            {
-                const auto* factory = resources->factory(id);
-                if (factory && factory->binding_ops &&
-                    static_cast<const detail::StorageBindingOps*>(factory->binding_ops)->resolve)
-                {
-                    storage_types.push_back(type.type);
-                }
-            }
-        );
-        std::ranges::sort(storage_types, {}, [](StorageNameView type) { return type.name(); });
-        const auto sampled_image_capacity = device->descriptors().imageCapacity();
-        const auto sampler_capacity = device->descriptors().samplerCapacity();
-        // Workers receive only immutable feature entries, the request and actual device facts.
-        // The final continuation is the sole place that adopts a candidate into the Effect table.
-        auto compiled =
-            stdexec::schedule(scheduler) |
-            stdexec::then(
-                [native = &device->device(),
-                 api = &device->nriCore(),
-                 enabled = device->enabledFeatures(),
-                 formats = device->formatSupport(),
-                 vertex_limits = std::array{device->vertexStrideLimit(), device->vertexOffsetLimit()},
-                 queue_type = device->queue().properties().type,
-                 sampled_image_capacity,
-                 sampler_capacity,
-                 storage_types = std::move(storage_types),
-                 request = std::move(input),
-                 entries = std::move(registrations),
-                 limit = config.max_config_bytes]() noexcept
-                {
-                    return compileEffect(
-                        *native,
-                        *api,
-                        enabled,
-                        formats,
-                        vertex_limits,
-                        queue_type,
-                        sampled_image_capacity,
-                        sampler_capacity,
-                        storage_types,
-                        request,
-                        entries,
-                        limit
-                    );
-                }
-            ) |
-            stdexec::upon_error(
-                [](execution::EExecutionError error) noexcept -> RenderResult<RenderEffect>
-                { return cxx::unexpected(RenderError{kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}}); }
-            ) |
-            stdexec::continues_on(render_loop_.scheduler()) |
-            stdexec::let_value(
-                [server = this](RenderResult<RenderEffect>& candidate) noexcept
-                {
-                    return stdexec::read_env(stdexec::get_stop_token) |
-                           stdexec::then(
-                               [server, &candidate](auto stop) noexcept -> CreateEffect::Response
-                               {
-                                   if (!candidate)
-                                   {
-                                       return {candidate.error()};
-                                   }
-                                   if (stop.stop_requested())
-                                   {
-                                       return {RenderError{kCommandCancelled}};
-                                   }
-                                   const auto effect = server->effects.emplace(std::move(*candidate));
-                                   ++server->compiled_graphs;
-                                   return EffectCreated{{}, effect};
-                               }
-                           );
-                }
-            );
-        auto invalid = stdexec::just(CreateEffect::Response{initial_error});
-        using VSource = exec::variant_sender<decltype(invalid), decltype(compiled)>;
-        return initial_error.type != error::ErrorId{} ? VSource{std::move(invalid)} : VSource{std::move(compiled)};
-    }
-
-    void RenderServer::Impl::installAsyncBuiltins() noexcept
-    {
-        addBuiltin<CreateEffect, &Impl::createEffect>();
-    }
-
-    void RenderServer::Impl::removeEffect(
-        const RemoveEffect::Request& _request,
-        RemoveEffect::Response& output_response
-    ) noexcept
-    {
-        const auto* input = &_request;
-        auto* effect = effects.find(input->effect);
-        if (!effect)
-        {
-            output_response.error = RenderError{kRuntimeIdentity};
-            return;
-        }
-        while (!effect->attachments.empty())
-        {
-            detachAttachment(effect->attachments.back());
-        }
-        device->deferRelease([code = std::move(effect->code)]() mutable noexcept { code.reset(); });
-        effects.erase(input->effect);
-        output_response = {};
-    }
-} // namespace lux::render
+} // namespace lux::render::runtime_detail

@@ -21,11 +21,6 @@ namespace lux::render::runtime_detail
         return *record;
     }
 
-    platform::ipc::IpcMessage& completionResult(ResponseDelivery& record) noexcept
-    {
-        return record.result_message_;
-    }
-
     stdexec::counting_scope& commandScope(CommandDispatchContext& context) noexcept
     {
         return context.scope_;
@@ -36,10 +31,4 @@ namespace lux::render::runtime_detail
         return context.render_loop_.scheduler();
     }
 
-    void publishCompletion(ResponseDelivery& record) noexcept
-    {
-        auto* loop = record.loop;
-        loop->post(record);
-        // No record access after publication. RunLoop protects the wakeup/publisher tail.
-    }
 } // namespace lux::render::runtime_detail

@@ -67,11 +67,11 @@ namespace lux::render::detail
         disconnectStorageBindings();
         // Physical cleanup is owned by the Session; it never calls back into this Context.
         session_->deferRelease(
-            [frames = std::move(frames_), api = &session_->nriCore()]() mutable noexcept
+            [frames = std::move(frames_), nri_core = &session_->nriCore()]() mutable noexcept
             {
                 for (auto& frame : frames)
                 {
-                    frame.release(*api);
+                    frame.release(*nri_core);
                 }
             }
         );
@@ -502,7 +502,7 @@ namespace lux::render::detail
     {
         auto& frame = frames_[slot];
         const auto& layout = *code_->descriptor_plan_;
-        const auto& api = session_->nriCore();
+        const auto& nri_core = session_->nriCore();
         for (auto resource : frame.changed_resources)
         {
             auto& source = frame.bindings[resource];
@@ -523,7 +523,7 @@ namespace lux::render::detail
                 barrier.buffer = source.buffer;
                 if (recipe.before.stages == nri::StageBits::ALL && recipe.before.access == nri::AccessBits::NONE)
                 {
-                    barrier.before.access = bufferAccess(api.GetBufferDesc(*source.buffer).usage);
+                    barrier.before.access = bufferAccess(nri_core.GetBufferDesc(*source.buffer).usage);
                 }
             }
             if (!uses.descriptor_uses.empty())
@@ -535,20 +535,20 @@ namespace lux::render::detail
                     source.buffer_size
                 };
                 nri::Descriptor* candidate = nullptr;
-                const auto created = api.CreateBufferView(description, candidate);
+                const auto created = nri_core.CreateBufferView(description, candidate);
                 if (created != nri::Result::SUCCESS)
                 {
                     return cxx::unexpected(nativeError(created));
                 }
                 // Only the selected reusable FIF slice is changed. Other slices keep their descriptors.
-                api.DestroyDescriptor(std::exchange(source.buffer_view, candidate));
+                nri_core.DestroyDescriptor(std::exchange(source.buffer_view, candidate));
                 for (const auto [p, index] : uses.descriptor_uses)
                 {
                     auto& pass = frame.passes[p];
                     const auto& use = layout.programs[pass.recipe->layout_program].uses[index];
                     const nri::UpdateDescriptorRangeDesc
                         update{pass.private_descriptors, use.binding, 0, &source.buffer_view, 1};
-                    api.UpdateDescriptorRanges(&update, 1);
+                    nri_core.UpdateDescriptorRanges(&update, 1);
                 }
             }
             source.dirty = false;

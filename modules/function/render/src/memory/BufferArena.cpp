@@ -44,13 +44,13 @@ namespace lux::render::detail
         session_.deferRelease([segment, allocation]() noexcept { vmaVirtualFree(segment->block, allocation); });
     }
 
-    void BufferArena::destroySegment(const nri::CoreInterface& api, Segment& segment) noexcept
+    void BufferArena::destroySegment(const nri::CoreInterface& nri_core, Segment& segment) noexcept
     {
         if (segment.block)
         {
             vmaDestroyVirtualBlock(std::exchange(segment.block, VK_NULL_HANDLE));
         }
-        api.DestroyBuffer(std::exchange(segment.buffer, nullptr));
+        nri_core.DestroyBuffer(std::exchange(segment.buffer, nullptr));
     }
 
     BufferArena::~BufferArena() noexcept
@@ -62,11 +62,11 @@ namespace lux::render::detail
             return;
         }
         session_.deferRelease(
-            [segments = std::move(segments_), api = &session_.nriCore()]() mutable noexcept
+            [segments = std::move(segments_), nri_core = &session_.nriCore()]() mutable noexcept
             {
                 for (auto& segment : segments)
                 {
-                    destroySegment(*api, *segment);
+                    destroySegment(*nri_core, *segment);
                 }
                 segments.clear();
             }

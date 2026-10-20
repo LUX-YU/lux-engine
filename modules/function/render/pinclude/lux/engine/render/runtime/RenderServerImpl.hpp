@@ -13,11 +13,11 @@
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/execution/ExecutionContext.hpp>
 #include <lux/engine/render/execution/FrameExecution.hpp>
-#include <lux/engine/render/features/FeatureDefinition.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/resource/StorageCreateContext.hpp>
 #include <lux/engine/render/runtime/CommandDispatchContext.hpp>
 #include <lux/engine/render/runtime/CommandRegistry.hpp>
+#include <lux/engine/render/runtime/EffectCompilation.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/runtime/Scene.hpp>
 #include <thread>
@@ -26,27 +26,6 @@ namespace lux::render
 {
     namespace ipc = platform::ipc;
     using namespace runtime_detail;
-
-    namespace runtime_detail
-    {
-        struct FeatureEntry final
-        {
-            // Stable table construction binds views only after their owned metadata exists.
-            FeatureId id;
-            std::string name;
-            FeatureDescriptor descriptor;
-            FeatureGraphOps graph;
-            decltype(FeatureDefinition::programs) programs;
-
-            FeatureEntry(FeatureDefinition input) noexcept
-                : name(input.descriptor->type.name()), descriptor(*input.descriptor), graph(*input.graph),
-                  programs(input.programs)
-            {
-                descriptor.type = FeatureName(name);
-            }
-        };
-
-    } // namespace runtime_detail
 
     struct RenderServer::Impl final
     {

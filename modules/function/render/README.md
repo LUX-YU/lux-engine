@@ -89,10 +89,18 @@ stable frame. Cooked shader reflection remains the source of parameter layouts.
 
 ## Resources and frame lifetime
 
-DeviceSession contains the unique physical Queue collection, role indices, device facilities and `cleanup_scope_`.
-StorageSet owns professional instances; ResourceRegistry borrows them for generational lookup. Effect owns its
+DeviceSession contains the device, immutable capability facts, unique physical Queue collection, shared
+DescriptorTable and `cleanup_scope_`. The selected backend's extension table is private to its implementation.
+ResourceUploader owns staging and upload batches. FrameExecution owns the frame slots and preparation/submission
+phases. Runtime owns ResourceRegistry and the Global StorageSet; factories synchronously borrow an explicit
+StorageCreateContext. StorageSet owns professional instances; ResourceRegistry borrows them for generational lookup. Effect owns its
 compiled graph. Attachment owns the execution instance and borrows the Target's output. The Client settles uploads
 and detaches consumers before deleting Storage; arbitrary early deletion is not a cancellation API.
+
+DescriptorTable maintains independent image and sampler indices. Identical sampler descriptions reuse one
+device-lifetime sampler. Texture references carry both indices and explicit flags; the material sampling code
+returns white for its default flag without accessing a descriptor. The device does not allocate a white texture.
+Cooked material shader ABI 2 and asset payload version 8 encode this contract; older artifacts require recooking.
 
 The default is two frames in flight, configurable from one to three. Dynamic instance fields, page tables,
 material parameters, descriptor records, indirect data and Target outputs have physical frame slices. CPU business
@@ -104,13 +112,22 @@ staging windows and batches Copy work. Frame preparation contributes missing ran
 recordings enter the shared submission. Dirty-word batching and contiguous Transform input avoid per-element Copy
 construction. There is no per-frame Sender for unchanged drawing and no unconditional sleep in the event loop.
 
+TransformBatch borrows separate key and matrix spans with equal lengths and unique, current keys. The Client
+retains both spans through Response and supplies finite matrices. Create/Update instance arrays follow the same
+borrow rule. Storage validates identities at admission and retains one GPU-format copy of adopted data to fill
+older FIF slices. This is a replica source, not another authoritative scene model. A successful upload adopts
+the new CPU values only after all necessary submissions are accepted. A partial failure keeps the previous
+adopted values and marks affected GPU ranges for repair before another Draw. Client buffers may then be reused.
+Buffer growth keeps the previously published binding until the complete candidate is accepted; failed growth
+cannot expose a half-populated buffer. Repair failure stops rendering instead of drawing mixed revisions.
+
 FIF replica preparation coalesces adjacent dirty words before splitting at physical pages and finite staging
 windows. Submission acceptance acknowledges only copied records; failed windows remain dirty. CPU preparation
 and descriptor updates finish before `SubmissionQueue::recordAndSubmit` begins recording.
 
 The Runtime rebuilds its non-owning Storage preparation list when Attachment membership or Context identity
-changes. Project GPU consumers likewise call `DeviceSession::collectFrameStorages` at those changes and supply
-the resulting span to `render`. Preparation callbacks are synchronous: they do not submit, suspend or dispatch
+changes. Project GPU consumers likewise call `FrameExecution::collectStorageUses` at those changes and supply
+the resulting span to `FrameExecution::render`. Preparation callbacks are synchronous: they do not submit, suspend or dispatch
 completion callbacks. Stable frames neither rebuild this list nor sort Storage relationships.
 
 When GPU work prevents progress, the loop first waits on the conditions preventing the next frame slot's reuse,

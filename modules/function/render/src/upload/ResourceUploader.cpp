@@ -239,7 +239,7 @@ namespace lux::render::detail
     }
 
     static void bufferBarrier(
-        const nri::CoreInterface& api,
+        const nri::CoreInterface& nri_core,
         nri::CommandBuffer& command,
         nri::Buffer& buffer,
         nri::AccessStage before,
@@ -248,11 +248,11 @@ namespace lux::render::detail
     {
         const nri::BufferBarrierDesc barrier{&buffer, before, after};
         const nri::BarrierDesc dependency{nullptr, 0, &barrier, 1};
-        api.CmdBarrier(command, dependency);
+        nri_core.CmdBarrier(command, dependency);
     }
 
     static void recordBuffer(
-        const nri::CoreInterface& api,
+        const nri::CoreInterface& nri_core,
         nri::CommandBuffer& command,
         nri::Buffer& target,
         const StagingRange& range,
@@ -262,22 +262,22 @@ namespace lux::render::detail
         bool final
     ) noexcept
     {
-        const auto access = bufferAccess(api.GetBufferDesc(target).usage);
+        const auto access = bufferAccess(nri_core.GetBufferDesc(target).usage);
         if (!acquiring)
         {
             bufferBarrier(
-                api,
+                nri_core,
                 command,
                 target,
                 {access, nri::StageBits::ALL},
                 {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
             );
-            api.CmdCopyBuffer(command, target, offset, *range.buffer, range.offset, bytes);
+            nri_core.CmdCopyBuffer(command, target, offset, *range.buffer, range.offset, bytes);
         }
         if (final)
         {
             bufferBarrier(
-                api,
+                nri_core,
                 command,
                 target,
                 {acquiring ? nri::AccessBits::NONE : nri::AccessBits::COPY_DESTINATION,
@@ -288,7 +288,7 @@ namespace lux::render::detail
     }
 
     static void recordImage(
-        const nri::CoreInterface& api,
+        const nri::CoreInterface& nri_core,
         nri::CommandBuffer& command,
         nri::Texture& target,
         const StagingRange& range,
@@ -306,7 +306,7 @@ namespace lux::render::detail
     ) noexcept
     {
         const bool distinct = &copy != &graphics;
-        const auto& description = api.GetTextureDesc(target);
+        const auto& description = nri_core.GetTextureDesc(target);
         const bool cross_family = description.sharingMode == nri::SharingMode::EXCLUSIVE &&
                                   copy.properties().family != graphics.properties().family;
         nri::TextureBarrierDesc barrier{};
@@ -317,7 +317,7 @@ namespace lux::render::detail
         auto emit = [&](const nri::TextureBarrierDesc& value) noexcept
         {
             const nri::BarrierDesc dependency{nullptr, 0, nullptr, 0, &value, 1};
-            api.CmdBarrier(command, dependency);
+            nri_core.CmdBarrier(command, dependency);
         };
         if (!acquiring)
         {
@@ -346,7 +346,7 @@ namespace lux::render::detail
                             region.mipOffset = mip;
                             region.layerOffset = layer;
                             region.planes = nri::PlaneBits::COLOR;
-                            api.CmdCopyTexture(command, target, &region, *clone, &region);
+                            nri_core.CmdCopyTexture(command, target, &region, *clone, &region);
                         }
                     }
                     std::swap(original.before, original.after);
@@ -362,7 +362,7 @@ namespace lux::render::detail
             const auto slice_unit = std::lcm(row_pitch, slice_alignment);
             const auto slice_pitch = ((row_pitch * rows + slice_unit - 1) / slice_unit) * slice_unit;
             const nri::TextureDataLayoutDesc layout{range.offset, row_pitch, slice_pitch};
-            api.CmdUploadBufferToTexture(command, target, region, *range.buffer, layout);
+            nri_core.CmdUploadBufferToTexture(command, target, region, *range.buffer, layout);
         }
         if (final)
         {
@@ -437,7 +437,7 @@ namespace lux::render::detail
 
     void ResourceUploader::recordFrameCopies(nri::CommandBuffer& command) noexcept
     {
-        const auto& api = session.nriCore();
+        const auto& nri_core = session.nriCore();
         std::size_t first = 0;
         while (first < frame_copies_.size())
         {
@@ -456,9 +456,9 @@ namespace lux::render::detail
             }
             // NRI barriers cover a whole Buffer. Disjoint, ordered writes share one transition;
             // overlapping or reverse ranges start another segment and retain their write dependency.
-            const auto access = bufferAccess(api.GetBufferDesc(*target).usage);
+            const auto access = bufferAccess(nri_core.GetBufferDesc(*target).usage);
             bufferBarrier(
-                api,
+                nri_core,
                 command,
                 *target,
                 {access, nri::StageBits::ALL},
@@ -467,10 +467,17 @@ namespace lux::render::detail
             for (auto i = first; i < last; ++i)
             {
                 const auto& copy = frame_copies_[i];
-                api.CmdCopyBuffer(command, *target, copy.offset, *copy.staging.buffer, copy.staging.offset, copy.bytes);
+                nri_core.CmdCopyBuffer(
+                    command,
+                    *target,
+                    copy.offset,
+                    *copy.staging.buffer,
+                    copy.staging.offset,
+                    copy.bytes
+                );
             }
             bufferBarrier(
-                api,
+                nri_core,
                 command,
                 *target,
                 {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
@@ -603,7 +610,7 @@ namespace lux::render::detail
                 accepted = queue.recordAndSubmit(
                     [&](nri::CommandBuffer& command, std::uint32_t slot) noexcept -> RenderResult<void>
                     {
-                        const auto& api = session.nriCore();
+                        const auto& nri_core = session.nriCore();
                         query_index = (pool_index ? graphics_measurement_base_ : 0) + slot;
                         if (timestamp_requested)
                         {
@@ -613,24 +620,24 @@ namespace lux::render::detail
                         if (timestamp)
                         {
                             // The pair's preceding GPU use and CPU read have both ended.
-                            api.ResetQueries(*query_pool, slot * 2, 2);
-                            api.CmdEndQuery(command, *query_pool, slot * 2);
+                            nri_core.ResetQueries(*query_pool, slot * 2, 2);
+                            nri_core.CmdEndQuery(command, *query_pool, slot * 2);
                         }
                         for (auto* entry : batch_entries_)
                         {
                             for (const auto& fill : entry->fills)
                             {
-                                const auto access = bufferAccess(api.GetBufferDesc(*fill.target).usage);
+                                const auto access = bufferAccess(nri_core.GetBufferDesc(*fill.target).usage);
                                 bufferBarrier(
-                                    api,
+                                    nri_core,
                                     command,
                                     *fill.target,
                                     {access, nri::StageBits::ALL},
                                     {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
                                 );
-                                api.CmdZeroBuffer(command, *fill.target, fill.offset, fill.size);
+                                nri_core.CmdZeroBuffer(command, *fill.target, fill.offset, fill.size);
                                 bufferBarrier(
-                                    api,
+                                    nri_core,
                                     command,
                                     *fill.target,
                                     {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
@@ -646,7 +653,7 @@ namespace lux::render::detail
                                 if (copy.buffer)
                                 {
                                     recordBuffer(
-                                        api,
+                                        nri_core,
                                         command,
                                         *copy.buffer,
                                         copy.staging,
@@ -659,7 +666,7 @@ namespace lux::render::detail
                                 else
                                 {
                                     recordImage(
-                                        api,
+                                        nri_core,
                                         command,
                                         *copy.image,
                                         copy.staging,
@@ -680,10 +687,10 @@ namespace lux::render::detail
                         }
                         if (timestamp)
                         {
-                            api.CmdEndQuery(command, *query_pool, slot * 2 + 1);
+                            nri_core.CmdEndQuery(command, *query_pool, slot * 2 + 1);
                             if (&queue == &session.queue())
                             {
-                                api.CmdCopyQueries(
+                                nri_core.CmdCopyQueries(
                                     command,
                                     *query_pool,
                                     slot * 2,
@@ -700,7 +707,7 @@ namespace lux::render::detail
                                 const auto serial = measurements_[i].pending_copy_serial;
                                 if (serial && serial <= resolve_through)
                                 {
-                                    api.CmdCopyQueries(
+                                    nri_core.CmdCopyQueries(
                                         command,
                                         *timestamps_[0],
                                         i * 2,

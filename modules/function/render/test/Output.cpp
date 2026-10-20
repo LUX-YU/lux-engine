@@ -6,6 +6,7 @@
 #include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
 #include <lux/engine/render/graph/Builder.hpp>
+#include <lux/engine/render/graph/GraphCompiler.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 using namespace foundation_test;
 

@@ -30,20 +30,20 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
         auto result_queue = std::unique_ptr<SubmissionQueue>(new SubmissionQueue(session, queue, properties, capacity));
-        const auto& api = session.nriCore();
-        auto result = api.CreateFence(session.device(), 0, result_queue->fence_);
+        const auto& nri_core = session.nriCore();
+        auto result = nri_core.CreateFence(session.device(), 0, result_queue->fence_);
         if (result != nri::Result::SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
         }
         for (auto& batch : result_queue->batches_)
         {
-            result = api.CreateCommandAllocator(queue, batch.allocator);
+            result = nri_core.CreateCommandAllocator(queue, batch.allocator);
             if (result != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));
             }
-            result = api.CreateCommandBuffer(*batch.allocator, batch.command);
+            result = nri_core.CreateCommandBuffer(*batch.allocator, batch.command);
             if (result != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));

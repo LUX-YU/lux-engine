@@ -2,7 +2,7 @@
 
 #include <limits>
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/runtime/RegistrationState.hpp>
+#include <lux/engine/render/runtime/RegistrationBatch.hpp>
 #include <map>
 
 namespace lux::render::runtime_detail

@@ -207,11 +207,13 @@ namespace lux::render::detail
         friend struct DeviceBackend;
         static void requireCleanupComplete(const RenderResult<void>&) noexcept;
         DeviceSession() noexcept;
+        void releaseBackendData() noexcept;
+        struct BackendData;
 
         // Declared before all dependent members, destroyed after their complete cleanup.
         nri::Device* device_ = nullptr;
         nri::CoreInterface nri_core_{};
-        std::unique_ptr<DeviceBackend> backend_;
+        BackendData* backend_ = nullptr;
         std::array<nri::FormatSupportBits, static_cast<std::size_t>(nri::Format::MAX_NUM)> format_support_{};
         EnabledDeviceFeatures enabled_features_{};
         std::uint64_t upload_alignment_ = 4;

@@ -16,26 +16,56 @@ generate_visibility_header(
 )
 
 set(render_sources
-    src/core/Target.cpp src/core/RasterViewport.cpp
+    src/core/Target.cpp
+    src/core/RasterViewport.cpp
     src/commands/Command.cpp
-    src/resource/Storage.cpp src/resource/ResourceRegistry.cpp src/resource/StorageSet.cpp
-    src/storage/IndexedTriangleMesh.cpp src/storage/RasterMaterialTable.cpp
-    src/graph/Builder.cpp src/graph/Analysis.cpp
-    src/features/Assemble.cpp src/features/RasterMeshParameters.cpp
-    src/features/MaterialMeshRaster.cpp src/features/MeshDepthRaster.cpp src/features/RasterMeshDraws.cpp
-    src/device/Error.cpp src/device/DeviceSession.cpp src/device/DescriptorTable.cpp
-    src/device/vulkan/DeviceBackend.cpp src/device/SubmissionQueue.cpp
+    src/resource/StorageDescriptor.cpp
+    src/resource/StorageFactory.cpp
+    src/resource/ResourceRegistry.cpp
+    src/resource/StorageSet.cpp
+    src/storage/IndexedTriangleMesh.cpp
+    src/storage/RasterMaterialTable.cpp
+    src/graph/Builder.cpp
+    src/graph/Analysis.cpp
+    src/features/FeatureAssembly.cpp
+    src/features/RasterMeshParameters.cpp
+    src/features/RasterMesh.cpp
+    src/features/MaterialMeshRaster.cpp
+    src/features/MeshDepthRaster.cpp
+    src/features/RasterMeshDraws.cpp
+    src/device/Error.cpp
+    src/device/DeviceSession.cpp
+    src/device/DescriptorTable.cpp
+    src/device/vulkan/DeviceBackend.cpp
+    src/device/SubmissionQueue.cpp
     src/execution/FrameExecution.cpp
-    src/execution/FrameResources.cpp src/execution/OffscreenTarget.cpp src/execution/ExecutionContext.cpp src/execution/RecordGraph.cpp
-    src/graph/Compile.cpp src/graph/LayoutPlan.cpp src/graph/Shader.cpp
-    src/upload/ResourceUploader.cpp src/memory/StagingArena.cpp src/memory/BufferArena.cpp
-    src/storage/SampledTexture2DStorage.cpp src/storage/SampledTexture2DCommandHandler.cpp
-    src/storage/RasterMaterialTableStorage.cpp src/storage/RasterMaterialTableCommandHandler.cpp
-    src/storage/RasterMeshInstanceStorage.cpp src/storage/RasterMeshInstanceCommandHandler.cpp
-    src/storage/IndexedTriangleMeshStorage.cpp src/storage/IndexedTriangleMeshCommandHandler.cpp
-    src/runtime/RenderServer.cpp src/runtime/CommandRegistry.cpp src/runtime/ServerRegistration.cpp
-    src/runtime/ServerScene.cpp src/runtime/ServerEffect.cpp src/runtime/ServerCompletion.cpp
-    src/runtime/ServerLoop.cpp src/runtime/CommandDispatch.cpp
+    src/execution/FrameResources.cpp
+    src/execution/OffscreenTarget.cpp
+    src/execution/ExecutionContext.cpp
+    src/execution/RecordGraph.cpp
+    src/graph/CompiledGraph.cpp
+    src/graph/GraphCompiler.cpp
+    src/graph/LayoutPlan.cpp
+    src/graph/Shader.cpp
+    src/graph/ShaderInterface.cpp
+    src/upload/ResourceUploader.cpp
+    src/memory/StagingArena.cpp
+    src/memory/BufferArena.cpp
+    src/storage/SampledTexture2DStorage.cpp
+    src/storage/SampledTexture2DCommandHandler.cpp
+    src/storage/RasterMaterialTableStorage.cpp
+    src/storage/RasterMaterialTableCommandHandler.cpp
+    src/storage/RasterMeshInstanceStorage.cpp
+    src/storage/RasterMeshInstanceCommandHandler.cpp
+    src/storage/IndexedTriangleMeshStorage.cpp
+    src/storage/IndexedTriangleMeshCommandHandler.cpp
+    src/runtime/RenderServer.cpp
+    src/runtime/CommandRegistry.cpp
+    src/runtime/RegistrationBatch.cpp
+    src/runtime/RenderServerImpl.cpp
+    src/runtime/EffectCompilation.cpp
+    src/runtime/ResponseDelivery.cpp
+    src/runtime/CommandDispatchContext.cpp
 )
 
 set(mesh_shader_headers)

@@ -621,7 +621,7 @@ namespace lux::render::detail
 
     RenderResult<nri::Pipeline*> compileCompute(
         nri::Device& device,
-        const nri::CoreInterface& api,
+        const nri::CoreInterface& nri_core,
         nri::PipelineLayout& layout,
         const rdesc::SpirvArtifact& shader
     ) noexcept
@@ -637,7 +637,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(projected.error());
         }
-        if (!validateStage(code, SpvExecutionModelGLCompute, *projected, api.GetDeviceDesc(device)))
+        if (!validateStage(code, SpvExecutionModelGLCompute, *projected, nri_core.GetDeviceDesc(device)))
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
@@ -649,10 +649,10 @@ namespace lux::render::detail
              code.entry.c_str()}
         };
         nri::Pipeline* pipeline = nullptr;
-        const auto result = api.CreateComputePipeline(device, description, pipeline);
+        const auto result = nri_core.CreateComputePipeline(device, description, pipeline);
         if (result != nri::Result::SUCCESS)
         {
-            api.DestroyPipeline(pipeline);
+            nri_core.DestroyPipeline(pipeline);
             return cxx::unexpected(nativeError(result));
         }
         return pipeline;
@@ -660,7 +660,7 @@ namespace lux::render::detail
 
     RenderResult<nri::Pipeline*> compileGraphics(
         nri::Device& device,
-        const nri::CoreInterface& api,
+        const nri::CoreInterface& nri_core,
         const EnabledDeviceFeatures& enabled,
         std::span<const nri::FormatSupportBits> formats,
         std::array<std::uint32_t, 2> vertex_limits,
@@ -713,7 +713,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        const auto& limits = api.GetDeviceDesc(device);
+        const auto& limits = nri_core.GetDeviceDesc(device);
         StageIo vertex_io, fragment_io;
         const bool valid_vertex = validateStage(
             *vertex_stage,
@@ -848,10 +848,10 @@ namespace lux::render::detail
         description.shaders = stages.data();
         description.shaderNum = stage_count;
         nri::Pipeline* pipeline = nullptr;
-        const auto result = api.CreateGraphicsPipeline(device, description, pipeline);
+        const auto result = nri_core.CreateGraphicsPipeline(device, description, pipeline);
         if (result != nri::Result::SUCCESS)
         {
-            api.DestroyPipeline(pipeline);
+            nri_core.DestroyPipeline(pipeline);
             return cxx::unexpected(nativeError(result));
         }
         return pipeline;

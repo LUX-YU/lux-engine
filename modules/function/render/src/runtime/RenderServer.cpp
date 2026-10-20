@@ -1,83 +1,24 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/render/runtime/ServerImpl.hpp>
+#include <lux/engine/render/runtime/RenderServerImpl.hpp>
 
 namespace lux::render
 {
-    RenderServer::Impl::Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler cpu_scheduler)
-        : config(std::move(value)), scheduler(std::move(cpu_scheduler)), responder(std::move(input)),
-          render_loop_([](void*) noexcept { ipc::IpcCore::instance().notifyWork(); })
+    namespace
     {
-        addBuiltin<CreateScene, &Impl::createScene>();
-        addBuiltin<RemoveScene, &Impl::removeScene>();
-        addBuiltin<CreateView, &Impl::createView>();
-        addBuiltin<UpdateAttachmentInputs, &Impl::updateAttachmentInputs>();
-        addBuiltin<RemoveView, &Impl::removeView>();
-        addBuiltin<CreateTarget, &Impl::createTarget>();
-        addBuiltin<ResizeTarget, &Impl::resizeTarget>();
-        installAsyncBuiltins();
-        addBuiltin<RemoveEffect, &Impl::removeEffect>();
-        addBuiltin<Attach, &Impl::attachEffect>();
-        addBuiltin<Detach, &Impl::detachEffect>();
-        addBuiltin<Stop, &Impl::stopCommand>();
-        addBuiltin<QueryRenderStats, &Impl::queryRenderStats>();
-        addBuiltin<QueryExecutionProgress, &Impl::queryExecutionProgress>();
-        addBuiltin<ListFeatures, &Impl::listFeatures>();
-        addBuiltin<ListStorages, &Impl::listStorages>();
-        addBuiltin<FindStorage, &Impl::findStorage>();
-        addBuiltin<PrepareStorage, &Impl::prepareStorage>();
-        addBuiltin<RemoveStorage, &Impl::removeStorage>();
-        addBuiltin<ListCommands, &Impl::listCommands>();
-        addBuiltin<ListCommandBindings, &Impl::listCommandBindings>();
-        addBuiltin<SelectCommandBinding, &Impl::selectCommandBinding>();
-    }
+        bool sameFactory(const StorageFactory& left, const StorageFactory& right) noexcept
+        {
+            return left.native_type == right.native_type && left.config_type == right.config_type &&
+                   left.ops_type == right.ops_type && left.create == right.create && left.ops == right.ops &&
+                   left.binding_ops == right.binding_ops && left.compatible_config == right.compatible_config;
+        }
 
-    void NRI_CALL
-    RenderServer::Impl::diagnostic(nri::Message severity, const char*, std::uint32_t, const char*, void* user) noexcept
-    {
-        auto& state = *static_cast<Impl*>(user);
-        if (severity == nri::Message::ERROR)
+        bool sameFeature(FeatureDefinition left, FeatureDefinition right) noexcept
         {
-            ++state.validation_errors;
+            return left.descriptor->config == right.descriptor->config &&
+                   left.graph->describe == right.graph->describe && left.graph->build == right.graph->build &&
+                   left.programs == right.programs;
         }
-        if (severity == nri::Message::WARNING)
-        {
-            ++state.validation_warnings;
-        }
-    }
-
-    RenderResult<void> RenderServer::Impl::initialize(DeviceOptions options) noexcept
-    {
-        auto& s = *this;
-        const nri::CallbackInterface diagnostic{Impl::diagnostic, [](void*) noexcept {}, &s};
-        auto device = detail::DeviceSession::create(options, diagnostic, s.config.validation, 3);
-        if (!device)
-        {
-            return cxx::unexpected(device.error());
-        }
-        s.device = std::move(*device);
-        if (s.config.uploads)
-        {
-            auto uploads = detail::ResourceUploader::create(*s.device, *s.config.uploads, s.scheduler);
-            if (!uploads)
-            {
-                return cxx::unexpected(uploads.error());
-            }
-            s.uploads = std::move(*uploads);
-        }
-        auto frames = detail::FrameExecution::create(*s.device, s.uploads.get(), s.config.frames_in_flight);
-        if (!frames)
-        {
-            return cxx::unexpected(frames.error());
-        }
-        s.frames = std::move(*frames);
-        const auto& enabled = s.device->enabledFeatures();
-        s.resources.emplace(
-            (s.device->descriptors().imageCapacity() ? 1u : 0u) | (enabled.texture_compression_bc ? 2u : 0u)
-        );
-        s.global_storages.emplace(*s.resources, true);
-        s.paged_instances = options.buffer_device_address;
-        return {};
-    }
+    } // namespace
 
     RenderServer::RenderServer(std::unique_ptr<Impl> state) noexcept : impl_(std::move(state)) {}
 
@@ -117,5 +58,208 @@ namespace lux::render
             return cxx::unexpected(initialized.error());
         }
         return std::unique_ptr<RenderServer>(new RenderServer(std::move(state)));
+    }
+
+    ResourceRegistry& RenderServer::resources() noexcept
+    {
+        return *impl_->resources;
+    }
+
+    bool RenderServer::pagedInstances() const noexcept
+    {
+        return impl_->paged_instances;
+    }
+
+    RenderResult<void> RenderServer::install(RegistrationBatch& transaction) noexcept
+    {
+        auto& batch = *transaction.state_;
+        auto& state = *impl_;
+        if (state.stop_requested.load())
+        {
+            return cxx::unexpected(RenderError{kRuntimeState});
+        }
+
+        // Validate the complete Command set, both against the live directory and within this batch.
+        std::vector<std::vector<CommandId>> commands;
+        commands.reserve(batch.handlers.size());
+        std::map<std::string_view, const CommandDescriptor*, std::less<>> descriptions;
+        for (const auto& handler : batch.handlers)
+        {
+            auto prepared = state.command_registry_.prepareHandler(*handler.record, handler.calls);
+            if (!prepared)
+            {
+                return cxx::unexpected(prepared.error());
+            }
+            commands.push_back(std::move(*prepared));
+            for (const auto& call : handler.calls)
+            {
+                const auto* description = call.descriptor();
+                const auto [found, inserted] = descriptions.emplace(description->name.name(), description);
+                if (!inserted)
+                {
+                    if (auto valid = compatibleCommands(*found->second, *description); !valid)
+                    {
+                        return valid;
+                    }
+                }
+            }
+        }
+
+        // Feature entries are stable. Names only discover declarations; live requests use FeatureId.
+        std::map<std::string_view, std::size_t, std::less<>> feature_names;
+        for (std::size_t i = 0; i < batch.features.size(); ++i)
+        {
+            auto& feature = batch.features[i];
+            const auto definition = feature.definition;
+            const bool is_missing_definition = !definition.descriptor || !definition.graph;
+            if (is_missing_definition)
+            {
+                return cxx::unexpected(RenderError{kFeatureContract});
+            }
+            const bool is_invalid_definition =
+                definition.descriptor->type.name().empty() || !definition.graph->describe;
+            if (is_invalid_definition)
+            {
+                return cxx::unexpected(RenderError{kFeatureContract});
+            }
+            const auto name = definition.descriptor->type.name();
+            const auto installed = state.features_by_name.find(name);
+            if (installed != state.features_by_name.end())
+            {
+                const auto& entry = *state.features.find(installed->second);
+                if (!sameFeature({&entry.descriptor, &entry.graph, entry.programs}, definition))
+                {
+                    return cxx::unexpected(RenderError{kFeatureDuplicate});
+                }
+                feature.id = installed->second;
+            }
+            const auto [found, inserted] = feature_names.emplace(name, i);
+            if (!inserted && !sameFeature(batch.features[found->second].definition, definition))
+            {
+                return cxx::unexpected(RenderError{kFeatureDuplicate});
+            }
+        }
+
+        auto& resources = *state.resources;
+        std::vector<StorageFactoryInstall> factories;
+        factories.reserve(batch.storage_factories.size());
+        std::map<std::string_view, std::size_t, std::less<>> storage_names;
+        for (std::size_t i = 0; i < batch.storage_factories.size(); ++i)
+        {
+            auto& storage = batch.storage_factories[i];
+            const auto& factory = storage.factory;
+            storage.id = resources.typeId(factory.descriptor->type);
+            if (!storage.id.isNull())
+            {
+                const auto& previous = *resources.factory(storage.id);
+                if (auto valid = compatibleStorage(*previous.descriptor, *factory.descriptor); !valid)
+                {
+                    return valid;
+                }
+                if (!sameFactory(previous, factory))
+                {
+                    return cxx::unexpected(RenderError{kStorageMismatch});
+                }
+                if (!storage.use_existing_configuration)
+                {
+                    const auto* configuration = resources.configuration(storage.id);
+                    if (!configuration || *configuration != storage.configuration)
+                    {
+                        return cxx::unexpected(RenderError{kStorageMismatch});
+                    }
+                }
+            }
+            const auto [found, inserted] = storage_names.emplace(factory.descriptor->type.name(), i);
+            if (!inserted)
+            {
+                const auto& previous = batch.storage_factories[found->second];
+                if (auto valid = compatibleStorage(*previous.factory.descriptor, *factory.descriptor); !valid)
+                {
+                    return valid;
+                }
+                const bool is_factory_mismatch = !sameFactory(previous.factory, factory);
+                const bool is_config_mismatch =
+                    !storage.use_existing_configuration && previous.configuration != storage.configuration;
+                if (is_factory_mismatch || is_config_mismatch)
+                {
+                    return cxx::unexpected(RenderError{kStorageMismatch});
+                }
+            }
+        }
+
+        for (const auto& [name, index] : storage_names)
+        {
+            auto& storage = batch.storage_factories[index];
+            if (storage.id.isNull())
+            {
+                factories.push_back({storage.factory, std::move(storage.configuration)});
+            }
+        }
+
+        // This is the last recoverable boundary: Registry validates every capability/config before publication.
+        // No Provider callback is called after this point. Ordinary host OOM remains fatal.
+        state.command_registry_.reserve(descriptions.size(), batch.handlers.size());
+        state.features.reserve(state.features.size() + feature_names.size());
+        auto installed = resources.installFactories(factories);
+        if (!installed)
+        {
+            return cxx::unexpected(installed.error());
+        }
+        for (std::size_t i = 0; i < batch.handlers.size(); ++i)
+        {
+            auto& handler = batch.handlers[i];
+            state.command_registry_.registerHandler(std::move(handler.record), handler.calls, std::move(commands[i]));
+        }
+        for (auto& feature : batch.features)
+        {
+            if (!feature.id.isNull())
+            {
+                continue;
+            }
+            const auto found = state.features_by_name.find(feature.definition.descriptor->type.name());
+            if (found != state.features_by_name.end())
+            {
+                feature.id = found->second;
+                continue;
+            }
+            feature.id = state.features.emplace(feature.definition);
+            auto& entry = *state.features.find(feature.id);
+            entry.id = feature.id;
+            state.features_by_name.emplace(entry.name, feature.id);
+        }
+        for (auto& storage : batch.storage_factories)
+        {
+            storage.id = resources.typeId(storage.factory.descriptor->type);
+        }
+        return {};
+    }
+
+    RenderResult<CommandId> RenderServer::findCommand(const CommandDescriptor& descriptor) const noexcept
+    {
+        return impl_->command_registry_.findCommand(descriptor);
+    }
+
+    RenderResult<HandlerId> RenderServer::findHandler(CppType type, std::string_view instance) const noexcept
+    {
+        if (impl_->stop_requested.load())
+        {
+            return cxx::unexpected(RenderError{kRuntimeState});
+        }
+        return impl_->command_registry_.findHandler(type, instance);
+    }
+
+    void RenderServer::stop() noexcept
+    {
+        impl_->stop();
+    }
+
+    RenderResult<void> RenderServer::run() noexcept
+    {
+        return impl_->run();
+    }
+
+    RenderServerStats RenderServer::stats() const noexcept
+    {
+        return impl_->stats();
     }
 } // namespace lux::render

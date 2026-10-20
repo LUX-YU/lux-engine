@@ -178,23 +178,23 @@ namespace lux::render::detail
         {
             return;
         }
-        const auto& api = session_.nriCore();
+        const auto& nri_core = session_.nriCore();
         nri::BufferBarrierDesc barrier{
             slice.buffer,
             {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
             {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
         };
         const nri::BarrierDesc dependency{nullptr, 0, &barrier, 1};
-        api.CmdBarrier(command, dependency);
+        nri_core.CmdBarrier(command, dependency);
         const auto section = sections_.offset + std::uint64_t(selection_.submesh) * sizeof(MeshGpuSection);
-        api.CmdCopyBuffer(command, *slice.buffer, 0, *sections_.buffer, section, 4);
-        api.CmdCopyBuffer(command, *slice.buffer, 8, *sections_.buffer, section + 4, 4);
-        api.CmdCopyBuffer(command, *slice.buffer, 12, *sections_.buffer, section + 8, 4);
+        nri_core.CmdCopyBuffer(command, *slice.buffer, 0, *sections_.buffer, section, 4);
+        nri_core.CmdCopyBuffer(command, *slice.buffer, 8, *sections_.buffer, section + 4, 4);
+        nri_core.CmdCopyBuffer(command, *slice.buffer, 12, *sections_.buffer, section + 8, 4);
         barrier.after = {
             nri::AccessBits::SHADER_RESOURCE_STORAGE | nri::AccessBits::ARGUMENT_BUFFER,
             nri::StageBits::ALL
         };
-        api.CmdBarrier(command, dependency);
+        nri_core.CmdBarrier(command, dependency);
     }
 
     RenderResult<FeatureFrameWork> RasterMeshDraws::create(

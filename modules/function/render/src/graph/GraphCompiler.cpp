@@ -1,6 +1,6 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
-#include <lux/engine/render/graph/CompiledGraph.hpp>
+#include <lux/engine/render/graph/GraphCompiler.hpp>
 #include <lux/engine/render/graph/LayoutPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
@@ -13,65 +13,6 @@
 
 namespace lux::render::detail
 {
-    CompiledGraph::CompiledGraph(nri::Device& device, const nri::CoreInterface& api, TargetDesc target) noexcept
-        : device_(&device), nri_core_(&api), target_(target)
-    {
-    }
-
-    CompiledGraph::~CompiledGraph() noexcept
-    {
-        if (!device_)
-        {
-            return;
-        }
-        for (auto pipeline : pipelines_)
-        {
-            nri_core_->DestroyPipeline(pipeline);
-        }
-        if (layout_)
-        {
-            nri_core_->DestroyPipelineLayout(layout_);
-        }
-    }
-
-    CompiledGraph::CompiledGraph(CompiledGraph&& other) noexcept
-        : descriptor_plan_(std::move(other.descriptor_plan_)), device_(std::exchange(other.device_, nullptr)),
-          nri_core_(other.nri_core_), target_(other.target_), layout_(other.layout_),
-          resources_(std::move(other.resources_)), frame_contributions_(std::move(other.frame_contributions_)),
-          storage_groups_(std::move(other.storage_groups_)), passes_(std::move(other.passes_)),
-          pass_indices_(std::move(other.pass_indices_)), pipelines_(std::move(other.pipelines_)),
-          output_(other.output_), resizable_output_(other.resizable_output_)
-    {
-    }
-
-    bool CompiledGraph::compatible(const TargetDesc& target) const noexcept
-    {
-        const bool same_type =
-            target.kind == target_.kind && target.format == target_.format && target.samples == target_.samples;
-        if (!same_type)
-        {
-            return false;
-        }
-        const bool resized = target.width != target_.width || target.height != target_.height;
-        if (resized && !resizable_output_)
-        {
-            return false;
-        }
-        if (resized)
-        {
-            for (const auto& pass : passes_)
-            {
-                // An explicit image-to-buffer Copy retains its declared byte extent. There is no
-                // implicit readback allocation to resize behind the author's resource description.
-                if (pass.recipe == ERecipe::COPY_IMAGE_BUFFER && resources_[pass.source].target_sized)
-                {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
     namespace
     {
         struct Access final
@@ -348,7 +289,7 @@ namespace lux::render::detail
 
     RenderResult<CompiledGraph> compileGraph(
         nri::Device& device,
-        const nri::CoreInterface& api,
+        const nri::CoreInterface& nri_core,
         const EnabledDeviceFeatures& enabled,
         std::span<const nri::FormatSupportBits> formats,
         std::array<std::uint32_t, 2> vertex_limits,
@@ -367,7 +308,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(result.error());
         }
-        const auto& limits = api.GetDeviceDesc(device);
+        const auto& limits = nri_core.GetDeviceDesc(device);
         const bool is_unsupported_target = target.kind != ETargetKind::OFFSCREEN || target.samples != 1 ||
                                            imageFormat(target.format).native == nri::Format::UNKNOWN ||
                                            target.width > limits.dimensions.texture2DMaxDim ||
@@ -391,7 +332,7 @@ namespace lux::render::detail
         {
             resource_names.emplace(graph.resources()[index].key, index);
         }
-        CompiledGraph result(device, api, target);
+        CompiledGraph result(device, nri_core, target);
         if (pass_programs.size() != graph.passes().size())
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
@@ -851,7 +792,7 @@ namespace lux::render::detail
                     description.shaderStages = nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER |
                                                nri::StageBits::COMPUTE_SHADER;
                     description.flags = nri::PipelineLayoutBits::IGNORE_GLOBAL_SPIRV_OFFSETS;
-                    const auto created = api.CreatePipelineLayout(device, description, result.layout_);
+                    const auto created = nri_core.CreatePipelineLayout(device, description, result.layout_);
                     if (created != nri::Result::SUCCESS)
                     {
                         return cxx::unexpected(nativeError(created));
@@ -886,10 +827,10 @@ namespace lux::render::detail
                 }
                 else
                 {
-                    auto pipeline = compute ? compileCompute(device, api, *result.layout_, identity.shader)
+                    auto pipeline = compute ? compileCompute(device, nri_core, *result.layout_, identity.shader)
                                             : compileGraphics(
                                                   device,
-                                                  api,
+                                                  nri_core,
                                                   enabled,
                                                   formats,
                                                   vertex_limits,

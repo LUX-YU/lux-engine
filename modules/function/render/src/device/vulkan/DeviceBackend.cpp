@@ -1,6 +1,8 @@
 #include <NRI.h>
 
 #include <Extensions/NRIHelper.h>
+#include <Extensions/NRIRayTracing.h>
+#include <Extensions/NRIWrapperVK.h>
 #include <lux/engine/render/device/DeviceBackend.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
@@ -12,6 +14,16 @@
 
 namespace lux::render::detail
 {
+    struct DeviceSession::BackendData final
+    {
+        nri::WrapperVKInterface vulkan{};
+    };
+
+    void DeviceSession::releaseBackendData() noexcept
+    {
+        delete std::exchange(backend_, nullptr);
+    }
+
     RenderResult<void> DeviceSession::validateTexture(const nri::TextureDesc& texture) const noexcept
     {
         const auto& properties = *nri::nriGetFormatProps(texture.format);
@@ -184,20 +196,21 @@ namespace lux::render::detail
             return cxx::unexpected(nativeError(status));
         }
         std::unique_ptr<nri::Device, decltype(&nri::nriDestroyDevice)> device(created, &nri::nriDestroyDevice);
-        nri::CoreInterface api{};
-        nri::WrapperVKInterface vk{};
-        status = nri::nriGetInterface(*device, NRI_INTERFACE(nri::CoreInterface), &api);
+        nri::CoreInterface nri_core{};
+        nri::WrapperVKInterface vulkan_extension{};
+        status = nri::nriGetInterface(*device, NRI_INTERFACE(nri::CoreInterface), &nri_core);
         if (status == nri::Result::SUCCESS)
         {
-            status = nri::nriGetInterface(*device, NRI_INTERFACE(nri::WrapperVKInterface), &vk);
+            status = nri::nriGetInterface(*device, NRI_INTERFACE(nri::WrapperVKInterface), &vulkan_extension);
         }
         if (status != nri::Result::SUCCESS)
         {
             return cxx::unexpected(nativeError(status));
         }
-        const auto instance = static_cast<VkInstance>(vk.GetInstanceVK(*device));
-        const auto physical = static_cast<VkPhysicalDevice>(vk.GetPhysicalDeviceVK(*device));
-        const auto get_proc = reinterpret_cast<PFN_vkGetInstanceProcAddr>(vk.GetInstanceProcAddrVK(*device));
+        const auto instance = static_cast<VkInstance>(vulkan_extension.GetInstanceVK(*device));
+        const auto physical = static_cast<VkPhysicalDevice>(vulkan_extension.GetPhysicalDeviceVK(*device));
+        const auto get_proc =
+            reinterpret_cast<PFN_vkGetInstanceProcAddr>(vulkan_extension.GetInstanceProcAddrVK(*device));
         const auto query_features =
             reinterpret_cast<PFN_vkGetPhysicalDeviceFeatures2>(get_proc(instance, "vkGetPhysicalDeviceFeatures2"));
         const auto query_families = reinterpret_cast<PFN_vkGetPhysicalDeviceQueueFamilyProperties>(
@@ -206,7 +219,7 @@ namespace lux::render::detail
         VkPhysicalDeviceVulkan12Features features12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
         VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &features12};
         query_features(physical, &features);
-        const auto& description = api.GetDeviceDesc(*device);
+        const auto& description = nri_core.GetDeviceDesc(*device);
         // Pinned NRI enables this queried feature chain. These are actual backend facts, not requested options.
         const bool bindless = description.tiers.bindless != 0 && features12.runtimeDescriptorArray &&
                               features12.descriptorBindingPartiallyBound &&
@@ -234,8 +247,8 @@ namespace lux::render::detail
         std::vector<VkQueueFamilyProperties> queue_properties(family_count);
         query_families(physical, &family_count, queue_properties.data());
         session.device_ = device.release();
-        session.nri_core_ = api;
-        session.backend_->vulkan = vk;
+        session.nri_core_ = nri_core;
+        session.backend_ = new DeviceSession::BackendData{vulkan_extension};
         session.enabled_features_ = enabled;
         auto* result = &session;
         const auto query_properties =
@@ -265,14 +278,14 @@ namespace lux::render::detail
         );
         for (std::size_t i = 1; i < result->format_support_.size(); ++i)
         {
-            result->format_support_[i] = api.GetFormatSupport(result->device(), static_cast<nri::Format>(i));
+            result->format_support_[i] = nri_core.GetFormatSupport(result->device(), static_cast<nri::Format>(i));
         }
         // Get every requested queue before creating buffers. NRI uses the discovered family set
         // for concurrent sharing. Frame-local attachments explicitly select exclusive sharing.
         std::array<nri::Queue*, 3> queues{};
         for (std::size_t role = 0; role < queues.size(); ++role)
         {
-            status = api.GetQueue(result->device(), types[role], indices[role], queues[role]);
+            status = nri_core.GetQueue(result->device(), types[role], indices[role], queues[role]);
             if (status != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(status));
@@ -281,15 +294,15 @@ namespace lux::render::detail
         result->physical_queues_.reserve(3);
         for (std::size_t role = 0; role < queues.size(); ++role)
         {
-            const auto handle = api.GetQueueNativeObject(queues[role]);
+            const auto handle = nri_core.GetQueueNativeObject(queues[role]);
             const auto found = std::ranges::find_if(
                 result->physical_queues_,
-                [&](const auto& queue) { return api.GetQueueNativeObject(&queue->native()) == handle; }
+                [&](const auto& queue) { return nri_core.GetQueueNativeObject(&queue->native()) == handle; }
             );
             const auto index = static_cast<std::uint8_t>(found - result->physical_queues_.begin());
             if (found == result->physical_queues_.end())
             {
-                const auto family = vk.GetQueueFamilyIndexVK(*queues[role]);
+                const auto family = vulkan_extension.GetQueueFamilyIndexVK(*queues[role]);
                 const auto& properties = queue_properties[family];
                 const auto granularity = properties.minImageTransferGranularity;
                 const QueueProperties facts{

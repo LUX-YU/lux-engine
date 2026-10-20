@@ -29,7 +29,7 @@ namespace lux::render::detail
 
     void recordGraph(ExecutionContext& context, nri::CommandBuffer& command, std::uint32_t slot) noexcept
     {
-        const auto& api = context.session_->nriCore();
+        const auto& nri_core = context.session_->nriCore();
         const auto& code = *context.code_;
         const auto& frame = context.frames_[slot];
         const auto& bindings = frame.bindings;
@@ -55,7 +55,7 @@ namespace lux::render::detail
                     pass.images.data(),
                     static_cast<std::uint32_t>(pass.images.size())
                 };
-                api.CmdBarrier(command, barriers);
+                nri_core.CmdBarrier(command, barriers);
             }
             const auto& destination = bindings[recipe.destination];
             if (recipe.recipe == ERecipe::DRAW || recipe.recipe == ERecipe::DISPATCH)
@@ -63,20 +63,20 @@ namespace lux::render::detail
                 const auto point = recipe.recipe == ERecipe::DRAW ? nri::BindPoint::GRAPHICS : nri::BindPoint::COMPUTE;
                 if (point != active_layout)
                 {
-                    api.CmdSetPipelineLayout(command, point, *code.layout());
+                    nri_core.CmdSetPipelineLayout(command, point, *code.layout());
                     active_layout = point;
                 }
                 if (recipe.recipe == ERecipe::DISPATCH || recipe.bind_pipeline)
                 {
-                    api.CmdSetPipeline(command, *recipe.pipeline);
+                    nri_core.CmdSetPipeline(command, *recipe.pipeline);
                 }
                 for (std::uint32_t set = 0; set < pass.descriptors.size(); ++set)
                 {
-                    api.CmdSetDescriptorSet(command, {set, pass.descriptors[set], point});
+                    nri_core.CmdSetDescriptorSet(command, {set, pass.descriptors[set], point});
                 }
                 if (!parameters.empty())
                 {
-                    api.CmdSetRootConstants(
+                    nri_core.CmdSetRootConstants(
                         command,
                         {0, parameters.data(), static_cast<std::uint32_t>(parameters.size()), 0, point}
                     );
@@ -105,8 +105,8 @@ namespace lux::render::detail
                         rendering.depth.loadOp = recipe.depth_load;
                         rendering.depth.clearValue.depthStencil.depth = recipe.clear_depth;
                     }
-                    api.CmdBeginRendering(command, rendering);
-                    const auto& image = api.GetTextureDesc(*destination.image);
+                    nri_core.CmdBeginRendering(command, rendering);
+                    const auto& image = nri_core.GetTextureDesc(*destination.image);
                     const auto& area = context.viewport_;
                     // Preserve the existing Vulkan clip/viewport convention. NRI's default flips Y.
                     const nri::Viewport viewport{
@@ -119,8 +119,8 @@ namespace lux::render::detail
                         true
                     };
                     const nri::Rect scissor{0, 0, image.width, image.height};
-                    api.CmdSetViewports(command, &viewport, 1);
-                    api.CmdSetScissors(command, &scissor, 1);
+                    nri_core.CmdSetViewports(command, &viewport, 1);
+                    nri_core.CmdSetScissors(command, &scissor, 1);
                 }
                 for (const auto& source : recipe.vertices)
                 {
@@ -130,12 +130,12 @@ namespace lux::render::detail
                         binding.buffer_offset + source.offset,
                         source.stride
                     };
-                    api.CmdSetVertexBuffers(command, source.binding, &buffer, 1);
+                    nri_core.CmdSetVertexBuffers(command, source.binding, &buffer, 1);
                 }
                 if (recipe.draw != EDrawRecipe::VERTICES)
                 {
                     const auto& index = bindings[recipe.index_resource];
-                    api.CmdSetIndexBuffer(
+                    nri_core.CmdSetIndexBuffer(
                         command,
                         *index.buffer,
                         index.buffer_offset + recipe.index_offset,
@@ -144,11 +144,11 @@ namespace lux::render::detail
                 }
                 if (recipe.draw == EDrawRecipe::VERTICES)
                 {
-                    api.CmdDraw(command, {recipe.count, recipe.instances, recipe.first, recipe.first_instance});
+                    nri_core.CmdDraw(command, {recipe.count, recipe.instances, recipe.first, recipe.first_instance});
                 }
                 else if (recipe.draw == EDrawRecipe::INDEXED)
                 {
-                    api.CmdDrawIndexed(
+                    nri_core.CmdDrawIndexed(
                         command,
                         {recipe.count, recipe.instances, recipe.first, recipe.vertex_offset, recipe.first_instance}
                     );
@@ -156,7 +156,7 @@ namespace lux::render::detail
                 else
                 {
                     const auto& indirect = bindings[recipe.indirect_resource];
-                    api.CmdDrawIndexedIndirect(
+                    nri_core.CmdDrawIndexedIndirect(
                         command,
                         *indirect.buffer,
                         indirect.buffer_offset + recipe.indirect_offset,
@@ -168,12 +168,12 @@ namespace lux::render::detail
                 }
                 if (recipe.end_rendering)
                 {
-                    api.CmdEndRendering(command);
+                    nri_core.CmdEndRendering(command);
                 }
                 break;
             }
             case ERecipe::DISPATCH:
-                api.CmdDispatch(command, {recipe.dispatch[0], recipe.dispatch[1], recipe.dispatch[2]});
+                nri_core.CmdDispatch(command, {recipe.dispatch[0], recipe.dispatch[1], recipe.dispatch[2]});
                 break;
             case ERecipe::CLEAR_IMAGE:
             {
@@ -195,12 +195,12 @@ namespace lux::render::detail
                     rendering.colors = &attachment;
                     rendering.colorNum = 1;
                 }
-                api.CmdBeginRendering(command, rendering);
-                api.CmdEndRendering(command);
+                nri_core.CmdBeginRendering(command, rendering);
+                nri_core.CmdEndRendering(command);
                 break;
             }
             case ERecipe::FILL_BUFFER:
-                api.CmdZeroBuffer(
+                nri_core.CmdZeroBuffer(
                     command,
                     *destination.buffer,
                     destination.buffer_offset,
@@ -210,7 +210,7 @@ namespace lux::render::detail
             case ERecipe::COPY_IMAGE_BUFFER:
             {
                 const auto* texture = bindings[recipe.source].image;
-                const auto& image = api.GetTextureDesc(*texture);
+                const auto& image = nri_core.GetTextureDesc(*texture);
                 const auto format =
                     imageFormat(std::get<GraphImageDesc>(code.resources()[recipe.source].description).format);
                 const nri::TextureRegionDesc region{0, 0, 0, image.width, image.height, 1, 0, 0, format.aspects};
@@ -227,14 +227,14 @@ namespace lux::render::detail
                         {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
                     };
                     const nri::BarrierDesc barrier{nullptr, 0, &scratch, 1};
-                    api.CmdBarrier(command, barrier);
-                    api.CmdReadbackTextureToBuffer(command, *pass.copy_scratch, layout, *texture, region);
+                    nri_core.CmdBarrier(command, barrier);
+                    nri_core.CmdReadbackTextureToBuffer(command, *pass.copy_scratch, layout, *texture, region);
                     std::swap(scratch.before, scratch.after);
-                    api.CmdBarrier(command, barrier);
+                    nri_core.CmdBarrier(command, barrier);
                     const auto row_bytes = std::uint64_t(image.width) * format.bytes;
                     for (std::uint32_t row = 0; row < image.height; ++row)
                     {
-                        api.CmdCopyBuffer(
+                        nri_core.CmdCopyBuffer(
                             command,
                             *destination.buffer,
                             destination.buffer_offset + row * row_bytes,
@@ -246,14 +246,14 @@ namespace lux::render::detail
                 }
                 else
                 {
-                    api.CmdReadbackTextureToBuffer(command, *destination.buffer, layout, *texture, region);
+                    nri_core.CmdReadbackTextureToBuffer(command, *destination.buffer, layout, *texture, region);
                 }
                 break;
             }
             case ERecipe::COPY_BUFFER:
             {
                 const auto& source = bindings[recipe.source];
-                api.CmdCopyBuffer(
+                nri_core.CmdCopyBuffer(
                     command,
                     *destination.buffer,
                     destination.buffer_offset,

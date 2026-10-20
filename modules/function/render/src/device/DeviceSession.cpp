@@ -27,7 +27,7 @@ namespace lux::render::detail
         };
     } // namespace
 
-    DeviceSession::DeviceSession() noexcept : backend_(std::make_unique<DeviceBackend>()), descriptor_table_(*this) {}
+    DeviceSession::DeviceSession() noexcept : descriptor_table_(*this) {}
 
     RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(
         const DeviceOptions& options,
@@ -93,6 +93,7 @@ namespace lux::render::detail
         {
             nri::nriDestroyDevice(std::exchange(device_, nullptr));
         }
+        releaseBackendData();
         closed_ = true;
     }
 

@@ -1,14 +1,11 @@
 #pragma once
 
-#include <atomic>
 #include <lux/engine/core/execution/RunLoop.hpp>
 #include <lux/engine/render/runtime/CommandBinding.hpp>
 #include <lux/engine/render/runtime/ResponseOutbox.hpp>
 
 namespace lux::render::runtime_detail
 {
-    struct ResponseDelivery;
-
     // Owns only routing and completed output;
     // connected OperationState ownership belongs exclusively to stdexec::spawn.
     struct ResponseDelivery final : execution::RunLoop::Work

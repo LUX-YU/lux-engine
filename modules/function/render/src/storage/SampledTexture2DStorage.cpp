@@ -18,13 +18,13 @@ namespace lux::render::detail
     }
 
     void SampledTexture2DStorage::releaseImage(
-        const nri::CoreInterface& api,
+        const nri::CoreInterface& nri_core,
         DescriptorTable& array,
         SampledImage& image
     ) noexcept
     {
-        api.DestroyDescriptor(std::exchange(image.view_, nullptr));
-        api.DestroyTexture(std::exchange(image.image_, nullptr));
+        nri_core.DestroyDescriptor(std::exchange(image.view_, nullptr));
+        nri_core.DestroyTexture(std::exchange(image.image_, nullptr));
         if (!image.descriptor_.isNull())
         {
             array.release(std::exchange(image.descriptor_, {}));
@@ -312,8 +312,8 @@ namespace lux::render::detail
         {
             return;
         }
-        session_.deferRelease([value = std::move(value), api = &session_.nriCore(), descriptors = descriptors_](
-                              ) mutable noexcept { releaseImage(*api, *descriptors, value); });
+        session_.deferRelease([value = std::move(value), nri_core = &session_.nriCore(), descriptors = descriptors_](
+                              ) mutable noexcept { releaseImage(*nri_core, *descriptors, value); });
     }
 
     SampledTexture2DStorage::UploadResult SampledTexture2DStorage::upload(TextureWrite input) noexcept

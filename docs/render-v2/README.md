@@ -2,7 +2,7 @@
 
 Render V2 的源码位于 `modules/function/render`，通信使用独立的 Platform IPC。
 Render 作为一个共享库提供逻辑图、Feature、资源和执行能力，不依赖 Engine 或 Editor 产品。
-设计与审查遵守 [Render 设计哲学与工程规范](design-principles.md)；
+设计与审查遵守 [通用软件设计与 C++ 工程规范](../engineering-principles.md)；
 当前 API 和运行合同见 [Render README](../../modules/function/render/README.md)。
 
 ## 目录与职责

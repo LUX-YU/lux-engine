@@ -25,7 +25,6 @@ GPU RGBA8 offscreen comparison tolerates 2/255 for conversion/quantization; DATA
 must match. Test colored primaries, midtones, alpha, mip selection and region replacement, not just white.
 The matrix is fixed in the sampled ABI; no per-frame color lookup or new ColorManager.
 
-These rules are exercised by the Native TextureSampling fixture and its reference shader. They do not
-automatically establish color conversion for every material program. A material's cooked Shader contract
+These rules do not automatically establish color conversion for every material program. A material's cooked Shader contract
 must declare and implement its actual source-to-working transform. Display output, tonemapping and HDR
 transfer remain separate from texture decoding.

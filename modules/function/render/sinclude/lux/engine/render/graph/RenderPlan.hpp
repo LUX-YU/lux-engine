@@ -163,6 +163,35 @@ namespace lux::render::detail
         bool write = false;
     };
 
+    enum class ETransientAllocation : std::uint8_t
+    {
+        INDEPENDENT,
+        REUSE_OBJECTS
+    };
+
+    enum class EResourceReuse : std::uint8_t
+    {
+        UNUSED,
+        EXTERNAL,
+        HISTORY,
+        EXPORTED,
+        CONDITIONAL,
+        INITIAL_CONTENT,
+        DISABLED,
+        DISTINCT_DESCRIPTION,
+        UNORDERED,
+        REUSED
+    };
+
+    // Logical bindings borrow these unique physical slots; the instance owns one set per FIF.
+    struct PhysicalResourcePlan final
+    {
+        ETransientAllocation allocation = ETransientAllocation::REUSE_OBJECTS;
+        std::vector<GraphResourceId> slots;
+        std::vector<std::uint32_t> resource_slots;
+        std::vector<EResourceReuse> reasons;
+    };
+
     // The Effect owns this immutable result; execution contexts borrow it within the Effect lifetime.
     class LUX_RENDER_PUBLIC RenderPlan final
     {
@@ -205,6 +234,11 @@ namespace lux::render::detail
             return submissions_;
         }
 
+        [[nodiscard]] const PhysicalResourcePlan& physicalResources() const noexcept
+        {
+            return physical_resources_;
+        }
+
     private:
         friend class RenderGraphInstance;
         friend class GraphCompiler;
@@ -224,6 +258,7 @@ namespace lux::render::detail
         RecordingProgram recording_;
         std::vector<SubmissionBatch> submissions_;
         std::vector<ImportedAccess> imported_accesses_;
+        PhysicalResourcePlan physical_resources_;
         std::vector<std::uint32_t> pass_indices_;
 
         std::vector<nri::Pipeline*> pipelines_; // unique physical owners; recorded work only borrows handles

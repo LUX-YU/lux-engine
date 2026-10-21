@@ -190,7 +190,31 @@ namespace lux::render::detail
             }
             output += "]}";
         }
-        output += "],\"submissions\":[";
+        output += "],\"physical_resources\":[";
+        constexpr std::string_view reuse_reasons[]{
+            "unused",
+            "external or indirect table",
+            "history",
+            "exported",
+            "conditional",
+            "initial content",
+            "reuse disabled",
+            "no compatible description",
+            "no dependency proof",
+            "object reused"
+        };
+        for (std::size_t i = 0; i < plan.physical_resources_.resource_slots.size(); ++i)
+        {
+            if (i)
+            {
+                output += ',';
+            }
+            output += "{\"resource\":" + std::to_string(i) +
+                      ",\"slot\":" + std::to_string(plan.physical_resources_.resource_slots[i]) + ",\"reason\":" +
+                      quoteDumpText(reuse_reasons[static_cast<unsigned>(plan.physical_resources_.reasons[i])]) + "}";
+        }
+        output += "],\"physical_object_count\":" + std::to_string(plan.physical_resources_.slots.size()) +
+                  ",\"submissions\":[";
         for (std::size_t i = 0; i < plan.submissions_.size(); ++i)
         {
             if (i)

@@ -19,7 +19,8 @@ namespace lux::render::detail
             std::uint32_t sampler_capacity,
             const RenderGraph& graph,
             const RenderGraphAnalysis& analysis,
-            const TargetDesc* target = nullptr
+            const TargetDesc* target = nullptr,
+            ETransientAllocation allocation = ETransientAllocation::REUSE_OBJECTS
         ) noexcept;
     };
 } // namespace lux::render::detail

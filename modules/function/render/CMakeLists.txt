@@ -53,6 +53,7 @@ set(render_sources
     src/graph/RenderingPlan.cpp
     src/graph/ConditionalPlan.cpp
     src/graph/SubmissionPlan.cpp
+    src/graph/PhysicalResourcePlan.cpp
     src/graph/BarrierPlan.cpp
     src/graph/PipelineLayoutPlan.cpp
     src/graph/Shader.cpp

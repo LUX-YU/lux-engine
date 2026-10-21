@@ -31,8 +31,8 @@ namespace lux::render::detail
           resources_(std::move(other.resources_)), histories_(std::move(other.histories_)),
           condition_count_(other.condition_count_), recording_(std::move(other.recording_)),
           submissions_(std::move(other.submissions_)), imported_accesses_(std::move(other.imported_accesses_)),
-          pass_indices_(std::move(other.pass_indices_)), pipelines_(std::move(other.pipelines_)),
-          output_(other.output_), resizable_output_(other.resizable_output_)
+          physical_resources_(std::move(other.physical_resources_)), pass_indices_(std::move(other.pass_indices_)),
+          pipelines_(std::move(other.pipelines_)), output_(other.output_), resizable_output_(other.resizable_output_)
     {
     }
 

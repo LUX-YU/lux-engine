@@ -146,6 +146,23 @@ namespace lux::render::detail
         const auto& core = session.nriCore();
         const auto& plan = *plan_;
         auto& frame = frames_[slot];
+        // Allocate each physical slot once; logical bindings below only borrow these objects.
+        for (auto resource : plan.physical_resources_.slots)
+        {
+            auto& binding = frame.bindings[resource.index];
+            if (auto created = createResource(resource.index, binding); !created)
+            {
+                return created;
+            }
+            if (binding.image)
+            {
+                frame.images.push_back(binding.image);
+            }
+            else
+            {
+                frame.buffers.push_back(binding.buffer);
+            }
+        }
         for (std::uint32_t i = 0; i < frame.bindings.size(); ++i)
         {
             auto& binding = frame.bindings[i];
@@ -190,18 +207,8 @@ namespace lux::render::detail
                 binding.image = output_->frame(slot).image;
                 continue;
             }
-            if (auto created = createResource(i, binding); !created)
-            {
-                return created;
-            }
-            if (binding.image)
-            {
-                frame.images.push_back(binding.image);
-            }
-            else
-            {
-                frame.buffers.push_back(binding.buffer);
-            }
+            const auto physical = plan.physical_resources_.resource_slots[i];
+            binding = frame.bindings[plan.physical_resources_.slots[physical].index];
         }
         return {};
     }
@@ -1049,7 +1056,7 @@ namespace lux::render::detail
         {
             return false;
         }
-        std::string output = "{\"allocation\":\"independent\",\"frames\":[";
+        std::string output = "{\"allocation\":\"compiled physical slots\",\"frames\":[";
         for (std::size_t i = 0; i < frames_.size(); ++i)
         {
             if (i)

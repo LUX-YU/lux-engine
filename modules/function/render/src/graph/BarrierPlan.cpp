@@ -18,6 +18,7 @@ namespace lux::render::detail
             GraphPassId pass;
             ETransitionBoundary boundary = ETransitionBoundary::PASS;
             EQueueRole queue = EQueueRole::GRAPHICS;
+            std::uint32_t resource = kGraphInvalidIndex;
         };
 
         nri::StageBits combineStages(nri::StageBits a, nri::StageBits b) noexcept
@@ -152,14 +153,22 @@ namespace lux::render::detail
         const RenderGraphAnalysis& analysis,
         const PipelineLayoutPlan& layouts,
         std::span<CompiledResource> resources,
-        RecordingProgram& recording
+        RecordingProgram& recording,
+        const PhysicalResourcePlan* physical
     ) noexcept
     {
         // Legacy computeBarriers/buildPrebuiltBarriers: derive states once, record indexed templates.
         // Image cells extend that algorithm to actual aspects/mips/layers; NRI Buffer barriers are whole-resource.
         std::vector<std::vector<Access>> states(resources.size());
+        recording.after = {};
+        for (auto& pass : recording.passes)
+        {
+            pass.before = {};
+        }
         for (std::size_t i = 0; i < resources.size(); ++i)
         {
+            resources[i].descriptor_uses.clear();
+            resources[i].final_barrier_uses.clear();
             const auto* image = std::get_if<GraphImageDesc>(&resources[i].description);
             states[i].resize(image ? std::size_t(image->mips) * image->layers * 3 : 1);
             if (resources[i].memory_used && resources[i].origin != EGraphOrigin::TRANSIENT &&
@@ -179,6 +188,7 @@ namespace lux::render::detail
                         if (!image || (rdesc::textureAspectMask(image->format) & (1u << plane)))
                         {
                             states[i][cell] = externalState(GraphResourceId{static_cast<std::uint32_t>(i)}, usage);
+                            states[i][cell].resource = static_cast<std::uint32_t>(i);
                         }
                     }
                 }
@@ -186,11 +196,15 @@ namespace lux::render::detail
         }
         auto apply = [&](std::uint32_t index, std::size_t cell, Access current, BarrierBatch& batch)
         {
-            auto& previous = states[index][cell];
+            const auto slot = physical ? physical->resource_slots[index] : kGraphInvalidIndex;
+            const auto identity = slot == kGraphInvalidIndex ? index : physical->slots[slot].index;
+            auto& previous = states[identity][cell];
+            current.resource = index;
             const bool cross_queue = previous.queue != current.queue;
             const auto* image = std::get_if<GraphImageDesc>(&resources[index].description);
-            const bool transition = !previous.known || (image && previous.layout != current.layout) || previous.write ||
-                                    current.write || previous.access != current.access;
+            const bool transition = !previous.known || previous.resource != index ||
+                                    (image && previous.layout != current.layout) || previous.write || current.write ||
+                                    previous.access != current.access;
             if (transition)
             {
                 if (image)

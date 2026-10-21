@@ -56,7 +56,8 @@ static RenderPlan compile(
     DeviceSession& session,
     const RenderGraph& graph,
     const RenderGraphAnalysis& analysis,
-    const TargetDesc* target
+    const TargetDesc* target,
+    ETransientAllocation allocation = ETransientAllocation::REUSE_OBJECTS
 )
 {
     return take(GraphCompiler::compile(
@@ -72,7 +73,8 @@ static RenderPlan compile(
         0,
         graph,
         analysis,
-        target
+        target,
+        allocation
     ));
 }
 
@@ -556,6 +558,8 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
     CHECK(instance->initialize());
     const std::array instances{instance.get()};
     std::uint32_t sequence = 0;
+    CHECK(plan.physicalResources().reasons[history.previous.index] == EResourceReuse::HISTORY);
+    CHECK(plan.physicalResources().resource_slots[history.current.index] == kGraphInvalidIndex);
     const std::uint8_t enabled_initial = 1;
     CHECK(instance->setConditions({&enabled_initial, 1}));
     CHECK(take(instance->prepareFrame(0)));
@@ -750,6 +754,7 @@ static void conditionalRegion(Validation& validation, std::uint32_t fif)
     const auto graph = take(std::move(builder).finish());
     auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
     std::string dump;
+    CHECK(plan.physicalResources().reasons[data.index] == EResourceReuse::CONDITIONAL);
     CHECK(dumpPlan(
         plan,
         EGraphDumpFormat::JSON,
@@ -969,6 +974,141 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
     CHECK(session->drain());
 }
 
+static void physicalImageReuse(Validation& validation, std::uint32_t fif)
+{
+    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    RenderGraphBuilder builder;
+    const auto a = take(builder.declareResource({"red temporary", GraphImageDesc{16, 16}}));
+    const auto b = take(builder.declareResource({"green temporary", GraphImageDesc{16, 16}}));
+    const auto red = take(builder.declareResource({"red pixels", GraphBufferDesc{4096}}));
+    const auto green = take(builder.declareResource({"green pixels", GraphBufferDesc{4096}}));
+    const auto first = take(builder.addTransferPass("red", TransferWork{{ClearImage{{{a, 0}}, {1, 0, 0, 1}}}}));
+    const auto first_copy = take(builder.addTransferPass(
+        "preserve red",
+        TransferWork{{CopyImageBuffer{{first.written.front()}, {{red, 0}}, 256, 4096}}}
+    ));
+    const auto second = take(builder.addTransferPass("green", TransferWork{{ClearImage{{{b, 0}}, {0, 1, 0, 1}}}}));
+    CHECK(builder.dependsOn(first_copy.pass, second.pass));
+    const auto second_copy = take(builder.addTransferPass(
+        "preserve green",
+        TransferWork{{CopyImageBuffer{{second.written.front()}, {{green, 0}}, 256, 4096}}}
+    ));
+    exportRows(builder, first_copy.written.front(), 16, 16, 256);
+    exportRows(builder, second_copy.written.front(), 16, 16, 256);
+    const auto graph = take(std::move(builder).finish());
+    auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    CHECK(plan.physicalResources().resource_slots[a.index] == plan.physicalResources().resource_slots[b.index]);
+    CHECK(plan.physicalResources().slots.size() == 3);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
+    CHECK(instance->initialize());
+    const std::array instances{instance.get()};
+    for (std::uint32_t i = 0; i < fif + 1; ++i)
+    {
+        CHECK(take(frames->render(instances, {})) == 1);
+        CHECK(session->drain());
+        const auto slot = instance->progress().last_submitted_slot;
+        checkPixels(*session, *instance->nativeBuffer(red.index, slot), 16, 0, {255, 0, 0, 255}, 256);
+        checkPixels(*session, *instance->nativeBuffer(green.index, slot), 16, 0, {0, 255, 0, 255}, 256);
+    }
+    instance.reset();
+    CHECK(session->drain());
+}
+
+static void physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, bool ordered)
+{
+    auto session = take(DeviceSession::create(options, diagnostics(validation), true, 3));
+    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    RenderGraphBuilder builder;
+    const auto a = take(builder.declareResource({"first temporary", GraphBufferDesc{16}}));
+    const auto b = take(builder.declareResource({"second temporary", GraphBufferDesc{16}}));
+    const auto output_a = take(builder.declareResource({"first result", GraphBufferDesc{16}}));
+    const auto output_b = take(builder.declareResource({"second result", GraphBufferDesc{16}}));
+    const auto shader =
+        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphHistory, kGraphHistoryReflection)));
+    const auto seed_a = take(builder.addTransferPass("seed first", TransferWork{{FillBuffer{{{a, 0}}, 3}}}));
+    const auto increment = [&](std::string name, ResourceVersion input, GraphResourceId output)
+    {
+        ComputeWork work;
+        work.allow_async_compute = true;
+        work.interface.program = shader;
+        work.interface.resources = {
+            {"previous_sample", {input}},
+            {"current_sample", {{output, 0}, {}, EGraphAccess::WRITE}}
+        };
+        return take(builder.addComputePass(std::move(name), std::move(work)));
+    };
+    const auto first = increment("observe first", seed_a.written.front(), output_a);
+    const auto seed_b = take(builder.addTransferPass("seed second", TransferWork{{FillBuffer{{{b, 0}}, 7}}}));
+    if (ordered)
+    {
+        CHECK(builder.dependsOn(first.pass, seed_b.pass));
+    }
+    const auto second = increment("observe second", seed_b.written.front(), output_b);
+    CHECK(builder.exportOutput({first.written.front(), {}, {}, EGraphUse::TRANSFER_DESTINATION}));
+    CHECK(builder.exportOutput({second.written.front(), {}, {}, EGraphUse::TRANSFER_DESTINATION}));
+    const auto graph = take(std::move(builder).finish());
+    const auto analysis = take(analyzeRenderGraph(graph));
+    auto plan = compile(*session, graph, analysis, nullptr);
+    auto control = compile(*session, graph, analysis, nullptr, ETransientAllocation::INDEPENDENT);
+    CHECK(plan.submissions().size() == control.submissions().size());
+    for (std::size_t i = 0; i < plan.submissions().size(); ++i)
+    {
+        const auto& compiled = plan.submissions()[i];
+        const auto& independent = control.submissions()[i];
+        CHECK(compiled.queue == independent.queue && compiled.dependencies.size() == independent.dependencies.size());
+        for (std::size_t d = 0; d < compiled.dependencies.size(); ++d)
+        {
+            CHECK(compiled.dependencies[d].producer == independent.dependencies[d].producer);
+        }
+    }
+    const bool reuse = ordered || &session->queue() == &session->queue(EQueueRole::COMPUTE);
+    CHECK(
+        (plan.physicalResources().resource_slots[a.index] == plan.physicalResources().resource_slots[b.index]) == reuse
+    );
+    CHECK(plan.physicalResources().reasons[output_a.index] == EResourceReuse::EXPORTED);
+    CHECK(control.physicalResources().slots.size() == 4);
+    CHECK(plan.physicalResources().slots.size() == (reuse ? 3 : 4));
+    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
+    CHECK(instance->initialize());
+    for (std::uint32_t slot = 0; slot < fif; ++slot)
+    {
+        CHECK((instance->nativeBuffer(a.index, slot) == instance->nativeBuffer(b.index, slot)) == reuse);
+        for (std::uint32_t previous = 0; previous < slot; ++previous)
+        {
+            CHECK(instance->nativeBuffer(a.index, slot) != instance->nativeBuffer(a.index, previous));
+        }
+    }
+    const std::array instances{instance.get()};
+    for (std::uint32_t frame = 0; frame < fif + 2; ++frame)
+    {
+        for (unsigned attempt = 0; attempt < 10000 && instance->progress().count(EExecutionOutcome::EXECUTED) <= frame;
+             ++attempt)
+        {
+            take(frames->render(instances, {}));
+            CHECK(session->pollQueues());
+            session->dispatchQueueCompletions();
+            std::this_thread::yield();
+        }
+        CHECK(instance->progress().count(EExecutionOutcome::EXECUTED) == frame + 1);
+    }
+    CHECK(session->drain());
+    const auto slot = instance->progress().last_submitted_slot;
+    const auto left = readHistoryResult<4>(*session, *instance->nativeBuffer(output_a.index, slot));
+    const auto right = readHistoryResult<4>(*session, *instance->nativeBuffer(output_b.index, slot));
+    CHECK(std::ranges::all_of(left, [](auto value) { return value == 4; }));
+    CHECK(std::ranges::all_of(right, [](auto value) { return value == 8; }));
+    take(frames->render(instances, {}));
+    while (frames->submitting())
+    {
+        CHECK(session->pollQueues());
+        session->dispatchQueueCompletions();
+        take(frames->render({}, {}));
+    }
+    instance.reset(); // Accepted GPU work retains the unique physical collection through cleanup_scope_.
+    CHECK(session->drain());
+}
+
 int main()
 {
     Validation validation;
@@ -980,12 +1120,15 @@ int main()
         historySequence(validation, fif, true);
         conditionalRegion(validation, fif);
         hzbHistory(validation, fif);
+        physicalImageReuse(validation, fif);
         for (unsigned topology = 0; topology < 3; ++topology)
         {
             DeviceOptions options;
             options.multiple_queues = topology != 0;
             options.prefer_dedicated_queues = topology == 2;
             multiQueueHistory(validation, options, fif);
+            physicalReuse(validation, options, fif, true);
+            physicalReuse(validation, options, fif, false);
         }
     }
     indirectCounts(validation);

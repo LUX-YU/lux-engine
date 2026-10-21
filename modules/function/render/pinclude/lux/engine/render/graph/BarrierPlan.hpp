@@ -11,6 +11,7 @@ namespace lux::render::detail
         const RenderGraphAnalysis& analysis,
         const PipelineLayoutPlan& layouts,
         std::span<CompiledResource> resources,
-        RecordingProgram& recording
+        RecordingProgram& recording,
+        const PhysicalResourcePlan* physical = nullptr
     ) noexcept;
 } // namespace lux::render::detail

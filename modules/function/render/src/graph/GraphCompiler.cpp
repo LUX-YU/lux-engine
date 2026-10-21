@@ -5,6 +5,7 @@
 #include <lux/engine/render/graph/BarrierPlan.hpp>
 #include <lux/engine/render/graph/ConditionalPlan.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>
+#include <lux/engine/render/graph/PhysicalResourcePlan.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
 #include <lux/engine/render/graph/RenderingPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
@@ -283,7 +284,8 @@ namespace lux::render::detail
         std::uint32_t sampler_capacity,
         const RenderGraph& graph,
         const RenderGraphAnalysis& analysis,
-        const TargetDesc* target
+        const TargetDesc* target,
+        ETransientAllocation allocation
     ) noexcept
     {
         if (!queues[0] || !queues[1] || !queues[2] || queues[0]->type != nri::QueueType::GRAPHICS)
@@ -660,16 +662,11 @@ namespace lux::render::detail
         }
         planConditions(graph, plan.recording_);
         selectQueues(graph, queues, plan.recording_);
-        // Resource transitions are compiled once; frame instances only patch actual handles.
+        // Logical transitions establish the original batch dependency graph before choosing storage.
         auto barriers = planBarriers(graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_);
         if (!barriers)
         {
             return cxx::unexpected(barriers.error());
-        }
-        auto rendering = planRendering(analysis, plan.resources_, plan.recording_);
-        if (!rendering)
-        {
-            return cxx::unexpected(rendering.error());
         }
         for (auto& history : plan.histories_)
         {
@@ -705,6 +702,31 @@ namespace lux::render::detail
             }
         }
         planSubmissions(graph, analysis, plan.resources_, plan.recording_, plan.submissions_, plan.imported_accesses_);
+        plan.physical_resources_ =
+            planPhysicalResources(graph, plan.resources_, plan.recording_, plan.submissions_, queues, allocation);
+        if (std::ranges::find(plan.physical_resources_.reasons, EResourceReuse::REUSED) !=
+            plan.physical_resources_.reasons.end())
+        {
+            // Rebuild only the cold transition templates using the selected physical identities.
+            // Their ordering is already proved: no submission dependency or CPU wait is added.
+            barriers = planBarriers(
+                graph,
+                analysis,
+                *plan.descriptor_plan_,
+                plan.resources_,
+                plan.recording_,
+                &plan.physical_resources_
+            );
+            if (!barriers)
+            {
+                return cxx::unexpected(barriers.error());
+            }
+        }
+        auto rendering = planRendering(analysis, plan.resources_, plan.recording_);
+        if (!rendering)
+        {
+            return cxx::unexpected(rendering.error());
+        }
         return plan;
     }
 } // namespace lux::render::detail

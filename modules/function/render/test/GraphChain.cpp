@@ -1,4 +1,5 @@
 #include "Support.hpp"
+#include <bit>
 #include <cstring>
 #include <fstream>
 #include <lux/engine/render/execution/FrameExecution.hpp>
@@ -10,11 +11,14 @@
 #include <string>
 
 #include "GraphCount.hpp"
+#include "GraphDepthField.hpp"
 #include "GraphFill.hpp"
+#include "GraphHistory.hpp"
 #include "GraphMrt.hpp"
 #include "GraphPresent.hpp"
 #include "GraphRed.hpp"
 #include "GraphTriangle.hpp"
+#include "HzbDownsample.hpp"
 
 using namespace foundation_test;
 namespace rdesc = lux::rdesc;
@@ -429,12 +433,251 @@ static void resolveAndCopy(Validation& validation)
     CHECK(session->drain());
 }
 
+template <std::size_t Count = 9>
+static std::array<std::uint32_t, Count> readHistoryResult(DeviceSession& session, nri::Buffer& input)
+{
+    constexpr auto size = sizeof(std::array<std::uint32_t, Count>);
+    nri::Buffer* read = nullptr;
+    const auto& core = session.nriCore();
+    CHECK(
+        core.CreatePlacedBuffer(session.device(), NriHostReadbackHeap, {size, 0, nri::BufferUsageBits::NONE}, read) ==
+        nri::Result::SUCCESS
+    );
+    CHECK(session.queue().recordAndSubmit(
+        [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
+        {
+            const nri::BufferBarrierDesc transition{
+                &input,
+                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
+                {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY}
+            };
+            core.CmdBarrier(command, {nullptr, 0, &transition, 1});
+            core.CmdCopyBuffer(command, *read, 0, input, 0, size);
+            return {};
+        }
+    ));
+    CHECK(session.drain());
+    const void* bytes = core.MapBuffer(*read, 0, size);
+    CHECK(bytes);
+    CHECK(session.invalidateMappedRange(*read, 0, size) == nri::Result::SUCCESS);
+    std::array<std::uint32_t, Count> result{};
+    std::memcpy(result.data(), bytes, size);
+    core.UnmapBuffer(*read);
+    core.DestroyBuffer(read);
+    return result;
+}
+
+static void historySequence(Validation& validation, std::uint32_t fif)
+{
+    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    RenderGraphBuilder builder;
+    const auto history = take(builder.declareHistory("samples", GraphBufferDesc{16}));
+    const auto enabled = take(builder.declareCondition("update"));
+    const auto output = take(builder.declareResource({"observed", GraphBufferDesc{36}}));
+    const auto valid = take(builder.declareResource({"valid", GraphBufferDesc{4}}));
+    const auto cleared =
+        take(builder.addTransferPass("clear current", TransferWork{{FillBuffer{{{history.current, 0}}}}}));
+    ComputeWork work;
+    work.interface.program =
+        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphHistory, kGraphHistoryReflection)));
+    work.interface.resources = {
+        {"previous_sample", {{history.previous, 0}}},
+        {"current_sample", {cleared.written.front(), {}, EGraphAccess::WRITE, 0, cleared.written.front()}}
+    };
+    const auto incremented = take(
+        builder.addComputePass("increment", std::move(work), {false, PassCondition{EConditionSource::INPUT, enabled}})
+    );
+    CHECK(builder.publishHistory(incremented.written.front()));
+    const auto marker = take(builder.addTransferPass("invalid marker", TransferWork{{FillBuffer{{{valid, 0}}}}}));
+    const auto valid_marker = take(builder.addTransferPass(
+        "valid marker",
+        TransferWork{{FillBuffer{{marker.written.front(), {}, EGraphAccess::WRITE, 0, marker.written.front()}, 1}}},
+        {false, PassCondition{EConditionSource::HISTORY_VALID, history.previous.index}}
+    ));
+    const auto observed = take(builder.addTransferPass(
+        "observe",
+        TransferWork{
+            {CopyBuffer{{incremented.written.front()}, {{output, 0}, GraphBufferRange{0, 16}}},
+             CopyBuffer{{{history.previous, 0}}, {{output, 0}, GraphBufferRange{16, 16}}},
+             CopyBuffer{{valid_marker.written.front()}, {{output, 0}, GraphBufferRange{32, 4}}}}
+        }
+    ));
+    CHECK(builder.exportOutput({observed.written.front()}));
+    const auto graph = take(std::move(builder).finish());
+    const auto analysis = take(analyzeRenderGraph(graph));
+    auto plan = compile(*session, graph, analysis, nullptr);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
+    CHECK(instance->initialize());
+    const std::array instances{instance.get()};
+    std::uint32_t sequence = 0;
+    const std::uint8_t enabled_initial = 1;
+    CHECK(instance->setConditions({&enabled_initial, 1}));
+    CHECK(take(instance->prepareFrame(0)));
+    const auto rejected = session->queue().recordAndSubmit(
+        [](nri::CommandBuffer&, std::uint32_t) noexcept -> RenderResult<void>
+        { return lux::cxx::unexpected(RenderError{kDeviceArgument}); }
+    );
+    CHECK(!rejected && instance->progress().count(EExecutionOutcome::EXECUTED) == 0);
+    const GraphResourceId invalid_id{UINT32_MAX};
+    CHECK(!instance->invalidateHistory({&invalid_id, 1}));
+    for (std::uint32_t execution = 0; execution < 13; ++execution)
+    {
+        const bool invalidate = execution == 8;
+        if (invalidate)
+        {
+            CHECK(instance->invalidateHistory());
+            sequence = 0;
+        }
+        const std::uint8_t enabled_value = execution != 3 && execution != 4 && execution != 10;
+        CHECK(instance->setConditions({&enabled_value, 1}));
+        const auto previous = sequence;
+        if (enabled_value)
+        {
+            ++sequence;
+        }
+        const auto submitted = take(frames->render(instances, {}));
+        CHECK(submitted == 1);
+        const auto slot = instance->progress().last_submitted_slot;
+        CHECK(session->drain());
+        const auto values = readHistoryResult(*session, *instance->nativeBuffer(output.index, slot));
+        for (unsigned i = 0; i < 4; ++i)
+        {
+            CHECK(values[i] == (enabled_value ? sequence : 0));
+            CHECK(values[i + 4] == previous);
+        }
+        CHECK(values[8] == unsigned(previous != 0));
+    }
+    // Several accepted frames coexist; history selection follows accepted samples, not slot parity.
+    const std::uint8_t enabled_value = 1;
+    CHECK(instance->setConditions({&enabled_value, 1}));
+    for (std::uint32_t i = 0; i < fif; ++i)
+    {
+        if (!take(frames->render(instances, {})))
+        {
+            CHECK(session->drain());
+            CHECK(take(frames->render(instances, {})) == 1);
+        }
+        ++sequence;
+    }
+    CHECK(session->drain());
+    const auto values =
+        readHistoryResult(*session, *instance->nativeBuffer(output.index, instance->progress().last_submitted_slot));
+    CHECK(values[0] == sequence);
+    instance.reset();
+    CHECK(session->drain());
+}
+
+static void hzbHistory(Validation& validation, std::uint32_t fif)
+{
+    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    RenderGraphBuilder builder;
+    GraphImageDesc image{9, 7, 1, 1, rdesc::ETextureFormat::R32_SFLOAT};
+    image.extent.target_relative = true;
+    const auto source = take(builder.declareResource({"depth field", image}));
+    image.mips = 4;
+    const auto history = take(builder.declareHistory("hzb", image, {{1, 1, 1, 1}}, EGraphUse::SAMPLED));
+    const auto output = take(builder.declareResource({"observed", GraphBufferDesc{512}}));
+    auto color_description = image;
+    color_description.mips = 1;
+    color_description.format = rdesc::ETextureFormat::RGBA8_UNORM;
+    const auto color = take(builder.declareResource({"target", color_description}));
+    ComputeWork seed;
+    seed.interface.program =
+        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphDepthField, kGraphDepthFieldReflection)));
+    seed.interface.resources = {{"generated", {{source, 0}, {}, EGraphAccess::WRITE}}};
+    seed.dispatch = ImageDispatchArguments{source};
+    const auto generated = take(builder.addComputePass("generate depth field", std::move(seed)));
+    const auto reduce =
+        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kHzbDownsample, kHzbDownsampleReflection)));
+    ResourceVersion current{history.current, 0};
+    for (std::uint32_t mip = 0; mip < 4; ++mip)
+    {
+        ComputeWork work;
+        work.interface.program = reduce;
+        work.interface.resources = {
+            {"uSrc", {mip ? current : generated.written.front(), GraphImageRange{1, mip ? mip - 1 : 0, 1}}},
+            {"uDst", {current, GraphImageRange{1, mip, 1}, EGraphAccess::WRITE}}
+        };
+        work.dispatch = ImageDispatchArguments{history.current, mip};
+        current = take(builder.addComputePass("reduce " + std::to_string(mip), std::move(work))).written.front();
+    }
+    CHECK(builder.publishHistory(current));
+    const auto initialized =
+        take(builder.addTransferPass("initialize copy rows", TransferWork{{FillBuffer{{{output, 0}}}}}));
+    const auto copied = take(builder.addTransferPass(
+        "observe pyramid",
+        TransferWork{
+            {CopyImageBuffer{
+                 {current, GraphImageRange{1, 3, 1}},
+                 {initialized.written.front(), GraphBufferRange{0, 256}, EGraphAccess::READ_WRITE},
+                 256,
+                 256
+             },
+             CopyImageBuffer{
+                 {{history.previous, 0}, GraphImageRange{1, 3, 1}},
+                 {initialized.written.front(), GraphBufferRange{256, 256}, EGraphAccess::READ_WRITE},
+                 256,
+                 256
+             }}
+        }
+    ));
+    CHECK(builder.exportOutput({copied.written.front()}));
+    const auto cleared = take(builder.addTransferPass("clear target", TransferWork{{ClearImage{{{color, 0}}}}}));
+    CHECK(builder.exportOutput({cleared.written.front(), {}, GraphOutputRequirements{color_description.format, 1}}));
+    const auto graph = take(std::move(builder).finish());
+    const auto analysis = take(analyzeRenderGraph(graph));
+    TargetDesc target{9, 7, color_description.format, 1, ETargetKind::OFFSCREEN};
+    auto plan = compile(*session, graph, analysis, &target);
+    auto physical = take(OffscreenTarget::create(*session, target, fif));
+    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, physical.get());
+    CHECK(instance->initialize());
+    for (std::uint32_t execution = 0; execution < 4; ++execution)
+    {
+        if (execution == 2)
+        {
+            // Retire an in-flight old instance while preparing a larger candidate from the same immutable plan.
+            const std::array old{instance.get()};
+            CHECK(take(frames->render(old, {})) == 1);
+            target.width = 17;
+            target.height = 11;
+            auto replacement = take(OffscreenTarget::create(*session, target, fif));
+            auto candidate = std::make_unique<RenderGraphInstance>(*session, fif, plan, replacement.get());
+            CHECK(candidate->initialize());
+            instance = std::move(candidate);
+            physical = std::move(replacement);
+            CHECK(session->drain());
+        }
+        const std::array instances{instance.get()};
+        CHECK(take(frames->render(instances, {})) == 1);
+        CHECK(session->drain());
+        const auto values = readHistoryResult<128>(
+            *session,
+            *instance->nativeBuffer(output.index, instance->progress().last_submitted_slot)
+        );
+        const auto width = std::max(1u, target.width >> 3);
+        for (std::uint32_t x = 0; x < width; ++x)
+        {
+            const auto expected = x + 1 == width ? 0.9f : 0.2f;
+            CHECK(std::abs(std::bit_cast<float>(values[x]) - expected) < 0.00001f);
+            const auto previous = execution % 2 == 0 ? 1.0f : expected;
+            CHECK(std::abs(std::bit_cast<float>(values[64 + x]) - previous) < 0.00001f);
+        }
+    }
+    instance.reset();
+    physical.reset();
+    CHECK(session->drain());
+}
+
 int main()
 {
     Validation validation;
     for (std::uint32_t fif : {1u, 2u, 3u})
     {
         imageChain(validation, fif);
+        historySequence(validation, fif);
+        hzbHistory(validation, fif);
     }
     indirectCounts(validation);
     resolveAndCopy(validation);

@@ -62,6 +62,7 @@ namespace lux::render
         EffectId effect;
         std::vector<std::byte> parameters; // Exact bytes of the compiled context parameter block.
         RasterViewport viewport;
+        std::vector<std::uint8_t> conditions;
     };
 
     struct AttachmentInputs final
@@ -69,6 +70,7 @@ namespace lux::render
         AttachmentId attachment;
         std::vector<std::byte> parameters;
         RasterViewport viewport;
+        std::vector<std::uint8_t> conditions;
     };
 
     struct GlobalStorageLocation final
@@ -308,6 +310,19 @@ namespace lux::render
     {
         static constexpr std::string_view name{"render.view.remove"};
         using Request = ViewRequest;
+        using Response = AckResponse;
+    };
+
+    struct InvalidateHistory final
+    {
+        static constexpr std::string_view name{"render.attachment.invalidate_history"};
+
+        struct Request final
+        {
+            AttachmentId attachment;
+            std::vector<GraphResourceId> previous;
+        };
+
         using Response = AckResponse;
     };
 

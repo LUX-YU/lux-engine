@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <lux/engine/description/Image.hpp>
@@ -119,12 +120,32 @@ namespace lux::render
         bool operator==(const ResourceVersion&) const noexcept = default;
     };
 
+    // Initial content is recorded before the first use, not inferred from an invalid history sample.
+    struct HistoryInitialValue final
+    {
+        std::array<float, 4> color{};
+        float depth = 1;
+        std::uint32_t buffer = 0;
+    };
+
+    struct HistoryDescription final
+    {
+        GraphResourceId previous;
+        GraphResourceId current;
+        std::uint32_t distance = 1;
+        HistoryInitialValue initial;
+        EGraphUse canonical_use = EGraphUse::STORAGE_READ;
+        std::optional<ResourceVersion> publication;
+    };
+
     struct ResourceAccess final
     {
         ResourceVersion version;
         VGraphRange range;
         EGraphAccess access = EGraphAccess::READ;
-        std::uint32_t input_version = 0; // READ_WRITE/LOAD reads this predecessor
+        // READ_WRITE/LOAD reads this predecessor in the written range. Unwritten ranges inherit it;
+        // inheritance creates dependencies only when a consumer actually observes those ranges.
+        std::uint32_t input_version = 0;
         // Conditional write: preserve an earlier version of the SAME resource.
         // READ of unavailable previous history: select a compatible other source.
         std::optional<ResourceVersion> fallback;

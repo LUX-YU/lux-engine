@@ -1,0 +1,30 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+
+// Legacy downsample.comp: forward-depth maximum, one dispatch per mip.
+// The normalized source footprint includes the odd-size edge omitted by a fixed 2x2 reduction.
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(set = 0, binding = 0) uniform texture2D uSrc;
+layout(set = 0, binding = 1, r32f) uniform writeonly image2D uDst;
+
+void main()
+{
+    uvec2 destination = gl_GlobalInvocationID.xy;
+    uvec2 destination_size = uvec2(imageSize(uDst));
+    if (any(greaterThanEqual(destination, destination_size)))
+    {
+        return;
+    }
+    uvec2 source_size = uvec2(textureSize(uSrc, 0));
+    uvec2 first = destination * source_size / destination_size;
+    uvec2 end = ((destination + 1u) * source_size + destination_size - 1u) / destination_size;
+    float farthest = 0.0;
+    for (uint y = first.y; y < end.y; ++y)
+    {
+        for (uint x = first.x; x < end.x; ++x)
+        {
+            farthest = max(farthest, texelFetch(uSrc, ivec2(x, y), 0).r);
+        }
+    }
+    imageStore(uDst, ivec2(destination), vec4(farthest));
+}

@@ -5,11 +5,118 @@
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/execution/BindingState.hpp>
 #include <lux/engine/render/execution/FrameResources.hpp>
+#include <lux/engine/render/execution/HistoryState.hpp>
 #include <lux/engine/render/execution/RenderExecutor.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
 
 namespace lux::render::detail
 {
+    void RenderExecutor::recordHistoryInitialization(
+        RenderGraphInstance& instance,
+        nri::CommandBuffer& command
+    ) noexcept
+    {
+        const auto& core = instance.session_->nriCore();
+        for (auto& history : instance.histories_)
+        {
+            const auto& description = history.plan->description;
+            const auto canonical_layout = description.canonical_use == EGraphUse::SAMPLED ? nri::Layout::SHADER_RESOURCE
+                                          : description.canonical_use == EGraphUse::TRANSFER_SOURCE
+                                              ? nri::Layout::COPY_SOURCE
+                                              : nri::Layout::SHADER_RESOURCE_STORAGE;
+            const auto canonical_access =
+                description.canonical_use == EGraphUse::SAMPLED           ? nri::AccessBits::SHADER_RESOURCE
+                : description.canonical_use == EGraphUse::TRANSFER_SOURCE ? nri::AccessBits::COPY_SOURCE
+                                                                          : nri::AccessBits::SHADER_RESOURCE_STORAGE;
+            for (const auto [index, clear] :
+                 {std::pair{history.previous, history.clear_previous}, std::pair{history.current, history.clear_current}
+                 })
+            {
+                if (!clear)
+                {
+                    continue;
+                }
+                auto& slot = history.slots[index];
+                if (slot.image)
+                {
+                    const auto& image = core.GetTextureDesc(*slot.image);
+                    const auto& graph_image =
+                        std::get<GraphImageDesc>(instance.plan_->resources()[description.current.index].description);
+                    const auto aspects = rdesc::textureAspectMask(graph_image.format);
+                    const bool depth = aspects != 1;
+                    nri::TextureBarrierDesc transition{};
+                    transition.texture = slot.image;
+                    if (slot.initialized)
+                    {
+                        transition.before = {canonical_access, canonical_layout, nri::StageBits::ALL};
+                    }
+                    transition.after =
+                        depth
+                            ? nri::
+                                  AccessLayoutStage{nri::AccessBits::DEPTH_STENCIL_ATTACHMENT, nri::Layout::DEPTH_STENCIL_ATTACHMENT, nri::StageBits::DEPTH_STENCIL_ATTACHMENT}
+                            : nri::AccessLayoutStage{
+                                  nri::AccessBits::COLOR_ATTACHMENT,
+                                  nri::Layout::COLOR_ATTACHMENT,
+                                  nri::StageBits::COLOR_ATTACHMENT
+                              };
+                    transition.mipNum = image.mipNum;
+                    transition.layerNum = image.layerNum;
+                    transition.planes = depth ? nri::PlaneBits::DEPTH : nri::PlaneBits::COLOR;
+                    if (aspects & 4)
+                    {
+                        transition.planes |= nri::PlaneBits::STENCIL;
+                    }
+                    const nri::BarrierDesc barrier{nullptr, 0, nullptr, 0, &transition, 1};
+                    core.CmdBarrier(command, barrier);
+                    for (auto* view : slot.initial_views)
+                    {
+                        nri::AttachmentDesc attachment{};
+                        attachment.descriptor = view;
+                        attachment.loadOp = nri::LoadOp::CLEAR;
+                        attachment.storeOp = nri::StoreOp::STORE;
+                        nri::RenderingDesc rendering{};
+                        if (depth)
+                        {
+                            attachment.clearValue.depthStencil.depth = description.initial.depth;
+                            rendering.depth = attachment;
+                        }
+                        else
+                        {
+                            const auto& value = description.initial.color;
+                            attachment.clearValue.color.f = {value[0], value[1], value[2], value[3]};
+                            rendering.colors = &attachment;
+                            rendering.colorNum = 1;
+                        }
+                        core.CmdBeginRendering(command, rendering);
+                        core.CmdEndRendering(command);
+                    }
+                    transition.before = transition.after;
+                    transition.after = {canonical_access, canonical_layout, nri::StageBits::ALL};
+                    core.CmdBarrier(command, barrier);
+                }
+                else
+                {
+                    nri::BufferBarrierDesc transition{};
+                    transition.buffer = slot.buffer;
+                    if (slot.initialized)
+                    {
+                        transition.before = {canonical_access, nri::StageBits::ALL};
+                    }
+                    transition.after = {
+                        nri::AccessBits::COPY_DESTINATION,
+                        nri::StageBits::COPY | nri::StageBits::CLEAR_STORAGE
+                    };
+                    const nri::BarrierDesc barrier{nullptr, 0, &transition, 1, nullptr, 0};
+                    core.CmdBarrier(command, barrier);
+                    core.CmdZeroBuffer(command, *slot.buffer, 0, slot.buffer_size);
+                    transition.before = transition.after;
+                    transition.after = {canonical_access, nri::StageBits::ALL};
+                    core.CmdBarrier(command, barrier);
+                }
+            }
+        }
+    }
+
     void RenderExecutor::record(RenderGraphInstance& instance, nri::CommandBuffer& command, std::uint32_t slot) noexcept
     {
         const auto& core = instance.session_->nriCore();
@@ -17,6 +124,7 @@ namespace lux::render::detail
         const auto& frame = instance.frames_[slot];
         const auto& bindings = frame.bindings;
         BindingState binding_state;
+        recordHistoryInitialization(instance, command);
         auto region = [&](const ResourceAccess& access, const std::optional<ImageCopyRegion>& rectangle = {})
         {
             const auto& range = std::get<GraphImageRange>(access.range);
@@ -56,6 +164,11 @@ namespace lux::render::detail
                     static_cast<std::uint32_t>(pass.images.size())
                 };
                 core.CmdBarrier(command, barrier);
+            }
+            // Both paths reach the compiled entry state. False preserves the validated predecessor contents.
+            if (!frame.enabled_passes[p])
+            {
+                continue;
             }
             const auto* raster = std::get_if<RasterCommands>(&compiled.work);
             const auto* compute = std::get_if<ComputeCommands>(&compiled.work);
@@ -214,6 +327,11 @@ namespace lux::render::detail
                         {
                             core.CmdDispatch(command, {dispatch.groups[0], dispatch.groups[1], dispatch.groups[2]});
                         }
+                        else if constexpr (std::is_same_v<Dispatch, ImageDispatchArguments>)
+                        {
+                            const auto& groups = pass.dispatch_groups;
+                            core.CmdDispatch(command, {groups[0], groups[1], groups[2]});
+                        }
                         else
                         {
                             const auto& buffer = bindings[dispatch.buffer.resource.index];
@@ -275,7 +393,9 @@ namespace lux::render::detail
                                 else
                                 {
                                     nri::ClearStorageDesc clear{};
-                                    clear.descriptor = pass.private_views[fill_binding];
+                                    clear.descriptor = pass.private_views[fill_binding]
+                                                           ? pass.private_views[fill_binding]
+                                                           : pass.history_views[fill_binding];
                                     clear.value
                                         .ui = {operation.value, operation.value, operation.value, operation.value};
                                     clear.rangeIndex = fill_binding++;

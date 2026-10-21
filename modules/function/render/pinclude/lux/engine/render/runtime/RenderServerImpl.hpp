@@ -113,6 +113,7 @@ namespace lux::render
 
         void createView(const CreateView::Request&, CreateView::Response&) noexcept;
         void updateAttachmentInputs(const UpdateAttachmentInputs::Request&, UpdateAttachmentInputs::Response&) noexcept;
+        void invalidateHistory(const InvalidateHistory::Request&, InvalidateHistory::Response&) noexcept;
 
         void removeView(const RemoveView::Request&, RemoveView::Response&) noexcept;
 

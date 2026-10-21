@@ -94,7 +94,8 @@ synchronously. Dynamic configuration cost counts actual owned capacity, not exte
 global generational identities. Version zero describes explicit initial contents; positive versions name writes.
 Reads, read/write predecessors, conditional fallbacks and overlapping ranges are explicit. Exports and side effects
 root culling. Invalid ranges, live cycles, ambiguous producers and incomplete reads fail with structured errors.
-Logical lifetime disjointness does not authorize physical memory aliasing or implement runtime history rotation.
+Untouched subranges inherit the explicit predecessor; analysis follows those ranges only when a consumer observes
+them. Logical lifetime disjointness does not authorize physical memory aliasing.
 
 `addRasterPass`, `addComputePass` and `addTransferPass` derive accesses from the work's actual inputs,
 attachments and operations. They return the new written versions; authors do not repeat the same accesses
@@ -132,8 +133,25 @@ lowered to a clear, while discard stores remain native discard stores.
 
 `RenderExecutor` records work into FrameExecution's existing shared Graphics submission. Professional preparation
 may contribute bounded Buffer copies; it cannot hide arbitrary GPU dispatch behind a recording callback.
-Graph async compute, History rotation and memory aliasing are not enabled. Explicit Buffer/Texture copies are
+Graph async compute and memory aliasing are not enabled. Explicit Buffer/Texture copies are
 available; there is no production Readback service or implicit extra rendering.
+
+`declareHistory` creates a Previous/Current pair. `publishHistory` observes the complete resulting version,
+including inherited mip ranges. Distance 1 is supported. Image initial values are explicit; Buffer history currently
+starts at zero and requires a multiple-of-four byte size. The instance owns F+1 physical slots, chooses a free write
+slot by actual completion frontiers, and publishes only after the instance submission is accepted. A skipped writer
+does not publish a sample. Descriptor views are created at Attach, not on each rotation. Resize creates a fresh
+candidate; `InvalidateHistory` invalidates the selected attachment histories at the next preparation boundary.
+
+`declareCondition` declares a dense Boolean input; `PassCondition` selects that input or History validity.
+Attachment conditions are zero/one bytes and are sampled once during preparation. Conditional writes require
+an available predecessor fallback. A skipped pass still records its compiled state transitions, and conditional
+raster passes cannot merge with adjacent rendering groups. There are no predicate callbacks or GPU-to-CPU reads.
+
+`HzbFeatureDescriptor` consumes forward-Z depth and produces current/previous R32 depth pyramids. It ports Legacy's
+per-mip maximum reduction with complete odd-size footprint coverage. History, initialization and barriers belong to
+the graph instance and plan; the feature has no private double-buffer or barrier owner. `ImageDispatchArguments`
+resolves group counts from the actual attached mip extent, including after Resize.
 
 `dumpGraph` and the project-side `dumpPlan` synchronously emit JSON or DOT into a borrowed sink.
 They do not open files, wait for the GPU or trace stable frames. Compiled plan counts are distinct from measured

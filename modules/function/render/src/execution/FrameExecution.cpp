@@ -259,6 +259,7 @@ namespace lux::render::detail
             resources_ready &= *prepared;
         }
         bool instances_ready = resources_ready;
+        auto waiting = EExecutionOutcome::RESOURCE_PREPARATION_PENDING;
         bool native_records = false;
         if (resources_ready)
         {
@@ -286,11 +287,18 @@ namespace lux::render::detail
         {
             for (auto* instance : instances)
             {
-                if (auto prepared = instance->prepareFrame(next_frame_); !prepared)
+                const auto prepared = instance->prepareFrame(next_frame_);
+                if (!prepared)
                 {
                     finishSubmission(cxx::unexpected(prepared.error()));
                     sealFrame(frame);
                     return cxx::unexpected(prepared.error());
+                }
+                if (!*prepared)
+                {
+                    waiting = EExecutionOutcome::HISTORY_PENDING;
+                    instances_ready = false;
+                    break;
                 }
             }
         }
@@ -298,7 +306,7 @@ namespace lux::render::detail
         if (!instances_ready && !has_copies && !native_records)
         {
             finishSubmission(cxx::unexpected(RenderError{kDeviceBusy}));
-            return outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
+            return outcome(waiting);
         }
         auto accepted = graphics.recordAndSubmit(
             [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
@@ -338,13 +346,13 @@ namespace lux::render::detail
         finishSubmission({});
         if (!instances_ready)
         {
-            (void)outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
+            (void)outcome(waiting);
             return 1; // A real replica-preparation submission; the frame stays open for its next finite window.
         }
         sealFrame(frame);
         for (auto* instance : instances)
         {
-            frame.recorded_passes += static_cast<std::uint32_t>(instance->plan().passes().size());
+            frame.recorded_passes += instance->recordedPassCount(next_frame_);
             instance->submitted(next_frame_);
         }
         next_frame_ = (next_frame_ + 1) % frame_count_;

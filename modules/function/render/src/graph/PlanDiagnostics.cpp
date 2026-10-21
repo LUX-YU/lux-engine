@@ -119,7 +119,9 @@ namespace lux::render::detail
             return sink.write(sink.destination, output);
         }
         output = "{\"queue\":\"graphics\",\"submission_policy\":\"merge prepared instances in FrameExecution; actual "
-                 "batches in dumpSubmissions\",\"alias\":false,\"history\":false,"
+                 "batches in dumpSubmissions\",\"alias\":false,\"history_count\":" +
+                 std::to_string(plan.histories_.size()) +
+                 ","
                  "\"async_compute\":false,\"counts\":\"compiled, not measured\",\"pipelines\":" +
                  std::to_string(plan.pipelines_.size()) + ",\"layouts\":" + std::to_string(plan.layouts_.size()) +
                  ",\"passes\":[";
@@ -133,6 +135,7 @@ namespace lux::render::detail
             output +=
                 "{\"source\":" + std::to_string(pass.source_pass) + ",\"kind\":" + std::to_string(pass.work.index()) +
                 ",\"group\":" + std::to_string(pass.rendering_group) +
+                ",\"conditional\":" + (pass.condition ? "true" : "false") +
                 ",\"rendering_boundary\":" + quoteDumpText(boundaries[static_cast<unsigned>(pass.rendering_boundary)]) +
                 ",\"descriptors\":[";
             const auto& layout = plan.descriptor_plan_->passes[pass.source_pass];

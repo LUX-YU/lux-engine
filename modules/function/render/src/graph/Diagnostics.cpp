@@ -117,6 +117,31 @@ namespace lux::render
                 }
                 output += "]}";
             }
+            output += "],\"histories\":[";
+            for (std::size_t i = 0; i < graph.histories().size(); ++i)
+            {
+                if (i)
+                {
+                    output += ',';
+                }
+                const auto& history = graph.histories()[i];
+                output +=
+                    "{\"previous\":" + std::to_string(history.previous.index) +
+                    ",\"current\":" + std::to_string(history.current.index) +
+                    ",\"distance\":" + std::to_string(history.distance) +
+                    ",\"canonical_use\":" + std::to_string(static_cast<unsigned>(history.canonical_use)) +
+                    ",\"publication\":" + (history.publication ? std::to_string(history.publication->number) : "null") +
+                    "}";
+            }
+            output += "],\"condition_inputs\":[";
+            for (std::size_t i = 0; i < graph.conditions().size(); ++i)
+            {
+                if (i)
+                {
+                    output += ',';
+                }
+                output += detail::quoteDumpText(graph.conditions()[i]);
+            }
             output += "],\"versions\":[";
             for (std::size_t i = 0; i < analysis.versions.size(); ++i)
             {

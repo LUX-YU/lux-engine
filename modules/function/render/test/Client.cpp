@@ -9,6 +9,7 @@
 #include <latch>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/features/HzbFeature.hpp>
 #include <lux/engine/render/features/MaterialMeshRaster.hpp>
 #include <lux/engine/render/features/MeshDepthRaster.hpp>
 #include <source_location>
@@ -331,6 +332,11 @@ namespace mesh_sample
         CreateEffectRequest first_request{config.target}, second_request{config.target};
         first_request.definition.features.push_back({basic, "main", take(ConfigValue::make(config))});
         second_request.definition.features.push_back({depth_feature, "main", take(ConfigValue::make(config))});
+        const auto hzb = feature(main, main_commands, main_next, HzbFeatureDescriptor::name);
+        HzbFeatureConfig hzb_config{{64, 64, 1, 1, rdesc::ETextureFormat::D32_SFLOAT}, 6};
+        hzb_config.depth.extent.target_relative = true;
+        second_request.definition.features.push_back({hzb, "depth pyramid", take(ConfigValue::make(hzb_config))});
+        second_request.definition.connections.push_back({{0, "depth"}, {1, "depth"}});
         first_request.definition.outputs.push_back(
             {{0, "color"}, GraphOutputRequirements{config.target.format, config.target.samples}}
         );

@@ -87,7 +87,8 @@ namespace lux::render::detail
                         else if constexpr (std::is_same_v<Operation, ClearImage>)
                         {
                             const bool is_valid_range = to_image && to_image->mip_count == 1;
-                            const bool is_valid_clear = std::isfinite(copy.depth) &&
+                            const bool is_valid_clear =
+                                std::isfinite(copy.depth) &&
                                 std::ranges::all_of(copy.color, [](float value) { return std::isfinite(value); });
                             return is_valid_range && is_valid_clear;
                         }
@@ -119,8 +120,8 @@ namespace lux::render::detail
                                 const bool is_same_format = a.format == b.format && a.samples == b.samples;
                                 const bool is_same_extent = aw == bw && ah == bh && a.extent == b.extent;
                                 const bool is_same_subresources = from_image->aspects == to_image->aspects &&
-                                    from_image->mip_count == to_image->mip_count &&
-                                    from_image->layer_count == to_image->layer_count;
+                                                                  from_image->mip_count == to_image->mip_count &&
+                                                                  from_image->layer_count == to_image->layer_count;
                                 return is_same_format && is_same_extent && is_same_subresources;
                             }
                             else
@@ -296,6 +297,7 @@ namespace lux::render::detail
         }
         const auto& limits = core.GetDeviceDesc(device);
         RenderPlan plan(device, core, target ? *target : TargetDesc{});
+        plan.condition_count_ = static_cast<std::uint32_t>(graph.conditions().size());
         std::vector<bool> live(graph.resources().size(), false);
         for (const auto& lifetime : analysis.lifetimes)
         {
@@ -317,12 +319,6 @@ namespace lux::render::detail
             {
                 continue;
             }
-            const bool history =
-                resource.origin == EGraphOrigin::HISTORY_PREVIOUS || resource.origin == EGraphOrigin::HISTORY_CURRENT;
-            if (history)
-            {
-                return cxx::unexpected(RenderError{kDeviceUnsupported});
-            }
             if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
             {
                 const auto format = imageFormat(image->format).native;
@@ -339,6 +335,37 @@ namespace lux::render::detail
                 {
                     return cxx::unexpected(RenderError{kDeviceArgument});
                 }
+            }
+        }
+        for (const auto& history : graph.histories())
+        {
+            auto& previous = plan.resources_[history.previous.index];
+            auto& current = plan.resources_[history.current.index];
+            if (!previous.used && !current.used)
+            {
+                continue;
+            }
+            if (!history.publication)
+            {
+                return cxx::unexpected(RenderError{kGraphMissingInitial});
+            }
+            const auto index = static_cast<std::uint32_t>(plan.histories_.size());
+            previous.history = current.history = index;
+            previous.used = current.used = previous.memory_used = current.memory_used = true;
+            if (const auto* image = std::get_if<GraphImageDesc>(&current.description))
+            {
+                previous.target_sized = current.target_sized = image->extent.target_relative;
+            }
+            plan.histories_.push_back({history});
+        }
+        for (const auto& resource : plan.resources_)
+        {
+            const bool unpaired_history =
+                resource.memory_used && resource.history == kGraphInvalidIndex &&
+                (resource.origin == EGraphOrigin::HISTORY_PREVIOUS || resource.origin == EGraphOrigin::HISTORY_CURRENT);
+            if (unpaired_history)
+            {
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
         }
         for (const auto& output : graph.outputs())
@@ -392,12 +419,18 @@ namespace lux::render::detail
         for (const auto id : analysis.execution_order)
         {
             const auto& source = graph.passes()[id.index];
-            if (source.conditional || source.uses.empty())
+            if (source.uses.empty())
             {
                 return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
             CompiledPass pass;
             pass.source_pass = id.index;
+            pass.condition = source.condition;
+            if (pass.condition && pass.condition->source == EConditionSource::HISTORY_VALID &&
+                plan.resources_[pass.condition->input].history == kGraphInvalidIndex)
+            {
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            }
             const PassInterface* input = nullptr;
             PipelineIdentity identity{};
             if (const auto* raster = std::get_if<RasterWork>(&source.work))
@@ -502,6 +535,19 @@ namespace lux::render::detail
                         {
                             return cxx::unexpected(RenderError{kDeviceArgument});
                         }
+                    }
+                }
+                else if (const auto* dispatch = std::get_if<ImageDispatchArguments>(&compute->dispatch))
+                {
+                    const auto resource = dispatch->resource.index;
+                    const auto* image = resource < plan.resources_.size()
+                                            ? std::get_if<GraphImageDesc>(&plan.resources_[resource].description)
+                                            : nullptr;
+                    const bool invalid = !image || dispatch->mip >= image->mips || !dispatch->group_size[0] ||
+                                         !dispatch->group_size[1] || !plan.resources_[resource].memory_used;
+                    if (invalid)
+                    {
+                        return cxx::unexpected(RenderError{kDeviceArgument});
                     }
                 }
                 else
@@ -621,6 +667,39 @@ namespace lux::render::detail
         if (!rendering)
         {
             return cxx::unexpected(rendering.error());
+        }
+        for (auto& history : plan.histories_)
+        {
+            auto& previous = plan.resources_[history.description.previous.index];
+            auto& current = plan.resources_[history.description.current.index];
+            if (const auto* image = std::get_if<GraphImageDesc>(&current.description))
+            {
+                const bool depth = rdesc::textureAspectMask(image->format) != 1;
+                const auto initialization =
+                    depth ? nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT : nri::TextureUsageBits::COLOR_ATTACHMENT;
+                previous.image_usage = current.image_usage =
+                    previous.image_usage | current.image_usage | initialization;
+            }
+            else
+            {
+                previous.buffer_usage = current.buffer_usage =
+                    previous.buffer_usage | current.buffer_usage | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
+            }
+            for (std::uint32_t p = 0; p < analysis.execution_order.size(); ++p)
+            {
+                const auto& pass = graph.passes()[analysis.execution_order[p].index];
+                if (std::ranges::any_of(
+                        pass.uses,
+                        [&](const auto& use)
+                        {
+                            return use.version.resource == history.description.current &&
+                                   use.access != EGraphAccess::READ;
+                        }
+                    ))
+                {
+                    history.writers.push_back(p);
+                }
+            }
         }
         return plan;
     }

@@ -30,6 +30,15 @@ namespace lux::render
         }
 
         [[nodiscard]] RenderResult<GraphResourceId> declareResource(GraphResource resource) noexcept;
+        [[nodiscard]] RenderResult<HistoryDescription> declareHistory(
+            std::string key,
+            VGraphResourceDesc description,
+            HistoryInitialValue initial = {},
+            EGraphUse canonical_use = EGraphUse::STORAGE_READ,
+            std::uint32_t distance = 1
+        ) noexcept;
+        [[nodiscard]] RenderResult<void> publishHistory(ResourceVersion) noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> declareCondition(std::string key) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> addProgram(rdesc::SpirvArtifact program) noexcept;
         [[nodiscard]] RenderResult<PassResult> addRasterPass(
             std::string key,

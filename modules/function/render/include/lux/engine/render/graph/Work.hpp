@@ -90,7 +90,14 @@ namespace lux::render
         std::uint64_t offset = 0;
     };
 
-    using VDispatchArguments = std::variant<DispatchArguments, IndirectDispatchArguments>;
+    struct ImageDispatchArguments final
+    {
+        GraphResourceId resource;
+        std::uint32_t mip = 0;
+        std::array<std::uint32_t, 2> group_size{8, 8};
+    };
+
+    using VDispatchArguments = std::variant<DispatchArguments, IndirectDispatchArguments, ImageDispatchArguments>;
 
     struct ComputeWork final
     {
@@ -151,10 +158,25 @@ namespace lux::render
 
     using VPassWork = std::variant<RasterWork, ComputeWork, TransferWork>;
 
+    enum class EConditionSource : std::uint8_t
+    {
+        INPUT,
+        HISTORY_VALID
+    };
+
+    struct PassCondition final
+    {
+        EConditionSource source = EConditionSource::INPUT;
+        // INPUT: declared condition index. HISTORY_VALID: the Previous resource of a declared pair.
+        std::uint32_t input = 0;
+        bool expected = true;
+        bool operator==(const PassCondition&) const noexcept = default;
+    };
+
     struct GraphPassOptions final
     {
         bool side_effect = false;
-        bool conditional = false;
+        std::optional<PassCondition> condition;
     };
 
     struct PassResult final

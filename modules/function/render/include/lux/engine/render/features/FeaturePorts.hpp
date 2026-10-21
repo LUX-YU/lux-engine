@@ -23,10 +23,19 @@ namespace lux::render
         EGraphUse initial_use = EGraphUse::UNSPECIFIED;
     };
 
+    struct FeatureHistory final
+    {
+        std::string previous, current;
+        HistoryInitialValue initial;
+        EGraphUse canonical_use = EGraphUse::SAMPLED;
+        std::uint32_t distance = 1;
+    };
+
     struct FeaturePorts final
     {
         std::vector<FeaturePort> resources;
         StorageGroups<FeaturePort> storage;
+        std::vector<FeatureHistory> histories;
     };
 
     struct ResolvedResource final

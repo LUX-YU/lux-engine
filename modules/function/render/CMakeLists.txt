@@ -34,6 +34,7 @@ set(render_sources
     src/features/RasterMesh.cpp
     src/features/MaterialMeshRaster.cpp
     src/features/MeshDepthRaster.cpp
+    src/features/HzbFeature.cpp
     src/features/RasterMeshDraws.cpp
     src/device/Error.cpp
     src/device/DeviceSession.cpp
@@ -42,6 +43,7 @@ set(render_sources
     src/device/SubmissionQueue.cpp
     src/execution/FrameExecution.cpp
     src/execution/FrameResources.cpp
+    src/execution/HistoryState.cpp
     src/execution/OffscreenTarget.cpp
     src/execution/RenderGraphInstance.cpp
     src/execution/RenderExecutor.cpp
@@ -98,11 +100,24 @@ foreach(shader BasicMesh DepthOnly BasicMeshPaged DepthOnlyPaged)
     list(APPEND mesh_shader_headers "${header}")
 endforeach()
 
+set(hzb_header "${CMAKE_CURRENT_BINARY_DIR}/shaders/HzbDownsample.hpp")
+set(hzb_binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/HzbDownsample.spv")
+add_custom_command(
+    OUTPUT "${hzb_header}"
+    BYPRODUCTS "${hzb_binary}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+    COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3
+        "${CMAKE_CURRENT_SOURCE_DIR}/shaders/hzb/Downsample.comp" -o "${hzb_binary}"
+    COMMAND lux_shader_metadata "${hzb_binary}" "${hzb_header}" kHzbDownsample
+    DEPENDS shaders/hzb/Downsample.comp lux_shader_metadata
+    VERBATIM
+)
+
 add_component(
     COMPONENT_NAME render
     NAMESPACE lux::engine::function
     OUTPUT_NAME lux_engine_render
-    SOURCE_FILES ${render_sources} ${mesh_shader_headers}
+    SOURCE_FILES ${render_sources} ${mesh_shader_headers} "${hzb_header}"
 )
 
 component_include_directories(

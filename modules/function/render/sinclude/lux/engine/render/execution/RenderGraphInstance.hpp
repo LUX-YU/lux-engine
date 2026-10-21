@@ -47,6 +47,16 @@ namespace lux::render::detail
         }
 
         [[nodiscard]] RenderResult<void> setInstanceParameters(std::span<const std::byte>) noexcept;
+        [[nodiscard]] RenderResult<void> setConditions(std::span<const std::uint8_t>) noexcept;
+        [[nodiscard]] RenderResult<void> setInputs(std::span<const std::byte>, std::span<const std::uint8_t>) noexcept;
+
+        [[nodiscard]] std::span<const std::uint8_t> conditions() const noexcept
+        {
+            return condition_values_;
+        }
+
+        // An empty selection invalidates every declared history at the next preparation boundary.
+        [[nodiscard]] RenderResult<void> invalidateHistory(std::span<const GraphResourceId> previous = {}) noexcept;
 
         [[nodiscard]] std::span<const std::byte> instanceParameters() const noexcept
         {
@@ -67,7 +77,7 @@ namespace lux::render::detail
         }
 
         // FrameExecution selects the reusable slot and owns the recording/submission segment.
-        [[nodiscard]] RenderResult<void> prepareFrame(std::uint32_t slot) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot) noexcept;
 
         [[nodiscard]] const ExecutionProgress& progress() const noexcept
         {
@@ -84,6 +94,7 @@ namespace lux::render::detail
         friend class FrameExecution;
         friend class RenderExecutor;
         void submitted(std::uint32_t slot) noexcept;
+        [[nodiscard]] std::uint32_t recordedPassCount(std::uint32_t slot) const noexcept;
         [[nodiscard]] RenderResult<void> createFrameResources(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareFrameBindings(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareDescriptors() noexcept;
@@ -100,6 +111,14 @@ namespace lux::render::detail
             bool dirty = false;
         };
 
+        struct HistoryState;
+        [[nodiscard]] RenderResult<void> createResource(std::uint32_t resource, Binding&) noexcept;
+        [[nodiscard]] RenderResult<void> createHistories() noexcept;
+        [[nodiscard]] RenderResult<void> createHistoryViews(HistoryState&) noexcept;
+        [[nodiscard]] bool selectHistory() noexcept;
+        void bindHistory(std::uint32_t slot) noexcept;
+        void publishHistory(std::uint32_t slot) noexcept;
+
         struct Pass final
         {
             const CompiledPass* compiled_pass;
@@ -108,10 +127,12 @@ namespace lux::render::detail
             std::vector<nri::DescriptorSet*> descriptors;
             nri::DescriptorSet* private_descriptors = nullptr;
             std::vector<nri::Descriptor*> private_views;
+            std::vector<nri::Descriptor*> history_views;
             std::vector<nri::AttachmentDesc> colors;
             nri::AttachmentDesc depth{};
             std::vector<nri::TextureDataLayoutDesc> copy_layouts;
             std::vector<nri::Descriptor*> clear_views;
+            std::array<std::uint32_t, 3> dispatch_groups{};
         };
 
         struct ParameterCopy final
@@ -123,6 +144,7 @@ namespace lux::render::detail
         DeviceSession* session_;
         struct FrameResources;
         std::vector<FrameResources> frames_;
+        std::vector<HistoryState> histories_;
         const RenderPlan* plan_;
         TargetDesc target_;
         RasterViewport viewport_;
@@ -131,6 +153,7 @@ namespace lux::render::detail
         std::vector<std::vector<std::byte>> pass_parameters_;
         std::vector<std::vector<ParameterCopy>> parameter_copies_;
         std::vector<std::byte> instance_values_;
+        std::vector<std::uint8_t> condition_values_;
         ExecutionProgress progress_;
     };
 } // namespace lux::render::detail

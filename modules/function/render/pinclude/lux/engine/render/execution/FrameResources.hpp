@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/render/execution/HistoryState.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
 
 namespace lux::render::detail
@@ -12,6 +13,8 @@ namespace lux::render::detail
 
         std::vector<Binding> bindings;
         std::vector<Pass> passes;
+        std::vector<std::uint8_t> enabled_passes;
+        std::uint32_t enabled_pass_count = 0;
         std::vector<std::uint32_t> changed_resources;
         std::size_t unavailable_buffers = 0;
         std::vector<nri::Buffer*> buffers;

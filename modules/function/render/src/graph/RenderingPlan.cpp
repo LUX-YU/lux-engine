@@ -98,7 +98,8 @@ namespace lux::render::detail
             }
 
             const auto* previous = p ? std::get_if<RasterCommands>(&recording.passes[p - 1].work) : nullptr;
-            bool same_attachments = previous && previous->colors.size() == raster->colors.size() &&
+            bool same_attachments = previous && !pass.condition && !recording.passes[p - 1].condition &&
+                                    previous->colors.size() == raster->colors.size() &&
                                     bool(previous->depth) == bool(raster->depth);
             if (same_attachments)
             {

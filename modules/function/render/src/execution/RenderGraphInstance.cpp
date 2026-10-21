@@ -23,6 +23,7 @@ namespace lux::render::detail
         : session_(&session), plan_(&plan), target_(output ? output->description() : plan.target()), output_(output)
     {
         instance_values_.resize(plan.descriptor_plan_->instance_parameters.size);
+        condition_values_.resize(plan.condition_count_);
         parameter_copies_.resize(plan.passes().size());
         for (const auto& pass : plan.passes())
         {
@@ -43,6 +44,7 @@ namespace lux::render::detail
         {
             auto& frame = frames_[slot];
             frame.bindings.resize(plan.resources().size());
+            frame.enabled_passes.resize(plan.passes().size(), 1);
             frame.changed_resources.reserve(plan.resources().size());
             frame.unavailable_buffers = std::ranges::count_if(
                 plan.resources(),
@@ -67,11 +69,16 @@ namespace lux::render::detail
     {
         // Physical cleanup is owned by the Session; it never calls back into this instance.
         session_->deferRelease(
-            [frames = std::move(frames_), nri_core = &session_->nriCore()]() mutable noexcept
+            [frames = std::move(frames_), histories = std::move(histories_), nri_core = &session_->nriCore()](
+            ) mutable noexcept
             {
                 for (auto& frame : frames)
                 {
                     frame.release(*nri_core);
+                }
+                for (auto& history : histories)
+                {
+                    history.release(*nri_core);
                 }
             }
         );
@@ -105,6 +112,10 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
+        if (auto histories = createHistories(); !histories)
+        {
+            return histories;
+        }
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
             if (auto resources = createFrameResources(slot); !resources)
@@ -116,7 +127,15 @@ namespace lux::render::detail
                 return passes;
             }
         }
-        return prepareDescriptors();
+        if (auto descriptors = prepareDescriptors(); !descriptors)
+        {
+            return descriptors;
+        }
+        for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
+        {
+            bindHistory(slot);
+        }
+        return {};
     }
 
     RenderResult<void> RenderGraphInstance::createFrameResources(std::uint32_t slot) noexcept
@@ -125,13 +144,23 @@ namespace lux::render::detail
         const auto& core = session.nriCore();
         const auto& plan = *plan_;
         auto& frame = frames_[slot];
-        const auto max_extent = session.description().dimensions.texture2DMaxDim;
         for (std::uint32_t i = 0; i < frame.bindings.size(); ++i)
         {
             auto& binding = frame.bindings[i];
             const auto& resource = plan.resources()[i];
             if (!resource.memory_used || resource.shared_table)
             {
+                continue;
+            }
+            if (resource.history != kGraphInvalidIndex)
+            {
+                const auto& history = histories_[resource.history];
+                const auto selected =
+                    resource.origin == EGraphOrigin::HISTORY_PREVIOUS ? history.previous : history.current;
+                const auto& physical = history.slots[selected];
+                binding.image = physical.image;
+                binding.buffer = physical.buffer;
+                binding.buffer_size = physical.buffer_size;
                 continue;
             }
             if (resource.origin == EGraphOrigin::IMPORTED)
@@ -159,67 +188,417 @@ namespace lux::render::detail
                 binding.image = output_->frame(slot).image;
                 continue;
             }
-            if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
+            if (auto created = createResource(i, binding); !created)
             {
-                const auto dimension = [&](std::uint32_t absolute, std::uint32_t target)
-                {
-                    if (!resource.target_sized)
-                    {
-                        return std::uint64_t(absolute);
-                    }
-                    const auto& expression = image->extent;
-                    const auto scaled = (std::uint64_t(target) * expression.numerator + expression.denominator - 1) /
-                                        expression.denominator;
-                    return (scaled + expression.alignment - 1) / expression.alignment * expression.alignment;
-                };
-                const auto width = dimension(image->width, target_.width);
-                const auto height = dimension(image->height, target_.height);
-                if (!width || !height || width > max_extent || height > max_extent)
-                {
-                    return cxx::unexpected(RenderError{kInvalidTargetExtent});
-                }
-                const nri::TextureDesc description{
-                    nri::TextureType::TEXTURE_2D,
-                    resource.image_usage,
-                    imageFormat(image->format).native,
-                    static_cast<nri::Dim_t>(width),
-                    static_cast<nri::Dim_t>(height),
-                    1,
-                    static_cast<nri::Dim_t>(image->mips),
-                    static_cast<nri::Dim_t>(image->layers),
-                    static_cast<nri::Sample_t>(image->samples),
-                    nri::SharingMode::CONCURRENT
-                };
-                if (slot == 0)
-                {
-                    if (auto valid = session.validateTexture(description); !valid)
-                    {
-                        return cxx::unexpected(valid.error());
-                    }
-                }
-                const auto status =
-                    core.CreatePlacedTexture(session.device(), NriDeviceHeap, description, binding.image);
-                if (status != nri::Result::SUCCESS)
-                {
-                    return cxx::unexpected(nativeError(status));
-                }
+                return created;
+            }
+            if (binding.image)
+            {
                 frame.images.push_back(binding.image);
             }
             else
             {
-                const auto size = std::get<GraphBufferDesc>(resource.description).size;
-                const nri::BufferDesc description{size, 4, resource.buffer_usage};
-                const auto status =
-                    core.CreatePlacedBuffer(session.device(), NriDeviceHeap, description, binding.buffer);
-                if (status != nri::Result::SUCCESS)
-                {
-                    return cxx::unexpected(nativeError(status));
-                }
-                binding.buffer_size = size;
                 frame.buffers.push_back(binding.buffer);
             }
         }
         return {};
+    }
+
+    RenderResult<void> RenderGraphInstance::createResource(std::uint32_t index, Binding& binding) noexcept
+    {
+        auto& session = *session_;
+        const auto& core = session.nriCore();
+        const auto& resource = plan_->resources()[index];
+        const auto max_extent = session.description().dimensions.texture2DMaxDim;
+        if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
+        {
+            const auto dimension = [&](std::uint32_t absolute, std::uint32_t target)
+            {
+                if (!resource.target_sized)
+                {
+                    return std::uint64_t(absolute);
+                }
+                const auto& expression = image->extent;
+                const auto scaled = (std::uint64_t(target) * expression.numerator + expression.denominator - 1) /
+                                    expression.denominator;
+                return (scaled + expression.alignment - 1) / expression.alignment * expression.alignment;
+            };
+            const auto width = dimension(image->width, target_.width);
+            const auto height = dimension(image->height, target_.height);
+            if (!width || !height || width > max_extent || height > max_extent)
+            {
+                return cxx::unexpected(RenderError{kInvalidTargetExtent});
+            }
+            const nri::TextureDesc description{
+                nri::TextureType::TEXTURE_2D,
+                resource.image_usage,
+                imageFormat(image->format).native,
+                static_cast<nri::Dim_t>(width),
+                static_cast<nri::Dim_t>(height),
+                1,
+                static_cast<nri::Dim_t>(image->mips),
+                static_cast<nri::Dim_t>(image->layers),
+                static_cast<nri::Sample_t>(image->samples),
+                nri::SharingMode::CONCURRENT
+            };
+            if (auto valid = session.validateTexture(description); !valid)
+            {
+                return cxx::unexpected(valid.error());
+            }
+            const auto status = core.CreatePlacedTexture(session.device(), NriDeviceHeap, description, binding.image);
+            if (status != nri::Result::SUCCESS)
+            {
+                return cxx::unexpected(nativeError(status));
+            }
+        }
+        else
+        {
+            const auto size = std::get<GraphBufferDesc>(resource.description).size;
+            const nri::BufferDesc description{size, 4, resource.buffer_usage};
+            const auto status = core.CreatePlacedBuffer(session.device(), NriDeviceHeap, description, binding.buffer);
+            if (status != nri::Result::SUCCESS)
+            {
+                return cxx::unexpected(nativeError(status));
+            }
+            binding.buffer_size = size;
+        }
+        return {};
+    }
+
+    RenderResult<void> RenderGraphInstance::createHistories() noexcept
+    {
+        histories_.resize(plan_->histories_.size());
+        for (std::size_t index = 0; index < histories_.size(); ++index)
+        {
+            auto& history = histories_[index];
+            history.plan = &plan_->histories_[index];
+            history.slots.resize(frames_.size() + 1);
+            for (auto& slot : history.slots)
+            {
+                Binding candidate;
+                if (auto created = createResource(history.plan->description.current.index, candidate); !created)
+                {
+                    return created;
+                }
+                slot.image = candidate.image;
+                slot.buffer = candidate.buffer;
+                slot.buffer_size = candidate.buffer_size;
+            }
+            if (auto views = createHistoryViews(history); !views)
+            {
+                return views;
+            }
+        }
+        return {};
+    }
+
+    RenderResult<void> RenderGraphInstance::createHistoryViews(HistoryState& history) noexcept
+    {
+        using Target = HistoryState::EViewTarget;
+        const auto& core = session_->nriCore();
+        const auto& description = history.plan->description;
+        const auto belongs = [&](GraphResourceId id)
+        { return id == description.previous || id == description.current; };
+        const auto addView = [&](GraphResourceId resource,
+                                 const VGraphRange& range,
+                                 std::uint32_t pass,
+                                 std::uint32_t index,
+                                 Target target,
+                                 EDescriptorKind kind) -> RenderResult<void>
+        {
+            if (!belongs(resource))
+            {
+                return {};
+            }
+            history.views.push_back({resource, pass, index, target});
+            for (auto& slot : history.slots)
+            {
+                nri::Descriptor* view = nullptr;
+                nri::Result result;
+                if (slot.image)
+                {
+                    const auto& selected = std::get<GraphImageRange>(range);
+                    const bool attachment = target != Target::DESCRIPTOR;
+                    const bool depth = selected.aspects != 1;
+                    const auto type =
+                        attachment
+                            ? (depth ? nri::TextureView::DEPTH_STENCIL_ATTACHMENT : nri::TextureView::COLOR_ATTACHMENT)
+                            : (kind == EDescriptorKind::STORAGE_IMAGE ? nri::TextureView::STORAGE_TEXTURE
+                                                                      : nri::TextureView::TEXTURE);
+                    nri::TextureViewDesc input{
+                        slot.image,
+                        type,
+                        core.GetTextureDesc(*slot.image).format,
+                        static_cast<nri::Dim_t>(selected.first_mip),
+                        static_cast<nri::Dim_t>(selected.mip_count),
+                        static_cast<nri::Dim_t>(selected.first_layer),
+                        static_cast<nri::Dim_t>(selected.layer_count)
+                    };
+                    input.planes = selected.aspects == 1   ? nri::PlaneBits::COLOR
+                                   : selected.aspects == 2 ? nri::PlaneBits::DEPTH
+                                                           : nri::PlaneBits::STENCIL;
+                    result = core.CreateTextureView(input, view);
+                }
+                else
+                {
+                    const auto& selected = std::get<GraphBufferRange>(range);
+                    const nri::BufferViewDesc input{
+                        slot.buffer,
+                        kind == EDescriptorKind::UNIFORM_BUFFER         ? nri::BufferView::CONSTANT_BUFFER
+                        : kind == EDescriptorKind::TYPED_STORAGE_BUFFER ? nri::BufferView::STORAGE_BUFFER
+                                                                        : nri::BufferView::STORAGE_BYTE_ADDRESS_BUFFER,
+                        selected.offset,
+                        selected.size,
+                        kind == EDescriptorKind::TYPED_STORAGE_BUFFER ? nri::Format::R32_UINT : nri::Format::UNKNOWN
+                    };
+                    result = core.CreateBufferView(input, view);
+                }
+                if (result != nri::Result::SUCCESS)
+                {
+                    return cxx::unexpected(nativeError(result));
+                }
+                slot.views.push_back(view);
+            }
+            return {};
+        };
+        for (std::uint32_t p = 0; p < plan_->passes().size(); ++p)
+        {
+            const auto& pass = plan_->passes()[p];
+            const auto& uses = plan_->descriptor_plan_->passes[pass.source_pass].uses;
+            for (std::uint32_t i = 0; i < uses.size(); ++i)
+            {
+                const auto& use = uses[i];
+                if (auto created = addView({use.resource}, use.range, p, i, Target::DESCRIPTOR, use.kind); !created)
+                {
+                    return created;
+                }
+            }
+            if (const auto* raster = std::get_if<RasterCommands>(&pass.work))
+            {
+                const auto addAttachment = [&](const RasterAttachment& attachment, std::uint32_t i, bool depth
+                                           ) -> RenderResult<void>
+                {
+                    const auto& access = attachment.access;
+                    if (auto view = addView(
+                            access.version.resource,
+                            access.range,
+                            p,
+                            i,
+                            depth ? Target::DEPTH : Target::COLOR,
+                            EDescriptorKind::SAMPLED_IMAGE
+                        );
+                        !view)
+                    {
+                        return view;
+                    }
+                    if (attachment.resolve)
+                    {
+                        const auto& resolve = *attachment.resolve;
+                        return addView(
+                            resolve.version.resource,
+                            resolve.range,
+                            p,
+                            i,
+                            depth ? Target::DEPTH_RESOLVE : Target::COLOR_RESOLVE,
+                            EDescriptorKind::SAMPLED_IMAGE
+                        );
+                    }
+                    return {};
+                };
+                for (std::uint32_t i = 0; i < raster->colors.size(); ++i)
+                {
+                    if (auto created = addAttachment(raster->colors[i], i, false); !created)
+                    {
+                        return created;
+                    }
+                }
+                if (raster->depth)
+                {
+                    if (auto created = addAttachment(*raster->depth, 0, true); !created)
+                    {
+                        return created;
+                    }
+                }
+            }
+            if (const auto* transfer = std::get_if<TransferWork>(&pass.work))
+            {
+                for (std::uint32_t i = 0; i < transfer->operations.size(); ++i)
+                {
+                    if (const auto* clear = std::get_if<ClearImage>(&transfer->operations[i]))
+                    {
+                        const auto& access = clear->destination;
+                        if (auto created = addView(
+                                access.version.resource,
+                                access.range,
+                                p,
+                                i,
+                                Target::CLEAR,
+                                EDescriptorKind::SAMPLED_IMAGE
+                            );
+                            !created)
+                        {
+                            return created;
+                        }
+                    }
+                }
+            }
+        }
+        // Initialization views are immutable and shared by the safe frame descriptor banks.
+        for (auto& slot : history.slots)
+        {
+            if (!slot.image)
+            {
+                continue;
+            }
+            const auto& image = core.GetTextureDesc(*slot.image);
+            const auto& graph_image =
+                std::get<GraphImageDesc>(plan_->resources()[description.current.index].description);
+            const bool depth = rdesc::textureAspectMask(graph_image.format) != 1;
+            for (nri::Dim_t mip = 0; mip < image.mipNum; ++mip)
+            {
+                nri::Descriptor* view = nullptr;
+                const nri::TextureViewDesc input{
+                    slot.image,
+                    depth ? nri::TextureView::DEPTH_STENCIL_ATTACHMENT : nri::TextureView::COLOR_ATTACHMENT,
+                    image.format,
+                    mip,
+                    1,
+                    0,
+                    image.layerNum
+                };
+                const auto result = core.CreateTextureView(input, view);
+                if (result != nri::Result::SUCCESS)
+                {
+                    return cxx::unexpected(nativeError(result));
+                }
+                slot.initial_views.push_back(view);
+            }
+        }
+        return {};
+    }
+
+    bool RenderGraphInstance::selectHistory() noexcept
+    {
+        return std::ranges::all_of(histories_, [&](auto& history) { return history.select(*session_); });
+    }
+
+    void RenderGraphInstance::bindHistory(std::uint32_t frame_slot) noexcept
+    {
+        using Target = HistoryState::EViewTarget;
+        auto& frame = frames_[frame_slot];
+        const auto& core = session_->nriCore();
+        for (const auto& history : histories_)
+        {
+            const auto& description = history.plan->description;
+            for (const auto [resource, selected] :
+                 {std::pair{description.previous, history.previous}, std::pair{description.current, history.current}})
+            {
+                const bool was_dirty = frame.bindings[resource.index].dirty;
+                const auto& physical = history.slots[selected];
+                frame.bindings[resource.index].image = physical.image;
+                frame.bindings[resource.index].buffer = physical.buffer;
+                frame.bindings[resource.index].buffer_size = physical.buffer_size;
+                frame.bindings[resource.index].dirty = true;
+                if (!was_dirty)
+                {
+                    frame.changed_resources.push_back(resource.index);
+                }
+            }
+            for (std::size_t i = 0; i < history.views.size(); ++i)
+            {
+                const auto& use = history.views[i];
+                const auto selected = use.resource == description.previous ? history.previous : history.current;
+                auto* view = history.slots[selected].views[i];
+                auto& pass = frame.passes[use.pass];
+                switch (use.target)
+                {
+                case Target::DESCRIPTOR:
+                {
+                    const auto& binding =
+                        plan_->descriptor_plan_->passes[pass.compiled_pass->source_pass].uses[use.index];
+                    const nri::UpdateDescriptorRangeDesc
+                        update{pass.private_descriptors, binding.binding, binding.element, &view, 1};
+                    core.UpdateDescriptorRanges(&update, 1);
+                    pass.history_views[use.index] = view;
+                    break;
+                }
+                case Target::COLOR:
+                    pass.colors[use.index].descriptor = view;
+                    break;
+                case Target::DEPTH:
+                    pass.depth.descriptor = view;
+                    break;
+                case Target::COLOR_RESOLVE:
+                    pass.colors[use.index].resolveDst = view;
+                    break;
+                case Target::DEPTH_RESOLVE:
+                    pass.depth.resolveDst = view;
+                    break;
+                case Target::CLEAR:
+                    pass.clear_views[use.index] = view;
+                    break;
+                }
+            }
+        }
+    }
+
+    RenderResult<void> RenderGraphInstance::invalidateHistory(std::span<const GraphResourceId> previous) noexcept
+    {
+        // Validate the whole request before changing any instance state.
+        for (auto resource : previous)
+        {
+            const bool valid = resource.index < plan_->resources().size() &&
+                               plan_->resources()[resource.index].origin == EGraphOrigin::HISTORY_PREVIOUS &&
+                               plan_->resources()[resource.index].history != kGraphInvalidIndex;
+            if (!valid)
+            {
+                return cxx::unexpected(RenderError{kGraphUnknownResource});
+            }
+        }
+        if (previous.empty())
+        {
+            for (auto& history : histories_)
+            {
+                history.invalidate = true;
+            }
+        }
+        else
+        {
+            for (auto resource : previous)
+            {
+                histories_[plan_->resources()[resource.index].history].invalidate = true;
+            }
+        }
+        return {};
+    }
+
+    void RenderGraphInstance::publishHistory(std::uint32_t frame_slot) noexcept
+    {
+        if (histories_.empty())
+        {
+            return;
+        }
+        const auto& frame = frames_[frame_slot];
+        const bool produced = std::ranges::all_of(
+            histories_,
+            [&](const auto& history)
+            {
+                return std::ranges::all_of(
+                    history.plan->writers,
+                    [&](auto writer) { return frame.enabled_passes[writer] != 0; }
+                );
+            }
+        );
+        std::size_t graphics = 0;
+        while (&session_->physicalQueue(graphics) != &session_->queue())
+        {
+            ++graphics;
+        }
+        const auto serial = session_->queue().submitted();
+        for (auto& history : histories_)
+        {
+            history.submitted(graphics, serial, produced);
+        }
     }
 
     RenderResult<void> RenderGraphInstance::prepareFrameBindings(std::uint32_t slot) noexcept
@@ -244,6 +623,10 @@ namespace lux::render::detail
                               ) -> RenderResult<void>
         {
             const auto index = access.version.resource.index;
+            if (plan.resources()[index].history != kGraphInvalidIndex)
+            {
+                return {}; // The selected physical History bank supplies its already-created view.
+            }
             const auto& range = std::get<GraphImageRange>(access.range);
             auto* image = frame.bindings[index].image;
             if (!image)
@@ -300,6 +683,22 @@ namespace lux::render::detail
         for (const auto& compiled_pass : plan.passes())
         {
             Pass pass{&compiled_pass};
+            if (const auto* compute = std::get_if<ComputeCommands>(&compiled_pass.work))
+            {
+                if (const auto* dispatch = std::get_if<ImageDispatchArguments>(&compute->dispatch))
+                {
+                    const auto& image = core.GetTextureDesc(*frame.bindings[dispatch->resource.index].image);
+                    const auto width = std::max(1u, std::uint32_t(image.width) >> dispatch->mip);
+                    const auto height = std::max(1u, std::uint32_t(image.height) >> dispatch->mip);
+                    pass.dispatch_groups =
+                        {(width - 1) / dispatch->group_size[0] + 1, (height - 1) / dispatch->group_size[1] + 1, 1};
+                    const auto& limit = session.description().shaderStage.compute.dispatchMaxDim;
+                    if (pass.dispatch_groups[0] > limit[0] || pass.dispatch_groups[1] > limit[1])
+                    {
+                        return cxx::unexpected(RenderError{kDeviceArgument});
+                    }
+                }
+            }
             for (const auto& barrier : compiled_pass.before.images)
             {
                 auto native = barrier.native;
@@ -569,6 +968,7 @@ namespace lux::render::detail
                 const auto& program = layout.passes[pass.compiled_pass->source_pass];
                 pass.descriptors.resize(unsigned(program.shared) + unsigned(!program.private_bindings.empty()));
                 pass.private_views.resize(program.uses.size());
+                pass.history_views.resize(program.uses.size());
                 if (program.shared)
                 {
                     pass.descriptors[0] = session_->descriptors().descriptors();
@@ -652,6 +1052,49 @@ namespace lux::render::detail
             output += "{\"slot\":" + std::to_string(i) + ",\"owned_buffers\":" + std::to_string(frame.buffers.size()) +
                       ",\"owned_textures\":" + std::to_string(frame.images.size()) +
                       ",\"allocation_requirement_bytes\":" + std::to_string(bytes) + "}";
+        }
+        output += "],\"histories\":[";
+        for (std::size_t i = 0; i < histories_.size(); ++i)
+        {
+            if (i)
+            {
+                output += ',';
+            }
+            const auto& history = histories_[i];
+            output += "{\"previous_resource\":" + std::to_string(history.plan->description.previous.index) +
+                      ",\"current_resource\":" + std::to_string(history.plan->description.current.index) +
+                      ",\"sequence\":" + std::to_string(history.sequence) +
+                      ",\"latest_slot\":" + std::to_string(history.latest) + ",\"slots\":[";
+            for (std::size_t s = 0; s < history.slots.size(); ++s)
+            {
+                if (s)
+                {
+                    output += ',';
+                }
+                const auto& slot = history.slots[s];
+                nri::MemoryDesc memory{};
+                if (slot.image)
+                {
+                    session_->nriCore().GetTextureMemoryDesc(*slot.image, nri::MemoryLocation::DEVICE, memory);
+                }
+                else
+                {
+                    session_->nriCore().GetBufferMemoryDesc(*slot.buffer, nri::MemoryLocation::DEVICE, memory);
+                }
+                output += "{\"sample\":" + std::to_string(slot.sample_sequence) +
+                          ",\"initialized\":" + (slot.initialized ? "true" : "false") +
+                          ",\"allocation_requirement_bytes\":" + std::to_string(memory.size) + ",\"last_use\":[";
+                for (std::size_t q = 0; q < session_->queueCount(); ++q)
+                {
+                    if (q)
+                    {
+                        output += ',';
+                    }
+                    output += std::to_string(slot.last_use.serials[q]);
+                }
+                output += "]}";
+            }
+            output += "]}";
         }
         output += "],\"excludes\":\"borrowed Target/inputs, allocator pool reserve and descriptors\"}";
         return sink.write(sink.destination, output);
@@ -747,6 +1190,10 @@ namespace lux::render::detail
             }
             for (const auto [p, index] : uses.descriptor_uses)
             {
+                if (uses.history != kGraphInvalidIndex)
+                {
+                    continue;
+                }
                 auto& pass = frame.passes[p];
                 const auto& program = layout.passes[pass.compiled_pass->source_pass];
                 const auto& use = program.uses[index];
@@ -823,6 +1270,34 @@ namespace lux::render::detail
         return {};
     }
 
+    RenderResult<void> RenderGraphInstance::setInputs(
+        std::span<const std::byte> parameters,
+        std::span<const std::uint8_t> conditions
+    ) noexcept
+    {
+        if (parameters.size() != instance_values_.size())
+        {
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        if (auto accepted = setConditions(conditions); !accepted)
+        {
+            return accepted;
+        }
+        std::ranges::copy(parameters, instance_values_.begin());
+        return {};
+    }
+
+    RenderResult<void> RenderGraphInstance::setConditions(std::span<const std::uint8_t> values) noexcept
+    {
+        if (values.size() != condition_values_.size() ||
+            std::ranges::any_of(values, [](auto value) { return value > 1; }))
+        {
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        std::ranges::copy(values, condition_values_.begin());
+        return {};
+    }
+
     RenderResult<void> RenderGraphInstance::setParameters(GraphPassId id, std::span<const std::byte> bytes) noexcept
     {
         const auto index = id.index < plan_->pass_indices_.size() ? plan_->pass_indices_[id.index] : kGraphInvalidIndex;
@@ -840,12 +1315,32 @@ namespace lux::render::detail
         return index == kGraphInvalidIndex ? std::span<const std::byte>{} : pass_parameters_[index];
     }
 
-    RenderResult<void> RenderGraphInstance::prepareFrame(std::uint32_t slot) noexcept
+    RenderResult<bool> RenderGraphInstance::prepareFrame(std::uint32_t slot) noexcept
     {
         auto& frame = frames_[slot];
         if (frame.unavailable_buffers)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        if (!selectHistory())
+        {
+            return false;
+        }
+        bindHistory(slot);
+        frame.enabled_pass_count = static_cast<std::uint32_t>(frame.passes.size());
+        for (std::size_t p = 0; p < frame.passes.size(); ++p)
+        {
+            const auto& condition = frame.passes[p].compiled_pass->condition;
+            if (!condition)
+            {
+                continue;
+            }
+            const bool value =
+                condition->source == EConditionSource::INPUT
+                    ? condition_values_[condition->input] != 0
+                    : histories_[plan_->resources()[condition->input].history].latest != kGraphInvalidIndex;
+            frame.enabled_passes[p] = value == condition->expected;
+            frame.enabled_pass_count -= !frame.enabled_passes[p];
         }
         if (!frame.changed_resources.empty())
         {
@@ -865,11 +1360,17 @@ namespace lux::render::detail
                 std::memcpy(parameters.data() + copy.destination_offset, source + copy.source_offset, copy.bytes);
             }
         }
-        return {};
+        return true;
+    }
+
+    std::uint32_t RenderGraphInstance::recordedPassCount(std::uint32_t slot) const noexcept
+    {
+        return frames_[slot].enabled_pass_count;
     }
 
     void RenderGraphInstance::submitted(std::uint32_t slot) noexcept
     {
+        publishHistory(slot);
         progress_.last_submitted_slot = slot;
         ++progress_.counts[static_cast<std::size_t>(EExecutionOutcome::EXECUTED)];
     }

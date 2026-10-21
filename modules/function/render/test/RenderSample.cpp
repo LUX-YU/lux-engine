@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/features/HzbFeature.hpp>
 #include <lux/engine/render/features/MaterialMeshRaster.hpp>
 #include <lux/engine/render/features/MeshDepthRaster.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -73,6 +74,7 @@ int main(int argc, char** argv)
     auto server = require(createRenderServer(config, execution, options));
     (void)require(server->registerFeature<MaterialMeshRasterDescriptor>());
     (void)require(server->registerFeature<MeshDepthRasterDescriptor>());
+    (void)require(server->registerFeature<HzbFeatureDescriptor>());
     (void)require(server->registerStorage<SampledTexture2DStorageDescriptor>("B"));
 
     const auto directory_id = require(server->commandId<lux::render::ListCommands>());

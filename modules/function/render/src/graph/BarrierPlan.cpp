@@ -161,7 +161,8 @@ namespace lux::render::detail
         {
             const auto* image = std::get_if<GraphImageDesc>(&resources[i].description);
             states[i].resize(image ? std::size_t(image->mips) * image->layers * 3 : 1);
-            if (resources[i].memory_used && resources[i].origin == EGraphOrigin::IMPORTED && !resources[i].shared_table)
+            if (resources[i].memory_used && resources[i].origin != EGraphOrigin::TRANSIENT &&
+                !resources[i].shared_table)
             {
                 const auto usage = graph.resources()[i].initial_use;
                 if (image && usage == EGraphUse::UNSPECIFIED && !graph.resources()[i].initial_ranges.empty())
@@ -186,8 +187,8 @@ namespace lux::render::detail
         {
             auto& previous = states[index][cell];
             const auto* image = std::get_if<GraphImageDesc>(&resources[index].description);
-            const bool transition =
-                !previous.known || (image && previous.layout != current.layout) || previous.write || current.write;
+            const bool transition = !previous.known || (image && previous.layout != current.layout) || previous.write ||
+                                    current.write || previous.access != current.access;
             if (transition)
             {
                 if (image)
@@ -258,7 +259,7 @@ namespace lux::render::detail
             bool incompatible_layouts = false;
             for (const auto& use : declared.uses)
             {
-                if (use.fallback || use.usage == EGraphUse::UNSPECIFIED)
+                if ((use.fallback && use.access == EGraphAccess::READ) || use.usage == EGraphUse::UNSPECIFIED)
                 {
                     return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
@@ -367,7 +368,7 @@ namespace lux::render::detail
         {
             const auto usage = graph.resources()[i].initial_use;
             if (!resources[i].memory_used || resources[i].shared_table ||
-                resources[i].origin != EGraphOrigin::IMPORTED || usage == EGraphUse::UNSPECIFIED)
+                resources[i].origin == EGraphOrigin::TRANSIENT || usage == EGraphUse::UNSPECIFIED)
             {
                 continue;
             }

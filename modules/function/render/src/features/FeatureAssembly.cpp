@@ -25,6 +25,7 @@ namespace lux::render
             std::vector<ResolvedResource> resolved;
             std::vector<std::size_t> incoming;
             std::vector<ResourceVersion> supplied;
+            std::vector<FeatureHistory> histories;
             std::size_t first_resource = 0, resource_count = 0;
             std::size_t first_argument = 0, argument_count = 0;
             std::size_t first_binding = 0, binding_count = 0;
@@ -87,6 +88,7 @@ namespace lux::render
             {
                 return cxx::unexpected(described.error());
             }
+            work[i].histories = std::move(ports.histories);
             const auto append = [&](auto& source, std::vector<GraphStorageBinding>* storage)
             {
                 for (auto& port : source)
@@ -195,6 +197,41 @@ namespace lux::render
         }
         for (auto i : order)
         {
+            for (const auto& history : work[i].histories)
+            {
+                const auto previous = portIndex(work[i], history.previous);
+                const auto current = portIndex(work[i], history.current);
+                const auto count = work[i].declarations.size();
+                if (previous == count || current == count || previous == current)
+                {
+                    return cxx::unexpected(failure(kFeatureContract, i));
+                }
+                const auto& a = work[i].declarations[previous].declaration;
+                const auto& b = work[i].declarations[current].declaration;
+                const bool invalid_pair = a.direction != EFeaturePort::OUTPUT || b.direction != EFeaturePort::OUTPUT ||
+                                          a.origin != EGraphOrigin::HISTORY_PREVIOUS ||
+                                          b.origin != EGraphOrigin::HISTORY_CURRENT || a.description != b.description ||
+                                          a.storage || b.storage ||
+                                          work[i].resolved[previous].version.resource.index != kGraphInvalidIndex ||
+                                          work[i].resolved[current].version.resource.index != kGraphInvalidIndex;
+                if (invalid_pair)
+                {
+                    return cxx::unexpected(failure(kFeatureContract, i));
+                }
+                auto pair = builder.declareHistory(
+                    featureKey(inputs[i].descriptor->type, inputs[i].contribution_key, history.current),
+                    b.description,
+                    history.initial,
+                    history.canonical_use,
+                    history.distance
+                );
+                if (!pair)
+                {
+                    return cxx::unexpected(pair.error());
+                }
+                work[i].resolved[previous].version = {pair->previous, 0};
+                work[i].resolved[current].version = {pair->current, 0};
+            }
             for (std::size_t p = 0; p < work[i].declarations.size(); ++p)
             {
                 auto& port = work[i].declarations[p];
@@ -206,6 +243,10 @@ namespace lux::render
                     {
                         return cxx::unexpected(failure(kFeatureMissingProvider, i, p));
                     }
+                    continue;
+                }
+                if (work[i].resolved[p].version.resource.index != kGraphInvalidIndex)
+                {
                     continue;
                 }
                 auto resource = builder.declareResource(
@@ -302,6 +343,14 @@ namespace lux::render
                     if (invalid_publish)
                     {
                         return cxx::unexpected(failure(kFeatureVersion, i, p));
+                    }
+                    if (direction == EFeaturePort::OUTPUT &&
+                        contribution.declarations[p].declaration.origin == EGraphOrigin::HISTORY_CURRENT)
+                    {
+                        if (auto published = builder.publishHistory(after); !published)
+                        {
+                            return cxx::unexpected(published.error());
+                        }
                     }
                 }
                 result.contributions.push_back({i, first, builder.passCount() - first});

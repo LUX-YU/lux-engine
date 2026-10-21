@@ -194,93 +194,116 @@ namespace lux::render
             }
         };
 
-        auto resolve = [&](ResourceVersion version, const VGraphRange& range, GraphPassId consumer, bool fallback
-                       ) -> RenderResult<void>
+        auto resolve =
+            [&](ResourceVersion initial_version, const VGraphRange& initial_range, GraphPassId consumer, bool fallback
+            ) -> RenderResult<void>
         {
-            const auto& resource = resources[version.resource.index];
-            const bool image = std::holds_alternative<GraphImageDesc>(resource.description);
-            auto remaining = detail::boxes(range);
-            if (version.number == 0)
+            std::vector<std::pair<ResourceVersion, VGraphRange>> pending{{initial_version, initial_range}};
+            while (!pending.empty())
             {
-                const bool has_initial_contract =
-                    resource.origin == EGraphOrigin::IMPORTED || resource.origin == EGraphOrigin::HISTORY_PREVIOUS;
-                if (!has_initial_contract)
+                auto [version, range] = std::move(pending.back());
+                pending.pop_back();
+                const auto& resource = resources[version.resource.index];
+                const bool image = std::holds_alternative<GraphImageDesc>(resource.description);
+                auto remaining = detail::boxes(range);
+                if (version.number == 0)
                 {
-                    return cxx::unexpected(graphError(kGraphUndefinedRead, consumer, version.resource));
-                }
-                if (!initiallyAvailable(resource, range))
-                {
-                    return cxx::unexpected(graphError(kGraphMissingInitial, consumer, version.resource));
-                }
-                for (const auto& box : remaining)
-                {
-                    result.versions.push_back({version, detail::toRange(box, image), {}, consumer, fallback});
-                }
-                return {};
-            }
-            struct Piece final
-            {
-                Box box;
-                GraphPassId writer;
-            };
-            std::vector<Piece> pieces;
-            for (const auto& writer : writers[version.resource.index])
-            {
-                if (writer.use->version.number != version.number)
-                {
+                    const bool has_initial_contract = resource.origin == EGraphOrigin::IMPORTED ||
+                                                      resource.origin == EGraphOrigin::HISTORY_PREVIOUS ||
+                                                      resource.origin == EGraphOrigin::HISTORY_CURRENT;
+                    if (!has_initial_contract)
+                    {
+                        return cxx::unexpected(graphError(kGraphUndefinedRead, consumer, version.resource));
+                    }
+                    if (!initiallyAvailable(resource, range))
+                    {
+                        return cxx::unexpected(graphError(kGraphMissingInitial, consumer, version.resource));
+                    }
+                    for (const auto& box : remaining)
+                    {
+                        result.versions.push_back({version, detail::toRange(box, image), {}, consumer, fallback});
+                    }
                     continue;
                 }
-                for (const auto& requested : detail::boxes(range))
+                struct Piece final
                 {
-                    for (const auto& written : writer.ranges)
+                    Box box;
+                    GraphPassId writer;
+                };
+                std::vector<Piece> pieces;
+                std::optional<std::uint32_t> predecessor;
+                for (const auto& writer : writers[version.resource.index])
+                {
+                    if (writer.use->version.number != version.number)
                     {
-                        const auto overlap = detail::intersection(requested, written);
-                        if (!overlap)
+                        continue;
+                    }
+                    if (predecessor && *predecessor != writer.use->input_version)
+                    {
+                        return cxx::unexpected(graphError(kGraphAmbiguousProducer, consumer, version.resource));
+                    }
+                    predecessor = writer.use->input_version;
+                    for (const auto& requested : detail::boxes(range))
+                    {
+                        for (const auto& written : writer.ranges)
                         {
-                            continue;
-                        }
-                        for (const auto& previous : pieces)
-                        {
-                            if (detail::intersection(previous.box, *overlap))
+                            const auto overlap = detail::intersection(requested, written);
+                            if (!overlap)
                             {
-                                return cxx::unexpected(graphError(
-                                    kGraphAmbiguousProducer,
-                                    writer.pass,
-                                    version.resource,
-                                    previous.writer.index
-                                ));
+                                continue;
                             }
+                            for (const auto& previous : pieces)
+                            {
+                                if (detail::intersection(previous.box, *overlap))
+                                {
+                                    return cxx::unexpected(graphError(
+                                        kGraphAmbiguousProducer,
+                                        writer.pass,
+                                        version.resource,
+                                        previous.writer.index
+                                    ));
+                                }
+                            }
+                            if (writer.pass == consumer)
+                            {
+                                return cxx::unexpected(graphError(kGraphUndefinedRead, consumer, version.resource));
+                            }
+                            pieces.push_back({*overlap, writer.pass});
+                            removeCovered(remaining, *overlap);
                         }
-                        if (writer.pass == consumer)
-                        {
-                            return cxx::unexpected(graphError(kGraphUndefinedRead, consumer, version.resource));
-                        }
-                        pieces.push_back({*overlap, writer.pass});
-                        removeCovered(remaining, *overlap);
                     }
                 }
-            }
-            if (!remaining.empty())
-            {
-                return cxx::unexpected(graphError(kGraphUndefinedRead, consumer, version.resource, version.number));
-            }
-            for (const auto& piece : pieces)
-            {
-                retain(piece.writer);
-                const auto part = detail::toRange(piece.box, image);
-                result.versions.push_back({version, part, piece.writer, consumer, fallback});
-                if (consumer.index != kGraphInvalidIndex)
+                if (!remaining.empty())
                 {
-                    addEdge(edges, piece.writer, consumer);
-                    result.hazards.push_back(
-                        {piece.writer,
-                         consumer,
-                         version.resource,
-                         part,
-                         EGraphHazard::RAW,
-                         version.number,
-                         version.number}
-                    );
+                    if (!predecessor || *predecessor >= version.number)
+                    {
+                        return cxx::unexpected(
+                            graphError(kGraphUndefinedRead, consumer, version.resource, version.number)
+                        );
+                    }
+                    for (const auto& part : remaining)
+                    {
+                        pending.push_back({{version.resource, *predecessor}, detail::toRange(part, image)});
+                    }
+                }
+                for (const auto& piece : pieces)
+                {
+                    retain(piece.writer);
+                    const auto part = detail::toRange(piece.box, image);
+                    result.versions.push_back({version, part, piece.writer, consumer, fallback});
+                    if (consumer.index != kGraphInvalidIndex)
+                    {
+                        addEdge(edges, piece.writer, consumer);
+                        result.hazards.push_back(
+                            {piece.writer,
+                             consumer,
+                             version.resource,
+                             part,
+                             EGraphHazard::RAW,
+                             version.number,
+                             version.number}
+                        );
+                    }
                 }
             }
             return {};
@@ -289,6 +312,18 @@ namespace lux::render
         for (const auto& output : definition.outputs())
         {
             if (auto valid = resolve(output.version, output.range, {}, false); !valid)
+            {
+                return cxx::unexpected(valid.error());
+            }
+        }
+        for (const auto& history : definition.histories())
+        {
+            if (!history.publication)
+            {
+                continue;
+            }
+            const auto range = detail::normalize(resources[history.current.index], {});
+            if (auto valid = resolve(*history.publication, *range, {}, false); !valid)
             {
                 return cxx::unexpected(valid.error());
             }
@@ -328,7 +363,7 @@ namespace lux::render
                         return cxx::unexpected(valid.error());
                     }
                 }
-                const bool needs_fallback = detail::writes(use.access) && passes[pass.index].conditional;
+                const bool needs_fallback = detail::writes(use.access) && passes[pass.index].condition.has_value();
                 if (needs_fallback)
                 {
                     if (!use.fallback)

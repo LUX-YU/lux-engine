@@ -12,7 +12,7 @@ namespace lux::render
         std::vector<ResourceAccess> uses;
         VPassWork work;
         bool side_effect = false;
-        bool conditional = false;
+        std::optional<PassCondition> condition;
     };
 
     class RenderGraphBuilder;
@@ -45,6 +45,16 @@ namespace lux::render
             return programs_;
         }
 
+        [[nodiscard]] std::span<const HistoryDescription> histories() const noexcept
+        {
+            return histories_;
+        }
+
+        [[nodiscard]] std::span<const std::string> conditions() const noexcept
+        {
+            return conditions_;
+        }
+
     private:
         friend class RenderGraphBuilder;
         std::vector<rdesc::SpirvArtifact> programs_;
@@ -52,6 +62,8 @@ namespace lux::render
         std::vector<GraphPass> passes_;
         std::vector<GraphDependency> dependencies_;
         std::vector<GraphExport> outputs_;
+        std::vector<HistoryDescription> histories_;
+        std::vector<std::string> conditions_;
     };
 
     // Error args: {pass index (or invalid), resource index (or invalid), detail}.

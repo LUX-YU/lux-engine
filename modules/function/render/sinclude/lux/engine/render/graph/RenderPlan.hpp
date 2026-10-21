@@ -27,6 +27,7 @@ namespace lux::render::detail
         bool memory_used = false;
         bool target_sized = false;
         bool shared_table = false;
+        std::uint32_t history = kGraphInvalidIndex;
         // Immutable reverse indexes shared by every Context frame slice.
         std::vector<std::pair<std::uint32_t, std::uint32_t>> barrier_uses, descriptor_uses;
         std::vector<std::uint32_t> final_barrier_uses;
@@ -103,6 +104,7 @@ namespace lux::render::detail
         std::uint32_t source_pass = kGraphInvalidIndex;
         std::uint32_t rendering_group = kGraphInvalidIndex;
         ERenderingBoundary rendering_boundary = ERenderingBoundary::NON_RASTER;
+        std::optional<PassCondition> condition;
     };
 
     struct RenderingGroup final
@@ -118,6 +120,13 @@ namespace lux::render::detail
         std::vector<CompiledPass> passes;
         std::vector<RenderingGroup> groups;
         BarrierBatch after;
+    };
+
+    struct HistoryPlan final
+    {
+        HistoryDescription description;
+        // Compiled producer indexes, including disjoint writes composing the published version.
+        std::vector<std::uint32_t> writers;
     };
 
     // The Effect owns this immutable result; execution contexts borrow it within the Effect lifetime.
@@ -170,6 +179,8 @@ namespace lux::render::detail
         TargetDesc target_;
         std::vector<nri::PipelineLayout*> layouts_;
         std::vector<CompiledResource> resources_;
+        std::vector<HistoryPlan> histories_;
+        std::uint32_t condition_count_ = 0;
         RecordingProgram recording_;
         std::vector<std::uint32_t> pass_indices_;
 

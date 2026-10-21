@@ -13,6 +13,7 @@ namespace lux::render
     class RasterMeshInstanceStorageDescriptor;
     struct MaterialMeshRasterDescriptor;
     struct MeshDepthRasterDescriptor;
+    struct HzbFeatureDescriptor;
 
     template <>
     LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareStorage<SampledTexture2DStorageDescriptor>(
@@ -54,6 +55,12 @@ namespace lux::render
 
     template <>
     LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareFeature<MeshDepthRasterDescriptor>(
+        RegistrationBatch&,
+        std::string_view
+    ) noexcept;
+
+    template <>
+    LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareFeature<HzbFeatureDescriptor>(
         RegistrationBatch&,
         std::string_view
     ) noexcept;

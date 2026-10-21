@@ -1,0 +1,11 @@
+#version 450
+layout(local_size_x = 1) in;
+layout(set = 0, binding = 0, std430) readonly buffer Previous { uint value[]; } previous_sample;
+layout(set = 0, binding = 1, std430) writeonly buffer Current { uint value[]; } current_sample;
+void main()
+{
+    for (uint i = 0; i < 4; ++i)
+    {
+        current_sample.value[i] = previous_sample.value[i] + 1;
+    }
+}

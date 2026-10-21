@@ -12,6 +12,7 @@ namespace lux::render
         addBuiltin<RemoveScene, &Impl::removeScene>();
         addBuiltin<CreateView, &Impl::createView>();
         addBuiltin<UpdateAttachmentInputs, &Impl::updateAttachmentInputs>();
+        addBuiltin<InvalidateHistory, &Impl::invalidateHistory>();
         addBuiltin<RemoveView, &Impl::removeView>();
         addBuiltin<CreateTarget, &Impl::createTarget>();
         addBuiltin<ResizeTarget, &Impl::resizeTarget>();
@@ -503,7 +504,7 @@ namespace lux::render
             output_response.error = prepared.error();
             return;
         }
-        if (auto values = prepared->instance->setInstanceParameters(_request.parameters); !values)
+        if (auto values = prepared->instance->setInputs(_request.parameters, _request.conditions); !values)
         {
             output_response.error = values.error();
             return;
@@ -559,7 +560,8 @@ namespace lux::render
             {
                 return cxx::unexpected(candidate.error());
             }
-            if (auto values = candidate->instance->setInstanceParameters(group->instance->instanceParameters());
+            if (auto values = candidate->instance
+                                  ->setInputs(group->instance->instanceParameters(), group->instance->conditions());
                 !values)
             {
                 return cxx::unexpected(values.error());
@@ -639,13 +641,32 @@ namespace lux::render
             return;
         }
         // Native validates the complete input size before changing any parameter bytes.
-        if (auto applied = attachment->instance->setInstanceParameters(input.parameters); !applied)
+        if (auto applied = attachment->instance->setInputs(input.parameters, input.conditions); !applied)
         {
             output_response.error = applied.error();
             return;
         }
         attachment->instance->setViewport(input.viewport);
         output_response = {};
+    }
+
+    void RenderServer::Impl::invalidateHistory(
+        const InvalidateHistory::Request& input,
+        InvalidateHistory::Response& output
+    ) noexcept
+    {
+        auto* attachment = attachments.find(input.attachment);
+        if (!attachment)
+        {
+            output.error = RenderError{kRuntimeIdentity};
+            return;
+        }
+        if (auto invalidated = attachment->instance->invalidateHistory(input.previous); !invalidated)
+        {
+            output.error = invalidated.error();
+            return;
+        }
+        output = {};
     }
 
     void RenderServer::Impl::removeView(

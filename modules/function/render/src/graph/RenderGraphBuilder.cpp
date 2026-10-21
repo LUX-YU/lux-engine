@@ -184,6 +184,76 @@ namespace lux::render
         return id;
     }
 
+    RenderResult<HistoryDescription> RenderGraphBuilder::declareHistory(
+        std::string key,
+        VGraphResourceDesc description,
+        HistoryInitialValue initial,
+        EGraphUse canonical_use,
+        std::uint32_t distance
+    ) noexcept
+    {
+        const bool invalid_capacity = candidate_.resources_.size() > kGraphInvalidIndex - 2;
+        const bool invalid_use = canonical_use != EGraphUse::SAMPLED && canonical_use != EGraphUse::STORAGE_READ &&
+                                 canonical_use != EGraphUse::TRANSFER_SOURCE;
+        if (key.empty() || distance != 1 || invalid_capacity || invalid_use ||
+            !compatibleUse(description, canonical_use))
+        {
+            return cxx::unexpected(graphError(kGraphInvalidDescriptor));
+        }
+        if (const auto* buffer = std::get_if<GraphBufferDesc>(&description);
+            buffer && (buffer->size % 4 || initial.buffer))
+        {
+            return cxx::unexpected(graphError(kGraphInvalidDescriptor));
+        }
+        GraphResource previous{key + ".previous", description, EGraphOrigin::HISTORY_PREVIOUS, {{}}, canonical_use};
+        if (auto valid = validateResource(previous); !valid)
+        {
+            return cxx::unexpected(valid.error());
+        }
+        const auto whole = detail::normalize(previous, {});
+        previous.initial_ranges = {*whole};
+        GraphResource
+            current{key + ".current", std::move(description), EGraphOrigin::HISTORY_CURRENT, {}, canonical_use};
+        HistoryDescription history;
+        history.previous = {static_cast<std::uint32_t>(candidate_.resources_.size())};
+        history.current = {history.previous.index + 1};
+        history.distance = distance;
+        history.initial = initial;
+        history.canonical_use = canonical_use;
+        candidate_.resources_.push_back(std::move(previous));
+        candidate_.resources_.push_back(std::move(current));
+        versions_.insert(versions_.end(), 2, 0);
+        candidate_.histories_.push_back(history);
+        return history;
+    }
+
+    RenderResult<void> RenderGraphBuilder::publishHistory(ResourceVersion version) noexcept
+    {
+        auto history = std::ranges::find(candidate_.histories_, version.resource, &HistoryDescription::current);
+        if (history == candidate_.histories_.end() || history->publication || version.number == 0)
+        {
+            return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, version.resource));
+        }
+        // Analysis resolves this whole-resource observation separately from external Graph exports.
+        history->publication = version;
+        return {};
+    }
+
+    RenderResult<std::uint32_t> RenderGraphBuilder::declareCondition(std::string key) noexcept
+    {
+        if (key.empty() || candidate_.conditions_.size() >= kGraphInvalidIndex)
+        {
+            return cxx::unexpected(graphError(kGraphInvalidDescriptor));
+        }
+        if (std::ranges::find(candidate_.conditions_, key) != candidate_.conditions_.end())
+        {
+            return cxx::unexpected(graphError(kGraphDuplicateKey));
+        }
+        const auto index = static_cast<std::uint32_t>(candidate_.conditions_.size());
+        candidate_.conditions_.push_back(std::move(key));
+        return index;
+    }
+
     RenderResult<std::uint32_t> RenderGraphBuilder::addProgram(rdesc::SpirvArtifact program) noexcept
     {
         if (candidate_.programs_.size() >= kGraphInvalidIndex)
@@ -229,7 +299,7 @@ namespace lux::render
         GraphPassOptions options
     ) noexcept
     {
-        GraphPass pass{std::move(key), kind, {}, std::move(work), options.side_effect, options.conditional};
+        GraphPass pass{std::move(key), kind, {}, std::move(work), options.side_effect, options.condition};
         PassResult result;
         RenderError failure{};
         const auto append = [&](ResourceAccess& access, EGraphUse usage, bool record = true) noexcept
@@ -610,6 +680,22 @@ namespace lux::render
         {
             return cxx::unexpected(graphError(kGraphInvalidDescriptor, id));
         }
+        if (pass.condition)
+        {
+            const auto& condition = *pass.condition;
+            const bool valid_input =
+                condition.source == EConditionSource::INPUT && condition.input < candidate_.conditions_.size();
+            const bool valid_history =
+                condition.source == EConditionSource::HISTORY_VALID &&
+                std::ranges::any_of(
+                    candidate_.histories_,
+                    [&](const auto& history) { return history.previous.index == condition.input; }
+                );
+            if (!valid_input && !valid_history)
+            {
+                return cxx::unexpected(graphError(kGraphInvalidDescriptor, id));
+            }
+        }
         for (auto& use : pass.uses)
         {
             const auto resource_id = use.version.resource;
@@ -680,7 +766,7 @@ namespace lux::render
                 }
                 const bool is_compatible = candidate_.resources_[source.index].description == resource.description;
                 const bool is_write_fallback =
-                    is_write && pass.conditional && source == resource_id && use.fallback->number < use.version.number;
+                    is_write && pass.condition && source == resource_id && use.fallback->number < use.version.number;
                 const bool is_history_fallback = !is_write && resource.origin == EGraphOrigin::HISTORY_PREVIOUS &&
                                                  use.version.number == 0 && source != resource_id;
                 if (!is_compatible || (!is_write_fallback && !is_history_fallback))

@@ -29,6 +29,8 @@ namespace lux::render::detail
             return {nri::Format::BGRA8_SRGB, bytes};
         case F::RGBA16_SFLOAT:
             return {nri::Format::RGBA16_SFLOAT, bytes};
+        case F::R32_SFLOAT:
+            return {nri::Format::R32_SFLOAT, bytes};
         case F::RGBA32_SFLOAT:
             return {nri::Format::RGBA32_SFLOAT, bytes};
         case F::D32_SFLOAT:

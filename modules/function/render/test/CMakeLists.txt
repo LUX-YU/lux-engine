@@ -65,7 +65,9 @@ target_link_libraries(render_output_test PRIVATE NRI)
 set_target_properties(render PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 
 set(graph_shader_headers)
-foreach(spec GraphFill.comp GraphTriangle.vert GraphMrt.frag GraphPresent.frag GraphCount.comp GraphRed.frag)
+foreach(spec GraphFill.comp GraphTriangle.vert GraphMrt.frag GraphPresent.frag GraphCount.comp GraphRed.frag
+    GraphHistory.comp GraphDepthField.comp
+)
     get_filename_component(shader_name "${spec}" NAME_WE)
     set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.hpp")
     set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${spec}.spv")
@@ -86,6 +88,7 @@ add_executable(render_graph_chain GraphChain.cpp ${graph_shader_headers})
 target_include_directories(render_graph_chain PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude"
     "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+    "${CMAKE_CURRENT_BINARY_DIR}/../shaders"
 )
 target_link_libraries(render_graph_chain PRIVATE render NRI)
 set_target_properties(render_graph_chain PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")

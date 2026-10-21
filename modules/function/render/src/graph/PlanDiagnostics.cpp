@@ -135,7 +135,7 @@ namespace lux::render::detail
             output +=
                 "{\"source\":" + std::to_string(pass.source_pass) + ",\"kind\":" + std::to_string(pass.work.index()) +
                 ",\"group\":" + std::to_string(pass.rendering_group) +
-                ",\"conditional\":" + (pass.condition ? "true" : "false") +
+                ",\"condition_region\":" + std::to_string(pass.condition_region) +
                 ",\"rendering_boundary\":" + quoteDumpText(boundaries[static_cast<unsigned>(pass.rendering_boundary)]) +
                 ",\"descriptors\":[";
             const auto& layout = plan.descriptor_plan_->passes[pass.source_pass];
@@ -164,8 +164,9 @@ namespace lux::render::detail
                 const auto& use = layout.uses[i];
                 output += "{\"resource\":" + std::to_string(use.resource) + ",\"field\":" + std::to_string(use.field) +
                           ",\"element\":" + std::to_string(use.element) +
-                          ",\"sampler_input\":" + std::to_string(use.sampler) + ",\"range\":" + dumpRange(use.range) +
-                          "}";
+                          ",\"sampler_input\":" + std::to_string(use.sampler) +
+                          ",\"history_fallback\":" + std::to_string(use.fallback) +
+                          ",\"range\":" + dumpRange(use.range) + "}";
             }
             output += "],\"image_transitions\":[";
             for (std::size_t i = 0; i < pass.before.images.size(); ++i)
@@ -186,6 +187,20 @@ namespace lux::render::detail
                 output += bufferTransitionDump(pass.before.buffers[i]);
             }
             output += "]}";
+        }
+        output += "],\"conditional_regions\":[";
+        for (std::size_t i = 0; i < program.conditions.size(); ++i)
+        {
+            if (i)
+            {
+                output += ',';
+            }
+            const auto& region = program.conditions[i];
+            output += "{\"first_pass\":" + std::to_string(region.first_pass) +
+                      ",\"pass_count\":" + std::to_string(region.pass_count) +
+                      ",\"source\":" + std::to_string(static_cast<unsigned>(region.predicate.source)) +
+                      ",\"input\":" + std::to_string(region.predicate.input) +
+                      ",\"expected\":" + (region.predicate.expected ? "true" : "false") + "}";
         }
         output += "],\"final_image_transitions\":[";
         for (std::size_t i = 0; i < program.after.images.size(); ++i)

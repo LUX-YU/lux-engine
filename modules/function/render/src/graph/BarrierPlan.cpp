@@ -259,86 +259,100 @@ namespace lux::render::detail
             bool incompatible_layouts = false;
             for (const auto& use : declared.uses)
             {
-                if ((use.fallback && use.access == EGraphAccess::READ) || use.usage == EGraphUse::UNSPECIFIED)
+                if (use.usage == EGraphUse::UNSPECIFIED)
                 {
                     return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
-                const auto index = use.version.resource.index;
-                auto& resource = resources[index];
-                if (resource.shared_table)
+                const auto fallback = use.access == EGraphAccess::READ && use.fallback ? use.fallback->resource.index
+                                                                                       : kGraphInvalidIndex;
+                // Both possible inputs have a known state. Runtime selects the physical read,
+                // not a different barrier plan or an extra copy of the fallback contents.
+                for (const auto index : {use.version.resource.index, fallback})
                 {
-                    continue;
-                }
-                auto current = accessFor(use, layout);
-                current.pass = analysis.execution_order[p];
-                if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
-                {
-                    if (const auto* transfer = std::get_if<TransferWork>(&declared.work))
+                    if (index == kGraphInvalidIndex)
                     {
-                        for (const auto& operation : transfer->operations)
-                        {
-                            const auto* clear = std::get_if<ClearImage>(&operation);
-                            if (clear && clear->destination.version.resource.index == index)
-                            {
-                                const bool depth = rdesc::textureAspectMask(image->format) != 1;
-                                current.access = depth ? nri::AccessBits::DEPTH_STENCIL_ATTACHMENT
-                                                       : nri::AccessBits::COLOR_ATTACHMENT;
-                                current.stages =
-                                    depth ? nri::StageBits::DEPTH_STENCIL_ATTACHMENT : nri::StageBits::COLOR_ATTACHMENT;
-                                current.layout =
-                                    depth ? nri::Layout::DEPTH_STENCIL_ATTACHMENT : nri::Layout::COLOR_ATTACHMENT;
-                            }
-                        }
+                        continue;
                     }
-                }
-                else
-                {
-                    if (const auto* transfer = std::get_if<TransferWork>(&declared.work))
+                    auto& resource = resources[index];
+                    if (index == fallback && resource.history != kGraphInvalidIndex)
                     {
-                        for (const auto& operation : transfer->operations)
+                        return cxx::unexpected(RenderError{kDeviceUnsupported});
+                    }
+                    if (resource.shared_table)
+                    {
+                        continue;
+                    }
+                    auto current = accessFor(use, layout);
+                    current.pass = analysis.execution_order[p];
+                    if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
+                    {
+                        if (const auto* transfer = std::get_if<TransferWork>(&declared.work))
                         {
-                            const auto* fill = std::get_if<FillBuffer>(&operation);
-                            if (fill && fill->destination.version.resource.index == index)
+                            for (const auto& operation : transfer->operations)
                             {
-                                // NRI v180 implements ZeroBuffer with vkCmdFillBuffer on Vulkan.
-                                // Cover both the API's copy operation and its native clear stage.
-                                current.stages = nri::StageBits::COPY | nri::StageBits::CLEAR_STORAGE;
-                                if (fill->value)
+                                const auto* clear = std::get_if<ClearImage>(&operation);
+                                if (clear && clear->destination.version.resource.index == index)
                                 {
-                                    current.access = nri::AccessBits::CLEAR_STORAGE;
-                                    current.stages = nri::StageBits::CLEAR_STORAGE;
-                                    resource.buffer_usage |= nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
+                                    const bool depth = rdesc::textureAspectMask(image->format) != 1;
+                                    current.access = depth ? nri::AccessBits::DEPTH_STENCIL_ATTACHMENT
+                                                           : nri::AccessBits::COLOR_ATTACHMENT;
+                                    current.stages = depth ? nri::StageBits::DEPTH_STENCIL_ATTACHMENT
+                                                           : nri::StageBits::COLOR_ATTACHMENT;
+                                    current.layout =
+                                        depth ? nri::Layout::DEPTH_STENCIL_ATTACHMENT : nri::Layout::COLOR_ATTACHMENT;
                                 }
                             }
                         }
                     }
-                }
-                includeUsage(resource, current);
-                if (next[index].empty())
-                {
-                    next[index].resize(states[index].size());
-                    touched.push_back(index);
-                }
-                cells(
-                    index,
-                    use.range,
-                    [&](auto cell)
+                    else
                     {
-                        auto& combined = next[index][cell];
-                        if (!combined.known)
+                        if (const auto* transfer = std::get_if<TransferWork>(&declared.work))
                         {
-                            combined = current;
-                        }
-                        else
-                        {
-                            incompatible_layouts |= std::holds_alternative<GraphImageDesc>(resource.description) &&
-                                                    combined.layout != current.layout;
-                            combined.access |= current.access;
-                            combined.stages = combineStages(combined.stages, current.stages);
-                            combined.write |= current.write;
+                            for (const auto& operation : transfer->operations)
+                            {
+                                const auto* fill = std::get_if<FillBuffer>(&operation);
+                                if (fill && fill->destination.version.resource.index == index)
+                                {
+                                    // NRI v180 implements ZeroBuffer with vkCmdFillBuffer on Vulkan.
+                                    // Cover both the API's copy operation and its native clear stage.
+                                    current.stages = nri::StageBits::COPY | nri::StageBits::CLEAR_STORAGE;
+                                    if (fill->value)
+                                    {
+                                        current.access = nri::AccessBits::CLEAR_STORAGE;
+                                        current.stages = nri::StageBits::CLEAR_STORAGE;
+                                        resource.buffer_usage |= nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
+                                    }
+                                }
+                            }
                         }
                     }
-                );
+                    includeUsage(resource, current);
+                    if (next[index].empty())
+                    {
+                        next[index].resize(states[index].size());
+                        touched.push_back(index);
+                    }
+                    cells(
+                        index,
+                        use.range,
+                        [&](auto cell)
+                        {
+                            auto& combined = next[index][cell];
+                            if (!combined.known)
+                            {
+                                combined = current;
+                            }
+                            else
+                            {
+                                incompatible_layouts |= std::holds_alternative<GraphImageDesc>(resource.description) &&
+                                                        combined.layout != current.layout;
+                                combined.access |= current.access;
+                                combined.stages = combineStages(combined.stages, current.stages);
+                                combined.write |= current.write;
+                            }
+                        }
+                    );
+                }
             }
             if (incompatible_layouts)
             {
@@ -360,6 +374,10 @@ namespace lux::render::detail
                     layout.bindings[layout.uses[binding].field].count != 0)
                 {
                     resources[layout.uses[binding].resource].descriptor_uses.emplace_back(p, binding);
+                    if (layout.uses[binding].fallback != kGraphInvalidIndex)
+                    {
+                        resources[layout.uses[binding].fallback].descriptor_uses.emplace_back(p, binding);
+                    }
                 }
             }
         }

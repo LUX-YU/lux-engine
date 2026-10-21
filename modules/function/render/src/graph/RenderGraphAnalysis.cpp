@@ -352,15 +352,24 @@ namespace lux::render
                     {
                         input.number = use.input_version;
                     }
-                    const bool use_fallback = use.access == EGraphAccess::READ && use.fallback &&
-                                              !initiallyAvailable(resources[resource_id.index], use.range);
-                    if (use_fallback)
+                    const bool has_fallback = use.access == EGraphAccess::READ && use.fallback.has_value();
+                    // History validity is an instance decision. Retain both possible producers and
+                    // their hazards, including when the declaration also supplies initial content.
+                    if (has_fallback)
                     {
-                        input = *use.fallback;
+                        if (auto valid = resolve(*use.fallback, use.range, pass, true); !valid)
+                        {
+                            return cxx::unexpected(valid.error());
+                        }
                     }
-                    if (auto valid = resolve(input, use.range, pass, use_fallback); !valid)
+                    const bool has_primary =
+                        !has_fallback || initiallyAvailable(resources[resource_id.index], use.range);
+                    if (has_primary)
                     {
-                        return cxx::unexpected(valid.error());
+                        if (auto valid = resolve(input, use.range, pass, false); !valid)
+                        {
+                            return cxx::unexpected(valid.error());
+                        }
                     }
                 }
                 const bool needs_fallback = detail::writes(use.access) && passes[pass.index].condition.has_value();

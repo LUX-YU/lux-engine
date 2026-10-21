@@ -44,7 +44,8 @@ namespace lux::render::detail
         {
             auto& frame = frames_[slot];
             frame.bindings.resize(plan.resources().size());
-            frame.enabled_passes.resize(plan.passes().size(), 1);
+            frame.enabled_regions.resize(plan.recording_.conditions.size(), 1);
+            frame.history_valid.resize(plan.histories_.size(), 0);
             frame.changed_resources.reserve(plan.resources().size());
             frame.unavailable_buffers = std::ranges::count_if(
                 plan.resources(),
@@ -134,6 +135,7 @@ namespace lux::render::detail
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
             bindHistory(slot);
+            updateHistoryViews(slot);
         }
         return {};
     }
@@ -484,11 +486,11 @@ namespace lux::render::detail
 
     void RenderGraphInstance::bindHistory(std::uint32_t frame_slot) noexcept
     {
-        using Target = HistoryState::EViewTarget;
         auto& frame = frames_[frame_slot];
-        const auto& core = session_->nriCore();
-        for (const auto& history : histories_)
+        for (std::size_t h = 0; h < histories_.size(); ++h)
         {
+            const auto& history = histories_[h];
+            frame.history_valid[h] = history.latest != kGraphInvalidIndex;
             const auto& description = history.plan->description;
             for (const auto [resource, selected] :
                  {std::pair{description.previous, history.previous}, std::pair{description.current, history.current}})
@@ -504,6 +506,18 @@ namespace lux::render::detail
                     frame.changed_resources.push_back(resource.index);
                 }
             }
+        }
+    }
+
+    void RenderGraphInstance::updateHistoryViews(std::uint32_t frame_slot) noexcept
+    {
+        using Target = HistoryState::EViewTarget;
+        auto& frame = frames_[frame_slot];
+        const auto& core = session_->nriCore();
+        for (std::size_t h = 0; h < histories_.size(); ++h)
+        {
+            const auto& history = histories_[h];
+            const auto& description = history.plan->description;
             for (std::size_t i = 0; i < history.views.size(); ++i)
             {
                 const auto& use = history.views[i];
@@ -516,6 +530,10 @@ namespace lux::render::detail
                 {
                     const auto& binding =
                         plan_->descriptor_plan_->passes[pass.compiled_pass->source_pass].uses[use.index];
+                    if (!frame.history_valid[h] && binding.fallback != kGraphInvalidIndex)
+                    {
+                        view = pass.private_views[use.index];
+                    }
                     const nri::UpdateDescriptorRangeDesc
                         update{pass.private_descriptors, binding.binding, binding.element, &view, 1};
                     core.UpdateDescriptorRanges(&update, 1);
@@ -585,7 +603,11 @@ namespace lux::render::detail
             {
                 return std::ranges::all_of(
                     history.plan->writers,
-                    [&](auto writer) { return frame.enabled_passes[writer] != 0; }
+                    [&](auto writer)
+                    {
+                        const auto region = plan_->passes()[writer].condition_region;
+                        return region == kGraphInvalidIndex || frame.enabled_regions[region] != 0;
+                    }
                 );
             }
         );
@@ -1225,7 +1247,8 @@ namespace lux::render::detail
                 {
                     const auto& range = std::get<GraphBufferRange>(use.range);
                     // Imported variable-size input buffers expose their current physical range.
-                    const auto size = use.whole_resource ? source.buffer_size : range.size;
+                    const auto size =
+                        use.whole_resource && use.fallback == kGraphInvalidIndex ? source.buffer_size : range.size;
                     const bool invalid_range =
                         range.offset > source.buffer_size || size > source.buffer_size - range.offset;
                     if (invalid_range)
@@ -1328,19 +1351,18 @@ namespace lux::render::detail
         }
         bindHistory(slot);
         frame.enabled_pass_count = static_cast<std::uint32_t>(frame.passes.size());
-        for (std::size_t p = 0; p < frame.passes.size(); ++p)
+        for (std::size_t r = 0; r < plan_->recording_.conditions.size(); ++r)
         {
-            const auto& condition = frame.passes[p].compiled_pass->condition;
-            if (!condition)
+            const auto& region = plan_->recording_.conditions[r];
+            const auto& condition = region.predicate;
+            const bool value = condition.source == EConditionSource::INPUT
+                                   ? condition_values_[condition.input] != 0
+                                   : frame.history_valid[plan_->resources()[condition.input].history] != 0;
+            frame.enabled_regions[r] = value == condition.expected;
+            if (!frame.enabled_regions[r])
             {
-                continue;
+                frame.enabled_pass_count -= region.pass_count;
             }
-            const bool value =
-                condition->source == EConditionSource::INPUT
-                    ? condition_values_[condition->input] != 0
-                    : histories_[plan_->resources()[condition->input].history].latest != kGraphInvalidIndex;
-            frame.enabled_passes[p] = value == condition->expected;
-            frame.enabled_pass_count -= !frame.enabled_passes[p];
         }
         if (!frame.changed_resources.empty())
         {
@@ -1349,6 +1371,7 @@ namespace lux::render::detail
                 return cxx::unexpected(rebound.error());
             }
         }
+        updateHistoryViews(slot);
         for (std::size_t p = 0; p < frame.passes.size(); ++p)
         {
             auto& parameters = pass_parameters_[p];

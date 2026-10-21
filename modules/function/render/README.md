@@ -142,11 +142,17 @@ starts at zero and requires a multiple-of-four byte size. The instance owns F+1 
 slot by actual completion frontiers, and publishes only after the instance submission is accepted. A skipped writer
 does not publish a sample. Descriptor views are created at Attach, not on each rotation. Resize creates a fresh
 candidate; `InvalidateHistory` invalidates the selected attachment histories at the next preparation boundary.
+An individual Previous read can name a compatible non-History resource as its first-sample fallback.
+Analysis retains both inputs and their hazards; Prepare selects existing views or copy sources without copying
+the fallback into a History slot. Different reads can declare different initial inputs. Fallback views are cached
+with their frame bindings and change only when their physical input changes.
 
 `declareCondition` declares a dense Boolean input; `PassCondition` selects that input or History validity.
 Attachment conditions are zero/one bytes and are sampled once during preparation. Conditional writes require
-an available predecessor fallback. A skipped pass still records its compiled state transitions, and conditional
-raster passes cannot merge with adjacent rendering groups. There are no predicate callbacks or GPU-to-CPU reads.
+an available predecessor fallback. Consecutive passes sharing a predicate form one non-nested ConditionalRegion
+and sample it once. Both paths record the same compiled transitions; the false path preserves predecessor content.
+Rendering groups may merge within a region but never across its boundary. There are no predicate callbacks or
+GPU-to-CPU reads.
 
 `HzbFeatureDescriptor` consumes forward-Z depth and produces current/previous R32 depth pyramids. It ports Legacy's
 per-mip maximum reduction with complete odd-size footprint coverage. History, initialization and barriers belong to

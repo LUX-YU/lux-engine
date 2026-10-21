@@ -784,8 +784,14 @@ namespace lux::render
                 const auto& a = pass.uses[i];
                 const auto& b = pass.uses[j];
                 const bool has_write = detail::writes(a.access) || detail::writes(b.access);
+                const bool fallback_conflict =
+                    (a.access == EGraphAccess::READ && a.fallback && detail::writes(b.access) &&
+                     a.fallback->resource == b.version.resource) ||
+                    (b.access == EGraphAccess::READ && b.fallback && detail::writes(a.access) &&
+                     b.fallback->resource == a.version.resource);
                 const bool is_conflict =
-                    a.version.resource == b.version.resource && has_write && detail::overlaps(a.range, b.range);
+                    ((a.version.resource == b.version.resource && has_write) || fallback_conflict) &&
+                    detail::overlaps(a.range, b.range);
                 if (is_conflict)
                 {
                     return cxx::unexpected(graphError(kGraphConflictingOutput, id, a.version.resource, j));

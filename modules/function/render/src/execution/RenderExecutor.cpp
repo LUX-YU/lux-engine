@@ -123,12 +123,22 @@ namespace lux::render::detail
         const auto& plan = *instance.plan_;
         const auto& frame = instance.frames_[slot];
         const auto& bindings = frame.bindings;
+        const auto readBinding = [&](const ResourceAccess& access) -> const RenderGraphInstance::Binding&
+        {
+            const auto resource = access.version.resource.index;
+            if (access.access == EGraphAccess::READ && access.fallback &&
+                !frame.history_valid[plan.resources()[resource].history])
+            {
+                return bindings[access.fallback->resource.index];
+            }
+            return bindings[resource];
+        };
         BindingState binding_state;
         recordHistoryInitialization(instance, command);
         auto region = [&](const ResourceAccess& access, const std::optional<ImageCopyRegion>& rectangle = {})
         {
             const auto& range = std::get<GraphImageRange>(access.range);
-            const auto& image = core.GetTextureDesc(*bindings[access.version.resource.index].image);
+            const auto& image = core.GetTextureDesc(*readBinding(access).image);
             const auto planes = range.aspects == 1   ? nri::PlaneBits::COLOR
                                 : range.aspects == 2 ? nri::PlaneBits::DEPTH
                                                      : nri::PlaneBits::STENCIL;
@@ -166,7 +176,7 @@ namespace lux::render::detail
                 core.CmdBarrier(command, barrier);
             }
             // Both paths reach the compiled entry state. False preserves the validated predecessor contents.
-            if (!frame.enabled_passes[p])
+            if (compiled.condition_region != kGraphInvalidIndex && !frame.enabled_regions[compiled.condition_region])
             {
                 continue;
             }
@@ -404,7 +414,7 @@ namespace lux::render::detail
                             }
                             else
                             {
-                                const auto& source = bindings[operation.source.version.resource.index];
+                                const auto& source = readBinding(operation.source);
                                 if constexpr (std::is_same_v<Operation, CopyBuffer>)
                                 {
                                     const auto& from = std::get<GraphBufferRange>(operation.source.range);

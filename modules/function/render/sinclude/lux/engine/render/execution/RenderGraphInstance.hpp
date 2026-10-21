@@ -117,6 +117,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> createHistoryViews(HistoryState&) noexcept;
         [[nodiscard]] bool selectHistory() noexcept;
         void bindHistory(std::uint32_t slot) noexcept;
+        void updateHistoryViews(std::uint32_t slot) noexcept;
         void publishHistory(std::uint32_t slot) noexcept;
 
         struct Pass final

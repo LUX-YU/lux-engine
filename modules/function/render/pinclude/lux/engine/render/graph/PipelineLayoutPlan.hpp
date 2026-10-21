@@ -20,6 +20,7 @@ namespace lux::render::detail
         std::uint32_t element = 0;
         std::uint32_t sampler = kGraphInvalidIndex;
         bool whole_resource = false;
+        std::uint32_t fallback = kGraphInvalidIndex;
     };
 
     struct ParameterUse final

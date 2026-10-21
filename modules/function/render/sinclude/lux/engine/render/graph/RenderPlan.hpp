@@ -104,7 +104,16 @@ namespace lux::render::detail
         std::uint32_t source_pass = kGraphInvalidIndex;
         std::uint32_t rendering_group = kGraphInvalidIndex;
         ERenderingBoundary rendering_boundary = ERenderingBoundary::NON_RASTER;
-        std::optional<PassCondition> condition;
+        std::uint32_t condition_region = kGraphInvalidIndex;
+    };
+
+    // A linear, non-nested interval. Both paths execute its compiled transitions;
+    // only the true path records work. The last transition establishes the common exit state.
+    struct ConditionalRegion final
+    {
+        PassCondition predicate;
+        std::uint32_t first_pass = 0;
+        std::uint32_t pass_count = 1;
     };
 
     struct RenderingGroup final
@@ -119,6 +128,7 @@ namespace lux::render::detail
     {
         std::vector<CompiledPass> passes;
         std::vector<RenderingGroup> groups;
+        std::vector<ConditionalRegion> conditions;
         BarrierBatch after;
     };
 

@@ -51,6 +51,7 @@ set(render_sources
     src/graph/PlanDiagnostics.cpp
     src/graph/GraphCompiler.cpp
     src/graph/RenderingPlan.cpp
+    src/graph/ConditionalPlan.cpp
     src/graph/BarrierPlan.cpp
     src/graph/PipelineLayoutPlan.cpp
     src/graph/Shader.cpp

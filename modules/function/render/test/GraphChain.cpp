@@ -467,7 +467,7 @@ static std::array<std::uint32_t, Count> readHistoryResult(DeviceSession& session
     return result;
 }
 
-static void historySequence(Validation& validation, std::uint32_t fif)
+static void historySequence(Validation& validation, std::uint32_t fif, bool use_fallback)
 {
     auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
@@ -476,13 +476,25 @@ static void historySequence(Validation& validation, std::uint32_t fif)
     const auto enabled = take(builder.declareCondition("update"));
     const auto output = take(builder.declareResource({"observed", GraphBufferDesc{36}}));
     const auto valid = take(builder.declareResource({"valid", GraphBufferDesc{4}}));
+    std::optional<ResourceVersion> shader_fallback, copy_fallback;
+    if (use_fallback)
+    {
+        const auto shader_seed = take(builder.declareResource({"shader seed", GraphBufferDesc{16}}));
+        const auto copy_seed = take(builder.declareResource({"copy seed", GraphBufferDesc{16}}));
+        shader_fallback =
+            take(builder.addTransferPass("initialize shader seed", TransferWork{{FillBuffer{{{shader_seed, 0}}, 17}}})
+            ).written.front();
+        copy_fallback =
+            take(builder.addTransferPass("initialize copy seed", TransferWork{{FillBuffer{{{copy_seed, 0}}, 29}}})
+            ).written.front();
+    }
     const auto cleared =
         take(builder.addTransferPass("clear current", TransferWork{{FillBuffer{{{history.current, 0}}}}}));
     ComputeWork work;
     work.interface.program =
         take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphHistory, kGraphHistoryReflection)));
     work.interface.resources = {
-        {"previous_sample", {{history.previous, 0}}},
+        {"previous_sample", {{history.previous, 0}, {}, EGraphAccess::READ, 0, shader_fallback}},
         {"current_sample", {cleared.written.front(), {}, EGraphAccess::WRITE, 0, cleared.written.front()}}
     };
     const auto incremented = take(
@@ -499,7 +511,10 @@ static void historySequence(Validation& validation, std::uint32_t fif)
         "observe",
         TransferWork{
             {CopyBuffer{{incremented.written.front()}, {{output, 0}, GraphBufferRange{0, 16}}},
-             CopyBuffer{{{history.previous, 0}}, {{output, 0}, GraphBufferRange{16, 16}}},
+             CopyBuffer{
+                 {{history.previous, 0}, {}, EGraphAccess::READ, 0, copy_fallback},
+                 {{output, 0}, GraphBufferRange{16, 16}}
+             },
              CopyBuffer{{valid_marker.written.front()}, {{output, 0}, GraphBufferRange{32, 4}}}}
         }
     ));
@@ -534,6 +549,10 @@ static void historySequence(Validation& validation, std::uint32_t fif)
         const auto previous = sequence;
         if (enabled_value)
         {
+            if (!sequence && use_fallback)
+            {
+                sequence = 17;
+            }
             ++sequence;
         }
         const auto submitted = take(frames->render(instances, {}));
@@ -544,7 +563,7 @@ static void historySequence(Validation& validation, std::uint32_t fif)
         for (unsigned i = 0; i < 4; ++i)
         {
             CHECK(values[i] == (enabled_value ? sequence : 0));
-            CHECK(values[i + 4] == previous);
+            CHECK(values[i + 4] == (!previous && use_fallback ? 29 : previous));
         }
         CHECK(values[8] == unsigned(previous != 0));
     }
@@ -578,6 +597,11 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
     const auto source = take(builder.declareResource({"depth field", image}));
     image.mips = 4;
     const auto history = take(builder.declareHistory("hzb", image, {{1, 1, 1, 1}}, EGraphUse::SAMPLED));
+    const auto seed_image = take(builder.declareResource({"initial pyramid", image}));
+    const auto seeded = take(builder.addTransferPass(
+        "initialize pyramid",
+        TransferWork{{ClearImage{{{seed_image, 0}, GraphImageRange{1, 3, 1}}, {0.35f, 0.35f, 0.35f, 0.35f}}}}
+    ));
     const auto output = take(builder.declareResource({"observed", GraphBufferDesc{512}}));
     auto color_description = image;
     color_description.mips = 1;
@@ -616,7 +640,7 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
                  256
              },
              CopyImageBuffer{
-                 {{history.previous, 0}, GraphImageRange{1, 3, 1}},
+                 {{history.previous, 0}, GraphImageRange{1, 3, 1}, EGraphAccess::READ, 0, seeded.written.front()},
                  {initialized.written.front(), GraphBufferRange{256, 256}, EGraphAccess::READ_WRITE},
                  256,
                  256
@@ -661,12 +685,64 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
         {
             const auto expected = x + 1 == width ? 0.9f : 0.2f;
             CHECK(std::abs(std::bit_cast<float>(values[x]) - expected) < 0.00001f);
-            const auto previous = execution % 2 == 0 ? 1.0f : expected;
+            const auto previous = execution % 2 == 0 ? 0.35f : expected;
             CHECK(std::abs(std::bit_cast<float>(values[64 + x]) - previous) < 0.00001f);
         }
     }
     instance.reset();
     physical.reset();
+    CHECK(session->drain());
+}
+
+static void conditionalRegion(Validation& validation, std::uint32_t fif)
+{
+    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    RenderGraphBuilder builder;
+    const auto input = take(builder.declareCondition("choose update"));
+    const auto data = take(builder.declareResource({"data", GraphBufferDesc{16}}));
+    const auto output = take(builder.declareResource({"observed", GraphBufferDesc{16}}));
+    auto current = take(builder.addTransferPass("seed", TransferWork{{FillBuffer{{{data, 0}}, 3}}})).written.front();
+    for (auto value : {6u, 9u})
+    {
+        current = take(builder.addTransferPass(
+                           "conditional " + std::to_string(value),
+                           TransferWork{{FillBuffer{{current, {}, EGraphAccess::WRITE, 0, current}, value}}},
+                           {false, PassCondition{EConditionSource::INPUT, input}}
+                       )
+        ).written.front();
+    }
+    const auto copied = take(builder.addTransferPass("observe", TransferWork{{CopyBuffer{{current}, {{output, 0}}}}}));
+    CHECK(builder.exportOutput({copied.written.front()}));
+    const auto graph = take(std::move(builder).finish());
+    auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    std::string dump;
+    CHECK(dumpPlan(
+        plan,
+        EGraphDumpFormat::JSON,
+        {&dump,
+         [](void* value, std::string_view text) noexcept
+         {
+             static_cast<std::string*>(value)->append(text);
+             return true;
+         }}
+    ));
+    CHECK(dump.find("\"conditional_regions\":[{\"first_pass\":1,\"pass_count\":2") != std::string::npos);
+    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
+    CHECK(instance->initialize());
+    const std::array instances{instance.get()};
+    for (const std::uint8_t enabled : {0, 1, 0, 1})
+    {
+        CHECK(instance->setConditions({&enabled, 1}));
+        CHECK(take(frames->render(instances, {})) == 1);
+        CHECK(session->drain());
+        const auto values = readHistoryResult<4>(
+            *session,
+            *instance->nativeBuffer(output.index, instance->progress().last_submitted_slot)
+        );
+        CHECK(std::ranges::all_of(values, [&](auto value) { return value == (enabled ? 9 : 3); }));
+    }
+    instance.reset();
     CHECK(session->drain());
 }
 
@@ -676,7 +752,9 @@ int main()
     for (std::uint32_t fif : {1u, 2u, 3u})
     {
         imageChain(validation, fif);
-        historySequence(validation, fif);
+        historySequence(validation, fif, false);
+        historySequence(validation, fif, true);
+        conditionalRegion(validation, fif);
         hzbHistory(validation, fif);
     }
     indirectCounts(validation);

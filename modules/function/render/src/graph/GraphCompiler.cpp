@@ -3,6 +3,7 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/graph/BarrierPlan.hpp>
+#include <lux/engine/render/graph/ConditionalPlan.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
 #include <lux/engine/render/graph/RenderingPlan.hpp>
@@ -425,9 +426,8 @@ namespace lux::render::detail
             }
             CompiledPass pass;
             pass.source_pass = id.index;
-            pass.condition = source.condition;
-            if (pass.condition && pass.condition->source == EConditionSource::HISTORY_VALID &&
-                plan.resources_[pass.condition->input].history == kGraphInvalidIndex)
+            if (source.condition && source.condition->source == EConditionSource::HISTORY_VALID &&
+                plan.resources_[source.condition->input].history == kGraphInvalidIndex)
             {
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
@@ -663,6 +663,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(barriers.error());
         }
+        planConditions(graph, plan.recording_);
         auto rendering = planRendering(analysis, plan.resources_, plan.recording_);
         if (!rendering)
         {

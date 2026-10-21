@@ -187,7 +187,9 @@ namespace lux::render::detail
                          static_cast<std::uint32_t>(field),
                          element,
                          kGraphInvalidIndex,
-                         access.whole_resource}
+                         access.whole_resource,
+                         access.access == EGraphAccess::READ && access.fallback ? access.fallback->resource.index
+                                                                                : kGraphInvalidIndex}
                     );
                 }
                 if (binding.count == 0)

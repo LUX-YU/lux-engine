@@ -3,6 +3,7 @@
 #include <lux/engine/render/visibility.h>
 
 #include <NRI.h>
+#include <array>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <vector>
@@ -17,6 +18,10 @@ namespace lux::render::detail
     {
     public:
         using Slot = cxx::SlotKey<DescriptorSlotTag>;
+        [[nodiscard]] static std::array<nri::DescriptorRangeDesc, 2> layoutRanges(
+            std::uint32_t images,
+            std::uint32_t samplers
+        ) noexcept;
 
         explicit DescriptorTable(DeviceSession& session) noexcept : session_(session) {}
 

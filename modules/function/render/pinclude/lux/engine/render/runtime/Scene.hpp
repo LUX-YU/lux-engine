@@ -64,12 +64,40 @@ namespace lux::render::runtime_detail
 
     struct EffectAttachment final
     {
+        EffectAttachment() noexcept;
+        ~EffectAttachment() noexcept;
+        EffectAttachment(EffectAttachment&&) noexcept;
+        EffectAttachment& operator=(EffectAttachment&&) noexcept;
+
         EffectId effect;
         SceneId scene;
         ViewId view;
         TargetId target;
         std::unique_ptr<StorageSet> storages;
         std::unique_ptr<detail::RenderGraphInstance> instance;
+
+        struct StorageInput final
+        {
+            detail::RenderGraphInstance* instance;
+            StorageId storage_id;
+            std::uint32_t resource;
+            detail::StorageSubscription subscription;
+            void* native = nullptr;
+            const detail::StorageBindingOps* ops = nullptr;
+        };
+
+        // Destruction disconnects professional data and inputs before the graph instance and local StorageSet.
+        std::vector<StorageInput> storage_inputs;
+        std::vector<detail::FeatureBinding> feature_bindings;
+        [[nodiscard]] RenderResult<void> bindStorage(
+            std::uint32_t resource,
+            StorageId,
+            const detail::StorageBindingOps&,
+            void* native,
+            const void* argument,
+            std::uint32_t frame_count
+        ) noexcept;
+        void swapResources(EffectAttachment&) noexcept;
         std::size_t view_position = 0;
         std::size_t effect_position = 0;
     };

@@ -1263,4 +1263,29 @@ namespace lux::render::detail
         co_return RenderResult<void>{};
     }
 
+    void ResourceUploader::recordCopies(nri::CommandBuffer& command, std::span<const BufferCopy> copies) noexcept
+    {
+        const auto& core = session.nriCore();
+        for (const auto& copy : copies)
+        {
+            const std::array<nri::BufferBarrierDesc, 2> barriers{
+                {{copy.source,
+                  {bufferAccess(core.GetBufferDesc(*copy.source).usage), nri::StageBits::ALL},
+                  {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY}},
+                 {copy.destination,
+                  {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
+                  {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}}}
+            };
+            core.CmdBarrier(command, {nullptr, 0, barriers.data(), static_cast<std::uint32_t>(barriers.size())});
+            core.CmdCopyBuffer(
+                command,
+                *copy.destination,
+                copy.destination_offset,
+                *copy.source,
+                copy.source_offset,
+                copy.bytes
+            );
+        }
+    }
+
 } // namespace lux::render::detail

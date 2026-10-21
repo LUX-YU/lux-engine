@@ -1,22 +1,12 @@
 #include <algorithm>
 #include <limits>
+#include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
-#include <lux/engine/render/resource/StorageDescriptor.hpp>
 #include <spirv-tools/libspirv.h>
 
 namespace lux::render::detail
 {
-    const std::array<ShaderBinding, 2>& sampledImageTableBindings() noexcept
-    {
-        // One complete shared set, consumed by allocation, SPIR-V relocation and every PipelineLayout.
-        static const std::array<ShaderBinding, 2> shape{
-            {{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, {}, {}, 7},
-             {0, 1, EDescriptorKind::SAMPLER_ARRAY, 0, {}, {}, 7}}
-        };
-        return shape;
-    }
-
     RenderResult<PipelineLayoutPlan> planLayouts(
         const nri::DeviceDesc& limits,
         const RenderGraph& graph,
@@ -24,7 +14,7 @@ namespace lux::render::detail
     ) noexcept
     {
         PipelineLayoutPlan plan;
-        plan.programs.resize(graph.passes().size());
+        plan.passes.resize(graph.passes().size());
         for (const auto id : analysis.execution_order)
         {
             const auto& pass = graph.passes()[id.index];
@@ -39,7 +29,7 @@ namespace lux::render::detail
             }
             else
             {
-                auto& output = plan.programs[id.index];
+                auto& output = plan.passes[id.index];
                 const auto& transfer = std::get<TransferWork>(pass.work);
                 for (const auto& operation : transfer.operations)
                 {
@@ -51,8 +41,7 @@ namespace lux::render::detail
                         }
                         const auto binding = static_cast<std::uint32_t>(output.bindings.size());
                         output.bindings.push_back(
-                            {0, binding, EDescriptorKind::TYPED_STORAGE_BUFFER, 1, {}, {}, 4, EStorageAccess::WRITE_ONLY
-                            }
+                            {0, binding, EDescriptorKind::TYPED_STORAGE_BUFFER, 1, {}, {}, 4, EShaderAccess::WRITE_ONLY}
                         );
                         output.uses.push_back(
                             {fill->destination.version.resource.index,
@@ -73,14 +62,14 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(reflected.error());
             }
-            auto& output = plan.programs[id.index];
+            auto& output = plan.passes[id.index];
             const auto& parameters = reflected->parameters;
             const bool invalid_parameters = input->parameters.values.size() != parameters.size ||
                                             parameters.runtime_records || parameters.size % 4 != 0 ||
                                             parameters.size > limits.pipelineLayout.rootConstantMaxSize;
             if (invalid_parameters)
             {
-                return cxx::unexpected(RenderError{kStorageContract});
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
             output.parameter_bytes = parameters.size;
             output.parameter_stages = shaderStages(reflected->parameter_stages);
@@ -88,11 +77,11 @@ namespace lux::render::detail
             const auto& instance = input->parameters.instance_layout;
             if (instance.size != 0)
             {
-                if (plan.context_parameters.size != 0 && plan.context_parameters != instance)
+                if (plan.instance_parameters.size != 0 && plan.instance_parameters != instance)
                 {
-                    return cxx::unexpected(RenderError{kStorageMismatch});
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
-                plan.context_parameters = instance;
+                plan.instance_parameters = instance;
             }
             for (const auto& field : input->parameters.fields)
             {
@@ -105,35 +94,44 @@ namespace lux::render::detail
                 );
                 if (missing || duplicate)
                 {
-                    return cxx::unexpected(RenderError{kStorageContract});
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
                 output.parameters.push_back({field.resource.index, field.source_field, *destination});
             }
             output.bindings = std::move(reflected->bindings);
             if (output.bindings.size() != input->resources.size() + input->samplers.size())
             {
-                return cxx::unexpected(RenderError{kStorageContract});
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
             output.shared =
                 std::ranges::any_of(output.bindings, [](const auto& binding) { return binding.count == 0; });
             output.private_set = output.shared ? 1u : 0u;
             std::vector<std::size_t> private_fields;
+            std::vector<const ResourceParameter*> resources(output.bindings.size());
+            std::vector<const SamplerParameter*> samplers(output.bindings.size());
+            for (const auto& resource : input->resources)
+            {
+                resources[resource.field] = &resource;
+            }
+            for (const auto& sampler : input->samplers)
+            {
+                samplers[sampler.field] = &sampler;
+            }
             for (std::size_t field = 0; field < output.bindings.size(); ++field)
             {
                 auto& binding = output.bindings[field];
-                if (binding.kind == EDescriptorKind::SAMPLER_ARRAY && binding.count != 0)
+                if (binding.kind == EDescriptorKind::SAMPLER && binding.count != 0)
                 {
-                    const auto selected =
-                        std::ranges::find(input->samplers, binding.name, &SamplerParameter::shader_name);
-                    if (selected == input->samplers.end() || selected->inputs.size() != binding.count)
+                    const auto* selected = samplers[field];
+                    if (!selected || selected->inputs.size() != binding.count)
                     {
-                        return cxx::unexpected(RenderError{kStorageContract});
+                        return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                     }
                     for (std::uint32_t element = 0; element < binding.count; ++element)
                     {
                         if (selected->inputs[element] == kGraphInvalidIndex)
                         {
-                            return cxx::unexpected(RenderError{kStorageContract});
+                            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                         }
                         output.uses.push_back(
                             {kGraphInvalidIndex,
@@ -149,22 +147,21 @@ namespace lux::render::detail
                     private_fields.push_back(field);
                     continue;
                 }
-                const auto selected =
-                    std::ranges::find(input->resources, binding.name, &ResourceParameter::shader_name);
-                const bool invalid = selected == input->resources.end() || binding.name.empty() || !binding.stages;
+                const auto* selected = resources[field];
+                const bool invalid = !selected || binding.name.empty() || !binding.stages;
                 if (invalid)
                 {
-                    return cxx::unexpected(RenderError{kStorageContract});
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
                 const bool buffer =
                     binding.kind == EDescriptorKind::STORAGE_BUFFER || binding.kind == EDescriptorKind::UNIFORM_BUFFER;
-                const bool shared_kind = binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY ||
-                                         binding.kind == EDescriptorKind::SAMPLER_ARRAY;
+                const bool shared_kind =
+                    binding.kind == EDescriptorKind::SAMPLED_IMAGE || binding.kind == EDescriptorKind::SAMPLER;
                 const bool wrong_count =
                     binding.count == 0 ? !selected->elements.empty() : selected->elements.size() + 1 != binding.count;
                 if (wrong_count || (binding.count == 0 && !shared_kind))
                 {
-                    return cxx::unexpected(RenderError{kStorageContract});
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
                 for (std::uint32_t element = 0; element <= selected->elements.size(); ++element)
                 {
@@ -173,13 +170,13 @@ namespace lux::render::detail
                     const bool image = std::holds_alternative<GraphImageDesc>(graph.resources()[index].description);
                     const bool wrong_kind = image == buffer;
                     const bool access_mismatch =
-                        (binding.access != EStorageAccess::READ_ONLY && access.access == EGraphAccess::READ) ||
-                        (binding.access == EStorageAccess::READ_ONLY && access.access != EGraphAccess::READ);
+                        (binding.access != EShaderAccess::READ_ONLY && access.access == EGraphAccess::READ) ||
+                        (binding.access == EShaderAccess::READ_ONLY && access.access != EGraphAccess::READ);
                     const bool invalid_shared =
                         binding.count == 0 && graph.resources()[index].origin != EGraphOrigin::IMPORTED;
                     if (wrong_kind || access_mismatch || invalid_shared)
                     {
-                        return cxx::unexpected(RenderError{kStorageContract});
+                        return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                     }
                     output.uses.push_back(
                         {index,
@@ -196,13 +193,18 @@ namespace lux::render::detail
                 if (binding.count == 0)
                 {
                     binding.set = 0;
-                    binding.binding = binding.kind == EDescriptorKind::SAMPLER_ARRAY ? 1u : 0u;
+                    binding.binding = binding.kind == EDescriptorKind::SAMPLER ? 1u : 0u;
                     output.uses.back().set = 0;
                     output.uses.back().binding = binding.binding;
                     if (plan.shared_bindings.empty())
                     {
-                        const auto& complete_shape = sampledImageTableBindings();
-                        plan.shared_bindings.assign(complete_shape.begin(), complete_shape.end());
+                        for (const auto& range : DescriptorTable::layoutRanges(0, 0))
+                        {
+                            const auto kind = range.descriptorType == nri::DescriptorType::SAMPLER
+                                                  ? EDescriptorKind::SAMPLER
+                                                  : EDescriptorKind::SAMPLED_IMAGE;
+                            plan.shared_bindings.push_back({0, range.baseRegisterIndex, kind, 0, {}, {}, 7});
+                        }
                     }
                 }
                 else
@@ -233,7 +235,7 @@ namespace lux::render::detail
             }
         }
         std::vector<std::uint32_t> sampler_inputs;
-        for (const auto& program : plan.programs)
+        for (const auto& program : plan.passes)
         {
             for (const auto& use : program.uses)
             {
@@ -249,7 +251,7 @@ namespace lux::render::detail
         {
             if (sampler_inputs[i] != i)
             {
-                return cxx::unexpected(RenderError{kStorageContract});
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
         }
         return plan;
@@ -260,15 +262,17 @@ namespace lux::render::detail
         std::span<const ShaderBinding> locations
     ) noexcept
     {
-        auto projected = shaderInterface(original.interface);
-        if (!projected)
+        std::vector<const rdesc::EDescriptorBindingInfo*> bindings;
+        for (const auto& set : original.interface.sets)
         {
-            return cxx::unexpected(projected.error());
+            for (const auto& binding : set.bindings)
+            {
+                bindings.push_back(&binding);
+            }
         }
-        const auto& bindings = projected->bindings;
         if (locations.size() != bindings.size())
         {
-            return cxx::unexpected(RenderError{kStorageContract});
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
         }
         auto result = original;
         result.interface.sets.clear();
@@ -293,7 +297,7 @@ namespace lux::render::detail
         const bool unchanged = std::ranges::equal(
             bindings,
             locations,
-            [](const auto& a, const auto& b) { return a.set == b.set && a.binding == b.binding; }
+            [](const auto* a, const auto& b) { return a->set == b.set && a->binding == b.binding; }
         );
         if (unchanged)
         {
@@ -410,29 +414,29 @@ namespace lux::render::detail
                 }
                 const auto found = std::ranges::find_if(
                     bindings,
-                    [&](const auto& value)
+                    [&](const auto* value)
                     {
-                        return value.set == words[record.set] && value.binding == words[record.binding] &&
-                               (value.stages & stage_bit) != 0;
+                        return value->set == words[record.set] && value->binding == words[record.binding] &&
+                               (value->stages & stage_bit) != 0;
                     }
                 );
                 if (found == bindings.end())
                 {
-                    return cxx::unexpected(RenderError{kStorageMismatch});
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
                 const auto field = static_cast<std::size_t>(found - bindings.begin());
                 if (seen[field])
                 {
-                    return cxx::unexpected(RenderError{kStorageMismatch});
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
                 seen[field] = true;
                 patches.push_back({record.set, record.binding, field});
             }
             for (std::size_t field = 0; field < seen.size(); ++field)
             {
-                if (!seen[field] && (bindings[field].stages & stage_bit) != 0)
+                if (!seen[field] && (bindings[field]->stages & stage_bit) != 0)
                 {
-                    return cxx::unexpected(RenderError{kStorageMismatch});
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
             }
             for (const auto& patch : patches)

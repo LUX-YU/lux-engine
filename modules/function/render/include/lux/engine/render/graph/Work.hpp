@@ -12,6 +12,7 @@ namespace lux::render
         ResourceAccess access;
         // Additional elements of a finite descriptor array, in shader array order.
         std::vector<ResourceAccess> elements;
+        std::uint32_t field = kGraphInvalidIndex; // Normalized by Builder; never trusted from author input.
     };
 
     struct ValueParameter final
@@ -34,6 +35,7 @@ namespace lux::render
         // Dense graph-local input slots, beginning at zero. Samplers are immutable borrowed inputs,
         // not memory resources and therefore do not create artificial image accesses or versions.
         std::vector<std::uint32_t> inputs;
+        std::uint32_t field = kGraphInvalidIndex;
     };
 
     struct PassInterface final

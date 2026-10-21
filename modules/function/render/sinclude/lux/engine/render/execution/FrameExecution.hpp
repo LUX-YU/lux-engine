@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/device/SubmissionQueue.hpp>
+#include <lux/engine/render/graph/Diagnostics.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/upload/ResourceUploader.hpp>
 
@@ -8,6 +9,7 @@ namespace lux::render::detail
 {
     class DeviceSession;
     class RenderGraphInstance;
+    struct FeatureBinding;
 
     class LUX_RENDER_PUBLIC FrameExecution final
     {
@@ -108,9 +110,12 @@ namespace lux::render::detail
             void* receiver,
             void (*complete)(void*, std::uint32_t slot, RenderResult<void>) noexcept
         ) noexcept;
-        static void collectStorageUses(std::span<RenderGraphInstance* const>, std::vector<StorageFrameUse>&) noexcept;
-        [[nodiscard]] RenderResult<
-            std::uint32_t> render(std::span<RenderGraphInstance* const>, std::span<const StorageFrameUse>) noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> render(
+            std::span<RenderGraphInstance* const>,
+            std::span<const StorageFrameUse>,
+            std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>> features = {}
+        ) noexcept;
+        [[nodiscard]] bool dumpSubmissions(DumpSink) const noexcept;
         [[nodiscard]] RenderResult<bool> waitForProgress(std::uint64_t timeout_ns) noexcept;
 
     private:
@@ -129,6 +134,8 @@ namespace lux::render::detail
             std::array<SubmissionCallback, 3> completions;
             std::uint32_t pending_writes = 0;
             std::uint8_t pending_queues = 0;
+            std::uint32_t recorded_instances = 0, recorded_passes = 0;
+            std::uint64_t graphics_serial = 0;
         };
 
         FrameExecution(DeviceSession&, ResourceUploader*, std::uint32_t) noexcept;

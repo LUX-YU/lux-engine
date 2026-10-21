@@ -7,11 +7,8 @@
 
 namespace lux::render
 {
-    const FeatureDescriptor MaterialMeshRasterDescriptor::descriptor{
-        name,
-        cppType<Config>(),
-        "Material color and depth raster passes over indexed triangle meshes and raster instances."
-    };
+    const FeatureDescriptor MaterialMeshRasterDescriptor::
+        descriptor{name, cppType<Config>(), "Material color and depth raster passes over indexed triangle meshes and raster instances.", detail::describe<false>};
 
     template <>
     RenderResult<void> RenderServer::prepareFeature<MaterialMeshRasterDescriptor>(
@@ -35,8 +32,8 @@ namespace lux::render
         {
             return result;
         }
-        static const FeatureGraphOps contiguous{detail::describe<false>, detail::build<false, false>};
-        static const FeatureGraphOps paged{detail::describe<false>, detail::build<false, true>};
+        static const FeatureGraphOps contiguous{detail::build<false, false>};
+        static const FeatureGraphOps paged{detail::build<false, true>};
         batch.addFeature({&MaterialMeshRasterDescriptor::descriptor, pagedInstances() ? &paged : &contiguous});
         return {};
     }

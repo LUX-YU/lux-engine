@@ -74,7 +74,6 @@ static void graphOutput(Validation& validation)
     CHECK(execution->initialize());
     const std::array contexts{execution.get()};
     std::vector<StorageFrameUse> storage_preparation;
-    FrameExecution::collectStorageUses(contexts, storage_preparation);
     nri::Buffer* output = nullptr;
     const nri::BufferDesc description{4096, 0, nri::BufferUsageBits::NONE};
     CHECK(

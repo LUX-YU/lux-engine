@@ -67,8 +67,9 @@ namespace lux::render
         stdexec::counting_scope command_scope_;
         execution::RunLoop render_loop_;
         std::size_t next_target = 0;
-        std::vector<detail::RenderGraphInstance*> frame_contexts;
+        std::vector<detail::RenderGraphInstance*> frame_instances;
         std::vector<detail::StorageFrameUse> frame_storages;
+        std::vector<std::pair<detail::RenderGraphInstance*, detail::FeatureBinding*>> frame_features;
         bool frame_storages_dirty = true;
         std::atomic<bool> stop_requested{false}, started{false}, running{false};
         std::atomic<std::uint64_t> ticks{0}, commands{0}, compiled_graphs{0}, submissions{0};
@@ -89,7 +90,7 @@ namespace lux::render
         void prepareStorage(const PrepareStorage::Request&, PrepareStorage::Response&) noexcept;
         void removeStorage(const RemoveStorage::Request&, RemoveStorage::Response&) noexcept;
 
-        RenderResult<std::unique_ptr<detail::RenderGraphInstance>> createRenderGraphInstance(
+        RenderResult<runtime_detail::EffectAttachment> prepareAttachment(
             const runtime_detail::RenderEffect&,
             detail::OffscreenTarget&,
             StorageSet& scene,

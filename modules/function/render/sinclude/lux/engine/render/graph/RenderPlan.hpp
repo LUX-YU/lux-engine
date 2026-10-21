@@ -32,11 +32,19 @@ namespace lux::render::detail
         std::vector<std::uint32_t> final_barrier_uses;
     };
 
+    enum class ETransitionBoundary : std::uint8_t
+    {
+        PASS,
+        RESTORE_IMPORTED,
+        EXPORT
+    };
+
     struct ImageTransition final
     {
         std::uint32_t resource;
         nri::TextureBarrierDesc native;
         GraphPassId previous;
+        ETransitionBoundary boundary = ETransitionBoundary::PASS;
     };
 
     struct BufferTransition final
@@ -44,6 +52,7 @@ namespace lux::render::detail
         std::uint32_t resource;
         nri::BufferBarrierDesc native;
         GraphPassId previous;
+        ETransitionBoundary boundary = ETransitionBoundary::PASS;
     };
 
     struct BarrierBatch final
@@ -91,7 +100,7 @@ namespace lux::render::detail
         VPassCommands work;
         BarrierBatch before;
         nri::Pipeline* pipeline = nullptr;
-        std::uint32_t layout_program = kGraphInvalidIndex;
+        std::uint32_t source_pass = kGraphInvalidIndex;
         std::uint32_t rendering_group = kGraphInvalidIndex;
         ERenderingBoundary rendering_boundary = ERenderingBoundary::NON_RASTER;
     };

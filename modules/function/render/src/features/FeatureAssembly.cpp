@@ -62,7 +62,7 @@ namespace lux::render
         for (std::size_t i = 0; i < inputs.size(); ++i)
         {
             const auto& input = inputs[i];
-            const bool invalid_definition = !input.descriptor || !input.graph || !input.graph->describe;
+            const bool invalid_definition = !input.descriptor || !input.graph || !input.descriptor->describe_ports;
             if (invalid_definition)
             {
                 return cxx::unexpected(failure(kFeatureContract, i));
@@ -78,8 +78,11 @@ namespace lux::render
                 return cxx::unexpected(failure(invalid_config ? kInvalidConfig : kFeatureContract, i));
             }
             FeaturePorts ports;
-            auto described =
-                input.graph->describe(has_config ? input.config->data() : nullptr, input.contribution_key, ports);
+            auto described = input.descriptor->describe_ports(
+                has_config ? input.config->data() : nullptr,
+                input.contribution_key,
+                ports
+            );
             if (!described)
             {
                 return cxx::unexpected(described.error());

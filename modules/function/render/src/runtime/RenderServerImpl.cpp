@@ -207,7 +207,7 @@ namespace lux::render
         output_response = {};
     }
 
-    RenderResult<std::unique_ptr<detail::RenderGraphInstance>> RenderServer::Impl::createRenderGraphInstance(
+    RenderResult<EffectAttachment> RenderServer::Impl::prepareAttachment(
         const RenderEffect& effect,
         detail::OffscreenTarget& output,
         StorageSet& scene,
@@ -215,17 +215,17 @@ namespace lux::render
         StorageSet& attachment
     ) noexcept
     {
-        const auto& code = *effect.plan;
+        const auto& plan = *effect.plan;
         auto dependencies = storageContext();
-        std::vector<const StorageArgument*> resolved_arguments(code.resources().size());
+        std::vector<const StorageArgument*> resolved_arguments(plan.resources().size());
         for (const auto& argument : effect.arguments)
         {
             const auto index = argument.resource.index;
-            if (index >= code.resources().size())
+            if (index >= plan.resources().size())
             {
                 return cxx::unexpected(RenderError{kStorageContract});
             }
-            if (!code.resources()[index].used)
+            if (!plan.resources()[index].used)
             {
                 continue;
             }
@@ -246,15 +246,19 @@ namespace lux::render
                 }
             }
         );
-        auto context = std::make_unique<detail::RenderGraphInstance>(*device, frames->frameCount(), code, &output);
+        EffectAttachment candidate;
+        candidate.instance =
+            std::make_unique<detail::RenderGraphInstance>(*device, frames->frameCount(), plan, &output);
+        candidate.storage_inputs.reserve(plan.resources().size());
+        std::vector<StorageId> resolved(plan.resources().size());
         const auto prepareGroup = [&](std::span<const GraphStorageBinding> bindings,
                                       StorageSet* set) -> RenderResult<void>
         {
             for (const auto& binding : bindings)
             {
                 const auto i = binding.resource.index;
-                const auto& plan = code.resources()[i];
-                if (!plan.used)
+                const auto& resource = plan.resources()[i];
+                if (!resource.used)
                 {
                     continue;
                 }
@@ -263,7 +267,7 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kStorageIdentity});
                 }
                 const auto* factory = dependencies.resources.factory(binding.storage.type.view());
-                const auto key = binding.storage.key.empty() ? plan.key : binding.storage.key;
+                const auto key = binding.storage.key.empty() ? resource.key : binding.storage.key;
                 const auto* argument = resolved_arguments[i];
                 const auto type = argument ? argument->typeInfo() : CppType{};
                 if (type != factory->descriptor->binding_type)
@@ -284,7 +288,9 @@ namespace lux::render
                 {
                     created_storages.emplace_back(set, id);
                 }
-                if (auto bound = context->bindStorage(i, id, *ops, resources->native(id), value); !bound)
+                resolved[i] = id;
+                if (auto bound = candidate.bindStorage(i, id, *ops, resources->native(id), value, frames->frameCount());
+                    !bound)
                 {
                     return cxx::unexpected(bound.error());
                 }
@@ -308,14 +314,9 @@ namespace lux::render
         {
             return cxx::unexpected(r.error());
         }
-        std::vector<StorageId> resolved(code.resources().size());
-        for (std::uint32_t i = 0; i < resolved.size(); ++i)
-        {
-            resolved[i] = context->storageId(i);
-        }
         for (const auto& binding : effect.bindings)
         {
-            if (!code.resources()[binding.resource.index].used)
+            if (!plan.resources()[binding.resource.index].used)
             {
                 continue;
             }
@@ -324,14 +325,15 @@ namespace lux::render
             {
                 return cxx::unexpected(created.error());
             }
-            context->addFeatureBinding(binding.resource, std::move(*created));
+            created->resource = binding.resource;
+            candidate.feature_bindings.push_back(std::move(*created));
         }
-        if (auto ready = context->initialize(); !ready)
+        if (auto ready = candidate.instance->initialize(); !ready)
         {
             return cxx::unexpected(ready.error());
         }
         rollback.release();
-        return context;
+        return candidate;
     }
 
     RenderResult<StorageSet*> RenderServer::Impl::findStorageSet(const VStorageLocation& address) noexcept
@@ -448,7 +450,7 @@ namespace lux::render
     void RenderServer::Impl::detachAttachment(AttachmentId id) noexcept
     {
         auto& attachment = *attachments.find(id);
-        attachment.instance.reset();
+
         auto& view = *scenes.find(attachment.scene)->views.find(attachment.view);
         auto& effect = *effects.find(attachment.effect);
         auto& target = *targets.find(attachment.target);
@@ -495,25 +497,29 @@ namespace lux::render
             return;
         }
         auto local_storages = std::make_unique<StorageSet>(*resources);
-        auto prepared =
-            createRenderGraphInstance(*effect, *target->physical, scene->storages, view->storages, *local_storages);
+        auto prepared = prepareAttachment(*effect, *target->physical, scene->storages, view->storages, *local_storages);
         if (!prepared)
         {
             output_response.error = prepared.error();
             return;
         }
-        if (auto values = (*prepared)->setInstanceParameters(_request.parameters); !values)
+        if (auto values = prepared->instance->setInstanceParameters(_request.parameters); !values)
         {
             output_response.error = values.error();
             return;
         }
-        (*prepared)->setViewport(_request.viewport);
+        prepared->instance->setViewport(_request.viewport);
         output_response = {};
-        (*prepared)->forEachStorage([&](std::string_view key, StorageId id) noexcept
-                                    { output_response.storages.push_back({std::string(key), id}); });
-        const auto id = attachments.emplace(
-            EffectAttachment{effect_id, scene_id, view_id, target_id, std::move(local_storages), std::move(*prepared)}
-        );
+        for (const auto& input : prepared->storage_inputs)
+        {
+            output_response.storages.push_back({effect->plan->resources()[input.resource].key, input.storage_id});
+        }
+        prepared->effect = effect_id;
+        prepared->scene = scene_id;
+        prepared->view = view_id;
+        prepared->target = target_id;
+        prepared->storages = std::move(local_storages);
+        const auto id = attachments.emplace(std::move(*prepared));
         auto& attachment = *attachments.find(id);
         attachment.view_position = view->attachments.size();
         attachment.effect_position = effect->attachments.size();
@@ -542,7 +548,7 @@ namespace lux::render
         {
             // One Target writer, proven on attach. Resize builds one candidate without recompilation.
             const auto& effect = *effects.find(group->effect);
-            auto candidate = createRenderGraphInstance(
+            auto candidate = prepareAttachment(
                 effect,
                 **physical,
                 scenes.find(group->scene)->storages,
@@ -553,12 +559,13 @@ namespace lux::render
             {
                 return cxx::unexpected(candidate.error());
             }
-            if (auto values = (*candidate)->setInstanceParameters(group->instance->instanceParameters()); !values)
+            if (auto values = candidate->instance->setInstanceParameters(group->instance->instanceParameters());
+                !values)
             {
                 return cxx::unexpected(values.error());
             }
-            (*candidate)->setViewport(group->instance->viewport());
-            group->instance = std::move(*candidate);
+            candidate->instance->setViewport(group->instance->viewport());
+            group->swapResources(*candidate);
             frame_storages_dirty = true;
         }
         target.physical = std::move(*physical);
@@ -818,18 +825,37 @@ namespace lux::render
         // prefix before closing frame input, otherwise continuous drawing can starve retries.
         drainCompletions();
         const auto& active = active_targets.keys();
-        frame_contexts.clear();
+        frame_instances.clear();
         for (std::size_t i = 0; i < active.size(); ++i)
         {
             const auto& target = *targets.find(active[(next_target + i) % active.size()]);
-            frame_contexts.push_back(attachments.find(target.attachment)->instance.get());
+            frame_instances.push_back(attachments.find(target.attachment)->instance.get());
         }
         if (frame_storages_dirty)
         {
-            frames->collectStorageUses(frame_contexts, frame_storages);
+            frame_storages.clear();
+            frame_features.clear();
+            for (auto id : active)
+            {
+                auto& attachment = *attachments.find(targets.find(id)->attachment);
+                for (const auto& input : attachment.storage_inputs)
+                {
+                    if (input.ops->prepareFrame)
+                    {
+                        frame_storages.push_back({input.native, input.ops});
+                    }
+                }
+                for (auto& feature : attachment.feature_bindings)
+                {
+                    frame_features.emplace_back(attachment.instance.get(), &feature);
+                }
+            }
+            std::ranges::sort(frame_storages, {}, &detail::StorageFrameUse::storage);
+            const auto duplicate = std::ranges::unique(frame_storages, {}, &detail::StorageFrameUse::storage);
+            frame_storages.erase(duplicate.begin(), duplicate.end());
             frame_storages_dirty = false;
         }
-        auto accepted = frames->render(frame_contexts, frame_storages);
+        auto accepted = frames->render(frame_instances, frame_storages, frame_features);
         if (!accepted)
         {
             return cxx::unexpected(accepted.error());

@@ -1281,7 +1281,7 @@ namespace lux::render::detail
         const CompiledResource& plan,
         const MeshInstanceBinding& input,
         StorageSubscription& subscription,
-        std::span<StorageResource> output
+        std::span<ResourceInput> output
     ) noexcept
     {
         const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
@@ -1313,7 +1313,7 @@ namespace lux::render::detail
                const CompiledResource& plan,
                const void* argument,
                StorageSubscription& subscription,
-               std::span<StorageResource> output) noexcept
+               std::span<ResourceInput> output) noexcept
             {
                 return static_cast<RasterMeshInstanceStorage*>(value)
                     ->resolve(plan, *static_cast<const MeshInstanceBinding*>(argument), subscription, output);

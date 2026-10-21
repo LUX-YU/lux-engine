@@ -16,6 +16,7 @@ namespace lux::render::detail
             bool write = false;
             bool known = false;
             GraphPassId pass;
+            ETransitionBoundary boundary = ETransitionBoundary::PASS;
         };
 
         nri::StageBits combineStages(nri::StageBits a, nri::StageBits b) noexcept
@@ -24,7 +25,7 @@ namespace lux::render::detail
             return a == nri::StageBits::ALL || b == nri::StageBits::ALL ? nri::StageBits::ALL : a | b;
         }
 
-        Access accessFor(const ResourceAccess& use, const ProgramLayout& program) noexcept
+        Access accessFor(const ResourceAccess& use, const PassLayout& program) noexcept
         {
             Access result;
             result.write = use.access != EGraphAccess::READ;
@@ -202,14 +203,14 @@ namespace lux::render::detail
                     barrier.planes = plane == 0   ? nri::PlaneBits::COLOR
                                      : plane == 1 ? nri::PlaneBits::DEPTH
                                                   : nri::PlaneBits::STENCIL;
-                    batch.images.push_back({index, barrier, previous.pass});
+                    batch.images.push_back({index, barrier, previous.pass, current.boundary});
                 }
                 else
                 {
                     nri::BufferBarrierDesc barrier{};
                     barrier.before = {previous.access, previous.stages};
                     barrier.after = {current.access, current.stages};
-                    batch.buffers.push_back({index, barrier, previous.pass});
+                    batch.buffers.push_back({index, barrier, previous.pass, current.boundary});
                 }
             }
             else
@@ -251,7 +252,7 @@ namespace lux::render::detail
         {
             auto& pass = recording.passes[p];
             const auto& declared = graph.passes()[analysis.execution_order[p].index];
-            const auto& layout = layouts.programs[pass.layout_program];
+            const auto& layout = layouts.passes[pass.source_pass];
             std::vector<std::vector<Access>> next(resources.size());
             std::vector<std::uint32_t> touched;
             bool incompatible_layouts = false;
@@ -376,6 +377,7 @@ namespace lux::render::detail
                 if (states[i][cell].pass.index != kGraphInvalidIndex)
                 {
                     final_states[i][cell] = externalState(GraphResourceId{i}, usage);
+                    final_states[i][cell].boundary = ETransitionBoundary::RESTORE_IMPORTED;
                 }
             }
         }
@@ -386,7 +388,8 @@ namespace lux::render::detail
                 continue;
             }
             const auto index = output.version.resource.index;
-            const auto state = externalState(output.version.resource, *output.final_use);
+            auto state = externalState(output.version.resource, *output.final_use);
+            state.boundary = ETransitionBoundary::EXPORT;
             includeUsage(resources[index], state);
             if (final_states[index].empty())
             {

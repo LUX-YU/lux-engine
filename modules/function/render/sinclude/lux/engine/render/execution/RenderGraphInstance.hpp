@@ -5,16 +5,14 @@
 #include <lux/engine/render/core/Execution.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
-#include <lux/engine/render/features/FeatureBinding.hpp>
+#include <lux/engine/render/execution/ResourceInput.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
-#include <lux/engine/render/resource/StorageBinding.hpp>
-#include <lux/engine/render/resource/StorageCreateContext.hpp>
 
 namespace lux::render::detail
 {
+    class DeviceSession;
     class OffscreenTarget;
     class FrameExecution;
-    class ResourceUploader;
 
     class LUX_RENDER_PUBLIC RenderGraphInstance final
     {
@@ -25,15 +23,7 @@ namespace lux::render::detail
             const RenderPlan&,
             OffscreenTarget* = nullptr
         ) noexcept;
-        [[nodiscard]] RenderResult<void> bindStorage(
-            std::uint32_t resource,
-            StorageId,
-            const StorageBindingOps&,
-            void* native,
-            const void* argument
-        ) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
-        void addFeatureBinding(GraphResourceId resource, FeatureBinding binding) noexcept;
         // Borrowed physical inputs are installed before initialize; the caller retains them through GPU completion.
         void bindImage(GraphResourceId resource, std::uint32_t slot, nri::Texture& image) noexcept;
         [[nodiscard]] RenderResult<void> bindSampler(std::uint32_t input, nri::Descriptor&) noexcept;
@@ -77,24 +67,15 @@ namespace lux::render::detail
         }
 
         // FrameExecution selects the reusable slot and owns the recording/submission segment.
-        [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, ResourceUploader*) noexcept;
+        [[nodiscard]] RenderResult<void> prepareFrame(std::uint32_t slot) noexcept;
 
         [[nodiscard]] const ExecutionProgress& progress() const noexcept
         {
             return progress_;
         }
 
-        template <class Visitor> void forEachStorage(Visitor&& visitor) const noexcept
-        {
-            for (const auto& use : storage_uses_)
-            {
-                visitor(plan_->resources()[use.resource].key, use.storage_id);
-            }
-        }
-
         // Trusted compiled resource index and Session slot, not a business resource lookup.
-        void setResource(std::uint32_t resource, std::uint32_t slot, const StorageResource&) noexcept;
-        [[nodiscard]] StorageId storageId(std::uint32_t resource) const noexcept;
+        void setResource(std::uint32_t resource, std::uint32_t slot, const ResourceInput&) noexcept;
         // Cold diagnostics: sum actual NRI allocation requirements for this instance's owned resources.
         [[nodiscard]] bool dumpResources(DumpSink) const noexcept;
         [[nodiscard]] nri::Buffer* nativeBuffer(std::uint32_t resource, std::uint32_t slot) const noexcept;
@@ -102,7 +83,6 @@ namespace lux::render::detail
     private:
         friend class FrameExecution;
         friend class RenderExecutor;
-        void disconnectStorageBindings() noexcept;
         void submitted(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> createFrameResources(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareFrameBindings(std::uint32_t slot) noexcept;
@@ -146,24 +126,8 @@ namespace lux::render::detail
         const RenderPlan* plan_;
         TargetDesc target_;
         RasterViewport viewport_;
-        std::vector<std::uint32_t> storage_indices_;
-
-        struct StorageUse final
-        {
-            RenderGraphInstance* instance;
-            StorageId storage_id;
-            std::uint32_t resource;
-            StorageSubscription subscription;
-            void* native = nullptr;
-            const StorageBindingOps* ops = nullptr;
-        };
-
         OffscreenTarget* output_;
         std::vector<nri::Descriptor*> samplers_;
-        std::vector<GraphResourceId> feature_resources_;
-        std::vector<StorageUse> storage_uses_;
-        std::vector<FeatureBinding> feature_bindings_;
-        std::vector<std::span<const FeatureBinding::BufferCopy>> prepared_copies_;
         std::vector<std::vector<std::byte>> pass_parameters_;
         std::vector<std::vector<ParameterCopy>> parameter_copies_;
         std::vector<std::byte> instance_values_;

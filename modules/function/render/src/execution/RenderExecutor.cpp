@@ -10,35 +10,6 @@
 
 namespace lux::render::detail
 {
-    void RenderExecutor::recordPreparation(RenderGraphInstance& instance, nri::CommandBuffer& command) noexcept
-    {
-        const auto& core = instance.session_->nriCore();
-        for (auto copies : instance.prepared_copies_)
-        {
-            for (const auto& copy : copies)
-            {
-                const std::array<nri::BufferBarrierDesc, 2> barriers{
-                    {{copy.source,
-                      {bufferAccess(core.GetBufferDesc(*copy.source).usage), nri::StageBits::ALL},
-                      {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY}},
-                     {copy.destination,
-                      {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
-                      {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}}}
-                };
-                core.CmdBarrier(command, {nullptr, 0, barriers.data(), static_cast<std::uint32_t>(barriers.size())});
-                core.CmdCopyBuffer(
-                    command,
-                    *copy.destination,
-                    copy.destination_offset,
-                    *copy.source,
-                    copy.source_offset,
-                    copy.bytes
-                );
-            }
-        }
-        instance.prepared_copies_.clear();
-    }
-
     void RenderExecutor::record(RenderGraphInstance& instance, nri::CommandBuffer& command, std::uint32_t slot) noexcept
     {
         const auto& core = instance.session_->nriCore();
@@ -73,13 +44,7 @@ namespace lux::render::detail
         {
             const auto& pass = frame.passes[p];
             const auto& compiled = *pass.compiled_pass;
-            auto& parameters = instance.pass_parameters_[p];
-            for (const auto& copy : instance.parameter_copies_[p])
-            {
-                const auto* source = copy.resource == kGraphInvalidIndex ? instance.instance_values_.data()
-                                                                         : bindings[copy.resource].parameters.data();
-                std::memcpy(parameters.data() + copy.destination_offset, source + copy.source_offset, copy.bytes);
-            }
+            const auto& parameters = instance.pass_parameters_[p];
             if (!pass.images.empty() || !pass.buffers.empty())
             {
                 const nri::BarrierDesc barrier{
@@ -94,11 +59,11 @@ namespace lux::render::detail
             }
             const auto* raster = std::get_if<RasterCommands>(&compiled.work);
             const auto* compute = std::get_if<ComputeCommands>(&compiled.work);
-            const auto& placement = plan.descriptor_plan_->programs[compiled.layout_program];
+            const auto& placement = plan.descriptor_plan_->passes[compiled.source_pass];
             if (placement.layout)
             {
                 const auto point = raster ? nri::BindPoint::GRAPHICS : nri::BindPoint::COMPUTE;
-                const auto& program = plan.descriptor_plan_->programs[compiled.layout_program];
+                const auto& program = plan.descriptor_plan_->passes[compiled.source_pass];
                 if (binding_state.layout != program.layout || binding_state.point != point)
                 {
                     core.CmdSetPipelineLayout(command, point, *program.layout);
@@ -404,9 +369,4 @@ namespace lux::render::detail
         }
     }
 
-    void RenderGraphInstance::submitted(std::uint32_t slot) noexcept
-    {
-        progress_.last_submitted_slot = slot;
-        ++progress_.counts[static_cast<std::size_t>(EExecutionOutcome::EXECUTED)];
-    }
 } // namespace lux::render::detail

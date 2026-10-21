@@ -6,11 +6,8 @@
 
 namespace lux::render
 {
-    const FeatureDescriptor MeshDepthRasterDescriptor::descriptor{
-        name,
-        cppType<Config>(),
-        "Depth raster passes over indexed triangle meshes and raster instances."
-    };
+    const FeatureDescriptor MeshDepthRasterDescriptor::
+        descriptor{name, cppType<Config>(), "Depth raster passes over indexed triangle meshes and raster instances.", detail::describe<true>};
 
     template <>
     RenderResult<void> RenderServer::prepareFeature<MeshDepthRasterDescriptor>(
@@ -30,8 +27,8 @@ namespace lux::render
         {
             return result;
         }
-        static const FeatureGraphOps contiguous{detail::describe<true>, detail::build<true, false>};
-        static const FeatureGraphOps paged{detail::describe<true>, detail::build<true, true>};
+        static const FeatureGraphOps contiguous{detail::build<true, false>};
+        static const FeatureGraphOps paged{detail::build<true, true>};
         batch.addFeature({&MeshDepthRasterDescriptor::descriptor, pagedInstances() ? &paged : &contiguous});
         return {};
     }

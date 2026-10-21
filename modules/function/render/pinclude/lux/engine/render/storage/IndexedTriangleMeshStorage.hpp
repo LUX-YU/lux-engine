@@ -44,7 +44,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> release(MeshId) noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
 
-        [[nodiscard]] RenderResult<StorageResource>
+        [[nodiscard]] RenderResult<ResourceInput>
         resolve(const CompiledResource&, const MeshBinding&, StorageSubscription&) noexcept;
 
     private:

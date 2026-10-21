@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
@@ -17,17 +18,15 @@ namespace lux::render::detail
         RenderResult<nri::PipelineLayout*> createLayout(
             nri::Device& device,
             const nri::CoreInterface& core,
-            const ProgramLayout& program,
+            const PassLayout& program,
             std::uint32_t image_capacity,
             std::uint32_t sampler_capacity
         ) noexcept
         {
-            const auto shared = program.shared
-                                    ? descriptorRanges(sampledImageTableBindings(), image_capacity, sampler_capacity)
-                                    : std::vector<nri::DescriptorRangeDesc>{};
+            const auto shared = DescriptorTable::layoutRanges(image_capacity, sampler_capacity);
             const auto local = descriptorRanges(program.private_bindings, 0, 0);
             std::vector<nri::DescriptorSetDesc> sets;
-            if (!shared.empty())
+            if (program.shared)
             {
                 sets.push_back(
                     {0,
@@ -58,7 +57,7 @@ namespace lux::render::detail
             return layout;
         }
 
-        bool sameLayout(const ProgramLayout& a, const ProgramLayout& b) noexcept
+        bool sameLayout(const PassLayout& a, const PassLayout& b) noexcept
         {
             const auto same_binding = [](const ShaderBinding& left, const ShaderBinding& right)
             {
@@ -394,7 +393,7 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kDeviceUnsupported});
             }
             CompiledPass pass;
-            pass.layout_program = id.index;
+            pass.source_pass = id.index;
             const PassInterface* input = nullptr;
             PipelineIdentity identity{};
             if (const auto* raster = std::get_if<RasterWork>(&source.work))
@@ -522,7 +521,7 @@ namespace lux::render::detail
                     return cxx::unexpected(valid.error());
                 }
             }
-            auto& placement = plan.descriptor_plan_->programs[id.index];
+            auto& placement = plan.descriptor_plan_->passes[id.index];
             if (input || !placement.private_bindings.empty())
             {
                 if (placement.shared && (!image_capacity || !sampler_capacity))
@@ -535,7 +534,7 @@ namespace lux::render::detail
                     {
                         break;
                     }
-                    const auto& other = plan.descriptor_plan_->programs[previous.index];
+                    const auto& other = plan.descriptor_plan_->passes[previous.index];
                     if (other.layout && sameLayout(placement, other))
                     {
                         placement.layout = other.layout;
@@ -598,7 +597,7 @@ namespace lux::render::detail
             plan.pass_indices_[id.index] = static_cast<std::uint32_t>(plan.recording_.passes.size());
             plan.recording_.passes.push_back(std::move(pass));
         }
-        for (const auto& placement : plan.descriptor_plan_->programs)
+        for (const auto& placement : plan.descriptor_plan_->passes)
         {
             for (std::size_t i = 0; i < placement.uses.size(); ++i)
             {

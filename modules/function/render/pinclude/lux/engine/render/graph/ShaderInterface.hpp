@@ -9,7 +9,7 @@
 
 namespace lux::render::detail
 {
-    enum class EStorageAccess : std::uint8_t
+    enum class EShaderAccess : std::uint8_t
     {
         READ_ONLY,
         WRITE_ONLY,
@@ -18,8 +18,8 @@ namespace lux::render::detail
 
     enum class EDescriptorKind : std::uint8_t
     {
-        SAMPLED_IMAGE_ARRAY,
-        SAMPLER_ARRAY,
+        SAMPLED_IMAGE,
+        SAMPLER,
         STORAGE_BUFFER,
         UNIFORM_BUFFER,
         STORAGE_IMAGE,
@@ -30,12 +30,12 @@ namespace lux::render::detail
     struct ShaderBinding final
     {
         std::uint32_t set = 0, binding = 0;
-        EDescriptorKind kind = EDescriptorKind::SAMPLED_IMAGE_ARRAY;
+        EDescriptorKind kind = EDescriptorKind::SAMPLED_IMAGE;
         std::uint32_t count = 0;
         rdesc::ShaderBlock block; // Full owned member/stride ABI for Buffer resources; empty for opaque descriptors.
         std::string name;         // Cooked shader variable name, resolved to a Graph resource only during compilation.
         std::uint32_t stages = 2; // Existing PassContract stage bits: Vertex=1, Fragment=2, Compute=4.
-        EStorageAccess access = EStorageAccess::READ_ONLY;
+        EShaderAccess access = EShaderAccess::READ_ONLY;
         bool operator==(const ShaderBinding&) const noexcept = default;
     };
 

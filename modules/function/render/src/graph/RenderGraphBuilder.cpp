@@ -313,24 +313,45 @@ namespace lux::render
                     return;
                 }
             }
-            for (auto& binding : input.resources)
+            std::vector<const rdesc::EDescriptorBindingInfo*> descriptors;
+            for (const auto& set : candidate_.programs_[input.program].interface.sets)
             {
-                const rdesc::EDescriptorBindingInfo* descriptor = nullptr;
-                for (const auto& set : candidate_.programs_[input.program].interface.sets)
+                for (const auto& descriptor : set.bindings)
                 {
-                    const auto found =
-                        std::ranges::find(set.bindings, binding.shader_name, &rdesc::EDescriptorBindingInfo::name);
-                    if (found != set.bindings.end())
-                    {
-                        descriptor = &*found;
-                        break;
-                    }
+                    descriptors.push_back(&descriptor);
                 }
-                if (!descriptor)
+            }
+            std::vector<bool> selected(descriptors.size());
+            const auto resolveField = [&](std::string_view name) -> std::uint32_t
+            {
+                const auto found =
+                    std::ranges::find_if(descriptors, [&](const auto* field) { return field->name == name; });
+                if (found == descriptors.end())
                 {
                     failure = graphError(kGraphInvalidDescriptor);
+                    return kGraphInvalidIndex;
+                }
+                const auto index = static_cast<std::uint32_t>(found - descriptors.begin());
+                if (selected[index])
+                {
+                    failure = graphError(kGraphInvalidDescriptor);
+                    return kGraphInvalidIndex;
+                }
+                selected[index] = true;
+                return index;
+            };
+            for (auto& sampler : input.samplers)
+            {
+                sampler.field = resolveField(sampler.shader_name);
+            }
+            for (auto& binding : input.resources)
+            {
+                binding.field = resolveField(binding.shader_name);
+                if (binding.field == kGraphInvalidIndex)
+                {
                     return;
                 }
+                const auto* descriptor = descriptors[binding.field];
                 const bool sampled = descriptor->type == rdesc::EDescriptorType::SAMPLED_IMAGE ||
                                      descriptor->type == rdesc::EDescriptorType::SAMPLER;
                 const auto usage = sampled                                             ? EGraphUse::SAMPLED
@@ -511,17 +532,6 @@ namespace lux::render
                                 if constexpr (std::is_same_v<std::remove_cvref_t<decltype(copy)>, CopyImage>)
                                 {
                                     if (copy.destination_region)
-                                    {
-                                        copy.destination.access = EGraphAccess::READ_WRITE;
-                                    }
-                                }
-                                else if constexpr (std::is_same_v<std::remove_cvref_t<decltype(copy)>, CopyImageBuffer>)
-                                {
-                                    if (copy.image_region &&
-                                        copy.destination.version.resource.index < candidate_.resources_.size() &&
-                                        std::holds_alternative<GraphImageDesc>(
-                                            candidate_.resources_[copy.destination.version.resource.index].description
-                                        ))
                                     {
                                         copy.destination.access = EGraphAccess::READ_WRITE;
                                     }

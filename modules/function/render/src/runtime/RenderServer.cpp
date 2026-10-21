@@ -15,7 +15,8 @@ namespace lux::render
         bool sameFeature(FeatureDefinition left, FeatureDefinition right) noexcept
         {
             return left.descriptor->config == right.descriptor->config &&
-                   left.graph->describe == right.graph->describe && left.graph->build == right.graph->build;
+                   left.descriptor->describe_ports == right.descriptor->describe_ports &&
+                   left.graph->build == right.graph->build;
         }
     } // namespace
 
@@ -116,7 +117,7 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
             const bool is_invalid_definition =
-                definition.descriptor->type.name().empty() || !definition.graph->describe;
+                definition.descriptor->type.name().empty() || !definition.descriptor->describe_ports;
             if (is_invalid_definition)
             {
                 return cxx::unexpected(RenderError{kFeatureContract});

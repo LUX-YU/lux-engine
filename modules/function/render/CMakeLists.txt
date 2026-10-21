@@ -68,6 +68,7 @@ set(render_sources
     src/runtime/CommandRegistry.cpp
     src/runtime/RegistrationBatch.cpp
     src/runtime/RenderServerImpl.cpp
+    src/runtime/Scene.cpp
     src/runtime/EffectCompilation.cpp
     src/runtime/ResponseDelivery.cpp
     src/runtime/CommandDispatchContext.cpp

@@ -206,7 +206,7 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<StorageResource> IndexedTriangleMeshStorage::
+    RenderResult<ResourceInput> IndexedTriangleMeshStorage::
         resolve(const CompiledResource& plan, const MeshBinding& argument, StorageSubscription&) noexcept
     {
         auto* entry = argument.mesh.storage == id_ ? entries_.find(argument.mesh.local) : nullptr;
@@ -238,7 +238,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        return StorageResource{range.buffer, range.offset, range.size};
+        return ResourceInput{range.buffer, range.offset, range.size};
     }
 
     void IndexedTriangleMeshStorage::retire(Geometry& geometry) noexcept
@@ -255,7 +255,7 @@ namespace lux::render::detail
                const CompiledResource& plan,
                const void* argument,
                StorageSubscription& subscription,
-               std::span<StorageResource> output) noexcept -> RenderResult<void>
+               std::span<ResourceInput> output) noexcept -> RenderResult<void>
             {
                 auto value = static_cast<IndexedTriangleMeshStorage*>(object)
                                  ->resolve(plan, *static_cast<const MeshBinding*>(argument), subscription);

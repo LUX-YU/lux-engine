@@ -1,6 +1,6 @@
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
-#include <lux/engine/render/resource/StorageDescriptor.hpp>
 
 #include <algorithm>
 #include <bit>
@@ -334,7 +334,7 @@ namespace lux::render::detail
                     std::ranges::any_of(
                         interface.bindings,
                         [](const auto& value)
-                        { return value.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY && value.count == 0; }
+                        { return value.kind == EDescriptorKind::SAMPLED_IMAGE && value.count == 0; }
                     ) &&
                     (capability == SpvCapabilityRuntimeDescriptorArray || capability == SpvCapabilityShaderNonUniform ||
                      capability == SpvCapabilitySampledImageArrayNonUniformIndexing ||
@@ -348,7 +348,7 @@ namespace lux::render::detail
                         interface.bindings,
                         [&](const auto& value)
                         {
-                            return (value.stages & stage_bit) && (value.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY ||
+                            return (value.stages & stage_bit) && (value.kind == EDescriptorKind::SAMPLED_IMAGE ||
                                                                   value.kind == EDescriptorKind::STORAGE_IMAGE);
                         }
                     );
@@ -457,8 +457,8 @@ namespace lux::render::detail
                          kind == SPVC_RESOURCE_TYPE_STORAGE_IMAGE)
                 {
                     const auto expected_kind =
-                        kind == SPVC_RESOURCE_TYPE_SEPARATE_IMAGE      ? EDescriptorKind::SAMPLED_IMAGE_ARRAY
-                        : kind == SPVC_RESOURCE_TYPE_SEPARATE_SAMPLERS ? EDescriptorKind::SAMPLER_ARRAY
+                        kind == SPVC_RESOURCE_TYPE_SEPARATE_IMAGE      ? EDescriptorKind::SAMPLED_IMAGE
+                        : kind == SPVC_RESOURCE_TYPE_SEPARATE_SAMPLERS ? EDescriptorKind::SAMPLER
                         : kind == SPVC_RESOURCE_TYPE_UNIFORM_BUFFER    ? EDescriptorKind::UNIFORM_BUFFER
                         : kind == SPVC_RESOURCE_TYPE_STORAGE_IMAGE     ? EDescriptorKind::STORAGE_IMAGE
                                                                        : EDescriptorKind::STORAGE_BUFFER;
@@ -488,7 +488,7 @@ namespace lux::render::detail
                             return false;
                         }
                         const auto type = spvc_compiler_get_type_handle(compiler, list[i].type_id);
-                        if (expected_kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY ||
+                        if (expected_kind == EDescriptorKind::SAMPLED_IMAGE ||
                             expected_kind == EDescriptorKind::STORAGE_IMAGE)
                         {
                             const auto dimensions = spvc_type_get_num_array_dimensions(type);
@@ -508,7 +508,7 @@ namespace lux::render::detail
                                 return false;
                             }
                         }
-                        else if (expected_kind == EDescriptorKind::SAMPLER_ARRAY)
+                        else if (expected_kind == EDescriptorKind::SAMPLER)
                         {
                             const auto dimensions = spvc_type_get_num_array_dimensions(type);
                             if (dimensions == 0
@@ -534,8 +534,8 @@ namespace lux::render::detail
                             const auto flags = std::span(decorations, decoration_count);
                             const bool read = std::ranges::find(flags, SpvDecorationNonReadable) == flags.end();
                             const bool write = std::ranges::find(flags, SpvDecorationNonWritable) == flags.end();
-                            const bool access_mismatch = read != (expected->access != EStorageAccess::WRITE_ONLY) ||
-                                                         write != (expected->access != EStorageAccess::READ_ONLY);
+                            const bool access_mismatch = read != (expected->access != EShaderAccess::WRITE_ONLY) ||
+                                                         write != (expected->access != EShaderAccess::READ_ONLY);
                             if (expected_kind == EDescriptorKind::STORAGE_BUFFER && access_mismatch)
                             {
                                 return false;
@@ -670,8 +670,8 @@ namespace lux::render::detail
         ranges.reserve(contract.size());
         for (const auto& binding : contract)
         {
-            const auto type = binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY ? nri::DescriptorType::TEXTURE
-                              : binding.kind == EDescriptorKind::SAMPLER_ARRAY     ? nri::DescriptorType::SAMPLER
+            const auto type = binding.kind == EDescriptorKind::SAMPLED_IMAGE    ? nri::DescriptorType::TEXTURE
+                              : binding.kind == EDescriptorKind::SAMPLER        ? nri::DescriptorType::SAMPLER
                               : binding.kind == EDescriptorKind::UNIFORM_BUFFER ? nri::DescriptorType::CONSTANT_BUFFER
                               : binding.kind == EDescriptorKind::STORAGE_IMAGE  ? nri::DescriptorType::STORAGE_TEXTURE
                               : binding.kind == EDescriptorKind::TYPED_STORAGE_BUFFER

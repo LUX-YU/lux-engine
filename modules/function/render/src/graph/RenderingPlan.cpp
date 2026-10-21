@@ -41,6 +41,24 @@ namespace lux::render::detail
     {
         // Ported from Legacy RenderPassPlanner::plan / collect_pass_refs:
         // consecutive live graphics work only. Identity and subranges strengthen its format-only key.
+        std::vector<std::vector<const GraphVersionUse*>> readers(resources.size());
+        std::vector<std::vector<const GraphLifetime*>> lifetimes(resources.size());
+        for (const auto& use : analysis.versions)
+        {
+            readers[use.version.resource.index].push_back(&use);
+        }
+        for (const auto& lifetime : analysis.lifetimes)
+        {
+            lifetimes[lifetime.version.resource.index].push_back(&lifetime);
+        }
+        for (auto& uses : readers)
+        {
+            std::ranges::sort(uses, {}, [](const auto* use) { return use->version.number; });
+        }
+        for (auto& uses : lifetimes)
+        {
+            std::ranges::sort(uses, std::greater{}, [](const auto* use) { return use->last; });
+        }
         recording.groups.clear();
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
         {
@@ -56,13 +74,19 @@ namespace lux::render::detail
                 {
                     return true;
                 }
+                const auto uses = std::ranges::equal_range(
+                    readers[attachment.access.version.resource.index],
+                    attachment.access.version.number,
+                    std::less{},
+                    [](const auto* use) { return use->version.number; }
+                );
                 return std::ranges::none_of(
-                    analysis.versions,
-                    [&](const auto& use)
+                    uses,
+                    [&](const auto* use)
                     {
-                        return use.version == attachment.access.version &&
-                               use.producer == analysis.execution_order[p] &&
-                               detail::overlaps(use.range, attachment.access.range);
+                        return use->version == attachment.access.version &&
+                               use->producer == analysis.execution_order[p] &&
+                               detail::overlaps(use->range, attachment.access.range);
                     }
                 );
             };
@@ -131,13 +155,13 @@ namespace lux::render::detail
                 {
                     return;
                 }
+                const auto& uses = lifetimes[resource.index];
+                const auto end_of_later_uses =
+                    std::ranges::partition_point(uses, [&](const auto* use) { return use->last > end; });
                 const bool needed = std::ranges::any_of(
-                    analysis.lifetimes,
-                    [&](const auto& use)
-                    {
-                        return use.version.resource == resource && use.last > end &&
-                               detail::overlaps(use.range, attachment.access.range);
-                    }
+                    std::ranges::subrange(uses.begin(), end_of_later_uses),
+                    [&](const auto* use)
+                    { return use->last > end && detail::overlaps(use->range, attachment.access.range); }
                 );
                 if (!needed)
                 {

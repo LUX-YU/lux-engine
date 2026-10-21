@@ -95,7 +95,7 @@ namespace lux::render::detail
             conditional_t<std::same_as<Input, MeshInstanceDescription>, MeshInstanceId, std::vector<MeshInstanceId>>;
         template <class Input> [[nodiscard]] exec::task<RenderResult<CreateValue<Input>>> createBatch(Input) noexcept;
         [[nodiscard]] RenderResult<void>
-        resolve(const CompiledResource&, const MeshInstanceBinding&, StorageSubscription&, std::span<StorageResource>) noexcept;
+        resolve(const CompiledResource&, const MeshInstanceBinding&, StorageSubscription&, std::span<ResourceInput>) noexcept;
         [[nodiscard]] RenderResult<void> allocate(GpuPage&, std::size_t slots) noexcept;
         [[nodiscard]] RenderResult<void> ensureFrame(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, ResourceUploader&) noexcept;

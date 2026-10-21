@@ -2,8 +2,6 @@
 #include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
-#include <lux/engine/render/graph/Shader.hpp>
 
 namespace lux::render::detail
 {
@@ -27,6 +25,21 @@ namespace lux::render::detail
         }
     } // namespace
 
+    std::array<nri::DescriptorRangeDesc, 2> DescriptorTable::layoutRanges(
+        std::uint32_t images,
+        std::uint32_t samplers
+    ) noexcept
+    {
+        const auto stages =
+            nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER;
+        const auto flags = nri::DescriptorRangeBits::ARRAY | nri::DescriptorRangeBits::PARTIALLY_BOUND |
+                           nri::DescriptorRangeBits::ALLOW_UPDATE_AFTER_SET;
+        return {
+            {{0, images, nri::DescriptorType::TEXTURE, stages, flags},
+             {1, samplers, nri::DescriptorType::SAMPLER, stages, flags}}
+        };
+    }
+
     RenderResult<void> DescriptorTable::initialize(
         std::uint32_t image_capacity,
         std::uint32_t sampler_capacity
@@ -34,7 +47,7 @@ namespace lux::render::detail
     {
         image_capacity_ = image_capacity;
         sampler_capacity_ = sampler_capacity;
-        const auto ranges = descriptorRanges(sampledImageTableBindings(), image_capacity, sampler_capacity);
+        const auto ranges = layoutRanges(image_capacity, sampler_capacity);
         const nri::DescriptorSetDesc set{
             0,
             ranges.data(),

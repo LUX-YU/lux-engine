@@ -470,7 +470,7 @@ namespace lux::render::detail
         const CompiledResource& plan,
         const MaterialBinding& argument,
         StorageSubscription& subscription,
-        std::span<StorageResource> output
+        std::span<ResourceInput> output
     ) noexcept
     {
         auto* entry = argument.material.storage == id_ ? entries_.find(argument.material.local) : nullptr;
@@ -488,7 +488,7 @@ namespace lux::render::detail
             }
             // This Graph port selects the device bindless table, not one physical Image. Its
             // Texture indices were resolved by the explicit write; no Client asset mirror is kept.
-            std::ranges::fill(output, StorageResource{});
+            std::ranges::fill(output, ResourceInput{});
             return {};
         }
         if (argument.layout != *table.program.parameterLayout())
@@ -685,7 +685,7 @@ namespace lux::render::detail
                const CompiledResource& plan,
                const void* argument,
                StorageSubscription& subscription,
-               std::span<StorageResource> output) noexcept
+               std::span<ResourceInput> output) noexcept
             {
                 return static_cast<RasterMaterialTableStorage*>(object)
                     ->resolve(plan, *static_cast<const MaterialBinding*>(argument), subscription, output);

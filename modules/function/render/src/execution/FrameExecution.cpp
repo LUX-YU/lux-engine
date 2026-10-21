@@ -3,6 +3,8 @@
 #include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/RenderExecutor.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
+#include <lux/engine/render/features/FeatureBinding.hpp>
+#include <lux/engine/render/graph/DumpText.hpp>
 #include <lux/engine/render/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
@@ -186,56 +188,27 @@ namespace lux::render::detail
         }
     }
 
-    void FrameExecution::collectStorageUses(
-        std::span<RenderGraphInstance* const> contexts,
-        std::vector<StorageFrameUse>& output
-    ) noexcept
-    {
-        output.clear();
-        for (auto* context : contexts)
-        {
-            for (const auto& use : context->storage_uses_)
-            {
-                if (use.ops->prepareFrame)
-                {
-                    output.push_back({use.native, use.ops});
-                }
-            }
-        }
-        std::ranges::sort(
-            output,
-            [](const auto& left, const auto& right) noexcept { return std::less<void*>{}(left.storage, right.storage); }
-        );
-        output.erase(
-            std::unique(
-                output.begin(),
-                output.end(),
-                [](const auto& left, const auto& right) noexcept { return left.storage == right.storage; }
-            ),
-            output.end()
-        );
-    }
-
     RenderResult<std::uint32_t> FrameExecution::render(
-        std::span<RenderGraphInstance* const> contexts,
-        std::span<const StorageFrameUse> storages
+        std::span<RenderGraphInstance* const> instances,
+        std::span<const StorageFrameUse> storages,
+        std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>> features
     ) noexcept
     {
         if (uploads_)
         {
-            uploads_->reserveFrameStaging(!contexts.empty());
+            uploads_->reserveFrameStaging(!instances.empty());
         }
         cxx::scope_exit update_admission([this]() noexcept { updateUploadAdmission(); });
         auto& frame = frames_[next_frame_];
-        if (contexts.empty() && frame.phase == EFramePhase::FREE)
+        if (instances.empty() && frame.phase == EFramePhase::FREE)
         {
             return 0;
         }
         auto outcome = [&](EExecutionOutcome value) noexcept -> RenderResult<std::uint32_t>
         {
-            for (auto* context : contexts)
+            for (auto* instance : instances)
             {
-                ++context->progress_.counts[static_cast<std::size_t>(value)];
+                ++instance->progress_.counts[static_cast<std::size_t>(value)];
             }
             return 0;
         };
@@ -252,7 +225,7 @@ namespace lux::render::detail
         {
             return outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
         }
-        if (contexts.empty())
+        if (instances.empty())
         {
             sealFrame(frame);
             next_frame_ = (next_frame_ + 1) % frame_count_;
@@ -269,7 +242,7 @@ namespace lux::render::detail
         }
         // This synchronous phase may fill staging and update descriptors, but may not
         // submit, suspend or dispatch callbacks. Only the following recording segment owns a CommandBuffer.
-        if (!storages.empty() && !uploads_)
+        if ((!storages.empty() || !features.empty()) && !uploads_)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
@@ -285,25 +258,44 @@ namespace lux::render::detail
             }
             resources_ready &= *prepared;
         }
-        bool contexts_ready = resources_ready;
+        bool instances_ready = resources_ready;
         bool native_records = false;
         if (resources_ready)
         {
-            for (auto* context : contexts)
+            for (const auto& [instance, binding] : features)
             {
-                auto prepared = context->prepareFrame(next_frame_, uploads_);
+                auto prepared = binding->prepare(binding->value.get(), next_frame_, *uploads_);
                 if (!prepared)
                 {
                     finishSubmission(cxx::unexpected(prepared.error()));
                     sealFrame(frame);
                     return cxx::unexpected(prepared.error());
                 }
-                contexts_ready &= *prepared;
-                native_records |= !context->prepared_copies_.empty();
+                if (prepared->changed_resource)
+                {
+                    instance->setResource(binding->resource.index, next_frame_, *prepared->changed_resource);
+                }
+                instances_ready &= prepared->state != FeatureBinding::EPreparation::WAITING;
+                binding->prepared_copies = prepared->state == FeatureBinding::EPreparation::RECORD
+                                               ? prepared->copies
+                                               : std::span<const ResourceUploader::BufferCopy>{};
+                native_records |= !binding->prepared_copies.empty();
+            }
+        }
+        if (instances_ready)
+        {
+            for (auto* instance : instances)
+            {
+                if (auto prepared = instance->prepareFrame(next_frame_); !prepared)
+                {
+                    finishSubmission(cxx::unexpected(prepared.error()));
+                    sealFrame(frame);
+                    return cxx::unexpected(prepared.error());
+                }
             }
         }
         const bool has_copies = uploads_ && uploads_->hasFrameCopies();
-        if (!contexts_ready && !has_copies && !native_records)
+        if (!instances_ready && !has_copies && !native_records)
         {
             finishSubmission(cxx::unexpected(RenderError{kDeviceBusy}));
             return outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
@@ -317,16 +309,17 @@ namespace lux::render::detail
                 }
                 if (resources_ready)
                 {
-                    for (auto* context : contexts)
+                    for (const auto& [instance, binding] : features)
                     {
-                        RenderExecutor::recordPreparation(*context, command);
+                        uploads_->recordCopies(command, binding->prepared_copies);
+                        binding->prepared_copies = {};
                     }
                 }
-                if (contexts_ready)
+                if (instances_ready)
                 {
-                    for (auto* context : contexts)
+                    for (auto* instance : instances)
                     {
-                        RenderExecutor::record(*context, command, next_frame_);
+                        RenderExecutor::record(*instance, command, next_frame_);
                     }
                 }
                 return {};
@@ -339,19 +332,54 @@ namespace lux::render::detail
             return cxx::unexpected(accepted.error());
         }
         acceptSubmission(next_frame_, graphics);
+        frame.graphics_serial = graphics.submitted();
+        frame.recorded_instances = instances_ready ? static_cast<std::uint32_t>(instances.size()) : 0;
+        frame.recorded_passes = 0;
         finishSubmission({});
-        if (!contexts_ready)
+        if (!instances_ready)
         {
             (void)outcome(EExecutionOutcome::RESOURCE_PREPARATION_PENDING);
             return 1; // A real replica-preparation submission; the frame stays open for its next finite window.
         }
         sealFrame(frame);
-        for (auto* context : contexts)
+        for (auto* instance : instances)
         {
-            context->submitted(next_frame_);
+            frame.recorded_passes += static_cast<std::uint32_t>(instance->plan().passes().size());
+            instance->submitted(next_frame_);
         }
         next_frame_ = (next_frame_ + 1) % frame_count_;
         return 1;
+    }
+
+    bool FrameExecution::dumpSubmissions(DumpSink sink) const noexcept
+    {
+        if (!sink.write)
+        {
+            return false;
+        }
+        std::string output = "{\"kind\":\"latest accepted graphics submission per FIF slot\",\"slots\":[";
+        for (std::uint32_t i = 0; i < frame_count_; ++i)
+        {
+            if (i)
+            {
+                output += ',';
+            }
+            const auto& frame = frames_[i];
+            output += "{\"slot\":" + std::to_string(i) + ",\"serial\":" + std::to_string(frame.graphics_serial) +
+                      ",\"instances\":" + std::to_string(frame.recorded_instances) +
+                      ",\"passes\":" + std::to_string(frame.recorded_passes) + ",\"accepted_frontiers\":[";
+            for (std::size_t queue = 0; queue < frame.accepted.serials.size(); ++queue)
+            {
+                if (queue)
+                {
+                    output += ',';
+                }
+                output += std::to_string(frame.accepted.serials[queue]);
+            }
+            output += "]}";
+        }
+        output += "]}\n";
+        return sink.write(sink.destination, output);
     }
 
     RenderResult<bool> FrameExecution::waitForProgress(std::uint64_t timeout_ns) noexcept

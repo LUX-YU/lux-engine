@@ -2,25 +2,15 @@
 
 #include <lux/engine/render/visibility.h>
 
-#include <NRI.h>
 #include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/render/core/Error.hpp>
+#include <lux/engine/render/execution/ResourceInput.hpp>
 #include <utility>
 
 namespace lux::render::detail
 {
     struct CompiledResource;
     class ResourceUploader;
-
-    // Current physical data borrowed at Attach or a device-thread publication point. No owner, task,
-    // pending upload, descriptor placement, or mutable parameter envelope lives in this value.
-    struct StorageResource final
-    {
-        nri::Buffer* buffer = nullptr;
-        std::uint64_t offset = 0, size = 0;
-        std::span<const std::byte> parameters;
-        const rdesc::ShaderBlock* parameter_layout = nullptr;
-    };
 
     // Intrusive, non-owning change relationship. The consumer embeds this node in its actual
     // record; the Storage keeps only the list head. Heads and linked consumers have stable addresses.
@@ -54,7 +44,7 @@ namespace lux::render::detail
 
         void* receiver = nullptr;
         // UINT32_MAX denotes structural disconnection of all physical slices.
-        void (*changed)(void*, std::uint32_t slot, const StorageResource&) noexcept = nullptr;
+        void (*changed)(void*, std::uint32_t slot, const ResourceInput&) noexcept = nullptr;
 
         void attach(StorageSubscription*& head) noexcept
         {
@@ -82,7 +72,7 @@ namespace lux::render::detail
             }
         }
 
-        static void publish(StorageSubscription* head, std::uint32_t slot, const StorageResource& resource) noexcept
+        static void publish(StorageSubscription* head, std::uint32_t slot, const ResourceInput& resource) noexcept
         {
             while (head)
             {
@@ -92,7 +82,7 @@ namespace lux::render::detail
             }
         }
 
-        static void disconnect(StorageSubscription*& head, const StorageResource& resource = {}) noexcept
+        static void disconnect(StorageSubscription*& head, const ResourceInput& resource = {}) noexcept
         {
             while (head)
             {
@@ -126,7 +116,7 @@ namespace lux::render::detail
     struct StorageBindingOps final
     {
         using Resolve = RenderResult<
-            void> (*)(void*, const CompiledResource&, const void*, StorageSubscription&, std::span<StorageResource>) noexcept;
+            void> (*)(void*, const CompiledResource&, const void*, StorageSubscription&, std::span<ResourceInput>) noexcept;
         Resolve resolve;
         RenderResult<bool> (*prepareFrame)(void*, std::uint32_t slot, ResourceUploader&) noexcept = nullptr;
     };

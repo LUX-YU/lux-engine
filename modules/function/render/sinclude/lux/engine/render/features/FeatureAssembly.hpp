@@ -15,7 +15,6 @@ namespace lux::render
     {
         using Build = RenderResult<void> (*)(const void*, std::string_view, FeatureBuildContext&) noexcept;
 
-        RenderResult<void> (*describe)(const void*, std::string_view, FeaturePorts&) noexcept;
         Build build = nullptr;
     };
 

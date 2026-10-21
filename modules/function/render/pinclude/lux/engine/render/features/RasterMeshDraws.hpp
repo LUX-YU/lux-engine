@@ -29,14 +29,14 @@ namespace lux::render::detail
         DeviceSession& session_;
         FrameExecution& frames_;
         ResourceRegistry& resources_;
-        StorageResource sections_;
+        ResourceInput sections_;
         MeshInstanceDrawGroup selection_;
         RasterMeshInstanceStorage::Observer observer_;
 
         struct GpuSlice final
         {
             nri::Buffer* buffer = nullptr;
-            std::array<FeatureBinding::BufferCopy, 3> copies;
+            std::array<ResourceUploader::BufferCopy, 3> copies;
             bool binding_changed = false;
             std::uint64_t uploaded_revision = 0, pending_revision = 0;
             std::size_t uploaded_bytes = 0, pending_bytes = 0;

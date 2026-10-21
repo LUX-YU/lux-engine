@@ -1,6 +1,6 @@
 #include <algorithm>
-#include <lux/engine/render/graph/DumpText.hpp>
 #include <lux/engine/render/graph/Diagnostics.hpp>
+#include <lux/engine/render/graph/DumpText.hpp>
 
 namespace lux::render
 {
@@ -16,19 +16,32 @@ namespace lux::render
             return false;
         }
         std::string output;
-        const auto live = [&](std::uint32_t pass)
-        { return std::ranges::find(analysis.execution_order, GraphPassId{pass}) != analysis.execution_order.end(); };
+        std::vector<std::uint32_t> positions(graph.passes().size(), kGraphInvalidIndex);
+        for (std::uint32_t position = 0; position < analysis.execution_order.size(); ++position)
+        {
+            positions[analysis.execution_order[position].index] = position;
+        }
+        const auto live = [&](std::uint32_t pass) { return positions[pass] != kGraphInvalidIndex; };
         if (format == EGraphDumpFormat::DOT)
         {
-            output = "digraph RenderGraph {\n";
+            output = "digraph RenderGraph {\nlabel=\"Resource and explicit dependencies; dashed nodes are culled\";\n";
             for (std::uint32_t i = 0; i < graph.passes().size(); ++i)
             {
                 output += "p" + std::to_string(i) + " [label=" + detail::quoteDumpText(graph.passes()[i].key) +
                           (live(i) ? ",style=solid];\n" : ",style=dashed];\n");
             }
-            for (const auto& edge : analysis.dependencies)
+            constexpr std::string_view hazards[]{"RAW", "WAR", "WAW"};
+            for (const auto& edge : analysis.hazards)
             {
-                output += "p" + std::to_string(edge.before.index) + " -> p" + std::to_string(edge.after.index) + ";\n";
+                const auto label = std::string(hazards[static_cast<unsigned>(edge.kind)]) + " resource " +
+                                   std::to_string(edge.resource.index) + " " + detail::dumpRange(edge.range);
+                output += "p" + std::to_string(edge.before.index) + " -> p" + std::to_string(edge.after.index) +
+                          " [label=" + detail::quoteDumpText(label) + "];\n";
+            }
+            for (const auto& edge : graph.dependencies())
+            {
+                output += "p" + std::to_string(edge.before.index) + " -> p" + std::to_string(edge.after.index) +
+                          " [label=\"explicit order\",style=dotted];\n";
             }
             output += "}\n";
         }
@@ -42,7 +55,30 @@ namespace lux::render
                     output += ',';
                 }
                 output += "{\"id\":" + std::to_string(i) + ",\"key\":" + detail::quoteDumpText(graph.passes()[i].key) +
-                          ",\"live\":" + (live(i) ? "true" : "false") + "}";
+                          ",\"live\":" + (live(i) ? "true" : "false") +
+                          ",\"execution_position\":" + std::to_string(positions[i]) + ",\"retention\":" +
+                          detail::quoteDumpText(
+                              !live(i)                        ? "not reachable from an export or side effect"
+                              : graph.passes()[i].side_effect ? "side effect root"
+                                                              : "required by an export or retained consumer"
+                          ) +
+                          ",\"accesses\":[";
+                const auto& uses = graph.passes()[i].uses;
+                for (std::size_t u = 0; u < uses.size(); ++u)
+                {
+                    if (u)
+                    {
+                        output += ',';
+                    }
+                    const auto& use = uses[u];
+                    output += "{\"resource\":" + std::to_string(use.version.resource.index) +
+                              ",\"version\":" + std::to_string(use.version.number) +
+                              ",\"predecessor\":" + std::to_string(use.input_version) +
+                              ",\"access\":" + std::to_string(static_cast<unsigned>(use.access)) +
+                              ",\"usage\":" + std::to_string(static_cast<unsigned>(use.usage)) +
+                              ",\"range\":" + detail::dumpRange(use.range) + "}";
+                }
+                output += "]}";
             }
             output += "],\"resources\":[";
             for (std::uint32_t i = 0; i < graph.resources().size(); ++i)
@@ -53,7 +89,33 @@ namespace lux::render
                 }
                 output += "{\"id\":" + std::to_string(i) +
                           ",\"key\":" + detail::quoteDumpText(graph.resources()[i].key) +
-                          ",\"origin\":" + std::to_string(static_cast<unsigned>(graph.resources()[i].origin)) + "}";
+                          ",\"origin\":" + std::to_string(static_cast<unsigned>(graph.resources()[i].origin)) +
+                          ",\"initial_use\":" + std::to_string(static_cast<unsigned>(graph.resources()[i].initial_use));
+                const auto& description = graph.resources()[i].description;
+                if (const auto* buffer = std::get_if<GraphBufferDesc>(&description))
+                {
+                    output += ",\"bytes\":" + std::to_string(buffer->size);
+                }
+                else
+                {
+                    const auto& image = std::get<GraphImageDesc>(description);
+                    output +=
+                        ",\"width\":" + std::to_string(image.width) + ",\"height\":" + std::to_string(image.height) +
+                        ",\"mips\":" + std::to_string(image.mips) + ",\"layers\":" + std::to_string(image.layers) +
+                        ",\"samples\":" + std::to_string(image.samples) +
+                        ",\"format\":" + std::to_string(static_cast<unsigned>(image.format)) +
+                        ",\"target_relative\":" + (image.extent.target_relative ? "true" : "false");
+                }
+                output += ",\"initial_ranges\":[";
+                for (std::size_t range = 0; range < graph.resources()[i].initial_ranges.size(); ++range)
+                {
+                    if (range)
+                    {
+                        output += ',';
+                    }
+                    output += detail::dumpRange(graph.resources()[i].initial_ranges[range]);
+                }
+                output += "]}";
             }
             output += "],\"versions\":[";
             for (std::size_t i = 0; i < analysis.versions.size(); ++i)
@@ -93,6 +155,43 @@ namespace lux::render
                     output += ',';
                 }
                 output += std::to_string(analysis.parameter_inputs[i].index);
+            }
+            output += "],\"exports\":[";
+            for (std::size_t i = 0; i < graph.outputs().size(); ++i)
+            {
+                if (i)
+                {
+                    output += ',';
+                }
+                const auto& value = graph.outputs()[i];
+                output += "{\"resource\":" + std::to_string(value.version.resource.index) +
+                          ",\"version\":" + std::to_string(value.version.number) +
+                          ",\"range\":" + detail::dumpRange(value.range) + ",\"final_use\":" +
+                          (value.final_use ? std::to_string(static_cast<unsigned>(*value.final_use)) : "null") + "}";
+            }
+            output += "],\"lifetimes\":[";
+            for (std::size_t i = 0; i < analysis.lifetimes.size(); ++i)
+            {
+                if (i)
+                {
+                    output += ',';
+                }
+                const auto& value = analysis.lifetimes[i];
+                output += "{\"resource\":" + std::to_string(value.version.resource.index) +
+                          ",\"version\":" + std::to_string(value.version.number) +
+                          ",\"range\":" + detail::dumpRange(value.range) + ",\"first\":" + std::to_string(value.first) +
+                          ",\"last\":" + std::to_string(value.last) + "}";
+            }
+            output += "],\"explicit_dependencies\":[";
+            for (std::size_t i = 0; i < graph.dependencies().size(); ++i)
+            {
+                if (i)
+                {
+                    output += ',';
+                }
+                const auto& edge = graph.dependencies()[i];
+                output += "{\"before\":" + std::to_string(edge.before.index) +
+                          ",\"after\":" + std::to_string(edge.after.index) + "}";
             }
             output += "]}\n";
         }

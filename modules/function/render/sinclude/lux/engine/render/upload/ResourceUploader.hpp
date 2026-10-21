@@ -51,6 +51,15 @@ namespace lux::render::detail
     class LUX_RENDER_PUBLIC ResourceUploader final
     {
     public:
+        struct BufferCopy final
+        {
+            nri::Buffer* source;
+            nri::Buffer* destination;
+            std::uint64_t source_offset, destination_offset, bytes;
+        };
+
+        void recordCopies(nri::CommandBuffer&, std::span<const BufferCopy>) noexcept;
+
         using Result = RenderResult<void>;
         using Task = exec::task<Result>;
 

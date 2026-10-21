@@ -29,7 +29,7 @@ namespace lux::render::detail
         rdesc::ShaderMember destination;
     };
 
-    struct ProgramLayout final
+    struct PassLayout final
     {
         std::vector<ShaderBinding> bindings;
         std::vector<ShaderBinding> private_bindings;
@@ -48,11 +48,9 @@ namespace lux::render::detail
     struct PipelineLayoutPlan final
     {
         std::vector<ShaderBinding> shared_bindings;
-        std::vector<ProgramLayout> programs; // Original GraphPassId indices; pruned entries stay empty.
-        rdesc::ShaderBlock context_parameters;
+        std::vector<PassLayout> passes; // Original GraphPassId indices; pruned entries stay empty.
+        rdesc::ShaderBlock instance_parameters;
     };
-
-    [[nodiscard]] const std::array<ShaderBinding, 2>& sampledImageTableBindings() noexcept;
 
     [[nodiscard]] RenderResult<PipelineLayoutPlan> planLayouts(
         const nri::DeviceDesc& limits,

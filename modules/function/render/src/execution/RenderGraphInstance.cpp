@@ -6,13 +6,10 @@
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
-#include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/FrameResources.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
-#include <lux/engine/render/execution/RenderExecutor.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
-#include <lux/engine/render/upload/ResourceUploader.hpp>
 #include <numeric>
 
 namespace lux::render::detail
@@ -23,17 +20,15 @@ namespace lux::render::detail
         const RenderPlan& plan,
         OffscreenTarget* output
     ) noexcept
-        : session_(&session), plan_(&plan), target_(output ? output->description() : plan.target()),
-          storage_indices_(plan.resources().size(), kGraphInvalidIndex), output_(output)
+        : session_(&session), plan_(&plan), target_(output ? output->description() : plan.target()), output_(output)
     {
-        storage_uses_.reserve(plan.resources().size());
-        instance_values_.resize(plan.descriptor_plan_->context_parameters.size);
+        instance_values_.resize(plan.descriptor_plan_->instance_parameters.size);
         parameter_copies_.resize(plan.passes().size());
         for (const auto& pass : plan.passes())
         {
-            pass_parameters_.push_back(plan.descriptor_plan_->programs[pass.layout_program].initial_parameters);
+            pass_parameters_.push_back(plan.descriptor_plan_->passes[pass.source_pass].initial_parameters);
         }
-        for (const auto& program : plan.descriptor_plan_->programs)
+        for (const auto& program : plan.descriptor_plan_->passes)
         {
             for (const auto& use : program.uses)
             {
@@ -70,8 +65,7 @@ namespace lux::render::detail
 
     RenderGraphInstance::~RenderGraphInstance() noexcept
     {
-        disconnectStorageBindings();
-        // Physical cleanup is owned by the Session; it never calls back into this Context.
+        // Physical cleanup is owned by the Session; it never calls back into this instance.
         session_->deferRelease(
             [frames = std::move(frames_), nri_core = &session_->nriCore()]() mutable noexcept
             {
@@ -81,62 +75,6 @@ namespace lux::render::detail
                 }
             }
         );
-    }
-
-    void RenderGraphInstance::disconnectStorageBindings() noexcept
-    {
-        // End future-use relationships before the Attachment's actual Storage owners are destroyed.
-        // Submitted physical resources remain in the unique retirement facility.
-        feature_bindings_.clear();
-        for (auto& use : storage_uses_)
-        {
-            use.subscription.reset();
-        }
-        storage_uses_.clear();
-    }
-
-    RenderResult<void> RenderGraphInstance::bindStorage(
-        std::uint32_t resource,
-        StorageId id,
-        const StorageBindingOps& ops,
-        void* native,
-        const void* argument
-    ) noexcept
-    {
-        storage_indices_[resource] = static_cast<std::uint32_t>(storage_uses_.size());
-        auto& use = storage_uses_.emplace_back(this, id, resource);
-        use.subscription.receiver = &use;
-        use.subscription.changed = [](void* value, std::uint32_t slot, const StorageResource& resource) noexcept
-        {
-            auto& link = *static_cast<RenderGraphInstance::StorageUse*>(value);
-            link.instance->setResource(link.resource, slot, resource);
-        };
-        use.ops = &ops;
-        use.native = native;
-        std::array<StorageResource, 3> slices;
-        auto resolved = ops.resolve(
-            use.native,
-            plan_->resources()[resource],
-            argument,
-            use.subscription,
-            std::span(slices).first(frames_.size())
-        );
-        if (!resolved)
-        {
-            return cxx::unexpected(resolved.error());
-        }
-        for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
-        {
-            setResource(resource, slot, slices[slot]);
-        }
-        return {};
-    }
-
-    void RenderGraphInstance::addFeatureBinding(GraphResourceId resource, FeatureBinding binding) noexcept
-    {
-        feature_resources_.push_back(resource);
-        feature_bindings_.push_back(std::move(binding));
-        prepared_copies_.reserve(feature_bindings_.size());
     }
 
     void RenderGraphInstance::bindImage(GraphResourceId resource, std::uint32_t slot, nri::Texture& image) noexcept
@@ -533,7 +471,7 @@ namespace lux::render::detail
     RenderResult<void> RenderGraphInstance::prepareDescriptors() noexcept
     {
         const auto& layout = *plan_->descriptor_plan_;
-        // Actual Storage parameter offsets are qualified once at Attach. Physical slices
+        // Actual input parameter offsets are qualified once at Attach. Physical slices
         // share that type/layout; only their values and GPU addresses differ at recording.
         for (std::uint32_t p = 0; p < plan_->passes().size(); ++p)
         {
@@ -542,11 +480,11 @@ namespace lux::render::detail
             {
                 continue;
             }
-            for (const auto& mapping : layout.programs[compiled_pass.layout_program].parameters)
+            for (const auto& mapping : layout.passes[compiled_pass.source_pass].parameters)
             {
                 const auto& source = mapping.resource == kGraphInvalidIndex
-                                         ? StorageResource{nullptr, 0, 0, instance_values_, &layout.context_parameters}
-                                         : StorageResource{
+                                         ? ResourceInput{nullptr, 0, 0, instance_values_, &layout.instance_parameters}
+                                         : ResourceInput{
                                                nullptr,
                                                0,
                                                0,
@@ -555,13 +493,13 @@ namespace lux::render::detail
                                            };
                 if (!source.parameter_layout)
                 {
-                    return cxx::unexpected(RenderError{kStorageContract});
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
                 const auto& fields = source.parameter_layout->fields;
                 const auto field = std::ranges::find(fields, mapping.source_field, &rdesc::ShaderMember::path);
                 if (field == fields.end())
                 {
-                    return cxx::unexpected(RenderError{kStorageContract});
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
                 const auto& destination = mapping.destination;
                 const bool mismatch = field->scalar != destination.scalar || field->rows != destination.rows ||
@@ -575,7 +513,7 @@ namespace lux::render::detail
                                      std::uint64_t(destination.offset) + bytes > pass_parameters_[p].size();
                 if (mismatch || invalid)
                 {
-                    return cxx::unexpected(RenderError{kStorageContract});
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
                 parameter_copies_[p].push_back(
                     {mapping.resource, field->offset, destination.offset, std::uint32_t(bytes)}
@@ -585,7 +523,7 @@ namespace lux::render::detail
         nri::DescriptorPoolDesc pool{};
         for (const auto& pass : plan_->passes())
         {
-            const auto& program = layout.programs[pass.layout_program];
+            const auto& program = layout.passes[pass.source_pass];
             if (!program.private_bindings.empty())
             {
                 ++pool.descriptorSetMaxNum;
@@ -606,10 +544,10 @@ namespace lux::render::detail
                 case EDescriptorKind::STORAGE_IMAGE:
                     pool.storageTextureMaxNum += binding.count;
                     break;
-                case EDescriptorKind::SAMPLED_IMAGE_ARRAY:
+                case EDescriptorKind::SAMPLED_IMAGE:
                     pool.textureMaxNum += binding.count;
                     break;
-                case EDescriptorKind::SAMPLER_ARRAY:
+                case EDescriptorKind::SAMPLER:
                     pool.samplerMaxNum += binding.count;
                     break;
                 }
@@ -628,7 +566,7 @@ namespace lux::render::detail
             }
             for (auto& pass : frame.passes)
             {
-                const auto& program = layout.programs[pass.compiled_pass->layout_program];
+                const auto& program = layout.passes[pass.compiled_pass->source_pass];
                 pass.descriptors.resize(unsigned(program.shared) + unsigned(!program.private_bindings.empty()));
                 pass.private_views.resize(program.uses.size());
                 if (program.shared)
@@ -715,14 +653,8 @@ namespace lux::render::detail
                       ",\"owned_textures\":" + std::to_string(frame.images.size()) +
                       ",\"allocation_requirement_bytes\":" + std::to_string(bytes) + "}";
         }
-        output += "],\"excludes\":\"borrowed Target/Storage, allocator pool reserve and descriptors\"}";
+        output += "],\"excludes\":\"borrowed Target/inputs, allocator pool reserve and descriptors\"}";
         return sink.write(sink.destination, output);
-    }
-
-    StorageId RenderGraphInstance::storageId(std::uint32_t resource) const noexcept
-    {
-        const auto index = storage_indices_[resource];
-        return index == kGraphInvalidIndex ? StorageId{} : storage_uses_[index].storage_id;
     }
 
     nri::Buffer* RenderGraphInstance::nativeBuffer(std::uint32_t resource, std::uint32_t slot) const noexcept
@@ -733,7 +665,7 @@ namespace lux::render::detail
     void RenderGraphInstance::setResource(
         std::uint32_t resource,
         std::uint32_t slot,
-        const StorageResource& value
+        const ResourceInput& value
     ) noexcept
     {
         const auto first = slot == UINT32_MAX ? 0 : slot;
@@ -816,7 +748,7 @@ namespace lux::render::detail
             for (const auto [p, index] : uses.descriptor_uses)
             {
                 auto& pass = frame.passes[p];
-                const auto& program = layout.programs[pass.compiled_pass->layout_program];
+                const auto& program = layout.passes[pass.compiled_pass->source_pass];
                 const auto& use = program.uses[index];
                 nri::Descriptor* candidate = nullptr;
                 auto status = nri::Result::SUCCESS;
@@ -845,7 +777,7 @@ namespace lux::render::detail
                 else
                 {
                     const auto& range = std::get<GraphBufferRange>(use.range);
-                    // Imported variable-size Storage buffers expose their current physical range.
+                    // Imported variable-size input buffers expose their current physical range.
                     const auto size = use.whole_resource ? source.buffer_size : range.size;
                     const bool invalid_range =
                         range.offset > source.buffer_size || size > source.buffer_size - range.offset;
@@ -908,40 +840,12 @@ namespace lux::render::detail
         return index == kGraphInvalidIndex ? std::span<const std::byte>{} : pass_parameters_[index];
     }
 
-    RenderResult<bool> RenderGraphInstance::prepareFrame(std::uint32_t slot, ResourceUploader* uploads) noexcept
+    RenderResult<void> RenderGraphInstance::prepareFrame(std::uint32_t slot) noexcept
     {
-        prepared_copies_.clear();
-        if (!feature_bindings_.empty() && !uploads)
-        {
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        }
-        bool ready = true;
-        for (std::uint32_t index = 0; index < feature_bindings_.size(); ++index)
-        {
-            auto& data = feature_bindings_[index];
-            auto prepared = data.prepare(data.value.get(), slot, *uploads);
-            if (!prepared)
-            {
-                return cxx::unexpected(prepared.error());
-            }
-            if (prepared->changed_resource)
-            {
-                setResource(feature_resources_[index].index, slot, *prepared->changed_resource);
-            }
-            ready &= prepared->state != FeatureBinding::EPreparation::WAITING;
-            if (prepared->state == FeatureBinding::EPreparation::RECORD)
-            {
-                prepared_copies_.push_back(prepared->copies);
-            }
-        }
-        if (!ready)
-        {
-            return false;
-        }
         auto& frame = frames_[slot];
         if (frame.unavailable_buffers)
         {
-            return cxx::unexpected(RenderError{kStorageIdentity});
+            return cxx::unexpected(RenderError{kDeviceArgument});
         }
         if (!frame.changed_resources.empty())
         {
@@ -950,7 +854,23 @@ namespace lux::render::detail
                 return cxx::unexpected(rebound.error());
             }
         }
-        return true;
+        for (std::size_t p = 0; p < frame.passes.size(); ++p)
+        {
+            auto& parameters = pass_parameters_[p];
+            for (const auto& copy : parameter_copies_[p])
+            {
+                const auto* source = copy.resource == kGraphInvalidIndex
+                                         ? instance_values_.data()
+                                         : frame.bindings[copy.resource].parameters.data();
+                std::memcpy(parameters.data() + copy.destination_offset, source + copy.source_offset, copy.bytes);
+            }
+        }
+        return {};
     }
 
+    void RenderGraphInstance::submitted(std::uint32_t slot) noexcept
+    {
+        progress_.last_submitted_slot = slot;
+        ++progress_.counts[static_cast<std::size_t>(EExecutionOutcome::EXECUTED)];
+    }
 } // namespace lux::render::detail

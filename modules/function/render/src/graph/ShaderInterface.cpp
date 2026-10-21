@@ -1,6 +1,6 @@
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/ShaderInterface.hpp>
-#include <lux/engine/render/resource/StorageDescriptor.hpp>
 
 namespace lux::render::detail
 {
@@ -21,16 +21,16 @@ namespace lux::render::detail
                     return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
                 const auto access = source.writable
-                                        ? (source.readable ? EStorageAccess::READ_WRITE : EStorageAccess::WRITE_ONLY)
-                                        : EStorageAccess::READ_ONLY;
+                                        ? (source.readable ? EShaderAccess::READ_WRITE : EShaderAccess::WRITE_ONLY)
+                                        : EShaderAccess::READ_ONLY;
                 result.bindings.push_back(
                     {source.set,
                      source.binding,
                      is_uniform         ? EDescriptorKind::UNIFORM_BUFFER
                      : is_storage_image ? EDescriptorKind::STORAGE_IMAGE
                      : is_buffer        ? EDescriptorKind::STORAGE_BUFFER
-                     : is_images        ? EDescriptorKind::SAMPLED_IMAGE_ARRAY
-                                        : EDescriptorKind::SAMPLER_ARRAY,
+                     : is_images        ? EDescriptorKind::SAMPLED_IMAGE
+                                        : EDescriptorKind::SAMPLER,
                      source.count,
                      source.block,
                      source.name,
@@ -47,7 +47,7 @@ namespace lux::render::detail
                                          (result.parameters.size && result.parameters != source.block);
             if (is_incompatible)
             {
-                return cxx::unexpected(RenderError{kStorageContract});
+                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
             result.parameters = source.block;
             result.parameter_stages |= source.stages;

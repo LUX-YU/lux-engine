@@ -93,7 +93,7 @@ namespace lux::render::detail
             if (std::exchange(slice.binding_changed, false))
             {
                 result.changed_resource =
-                    StorageResource{slice.buffer, 0, session_.nriCore().GetBufferDesc(*slice.buffer).size};
+                    ResourceInput{slice.buffer, 0, session_.nriCore().GetBufferDesc(*slice.buffer).size};
             }
             if (state == FeatureBinding::EPreparation::RECORD)
             {

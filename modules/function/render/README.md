@@ -40,11 +40,31 @@ contracts. Their descriptions explain intended use; description text does not pa
 comparison. Different contracts use different semantic names. Instance keys only select instances of one type.
 `ListFeatures` and `ListStorages` return independently owned names and descriptions.
 
+`FeatureDescriptor::describe_ports` exposes config-dependent port information without building a graph or creating
+device objects. Composition calls that same cold entry. Imported ports carry their initial use; selected exports
+carry their exact range and final use. Concrete graph building remains in the project-level Feature implementation.
+
 Built-in registration definitions are compiled in their functional implementation files. Applications do not
 construct a Provider or include a concrete Storage. Project extensions submit their factories and typed Handler
 bindings through the same registration transaction, without changing Server dispatch branches.
 
 ## Requests and execution
+
+An Attachment owns its professional Feature bindings and Storage subscriptions. The graph instance receives borrowed
+`ResourceInput` values; it does not discover Storage, own Feature objects or call their preparation functions.
+FrameExecution prepares the Attachment's borrowed work at the reusable FIF slot. ResourceUploader records its
+preparation copies before RenderExecutor records graph work. Detach and replacement disconnect the professional
+objects and subscriptions before destroying the graph instance; physical cleanup still uses the Session scope.
+
+Image/Buffer copies distinguish capacity from initialized content. With fixed dimensions and an explicit row pitch,
+only actual row bytes become defined; padding remains undefined. A destination `READ_WRITE` explicitly preserves
+an already defined range, including padding. It is required when dimensions or multi-row pitch are resolved only at
+instantiation. Count and indirect argument accesses retain their actual offsets and byte ranges even though NRI
+Buffer barriers operate on the whole physical buffer.
+
+Graph/plan JSON and DOT describe dependencies, resource ranges, layouts, rendering attachments and barrier provenance.
+`FrameExecution::dumpSubmissions` separately reports the latest accepted batch per FIF slot and current frame queue
+frontiers. These are bounded submission facts, not GPU timing or a continuous trace.
 
 Applications use Platform IPC directly. They discover CommandId, attach it with `commandTag()`, send a typed
 Request and consume the corresponding Response. Responses contain `RenderError error` and business fields;

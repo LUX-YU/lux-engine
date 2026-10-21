@@ -12,6 +12,5 @@ namespace lux::render::detail
     {
     public:
         static void record(RenderGraphInstance&, nri::CommandBuffer&, std::uint32_t slot) noexcept;
-        static void recordPreparation(RenderGraphInstance&, nri::CommandBuffer&) noexcept;
     };
 } // namespace lux::render::detail

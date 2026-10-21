@@ -230,7 +230,9 @@ static void imageChain(Validation& validation, std::uint32_t fif)
     CHECK(dumpGraph(graph, analysis, EGraphDumpFormat::JSON, sink));
     CHECK(dumpPlan(plan, EGraphDumpFormat::JSON, sink));
     CHECK(dump.find("\"mip\":1") != std::string::npos);
-    CHECK(dump.find("\"colors\":2") != std::string::npos);
+    CHECK(dump.find("\"color_count\":2") != std::string::npos);
+    CHECK(dump.find("\"lifetimes\":[") != std::string::npos);
+    CHECK(dump.find("\"final_image_transitions\":[") != std::string::npos);
     nri::Descriptor* sampler = nullptr;
     nri::SamplerDesc sampler_description{};
     sampler_description.addressModes =
@@ -262,6 +264,15 @@ static void imageChain(Validation& validation, std::uint32_t fif)
     }
     CHECK(take(frames->render(instances, {})) == 0);
     CHECK(session->drain());
+    const auto submission_dump_offset = dump.size();
+    CHECK(frames->dumpSubmissions(sink));
+    CHECK(dump.find("\"instances\":2") != std::string::npos);
+    if (const auto* path = std::getenv("LUX_GRAPH_DUMP"))
+    {
+        std::ofstream output(path, std::ios::app);
+        output << std::string_view(dump).substr(submission_dump_offset);
+        CHECK(output.good());
+    }
     for (std::uint32_t slot = 0; slot < fif; ++slot)
     {
         checkPixels(*session, *instance->nativeBuffer(pixels.index, slot), 64, 256, {64, 64, 64, 255});

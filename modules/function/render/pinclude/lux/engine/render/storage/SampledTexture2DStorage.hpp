@@ -78,7 +78,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<ImagePreparation>
         preparePatched(const SampledImage&, const TextureRegion&, std::span<const std::byte>) noexcept;
         [[nodiscard]] RenderResult<SampledImage> sampledImage(nri::Texture*, std::uint32_t color_space) noexcept;
-        [[nodiscard]] RenderResult<StorageResource>
+        [[nodiscard]] RenderResult<ResourceInput>
         resolve(const CompiledResource&, const TextureBinding&, StorageSubscription&) noexcept;
         static void releaseImage(const nri::CoreInterface&, DescriptorTable&, SampledImage&) noexcept;
         void retire(SampledImage&) noexcept;

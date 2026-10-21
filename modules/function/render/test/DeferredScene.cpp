@@ -300,7 +300,7 @@ static std::vector<std::byte> parameterBytes(const SceneParameters& values)
     return {view.begin(), view.end()};
 }
 
-static rdesc::MaterialProgramSet cook(bool lit, bool mask = false, bool normal_map = false)
+static rdesc::MaterialProgramSet cook(bool lit, bool mask = false, bool normal_map = false, bool shadow_only = false)
 {
     using namespace lux::material;
     MaterialGraph graph;
@@ -334,7 +334,8 @@ static rdesc::MaterialProgramSet cook(bool lit, bool mask = false, bool normal_m
         CHECK(material_test::connect(graph, decode, 0, tbn, 0));
         CHECK(material_test::connect(graph, tbn, 0, surface, 4));
     }
-    constexpr std::array purposes{rdesc::EMaterialPurpose::GBUFFER, rdesc::EMaterialPurpose::SHADOW};
+    constexpr std::array available{rdesc::EMaterialPurpose::GBUFFER, rdesc::EMaterialPurpose::SHADOW};
+    const auto purposes = std::span(available).subspan(shadow_only ? 1 : 0);
     auto cooked = compileMaterial(graph, purposes);
     if (!cooked)
     {
@@ -775,6 +776,16 @@ int main(int argc, char** argv)
     }
     lights.clear();
     run(0);
+    // A Shadow-only cook has no surface table. Create it through the real Storage/Command path
+    // and render depth, without borrowing layout from an unrequested GBuffer program.
+    unlit = cook(true, false, false, true);
+    CHECK(unlit.parameter_defaults.empty() && unlit.texture_count == 0);
+    left_material = call<CreateMaterial>(*client, commands, {materials, unlit, {}}).material;
+    all_materials.push_back(left_material);
+    values[0].material = left_material;
+    const std::array shadow_update{MeshInstanceUpdate{ids[0], values[0]}};
+    call<UpdateMeshInstances>(*client, commands, {instances, 6, shadow_update});
+    check_shadow(.5F);
     call<RemoveScene>(*client, commands, {scene});
     for (auto material : all_materials)
     {

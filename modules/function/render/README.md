@@ -280,9 +280,13 @@ performance qualification remain separate from successful compilation or an indi
 GBuffer supports Unlit and metallic-roughness PBR; Shadow computes only AlphaMask coverage. Unrequested uses are not
 compiled, and unsupported Forward lighting/Toon requests fail. Lighting and shadow-map sampling belong to features.
 `MaterialProgramSet` owns the selected fragment uses, one reflected material record, parameter defaults and raster
-state. Shader ABI 4 removes implicit mesh transition varyings; re-cook older material assets. Render consumes compiled metadata; it does not
-recompute the material record from a parameter count. The shared shader build inputs live in
+state. Shader ABI 4 removes implicit mesh transition varyings; re-cook older material assets. Render consumes
+compiled metadata; it does not recompute the material record from a parameter count. The shared shader build inputs live in
 `modules/function/material/shaders`; the Material compiler remains a tool/test dependency, not a Render dependency.
+
+If none of the requested uses reads a material record, the Cooked runtime parameter/texture lists are empty.
+The author graph retains its slots; compiling another purpose can consume them later. Storage never invents
+a layout for unused authoring data or creates a hidden Shader use to recover one.
 
 Install `GBufferFeatureDescriptor`, `DeferredLightingFeatureDescriptor` and `TonemapFeatureDescriptor` independently.
 Connect the GBuffer's `albedo_metallic`, `normal_roughness`, `emissive_ao` and `depth` ports to the lighting feature,

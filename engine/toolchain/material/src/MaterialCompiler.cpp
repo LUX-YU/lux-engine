@@ -92,7 +92,6 @@ namespace lux::material
             rdesc::MaterialDescription description;
             auto& programs = description.programs;
             programs.parameter_defaults.resize(graph.param_slots.size());
-            description.texture_slot_ids.resize(graph.texture_slots.size());
             for (std::uint32_t parameter = 0; parameter < programs.parameter_defaults.size(); ++parameter)
             {
                 std::copy_n(graph.param_slots[parameter].dflt, 4, programs.parameter_defaults[parameter].begin());
@@ -139,7 +138,15 @@ namespace lux::material
                 shader.interface = std::move(compiled->info);
                 programs.programs.push_back({purpose, std::string(semantic), std::move(shader)});
             }
-            for (std::uint32_t slot = 0; slot < graph.texture_slots.size(); ++slot)
+            // A coverage-only or constant use can have no runtime material record at all.
+            // Do not publish author-only slots without a compiled layout for Storage to consume.
+            if (!programs.parameters.size)
+            {
+                programs.parameter_defaults.clear();
+                programs.texture_count = 0;
+            }
+            description.texture_slot_ids.resize(programs.texture_count);
+            for (std::uint32_t slot = 0; slot < programs.texture_count; ++slot)
             {
                 description.texture_slot_ids[slot] = graph.texture_slots[slot].texture;
             }

@@ -124,8 +124,10 @@ int main(int argc, char** argv)
     require(opaque_shadow.has_value());
     const auto& shadow_interface = opaque_shadow->programs.programs.front().shader.interface;
     require(shadow_interface.sets.empty() && shadow_interface.entry_points.front().inputs.empty());
+    require(opaque_shadow->programs.parameter_defaults.empty() && opaque_shadow->programs.texture_count == 0);
     unlit = compileMaterial(graph, forward);
     require(unlit.has_value() && unlit->programs.programs.front().shader.interface.sets.empty());
+    require(unlit->programs.parameter_defaults.empty());
     // Extension compilers may return a valid output index with malformed operands.
     // Purpose pruning must reject it before indexing the dependency marks.
     auto registrations = materialBuiltinRegistrations();

@@ -1,12 +1,39 @@
 find_package(lux-cxx REQUIRED COMPONENTS compile_time core)
-find_package(spirv_cross_core CONFIG REQUIRED)
-set_property(TARGET spirv-cross-core PROPERTY MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
 option(LUX_MATERIAL_BUILD_COOKER "Build the Material asset cooker in addition to the compiler" ON)
 find_package(Vulkan QUIET COMPONENTS shaderc_combined)
 find_package(unofficial-shaderc CONFIG QUIET)
 find_package(shaderc CONFIG QUIET)
 
-if(TARGET unofficial::shaderc::shaderc)
+# Use shaderc's C ABI DLL on Windows. A prebuilt combined archive mixes its STL
+# instantiations with the caller's CRT/ASan annotations in the same binary.
+if(MSVC)
+    find_path(LUX_MATERIAL_SHADERC_INCLUDE shaderc/shaderc.hpp
+        HINTS "$ENV{VULKAN_SDK}/Include" REQUIRED
+    )
+    get_filename_component(shaderc_sdk "${LUX_MATERIAL_SHADERC_INCLUDE}/.." ABSOLUTE)
+    find_library(LUX_MATERIAL_SHADERC_SHARED shaderc_shared HINTS "${shaderc_sdk}/Lib" NO_DEFAULT_PATH REQUIRED)
+    find_library(
+        LUX_MATERIAL_SHADERC_SHARED_DEBUG NAMES shaderc_sharedd
+        HINTS "${shaderc_sdk}/Lib" NO_DEFAULT_PATH REQUIRED
+    )
+    find_file(LUX_MATERIAL_SHADERC_DLL shaderc_shared.dll HINTS "${shaderc_sdk}/Bin" NO_DEFAULT_PATH REQUIRED)
+    find_file(
+        LUX_MATERIAL_SHADERC_DEBUG_DLL NAMES shaderc_sharedd.dll
+        HINTS "${shaderc_sdk}/Bin" NO_DEFAULT_PATH REQUIRED
+    )
+    add_library(lux_material_shaderc SHARED IMPORTED)
+    set_target_properties(lux_material_shaderc PROPERTIES
+        IMPORTED_CONFIGURATIONS "Debug;Release"
+        IMPORTED_IMPLIB_RELEASE "${LUX_MATERIAL_SHADERC_SHARED}"
+        IMPORTED_IMPLIB_DEBUG "${LUX_MATERIAL_SHADERC_SHARED_DEBUG}"
+        IMPORTED_LOCATION_RELEASE "${LUX_MATERIAL_SHADERC_DLL}"
+        IMPORTED_LOCATION_DEBUG "${LUX_MATERIAL_SHADERC_DEBUG_DLL}"
+        MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
+        INTERFACE_INCLUDE_DIRECTORIES "${LUX_MATERIAL_SHADERC_INCLUDE}"
+        INTERFACE_COMPILE_DEFINITIONS SHADERC_SHAREDLIB
+    )
+    set(lux_material_shaderc_target lux_material_shaderc)
+elseif(TARGET unofficial::shaderc::shaderc)
     set(lux_material_shaderc_target unofficial::shaderc::shaderc)
 elseif(TARGET Vulkan::shaderc_combined)
     set(lux_material_shaderc_target Vulkan::shaderc_combined)
@@ -107,7 +134,6 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderEmitter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderCompiler.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialCompiler.cpp
-        $<TARGET_OBJECTS:toolchain_shader_reflection>
         "${lux_material_embedded_includes}"
 )
 add_dependencies(toolchain_material_compiler toolchain_material_shader_includes)
@@ -123,19 +149,14 @@ component_include_directories(
         ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 target_compile_definitions(toolchain_material_compiler PRIVATE LUX_ENGINE_MATERIAL_COMPILER_LIBRARY)
-if(lux_material_shaderc_target STREQUAL "Vulkan::shaderc_combined")
-    get_filename_component(shaderc_library_directory "${Vulkan_shaderc_combined_LIBRARY}" DIRECTORY)
-    if(MSVC)
-        find_library(LUX_MATERIAL_SHADERC_DEBUG shaderc_combinedd
-            HINTS "${shaderc_library_directory}" NO_DEFAULT_PATH REQUIRED
-        )
-        set_property(TARGET Vulkan::shaderc_combined PROPERTY IMPORTED_LOCATION_DEBUG "${LUX_MATERIAL_SHADERC_DEBUG}")
-    endif()
-    find_path(LUX_MATERIAL_SHADERC_INCLUDE shaderc/shaderc.hpp
-        HINTS "${shaderc_library_directory}/../Include" "$ENV{VULKAN_SDK}/Include" NO_DEFAULT_PATH REQUIRED
+if(TARGET lux_material_shaderc)
+    add_custom_command(TARGET toolchain_material_compiler POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:lux_material_shaderc>" "$<TARGET_FILE_DIR:toolchain_material_compiler>"
+        VERBATIM
     )
-    target_include_directories(toolchain_material_compiler PRIVATE "${LUX_MATERIAL_SHADERC_INCLUDE}")
 endif()
+
 target_link_libraries(
     toolchain_material_compiler
     PUBLIC
@@ -144,7 +165,7 @@ target_link_libraries(
         lux::engine::resource::shader_metadata
         lux::engine::resource::identity
     PRIVATE
-        spirv-cross-core
+        toolchain_shader_reflection
         ${lux_material_shaderc_target}
 )
 component_add_transitive_commands(
@@ -193,6 +214,9 @@ if(LUX_MATERIAL_BUILD_COOKER)
 endif()
 
 if(LUX_PROFILE_HAS_TOOLCHAIN)
+    if(TARGET lux_material_shaderc)
+        install(FILES "$<TARGET_FILE:lux_material_shaderc>" DESTINATION bin COMPONENT lux_toolchain)
+    endif()
     set(material_components toolchain_material_compiler)
     if(LUX_MATERIAL_BUILD_COOKER)
         list(APPEND material_components toolchain_material_cooker)

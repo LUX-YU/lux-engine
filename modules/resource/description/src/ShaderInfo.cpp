@@ -15,6 +15,8 @@ namespace lux::rdesc
         VERTEX_INPUT = 0x05,
         BINDING_LAYOUT = 0x06,
         PUSH_LAYOUT = 0x07,
+        ENTRY_INPUT = 0x08,
+        ENTRY_OUTPUT = 0x09,
         END = 0xFF
     };
 
@@ -230,6 +232,22 @@ namespace lux::rdesc
             pb.putStr(ep.name);
             pb.put<uint8_t>(static_cast<uint8_t>(ep.stage));
             pb.flush(out, EShaderInfoOp::ENTRY_POINT);
+            const auto append = [&](const auto& variables, EShaderInfoOp operation)
+            {
+                for (const auto& variable : variables)
+                {
+                    pb.put<std::uint32_t>(static_cast<std::uint32_t>(&ep - info.entry_points.data()));
+                    pb.put(variable.location);
+                    pb.putStr(variable.name);
+                    pb.put<std::uint8_t>(static_cast<std::uint8_t>(variable.base));
+                    pb.put(variable.vec_size);
+                    pb.put(variable.columns);
+                    pb.put(variable.array_size);
+                    pb.flush(out, operation);
+                }
+            };
+            append(ep.inputs, EShaderInfoOp::ENTRY_INPUT);
+            append(ep.outputs, EShaderInfoOp::ENTRY_OUTPUT);
         }
 
         // bindings
@@ -395,6 +413,27 @@ namespace lux::rdesc
                 }
                 ep.stage = static_cast<EShaderType>(st);
                 out.entry_points.push_back(std::move(ep));
+            }
+            break;
+
+            case static_cast<uint8_t>(EShaderInfoOp::ENTRY_INPUT):
+            case static_cast<uint8_t>(EShaderInfoOp::ENTRY_OUTPUT):
+            {
+                std::uint32_t entry = 0;
+                std::uint8_t base = 0;
+                ShaderIoVariable variable;
+                if (!rdU32(entry) || entry >= out.entry_points.size() || !rdU32(variable.location) ||
+                    !rdStr(variable.name) || !rdU8(base) ||
+                    base > static_cast<std::uint8_t>(EVertexScalarBase::UNKNOWN) || !rdU32(variable.vec_size) ||
+                    !rdU32(variable.columns) || !rdU32(variable.array_size))
+                {
+                    return fail("entry interface");
+                }
+                variable.base = static_cast<EVertexScalarBase>(base);
+                auto& target = op == static_cast<std::uint8_t>(EShaderInfoOp::ENTRY_INPUT)
+                                   ? out.entry_points[entry].inputs
+                                   : out.entry_points[entry].outputs;
+                target.push_back(std::move(variable));
             }
             break;
 
@@ -602,7 +641,7 @@ namespace lux::rdesc
 
             case static_cast<uint8_t>(EShaderInfoOp::VERTEX_INPUT):
             {
-                VertexInputAttribute vi{};
+                ShaderIoVariable vi{};
                 if (!rdU32(vi.location))
                 {
                     return fail("vi.location");

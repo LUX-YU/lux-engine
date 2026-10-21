@@ -17,8 +17,8 @@
 //  LOCK-STEP CONTRACT: every GBuffer producer (gbuffer_{pbr,unlit,stylized}.frag
 //  AND the material-graph emitter's gbuffer epilogue) MUST write RT1 via
 //  packGNormalSM(); the only consumer (deferred_lighting.frag) MUST read it via
-//  unpackGNormalSM(). The emitter is device-free (no #include resolver) so it
-//  keeps an inline copy of these helpers — keep the two in sync.
+//  unpackGNormalSM(). The device-free emitter
+//  resolves this single shared include through its embedded Shader resources.
 // =========================================================================
 
 // Dense per-pixel lighting-model ids carried through the GBuffer. These are

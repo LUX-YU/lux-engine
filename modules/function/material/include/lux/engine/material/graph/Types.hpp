@@ -20,7 +20,7 @@ namespace lux::material
         OPACITY,
         METALLIC,
         ROUGHNESS,
-        NORMAL_TS,
+        NORMAL_WORLD,
         EMISSIVE,
         AMBIENT_OCCLUSION,
         COUNT
@@ -39,7 +39,7 @@ namespace lux::material
         {EMaterialAttribute::OPACITY, "opacity", EValueType::FLOAT, {1.0F, 0.0F, 0.0F, 0.0F}},
         {EMaterialAttribute::METALLIC, "metallic", EValueType::FLOAT, {0.0F, 0.0F, 0.0F, 0.0F}},
         {EMaterialAttribute::ROUGHNESS, "roughness", EValueType::FLOAT, {1.0F, 0.0F, 0.0F, 0.0F}},
-        {EMaterialAttribute::NORMAL_TS, "normal_ts", EValueType::VEC3, {0.0F, 0.0F, 1.0F, 0.0F}},
+        {EMaterialAttribute::NORMAL_WORLD, "normal_world", EValueType::VEC3, {0.0F, 0.0F, 1.0F, 0.0F}},
         {EMaterialAttribute::EMISSIVE, "emissive", EValueType::VEC3, {0.0F, 0.0F, 0.0F, 0.0F}},
         {EMaterialAttribute::AMBIENT_OCCLUSION, "ao", EValueType::FLOAT, {1.0F, 0.0F, 0.0F, 0.0F}}
     };

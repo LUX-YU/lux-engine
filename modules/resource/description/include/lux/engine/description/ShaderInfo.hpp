@@ -131,7 +131,7 @@ namespace lux::rdesc
         bool operator==(const SpecConstantInfo&) const noexcept = default;
     };
 
-    // Vertex input, only valid in the VERTEX stage
+    // Numeric stage-interface type; built-ins are not location-addressed variables.
     enum class EVertexScalarBase : uint8_t
     {
         BOOL,
@@ -142,7 +142,7 @@ namespace lux::rdesc
         UNKNOWN
     };
 
-    struct VertexInputAttribute
+    struct ShaderIoVariable
     {
         uint32_t location = 0;
         std::string name;
@@ -150,13 +150,14 @@ namespace lux::rdesc
         uint32_t vec_size = 1;
         uint32_t columns = 1;
         uint32_t array_size = 1;
-        bool operator==(const VertexInputAttribute&) const noexcept = default;
+        bool operator==(const ShaderIoVariable&) const noexcept = default;
     };
 
     struct EntryPointInfo
     {
         std::string name{};
         EShaderType stage{};
+        std::vector<ShaderIoVariable> inputs, outputs;
         bool operator==(const EntryPointInfo&) const noexcept = default;
     };
 
@@ -230,7 +231,7 @@ namespace lux::rdesc
         std::vector<DescriptorSetLayoutInfo> sets;
         std::vector<PushConstantRangeInfo> push_constants;
         std::vector<SpecConstantInfo> spec_constants;
-        std::vector<VertexInputAttribute> vertex_inputs;
+        std::vector<ShaderIoVariable> vertex_inputs;
 
         /// Runtime-only flag, not serialized. Set when this reflection's descriptor
         /// locations have already been relocated to the merged-domain layout by the

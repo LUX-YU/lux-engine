@@ -4,8 +4,7 @@
 
 #include <algorithm>
 #include <array>
-#include <lux/engine/description/MaterialLayout.hpp>
-#include <lux/engine/description/SpirvArtifact.hpp>
+#include <lux/engine/description/MaterialProgramSet.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/storage/SampledTexture2D.hpp>
 
@@ -16,33 +15,6 @@ namespace lux::render
     inline constexpr StorageNameView kMaterialStorageType("lux.render.storage.RasterMaterialTable");
     // Client-supplied finite values in the Cooked parameter order; Render checks the actual layout and count.
     using MaterialParameters = std::vector<std::array<float, 4>>;
-
-    // Immutable runtime projection of existing cooked MaterialGraph output. No author graph or compiler.
-    struct MaterialProgram final
-    {
-        rdesc::SpirvStage fragment;
-        std::uint32_t parameter_count = 0;
-        std::uint32_t texture_count = 0;
-
-        rdesc::ShaderInfo interface;
-
-        [[nodiscard]] const rdesc::ShaderBlock* parameterLayout() const noexcept
-        {
-            for (const auto& set : interface.sets)
-            {
-                for (const auto& binding : set.bindings)
-                {
-                    if (binding.name == rdesc::kMaterialTableName)
-                    {
-                        return &binding.block;
-                    }
-                }
-            }
-            return nullptr;
-        }
-
-        bool operator==(const MaterialProgram&) const noexcept = default;
-    };
 
     struct MaterialTextureGpuRef final
     {
@@ -65,7 +37,7 @@ namespace lux::render
     struct MaterialWrite final
     {
         StorageId storage;
-        MaterialProgram program;
+        rdesc::MaterialProgramSet program;
         MaterialParameters parameters{};
         // Client keeps referenced textures valid and explicitly updates these fields before releasing them.
         std::vector<TextureId> textures;
@@ -106,9 +78,10 @@ namespace lux::render
         using Response = AckResponse;
     };
 
-    template <> struct ConfigValueTraits<MaterialProgram> final
+    template <> struct ConfigValueTraits<rdesc::MaterialProgramSet> final
     {
-        [[nodiscard]] LUX_RENDER_PUBLIC static RenderResult<std::size_t> retainedBytes(const MaterialProgram&) noexcept;
+        [[nodiscard]] LUX_RENDER_PUBLIC static RenderResult<std::size_t>
+        retainedBytes(const rdesc::MaterialProgramSet&) noexcept;
     };
 
     template <> struct ConfigValueTraits<MaterialBinding> final

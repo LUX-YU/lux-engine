@@ -35,6 +35,12 @@ set(render_sources
     src/features/MaterialMeshRaster.cpp
     src/features/MeshDepthRaster.cpp
     src/features/HzbFeature.cpp
+    src/features/GBufferFeature.cpp
+    src/features/DeferredLightingFeature.cpp
+    src/features/TonemapFeature.cpp
+    src/features/FullscreenRaster.cpp
+    src/storage/DirectLightingStorage.cpp
+    src/storage/DirectLightingCommandHandler.cpp
     src/features/RasterMeshDraws.cpp
     src/device/Error.cpp
     src/device/DeviceSession.cpp
@@ -80,10 +86,24 @@ set(render_sources
 )
 
 set(mesh_shader_headers)
-foreach(shader BasicMesh DepthOnly BasicMeshPaged DepthOnlyPaged)
+foreach(shader
+    BasicMesh DepthOnly SurfaceMesh TangentMesh
+    BasicMeshPaged DepthOnlyPaged SurfaceMeshPaged TangentMeshPaged
+    BasicMeshNoUv SurfaceMeshNoUv TangentMeshNoUv
+    BasicMeshNoUvPaged SurfaceMeshNoUvPaged TangentMeshNoUvPaged
+)
     set(defines)
     if(shader MATCHES "^DepthOnly")
         list(APPEND defines -DDEPTH_ONLY=1)
+    endif()
+    if(shader MATCHES "^(SurfaceMesh|TangentMesh)")
+        list(APPEND defines -DVERTEX_NORMALS=1)
+    endif()
+    if(shader MATCHES "^TangentMesh")
+        list(APPEND defines -DVERTEX_TANGENTS=1)
+    endif()
+    if(shader MATCHES "NoUv")
+        list(APPEND defines -DVERTEX_NO_UV=1)
     endif()
     if(shader MATCHES "Paged$")
         list(APPEND defines -DPAGED_INSTANCES=1)
@@ -116,11 +136,43 @@ add_custom_command(
     VERBATIM
 )
 
+set(material_shader_root "${CMAKE_CURRENT_SOURCE_DIR}/../material/shaders")
+set(lighting_headers)
+foreach(shader FullscreenVertex DeferredLighting TonemapLinear TonemapSrgb)
+    set(defines)
+    if(shader STREQUAL "FullscreenVertex")
+        set(source shaders/deferred/Fullscreen.vert)
+    elseif(shader STREQUAL "DeferredLighting")
+        set(source shaders/deferred/DeferredLighting.frag)
+    else()
+        set(source shaders/postprocess/Tonemap.frag)
+        if(shader STREQUAL "TonemapSrgb")
+            list(APPEND defines -DOUTPUT_SRGB=1)
+        endif()
+    endif()
+    set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.hpp")
+    set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.spv")
+    add_custom_command(
+        OUTPUT "${header}"
+        BYPRODUCTS "${binary}"
+        COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3
+            "-I${material_shader_root}" ${defines} "${CMAKE_CURRENT_SOURCE_DIR}/${source}" -o "${binary}"
+        COMMAND lux_shader_metadata "${binary}" "${header}" k${shader}
+        DEPENDS "${source}" lux_shader_metadata
+            "${material_shader_root}/gbuffer_encode.glsl"
+            "${material_shader_root}/brdf/brdf_common.glsl"
+            "${material_shader_root}/brdf/brdf_ggx.glsl"
+            "${material_shader_root}/brdf/direct_lighting.glsl"
+        VERBATIM
+    )
+    list(APPEND lighting_headers "${header}")
+endforeach()
+
 add_component(
     COMPONENT_NAME render
     NAMESPACE lux::engine::function
     OUTPUT_NAME lux_engine_render
-    SOURCE_FILES ${render_sources} ${mesh_shader_headers} "${hzb_header}"
+    SOURCE_FILES ${render_sources} ${mesh_shader_headers} ${lighting_headers} "${hzb_header}"
 )
 
 component_include_directories(

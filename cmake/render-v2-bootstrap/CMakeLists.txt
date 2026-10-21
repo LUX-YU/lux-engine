@@ -69,6 +69,16 @@ if(BUILD_TESTING)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/graph" function-graph)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/material" material-graph)
 
+    # Build the real Cooked material compiler once; it is a tool/test dependency, never a Render dependency.
+    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../engine/toolchain/shader" shader-toolchain)
+    set(LUX_MATERIAL_BUILD_COOKER OFF)
+    set(LUX_EDITOR_BUILD_TOOLCHAIN_TESTS ON)
+    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../engine/toolchain/material" material-toolchain)
+    set_target_properties(toolchain_material_compiler lux_shader_emitter material_domain_compiler_test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin"
+    )
+    set_target_properties(lux_shader_metadata PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/render")
+
     foreach(target object object_ownership_plugin object_ownership_test object_tree_test object_queue_test
         object_target_test graph graph_edit_test material_graph material_registered_graph_test
         material_authoring_schema_test material_builtin_nodes_test material_math_registration_test

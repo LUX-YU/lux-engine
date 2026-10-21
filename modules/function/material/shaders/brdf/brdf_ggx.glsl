@@ -35,8 +35,10 @@ vec3 pbrDirectLight(vec3 albedo, float metallic, float roughness,
                     vec3 F0, vec3 N, vec3 V, float NdotV,
                     vec3 L, vec3 lightColor)
 {
-    vec3  H     = normalize(V + L);
     float NdotL = max(dot(N, L), 0.0);
+    if (NdotV <= 0.0 || NdotL <= 0.0)
+        return vec3(0.0);
+    vec3  H     = normalize(V + L);
     float NdotH = max(dot(N, H), 0.0);
     float HdotV = max(dot(H, V), 0.0);
 

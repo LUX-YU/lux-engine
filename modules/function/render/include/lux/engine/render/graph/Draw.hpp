@@ -45,6 +45,13 @@ namespace lux::render
         bool operator==(const VertexAttribute&) const noexcept = default;
     };
 
+    enum class ECullMode : std::uint8_t
+    {
+        NONE,
+        FRONT,
+        BACK
+    };
+
     // Pipeline state excludes resource names, Buffer offsets and draw counts.
     struct GraphicsState final
     {
@@ -52,6 +59,8 @@ namespace lux::render
         std::vector<VertexAttribute> vertex_attributes;
         bool depth_test = false, depth_write = false;
         EDepthCompare depth_compare = EDepthCompare::LESS;
+        ECullMode cull_mode = ECullMode::NONE;
+        bool front_counter_clockwise = true;
         bool operator==(const GraphicsState&) const noexcept = default;
     };
 

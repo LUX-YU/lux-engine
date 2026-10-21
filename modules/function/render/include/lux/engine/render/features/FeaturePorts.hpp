@@ -21,6 +21,7 @@ namespace lux::render
         std::vector<VGraphRange> initial_ranges;
         std::optional<StorageRequirement> storage;
         EGraphUse initial_use = EGraphUse::UNSPECIFIED;
+        std::string semantic; // Optional full encoding identity; consumers that require it compare the whole name.
     };
 
     struct FeatureHistory final

@@ -56,8 +56,14 @@ namespace
         connection->commit();
         auto actual = material::compileMaterial(edited);
         require(actual.has_value());
-        require(actual->gbuffer_spirv == baseline->gbuffer_spirv);
-        require(actual->forward_spirv == baseline->forward_spirv);
+        require(
+            actual->programs.find(lux::rdesc::EMaterialPurpose::GBUFFER)->shader.stages.front().words ==
+            baseline->programs.find(lux::rdesc::EMaterialPurpose::GBUFFER)->shader.stages.front().words
+        );
+        require(
+            actual->programs.find(lux::rdesc::EMaterialPurpose::FORWARD)->shader.stages.front().words ==
+            baseline->programs.find(lux::rdesc::EMaterialPurpose::FORWARD)->shader.stages.front().words
+        );
         material::MaterialGraph invalid;
         constexpr material::NodeId invalid_id{1000000031};
         auto invalid_payload = material_test::make(material::MaterialSampleTexture{29});
@@ -68,8 +74,8 @@ namespace
         require(failed.error().node_id == invalid_id);
         std::printf(
             "Material actual compiler: identical SPIR-V (%zu + %zu words)\n",
-            actual->gbuffer_spirv.size(),
-            actual->forward_spirv.size()
+            actual->programs.find(lux::rdesc::EMaterialPurpose::GBUFFER)->shader.stages.front().words.size(),
+            actual->programs.find(lux::rdesc::EMaterialPurpose::FORWARD)->shader.stages.front().words.size()
         );
     }
 

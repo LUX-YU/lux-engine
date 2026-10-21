@@ -11,34 +11,17 @@ add_test(NAME render.native.output COMMAND render_output_test)
 set_tests_properties(render.native.output PROPERTIES TIMEOUT 30)
 
 get_filename_component(render_source_root "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
-add_executable(render_material_asset_tool
-    EmitMaterial.cpp
-    "${render_source_root}/engine/toolchain/material/src/ShaderEmitter.cpp"
-)
-target_include_directories(render_material_asset_tool PRIVATE
-    "${render_source_root}/engine/toolchain/material/include"
-    "${render_source_root}/engine/toolchain/material/pinclude"
-)
-target_compile_definitions(render_material_asset_tool PRIVATE LUX_ENGINE_MATERIAL_COMPILER_DLL_DISABLE)
+add_executable(render_material_asset_tool EmitMaterial.cpp)
 target_link_libraries(render_material_asset_tool PRIVATE
-    lux::engine::function::material_graph
+    lux::engine::toolchain::toolchain_material_compiler
 )
-generate_visibility_header(
-    ENABLE_MACRO_NAME LUX_ENGINE_MATERIAL_COMPILER_LIBRARY
-    PUBLIC_MACRO_NAME LUX_ENGINE_MATERIAL_COMPILER_PUBLIC
-    DISABLE_DLL_MACRO_NAME LUX_ENGINE_MATERIAL_COMPILER_DLL_DISABLE
-    GENERATE_FILE_PATH lux/engine/material/compiler/visibility.h
-)
-set(shader_root "${render_source_root}/engine/toolchain/material/shaders")
+set(shader_root "${render_source_root}/modules/function/material/shaders")
 set(shader "${CMAKE_CURRENT_BINARY_DIR}/assets/UnlitTexture.frag")
 find_package(Vulkan REQUIRED COMPONENTS glslangValidator)
 add_custom_command(
     OUTPUT "${shader}.spv" "${shader}.spv.meta"
-    BYPRODUCTS "${shader}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/assets"
-    COMMAND render_material_asset_tool "${shader}" texture
-    COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -S frag
-        "-I${shader_root}" "${shader}" -o "${shader}.spv"
+    COMMAND render_material_asset_tool "${shader}.spv" texture
     COMMAND lux_shader_metadata "${shader}.spv" "${shader}.spv.meta"
     DEPENDS render_material_asset_tool lux_shader_metadata "${shader_root}/material_types.glsl"
         "${shader_root}/texture_sampling.glsl" "${shader_root}/transition_dither.glsl"
@@ -94,3 +77,11 @@ target_link_libraries(render_graph_chain PRIVATE render NRI)
 set_target_properties(render_graph_chain PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 add_test(NAME render.graph.chain COMMAND render_graph_chain)
 set_tests_properties(render.graph.chain PROPERTIES TIMEOUT 90)
+
+add_executable(render_deferred_scene DeferredScene.cpp)
+target_include_directories(render_deferred_scene PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
+target_link_libraries(render_deferred_scene PRIVATE render NRI lux::engine::core::core_execution
+    lux::engine::toolchain::toolchain_material_compiler)
+set_target_properties(render_deferred_scene PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+add_test(NAME render.sample.deferred COMMAND render_deferred_scene)
+set_tests_properties(render.sample.deferred PROPERTIES TIMEOUT 90)

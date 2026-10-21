@@ -1,6 +1,5 @@
 #include "../../material/test/MaterialTest.hpp"
-#include <lux/engine/material/MaterialIR.hpp>
-#include <lux/engine/material/compiler/Backend.hpp>
+#include <lux/engine/material/Compiler.hpp>
 
 #include <fstream>
 
@@ -31,24 +30,14 @@ int main(int argc, char** argv)
     {
         material_test::check(material_test::connect(graph, parameter, 0, surface, 0));
     }
-    auto lowered = lowerMaterial(graph);
-    if (!lowered)
+    auto compiled = compileMaterial(graph);
+    if (!compiled)
     {
-        std::fprintf(stderr, "%s\n", lowered.error().message.c_str());
+        std::fprintf(stderr, "%s\n", compiled.error().message.c_str());
     }
-    material_test::check(lowered.has_value());
-    const lux::shadergen::glsl::EmitParams options{
-        lux::shadergen::glsl::EMaterialPass::FORWARD,
-        lowered->shading_model,
-        lowered->alpha_mode,
-        lowered->alpha_cutoff
-    };
-    auto source = lux::shadergen::glsl::emitGlsl(lowered->shader, options);
-    material_test::check(source.has_value());
-    material_test::check(source->find("uMats") != std::string::npos);
+    material_test::check(compiled.has_value());
+    const auto& words = compiled->programs.find(lux::rdesc::EMaterialPurpose::FORWARD)->shader.stages.front().words;
     std::ofstream output(argv[1], std::ios::binary);
-    const auto version_end = source->find('\n');
-    output << source->substr(0, version_end + 1) << "#extension GL_GOOGLE_include_directive : require\n"
-           << source->substr(version_end + 1);
+    output.write(reinterpret_cast<const char*>(words.data()), static_cast<std::streamsize>(words.size() * 4));
     return output ? 0 : 3;
 }

@@ -158,7 +158,7 @@ namespace lux::render
             const auto& a = work[from].declarations[source].declaration;
             const auto& b = work[to].declarations[destination].declaration;
             const bool invalid_direction = a.direction != EFeaturePort::OUTPUT || b.direction == EFeaturePort::OUTPUT;
-            const bool mismatch = a.description != b.description;
+            const bool mismatch = a.description != b.description || (!b.semantic.empty() && a.semantic != b.semantic);
             if (invalid_direction || mismatch || work[to].incoming[destination] != SIZE_MAX)
             {
                 return cxx::unexpected(failure(mismatch ? kFeatureResourceMismatch : kFeatureContract, to, c));
@@ -180,10 +180,11 @@ namespace lux::render
                 return cxx::unexpected(failure(kFeatureContract, i, e));
             }
             const auto& port = work[i].declarations[p].declaration;
-            const bool invalid = port.direction == EFeaturePort::OUTPUT ||
-                                 input.resource.origin != EGraphOrigin::IMPORTED ||
-                                 input.resource.description != port.description || work[i].incoming[p] != SIZE_MAX ||
-                                 work[i].resolved[p].version.resource.index != kGraphInvalidIndex;
+            const bool invalid =
+                port.direction == EFeaturePort::OUTPUT || input.resource.origin != EGraphOrigin::IMPORTED ||
+                input.resource.description != port.description ||
+                (!port.semantic.empty() && input.semantic != port.semantic) || work[i].incoming[p] != SIZE_MAX ||
+                work[i].resolved[p].version.resource.index != kGraphInvalidIndex;
             if (invalid)
             {
                 return cxx::unexpected(failure(kFeatureResourceMismatch, i, p));

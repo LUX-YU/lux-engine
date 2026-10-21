@@ -19,7 +19,7 @@ namespace lux::asset
     namespace
     {
         inline constexpr std::uint32_t kMaterialVersion =
-            8U; // The payload now records the compiled texture-reference ABI explicitly.
+            9U; // Cooked use collection, shared record layout and stage-interface ABI.
         inline constexpr std::uint32_t kMaterialInstanceVersion = 2U;
 
         [[nodiscard]] AssetDecodeFailure decodeFailure(EAssetDecodeError code) noexcept
@@ -85,18 +85,49 @@ namespace lux::asset
 
         [[nodiscard]] bool validMaterial(const lux::rdesc::MaterialDescription& data) noexcept
         {
-            const auto alpha_mode = static_cast<std::uint8_t>(data.alpha_mode);
-            if (data.parameter_defaults.size() > UINT32_MAX || data.texture_slot_ids.size() > UINT32_MAX ||
-                alpha_mode > static_cast<std::uint8_t>(lux::rdesc::EAlphaMode::BLEND) ||
-                !detail::validSpirvWords(data.gbuffer_spirv) || !detail::validSpirvWords(data.forward_spirv) ||
-                !hasCookedLayouts(data.gbuffer_info, data.texture_slot_ids.size()) ||
-                !hasCookedLayouts(data.forward_info, data.texture_slot_ids.size()))
+            const auto& programs = data.programs;
+            const bool invalid_counts = programs.parameter_defaults.size() > UINT32_MAX ||
+                                        data.texture_slot_ids.size() != programs.texture_count ||
+                                        programs.programs.empty();
+            const bool invalid_state = programs.alpha_mode > rdesc::EAlphaMode::MASK ||
+                                       programs.shading_model > rdesc::ELightingTechnique::STYLIZED;
+            if (invalid_counts || invalid_state)
             {
                 return false;
             }
-            for (std::size_t parameter = 0U; parameter < data.parameter_defaults.size(); ++parameter)
+            std::uint32_t purposes = 0;
+            for (const auto& program : programs.programs)
             {
-                for (const float value : data.parameter_defaults[parameter])
+                const auto purpose = static_cast<std::uint32_t>(program.purpose);
+                const bool invalid_use = purpose > static_cast<std::uint32_t>(rdesc::EMaterialPurpose::SHADOW) ||
+                                         (purpose <= 2 && (purposes & (1u << purpose))) ||
+                                         program.output_semantic.empty();
+                if (invalid_use || program.shader.stages.size() != 1)
+                {
+                    return false;
+                }
+                purposes |= 1u << purpose;
+                const auto& stage = program.shader.stages.front();
+                if (stage.stage != rdesc::EShaderType::FRAGMENT || stage.entry.empty() ||
+                    !detail::validSpirvWords(stage.words) ||
+                    !hasCookedLayouts(program.shader.interface, programs.texture_count))
+                {
+                    return false;
+                }
+                for (const auto& set : program.shader.interface.sets)
+                {
+                    for (const auto& binding : set.bindings)
+                    {
+                        if (binding.name == rdesc::kMaterialTableName && binding.block != programs.parameters)
+                        {
+                            return false;
+                        }
+                    }
+                }
+            }
+            for (const auto& parameter : programs.parameter_defaults)
+            {
+                for (float value : parameter)
                 {
                     if (!std::isfinite(value))
                     {
@@ -164,6 +195,31 @@ namespace lux::asset
                 bytes.insert(bytes.end(), first, first + size);
             }
 
+            void text(std::string_view value)
+            {
+                pod(static_cast<std::uint32_t>(value.size()));
+                raw(value.data(), value.size());
+            }
+
+            void layout(const rdesc::ShaderBlock& value)
+            {
+                pod(value.size);
+                pod(value.alignment);
+                pod(static_cast<std::uint8_t>(value.storage));
+                pod(static_cast<std::uint8_t>(value.runtime_records));
+                pod(static_cast<std::uint32_t>(value.fields.size()));
+                for (const auto& field : value.fields)
+                {
+                    text(field.path);
+                    pod(static_cast<std::uint8_t>(field.scalar));
+                    pod(field.offset);
+                    pod(field.rows);
+                    pod(field.columns);
+                    pod(field.array_stride);
+                    pod(field.matrix_stride);
+                }
+            }
+
             void id(AssetId value)
             {
                 const auto raw = value.bytes();
@@ -189,6 +245,43 @@ namespace lux::asset
                 }
                 std::memcpy(&value, bytes.data() + offset, sizeof(Type));
                 offset += sizeof(Type);
+                return true;
+            }
+
+            [[nodiscard]] bool text(std::string& value)
+            {
+                std::uint32_t size = 0;
+                if (!pod(size) || size > bytes.size() - offset)
+                {
+                    return false;
+                }
+                value.assign(reinterpret_cast<const char*>(bytes.data() + offset), size);
+                offset += size;
+                return true;
+            }
+
+            [[nodiscard]] bool layout(rdesc::ShaderBlock& value)
+            {
+                std::uint8_t storage = 0, records = 0;
+                std::uint32_t count = 0;
+                if (!pod(value.size) || !pod(value.alignment) || !pod(storage) || !pod(records) || records > 1 ||
+                    !pod(count) || count > (bytes.size() - offset) / 25)
+                {
+                    return false;
+                }
+                value.storage = static_cast<rdesc::EDataLayout>(storage);
+                value.runtime_records = records != 0;
+                value.fields.resize(count);
+                for (auto& field : value.fields)
+                {
+                    std::uint8_t scalar = 0;
+                    if (!text(field.path) || !pod(scalar) || !pod(field.offset) || !pod(field.rows) ||
+                        !pod(field.columns) || !pod(field.array_stride) || !pod(field.matrix_stride))
+                    {
+                        return false;
+                    }
+                    field.scalar = static_cast<rdesc::EDataScalar>(scalar);
+                }
                 return true;
             }
 
@@ -362,8 +455,8 @@ namespace lux::asset
             {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
             }
-            data->parameter_defaults.resize(parameter_count);
-            for (auto& parameter : data->parameter_defaults)
+            data->programs.parameter_defaults.resize(parameter_count);
+            for (auto& parameter : data->programs.parameter_defaults)
             {
                 for (auto& value : parameter)
                 {
@@ -379,8 +472,14 @@ namespace lux::asset
             {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
             }
-            data->alpha_mode = static_cast<lux::rdesc::EAlphaMode>(alpha_mode);
-            data->double_sided = double_sided != 0U;
+            std::uint8_t model = 0;
+            if (!reader.pod(model))
+            {
+                return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+            }
+            data->programs.shading_model = static_cast<rdesc::ELightingTechnique>(model);
+            data->programs.alpha_mode = static_cast<lux::rdesc::EAlphaMode>(alpha_mode);
+            data->programs.double_sided = double_sided != 0U;
             data->texture_slot_ids.resize(texture_count);
             for (auto& id : data->texture_slot_ids)
             {
@@ -389,16 +488,29 @@ namespace lux::asset
                     return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
                 }
             }
-            std::vector<std::byte> gbuffer_info;
-            std::vector<std::byte> forward_info;
-            std::string error;
-            if (!reader.words(data->gbuffer_spirv) || !reader.block(gbuffer_info) ||
-                (!gbuffer_info.empty() && !lux::rdesc::ShaderInfo::deserialize(gbuffer_info, data->gbuffer_info, &error)
-                ) ||
-                !reader.words(data->forward_spirv) || !reader.block(forward_info) ||
-                (!forward_info.empty() && !lux::rdesc::ShaderInfo::deserialize(forward_info, data->forward_info, &error)
-                ) ||
-                reader.offset != reader.bytes.size() || !validMaterial(*data))
+            auto& programs = data->programs;
+            programs.texture_count = texture_count;
+            std::uint32_t count = 0;
+            if (!reader.layout(programs.parameters) || !reader.pod(count) || count > 3)
+            {
+                return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+            }
+            programs.programs.resize(count);
+            for (auto& program : programs.programs)
+            {
+                std::uint8_t purpose = 0;
+                rdesc::SpirvStage stage{rdesc::EShaderType::FRAGMENT};
+                std::vector<std::byte> info;
+                if (!reader.pod(purpose) || !reader.text(program.output_semantic) || !reader.text(stage.entry) ||
+                    !reader.words(stage.words) || !reader.block(info) ||
+                    !rdesc::ShaderInfo::deserialize(info, program.shader.interface))
+                {
+                    return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
+                }
+                program.purpose = static_cast<rdesc::EMaterialPurpose>(purpose);
+                program.shader.stages.push_back(std::move(stage));
+            }
+            if (reader.offset != reader.bytes.size() || !validMaterial(*data))
             {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
             }
@@ -431,34 +543,39 @@ namespace lux::asset
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
         }
         {
-            const auto gbuffer_info = lux::rdesc::ShaderInfo::serialize(asset.data().gbuffer_info);
-            const auto forward_info = lux::rdesc::ShaderInfo::serialize(asset.data().forward_info);
             Writer writer;
             writer.pod(kMaterialVersion);
             writer.pod(rdesc::kMaterialShaderAbi);
-            writer.pod(static_cast<std::uint32_t>(asset.data().parameter_defaults.size()));
-            for (std::size_t parameter = 0U; parameter < asset.data().parameter_defaults.size(); ++parameter)
+            writer.pod(static_cast<std::uint32_t>(asset.data().programs.parameter_defaults.size()));
+            for (std::size_t parameter = 0U; parameter < asset.data().programs.parameter_defaults.size(); ++parameter)
             {
-                for (const float value : asset.data().parameter_defaults[parameter])
+                for (const float value : asset.data().programs.parameter_defaults[parameter])
                 {
                     writer.pod(value);
                 }
             }
-            writer.pod(static_cast<std::uint32_t>(asset.data().alpha_mode));
-            writer.pod(static_cast<std::uint8_t>(asset.data().double_sided ? 1U : 0U));
+            writer.pod(static_cast<std::uint32_t>(asset.data().programs.alpha_mode));
+            writer.pod(static_cast<std::uint8_t>(asset.data().programs.double_sided ? 1U : 0U));
             writer.pod(static_cast<std::uint32_t>(asset.data().texture_slot_ids.size()));
+            writer.pod(static_cast<std::uint8_t>(asset.data().programs.shading_model));
             for (const auto id : asset.data().texture_slot_ids)
             {
                 writer.id(id);
             }
-            writer.pod(static_cast<std::uint32_t>(asset.data().gbuffer_spirv.size()));
-            writer.raw(asset.data().gbuffer_spirv.data(), asset.data().gbuffer_spirv.size() * sizeof(std::uint32_t));
-            writer.pod(static_cast<std::uint32_t>(gbuffer_info.size()));
-            writer.raw(gbuffer_info.data(), gbuffer_info.size());
-            writer.pod(static_cast<std::uint32_t>(asset.data().forward_spirv.size()));
-            writer.raw(asset.data().forward_spirv.data(), asset.data().forward_spirv.size() * sizeof(std::uint32_t));
-            writer.pod(static_cast<std::uint32_t>(forward_info.size()));
-            writer.raw(forward_info.data(), forward_info.size());
+            writer.layout(asset.data().programs.parameters);
+            writer.pod(static_cast<std::uint32_t>(asset.data().programs.programs.size()));
+            for (const auto& program : asset.data().programs.programs)
+            {
+                const auto& stage = program.shader.stages.front();
+                const auto info = rdesc::ShaderInfo::serialize(program.shader.interface);
+                writer.pod(static_cast<std::uint8_t>(program.purpose));
+                writer.text(program.output_semantic);
+                writer.text(stage.entry);
+                writer.pod(static_cast<std::uint32_t>(stage.words.size()));
+                writer.raw(stage.words.data(), stage.words.size() * sizeof(std::uint32_t));
+                writer.pod(static_cast<std::uint32_t>(info.size()));
+                writer.raw(info.data(), info.size());
+            }
             return wrap(asset, std::move(writer.bytes), limits);
         }
     }

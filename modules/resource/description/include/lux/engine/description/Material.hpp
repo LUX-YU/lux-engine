@@ -1,7 +1,6 @@
 #pragma once
 
-#include <lux/engine/description/MaterialEnums.hpp>
-#include <lux/engine/description/ShaderInfo.hpp>
+#include <lux/engine/description/MaterialProgramSet.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
 
 #include <array>
@@ -12,13 +11,7 @@ namespace lux::rdesc
 {
     struct MaterialDescription final
     {
-        std::vector<std::array<float, 4U>> parameter_defaults;
-        EAlphaMode alpha_mode{EAlphaMode::OPAQUE_SURFACE};
-        bool double_sided{};
-        std::vector<std::uint32_t> gbuffer_spirv;
-        ShaderInfo gbuffer_info;
-        std::vector<std::uint32_t> forward_spirv;
-        ShaderInfo forward_info;
+        MaterialProgramSet programs;
         std::vector<lux::asset::AssetId> texture_slot_ids;
     };
 

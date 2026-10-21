@@ -1,0 +1,94 @@
+#include "TonemapLinear.hpp"
+#include "TonemapSrgb.hpp"
+#include <lux/engine/render/features/FeatureAssembly.hpp>
+#include <lux/engine/render/features/FeatureDefinition.hpp>
+#include <lux/engine/render/features/FullscreenRaster.hpp>
+#include <lux/engine/render/features/TonemapFeature.hpp>
+#include <lux/engine/render/runtime/Registration.hpp>
+
+namespace lux::render
+{
+    namespace
+    {
+        RenderResult<void> describeTonemap(const void* value, std::string_view, FeaturePorts& ports) noexcept
+        {
+            const auto& config = *static_cast<const TonemapFeatureConfig*>(value);
+            if (auto valid = config.target.validate(); !valid)
+            {
+                return valid;
+            }
+            const bool valid_format = config.target.format == rdesc::ETextureFormat::RGBA8_UNORM ||
+                                      config.target.format == rdesc::ETextureFormat::RGBA8_SRGB;
+            const bool invalid_encoding =
+                config.encoding > EColorEncoding::SRGB ||
+                (config.target.format == rdesc::ETextureFormat::RGBA8_SRGB && config.encoding != EColorEncoding::SRGB);
+            if (!valid_format || invalid_encoding || config.target.samples != 1)
+            {
+                return cxx::unexpected(RenderError{kFeatureContract});
+            }
+            GraphImageDesc hdr{config.target.width, config.target.height, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
+            hdr.extent.target_relative = true;
+            FeaturePort input{"hdr_color", EFeaturePort::INPUT, hdr};
+            input.semantic = "lux.color.linear-hdr.v1";
+            ports.resources.push_back(std::move(input));
+            auto color = hdr;
+            color.format = config.target.format;
+            ports.resources.push_back({"color", EFeaturePort::OUTPUT, color});
+            return {};
+        }
+
+        RenderResult<void> buildTonemap(const void* value, std::string_view key, FeatureBuildContext& context) noexcept
+        {
+            const auto& config = *static_cast<const TonemapFeatureConfig*>(value);
+            const bool encode =
+                config.encoding == EColorEncoding::SRGB && config.target.format == rdesc::ETextureFormat::RGBA8_UNORM;
+            auto work = encode ? detail::fullscreenRaster(context, kTonemapSrgb, kTonemapSrgbReflection)
+                               : detail::fullscreenRaster(context, kTonemapLinear, kTonemapLinearReflection);
+            if (!work)
+            {
+                return cxx::unexpected(work.error());
+            }
+            work->interface.parameters.instance_layout = config.input_layout;
+            work->interface.parameters.fields = {{"exposure", {}, "exposure"}};
+            work->interface.resources = {{"hdr_color", {context.resource("hdr_color")}}};
+            work->colors.push_back({{context.resource("color")}});
+            auto pass = context.graph.addRasterPass(
+                featureKey(TonemapFeatureDescriptor::name, key, "tonemap"),
+                std::move(*work)
+            );
+            if (!pass)
+            {
+                return cxx::unexpected(pass.error());
+            }
+            return context.publish("color", pass->written.front());
+        }
+    } // namespace
+
+    RenderResult<std::size_t> ConfigValueTraits<TonemapFeatureConfig>::retainedBytes(const TonemapFeatureConfig& value
+    ) noexcept
+    {
+        return sizeof(value) + detail::parameterLayoutBytes(value.input_layout);
+    }
+
+    const FeatureDescriptor TonemapFeatureDescriptor::descriptor{
+        name,
+        cppType<Config>(),
+        "ACES-fit SDR output with explicit exposure and exactly one sRGB encoding.",
+        describeTonemap
+    };
+
+    template <>
+    RenderResult<void> RenderServer::prepareFeature<TonemapFeatureDescriptor>(
+        RegistrationBatch& batch,
+        std::string_view
+    ) noexcept
+    {
+        static const FeatureGraphOps graph{buildTonemap};
+        batch.addFeature({&TonemapFeatureDescriptor::descriptor, &graph});
+        return {};
+    }
+
+    template LUX_RENDER_PUBLIC RenderResult<FeatureId> RenderServer::registerFeature<TonemapFeatureDescriptor>(
+        std::string_view
+    ) noexcept;
+} // namespace lux::render

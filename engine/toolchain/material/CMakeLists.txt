@@ -1,6 +1,7 @@
 find_package(lux-cxx REQUIRED COMPONENTS compile_time core)
 find_package(spirv_cross_core CONFIG REQUIRED)
-find_package(Eigen3 CONFIG REQUIRED)
+set_property(TARGET spirv-cross-core PROPERTY MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
+option(LUX_MATERIAL_BUILD_COOKER "Build the Material asset cooker in addition to the compiler" ON)
 find_package(Vulkan QUIET COMPONENTS shaderc_combined)
 find_package(unofficial-shaderc CONFIG QUIET)
 find_package(shaderc CONFIG QUIET)
@@ -29,7 +30,7 @@ generate_visibility_header(
 )
 
 set(lux_material_shader_source_dir
-    "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/function/material/shaders"
 )
 set(lux_material_shader_emitted_dir "${CMAKE_BINARY_DIR}/material_lglsl_emitted")
 set(lux_material_lighting_source "${lux_material_shader_source_dir}/lighting_common.lglslh")
@@ -122,11 +123,26 @@ component_include_directories(
         ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 target_compile_definitions(toolchain_material_compiler PRIVATE LUX_ENGINE_MATERIAL_COMPILER_LIBRARY)
+if(lux_material_shaderc_target STREQUAL "Vulkan::shaderc_combined")
+    get_filename_component(shaderc_library_directory "${Vulkan_shaderc_combined_LIBRARY}" DIRECTORY)
+    if(MSVC)
+        find_library(LUX_MATERIAL_SHADERC_DEBUG shaderc_combinedd
+            HINTS "${shaderc_library_directory}" NO_DEFAULT_PATH REQUIRED
+        )
+        set_property(TARGET Vulkan::shaderc_combined PROPERTY IMPORTED_LOCATION_DEBUG "${LUX_MATERIAL_SHADERC_DEBUG}")
+    endif()
+    find_path(LUX_MATERIAL_SHADERC_INCLUDE shaderc/shaderc.hpp
+        HINTS "${shaderc_library_directory}/../Include" "$ENV{VULKAN_SDK}/Include" NO_DEFAULT_PATH REQUIRED
+    )
+    target_include_directories(toolchain_material_compiler PRIVATE "${LUX_MATERIAL_SHADERC_INCLUDE}")
+endif()
 target_link_libraries(
     toolchain_material_compiler
     PUBLIC
         lux::engine::function::material_graph
-        lux::engine::resource::description
+        lux::engine::resource::description_types
+        lux::engine::resource::shader_metadata
+        lux::engine::resource::identity
     PRIVATE
         spirv-cross-core
         ${lux_material_shaderc_target}
@@ -134,53 +150,58 @@ target_link_libraries(
 component_add_transitive_commands(
     toolchain_material_compiler
     "find_package(lux-engine-function REQUIRED COMPONENTS material_graph)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS description_types shader_metadata identity)"
 )
 
-add_component(
-    STATIC
-    COMPONENT_NAME toolchain_material_cooker
-    NAMESPACE      lux::engine::toolchain
-    OUTPUT_NAME    lux_engine_toolchain_material_cooker
-    SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialToGraph.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialCooker.cpp
-)
-component_include_directories(
-    toolchain_material_cooker
-    BUILD_TIME_EXPORT
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${LUX_GENERATE_HEADER_DIR}
-    INSTALL_TIME include
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-)
-target_compile_definitions(
-    toolchain_material_cooker
-    PUBLIC LUX_ENGINE_MATERIAL_COOKER_DLL_DISABLE
-    PRIVATE LUX_ENGINE_MATERIAL_COOKER_LIBRARY
-)
-target_link_libraries(
-    toolchain_material_cooker
-    PUBLIC
-        lux::engine::toolchain::toolchain_material_compiler
-        lux::engine::resource::asset
-        Eigen3::Eigen
-)
-component_add_transitive_commands(
-    toolchain_material_cooker
-    "find_package(lux-engine-toolchain-material REQUIRED COMPONENTS toolchain_material_compiler)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
-    "find_package(Eigen3 CONFIG REQUIRED)"
-)
+if(LUX_MATERIAL_BUILD_COOKER)
+    find_package(Eigen3 CONFIG REQUIRED)
+    add_component(
+        STATIC
+        COMPONENT_NAME toolchain_material_cooker
+        NAMESPACE      lux::engine::toolchain
+        OUTPUT_NAME    lux_engine_toolchain_material_cooker
+        SOURCE_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialToGraph.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialCooker.cpp
+    )
+    component_include_directories(
+        toolchain_material_cooker
+        BUILD_TIME_EXPORT
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${LUX_GENERATE_HEADER_DIR}
+        INSTALL_TIME include
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    )
+    target_compile_definitions(
+        toolchain_material_cooker
+        PUBLIC LUX_ENGINE_MATERIAL_COOKER_DLL_DISABLE
+        PRIVATE LUX_ENGINE_MATERIAL_COOKER_LIBRARY
+    )
+    target_link_libraries(
+        toolchain_material_cooker
+        PUBLIC
+            lux::engine::toolchain::toolchain_material_compiler
+            lux::engine::resource::asset
+            Eigen3::Eigen
+    )
+    component_add_transitive_commands(
+        toolchain_material_cooker
+        "find_package(lux-engine-toolchain-material REQUIRED COMPONENTS toolchain_material_compiler)"
+        "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
+        "find_package(Eigen3 CONFIG REQUIRED)"
+    )
+endif()
 
 if(LUX_PROFILE_HAS_TOOLCHAIN)
+    set(material_components toolchain_material_compiler)
+    if(LUX_MATERIAL_BUILD_COOKER)
+        list(APPEND material_components toolchain_material_cooker)
+    endif()
     lux_engine_install_components(
         PROJECT_NAME lux-engine-toolchain-material
         VERSION      ${PROJECT_VERSION}
         NAMESPACE    lux::engine::toolchain
-        COMPONENTS
-            toolchain_material_compiler
-            toolchain_material_cooker
+        COMPONENTS ${material_components}
     )
 endif()
 

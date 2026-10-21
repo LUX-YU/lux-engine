@@ -10,10 +10,13 @@ find_package(lux-cxx REQUIRED COMPONENTS compile_time core)
 
 find_library(
     LUX_SPIRV_TOOLS_SHARED NAMES SPIRV-Tools-shared
-    HINTS "${Vulkan_INCLUDE_DIR}/../Lib" REQUIRED
+    HINTS "${Vulkan_INCLUDE_DIR}/../Lib" "$ENV{VULKAN_SDK}/Lib" REQUIRED
 )
 
-find_path(LUX_SPIRV_TOOLS_INCLUDE spirv-tools/libspirv.h HINTS "${Vulkan_INCLUDE_DIR}" REQUIRED)
+get_filename_component(spirv_tools_library_directory "${LUX_SPIRV_TOOLS_SHARED}" DIRECTORY)
+find_path(LUX_SPIRV_TOOLS_INCLUDE spirv-tools/libspirv.h
+    HINTS "${spirv_tools_library_directory}/../Include" "$ENV{VULKAN_SDK}/Include" REQUIRED
+)
 
 # Shared implementation object: both the ShaderAsset cooker and Material compiler
 # own the resulting object code, while no installed interface exposes spirv-cross.

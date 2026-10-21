@@ -276,7 +276,7 @@ namespace lux::material::compiler
             b.connect(rgb, decn);
             const NodeId tbn = b.add(MaterialTbnTransform{}, "TBN Transform");
             b.connect(decn, tbn);
-            b.bind(EAttr::NORMAL_TS, tbn);
+            b.bind(EAttr::NORMAL_WORLD, tbn);
         }
         if (occlusion_texture)
         {

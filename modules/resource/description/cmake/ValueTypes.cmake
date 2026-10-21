@@ -29,6 +29,8 @@ install(
         "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/TextureInfo.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/MaterialEnums.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/MaterialLayout.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/MaterialProgramSet.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/description/GBufferLayout.hpp"
     DESTINATION include/lux/engine/description
 )
 

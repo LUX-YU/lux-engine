@@ -11,9 +11,9 @@
 //      (gbuffer_encode.glsl) instead of hand-copying it inline (ShaderCompiler
 //      wires up an IncluderInterface for this).
 //
-//  Currently supported: GBuffer (PBR/Unlit) and Forward Unlit. textures/params,
-//  TbnNormal, RawExpr, and Forward lighting are not yet implemented and will be
-//  added later; emitGlsl fails explicitly for them.
+//  Cooked Forward/GBuffer/Shadow purposes share parameters and coverage.
+//  Normal decode and tangent-to-world transformation are explicit graph operations.
+//  RawExpr and visibility-buffer output remain unsupported.
 // =============================================================================
 
 #include <lux/engine/material/compiler/Backend.hpp>
@@ -183,7 +183,7 @@ namespace lux::shadergen::glsl
                 // is vec3 (the old emitter also used vec3@5). Declare it as vec3 to
                 // match the vertex shader; at the Input reference site we wrap it
                 // back into vec4(world_tangent, 1.0).
-                const char* type = (s.name == "world_tangent") ? "vec3" : glslType(s.type);
+                const char* type = glslType(s.type);
                 declared_in[s.location] = {type, interpName(s.name)};
             }
 
@@ -227,8 +227,7 @@ namespace lux::shadergen::glsl
                         useInput(s);
                         // The WorldTangent interpolant is vec3, but the contract/
                         // downstream code wants Vec4 -> wrap it with handedness w=1.
-                        rhs = (s.name == "world_tangent" && s.type == EValueType::VEC4) ? "vec4(vWorldTangent, 1.0)"
-                                                                                        : interpName(s.name);
+                        rhs = interpName(s.name);
                         break;
                     }
                     case EOp::MUL:
@@ -364,12 +363,12 @@ namespace lux::shadergen::glsl
                         // slots (world_normal/world_tangent) without causing a
                         // location conflict.
                         declared_in[1] = {"vec3", "vWorldNormal"};
-                        declared_in[5] = {"vec3", "vWorldTangent"};
+                        declared_in[5] = {"vec4", "vWorldTangent"};
                         declared_in[6] = {"vec3", "vWorldBitangent"};
                         // Tangent-space normal -> world. The 2*rgb-1 decode is the
                         // SEPARATE upstream DecodeNormal op (EOp::DECODE_NORMAL); do NOT
                         // re-decode here or a DecodeNormal->TbnTransform chain double-decodes.
-                        rhs = "normalize(mat3(normalize(vWorldTangent), normalize(vWorldBitangent), "
+                        rhs = "normalize(mat3(normalize(vWorldTangent.xyz), normalize(vWorldBitangent), "
                               "normalize(vWorldNormal)) * " +
                               operand(v, 0) + ")";
                         break;
@@ -426,14 +425,19 @@ namespace lux::shadergen::glsl
     {
         std::string error;
 
-        if (p.pass == EMaterialPass::SHADOW || p.pass == EMaterialPass::VIS_BUFFER)
+        if (p.pass == EMaterialPass::VIS_BUFFER)
         {
-            return lux::cxx::unexpected(std::string("shadergen: Shadow/VisBuffer passes not supported yet"));
+            return lux::cxx::unexpected(std::string("shadergen: visibility-buffer material use is not supported"));
         }
 
+        if (p.alpha_mode == rdesc::EAlphaMode::BLEND)
+        {
+            return lux::cxx::unexpected(std::string("shadergen: transparent material use is not supported"));
+        }
+        const bool shadow = p.pass == EMaterialPass::SHADOW;
         const bool gbuffer = p.pass == EMaterialPass::GBUFFER;
         const bool unlit = p.shading_model == rdesc::ELightingTechnique::UNLIT;
-        const bool forward_lit = !gbuffer && !unlit;
+        const bool forward_lit = !gbuffer && !shadow && !unlit;
         const bool forward_toon = forward_lit && p.shading_model == rdesc::ELightingTechnique::STYLIZED;
 
         bool tex_mode = false, param_mode = false;
@@ -462,9 +466,10 @@ namespace lux::shadergen::glsl
         std::string normalExpr;
         if (gbuffer || forward_lit)
         {
-            const bool normal_bound = !unlit && em.hasBoundOutput("normal_ts");
-            normalExpr =
-                normal_bound ? "normalize(" + em.attr("normal_ts") + ")" : "normalize(" + em.ensureWorldNormal() + ")";
+            const bool normal_bound = !unlit && em.hasBoundOutput("normal_world");
+            normalExpr = unlit          ? "vec3(0.0, 0.0, 1.0)"
+                         : normal_bound ? "normalize(" + em.attr("normal_world") + ")"
+                                        : "normalize(" + em.ensureWorldNormal() + ")";
         }
 
         // Transition coverage is a fixed mesh-pass contract, not an optional
@@ -538,7 +543,7 @@ namespace lux::shadergen::glsl
                 out << "layout(location = 1) out vec4 gNormalRoughness;\n";
                 out << "layout(location = 2) out vec4 gEmissiveAo;\n";
             }
-            else
+            else if (!shadow)
             {
                 out << "layout(location = 0) out vec4 outColor;\n";
             }
@@ -577,17 +582,12 @@ namespace lux::shadergen::glsl
         {
             out << "    if (" << em.attr("opacity") << " < " << fmtF(p.alpha_cutoff) << ") discard;\n";
         }
-        else if (p.alpha_mode == rdesc::EAlphaMode::BLEND)
-        {
-            // The deferred renderer has no transparent pass yet, so a Blend material
-            // would otherwise write a SOLID opaque block. Fall back to an alpha-test
-            // CUTOUT (hard edges, but the silhouette is correct + visible) so blended
-            // hair/eyelash cards show up. A future transparent forward pass replaces
-            // this with real back-to-front blending.
-            out << "    if (" << em.attr("opacity") << " < 0.5) discard;\n";
-        }
 
-        if (gbuffer)
+        if (shadow)
+        {
+            // Coverage is the only fragment result. Depth is produced by rasterization.
+        }
+        else if (gbuffer)
         {
             if (unlit)
             {

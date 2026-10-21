@@ -5,8 +5,20 @@
 #endif
 layout(location=0) in vec3 position;
 #ifndef DEPTH_ONLY
+#ifndef VERTEX_NO_UV
 layout(location=1) in vec2 uv;
 layout(location=3) out vec2 vUV;
+#endif
+layout(location=0) out vec3 vWorldPos;
+#ifdef VERTEX_NORMALS
+layout(location=2) in vec3 normal;
+layout(location=1) out vec3 vWorldNormal;
+#endif
+#ifdef VERTEX_TANGENTS
+layout(location=3) in vec4 tangent;
+layout(location=5) out vec4 vWorldTangent;
+layout(location=6) out vec3 vWorldBitangent;
+#endif
 layout(location=4) out flat uint vMatIndex;
 layout(location=7) out flat float vTransitionCoverage;
 layout(location=8) out flat uint vTransitionSeed;
@@ -49,7 +61,25 @@ void main()
 #endif
     gl_Position = present != 0 ? camera.projection * camera.view * model * vec4(position, 1) : vec4(2, 2, 2, 1);
 #ifndef DEPTH_ONLY
+#ifndef VERTEX_NO_UV
     vUV = uv;
+#endif
+    vWorldPos = (model * vec4(position, 1.0)).xyz;
+#ifdef VERTEX_NORMALS
+    mat3 linear = mat3(model);
+    // Legacy cofactor construction, corrected for negative determinants and tangent-vector transforms.
+    mat3 cofactor = mat3(cross(linear[1], linear[2]), cross(linear[2], linear[0]), cross(linear[0], linear[1]));
+    float handedness = sign(dot(linear[0], cofactor[0]));
+    vec3 n = normalize(cofactor * normal * handedness);
+    vWorldNormal = n;
+#ifdef VERTEX_TANGENTS
+    vec3 t = linear * tangent.xyz;
+    t = normalize(t - n * dot(n, t));
+    float orientation = tangent.w * handedness;
+    vWorldTangent = vec4(t, orientation);
+    vWorldBitangent = cross(n, t) * orientation;
+#endif
+#endif
     vMatIndex = property.material_index;
     vTransitionCoverage = 1;
     vTransitionSeed = 0;

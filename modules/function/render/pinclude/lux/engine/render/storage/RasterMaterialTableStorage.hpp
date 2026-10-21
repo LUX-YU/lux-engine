@@ -49,18 +49,14 @@ namespace lux::render::detail
         template <class Input> [[nodiscard]] exec::task<RenderResult<WriteValue<Input>>> write(Input) noexcept;
         [[nodiscard]] exec::task<RenderResult<MaterialId>> upload(MaterialWrite) noexcept;
         [[nodiscard]] exec::task<RenderResult<Ack>> upload(MaterialUpdate) noexcept;
-        [[nodiscard]] RenderResult<void> resolve(
-            const CompiledResource&,
-            const MaterialBinding&,
-            StorageSubscription&,
-            std::span<ResourceInput>
-        ) noexcept;
+        [[nodiscard]] RenderResult<void>
+        resolve(const CompiledResource&, const MaterialBinding&, StorageSubscription&, std::span<ResourceInput>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
         void finishFramePreparation(std::uint32_t frame, RenderResult<void>) noexcept;
         void markDirty(Table&, std::uint32_t frame, std::uint32_t record) noexcept;
         void removeDirty(Table&, std::uint32_t frame) noexcept;
         void releaseTable(Table&) noexcept;
-        [[nodiscard]] RenderResult<Table*> table(MaterialProgram&) noexcept;
+        [[nodiscard]] RenderResult<Table*> table(rdesc::MaterialProgramSet&) noexcept;
         [[nodiscard]] TextureGpuRef resolveTextureReference(TextureId) const noexcept;
         static void publish(Table&, std::uint32_t frame) noexcept;
         DeviceSession& session_;

@@ -69,23 +69,30 @@ namespace lux::render
         }
     };
 
-    // One cold Draw selection. Assets are Global; instance records belong to the attached Scene.
-    // Storage keys select existing owner-local instances; qualified resource IDs prove their identity.
-    // This first Unlit Feature targets RGBA8 UNORM/SRGB and D32 depth; Native retains its wider format API.
-    // BasicMesh depth shares the color attachment extent. DepthOnly is an independent fixed-resolution
-    // depth producer (config.target extent); its required color Target is separately cleared. Reconfigure
-    // the Effect to change that depth extent. Resizing only the color Target does not resize its depth map.
-    struct MeshFeatureConfig final
+    // One geometry/material group. Feature chooses its rendering purpose and output attachments.
+    struct RasterMeshGroup final
     {
-        TargetDesc target;
         MeshDescription geometry;
-        MaterialProgram program;
+        rdesc::MaterialProgramSet program;
         MeshInstanceDrawGroup group;
         std::string mesh_storage = "meshes";
         std::string material_storage = "materials";
         std::string instance_storage = "instances";
         std::vector<GraphImageDesc> textures;
+        bool front_counter_clockwise = true;
+        bool operator==(const RasterMeshGroup&) const noexcept = default;
+    };
+
+    struct MeshFeatureConfig final
+    {
+        TargetDesc target;
+        RasterMeshGroup mesh;
         bool operator==(const MeshFeatureConfig&) const noexcept = default;
+    };
+
+    template <> struct ConfigValueTraits<RasterMeshGroup> final
+    {
+        [[nodiscard]] LUX_RENDER_PUBLIC static RenderResult<std::size_t> retainedBytes(const RasterMeshGroup&) noexcept;
     };
 
     template <> struct ConfigValueTraits<MeshFeatureConfig> final

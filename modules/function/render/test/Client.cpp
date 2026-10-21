@@ -173,26 +173,39 @@ namespace mesh_sample
             return found->id;
         }
 
-        MaterialProgram materialProgram(const char* path)
+        rdesc::MaterialProgramSet materialProgram(const char* path)
         {
             std::ifstream input(path, std::ios::binary | std::ios::ate);
             check(bool(input));
             const auto size = input.tellg();
             check(size > 0 && size % 4 == 0);
-            MaterialProgram program;
-            program
-                .fragment = {rdesc::EShaderType::FRAGMENT, "main", std::vector<std::uint32_t>(std::size_t(size) / 4)};
+            rdesc::MaterialProgramSet program;
+            program.programs.push_back({rdesc::EMaterialPurpose::FORWARD, "lux.material.forward.linear.v1", {}});
+            auto& artifact = program.programs.back().shader;
+            artifact.stages.push_back(
+                {rdesc::EShaderType::FRAGMENT, "main", std::vector<std::uint32_t>(std::size_t(size) / 4)}
+            );
             input.seekg(0);
-            check(bool(input.read(reinterpret_cast<char*>(program.fragment.words.data()), size)));
+            check(bool(input.read(reinterpret_cast<char*>(artifact.stages.front().words.data()), size)));
             std::ifstream metadata(std::string(path) + ".meta", std::ios::binary | std::ios::ate);
             const auto metadata_size = metadata.tellg();
             check(metadata && metadata_size > 0);
             std::vector<std::byte> encoded(static_cast<std::size_t>(metadata_size));
             metadata.seekg(0);
             check(bool(metadata.read(reinterpret_cast<char*>(encoded.data()), metadata_size)));
-            check(rdesc::ShaderInfo::deserialize(encoded, program.interface));
+            check(rdesc::ShaderInfo::deserialize(encoded, artifact.interface));
             program.texture_count = 1;
-            program.parameter_count = 1;
+            program.parameter_defaults.resize(1);
+            for (const auto& set : artifact.interface.sets)
+            {
+                for (const auto& binding : set.bindings)
+                {
+                    if (binding.name == rdesc::kMaterialTableName)
+                    {
+                        program.parameters = binding.block;
+                    }
+                }
+            }
             return program;
         }
 
@@ -221,7 +234,7 @@ namespace mesh_sample
             MaterialId material;
             TextureId texture;
             MeshDescription description;
-            MaterialProgram program;
+            rdesc::MaterialProgramSet program;
         };
 
     } // namespace
@@ -323,15 +336,18 @@ namespace mesh_sample
         const auto second_view = coldCall<CreateView>(main, main_commands, main_next, {scene}).view;
         MeshFeatureConfig config;
         config.target = {64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
-        config.geometry = assets.description;
-        config.program = assets.program;
-        config.group = {assets.mesh, assets.material};
-        config.textures = {{16, 16, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}};
+        config.mesh.geometry = assets.description;
+        config.mesh.program = assets.program;
+        config.mesh.group = {assets.mesh, assets.material};
+        config.mesh.textures = {{16, 16, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}};
         const auto basic = feature(main, main_commands, main_next, MaterialMeshRasterDescriptor::name);
         const auto depth_feature = feature(main, main_commands, main_next, MeshDepthRasterDescriptor::name);
         CreateEffectRequest first_request{config.target}, second_request{config.target};
         first_request.definition.features.push_back({basic, "main", take(ConfigValue::make(config))});
-        second_request.definition.features.push_back({depth_feature, "main", take(ConfigValue::make(config))});
+        auto depth_config = config;
+        depth_config.mesh.program = {};
+        depth_config.mesh.textures.clear();
+        second_request.definition.features.push_back({depth_feature, "main", take(ConfigValue::make(depth_config))});
         const auto hzb = feature(main, main_commands, main_next, HzbFeatureDescriptor::name);
         HzbFeatureConfig hzb_config{{64, 64, 1, 1, rdesc::ETextureFormat::D32_SFLOAT}, 6};
         hzb_config.depth.extent.target_relative = true;

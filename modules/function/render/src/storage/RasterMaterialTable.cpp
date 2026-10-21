@@ -23,21 +23,32 @@ namespace lux::render
         }
     } // namespace
 
-    RenderResult<std::size_t> ConfigValueTraits<MaterialProgram>::retainedBytes(const MaterialProgram& value) noexcept
+    static std::size_t shaderBytes(const rdesc::SpirvArtifact& value) noexcept
     {
         // These are actual, distinct C++ allocations, not externally supplied lengths or borrowed assets.
         const auto& info = value.interface;
-        std::size_t bytes = sizeof(value) + value.fragment.words.capacity() * sizeof(std::uint32_t) +
-                            stringBytes(value.fragment.entry) +
+        std::size_t bytes = value.stages.capacity() * sizeof(rdesc::SpirvStage) +
                             info.entry_points.capacity() * sizeof(rdesc::EntryPointInfo) +
                             info.sets.capacity() * sizeof(rdesc::DescriptorSetLayoutInfo) +
                             info.push_constants.capacity() * sizeof(rdesc::PushConstantRangeInfo) +
                             info.spec_constants.capacity() * sizeof(rdesc::SpecConstantInfo) +
-                            info.vertex_inputs.capacity() * sizeof(rdesc::VertexInputAttribute) +
+                            info.vertex_inputs.capacity() * sizeof(rdesc::ShaderIoVariable) +
                             info.private_set_remap.capacity() * sizeof(std::pair<std::uint32_t, std::uint32_t>);
+        for (const auto& stage : value.stages)
+        {
+            bytes += stringBytes(stage.entry) + stage.words.capacity() * sizeof(std::uint32_t);
+        }
         for (const auto& entry : info.entry_points)
         {
-            bytes += stringBytes(entry.name);
+            bytes += stringBytes(entry.name) +
+                     (entry.inputs.capacity() + entry.outputs.capacity()) * sizeof(rdesc::ShaderIoVariable);
+            for (const auto* variables : {&entry.inputs, &entry.outputs})
+            {
+                for (const auto& variable : *variables)
+                {
+                    bytes += stringBytes(variable.name);
+                }
+            }
         }
         for (const auto& set : info.sets)
         {
@@ -58,6 +69,20 @@ namespace lux::render
         for (const auto& input : info.vertex_inputs)
         {
             bytes += stringBytes(input.name);
+        }
+        return bytes;
+    }
+
+    RenderResult<std::size_t> ConfigValueTraits<rdesc::MaterialProgramSet>::retainedBytes(
+        const rdesc::MaterialProgramSet& value
+    ) noexcept
+    {
+        auto bytes = sizeof(value) + blockBytes(value.parameters) +
+                     value.parameter_defaults.capacity() * sizeof(std::array<float, 4>) +
+                     value.programs.capacity() * sizeof(rdesc::MaterialShader);
+        for (const auto& program : value.programs)
+        {
+            bytes += stringBytes(program.output_semantic) + shaderBytes(program.shader);
         }
         return bytes;
     }

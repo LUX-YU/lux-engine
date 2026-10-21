@@ -116,8 +116,33 @@ namespace lux::toolchain
             default:
                 epi.stage = EShaderType::UNDEFINED;
             }
-            out.push_back(epi);
+            comp.set_entry_point(entry.name, entry.execution_model);
+            const auto resources = comp.get_shader_resources();
+            const auto append = [&](const auto& source, auto& target)
+            {
+                for (const auto& variable : source)
+                {
+                    if (!comp.has_decoration(variable.id, spv::DecorationLocation))
+                    {
+                        continue;
+                    }
+                    const auto& type = comp.get_type(variable.type_id);
+                    target.push_back(
+                        {comp.get_decoration(variable.id, spv::DecorationLocation),
+                         variable.name,
+                         toVertexBase(type),
+                         type.vecsize,
+                         type.columns,
+                         calcArraySize(comp, type)}
+                    );
+                }
+                std::ranges::sort(target, {}, &ShaderIoVariable::location);
+            };
+            append(resources.stage_inputs, epi.inputs);
+            append(resources.stage_outputs, epi.outputs);
+            out.push_back(std::move(epi));
         }
+        comp.set_entry_point(entries.front().name, entries.front().execution_model);
         return out;
     }
 
@@ -493,7 +518,7 @@ namespace lux::toolchain
                     continue;
                 }
 
-                VertexInputAttribute vi{};
+                ShaderIoVariable vi{};
                 // Location (required)
                 vi.location = comp_vi.get_decoration(a.id, spv::DecorationLocation);
                 // Name (for readability)
@@ -511,7 +536,7 @@ namespace lux::toolchain
             }
 
             // Sort by location ascending, so upstream code can generate
-            // VkVertexInputAttributeDescription directly
+            // VkShaderIoVariableDescription directly
             std::sort(
                 out.vertex_inputs.begin(),
                 out.vertex_inputs.end(),

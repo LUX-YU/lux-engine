@@ -11,9 +11,8 @@
 //  live outside the ShaderIR (they're shell concerns, not expressions); the
 //  caller pulls these from the module-owned MaterialIR to fill it in.
 //
-//  Currently supported: the GBuffer pass (PBR / Unlit) and Forward Unlit.
-//  Forward lighting (GGX/Toon), textures/params, TbnNormal, and RawExpr are
-//  not yet implemented and will be added later (emitGlsl fails explicitly for them).
+//  Emits actual Forward, GBuffer and coverage-only Shadow uses. Textures, parameters,
+//  TBN and graph expressions share the same record ABI. Visibility-buffer use is deferred.
 // =============================================================================
 
 #include <cstdint>
@@ -55,7 +54,7 @@ namespace lux::shadergen::glsl
 
     /// Emits GLSL fragment source (pure: no shaderc, no device, unit-testable).
     /// Returns the source string on success; returns an error string on failure
-    /// (e.g. for the Shadow/VisBuffer pass).
+    /// (e.g. for an unsupported transparent or visibility-buffer use).
     lux::cxx::expected<std::string, std::string> emitGlsl(const ShaderIR& ir, const EmitParams& params);
 
     /// Runs emitGlsl and then compiles the result to SPIR-V via libshaderc (target

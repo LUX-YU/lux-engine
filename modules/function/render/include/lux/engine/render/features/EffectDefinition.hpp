@@ -29,6 +29,7 @@ namespace lux::render
     {
         FeaturePortRef destination;
         GraphResource resource;
+        std::string semantic;
     };
 
     struct FeatureExport final

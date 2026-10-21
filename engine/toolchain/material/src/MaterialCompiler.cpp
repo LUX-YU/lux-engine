@@ -1,5 +1,6 @@
 #include <lux/engine/material/Compiler.hpp>
 
+#include <lux/engine/description/GBufferLayout.hpp>
 #include <lux/engine/material/MaterialIR.hpp>
 #include <lux/engine/material/compiler/Backend.hpp>
 
@@ -68,44 +69,60 @@ namespace lux::material
                 return std::move(*compiled);
             };
 
-            auto gbuffer = compile_pass(shadergen::glsl::EMaterialPass::GBUFFER);
-            if (!gbuffer)
-            {
-                return lux::cxx::unexpected(std::move(gbuffer.error()));
-            }
-            auto forward = compile_pass(shadergen::glsl::EMaterialPass::FORWARD);
-            if (!forward)
-            {
-                return lux::cxx::unexpected(std::move(forward.error()));
-            }
-
             rdesc::MaterialDescription description;
-            description.parameter_defaults.resize(graph.param_slots.size());
+            auto& programs = description.programs;
+            programs.parameter_defaults.resize(graph.param_slots.size());
             description.texture_slot_ids.resize(graph.texture_slots.size());
-            for (std::uint32_t parameter = 0U; parameter < description.parameter_defaults.size(); ++parameter)
+            for (std::uint32_t parameter = 0; parameter < programs.parameter_defaults.size(); ++parameter)
             {
-                std::copy_n(
-                    graph.param_slots[parameter].dflt,
-                    description.parameter_defaults[parameter].size(),
-                    description.parameter_defaults[parameter].begin()
-                );
+                std::copy_n(graph.param_slots[parameter].dflt, 4, programs.parameter_defaults[parameter].begin());
             }
-            description.alpha_mode = graph.render_state.alpha_mode;
-            description.double_sided = graph.render_state.double_sided;
-            description.gbuffer_spirv = std::move(gbuffer->spirv);
-            description.gbuffer_info = std::move(gbuffer->info);
-            description.forward_spirv = std::move(forward->spirv);
-            description.forward_info = std::move(forward->info);
-            for (std::uint32_t slot = 0U; slot < graph.texture_slots.size(); ++slot)
+            programs.texture_count = static_cast<std::uint32_t>(graph.texture_slots.size());
+            programs.shading_model = lowered->shading_model;
+            programs.alpha_mode = graph.render_state.alpha_mode;
+            programs.double_sided = graph.render_state.double_sided;
+            for (auto purpose :
+                 {rdesc::EMaterialPurpose::FORWARD, rdesc::EMaterialPurpose::GBUFFER, rdesc::EMaterialPurpose::SHADOW})
+            {
+                auto compiled = compile_pass(static_cast<shadergen::glsl::EMaterialPass>(purpose));
+                if (!compiled)
+                {
+                    return lux::cxx::unexpected(std::move(compiled.error()));
+                }
+                if (!validSpirv(compiled->spirv))
+                {
+                    return lux::cxx::unexpected(failure(EMaterialCompileError::INVALID_RESULT, "invalid Shader code"));
+                }
+                for (const auto& set : compiled->info.sets)
+                {
+                    for (const auto& binding : set.bindings)
+                    {
+                        if (binding.name != rdesc::kMaterialTableName)
+                        {
+                            continue;
+                        }
+                        if (programs.parameters.size && programs.parameters != binding.block)
+                        {
+                            return lux::cxx::unexpected(failure(
+                                EMaterialCompileError::INVALID_RESULT,
+                                "material uses disagree on the compiled record layout"
+                            ));
+                        }
+                        programs.parameters = binding.block;
+                    }
+                }
+                const std::string_view semantic =
+                    purpose == rdesc::EMaterialPurpose::GBUFFER  ? rdesc::GBufferLayout::semantic
+                    : purpose == rdesc::EMaterialPurpose::SHADOW ? "lux.material.coverage.forward-z.v1"
+                                                                 : "lux.material.forward.linear.v1";
+                rdesc::SpirvArtifact shader;
+                shader.stages.push_back({rdesc::EShaderType::FRAGMENT, "main", std::move(compiled->spirv)});
+                shader.interface = std::move(compiled->info);
+                programs.programs.push_back({purpose, std::string(semantic), std::move(shader)});
+            }
+            for (std::uint32_t slot = 0; slot < graph.texture_slots.size(); ++slot)
             {
                 description.texture_slot_ids[slot] = graph.texture_slots[slot].texture;
-            }
-
-            if (!validSpirv(description.gbuffer_spirv) || !validSpirv(description.forward_spirv))
-            {
-                return lux::cxx::unexpected(
-                    failure(EMaterialCompileError::INVALID_RESULT, "compiler produced an invalid MaterialDescription")
-                );
             }
             return description;
         }

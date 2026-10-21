@@ -79,10 +79,10 @@ int main(int argc, char** argv)
             std::fprintf(stderr, "compile failure: %s\n", result.error().message.c_str());
             return 42;
         }
-        write(output, result->gbuffer_spirv);
-        write(output, result->forward_spirv);
-        require(result->double_sided == graph.render_state.double_sided);
-        require(result->parameter_defaults.size() == graph.param_slots.size());
+        write(output, result->programs.find(lux::rdesc::EMaterialPurpose::GBUFFER)->shader.stages.front().words);
+        write(output, result->programs.find(lux::rdesc::EMaterialPurpose::FORWARD)->shader.stages.front().words);
+        require(result->programs.double_sided == graph.render_state.double_sided);
+        require(result->programs.parameter_defaults.size() == graph.param_slots.size());
     }
     const auto invalid_id = material_test::add(graph, MaterialSampleTexture{});
     auto failure = compileMaterial(graph);

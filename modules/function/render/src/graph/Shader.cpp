@@ -760,7 +760,8 @@ namespace lux::render::detail
             shader.stages.empty() || shader.stages.size() > 2 || (!colors.empty() && shader.stages.size() != 2);
         const bool invalid_depth = graphics.depth_compare > EDepthCompare::ALWAYS ||
                                    ((graphics.depth_test || graphics.depth_write) && depth == nri::Format::UNKNOWN);
-        if (wrong_count || invalid_depth)
+        const bool invalid_cull = graphics.cull_mode > ECullMode::BACK;
+        if (wrong_count || invalid_depth || invalid_cull)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
@@ -913,7 +914,9 @@ namespace lux::render::detail
         description.pipelineLayout = &layout;
         description.vertexInput = streams.empty() ? nullptr : &input;
         description.inputAssembly.topology = nri::Topology::TRIANGLE_LIST;
-        description.rasterization.frontCounterClockwise = true;
+        constexpr std::array cull_modes{nri::CullMode::NONE, nri::CullMode::FRONT, nri::CullMode::BACK};
+        description.rasterization.frontCounterClockwise = graphics.front_counter_clockwise;
+        description.rasterization.cullMode = cull_modes[static_cast<std::size_t>(graphics.cull_mode)];
         const nri::MultisampleDesc multisample{UINT32_MAX, static_cast<nri::Sample_t>(samples)};
         description.multisample = samples > 1 ? &multisample : nullptr;
         description.outputMerger.colors = attachments.data();

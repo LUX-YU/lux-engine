@@ -14,7 +14,7 @@ namespace lux::render::detail
 {
     struct RasterMaterialTableStorage::Table final
     {
-        MaterialProgram program;
+        rdesc::MaterialProgramSet program;
         std::uint32_t stride = 0;
         std::vector<std::uint32_t> parameter_offsets, texture_offsets;
         std::vector<std::byte> records; // Adopted GPU-format bytes used to fill and repair every FIF replica.
@@ -62,7 +62,8 @@ namespace lux::render::detail
         return entries_.size();
     }
 
-    RenderResult<RasterMaterialTableStorage::Table*> RasterMaterialTableStorage::table(MaterialProgram& program
+    RenderResult<RasterMaterialTableStorage::Table*> RasterMaterialTableStorage::table(
+        rdesc::MaterialProgramSet& program
     ) noexcept
     {
         for (auto& current : tables_)
@@ -74,15 +75,41 @@ namespace lux::render::detail
         }
         const auto* layout = program.parameterLayout();
         const bool is_invalid_layout = !layout || !layout->runtime_records || !layout->size || layout->size % 4;
-        const bool is_invalid_shader = program.fragment.stage != rdesc::EShaderType::FRAGMENT ||
-                                       program.fragment.entry.empty() || program.fragment.words.size() < 5 ||
-                                       program.fragment.words.front() != 0x07230203;
-        if (is_invalid_layout || is_invalid_shader)
+        const bool is_invalid_shader =
+            program.programs.empty() ||
+            std::ranges::any_of(
+                program.programs,
+                [&](const auto& use)
+                {
+                    const auto& stages = use.shader.stages;
+                    const bool invalid_code = stages.size() != 1 ||
+                                              stages.front().stage != rdesc::EShaderType::FRAGMENT ||
+                                              stages.front().entry.empty() || stages.front().words.size() < 5 ||
+                                              stages.front().words.front() != 0x07230203;
+                    if (invalid_code)
+                    {
+                        return true;
+                    }
+                    for (const auto& set : use.shader.interface.sets)
+                    {
+                        for (const auto& binding : set.bindings)
+                        {
+                            if (binding.name == rdesc::kMaterialTableName && (!layout || binding.block != *layout))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                }
+            );
+        const bool empty_record = !layout && program.parameter_defaults.empty() && !program.texture_count;
+        if ((!empty_record && is_invalid_layout) || is_invalid_shader)
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
         auto candidate = std::make_unique<Table>();
-        candidate->stride = layout->size;
+        candidate->stride = layout ? layout->size : 4;
         const auto field = [&](std::string_view name, rdesc::EDataScalar scalar, std::uint32_t rows
                            ) -> const rdesc::ShaderMember*
         {
@@ -96,7 +123,7 @@ namespace lux::render::detail
                                  rows * 4 > layout->size - found->offset;
             return invalid ? nullptr : &*found;
         };
-        for (std::size_t i = 0; i < program.parameter_count; ++i)
+        for (std::size_t i = 0; i < program.parameter_defaults.size(); ++i)
         {
             const auto* parameter = field(
                 std::string(rdesc::kMaterialParametersName) + "[" + std::to_string(i) + "]",

@@ -37,9 +37,17 @@ static void graphOutput(Validation& validation)
     const auto pixels = take(builder.declareResource({"pixels", GraphBufferDesc{4096}}));
     const auto copied = take(builder.declareResource({"copied", GraphBufferDesc{4096}}));
     auto clear = take(builder.addTransferPass("clear", TransferWork{{ClearImage{{{color, 0}}, {1, 0, 1, 1}}}}));
+    const auto initialized =
+        take(builder.addTransferPass("initialize copy padding", TransferWork{{FillBuffer{{{pixels, 0}}, 0xababababu}}})
+        );
     auto copy = take(builder.addTransferPass(
         "copy",
-        TransferWork{{CopyImageBuffer{{clear.written.front()}, {{pixels, 0}}, 256, 4096}}}
+        TransferWork{{CopyImageBuffer{
+            {clear.written.front()},
+            {initialized.written.front(), {}, EGraphAccess::READ_WRITE},
+            256,
+            4096
+        }}}
     ));
     auto copied_pass =
         take(builder.addTransferPass("copy-buffer", TransferWork{{CopyBuffer{{copy.written.front()}, {{copied, 0}}}}}));

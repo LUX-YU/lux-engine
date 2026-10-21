@@ -20,6 +20,7 @@ namespace lux::render
         EGraphOrigin origin = EGraphOrigin::TRANSIENT;
         std::vector<VGraphRange> initial_ranges;
         std::optional<StorageRequirement> storage;
+        EGraphUse initial_use = EGraphUse::UNSPECIFIED;
     };
 
     struct FeaturePorts final

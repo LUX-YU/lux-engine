@@ -119,6 +119,9 @@ namespace lux::render
     {
         ResourceAccess source;
         ResourceAccess destination;
+        // Buffer ranges bound capacity. Fixed regions and row pitches define only the copied rows;
+        // padding is not initialized. A destination READ_WRITE explicitly preserves its whole range.
+        // Dynamic extents/automatic multi-row pitch require READ_WRITE with an available predecessor.
         std::uint32_t row_pitch = 0;
         std::uint32_t slice_pitch = 0;
         std::optional<ImageCopyRegion> image_region;

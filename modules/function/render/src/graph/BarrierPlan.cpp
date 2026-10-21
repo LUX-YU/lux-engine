@@ -14,7 +14,7 @@ namespace lux::render::detail
             nri::StageBits stages = nri::StageBits::ALL;
             nri::Layout layout = nri::Layout::UNDEFINED;
             bool write = false;
-            bool used = false;
+            bool known = false;
             GraphPassId pass;
         };
 
@@ -28,7 +28,7 @@ namespace lux::render::detail
         {
             Access result;
             result.write = use.access != EGraphAccess::READ;
-            result.used = true;
+            result.known = true;
             switch (use.usage)
             {
             case EGraphUse::COLOR_ATTACHMENT:
@@ -92,6 +92,47 @@ namespace lux::render::detail
             return result;
         }
 
+        void includeUsage(CompiledResource& resource, const Access& access) noexcept
+        {
+            if (std::holds_alternative<GraphImageDesc>(resource.description))
+            {
+                switch (access.layout)
+                {
+                case nri::Layout::COLOR_ATTACHMENT:
+                    resource.image_usage |= nri::TextureUsageBits::COLOR_ATTACHMENT;
+                    break;
+                case nri::Layout::DEPTH_STENCIL_ATTACHMENT:
+                    resource.image_usage |= nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT;
+                    break;
+                case nri::Layout::SHADER_RESOURCE:
+                    resource.image_usage |= nri::TextureUsageBits::SHADER_RESOURCE;
+                    break;
+                case nri::Layout::SHADER_RESOURCE_STORAGE:
+                    resource.image_usage |= nri::TextureUsageBits::SHADER_RESOURCE_STORAGE;
+                    break;
+                default:
+                    break;
+                }
+            }
+            else
+            {
+                const auto include = [&](nri::AccessBits bit, nri::BufferUsageBits usage)
+                {
+                    if (access.access & bit)
+                    {
+                        resource.buffer_usage |= usage;
+                    }
+                };
+                include(nri::AccessBits::VERTEX_BUFFER, nri::BufferUsageBits::VERTEX_BUFFER);
+                include(nri::AccessBits::INDEX_BUFFER, nri::BufferUsageBits::INDEX_BUFFER);
+                include(nri::AccessBits::ARGUMENT_BUFFER, nri::BufferUsageBits::ARGUMENT_BUFFER);
+                include(nri::AccessBits::CONSTANT_BUFFER, nri::BufferUsageBits::CONSTANT_BUFFER);
+                include(nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE);
+                include(nri::AccessBits::SHADER_RESOURCE, nri::BufferUsageBits::SHADER_RESOURCE);
+                include(nri::AccessBits::CLEAR_STORAGE, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE);
+            }
+        }
+
         Access externalState(GraphResourceId resource, EGraphUse usage) noexcept
         {
             ResourceAccess use{{resource, 0}};
@@ -119,8 +160,7 @@ namespace lux::render::detail
         {
             const auto* image = std::get_if<GraphImageDesc>(&resources[i].description);
             states[i].resize(image ? std::size_t(image->mips) * image->layers * 3 : 1);
-            if (resources[i].memory_used && resources[i].origin == EGraphOrigin::IMPORTED &&
-                !resources[i].shared_table)
+            if (resources[i].memory_used && resources[i].origin == EGraphOrigin::IMPORTED && !resources[i].shared_table)
             {
                 const auto usage = graph.resources()[i].initial_use;
                 if (image && usage == EGraphUse::UNSPECIFIED && !graph.resources()[i].initial_ranges.empty())
@@ -129,6 +169,7 @@ namespace lux::render::detail
                 }
                 if (usage != EGraphUse::UNSPECIFIED)
                 {
+                    includeUsage(resources[i], externalState(GraphResourceId{static_cast<std::uint32_t>(i)}, usage));
                     for (std::size_t cell = 0; cell < states[i].size(); ++cell)
                     {
                         const auto plane = image ? cell / (image->mips * image->layers) : 0;
@@ -145,7 +186,7 @@ namespace lux::render::detail
             auto& previous = states[index][cell];
             const auto* image = std::get_if<GraphImageDesc>(&resources[index].description);
             const bool transition =
-                !previous.used || (image && previous.layout != current.layout) || previous.write || current.write;
+                !previous.known || (image && previous.layout != current.layout) || previous.write || current.write;
             if (transition)
             {
                 if (image)
@@ -247,22 +288,6 @@ namespace lux::render::detail
                             }
                         }
                     }
-                    if (current.layout == nri::Layout::COLOR_ATTACHMENT)
-                    {
-                        resource.image_usage |= nri::TextureUsageBits::COLOR_ATTACHMENT;
-                    }
-                    if (current.layout == nri::Layout::DEPTH_STENCIL_ATTACHMENT)
-                    {
-                        resource.image_usage |= nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT;
-                    }
-                    if (current.layout == nri::Layout::SHADER_RESOURCE)
-                    {
-                        resource.image_usage |= nri::TextureUsageBits::SHADER_RESOURCE;
-                    }
-                    if (current.layout == nri::Layout::SHADER_RESOURCE_STORAGE)
-                    {
-                        resource.image_usage |= nri::TextureUsageBits::SHADER_RESOURCE_STORAGE;
-                    }
                 }
                 else
                 {
@@ -285,28 +310,8 @@ namespace lux::render::detail
                             }
                         }
                     }
-                    switch (use.usage)
-                    {
-                    case EGraphUse::VERTEX:
-                        resource.buffer_usage |= nri::BufferUsageBits::VERTEX_BUFFER;
-                        break;
-                    case EGraphUse::INDEX:
-                        resource.buffer_usage |= nri::BufferUsageBits::INDEX_BUFFER;
-                        break;
-                    case EGraphUse::INDIRECT:
-                        resource.buffer_usage |= nri::BufferUsageBits::ARGUMENT_BUFFER;
-                        break;
-                    case EGraphUse::STORAGE_READ:
-                    case EGraphUse::STORAGE_WRITE:
-                    case EGraphUse::STORAGE_READ_WRITE:
-                        resource.buffer_usage |= current.access == nri::AccessBits::CONSTANT_BUFFER
-                                                     ? nri::BufferUsageBits::CONSTANT_BUFFER
-                                                     : nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
-                        break;
-                    default:
-                        break;
-                    }
                 }
+                includeUsage(resource, current);
                 if (next[index].empty())
                 {
                     next[index].resize(states[index].size());
@@ -318,7 +323,7 @@ namespace lux::render::detail
                     [&](auto cell)
                     {
                         auto& combined = next[index][cell];
-                        if (!combined.used)
+                        if (!combined.known)
                         {
                             combined = current;
                         }
@@ -341,7 +346,7 @@ namespace lux::render::detail
             {
                 for (std::size_t cell = 0; cell < next[index].size(); ++cell)
                 {
-                    if (next[index][cell].used)
+                    if (next[index][cell].known)
                     {
                         apply(index, cell, next[index][cell], pass.before);
                     }
@@ -368,7 +373,7 @@ namespace lux::render::detail
             final_states[i].resize(states[i].size());
             for (std::size_t cell = 0; cell < states[i].size(); ++cell)
             {
-                if (states[i][cell].used)
+                if (states[i][cell].pass.index != kGraphInvalidIndex)
                 {
                     final_states[i][cell] = externalState(GraphResourceId{i}, usage);
                 }
@@ -382,6 +387,7 @@ namespace lux::render::detail
             }
             const auto index = output.version.resource.index;
             const auto state = externalState(output.version.resource, *output.final_use);
+            includeUsage(resources[index], state);
             if (final_states[index].empty())
             {
                 final_states[index].resize(states[index].size());
@@ -392,7 +398,7 @@ namespace lux::render::detail
         {
             for (std::size_t cell = 0; cell < final_states[i].size(); ++cell)
             {
-                if (final_states[i][cell].used)
+                if (final_states[i][cell].known)
                 {
                     apply(i, cell, final_states[i][cell], recording.after);
                 }

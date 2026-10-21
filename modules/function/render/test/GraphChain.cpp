@@ -5,8 +5,8 @@
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>
-#include <lux/engine/render/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/graph/PlanDiagnostics.hpp>
+#include <lux/engine/render/graph/RenderGraphBuilder.hpp>
 #include <string>
 
 #include "GraphCount.hpp"
@@ -143,6 +143,21 @@ static void checkPixels(
     session.nriCore().DestroyBuffer(mapped_buffer);
 }
 
+static void exportRows(
+    RenderGraphBuilder& builder,
+    ResourceVersion version,
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t pitch,
+    std::uint32_t offset = 0
+)
+{
+    for (std::uint32_t row = 0; row < height; ++row)
+    {
+        CHECK(builder.exportOutput({version, GraphBufferRange{offset + std::uint64_t(row) * pitch, width * 4}}));
+    }
+}
+
 static void imageChain(Validation& validation, std::uint32_t fif)
 {
     auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
@@ -188,9 +203,14 @@ static void imageChain(Validation& validation, std::uint32_t fif)
     present.interface.samplers = {{"source_sampler", {0}}};
     present.colors = {{{{final, 0}}}};
     const auto resolved = take(builder.addRasterPass("postprocess", std::move(present)));
+    const auto initialized =
+        take(builder.addTransferPass("initialize resize copy capacity", TransferWork{{FillBuffer{{{pixels, 0}}}}}));
     const auto copied = take(builder.addTransferPass(
         "copy result",
-        TransferWork{{CopyImageBuffer{{resolved.written.front()}, {{pixels, 0}, GraphBufferRange{256, 128 * 512}}}}}
+        TransferWork{{CopyImageBuffer{
+            {resolved.written.front()},
+            {initialized.written.front(), GraphBufferRange{256, 128 * 512}, EGraphAccess::READ_WRITE}
+        }}}
     ));
     const TargetDesc target{64, 64, image.format, 1, ETargetKind::OFFSCREEN};
     CHECK(builder.exportOutput({resolved.written.front(), {}, GraphOutputRequirements{target.format, 1}}));
@@ -264,27 +284,29 @@ static void indirectCounts(Validation& validation)
     auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
     auto frames = take(FrameExecution::create(*session, nullptr, 3));
     RenderGraphBuilder builder;
-    const auto commands = take(builder.declareResource({"commands", GraphBufferDesc{60}}));
-    const auto count = take(builder.declareResource({"count", GraphBufferDesc{4}}));
+    const auto commands = take(builder.declareResource({"commands", GraphBufferDesc{128}}));
+    const auto count = take(builder.declareResource({"count", GraphBufferDesc{128}}));
     const auto indices = take(builder.declareResource({"indices", GraphBufferDesc{12}}));
     const auto color = take(builder.declareResource({"color", GraphImageDesc{32, 32}}));
     const auto pixels = take(builder.declareResource({"pixels", GraphBufferDesc{8192}}));
     const auto parameter =
         take(builder.declareResource({"requested count", GraphBufferDesc{4}, EGraphOrigin::IMPORTED}));
-    const auto dispatch_arguments = take(builder.declareResource({"dispatch arguments", GraphBufferDesc{12}}));
-    const auto dispatch_ready =
-        take(builder.addTransferPass("dispatch dimensions", TransferWork{{FillBuffer{{{dispatch_arguments, 0}}, 1}}}));
+    const auto dispatch_arguments = take(builder.declareResource({"dispatch arguments", GraphBufferDesc{64}}));
+    const auto dispatch_ready = take(builder.addTransferPass(
+        "dispatch dimensions",
+        TransferWork{{FillBuffer{{{dispatch_arguments, 0}, GraphBufferRange{16, 12}}, 1}}}
+    ));
     ComputeWork compute;
     compute.interface.program =
         take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphCount, kGraphCountReflection)));
     compute.interface.resources = {
-        {"commands", {{commands, 0}, {}, EGraphAccess::WRITE}},
-        {"count", {{count, 0}, {}, EGraphAccess::WRITE}},
+        {"commands", {{commands, 0}, GraphBufferRange{32, 60}, EGraphAccess::WRITE}},
+        {"count", {{count, 0}, GraphBufferRange{64, 4}, EGraphAccess::WRITE}},
         {"indices", {{indices, 0}, {}, EGraphAccess::WRITE}}
     };
     compute.interface.parameters.values.resize(4);
     compute.interface.parameters.fields.push_back({"requested", parameter, "requested"});
-    compute.dispatch = IndirectDispatchArguments{dispatch_ready.written.front(), 0};
+    compute.dispatch = IndirectDispatchArguments{dispatch_ready.written.front(), 16};
     const auto generated = take(builder.addComputePass("GPU commands and count", std::move(compute)));
     RasterWork draw;
     draw.interface.program = take(builder.addProgram(rasterProgram(kGraphRed, kGraphRedReflection)));
@@ -294,18 +316,19 @@ static void indirectCounts(Validation& validation)
         0,
         EIndexType::UINT32,
         written(generated, commands),
-        0,
+        32,
         3,
         20,
         written(generated, count),
-        0
+        64
     };
     const auto drawn = take(builder.addRasterPass("indirect count", std::move(draw)));
     const auto copied = take(builder.addTransferPass(
         "copy result",
         TransferWork{{CopyImageBuffer{{drawn.written.front()}, {{pixels, 0}}, 256, 8192}}}
     ));
-    CHECK(builder.exportOutput({copied.written.front()}));
+    exportRows(builder, copied.written.front(), 32, 32, 256);
+    CHECK(builder.exportOutput({drawn.written.front(), {}, {}, EGraphUse::SAMPLED}));
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);
@@ -381,7 +404,7 @@ static void resolveAndCopy(Validation& validation)
         TransferWork{{CopyImageBuffer{{uploaded.written.front()}, {{pixels, 0}, GraphBufferRange{256, 4096}}, 256, 4096}
         }}
     ));
-    CHECK(builder.exportOutput({observed.written.front(), GraphBufferRange{256, 4096}}));
+    exportRows(builder, observed.written.front(), 16, 16, 256, 256);
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);

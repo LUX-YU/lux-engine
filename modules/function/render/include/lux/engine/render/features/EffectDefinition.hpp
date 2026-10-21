@@ -35,6 +35,8 @@ namespace lux::render
     {
         FeaturePortRef source;
         std::optional<GraphOutputRequirements> target;
+        VGraphRange range;
+        std::optional<EGraphUse> final_use;
     };
 
     // Owned cold authoring input. IDs are resolved once by Runtime before composition.

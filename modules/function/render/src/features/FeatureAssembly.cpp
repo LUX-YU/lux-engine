@@ -209,7 +209,8 @@ namespace lux::render
                     {featureKey(inputs[i].descriptor->type, inputs[i].contribution_key, d.key),
                      d.description,
                      d.origin,
-                     d.initial_ranges}
+                     d.initial_ranges,
+                     d.initial_use}
                 );
                 if (!resource)
                 {
@@ -323,7 +324,8 @@ namespace lux::render
             {
                 return cxx::unexpected(failure(kFeatureContract, i, p));
             }
-            auto exported = builder.exportOutput({work[i].resolved[p].version, {}, output.target});
+            auto exported =
+                builder.exportOutput({work[i].resolved[p].version, output.range, output.target, output.final_use});
             if (!exported)
             {
                 return cxx::unexpected(exported.error());

@@ -10,10 +10,100 @@ namespace lux::render
 
     namespace
     {
+        bool compatibleUse(const VGraphResourceDesc& description, EGraphUse usage) noexcept
+        {
+            if (usage > EGraphUse::DEPTH_ATTACHMENT)
+            {
+                return false;
+            }
+            const auto* image = std::get_if<GraphImageDesc>(&description);
+            switch (usage)
+            {
+            case EGraphUse::COLOR_ATTACHMENT:
+                return image && rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::COLOR_ATTACHMENT);
+            case EGraphUse::DEPTH_ATTACHMENT:
+                return image &&
+                       rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::DEPTH_STENCIL_ATTACHMENT);
+            case EGraphUse::SAMPLED:
+                return image && rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::SAMPLED);
+            case EGraphUse::STORAGE_READ:
+            case EGraphUse::STORAGE_WRITE:
+            case EGraphUse::STORAGE_READ_WRITE:
+                return !image || rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::STORAGE);
+            case EGraphUse::VERTEX:
+            case EGraphUse::INDEX:
+            case EGraphUse::INDIRECT:
+                return !image;
+            default:
+                return true;
+            }
+        }
+
+        // Empty means the footprint depends on the instance extent or backend-selected pitch.
+        RenderResult<std::vector<GraphBufferRange>> copyBufferRanges(
+            const CopyImageBuffer& copy,
+            const GraphImageDesc& image
+        ) noexcept
+        {
+            const bool source_image = std::holds_alternative<GraphImageRange>(copy.source.range);
+            const auto& image_range =
+                std::get<GraphImageRange>(source_image ? copy.source.range : copy.destination.range);
+            const auto& capacity =
+                std::get<GraphBufferRange>(source_image ? copy.destination.range : copy.source.range);
+            const bool is_invalid_image = image.samples != 1 || image_range.mip_count != 1 ||
+                                          image_range.layer_count != 1 || !std::has_single_bit(image_range.aspects);
+            if (is_invalid_image)
+            {
+                return cxx::unexpected(graphError(kGraphInvalidRange));
+            }
+            if (image.extent.target_relative && !copy.image_region)
+            {
+                return std::vector<GraphBufferRange>{};
+            }
+            const auto width =
+                copy.image_region ? copy.image_region->width : std::max(1u, image.width >> image_range.first_mip);
+            const auto height =
+                copy.image_region ? copy.image_region->height : std::max(1u, image.height >> image_range.first_mip);
+            const auto block = rdesc::isCompressedTextureFormat(image.format) ? 4u : 1u;
+            const auto bytes = rdesc::textureBlockBytes(image.format, image_range.aspects);
+            const auto row_bytes = ((std::uint64_t(width) + block - 1) / block) * bytes;
+            const auto rows = (std::uint64_t(height) + block - 1) / block;
+            if (!width || !height || !bytes)
+            {
+                return cxx::unexpected(graphError(kGraphInvalidRange));
+            }
+            if (rows > 1 && !copy.row_pitch)
+            {
+                return std::vector<GraphBufferRange>{};
+            }
+            const std::uint64_t pitch = copy.row_pitch ? copy.row_pitch : row_bytes;
+            const bool is_invalid_capacity =
+                pitch < row_bytes || row_bytes > capacity.size ||
+                (row_bytes <= capacity.size && rows - 1 > (capacity.size - row_bytes) / pitch);
+            if (is_invalid_capacity)
+            {
+                return cxx::unexpected(graphError(kGraphInvalidRange));
+            }
+            std::vector<GraphBufferRange> ranges;
+            if (pitch == row_bytes)
+            {
+                ranges.push_back({capacity.offset, rows * row_bytes});
+            }
+            else
+            {
+                ranges.reserve(static_cast<std::size_t>(rows));
+                for (std::uint64_t row = 0; row < rows; ++row)
+                {
+                    ranges.push_back({capacity.offset + row * pitch, row_bytes});
+                }
+            }
+            return ranges;
+        }
+
         RenderResult<void> validateResource(const GraphResource& resource) noexcept
         {
-            const bool is_invalid_origin =
-                resource.origin > EGraphOrigin::HISTORY_CURRENT || resource.initial_use > EGraphUse::DEPTH_ATTACHMENT;
+            const bool is_invalid_origin = resource.origin > EGraphOrigin::HISTORY_CURRENT ||
+                                           !compatibleUse(resource.description, resource.initial_use);
             const bool has_illegal_initial = !resource.initial_ranges.empty() &&
                                              resource.origin != EGraphOrigin::IMPORTED &&
                                              resource.origin != EGraphOrigin::HISTORY_PREVIOUS;
@@ -142,7 +232,7 @@ namespace lux::render
         GraphPass pass{std::move(key), kind, {}, std::move(work), options.side_effect, options.conditional};
         PassResult result;
         RenderError failure{};
-        const auto append = [&](ResourceAccess& access, EGraphUse usage) noexcept
+        const auto append = [&](ResourceAccess& access, EGraphUse usage, bool record = true) noexcept
         {
             if (failure.type != 0)
             {
@@ -191,14 +281,14 @@ namespace lux::render
                            old.usage == access.usage && old.input_version == access.input_version;
                 }
             );
-            if (!duplicate || detail::writes(access.access))
+            if (record && (!duplicate || detail::writes(access.access)))
             {
                 pass.uses.push_back(access);
             }
         };
-        const auto read = [&](ResourceVersion version, EGraphUse usage) noexcept
+        const auto read = [&](ResourceVersion version, EGraphUse usage, VGraphRange range = {}) noexcept
         {
-            ResourceAccess access{version, {}, EGraphAccess::READ};
+            ResourceAccess access{version, range, EGraphAccess::READ};
             append(access, usage);
         };
         const auto interface = [&](PassInterface& input) noexcept
@@ -298,10 +388,41 @@ namespace lux::render
                             }
                             if constexpr (std::is_same_v<Draw, DrawIndexedIndirect>)
                             {
-                                read(draw.commands_resource, EGraphUse::INDIRECT);
+                                const bool is_invalid_count = draw.count == 0 || draw.stride < 20;
+                                if (is_invalid_count)
+                                {
+                                    failure = graphError(kGraphInvalidRange, {}, draw.commands_resource.resource);
+                                    return;
+                                }
+                                if (draw.stride == 20)
+                                {
+                                    read(
+                                        draw.commands_resource,
+                                        EGraphUse::INDIRECT,
+                                        GraphBufferRange{draw.commands_offset, std::uint64_t(draw.count) * 20}
+                                    );
+                                }
+                                else
+                                {
+                                    for (std::uint32_t command = 0; command < draw.count; ++command)
+                                    {
+                                        read(
+                                            draw.commands_resource,
+                                            EGraphUse::INDIRECT,
+                                            GraphBufferRange{
+                                                draw.commands_offset + std::uint64_t(command) * draw.stride,
+                                                20
+                                            }
+                                        );
+                                    }
+                                }
                                 if (draw.count_resource)
                                 {
-                                    read(*draw.count_resource, EGraphUse::INDIRECT);
+                                    read(
+                                        *draw.count_resource,
+                                        EGraphUse::INDIRECT,
+                                        GraphBufferRange{draw.count_offset, 4}
+                                    );
                                 }
                             }
                         },
@@ -313,7 +434,7 @@ namespace lux::render
                     interface(value.interface);
                     if (const auto* indirect = std::get_if<IndirectDispatchArguments>(&value.dispatch))
                     {
-                        read(indirect->buffer, EGraphUse::INDIRECT);
+                        read(indirect->buffer, EGraphUse::INDIRECT, GraphBufferRange{indirect->offset, 12});
                     }
                 }
                 else
@@ -323,6 +444,64 @@ namespace lux::render
                         std::visit(
                             [&](auto& copy) noexcept
                             {
+                                using Operation = std::remove_cvref_t<decltype(copy)>;
+                                if constexpr (std::is_same_v<Operation, CopyImageBuffer>)
+                                {
+                                    const bool preserve = copy.destination.access == EGraphAccess::READ_WRITE;
+                                    copy.source.access = EGraphAccess::READ;
+                                    copy.destination.access = preserve ? EGraphAccess::READ_WRITE : EGraphAccess::WRITE;
+                                    append(copy.source, EGraphUse::TRANSFER_SOURCE, false);
+                                    append(copy.destination, EGraphUse::TRANSFER_DESTINATION, false);
+                                    if (failure.type != 0)
+                                    {
+                                        return;
+                                    }
+                                    const bool source_image =
+                                        std::holds_alternative<GraphImageRange>(copy.source.range);
+                                    const bool destination_image =
+                                        std::holds_alternative<GraphImageRange>(copy.destination.range);
+                                    if (source_image == destination_image)
+                                    {
+                                        failure = graphError(kGraphInvalidDescriptor);
+                                        return;
+                                    }
+                                    auto image_access = source_image ? copy.source : copy.destination;
+                                    if (!source_image && copy.image_region)
+                                    {
+                                        image_access.access = EGraphAccess::READ_WRITE;
+                                    }
+                                    const auto& image = std::get<GraphImageDesc>(
+                                        candidate_.resources_[image_access.version.resource.index].description
+                                    );
+                                    auto ranges = copyBufferRanges(copy, image);
+                                    if (!ranges)
+                                    {
+                                        failure = ranges.error();
+                                        return;
+                                    }
+                                    auto buffer_access = source_image ? copy.destination : copy.source;
+                                    if (source_image && ranges->empty() && !preserve)
+                                    {
+                                        failure =
+                                            graphError(kGraphInvalidDescriptor, {}, buffer_access.version.resource);
+                                        return;
+                                    }
+                                    pass.uses.push_back(image_access);
+                                    if (ranges->empty() || (source_image && preserve))
+                                    {
+                                        pass.uses.push_back(buffer_access);
+                                    }
+                                    else
+                                    {
+                                        buffer_access.whole_resource = false;
+                                        for (const auto& range : *ranges)
+                                        {
+                                            buffer_access.range = range;
+                                            pass.uses.push_back(buffer_access);
+                                        }
+                                    }
+                                    return;
+                                }
                                 if constexpr (requires { copy.source; })
                                 {
                                     copy.source.access = EGraphAccess::READ;
@@ -352,7 +531,6 @@ namespace lux::render
                                 {
                                     return;
                                 }
-                                using Operation = std::remove_cvref_t<decltype(copy)>;
                                 const bool destination_image =
                                     std::holds_alternative<GraphImageRange>(copy.destination.range);
                                 const bool matches_operation = [&]
@@ -555,6 +733,10 @@ namespace lux::render
             return cxx::unexpected(graphError(kGraphUnknownResource, {}, id));
         }
         const auto& resource = candidate_.resources_[id.index];
+        if (output.final_use && !compatibleUse(resource.description, *output.final_use))
+        {
+            return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, id));
+        }
         auto range = detail::normalize(resource, output.range);
         if (!range)
         {

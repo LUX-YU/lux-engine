@@ -195,6 +195,99 @@ namespace lux::rdesc
         }
     }
 
+    // Bytes per texel/block for one copied aspect; no backend alignment is included.
+    [[nodiscard]] constexpr std::uint32_t textureBlockBytes(ETextureFormat format, std::uint32_t aspect = 1) noexcept
+    {
+        if (aspect == 4)
+        {
+            return textureFormatClass(format) == ETextureFormatClass::DEPTH_STENCIL ? 1u : 0u;
+        }
+        switch (format)
+        {
+        case ETextureFormat::R8_UNORM:
+        case ETextureFormat::R8_SNORM:
+        case ETextureFormat::R8_UINT:
+        case ETextureFormat::R8_SINT:
+        case ETextureFormat::R8_SRGB:
+            return 1;
+        case ETextureFormat::R16_UNORM:
+        case ETextureFormat::R16_SNORM:
+        case ETextureFormat::R16_UINT:
+        case ETextureFormat::R16_SINT:
+        case ETextureFormat::R16_SFLOAT:
+        case ETextureFormat::RG8_UNORM:
+        case ETextureFormat::RG8_SNORM:
+        case ETextureFormat::RG8_UINT:
+        case ETextureFormat::RG8_SINT:
+        case ETextureFormat::RG8_SRGB:
+        case ETextureFormat::D16_UNORM:
+            return 2;
+        case ETextureFormat::RGB8_UNORM:
+        case ETextureFormat::RGB8_SNORM:
+        case ETextureFormat::RGB8_UINT:
+        case ETextureFormat::RGB8_SINT:
+        case ETextureFormat::RGB8_SRGB:
+            return 3;
+        case ETextureFormat::R32_UINT:
+        case ETextureFormat::R32_SINT:
+        case ETextureFormat::R32_SFLOAT:
+        case ETextureFormat::RG16_UNORM:
+        case ETextureFormat::RG16_SNORM:
+        case ETextureFormat::RG16_UINT:
+        case ETextureFormat::RG16_SINT:
+        case ETextureFormat::RG16_SFLOAT:
+        case ETextureFormat::RGBA8_UNORM:
+        case ETextureFormat::RGBA8_SNORM:
+        case ETextureFormat::RGBA8_UINT:
+        case ETextureFormat::RGBA8_SINT:
+        case ETextureFormat::RGBA8_SRGB:
+        case ETextureFormat::BGRA8_UNORM:
+        case ETextureFormat::BGRA8_SRGB:
+        case ETextureFormat::D32_SFLOAT:
+            return 4;
+        case ETextureFormat::RG32_UINT:
+        case ETextureFormat::RG32_SINT:
+        case ETextureFormat::RG32_SFLOAT:
+        case ETextureFormat::RGBA16_UNORM:
+        case ETextureFormat::RGBA16_SNORM:
+        case ETextureFormat::RGBA16_UINT:
+        case ETextureFormat::RGBA16_SINT:
+        case ETextureFormat::RGBA16_SFLOAT:
+        case ETextureFormat::BC1_RGB_UNORM:
+        case ETextureFormat::BC1_RGB_SRGB:
+        case ETextureFormat::BC1_RGBA_UNORM:
+        case ETextureFormat::BC1_RGBA_SRGB:
+        case ETextureFormat::BC4_UNORM:
+        case ETextureFormat::BC4_SNORM:
+            return 8;
+        case ETextureFormat::RGB32_UINT:
+        case ETextureFormat::RGB32_SINT:
+        case ETextureFormat::RGB32_SFLOAT:
+            return 12;
+        case ETextureFormat::RGBA32_UINT:
+        case ETextureFormat::RGBA32_SINT:
+        case ETextureFormat::RGBA32_SFLOAT:
+        case ETextureFormat::BC2_UNORM:
+        case ETextureFormat::BC2_SRGB:
+        case ETextureFormat::BC3_UNORM:
+        case ETextureFormat::BC3_SRGB:
+        case ETextureFormat::BC5_UNORM:
+        case ETextureFormat::BC5_SNORM:
+        case ETextureFormat::BC6H_UFLOAT:
+        case ETextureFormat::BC6H_SFLOAT:
+        case ETextureFormat::BC7_UNORM:
+        case ETextureFormat::BC7_SRGB:
+            return 16;
+        case ETextureFormat::D16_UNORM_S8_UINT:
+            return 2;
+        case ETextureFormat::D24_UNORM_S8_UINT:
+        case ETextureFormat::D32_SFLOAT_S8_UINT:
+            return 4;
+        default:
+            return 0;
+        }
+    }
+
     [[nodiscard]] constexpr ETextureClearClass textureClearClass(ETextureFormat format) noexcept
     {
         switch (format)

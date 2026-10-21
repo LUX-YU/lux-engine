@@ -51,11 +51,11 @@ namespace lux::material
                 return lux::cxx::unexpected(std::move(lowered.error()));
             }
 
-            const auto compile_pass = [&](shadergen::glsl::EMaterialPass pass
+            const auto compile_pass = [&](rdesc::EMaterialPurpose purpose
                                       ) -> lux::cxx::expected<shadergen::glsl::CompiledShader, MaterialCompileFailure>
             {
                 shadergen::glsl::EmitParams parameters;
-                parameters.pass = pass;
+                parameters.purpose = purpose;
                 parameters.shading_model = lowered->shading_model;
                 parameters.alpha_mode = lowered->alpha_mode;
                 parameters.alpha_cutoff = lowered->alpha_cutoff;
@@ -84,7 +84,7 @@ namespace lux::material
             for (auto purpose :
                  {rdesc::EMaterialPurpose::FORWARD, rdesc::EMaterialPurpose::GBUFFER, rdesc::EMaterialPurpose::SHADOW})
             {
-                auto compiled = compile_pass(static_cast<shadergen::glsl::EMaterialPass>(purpose));
+                auto compiled = compile_pass(purpose);
                 if (!compiled)
                 {
                     return lux::cxx::unexpected(std::move(compiled.error()));

@@ -20,26 +20,18 @@
 #include <vector>
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/description/MaterialEnums.hpp> // rdesc::EAlphaMode
-#include <lux/engine/description/ShaderInfo.hpp>    // CompiledShader holds a ShaderInfo value
+#include <lux/engine/description/MaterialProgramSet.hpp>
+#include <lux/engine/description/ShaderInfo.hpp> // CompiledShader holds a ShaderInfo value
 #include <lux/engine/material/ShaderIR.hpp>
 
 namespace lux::shadergen::glsl
 {
-    enum class EMaterialPass : std::uint8_t
-    {
-        FORWARD = 0,
-        GBUFFER,
-        SHADOW,
-        VIS_BUFFER
-    };
-
     /// Shell parameters: determine which pass shell / shading-model branch / alpha
     /// behavior to generate. Sourced from Material lowering's module-owned MaterialIR (these
     /// live outside the ShaderIR -- they're shell concerns, not expressions).
     struct EmitParams
     {
-        EMaterialPass pass{EMaterialPass::GBUFFER};
+        ::lux::rdesc::EMaterialPurpose purpose{::lux::rdesc::EMaterialPurpose::GBUFFER};
         ::lux::rdesc::ELightingTechnique shading_model{::lux::rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS};
         ::lux::rdesc::EAlphaMode alpha_mode{::lux::rdesc::EAlphaMode::OPAQUE_SURFACE};
         float alpha_cutoff{0.5F};
@@ -54,7 +46,7 @@ namespace lux::shadergen::glsl
 
     /// Emits GLSL fragment source (pure: no shaderc, no device, unit-testable).
     /// Returns the source string on success; returns an error string on failure
-    /// (e.g. for an unsupported transparent or visibility-buffer use).
+    /// (e.g. for an unsupported transparent use).
     lux::cxx::expected<std::string, std::string> emitGlsl(const ShaderIR& ir, const EmitParams& params);
 
     /// Runs emitGlsl and then compiles the result to SPIR-V via libshaderc (target

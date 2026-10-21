@@ -336,6 +336,15 @@ static rdesc::MaterialProgramSet cook(bool lit, bool mask = false, bool normal_m
     CHECK(cooked->programs.programs.size() == 3);
     CHECK(cooked->programs.find(rdesc::EMaterialPurpose::SHADOW)->shader.interface.entry_points.front().outputs.empty()
     );
+    const auto& shadow_use = cooked->programs.find(rdesc::EMaterialPurpose::SHADOW)->shader;
+    for (const auto& input : shadow_use.interface.entry_points.front().inputs)
+    {
+        CHECK(input.location != 1 && input.location != 3 && input.location != 5 && input.location != 6);
+    }
+    if (!mask)
+    {
+        CHECK(shadow_use.interface.sets.empty());
+    }
     graph.render_state.alpha_mode = rdesc::EAlphaMode::BLEND;
     CHECK(!compileMaterial(graph));
     return std::move(cooked->programs);

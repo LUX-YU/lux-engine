@@ -23,6 +23,7 @@
 #include <charconv>
 #include <lux/engine/description/MaterialLayout.hpp>
 #include <map>
+#include <span>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -178,11 +179,6 @@ namespace lux::shadergen::glsl
                 {
                     return;
                 }
-                // WorldTangent special case: the contract type is Vec4 (including the
-                // handedness w), but the engine material vertex shader's interpolant
-                // is vec3 (the old emitter also used vec3@5). Declare it as vec3 to
-                // match the vertex shader; at the Input reference site we wrap it
-                // back into vec4(world_tangent, 1.0).
                 const char* type = glslType(s.type);
                 declared_in[s.location] = {type, interpName(s.name)};
             }
@@ -197,7 +193,7 @@ namespace lux::shadergen::glsl
                 return "vWorldNormal";
             }
 
-            bool emitValues()
+            bool emitValues(std::span<const std::uint8_t> selected)
             {
                 // Per-material data (textures/params) is fetched from the set-4
                 // Cooked material record, indexed by the flat vMatIndex
@@ -209,6 +205,10 @@ namespace lux::shadergen::glsl
                 }
                 for (size_t i = 0; i < ir.values.size(); ++i)
                 {
+                    if (!selected[i])
+                    {
+                        continue;
+                    }
                     const ShaderIRValue& v = ir.values[i];
                     std::string rhs;
                     switch (v.op)
@@ -225,8 +225,6 @@ namespace lux::shadergen::glsl
                         }
                         const InputSlot& s = ir.inputs[v.slot];
                         useInput(s);
-                        // The WorldTangent interpolant is vec3, but the contract/
-                        // downstream code wants Vec4 -> wrap it with handedness w=1.
                         rhs = interpName(s.name);
                         break;
                     }
@@ -425,24 +423,49 @@ namespace lux::shadergen::glsl
     {
         std::string error;
 
-        if (p.pass == EMaterialPass::VIS_BUFFER)
-        {
-            return lux::cxx::unexpected(std::string("shadergen: visibility-buffer material use is not supported"));
-        }
-
         if (p.alpha_mode == rdesc::EAlphaMode::BLEND)
         {
             return lux::cxx::unexpected(std::string("shadergen: transparent material use is not supported"));
         }
-        const bool shadow = p.pass == EMaterialPass::SHADOW;
-        const bool gbuffer = p.pass == EMaterialPass::GBUFFER;
+        const bool shadow = p.purpose == rdesc::EMaterialPurpose::SHADOW;
+        const bool gbuffer = p.purpose == rdesc::EMaterialPurpose::GBUFFER;
         const bool unlit = p.shading_model == rdesc::ELightingTechnique::UNLIT;
         const bool forward_lit = !gbuffer && !shadow && !unlit;
         const bool forward_toon = forward_lit && p.shading_model == rdesc::ELightingTechnique::STYLIZED;
 
-        bool tex_mode = false, param_mode = false;
-        for (const auto& v : ir.values)
+        // Lowering already emits topologically ordered SSA. Shadow consumes only coverage;
+        // walk its dependencies backwards without copying or renumbering the shared material IR.
+        std::vector<std::uint8_t> selected(ir.values.size(), shadow ? 0 : 1);
+        if (shadow && p.alpha_mode == rdesc::EAlphaMode::MASK)
         {
+            const auto opacity = std::ranges::find(ir.outputs, "opacity", &Output::name);
+            if (opacity != ir.outputs.end() && opacity->value_id != kNoValue)
+            {
+                selected[opacity->value_id] = 1;
+            }
+            for (std::size_t i = selected.size(); i != 0; --i)
+            {
+                if (!selected[i - 1])
+                {
+                    continue;
+                }
+                for (auto operand : ir.values[i - 1].operands)
+                {
+                    if (operand != kNoValue)
+                    {
+                        selected[operand] = 1;
+                    }
+                }
+            }
+        }
+        bool tex_mode = false, param_mode = false;
+        for (std::size_t i = 0; i < ir.values.size(); ++i)
+        {
+            if (!selected[i])
+            {
+                continue;
+            }
+            const auto& v = ir.values[i];
             if (v.op == EOp::SAMPLE_TEXTURE)
             {
                 tex_mode = true;
@@ -456,13 +479,12 @@ namespace lux::shadergen::glsl
         Emitter em{ir, &error};
         em.tex_mode = tex_mode;
         em.need_mat = tex_mode || param_mode; // Any per-material data -> Graph family
-        if (!em.emitValues())
+        if (!em.emitValues(selected))
         {
             return lux::cxx::unexpected(error.empty() ? std::string("shadergen: emitValues failed") : std::move(error));
         }
 
-        // Normal: GBuffer/Forward-lit use the graph's NormalTS (if bound),
-        // otherwise the interpolated world normal; Unlit uses the world normal.
+        // Lit uses the graph's world-space normal or the actual geometry input; Unlit needs neither.
         std::string normalExpr;
         if (gbuffer || forward_lit)
         {

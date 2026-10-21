@@ -70,6 +70,7 @@ namespace lux::render::detail
         bool waiting_range = false;
         std::size_t minimum_range = 4;
         SubmissionFrontiers* progress = nullptr;
+        std::uint64_t copy_serial = 0;
     };
 
     class ResourceUploader::BatchSender final
@@ -580,7 +581,12 @@ namespace lux::render::detail
             nri::FenceSubmitDesc wait{};
             if (acquiring)
             {
-                auto dependency = source_queue.dependency(source_queue.submitted(), nri::StageBits::ALL);
+                std::uint64_t producer = 0;
+                for (const auto* entry : batch_entries_)
+                {
+                    producer = std::max(producer, entry->copy_serial);
+                }
+                auto dependency = source_queue.dependency(producer, nri::StageBits::ALL);
                 if (dependency)
                 {
                     wait = *dependency;
@@ -725,6 +731,7 @@ namespace lux::render::detail
                 );
             }
             stats.record_submit_ns += elapsed(started);
+            const auto accepted_serial = accepted ? queue.submitted() : 0;
             if (!accepted && (accepted.error().type == kDeviceCapacity || accepted.error().type == kDeviceBusy))
             {
                 // Put blocked entries ahead of work appended by later completions. They keep their
@@ -819,6 +826,7 @@ namespace lux::render::detail
                     std::ranges::any_of(entry->copies, [](const auto& copy) { return copy.final; });
                 if (needs_acquire)
                 {
+                    entry->copy_serial = accepted_serial;
                     entry->acquiring = true;
                     enqueue(*entry);
                 }

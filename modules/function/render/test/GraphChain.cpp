@@ -1,5 +1,6 @@
 #include "Support.hpp"
 #include <bit>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <lux/engine/render/execution/FrameExecution.hpp>
@@ -1134,13 +1135,17 @@ static void physicalReuse(
     const std::array instances{instance.get()};
     for (std::uint32_t frame = 0; frame < fif + 2; ++frame)
     {
-        for (unsigned attempt = 0; attempt < 10000 && instance->progress().count(EExecutionOutcome::EXECUTED) <= frame;
-             ++attempt)
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (instance->progress().count(EExecutionOutcome::EXECUTED) <= frame &&
+               std::chrono::steady_clock::now() < deadline)
         {
             take(frames->render(instances, {}));
             CHECK(session->pollQueues());
             session->dispatchQueueCompletions();
-            std::this_thread::yield();
+            if (instance->progress().count(EExecutionOutcome::EXECUTED) <= frame)
+            {
+                take(frames->waitForProgress(1'000'000));
+            }
         }
         CHECK(instance->progress().count(EExecutionOutcome::EXECUTED) == frame + 1);
     }

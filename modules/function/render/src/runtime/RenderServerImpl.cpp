@@ -1,6 +1,8 @@
 #include <exec/variant_sender.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
+#include <ranges>
 
 namespace lux::render
 {
@@ -229,6 +231,23 @@ namespace lux::render
         const auto& plan = *effect.plan;
         auto dependencies = storageContext();
         std::vector<const StorageArgument*> resolved_arguments(plan.resources().size());
+        std::vector<bool> required(plan.resources().size());
+        for (std::size_t i = 0; i < required.size(); ++i)
+        {
+            required[i] = plan.resources()[i].used;
+        }
+        // Contributions are in the port topological order. Backward closure retains only the
+        // preparation inputs of live outputs; it does not invent GPU accesses or another graph.
+        for (const auto& binding : effect.bindings | std::views::reverse)
+        {
+            if (std::ranges::any_of(binding.outputs, [&](auto id) { return required[id.index]; }))
+            {
+                for (auto input : binding.inputs)
+                {
+                    required[input.index] = true;
+                }
+            }
+        }
         for (const auto& argument : effect.arguments)
         {
             const auto index = argument.resource.index;
@@ -236,7 +255,7 @@ namespace lux::render
             {
                 return cxx::unexpected(RenderError{kStorageContract});
             }
-            if (!plan.resources()[index].used)
+            if (!required[index])
             {
                 continue;
             }
@@ -258,8 +277,21 @@ namespace lux::render
             }
         );
         EffectAttachment candidate;
-        candidate.instance =
-            std::make_unique<detail::RenderGraphInstance>(*device, frames->frameCount(), plan, &output);
+        std::uint32_t parameter_bytes = 0;
+        for (const auto& binding : effect.bindings)
+        {
+            if (std::ranges::any_of(binding.outputs, [&](auto id) { return required[id.index]; }))
+            {
+                parameter_bytes = std::max(parameter_bytes, binding.parameter_bytes);
+            }
+        }
+        candidate.instance = std::make_unique<detail::RenderGraphInstance>(
+            *device,
+            frames->frameCount(),
+            plan,
+            &output,
+            parameter_bytes
+        );
         candidate.storage_inputs.reserve(plan.resources().size());
         std::vector<StorageId> resolved(plan.resources().size());
         const auto prepareGroup = [&](std::span<const GraphStorageBinding> bindings,
@@ -269,7 +301,7 @@ namespace lux::render
             {
                 const auto i = binding.resource.index;
                 const auto& resource = plan.resources()[i];
-                if (!resource.used)
+                if (!required[i])
                 {
                     continue;
                 }
@@ -327,7 +359,7 @@ namespace lux::render
         }
         for (const auto& binding : effect.bindings)
         {
-            if (!plan.resources()[binding.resource.index].used)
+            if (std::ranges::none_of(binding.outputs, [&](auto id) { return required[id.index]; }))
             {
                 continue;
             }
@@ -336,8 +368,34 @@ namespace lux::render
             {
                 return cxx::unexpected(created.error());
             }
-            created->resource = binding.resource;
+            created->inputs = binding.inputs;
+            created->resolved_inputs.resize(binding.inputs.size());
+            for (std::uint32_t slot = 0; slot < frames->frameCount(); ++slot)
+            {
+                for (const auto& update : created->initial_resources)
+                {
+                    candidate.instance->setResource(update.resource.index, slot, update.input);
+                }
+            }
             candidate.feature_bindings.push_back(std::move(*created));
+        }
+        for (std::uint32_t input = 0; input < candidate.instance->samplerInputCount(); ++input)
+        {
+            if (!candidate.instance->usesSampler(input))
+            {
+                continue;
+            }
+            auto sampler = device->descriptors().sampler(effect.samplers[input]);
+            if (!sampler)
+            {
+                return cxx::unexpected(sampler.error());
+            }
+            if (auto bound =
+                    candidate.instance->bindSampler(input, **sampler, effect.samplers[input].comparison.has_value());
+                !bound)
+            {
+                return cxx::unexpected(bound.error());
+            }
         }
         if (auto ready = candidate.instance->initialize(); !ready)
         {

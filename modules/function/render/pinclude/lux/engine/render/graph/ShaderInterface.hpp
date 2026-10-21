@@ -36,6 +36,7 @@ namespace lux::render::detail
         std::string name;         // Cooked shader variable name, resolved to a Graph resource only during compilation.
         std::uint32_t stages = 2; // Existing PassContract stage bits: Vertex=1, Fragment=2, Compute=4.
         EShaderAccess access = EShaderAccess::READ_ONLY;
+        bool image_arrayed = false, image_depth = false;
         bool operator==(const ShaderBinding&) const noexcept = default;
     };
 

@@ -272,16 +272,21 @@ namespace lux::render::detail
         {
             for (const auto& [instance, binding] : features)
             {
-                auto prepared = binding->prepare(binding->value.get(), next_frame_, *uploads_);
+                for (std::size_t i = 0; i < binding->inputs.size(); ++i)
+                {
+                    binding->resolved_inputs[i] = instance->resourceInput(binding->inputs[i], next_frame_);
+                }
+                const FeatureFrameInput input{next_frame_, instance->instanceParameters(), binding->resolved_inputs};
+                auto prepared = binding->prepare(binding->value.get(), input, *uploads_);
                 if (!prepared)
                 {
                     finishPreparation(cxx::unexpected(prepared.error()));
                     sealFrame(frame);
                     return cxx::unexpected(prepared.error());
                 }
-                if (prepared->changed_resource)
+                for (const auto& update : prepared->resources)
                 {
-                    instance->setResource(binding->resource.index, next_frame_, *prepared->changed_resource);
+                    instance->setResource(update.resource.index, next_frame_, update.input);
                 }
                 instances_ready &= prepared->state != FeatureBinding::EPreparation::WAITING;
                 binding->prepared_copies = prepared->state == FeatureBinding::EPreparation::RECORD

@@ -6,6 +6,9 @@
 #include "brdf/brdf_common.glsl"
 #include "brdf/brdf_ggx.glsl"
 #include "brdf/direct_lighting.glsl"
+#ifdef SHADOWS
+#include "../shadow/ShadowPcf.glsl"
+#endif
 
 layout(set = 0, binding = 0) uniform texture2D albedo_metallic;
 layout(set = 0, binding = 1) uniform texture2D normal_roughness;
@@ -64,7 +67,11 @@ void main()
     for (uint i = 0; i < light_counts.values.x; ++i)
     {
         DirectionalLight light = directional_lights.values[i];
-        color += pbrDirectLight(a.rgb, metallic, roughness, f0, n, view, ndotv, -light.direction.xyz, light.radiance.rgb);
+        vec3 radiance = light.radiance.rgb;
+#ifdef SHADOWS
+        radiance *= shadowVisibility(0, i, position, n, vec3(0));
+#endif
+        color += pbrDirectLight(a.rgb, metallic, roughness, f0, n, view, ndotv, -light.direction.xyz, radiance);
     }
     for (uint i = 0; i < light_counts.values.y; ++i)
     {
@@ -73,6 +80,9 @@ void main()
         float distanceToLight = length(delta);
         if (distanceToLight <= 1e-5 || distanceToLight >= light.position_range.w) continue;
         vec3 radiance = light.radiance.rgb * rangeAttenuation(distanceToLight, light.position_range.w, light.attenuation.xyz);
+#ifdef SHADOWS
+        radiance *= shadowVisibility(1, i, position, n, light.position_range.xyz);
+#endif
         color += pbrDirectLight(a.rgb, metallic, roughness, f0, n, view, ndotv, delta / distanceToLight, radiance);
     }
     for (uint i = 0; i < light_counts.values.z; ++i)
@@ -84,6 +94,9 @@ void main()
         vec3 direction = delta / distanceToLight;
         float cone = smoothstep(light.direction_outer.w, light.attenuation_inner.w, dot(-direction, light.direction_outer.xyz));
         vec3 radiance = light.radiance.rgb * cone * rangeAttenuation(distanceToLight, light.position_range.w, light.attenuation_inner.xyz);
+#ifdef SHADOWS
+        radiance *= shadowVisibility(2, i, position, n, light.position_range.xyz);
+#endif
         color += pbrDirectLight(a.rgb, metallic, roughness, f0, n, view, ndotv, direction, radiance);
     }
     hdr_color = vec4(color, 1.0);

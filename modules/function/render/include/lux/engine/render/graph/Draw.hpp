@@ -61,6 +61,7 @@ namespace lux::render
         EDepthCompare depth_compare = EDepthCompare::LESS;
         ECullMode cull_mode = ECullMode::NONE;
         bool front_counter_clockwise = true;
+        float depth_bias_constant = 0, depth_bias_slope = 0;
         bool operator==(const GraphicsState&) const noexcept = default;
     };
 

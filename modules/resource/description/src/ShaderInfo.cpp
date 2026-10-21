@@ -17,6 +17,7 @@ namespace lux::rdesc
         PUSH_LAYOUT = 0x07,
         ENTRY_INPUT = 0x08,
         ENTRY_OUTPUT = 0x09,
+        IMAGE_SHAPE = 0x0A,
         END = 0xFF
     };
 
@@ -269,6 +270,14 @@ namespace lux::rdesc
                 pb.put<std::uint8_t>(b.readable ? 1u : 0u);
                 appendBlock(pb, b.block);
                 pb.flush(out, EShaderInfoOp::BINDING_LAYOUT);
+                if (b.image_arrayed || b.image_depth)
+                {
+                    pb.put(b.set);
+                    pb.put(b.binding);
+                    pb.put<std::uint8_t>(b.image_arrayed);
+                    pb.put<std::uint8_t>(b.image_depth);
+                    pb.flush(out, EShaderInfoOp::IMAGE_SHAPE);
+                }
             }
         }
 
@@ -516,6 +525,29 @@ namespace lux::rdesc
                 }
                 entry->stages = stages;
                 entry->readable = readable != 0;
+            }
+            break;
+
+            case static_cast<std::uint8_t>(EShaderInfoOp::IMAGE_SHAPE):
+            {
+                std::uint32_t set = 0, binding = 0;
+                std::uint8_t arrayed = 0, depth = 0;
+                if (!rdU32(set) || !rdU32(binding) || !rdU8(arrayed) || !rdU8(depth) || arrayed > 1 || depth > 1)
+                {
+                    return fail("image shape");
+                }
+                auto group = setBuckets.find(set);
+                if (group == setBuckets.end())
+                {
+                    return fail("image without binding");
+                }
+                auto entry = std::ranges::find(group->second, binding, &EDescriptorBindingInfo::binding);
+                if (entry == group->second.end())
+                {
+                    return fail("image binding");
+                }
+                entry->image_arrayed = arrayed != 0;
+                entry->image_depth = depth != 0;
             }
             break;
 

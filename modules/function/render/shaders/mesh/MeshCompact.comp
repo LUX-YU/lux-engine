@@ -1,0 +1,23 @@
+#version 450
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0, std430) readonly buffer Candidates { uint words[]; } candidates;
+layout(set = 0, binding = 1, std430) readonly buffer Visible { uint words[]; } visible;
+layout(set = 0, binding = 2, std430) writeonly buffer Commands { uint words[]; } commands;
+layout(set = 0, binding = 3, std430) writeonly buffer Counts { uint words[]; } counts;
+layout(push_constant) uniform Parameters { uint capacity; uint view_count; } parameters;
+
+void main()
+{
+    uint view = gl_GlobalInvocationID.x;
+    if (view >= parameters.view_count) return;
+    // Legacy mdc_compact: one indexed command per material/geometry group and view.
+    // Capacity was qualified before preparation; no clamp that could hide lost visible instances.
+    uint instances = visible.words[view * ((parameters.capacity + 68) & ~63u) + 1];
+    uint offset = view * 5;
+    commands.words[offset] = candidates.words[0];
+    commands.words[offset + 1] = instances;
+    commands.words[offset + 2] = candidates.words[2];
+    commands.words[offset + 3] = candidates.words[3];
+    commands.words[offset + 4] = 0;
+    counts.words[view] = instances != 0 ? 1 : 0;
+}

@@ -22,6 +22,13 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void>
         resolve(const CompiledResource&, DirectLightingBinding, StorageSubscription&, std::span<ResourceInput>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
+        [[nodiscard]] bool read(LightId, VDirectLight&, std::uint32_t& dense_index) const noexcept;
+        [[nodiscard]] std::array<std::uint32_t, 3> counts() const noexcept;
+
+        [[nodiscard]] std::uint64_t revision() const noexcept
+        {
+            return revision_;
+        }
 
     private:
         struct Entry final
@@ -65,6 +72,7 @@ namespace lux::render::detail
         cxx::StableSlotMap<Entry, DirectLightTag> entries_;
         std::array<LightArray, 4> arrays_;
         bool updating_ = false;
+        std::uint64_t revision_ = 1;
     };
 
     [[nodiscard]] StorageFactory directLightingStorageFactory() noexcept;

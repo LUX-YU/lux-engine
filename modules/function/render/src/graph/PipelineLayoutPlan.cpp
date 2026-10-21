@@ -3,6 +3,7 @@
 #include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
+#include <map>
 #include <spirv-tools/libspirv.h>
 
 namespace lux::render::detail
@@ -143,6 +144,7 @@ namespace lux::render::detail
                              element,
                              selected->inputs[element]}
                         );
+                        output.uses.back().comparison_sampler = selected->comparison;
                     }
                     private_fields.push_back(field);
                     continue;
@@ -177,6 +179,16 @@ namespace lux::render::detail
                     if (wrong_kind || access_mismatch || invalid_shared)
                     {
                         return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                    }
+                    if (image && binding.kind != EDescriptorKind::SAMPLER)
+                    {
+                        const auto& range = std::get<GraphImageRange>(access.range);
+                        const bool invalid_shape = !binding.image_arrayed && range.layer_count != 1;
+                        const bool invalid_depth = binding.image_depth && range.aspects != 2;
+                        if (invalid_shape || invalid_depth)
+                        {
+                            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                        }
                     }
                     output.uses.push_back(
                         {index,
@@ -236,26 +248,24 @@ namespace lux::render::detail
                 output.private_bindings.push_back(binding);
             }
         }
-        std::vector<std::uint32_t> sampler_inputs;
+        std::map<std::uint32_t, bool> sampler_contracts;
         for (const auto& program : plan.passes)
         {
             for (const auto& use : program.uses)
             {
-                if (use.sampler != kGraphInvalidIndex)
+                if (use.sampler == kGraphInvalidIndex)
                 {
-                    sampler_inputs.push_back(use.sampler);
+                    continue;
+                }
+                auto [entry, inserted] = sampler_contracts.emplace(use.sampler, use.comparison_sampler);
+                if (!inserted && entry->second != use.comparison_sampler)
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
             }
         }
-        std::ranges::sort(sampler_inputs);
-        sampler_inputs.erase(std::unique(sampler_inputs.begin(), sampler_inputs.end()), sampler_inputs.end());
-        for (std::size_t i = 0; i < sampler_inputs.size(); ++i)
-        {
-            if (sampler_inputs[i] != i)
-            {
-                return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            }
-        }
+        // Dead passes can leave holes in the declared sampler inputs. Runtime validates the
+        // declarations at assembly; a standalone instance binds the remaining original slots.
         return plan;
     }
 

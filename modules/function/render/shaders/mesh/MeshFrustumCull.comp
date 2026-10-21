@@ -1,0 +1,84 @@
+#version 450
+#ifdef PAGED_INSTANCES
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference_uvec2 : require
+#endif
+
+layout(local_size_x = 64) in;
+struct Transform { mat4 model; };
+struct Word { uint value; };
+#ifdef PAGED_INSTANCES
+struct Address { uvec2 value; };
+struct PageAddresses { uvec2 transforms; uvec2 properties; uvec2 alive; };
+layout(buffer_reference, std430, buffer_reference_align = 8) readonly buffer PageLeaf { PageAddresses pages[]; };
+layout(buffer_reference, std430, buffer_reference_align = 16) readonly buffer TransformPage { Transform records[]; };
+layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer AlivePage { Word records[]; };
+layout(set = 0, binding = 0, std430) readonly buffer TransformRoots { Address roots[]; } transforms;
+layout(set = 0, binding = 1, std430) readonly buffer AliveRoots { Address roots[]; } alive;
+#else
+layout(set = 0, binding = 0, std430) readonly buffer Transforms { Transform records[]; } transforms;
+layout(set = 0, binding = 1, std430) readonly buffer Alive { Word records[]; } alive;
+#endif
+struct View { mat4 world_to_clip; vec4 planes[6]; uvec4 flags; };
+layout(set = 0, binding = 2, std430) readonly buffer Views { View records[]; } views;
+layout(set = 0, binding = 3, std430) readonly buffer Candidates { uint words[]; } candidates;
+layout(set = 0, binding = 4, std430) readonly buffer Bounds { vec4 center; vec4 half_extent; } bounds;
+layout(set = 0, binding = 5, std430) buffer Visible { uint words[]; } visible;
+layout(push_constant) uniform Parameters { uint capacity; uint view_count; uint frustum_culling; } parameters;
+
+shared uint prefix[64];
+shared uint first;
+
+void main()
+{
+    uint view = gl_WorkGroupID.y;
+    uint candidate = gl_GlobalInvocationID.x;
+    uint lane = gl_LocalInvocationIndex;
+    uint instance = 0;
+    bool included = candidate < candidates.words[1] && views.records[view].flags.x != 0;
+    if (included)
+    {
+        instance = candidates.words[5 + candidate];
+#ifdef PAGED_INSTANCES
+        uint root = instance >> 23;
+        uint leaf = (instance >> 14) & 511;
+        uint slot = instance & 16383;
+        mat4 model = TransformPage(PageLeaf(transforms.roots[root].value).pages[leaf].transforms).records[slot].model;
+        uint present = AlivePage(PageLeaf(alive.roots[root].value).pages[leaf].alive).records[slot].value;
+#else
+        mat4 model = transforms.records[instance].model;
+        uint present = alive.records[instance].value;
+#endif
+        included = present != 0;
+        if (included && parameters.frustum_culling != 0 && bounds.center.w != 0)
+        {
+            // Legacy frustumCull half-space test. The support radius uses the transformed AABB axes,
+            // rather than a uniform-scale sphere assumption: mirrors, shear and nonuniform scales stay conservative.
+            vec3 center = (model * vec4(bounds.center.xyz, 1)).xyz;
+            for (uint p = 0; p < 6; ++p)
+            {
+                vec4 plane = views.records[view].planes[p];
+                vec3 local_normal = transpose(mat3(model)) * plane.xyz;
+                float radius = dot(abs(local_normal), bounds.half_extent.xyz);
+                if (dot(plane.xyz, center) + plane.w < -radius)
+                    included = false;
+            }
+        }
+    }
+    prefix[lane] = included ? 1 : 0;
+    barrier();
+    // One contiguous reservation per workgroup, as in Legacy's shadow cull. All lanes reach every barrier.
+    for (uint stride = 1; stride < 64; stride <<= 1)
+    {
+        uint before = lane >= stride ? prefix[lane - stride] : 0;
+        barrier();
+        prefix[lane] += before;
+        barrier();
+    }
+    uint offset = view * ((parameters.capacity + 68) & ~63u);
+    if (lane == 63)
+        first = atomicAdd(visible.words[offset + 1], prefix[lane]);
+    barrier();
+    if (included)
+        visible.words[offset + 5 + first + prefix[lane] - 1] = instance;
+}

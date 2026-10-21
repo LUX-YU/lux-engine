@@ -1,3 +1,4 @@
+#include <lux/engine/render/features/MaterialMeshRaster.hpp>
 #include <lux/engine/render/features/RasterMesh.hpp>
 #include <lux/engine/render/runtime/Registration.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshCommandHandler.hpp>
@@ -7,12 +8,8 @@
 
 namespace lux::render
 {
-    const FeatureDescriptor MaterialMeshRasterDescriptor::descriptor{
-        name,
-        cppType<Config>(),
-        "Material color and depth raster passes over indexed triangle meshes and raster instances.",
-        detail::describe<false>
-    };
+    const FeatureDescriptor MaterialMeshRasterDescriptor::
+        descriptor{name, cppType<Config>(), "Material color and depth raster passes over indexed triangle meshes and raster instances.", detail::describe<false>};
 
     template <>
     RenderResult<void> RenderServer::prepareFeature<MaterialMeshRasterDescriptor>(

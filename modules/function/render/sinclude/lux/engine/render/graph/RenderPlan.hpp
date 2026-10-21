@@ -88,6 +88,9 @@ namespace lux::render::detail
         std::optional<RasterAttachment> depth;
         std::vector<VertexSource> vertices;
         VDrawCommand draw;
+        std::optional<RasterViewport> viewport;
+        std::optional<RasterStateInput> state_input;
+        std::array<float, 2> depth_bias{};
     };
 
     struct ComputeCommands final

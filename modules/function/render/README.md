@@ -309,8 +309,47 @@ borrow unique input records through Response and return stable LightIds. Dense G
 source and dirty ranges for the actual FIF slices; removal updates the moved record's index. Upload and replica repair
 use ResourceUploader and FrameExecution. Unchanged frames do not create light Senders or scan all light records on CPU.
 
-The current DeferredLighting feature is the **all-lights, unshadowed reference** for Unlit and metallic-roughness PBR.
-It has no hidden ambient term; AO affects only the explicitly supplied environment term. Tonemap applies ACES and an
-explicit linear/sRGB output choice. Shadow projection/maps, visibility culling and Clustered light selection are separate
-future features. Cooked Shadow coverage alone does not implement scene shadows. `render_deferred_scene` exercises the
-actual compiler, public Commands, independent features and test-owned Copy output against a CPU lighting reference.
+DeferredLighting remains the all-lights reference for Unlit and metallic-roughness PBR. With no shadow configuration
+it compiles the unshadowed path, with no dummy map or sampler. It has no hidden ambient term; AO affects only the
+explicitly supplied environment term. Tonemap applies ACES and an explicit linear/sRGB output choice.
+
+## Shadow composition
+
+Install `ShadowMapFeatureDescriptor`, `MeshVisibilityFeatureDescriptor` and `MeshShadowFeatureDescriptor` independently.
+None installs or calls another Feature. Their common inputs are plain geometry, light and resource-port contracts:
+
+- ShadowMap contributes zero raster passes. Its Attachment data calculates explicit directional cascades, six point
+  views or one spot view, plus dense light-to-slice ranges. It supplies `views`, `slices`, `light_ranges`, `raster_states`
+  and the same `directional_lights`, `point_lights`, `spot_lights`, `light_counts` snapshot consumed by lighting.
+- MeshVisibility reads `views` and the selected instance/geometry tables. Graph Reset/Cull/Compact passes produce
+  `gN.visible`, `gN.commands` and `gN.counts`; the CPU never generates final visible counts. Candidate capacity is an
+  explicit compiled workload limit; overflow fails preparation before drawing instead of silently dropping instances.
+- MeshShadow reads `views`, `raster_states` and each group's visible/command/count ports (`gN.members` is its visible
+  input). It alone declares and writes `depth`. Shadow-purpose materials provide opaque/AlphaMask coverage.
+- Set `DeferredLightingFeatureConfig::shadows` and connect the four light ports plus `shadow_views`, `shadow_slices`,
+  `shadow_ranges` and `shadow_depth`. Its immutable comparison sampler is installed through the ordinary Attach path.
+  Geometry groups and view counts must agree across the explicit connections; there is no sibling-Feature lookup.
+
+`ShadowMapShape` selects equal-resolution 2D-array slices, one layer per view. It never reduces quality or drops lights
+to fit a hidden atlas budget. Cascades use absolute camera-view distances; their last distance explicitly ends shadow
+coverage. `ShadowCamera` is supplied at `camera_offset` in the attachment parameter block. Runtime owns no Camera.
+The projection uses forward Z in [0,1] and the selected positive-height viewport; sampling uses the same Y convention.
+Raster winding is declared in framebuffer coordinates, including any mirrored instance group.
+
+The directional segment fit, texel snapping, perspective basis, frustum half-space and compact-to-indirect algorithms
+derive from the frozen Legacy implementations. The new version uses explicit caster-distance extension and bias units,
+without Legacy's split-unit guessing, automatic tile shrinking or empirical bias scaling. World normal offset, normalized
+comparison offset and raster constant/slope bias are separate. PCF uses a bounded footprint and guarded UVs; it does not
+evaluate screen derivatives inside divergent light/cascade branches. Mesh bounds are supplied in `MeshDescription::bounds`;
+missing bounds mean conservative visibility. Transformed AABB support handles mirrors and nonuniform scale.
+
+Preparation resolves multiple outputs in port order, copies only changed projection data into the reusable FIF slice,
+and returns before recording begins. Graph passes perform GPU culling and rendering, with declared barriers and queue
+dependencies. Raster state is a prepared parameter input; the Executor applies its viewport, scissor and depth bias
+without knowing shadows. Every Attachment/FIF slice has independent writable shadow images. Unchanged CPU projections
+still redraw current depth; a cache hit is not a proof of valid GPU contents. Physical release uses the existing single
+Session cleanup scope. Clustered lighting, EVSM, HZB occlusion, deformation bounds and VSM/Nanite are separate capabilities.
+
+`render_deferred_scene` retains the CPU lighting reference. `render_shadow_scene` uses public Commands and independent
+Feature registration, then test-owned Graph Copies to check actual GPU visibility, shadow pixels, projection data and
+AlphaMask coverage. These output probes do not add a production Readback command.

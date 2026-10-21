@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <exception>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <memory>
@@ -496,11 +497,13 @@ namespace lux::render::detail
                                 dimensions == 0
                                     ? expected->count != 1
                                     : dimensions != 1 || spvc_type_get_array_dimension(type, 0) != expected->count;
-                            const bool invalid_image = spvc_type_get_image_dimension(type) != SpvDim2D ||
-                                                       spvc_type_get_image_arrayed(type) ||
-                                                       spvc_type_get_image_multisampled(type) ||
-                                                       bool(spvc_type_get_image_is_storage(type)) !=
-                                                           (expected_kind == EDescriptorKind::STORAGE_IMAGE);
+                            const bool invalid_image =
+                                spvc_type_get_image_dimension(type) != SpvDim2D ||
+                                bool(spvc_type_get_image_arrayed(type)) != expected->image_arrayed ||
+                                bool(spvc_type_get_image_is_depth(type)) != expected->image_depth ||
+                                spvc_type_get_image_multisampled(type) ||
+                                bool(spvc_type_get_image_is_storage(type)) !=
+                                    (expected_kind == EDescriptorKind::STORAGE_IMAGE);
                             const auto sampled =
                                 spvc_compiler_get_type_handle(compiler, spvc_type_get_image_sampled_type(type));
                             if (invalid_array || invalid_image || spvc_type_get_basetype(sampled) != SPVC_BASETYPE_FP32)
@@ -693,6 +696,7 @@ namespace lux::render::detail
     RenderResult<nri::Pipeline*> compileCompute(
         nri::Device& device,
         const nri::CoreInterface& nri_core,
+        const EnabledDeviceFeatures& enabled,
         nri::PipelineLayout& layout,
         const rdesc::SpirvArtifact& shader
     ) noexcept
@@ -708,7 +712,16 @@ namespace lux::render::detail
         {
             return cxx::unexpected(projected.error());
         }
-        if (!validateStage(code, SpvExecutionModelGLCompute, *projected, nri_core.GetDeviceDesc(device)))
+        if (!validateStage(
+                code,
+                SpvExecutionModelGLCompute,
+                *projected,
+                nri_core.GetDeviceDesc(device),
+                nullptr,
+                {},
+                0,
+                enabled.buffer_device_address
+            ))
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
@@ -761,7 +774,9 @@ namespace lux::render::detail
         const bool invalid_depth = graphics.depth_compare > EDepthCompare::ALWAYS ||
                                    ((graphics.depth_test || graphics.depth_write) && depth == nri::Format::UNKNOWN);
         const bool invalid_cull = graphics.cull_mode > ECullMode::BACK;
-        if (wrong_count || invalid_depth || invalid_cull)
+        const bool invalid_bias =
+            !std::isfinite(graphics.depth_bias_constant) || !std::isfinite(graphics.depth_bias_slope);
+        if (wrong_count || invalid_depth || invalid_cull || invalid_bias)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
@@ -917,6 +932,7 @@ namespace lux::render::detail
         constexpr std::array cull_modes{nri::CullMode::NONE, nri::CullMode::FRONT, nri::CullMode::BACK};
         description.rasterization.frontCounterClockwise = graphics.front_counter_clockwise;
         description.rasterization.cullMode = cull_modes[static_cast<std::size_t>(graphics.cull_mode)];
+        description.rasterization.depthBias = {graphics.depth_bias_constant, 0, graphics.depth_bias_slope};
         const nri::MultisampleDesc multisample{UINT32_MAX, static_cast<nri::Sample_t>(samples)};
         description.multisample = samples > 1 ? &multisample : nullptr;
         description.outputMerger.colors = attachments.data();

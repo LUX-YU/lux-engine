@@ -49,7 +49,7 @@ set_target_properties(render PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY
 
 set(graph_shader_headers)
 foreach(spec GraphFill.comp GraphTriangle.vert GraphMrt.frag GraphPresent.frag GraphCount.comp GraphRed.frag
-    GraphHistory.comp GraphDepthField.comp
+    GraphHistory.comp GraphDepthField.comp GraphShadowSampler.frag
 )
     get_filename_component(shader_name "${spec}" NAME_WE)
     set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.hpp")
@@ -87,3 +87,19 @@ target_link_libraries(render_deferred_scene PRIVATE render NRI lux::engine::core
 set_target_properties(render_deferred_scene PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 add_test(NAME render.sample.deferred COMMAND render_deferred_scene)
 set_tests_properties(render.sample.deferred PROPERTIES TIMEOUT 90)
+
+add_executable(render_shadow_scene ShadowScene.cpp ${graph_shader_headers})
+target_include_directories(render_shadow_scene PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude"
+    "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+    "${CMAKE_CURRENT_BINARY_DIR}/../shaders"
+)
+
+target_link_libraries(render_shadow_scene PRIVATE
+    render NRI lux::engine::core::core_execution
+    lux::engine::toolchain::toolchain_material_compiler
+)
+
+set_target_properties(render_shadow_scene PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+add_test(NAME render.sample.shadow COMMAND render_shadow_scene)
+set_tests_properties(render.sample.shadow PROPERTIES TIMEOUT 120)

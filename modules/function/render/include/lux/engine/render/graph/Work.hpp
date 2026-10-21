@@ -2,6 +2,7 @@
 
 #include <array>
 #include <lux/engine/description/SpirvArtifact.hpp>
+#include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/graph/Draw.hpp>
 
 namespace lux::render
@@ -36,6 +37,7 @@ namespace lux::render
         // not memory resources and therefore do not create artificial image accesses or versions.
         std::vector<std::uint32_t> inputs;
         std::uint32_t field = kGraphInvalidIndex;
+        bool comparison = false;
     };
 
     struct PassInterface final
@@ -69,6 +71,18 @@ namespace lux::render
         std::optional<ResourceAccess> resolve;
     };
 
+    struct RasterState final
+    {
+        RasterViewport viewport;
+        float depth_bias_constant = 0, depth_bias_slope = 0;
+    };
+
+    struct RasterStateInput final
+    {
+        GraphResourceId resource;
+        std::uint32_t offset = 0;
+    };
+
     struct RasterWork final
     {
         PassInterface interface;
@@ -77,6 +91,9 @@ namespace lux::render
         GraphicsState graphics;
         std::vector<ProgramVertexBuffer> vertex_buffers;
         VDrawCommand draw = DrawVertices{};
+        // Per-pass rectangle in its attachment; absent uses the instance's normalized viewport.
+        std::optional<RasterViewport> viewport;
+        std::optional<RasterStateInput> state_input; // Prepared CPU parameter record; overrides viewport and bias.
     };
 
     struct DispatchArguments final

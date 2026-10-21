@@ -110,7 +110,8 @@ namespace lux::render::runtime_detail
             std::move(assembly->analysis),
             std::move(assembly->external_bindings),
             std::move(assembly->arguments),
-            std::move(assembly->bindings)
+            std::move(assembly->bindings),
+            std::move(assembly->samplers)
         };
     }
 

@@ -1,4 +1,5 @@
 #include "DeferredLighting.hpp"
+#include "DeferredLightingShadow.hpp"
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/FeatureDefinition.hpp>
@@ -32,14 +33,43 @@ namespace lux::render
                 FeaturePort port{std::string(surfaces[i]), EFeaturePort::INPUT, image};
                 port.semantic = std::string(rdesc::GBufferLayout::semantic) + "." + std::string(surfaces[i]);
                 result.resources.push_back(std::move(port));
-                result.storage.scene.push_back(
-                    {std::string(lights[i]),
-                     EFeaturePort::OUTPUT,
-                     GraphBufferDesc{strides[i]},
-                     EGraphOrigin::IMPORTED,
-                     {GraphBufferRange{0, strides[i]}},
-                     StorageRequirement{StorageName(kDirectLightingStorageType.name()), config.lights}}
+                if (config.shadows)
+                {
+                    result.resources.push_back(
+                        {std::string(lights[i]), EFeaturePort::INPUT, GraphBufferDesc{strides[i]}}
+                    );
+                }
+                else
+                {
+                    result.storage.scene.push_back(
+                        {std::string(lights[i]),
+                         EFeaturePort::OUTPUT,
+                         GraphBufferDesc{strides[i]},
+                         EGraphOrigin::IMPORTED,
+                         {GraphBufferRange{0, strides[i]}},
+                         StorageRequirement{StorageName(kDirectLightingStorageType.name()), config.lights}}
+                    );
+                }
+            }
+            if (config.shadows)
+            {
+                const auto& shape = *config.shadows;
+                const auto buffer = [&](std::string name, std::uint64_t size, std::string_view semantic)
+                {
+                    FeaturePort port{std::move(name), EFeaturePort::INPUT, GraphBufferDesc{size}};
+                    port.semantic = semantic;
+                    result.resources.push_back(std::move(port));
+                };
+                buffer(
+                    "shadow_views",
+                    std::uint64_t(shape.view_count) * sizeof(MeshVisibilityView),
+                    kMeshVisibilityViews
                 );
+                buffer("shadow_slices", std::uint64_t(shape.view_count) * sizeof(ShadowSliceGpu), kShadowSlices);
+                buffer("shadow_ranges", sizeof(ShadowMappingHeader) + sizeof(LightShadowRange), kLightShadowRanges);
+                FeaturePort depth{"shadow_depth", EFeaturePort::INPUT, shape.image()};
+                depth.semantic = kShadowDepth;
+                result.resources.push_back(std::move(depth));
             }
             auto image = config.extent;
             image.format = rdesc::ETextureFormat::RGBA16_SFLOAT;
@@ -52,7 +82,10 @@ namespace lux::render
         RenderResult<void> buildLighting(const void* value, std::string_view key, FeatureBuildContext& context) noexcept
         {
             const auto& config = *static_cast<const DeferredLightingFeatureConfig*>(value);
-            auto work = detail::fullscreenRaster(context, kDeferredLighting, kDeferredLightingReflection);
+            auto work =
+                config.shadows
+                    ? detail::fullscreenRaster(context, kDeferredLightingShadow, kDeferredLightingShadowReflection)
+                    : detail::fullscreenRaster(context, kDeferredLighting, kDeferredLightingReflection);
             if (!work)
             {
                 return cxx::unexpected(work.error());
@@ -65,10 +98,24 @@ namespace lux::render
             {
                 auto resource = context.resource(lights[i]);
                 work->interface.resources.push_back({std::string(lights[i]), {resource}});
-                context.arguments.push_back(StorageArgument::make(
-                    resource.resource,
-                    DirectLightingBinding{static_cast<EDirectLightingBuffer>(i)}
-                ));
+                if (!config.shadows)
+                {
+                    context.arguments.push_back(StorageArgument::make(
+                        resource.resource,
+                        DirectLightingBinding{static_cast<EDirectLightingBuffer>(i)}
+                    ));
+                }
+            }
+            if (config.shadows)
+            {
+                for (auto name : {"shadow_views", "shadow_slices", "shadow_ranges", "shadow_depth"})
+                {
+                    work->interface.resources.push_back({name, {context.resource(name)}});
+                }
+                const auto sampler = context.addSampler(
+                    {ESamplerFilter::NEAREST, ESamplerAddress::CLAMP_TO_BORDER, EDepthCompare::LESS_EQUAL, 1}
+                );
+                work->interface.samplers.push_back({"shadow_compare", {sampler}, kGraphInvalidIndex, true});
             }
             work->interface.parameters.instance_layout = config.input_layout;
             for (auto name : {"inverse_view_projection", "camera_position", "viewport", "background", "environment"})
@@ -105,7 +152,7 @@ namespace lux::render
     const FeatureDescriptor DeferredLightingFeatureDescriptor::descriptor{
         name,
         cppType<Config>(),
-        "Unshadowed all-lights reference: scene directional, point and spot lights over a world-space GBuffer.",
+        "All-lights deferred shading; optional shadow inputs are supplied through independent ports.",
         describeLighting
     };
 

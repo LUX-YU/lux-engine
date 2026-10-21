@@ -447,6 +447,17 @@ namespace lux::render
                 if constexpr (std::is_same_v<Work, RasterWork>)
                 {
                     interface(value.interface);
+                    if (value.state_input)
+                    {
+                        const auto resource = value.state_input->resource;
+                        const bool valid = resource.index < candidate_.resources_.size() &&
+                                           candidate_.resources_[resource.index].origin == EGraphOrigin::IMPORTED;
+                        if (!valid)
+                        {
+                            failure = graphError(kGraphInvalidDescriptor, {}, resource);
+                            return;
+                        }
+                    }
                     for (auto& color : value.colors)
                     {
                         color.access.access =

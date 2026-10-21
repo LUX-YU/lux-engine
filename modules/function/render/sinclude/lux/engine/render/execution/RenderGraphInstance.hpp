@@ -21,12 +21,28 @@ namespace lux::render::detail
             DeviceSession&,
             std::uint32_t frame_count,
             const RenderPlan&,
-            OffscreenTarget* = nullptr
+            OffscreenTarget* = nullptr,
+            std::uint32_t parameter_bytes = 0
         ) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
         // Borrowed physical inputs are installed before initialize; the caller retains them through GPU completion.
         void bindImage(GraphResourceId resource, std::uint32_t slot, nri::Texture& image) noexcept;
-        [[nodiscard]] RenderResult<void> bindSampler(std::uint32_t input, nri::Descriptor&) noexcept;
+        [[nodiscard]] RenderResult<void> bindSampler(
+            std::uint32_t input,
+            nri::Descriptor&,
+            bool comparison = false
+        ) noexcept;
+
+        [[nodiscard]] std::size_t samplerInputCount() const noexcept
+        {
+            return samplers_.size();
+        }
+
+        [[nodiscard]] bool usesSampler(std::uint32_t input) const noexcept
+        {
+            return samplers_[input].used;
+        }
+
         ~RenderGraphInstance() noexcept;
         RenderGraphInstance(const RenderGraphInstance&) = delete;
         RenderGraphInstance& operator=(const RenderGraphInstance&) = delete;
@@ -86,6 +102,7 @@ namespace lux::render::detail
 
         // Trusted compiled resource index and Session slot, not a business resource lookup.
         void setResource(std::uint32_t resource, std::uint32_t slot, const ResourceInput&) noexcept;
+        [[nodiscard]] ResourceInput resourceInput(GraphResourceId, std::uint32_t slot) const noexcept;
         // Cold diagnostics: sum actual NRI allocation requirements for this instance's owned resources.
         [[nodiscard]] bool dumpResources(DumpSink) const noexcept;
         [[nodiscard]] nri::Buffer* nativeBuffer(std::uint32_t resource, std::uint32_t slot) const noexcept;
@@ -142,6 +159,7 @@ namespace lux::render::detail
             std::vector<nri::Descriptor*> clear_views;
             std::array<std::uint32_t, 3> dispatch_groups{};
             std::vector<std::byte> parameters;
+            RasterState raster_state;
         };
 
         struct ParameterCopy final
@@ -157,7 +175,15 @@ namespace lux::render::detail
         TargetDesc target_;
         RasterViewport viewport_;
         OffscreenTarget* output_;
-        std::vector<nri::Descriptor*> samplers_;
+
+        struct SamplerInput final
+        {
+            nri::Descriptor* descriptor = nullptr;
+            bool comparison = false;
+            bool used = false;
+        };
+
+        std::vector<SamplerInput> samplers_;
         std::vector<std::vector<std::byte>> pass_parameters_;
         std::vector<std::vector<ParameterCopy>> parameter_copies_;
         std::vector<std::byte> instance_values_;

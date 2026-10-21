@@ -211,6 +211,7 @@ namespace lux::render::detail
                 {
                     core.CmdSetPipeline(command, *compiled.pipeline);
                     binding_state.pipeline = compiled.pipeline;
+                    binding_state.prepared_depth_bias = false;
                 }
                 for (std::uint32_t set = 0; set < pass.descriptors.size(); ++set)
                 {
@@ -234,12 +235,19 @@ namespace lux::render::detail
                     rendering.colorNum = static_cast<std::uint32_t>(pass.colors.size());
                     rendering.depth = pass.depth;
                     core.CmdBeginRendering(command, rendering);
+                }
+                const auto* previous = p ? std::get_if<RasterCommands>(&plan.recording_.passes[p - 1].work) : nullptr;
+                if (group.first_pass == p || raster->state_input ||
+                    (previous && (previous->state_input || previous->viewport != raster->viewport)))
+                {
                     const auto& attachment = raster->colors.empty() ? *raster->depth : raster->colors.front();
                     const auto& image = core.GetTextureDesc(*bindings[attachment.access.version.resource.index].image);
                     const auto mip = std::get<GraphImageRange>(attachment.access.range).first_mip;
                     const auto width = std::max(1u, std::uint32_t(image.width) >> mip);
                     const auto height = std::max(1u, std::uint32_t(image.height) >> mip);
-                    const auto& area = frame.viewport;
+                    const auto& area = raster->state_input ? pass.raster_state.viewport
+                                       : raster->viewport  ? *raster->viewport
+                                                           : frame.viewport;
                     const nri::Viewport viewport{
                         area.x * width,
                         area.y * height,
@@ -249,9 +257,27 @@ namespace lux::render::detail
                         area.max_depth,
                         true
                     };
-                    const nri::Rect scissor{0, 0, static_cast<nri::Dim_t>(width), static_cast<nri::Dim_t>(height)};
+                    const nri::Rect scissor{
+                        static_cast<std::int16_t>(area.x * width),
+                        static_cast<std::int16_t>(area.y * height),
+                        static_cast<nri::Dim_t>(area.width * width),
+                        static_cast<nri::Dim_t>(area.height * height)
+                    };
                     core.CmdSetViewports(command, &viewport, 1);
                     core.CmdSetScissors(command, &scissor, 1);
+                }
+                if (raster->state_input)
+                {
+                    core.CmdSetDepthBias(
+                        command,
+                        {pass.raster_state.depth_bias_constant, 0, pass.raster_state.depth_bias_slope}
+                    );
+                    binding_state.prepared_depth_bias = true;
+                }
+                else if (binding_state.prepared_depth_bias)
+                {
+                    core.CmdSetDepthBias(command, {raster->depth_bias[0], 0, raster->depth_bias[1]});
+                    binding_state.prepared_depth_bias = false;
                 }
                 if (!std::ranges::equal(binding_state.vertices, raster->vertices))
                 {

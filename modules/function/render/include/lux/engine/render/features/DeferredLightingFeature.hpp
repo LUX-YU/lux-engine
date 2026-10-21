@@ -3,6 +3,7 @@
 #include <lux/engine/description/GBufferLayout.hpp>
 #include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/render/features/FeatureDescriptor.hpp>
+#include <lux/engine/render/features/ShadowInputs.hpp>
 #include <lux/engine/render/graph/GraphResource.hpp>
 
 namespace lux::render
@@ -36,6 +37,7 @@ namespace lux::render
         GraphImageDesc extent{1, 1, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
         std::string lights = "direct_lights";
         rdesc::ShaderBlock input_layout = deferredLightingParameterBlock();
+        std::optional<ShadowMapShape> shadows;
         bool operator==(const DeferredLightingFeatureConfig&) const noexcept = default;
     };
 

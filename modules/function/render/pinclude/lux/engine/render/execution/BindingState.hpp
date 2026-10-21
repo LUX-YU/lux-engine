@@ -14,5 +14,6 @@ namespace lux::render::detail
         nri::Buffer* index = nullptr;
         std::uint64_t index_offset = 0;
         nri::IndexType index_type = nri::IndexType::UINT16;
+        bool prepared_depth_bias = false;
     };
 } // namespace lux::render::detail

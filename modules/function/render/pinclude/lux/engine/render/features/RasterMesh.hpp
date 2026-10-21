@@ -1,16 +1,21 @@
 #pragma once
 
 #include <lux/engine/render/features/FeatureDefinition.hpp>
-#include <lux/engine/render/features/MaterialMeshRaster.hpp>
-#include <lux/engine/render/features/MeshDepthRaster.hpp>
+#include <lux/engine/render/features/RasterMeshParameters.hpp>
 
 namespace lux::render::detail
 {
     [[nodiscard]] RenderResult<void>
     describeMeshGroup(const RasterMeshGroup&, std::string_view prefix, rdesc::EMaterialPurpose, FeaturePorts&) noexcept;
 
-    [[nodiscard]] RenderResult<RasterWork>
-    buildMeshGroup(const RasterMeshGroup&, std::string_view prefix, rdesc::EMaterialPurpose, bool paged, FeatureBuildContext&) noexcept;
+    [[nodiscard]] RenderResult<RasterWork> buildMeshGroup(
+        const RasterMeshGroup&,
+        std::string_view prefix,
+        rdesc::EMaterialPurpose,
+        bool paged,
+        FeatureBuildContext&,
+        bool derive_members = true
+    ) noexcept;
 
     template <bool Depth> RenderResult<void> describe(const void*, std::string_view, FeaturePorts&) noexcept;
 

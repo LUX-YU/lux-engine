@@ -29,7 +29,7 @@ namespace lux::render::detail
         std::uint32_t sampler_count
     ) noexcept;
     [[nodiscard]] RenderResult<nri::Pipeline*>
-    compileCompute(nri::Device&, const nri::CoreInterface&, nri::PipelineLayout&, const rdesc::SpirvArtifact&) noexcept;
+    compileCompute(nri::Device&, const nri::CoreInterface&, const EnabledDeviceFeatures&, nri::PipelineLayout&, const rdesc::SpirvArtifact&) noexcept;
     [[nodiscard]] RenderResult<nri::Pipeline*> compileGraphics(
         nri::Device&,
         const nri::CoreInterface&,

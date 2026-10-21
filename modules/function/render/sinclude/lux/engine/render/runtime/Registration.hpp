@@ -14,10 +14,31 @@ namespace lux::render
     struct MaterialMeshRasterDescriptor;
     struct MeshDepthRasterDescriptor;
     struct HzbFeatureDescriptor;
-    class DirectLightingStorageDescriptor;
+    struct DirectLightingStorageDescriptor;
     struct GBufferFeatureDescriptor;
     struct DeferredLightingFeatureDescriptor;
     struct TonemapFeatureDescriptor;
+    struct ShadowMapFeatureDescriptor;
+    struct MeshVisibilityFeatureDescriptor;
+    struct MeshShadowFeatureDescriptor;
+
+    template <>
+    LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareFeature<ShadowMapFeatureDescriptor>(
+        RegistrationBatch&,
+        std::string_view
+    ) noexcept;
+
+    template <>
+    LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareFeature<MeshVisibilityFeatureDescriptor>(
+        RegistrationBatch&,
+        std::string_view
+    ) noexcept;
+
+    template <>
+    LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareFeature<MeshShadowFeatureDescriptor>(
+        RegistrationBatch&,
+        std::string_view
+    ) noexcept;
 
     template <>
     LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareStorage<DirectLightingStorageDescriptor>(

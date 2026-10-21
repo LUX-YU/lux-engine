@@ -154,6 +154,7 @@ namespace lux::render::detail
             arrays_[value.kind].identities.push_back(key);
             result.push_back({id_, key});
         }
+        ++revision_;
         co_return result;
     }
 
@@ -193,6 +194,7 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(accepted.error());
         }
+        ++revision_;
         co_return static_cast<std::uint32_t>(writes.size());
     }
 
@@ -230,7 +232,47 @@ namespace lux::render::detail
         }
         array.identities.pop_back();
         entries_.erase(light.local);
+        ++revision_;
         co_return Ack{};
+    }
+
+    std::array<std::uint32_t, 3> DirectLightingStorage::counts() const noexcept
+    {
+        return {
+            static_cast<std::uint32_t>(arrays_[0].identities.size()),
+            static_cast<std::uint32_t>(arrays_[1].identities.size()),
+            static_cast<std::uint32_t>(arrays_[2].identities.size())
+        };
+    }
+
+    bool DirectLightingStorage::read(LightId id, VDirectLight& result, std::uint32_t& dense_index) const noexcept
+    {
+        const auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
+        if (!entry)
+        {
+            return false;
+        }
+        dense_index = entry->position;
+        const auto* bytes = arrays_[entry->kind].records.data() + std::size_t(entry->position) * strides[entry->kind];
+        const auto copy = [&]<class T>() noexcept
+        {
+            T light;
+            std::memcpy(&light, bytes, sizeof(light));
+            result = light;
+        };
+        switch (entry->kind)
+        {
+        case 0:
+            copy.template operator()<DirectionalLightGpu>();
+            break;
+        case 1:
+            copy.template operator()<PointLightGpu>();
+            break;
+        case 2:
+            copy.template operator()<SpotLightGpu>();
+            break;
+        }
+        return true;
     }
 
     exec::task<RenderResult<void>> DirectLightingStorage::write(

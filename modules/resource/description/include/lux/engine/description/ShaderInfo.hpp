@@ -52,8 +52,10 @@ namespace lux::rdesc
         uint32_t blockSize = 0; // UBO/SSBO size in bytes; 0 for non-block resources
         bool writable = false;  // For SSBO/StorageImage: whether it is writable.
         bool readable = true;
-        ShaderBlock block;        // Reflected members/offsets/strides; opaque descriptors leave this empty.
-        std::uint32_t stages = 0; // PassContract bits: Vertex=1, Fragment=2, Compute=4.
+        ShaderBlock block;          // Reflected members/offsets/strides; opaque descriptors leave this empty.
+        std::uint32_t stages = 0;   // PassContract bits: Vertex=1, Fragment=2, Compute=4.
+        bool image_arrayed = false; // Texture layers, independent of descriptor count.
+        bool image_depth = false;
         bool operator==(const EDescriptorBindingInfo&) const noexcept = default;
     };
 

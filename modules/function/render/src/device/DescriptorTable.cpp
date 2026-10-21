@@ -133,7 +133,8 @@ namespace lux::render::detail
                 return index;
             }
         }
-        if (samplers_.size() == sampler_capacity_)
+        const auto capacity = descriptors_ ? sampler_capacity_ : session_.description().descriptorSet.samplerMaxNum;
+        if (samplers_.size() == capacity)
         {
             return cxx::unexpected(RenderError{kDeviceCapacity});
         }
@@ -145,8 +146,11 @@ namespace lux::render::detail
         }
         const auto index = static_cast<std::uint32_t>(samplers_.size());
         samplers_.push_back({description, descriptor});
-        const nri::UpdateDescriptorRangeDesc update{descriptors_, 1, index, &descriptor, 1};
-        session_.nriCore().UpdateDescriptorRanges(&update, 1);
+        if (descriptors_)
+        {
+            const nri::UpdateDescriptorRangeDesc update{descriptors_, 1, index, &descriptor, 1};
+            session_.nriCore().UpdateDescriptorRanges(&update, 1);
+        }
         return index;
     }
 
@@ -154,6 +158,50 @@ namespace lux::render::detail
     {
         const nri::UpdateDescriptorRangeDesc update{descriptors_, 0, slot.index, &image, 1};
         session_.nriCore().UpdateDescriptorRanges(&update, 1);
+    }
+
+    RenderResult<nri::Descriptor*> DescriptorTable::sampler(const SamplerDescription& input) noexcept
+    {
+        const bool invalid = input.filter > ESamplerFilter::LINEAR ||
+                             input.address > ESamplerAddress::CLAMP_TO_BORDER ||
+                             (input.comparison && *input.comparison > EDepthCompare::ALWAYS);
+        if (invalid)
+        {
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        nri::SamplerDesc description{};
+        description.filters.min = description.filters.mag =
+            input.filter == ESamplerFilter::LINEAR ? nri::Filter::LINEAR : nri::Filter::NEAREST;
+        description.filters.mip = nri::Filter::NEAREST;
+        constexpr nri::AddressMode addresses[]{
+            nri::AddressMode::REPEAT,
+            nri::AddressMode::CLAMP_TO_EDGE,
+            nri::AddressMode::CLAMP_TO_BORDER
+        };
+        description.addressModes = {
+            addresses[static_cast<unsigned>(input.address)],
+            addresses[static_cast<unsigned>(input.address)],
+            addresses[static_cast<unsigned>(input.address)]
+        };
+        constexpr nri::CompareOp comparisons[]{
+            nri::CompareOp::NEVER,
+            nri::CompareOp::LESS,
+            nri::CompareOp::EQUAL,
+            nri::CompareOp::LESS_EQUAL,
+            nri::CompareOp::GREATER,
+            nri::CompareOp::NOT_EQUAL,
+            nri::CompareOp::GREATER_EQUAL,
+            nri::CompareOp::ALWAYS
+        };
+        description.compareOp =
+            input.comparison ? comparisons[static_cast<unsigned>(*input.comparison)] : nri::CompareOp::NONE;
+        description.borderColor.f = {input.border, input.border, input.border, input.border};
+        auto index = sampler(description);
+        if (!index)
+        {
+            return cxx::unexpected(index.error());
+        }
+        return samplers_[*index].descriptor;
     }
 
     void DescriptorTable::release(Slot slot) noexcept

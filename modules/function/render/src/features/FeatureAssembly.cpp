@@ -29,6 +29,7 @@ namespace lux::render
             std::size_t first_resource = 0, resource_count = 0;
             std::size_t first_argument = 0, argument_count = 0;
             std::size_t first_binding = 0, binding_count = 0;
+            std::size_t first_sampler = 0, sampler_count = 0;
             bool built = false;
         };
 
@@ -305,13 +306,15 @@ namespace lux::render
                 const auto first_output = builder.outputCount();
                 contribution.first_argument = result.arguments.size();
                 contribution.first_binding = result.bindings.size();
+                contribution.first_sampler = result.samplers.size();
                 contribution.first_resource = builder.resourceCount();
                 contribution.supplied.clear();
                 for (const auto& port : contribution.resolved)
                 {
                     contribution.supplied.push_back(port.version);
                 }
-                FeatureBuildContext context{builder, contribution.resolved, result.arguments, result.bindings};
+                FeatureBuildContext
+                    context{builder, contribution.resolved, result.arguments, result.bindings, result.samplers};
                 if (input.graph->build)
                 {
                     auto built = input.graph->build(
@@ -327,7 +330,8 @@ namespace lux::render
                 const bool changed_prefix =
                     builder.passCount() < first || builder.resourceCount() < contribution.first_resource ||
                     builder.outputCount() != first_output || result.arguments.size() < contribution.first_argument ||
-                    result.bindings.size() < contribution.first_binding;
+                    result.bindings.size() < contribution.first_binding ||
+                    result.samplers.size() < contribution.first_sampler;
                 if (changed_prefix)
                 {
                     return cxx::unexpected(failure(kFeatureOwnership, i));
@@ -335,6 +339,7 @@ namespace lux::render
                 contribution.resource_count = builder.resourceCount() - contribution.first_resource;
                 contribution.argument_count = result.arguments.size() - contribution.first_argument;
                 contribution.binding_count = result.bindings.size() - contribution.first_binding;
+                contribution.sampler_count = result.samplers.size() - contribution.first_sampler;
                 for (std::size_t p = 0; p < contribution.resolved.size(); ++p)
                 {
                     const auto before = contribution.supplied[p], after = contribution.resolved[p].version;
@@ -445,16 +450,29 @@ namespace lux::render
             for (auto b = owner.first_binding; b < owner.first_binding + owner.binding_count; ++b)
             {
                 const auto& binding = result.bindings[b];
-                const auto resource = binding.resource;
-                const bool valid = resource.index < storage_resources.size() && !storage_resources[resource.index] &&
-                                   !constructed[resource.index] &&
-                                   graph->resources()[resource.index].origin == EGraphOrigin::IMPORTED &&
-                                   binding.create && allowed({resource, 0}, true);
-                if (!valid)
+                if (!binding.create || binding.outputs.empty())
                 {
-                    return cxx::unexpected(failure(kFeatureOwnership, i, resource.index));
+                    return cxx::unexpected(failure(kFeatureOwnership, i, b));
                 }
-                constructed[resource.index] = true;
+                for (auto resource : binding.inputs)
+                {
+                    if (!allowed({resource, 0}, false))
+                    {
+                        return cxx::unexpected(failure(kFeatureOwnership, i, resource.index));
+                    }
+                }
+                for (auto resource : binding.outputs)
+                {
+                    const bool valid = resource.index < storage_resources.size() &&
+                                       !storage_resources[resource.index] && !constructed[resource.index] &&
+                                       graph->resources()[resource.index].origin == EGraphOrigin::IMPORTED &&
+                                       allowed({resource, 0}, true);
+                    if (!valid)
+                    {
+                        return cxx::unexpected(failure(kFeatureOwnership, i, resource.index));
+                    }
+                    constructed[resource.index] = true;
+                }
             }
             for (auto p = contribution.first_pass; p < contribution.first_pass + contribution.pass_count; ++p)
             {
@@ -463,6 +481,10 @@ namespace lux::render
                 if (const auto* raster = std::get_if<RasterWork>(&pass.work))
                 {
                     input = &raster->interface;
+                    if (raster->state_input && !allowed({raster->state_input->resource, 0}, false))
+                    {
+                        return cxx::unexpected(failure(kFeatureOwnership, i, p));
+                    }
                 }
                 if (const auto* compute = std::get_if<ComputeWork>(&pass.work))
                 {
@@ -470,6 +492,22 @@ namespace lux::render
                 }
                 if (input)
                 {
+                    for (const auto& sampler : input->samplers)
+                    {
+                        for (auto slot : sampler.inputs)
+                        {
+                            const bool invalid =
+                                slot < owner.first_sampler || slot - owner.first_sampler >= owner.sampler_count;
+                            if (invalid)
+                            {
+                                return cxx::unexpected(failure(kFeatureOwnership, i, p));
+                            }
+                            if (sampler.comparison != result.samplers[slot].comparison.has_value())
+                            {
+                                return cxx::unexpected(failure(kFeatureContract, i, p));
+                            }
+                        }
+                    }
                     for (const auto& field : input->parameters.fields)
                     {
                         if (field.resource.index == kGraphInvalidIndex)

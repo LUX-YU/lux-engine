@@ -6,6 +6,7 @@
 #include <array>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/render/core/Error.hpp>
+#include <lux/engine/render/graph/Sampler.hpp>
 #include <vector>
 
 namespace lux::render::detail
@@ -38,6 +39,7 @@ namespace lux::render::detail
         void release(Slot) noexcept;
         void write(Slot, nri::Descriptor* image) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> sampler(const nri::SamplerDesc&) noexcept;
+        [[nodiscard]] RenderResult<nri::Descriptor*> sampler(const SamplerDescription&) noexcept;
 
         [[nodiscard]] nri::DescriptorSet* descriptors() const noexcept
         {

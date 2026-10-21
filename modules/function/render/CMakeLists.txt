@@ -1,5 +1,6 @@
 find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core)
 find_package(stdexec CONFIG REQUIRED)
+find_package(Eigen3 CONFIG REQUIRED)
 find_package(Vulkan 1.3 REQUIRED)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../core/error/cmake/Values.cmake")
@@ -37,6 +38,11 @@ set(render_sources
     src/features/HzbFeature.cpp
     src/features/GBufferFeature.cpp
     src/features/DeferredLightingFeature.cpp
+    src/features/ShadowMapFeature.cpp
+    src/features/ShadowProjection.cpp
+    src/features/ShadowProjectionBinding.cpp
+    src/features/MeshVisibilityFeature.cpp
+    src/features/MeshShadowFeature.cpp
     src/features/TonemapFeature.cpp
     src/features/FullscreenRaster.cpp
     src/storage/DirectLightingStorage.cpp
@@ -137,13 +143,16 @@ add_custom_command(
 )
 
 set(material_shader_root "${CMAKE_CURRENT_SOURCE_DIR}/../material/shaders")
-set(lighting_headers)
-foreach(shader FullscreenVertex DeferredLighting TonemapLinear TonemapSrgb)
+set(feature_shader_headers)
+foreach(shader FullscreenVertex DeferredLighting DeferredLightingShadow TonemapLinear TonemapSrgb)
     set(defines)
     if(shader STREQUAL "FullscreenVertex")
         set(source shaders/deferred/Fullscreen.vert)
-    elseif(shader STREQUAL "DeferredLighting")
+    elseif(shader MATCHES "^DeferredLighting")
         set(source shaders/deferred/DeferredLighting.frag)
+        if(shader STREQUAL "DeferredLightingShadow")
+            list(APPEND defines -DSHADOWS=1)
+        endif()
     else()
         set(source shaders/postprocess/Tonemap.frag)
         if(shader STREQUAL "TonemapSrgb")
@@ -159,20 +168,43 @@ foreach(shader FullscreenVertex DeferredLighting TonemapLinear TonemapSrgb)
             "-I${material_shader_root}" ${defines} "${CMAKE_CURRENT_SOURCE_DIR}/${source}" -o "${binary}"
         COMMAND lux_shader_metadata "${binary}" "${header}" k${shader}
         DEPENDS "${source}" lux_shader_metadata
+            shaders/shadow/ShadowPcf.glsl
             "${material_shader_root}/gbuffer_encode.glsl"
             "${material_shader_root}/brdf/brdf_common.glsl"
             "${material_shader_root}/brdf/brdf_ggx.glsl"
             "${material_shader_root}/brdf/direct_lighting.glsl"
         VERBATIM
     )
-    list(APPEND lighting_headers "${header}")
+    list(APPEND feature_shader_headers "${header}")
+endforeach()
+
+foreach(shader MeshFrustumCull MeshFrustumCullPaged MeshCompact)
+    set(defines)
+    if(shader STREQUAL "MeshFrustumCullPaged")
+        set(source shaders/mesh/MeshFrustumCull.comp)
+        list(APPEND defines -DPAGED_INSTANCES=1)
+    else()
+        set(source "shaders/mesh/${shader}.comp")
+    endif()
+    set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.hpp")
+    set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.spv")
+    add_custom_command(
+        OUTPUT "${header}"
+        BYPRODUCTS "${binary}"
+        COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3
+            ${defines} "${CMAKE_CURRENT_SOURCE_DIR}/${source}" -o "${binary}"
+        COMMAND lux_shader_metadata "${binary}" "${header}" k${shader}
+        DEPENDS "${source}" lux_shader_metadata
+        VERBATIM
+    )
+    list(APPEND feature_shader_headers "${header}")
 endforeach()
 
 add_component(
     COMPONENT_NAME render
     NAMESPACE lux::engine::function
     OUTPUT_NAME lux_engine_render
-    SOURCE_FILES ${render_sources} ${mesh_shader_headers} ${lighting_headers} "${hzb_header}"
+    SOURCE_FILES ${render_sources} ${mesh_shader_headers} ${feature_shader_headers} "${hzb_header}"
 )
 
 component_include_directories(
@@ -190,7 +222,7 @@ target_link_libraries(render
         lux::engine::core::error_values lux::engine::resource::description_types
         lux::engine::resource::shader_metadata STDEXEC::stdexec
         lux::engine::core::core_execution lux::engine::platform::platform_ipc
-    PRIVATE NRI
+    PRIVATE NRI Eigen3::Eigen
         lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared
         lux::engine::platform::platform_process
 )

@@ -508,6 +508,15 @@ namespace lux::render::detail
                     identity.depth = imageFormat(description.format).native;
                 }
                 identity.state = raster->graphics;
+                if (raster->state_input)
+                {
+                    if (!limits.features.dynamicDepthBias)
+                    {
+                        return cxx::unexpected(RenderError{kDeviceUnsupported});
+                    }
+                    // Keep bias enabled in the pipeline; the prepared value may be exactly zero.
+                    identity.state.depth_bias_constant = 1;
+                }
                 if (auto valid = validateDraw(*raster, graph, limits); !valid)
                 {
                     return cxx::unexpected(valid.error());
@@ -516,6 +525,13 @@ namespace lux::render::detail
                 recorded.colors = raster->colors;
                 recorded.depth = raster->depth;
                 recorded.draw = raster->draw;
+                recorded.viewport = raster->viewport;
+                recorded.state_input = raster->state_input;
+                recorded.depth_bias = {raster->graphics.depth_bias_constant, raster->graphics.depth_bias_slope};
+                if (raster->viewport && !raster->viewport->validate())
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
                 for (const auto& source : raster->vertex_buffers)
                 {
                     const auto binding =
@@ -622,7 +638,7 @@ namespace lux::render::detail
                 else
                 {
                     auto pipeline = std::holds_alternative<ComputeWork>(source.work)
-                                        ? compileCompute(device, core, *identity.layout, identity.shader)
+                                        ? compileCompute(device, core, enabled, *identity.layout, identity.shader)
                                         : compileGraphics(
                                               device,
                                               core,

@@ -6,6 +6,7 @@
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
 #include <lux/engine/render/features/FeatureBinding.hpp>
 #include <lux/engine/render/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/graph/Sampler.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/resource/StorageSet.hpp>
 #include <memory>
@@ -59,6 +60,7 @@ namespace lux::render::runtime_detail
         GraphStorageBindings storage_requirements;
         std::vector<StorageArgument> arguments;
         std::vector<detail::FeatureFrameContribution> bindings;
+        std::vector<SamplerDescription> samplers;
         std::vector<AttachmentId> attachments;
     };
 

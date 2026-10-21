@@ -30,6 +30,15 @@ namespace lux::render
         bool operator==(const MeshSubmesh&) const noexcept = default;
     };
 
+    struct MeshGpuBounds final
+    {
+        std::array<float, 4> center{}; // w = 1 for trusted bounds, 0 means conservatively visible.
+        std::array<float, 4> half_extent{};
+        bool operator==(const MeshGpuBounds&) const noexcept = default;
+    };
+
+    static_assert(sizeof(MeshGpuBounds) == 32);
+
     struct MeshDescription final
     {
         std::uint32_t vertex_stride = 0, vertex_count = 0;
@@ -37,6 +46,7 @@ namespace lux::render
         std::uint32_t index_stride = 4, index_count = 0;
         std::vector<MeshAttribute> attributes;
         std::vector<MeshSubmesh> submeshes;
+        MeshGpuBounds bounds;
         bool operator==(const MeshDescription&) const noexcept = default;
     };
 
@@ -54,7 +64,8 @@ namespace lux::render
     {
         VERTICES,
         INDICES,
-        SECTIONS
+        SECTIONS,
+        BOUNDS
     };
 
     struct MeshBinding final

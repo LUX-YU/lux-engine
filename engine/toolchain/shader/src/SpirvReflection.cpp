@@ -327,6 +327,8 @@ namespace lux::toolchain
             b.binding = binding;
             b.name = comp.get_name(r.id);
             b.type = EDescriptorType::SAMPLED_IMAGE;
+            b.image_arrayed = t.image.arrayed;
+            b.image_depth = t.image.depth;
             b.count = calcArraySize(comp, comp.get_type(r.type_id));
             pushBinding(out, b);
         }
@@ -354,6 +356,8 @@ namespace lux::toolchain
             b.binding = binding;
             b.name = comp.get_name(r.id);
             b.type = EDescriptorType::STORAGE_IMAGE;
+            b.image_arrayed = t.image.arrayed;
+            b.image_depth = t.image.depth;
             b.count = calcArraySize(comp, comp.get_type(r.type_id));
             b.writable = isWritableStorage(comp, r.id);
             pushBinding(out, b);

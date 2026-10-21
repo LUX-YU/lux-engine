@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
@@ -15,15 +16,22 @@
 
 namespace lux::render::detail
 {
+    ResourceInput RenderGraphInstance::resourceInput(GraphResourceId resource, std::uint32_t slot) const noexcept
+    {
+        const auto& input = frames_[slot].bindings[resource.index];
+        return {input.buffer, input.buffer_offset, input.buffer_size, input.parameters, input.parameter_layout};
+    }
+
     RenderGraphInstance::RenderGraphInstance(
         DeviceSession& session,
         std::uint32_t frame_count,
         const RenderPlan& plan,
-        OffscreenTarget* output
+        OffscreenTarget* output,
+        std::uint32_t parameter_bytes
     ) noexcept
         : session_(&session), plan_(&plan), target_(output ? output->description() : plan.target()), output_(output)
     {
-        instance_values_.resize(plan.descriptor_plan_->instance_parameters.size);
+        instance_values_.resize(std::max(plan.descriptor_plan_->instance_parameters.size, parameter_bytes));
         condition_values_.resize(plan.condition_count_);
         parameter_copies_.resize(plan.passes().size());
         for (const auto& pass : plan.passes())
@@ -37,6 +45,11 @@ namespace lux::render::detail
                 if (use.sampler != kGraphInvalidIndex && use.sampler >= samplers_.size())
                 {
                     samplers_.resize(std::size_t(use.sampler) + 1);
+                }
+                if (use.sampler != kGraphInvalidIndex)
+                {
+                    samplers_[use.sampler].comparison = use.comparison_sampler;
+                    samplers_[use.sampler].used = true;
                 }
             }
         }
@@ -92,13 +105,17 @@ namespace lux::render::detail
         binding.image = &image;
     }
 
-    RenderResult<void> RenderGraphInstance::bindSampler(std::uint32_t input, nri::Descriptor& sampler) noexcept
+    RenderResult<void> RenderGraphInstance::bindSampler(
+        std::uint32_t input,
+        nri::Descriptor& sampler,
+        bool comparison
+    ) noexcept
     {
-        if (input >= samplers_.size())
+        if (input >= samplers_.size() || samplers_[input].comparison != comparison)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        samplers_[input] = &sampler;
+        samplers_[input].descriptor = &sampler;
         return {};
     }
 
@@ -496,9 +513,16 @@ namespace lux::render::detail
                             ? (depth ? nri::TextureView::DEPTH_STENCIL_ATTACHMENT : nri::TextureView::COLOR_ATTACHMENT)
                             : (kind == EDescriptorKind::STORAGE_IMAGE ? nri::TextureView::STORAGE_TEXTURE
                                                                       : nri::TextureView::TEXTURE);
+                    const auto& program = plan_->descriptor_plan_->passes[plan_->passes()[pass].source_pass];
+                    const bool arrayed =
+                        target == Target::DESCRIPTOR && program.bindings[program.uses[index].field].image_arrayed;
+                    const auto view_type =
+                        arrayed ? (kind == EDescriptorKind::STORAGE_IMAGE ? nri::TextureView::STORAGE_TEXTURE_ARRAY
+                                                                          : nri::TextureView::TEXTURE_ARRAY)
+                                : type;
                     nri::TextureViewDesc input{
                         slot.image,
-                        type,
+                        view_type,
                         core.GetTextureDesc(*slot.image).format,
                         static_cast<nri::Dim_t>(selected.first_mip),
                         static_cast<nri::Dim_t>(selected.mip_count),
@@ -1065,6 +1089,15 @@ namespace lux::render::detail
         for (std::uint32_t p = 0; p < plan_->passes().size(); ++p)
         {
             const auto& compiled_pass = plan_->passes()[p];
+            if (const auto* raster = std::get_if<RasterCommands>(&compiled_pass.work); raster && raster->state_input)
+            {
+                const auto& input = *raster->state_input;
+                const auto bytes = frames_[0].bindings[input.resource.index].parameters.size();
+                if (input.offset > bytes || sizeof(RasterState) > bytes - input.offset)
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
+            }
             if (std::holds_alternative<TransferWork>(compiled_pass.work))
             {
                 continue;
@@ -1184,7 +1217,7 @@ namespace lux::render::detail
                         {
                             continue;
                         }
-                        auto* sampler = samplers_[use.sampler];
+                        auto* sampler = samplers_[use.sampler].descriptor;
                         if (!sampler)
                         {
                             return cxx::unexpected(RenderError{kDeviceArgument});
@@ -1423,8 +1456,11 @@ namespace lux::render::detail
                     const auto& range = std::get<GraphImageRange>(use.range);
                     nri::TextureViewDesc description{
                         source.image,
-                        use.kind == EDescriptorKind::STORAGE_IMAGE ? nri::TextureView::STORAGE_TEXTURE
-                                                                   : nri::TextureView::TEXTURE,
+                        use.kind == EDescriptorKind::STORAGE_IMAGE
+                            ? (program.bindings[use.field].image_arrayed ? nri::TextureView::STORAGE_TEXTURE_ARRAY
+                                                                         : nri::TextureView::STORAGE_TEXTURE)
+                            : (program.bindings[use.field].image_arrayed ? nri::TextureView::TEXTURE_ARRAY
+                                                                         : nri::TextureView::TEXTURE),
                         imageFormat(std::get<GraphImageDesc>(uses.description).format).native,
                         static_cast<nri::Dim_t>(range.first_mip),
                         static_cast<nri::Dim_t>(range.mip_count),
@@ -1572,6 +1608,23 @@ namespace lux::render::detail
         frame.viewport = viewport_;
         for (std::size_t p = 0; p < frame.passes.size(); ++p)
         {
+            if (const auto* raster = std::get_if<RasterCommands>(&frame.passes[p].compiled_pass->work);
+                raster && raster->state_input)
+            {
+                const auto& input = *raster->state_input;
+                auto& state = frame.passes[p].raster_state;
+                std::memcpy(
+                    &state,
+                    frame.bindings[input.resource.index].parameters.data() + input.offset,
+                    sizeof(state)
+                );
+                const bool invalid_bias =
+                    !std::isfinite(state.depth_bias_constant) || !std::isfinite(state.depth_bias_slope);
+                if (invalid_bias || !state.viewport.validate())
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
+            }
             auto& parameters = frame.passes[p].parameters;
             std::ranges::copy(pass_parameters_[p], parameters.begin());
             for (const auto& copy : parameter_copies_[p])

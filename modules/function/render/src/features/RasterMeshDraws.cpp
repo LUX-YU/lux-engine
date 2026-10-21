@@ -74,6 +74,12 @@ namespace lux::render::detail
             --words_[1];
         }
         ++revision_;
+        // Preparation may have uploaded only a prefix. A changed candidate set invalidates that
+        // prefix, including its count header; it is not a continuation of the previous revision.
+        for (auto& slice : gpu_)
+        {
+            slice.uploaded_bytes = 0;
+        }
     }
 
     RenderResult<FeatureBinding::Preparation> RasterMeshDraws::prepare(
@@ -85,6 +91,10 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
+        if (words_[1] > capacity_)
+        {
+            return cxx::unexpected(RenderError{kStorageCapacity});
+        }
         auto& slice = gpu_[slot];
         slice.pending_revision = 0;
         const auto prepared = [&](FeatureBinding::EPreparation state) noexcept
@@ -92,8 +102,8 @@ namespace lux::render::detail
             FeatureBinding::Preparation result{state};
             if (std::exchange(slice.binding_changed, false))
             {
-                result.changed_resource =
-                    ResourceInput{slice.buffer, 0, session_.nriCore().GetBufferDesc(*slice.buffer).size};
+                update_.input = ResourceInput{slice.buffer, 0, session_.nriCore().GetBufferDesc(*slice.buffer).size};
+                result.resources = std::span(&update_, 1);
             }
             if (state == FeatureBinding::EPreparation::RECORD)
             {
@@ -204,6 +214,8 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
         auto value = std::unique_ptr<RasterMeshDraws>(new RasterMeshDraws(session, frames, registry, group));
+        value->update_.resource = configuration.members;
+        value->capacity_ = configuration.capacity;
         const CompiledResource section_plan{
             "sections",
             GraphBufferDesc{description->submeshes.size() * sizeof(MeshGpuSection)},
@@ -233,8 +245,8 @@ namespace lux::render::detail
         (*instances)->observe(value->observer_);
         return FeatureBinding{
             {value.release(), [](void* pointer) noexcept { delete static_cast<RasterMeshDraws*>(pointer); }},
-            [](void* pointer, std::uint32_t slot, ResourceUploader& uploads) noexcept
-            { return static_cast<RasterMeshDraws*>(pointer)->prepare(slot, uploads); }
+            [](void* pointer, const FeatureFrameInput& input, ResourceUploader& uploads) noexcept
+            { return static_cast<RasterMeshDraws*>(pointer)->prepare(input.slot, uploads); }
         };
     }
 } // namespace lux::render::detail

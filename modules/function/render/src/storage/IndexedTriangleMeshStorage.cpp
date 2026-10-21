@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
@@ -38,6 +39,15 @@ namespace lux::render::detail
     ) const noexcept
     {
         const auto& limits = session_.description();
+        const auto& bounds = description.bounds;
+        const bool invalid_bounds =
+            bounds.center[3] != 0 &&
+            (bounds.center[3] != 1 || !std::ranges::all_of(bounds.center, [](float v) { return std::isfinite(v); }) ||
+             !std::ranges::all_of(bounds.half_extent, [](float v) { return std::isfinite(v) && v >= 0; }));
+        if (invalid_bounds)
+        {
+            return cxx::unexpected(RenderError{kStorageContract});
+        }
         const bool invalid_vertices = !description.vertex_count || !description.vertex_stride ||
                                       description.vertex_stride > session_.vertexStrideLimit() ||
                                       description.vertex_stride % 4;
@@ -154,14 +164,15 @@ namespace lux::render::detail
         {
             records.push_back({section.index_count, section.first_index, section.vertex_offset});
         }
-        auto sections = sections_.allocate(records.size() * sizeof(MeshGpuSection), 4);
+        const auto bounds_offset = (records.size() * sizeof(MeshGpuSection) + 15) & ~std::size_t{15};
+        auto sections = sections_.allocate(bounds_offset + sizeof(MeshGpuBounds), 16);
         if (!sections)
         {
             co_return cxx::unexpected(sections.error());
         }
         Geometry geometry{std::move(*vertices), std::move(*indices), std::move(*sections)};
         cxx::scope_exit rollback([&]() noexcept { retire(geometry); });
-        std::array<BufferWrite, 4> writes;
+        std::array<BufferWrite, 5> writes;
         std::size_t count = 0;
         writes[count++] = {geometry.vertices.buffer, geometry.vertices.offset, input.source.first(vertex_bytes)};
         const auto index_source = input.source.subspan(input.description.index_offset, index_bytes);
@@ -177,6 +188,11 @@ namespace lux::render::detail
             writes[count++] = {geometry.indices.buffer, geometry.indices.offset + full_words, tail};
         }
         writes[count++] = {geometry.sections.buffer, geometry.sections.offset, std::as_bytes(std::span(records))};
+        writes[count++] = {
+            geometry.sections.buffer,
+            geometry.sections.offset + bounds_offset,
+            std::as_bytes(std::span(&input.description.bounds, 1))
+        };
         if (auto uploaded = co_await uploads_.writeBuffers(std::span(writes).first(count)); !uploaded)
         {
             co_return cxx::unexpected(uploaded.error());
@@ -219,7 +235,7 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
         const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
-        const bool is_invalid_kind = argument.buffer > EMeshBuffer::SECTIONS;
+        const bool is_invalid_kind = argument.buffer > EMeshBuffer::BOUNDS;
         const bool is_mismatch = !description || is_invalid_kind;
         if (is_mismatch)
         {
@@ -227,10 +243,12 @@ namespace lux::render::detail
         }
         const bool vertex = argument.buffer == EMeshBuffer::VERTICES;
         const bool index = argument.buffer == EMeshBuffer::INDICES;
-        const bool is_layout_mismatch =
-            vertex ? argument.stride != entry->description.vertex_stride ||
-                         argument.attributes != entry->description.attributes
-                   : argument.stride != (index ? entry->description.index_stride : sizeof(MeshGpuSection));
+        const bool bounds = argument.buffer == EMeshBuffer::BOUNDS;
+        const bool is_layout_mismatch = vertex ? argument.stride != entry->description.vertex_stride ||
+                                                     argument.attributes != entry->description.attributes
+                                               : argument.stride != (index    ? entry->description.index_stride
+                                                                     : bounds ? sizeof(MeshGpuBounds)
+                                                                              : sizeof(MeshGpuSection));
         if (is_layout_mismatch)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
@@ -238,11 +256,17 @@ namespace lux::render::detail
         const auto& range = vertex  ? entry->geometry.vertices
                             : index ? entry->geometry.indices
                                     : entry->geometry.sections;
-        if (description->size > range.size)
+        const auto offset =
+            bounds ? (entry->description.submeshes.size() * sizeof(MeshGpuSection) + 15) & ~std::size_t{15} : 0;
+        const auto size = bounds ? sizeof(MeshGpuBounds)
+                          : argument.buffer == EMeshBuffer::SECTIONS
+                              ? entry->description.submeshes.size() * sizeof(MeshGpuSection)
+                              : range.size;
+        if (description->size > size)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        return ResourceInput{range.buffer, range.offset, range.size};
+        return ResourceInput{range.buffer, range.offset + offset, size};
     }
 
     void IndexedTriangleMeshStorage::retire(Geometry& geometry) noexcept

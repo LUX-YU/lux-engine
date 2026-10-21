@@ -574,6 +574,10 @@ namespace lux::render
             if (const auto* raster = std::get_if<RasterWork>(&passes[id.index].work))
             {
                 input = &raster->interface;
+                if (raster->state_input)
+                {
+                    parameters[raster->state_input->resource.index] = true;
+                }
             }
             if (const auto* compute = std::get_if<ComputeWork>(&passes[id.index].work))
             {

@@ -10,6 +10,8 @@ namespace lux::render::detail
     {
         GraphResourceId instances;
         MeshInstanceDrawGroup selection;
+        GraphResourceId members;
+        std::uint32_t capacity = UINT32_MAX;
     };
 
     // One Attachment's derived selection and indirect commands. RasterMeshInstanceStorage only reports
@@ -46,5 +48,7 @@ namespace lux::render::detail
         std::uint64_t revision_ = 1;
         std::vector<std::uint32_t> words_, positions_;
         bool available_ = true;
+        ResourceUpdate update_;
+        std::uint32_t capacity_ = UINT32_MAX;
     };
 } // namespace lux::render::detail

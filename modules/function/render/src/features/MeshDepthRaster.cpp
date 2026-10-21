@@ -1,3 +1,4 @@
+#include <lux/engine/render/features/MeshDepthRaster.hpp>
 #include <lux/engine/render/features/RasterMesh.hpp>
 #include <lux/engine/render/runtime/Registration.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshCommandHandler.hpp>
@@ -6,12 +7,8 @@
 
 namespace lux::render
 {
-    const FeatureDescriptor MeshDepthRasterDescriptor::descriptor{
-        name,
-        cppType<Config>(),
-        "Depth raster passes over indexed triangle meshes and raster instances.",
-        detail::describe<true>
-    };
+    const FeatureDescriptor MeshDepthRasterDescriptor::
+        descriptor{name, cppType<Config>(), "Depth raster passes over indexed triangle meshes and raster instances.", detail::describe<true>};
 
     template <>
     RenderResult<void> RenderServer::prepareFeature<MeshDepthRasterDescriptor>(

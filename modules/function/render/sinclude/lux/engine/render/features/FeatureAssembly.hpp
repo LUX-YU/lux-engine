@@ -41,6 +41,7 @@ namespace lux::render
         std::vector<FeatureContribution> contributions;
         std::vector<StorageArgument> arguments;
         std::vector<detail::FeatureFrameContribution> bindings;
+        std::vector<SamplerDescription> samplers;
     };
 
     [[nodiscard]] LUX_RENDER_PUBLIC std::string featureKey(

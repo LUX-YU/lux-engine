@@ -1,3 +1,5 @@
+#include <lux/engine/render/features/MaterialMeshRaster.hpp>
+#include <lux/engine/render/features/MeshDepthRaster.hpp>
 #include <lux/engine/render/features/RasterMesh.hpp>
 
 #include <algorithm>
@@ -152,7 +154,8 @@ namespace lux::render::detail
         std::string_view prefix,
         rdesc::EMaterialPurpose purpose,
         bool paged,
-        FeatureBuildContext& context
+        FeatureBuildContext& context,
+        bool derive_members
     ) noexcept
     {
         const auto resource = [&](std::string_view local)
@@ -279,12 +282,19 @@ namespace lux::render::detail
         argument("matrices", MeshInstanceBinding{EMeshInstanceBinding::TRANSFORMS});
         argument("properties", MeshInstanceBinding{EMeshInstanceBinding::PROPERTIES});
         argument("alive", MeshInstanceBinding{EMeshInstanceBinding::ALIVE});
-        auto configuration = ConfigValue::make(MeshDrawConfiguration{resource("matrices").resource, config.group});
-        if (!configuration)
+        if (derive_members)
         {
-            return cxx::unexpected(configuration.error());
+            auto configuration = ConfigValue::make(
+                MeshDrawConfiguration{resource("matrices").resource, config.group, resource("members").resource}
+            );
+            if (!configuration)
+            {
+                return cxx::unexpected(configuration.error());
+            }
+            context.bindings.push_back(
+                {{resource("members").resource}, std::move(*configuration), &RasterMeshDraws::create}
+            );
         }
-        context.bindings.push_back({resource("members").resource, std::move(*configuration), &RasterMeshDraws::create});
         if (use)
         {
             shader.stages.insert(shader.stages.end(), use->shader.stages.begin(), use->shader.stages.end());

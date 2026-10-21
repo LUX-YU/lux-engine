@@ -24,7 +24,7 @@ add_custom_command(
     COMMAND render_material_asset_tool "${shader}.spv" texture
     COMMAND lux_shader_metadata "${shader}.spv" "${shader}.spv.meta"
     DEPENDS render_material_asset_tool lux_shader_metadata "${shader_root}/material_types.glsl"
-        "${shader_root}/texture_sampling.glsl" "${shader_root}/transition_dither.glsl"
+        "${shader_root}/texture_sampling.glsl"
     VERBATIM
 )
 add_custom_target(render_sample_assets ALL DEPENDS "${shader}.spv" "${shader}.spv.meta")

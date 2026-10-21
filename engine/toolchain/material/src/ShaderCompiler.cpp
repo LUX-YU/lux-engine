@@ -4,15 +4,15 @@
 //  shaderc only appears here (PRIVATE, never leaks into Backend.hpp). Target env
 //  is vulkan1.2, matching the engine's builtin shaders (glslc --target-env=vulkan1.2).
 //
-//  The shell includes the canonical build-time resources (gbuffer_encode.glsl,
-//  lighting_common.glsl, etc.) from an immutable in-memory map. Installed
+//  The shell includes GBuffer encoding, material records and texture sampling
+//  from an immutable in-memory map. Installed
 //  compilers never read the original source checkout or build directory.
 // =============================================================================
 
-#include <lux/engine/material/compiler/Backend.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
-#include <lux/engine/toolchain/shader/SpirvReflection.hpp>
+#include <lux/engine/material/compiler/Backend.hpp>
 #include <lux/engine/material/compiler/MaterialShaderIncludes.generated.hpp>
+#include <lux/engine/toolchain/shader/SpirvReflection.hpp>
 
 #include <shaderc/shaderc.hpp>
 
@@ -51,9 +51,8 @@ namespace lux::shadergen::glsl
                     const auto resource = std::find_if(
                         resources::kMaterialShaderIncludes.begin(),
                         resources::kMaterialShaderIncludes.end(),
-                        [requested_name](const resources::EmbeddedShaderInclude& candidate) {
-                            return candidate.name == requested_name;
-                        }
+                        [requested_name](const resources::EmbeddedShaderInclude& candidate)
+                        { return candidate.name == requested_name; }
                     );
                     if (resource != resources::kMaterialShaderIncludes.end())
                     {
@@ -98,7 +97,9 @@ namespace lux::shadergen::glsl
     {
         auto source_exp = emitGlsl(ir, params);
         if (!source_exp)
+        {
             return lux::cxx::unexpected(std::move(source_exp.error()));
+        }
         const std::string& source = *source_exp;
 
         shaderc::Compiler compiler;
@@ -112,28 +113,20 @@ namespace lux::shadergen::glsl
             compiler.CompileGlslToSpv(source, shaderc_fragment_shader, "shadergen.frag", options);
 
         if (result.GetCompilationStatus() != shaderc_compilation_status_success)
+        {
             return lux::cxx::unexpected(
                 "shadergen: shaderc failed: " + result.GetErrorMessage() + "\n--- generated GLSL ---\n" + source
             );
+        }
 
         CompiledShader out;
         out.spirv.assign(result.cbegin(), result.cend());
 
-        // Reflection is extracted in full from the SPIR-V we just compiled
-        // (via spirv-cross), no more hand-written approximation.
-        //
-        // The old implementation hand-stuffed uTex/uMats entries based on
-        // whether the IR contained SampleTexture/Param -- but the forward
-        // variant's shader pulls in the entire lighting/shadow family via
-        // #include (uViews, uSpotLights..., uShadowSlices..., a dozen-plus
-        // bindings), so that hand-rolled reflection only ever covered a
-        // subset of what the module actually uses. The render side builds
-        // its layout from reflection, so a partial reflection means some
-        // referenced sets are missing from the layout ("uses set #N but not
-        // bound"), which addMergedLayoutVariant's completeness check already
-        // catches. The sole source of reflection is the Toolchain adapter.
+        // Cooked layout and stage interfaces come from the actual compiled SPIR-V.
         if (!lux::toolchain::reflectSpirv(out.spirv.data(), out.spirv.size() * sizeof(uint32_t), out.info))
+        {
             return lux::cxx::unexpected(std::string("shadergen: SPIR-V reflection failed"));
+        }
         return out;
     }
 

@@ -20,15 +20,18 @@ namespace lux::material
 
     lux::cxx::expected<std::shared_ptr<const lux::asset::MaterialAsset>, MaterialCookFailure> cookMaterial(
         lux::asset::AssetInfo info,
-        const MaterialGraph& graph
+        const MaterialGraph& graph,
+        std::span<const lux::rdesc::EMaterialPurpose> purposes
     ) noexcept
     {
         if (info.id.isNull())
+        {
             return lux::cxx::unexpected(
                 failure(EMaterialCookError::INVALID_ASSET_INFO, "material AssetInfo has a null AssetId")
             );
+        }
 
-        auto compiled = compileMaterial(graph);
+        auto compiled = compileMaterial(graph, purposes);
         if (!compiled)
         {
             auto compile_failure = std::move(compiled.error());
@@ -42,24 +45,29 @@ namespace lux::material
             auto description = std::make_shared<const lux::rdesc::MaterialDescription>(std::move(*compiled));
             auto asset = lux::asset::MaterialAsset::create(std::move(info), std::move(description));
             if (!asset)
+            {
                 return lux::cxx::unexpected(failure(
                     EMaterialCookError::INVALID_ASSET,
                     "compiled MaterialDescription failed typed Asset validation"
                 ));
+            }
             return *asset;
         }
     }
 
     lux::cxx::expected<std::shared_ptr<const lux::asset::MaterialAsset>, MaterialCookFailure> cookImportedMaterial(
         lux::asset::AssetInfo info,
-        const ImportedMaterialDescription& imported
+        const ImportedMaterialDescription& imported,
+        std::span<const lux::rdesc::EMaterialPurpose> purposes
     ) noexcept
     {
         {
             auto graph = compiler::materialToGraph(imported);
             if (!graph)
+            {
                 return lux::cxx::unexpected(failure(EMaterialCookError::IMPORT_FAILURE, std::move(graph.error())));
-            return cookMaterial(std::move(info), *graph);
+            }
+            return cookMaterial(std::move(info), *graph, purposes);
         }
     }
 } // namespace lux::material

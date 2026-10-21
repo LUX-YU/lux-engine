@@ -30,7 +30,8 @@ int main(int argc, char** argv)
     {
         material_test::check(material_test::connect(graph, parameter, 0, surface, 0));
     }
-    auto compiled = compileMaterial(graph);
+    constexpr std::array purposes{lux::rdesc::EMaterialPurpose::FORWARD};
+    auto compiled = compileMaterial(graph, purposes);
     if (!compiled)
     {
         std::fprintf(stderr, "%s\n", compiled.error().message.c_str());

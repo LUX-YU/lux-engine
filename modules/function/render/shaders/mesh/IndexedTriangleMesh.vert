@@ -20,9 +20,6 @@ layout(location=5) out vec4 vWorldTangent;
 layout(location=6) out vec3 vWorldBitangent;
 #endif
 layout(location=4) out flat uint vMatIndex;
-layout(location=7) out flat float vTransitionCoverage;
-layout(location=8) out flat uint vTransitionSeed;
-layout(location=9) out flat uint vTransitionFadeOut;
 #endif
 struct Transform { mat4 model; };
 struct Property { uint mesh_index; uint material_index; uint section_index; };
@@ -81,8 +78,5 @@ void main()
 #endif
 #endif
     vMatIndex = property.material_index;
-    vTransitionCoverage = 1;
-    vTransitionSeed = 0;
-    vTransitionFadeOut = 0;
 #endif
 }

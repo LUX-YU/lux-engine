@@ -105,7 +105,8 @@ int main(int argc, char** argv)
             const auto name = "Materials/Material-" + std::to_string(index);
             auto asset = lux::material::cookImportedMaterial(
                 info(20 + index, lux::asset::MaterialAsset::asset_type, name.c_str()),
-                material
+                material,
+                std::array{lux::rdesc::EMaterialPurpose::GBUFFER, lux::rdesc::EMaterialPurpose::SHADOW}
             );
             if (!asset)
             {

@@ -11,7 +11,7 @@
 //  live outside the ShaderIR (they're shell concerns, not expressions); the
 //  caller pulls these from the module-owned MaterialIR to fill it in.
 //
-//  Emits actual Forward, GBuffer and coverage-only Shadow uses. Textures, parameters,
+//  Emits Forward Unlit, GBuffer and coverage-only Shadow uses. Textures, parameters,
 //  TBN and graph expressions share the same record ABI. Visibility-buffer use is deferred.
 // =============================================================================
 
@@ -37,7 +37,7 @@ namespace lux::shadergen::glsl
         float alpha_cutoff{0.5F};
     };
 
-    /// Compilation output: SPIR-V words plus this shader's ShaderInfo (descriptor layout for set2/set4).
+    /// Compilation output: SPIR-V words and the actual reflected interface.
     struct CompiledShader
     {
         std::vector<uint32_t> spirv;

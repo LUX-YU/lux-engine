@@ -3,7 +3,7 @@
 // -----------------------------------------------------------------------------
 //  Walks the SSA values in topological order, emitting one GLSL local per value
 //  (giving automatic CSE), then emits the shell epilogue based on pass/shading_model.
-//  Matches the behavior of the old material_graph_glsl emitter, but:
+//  Emits surface expressions for each requested material purpose:
 //    - it consumes the generic ShaderIR: Input references come from
 //      self-contained InputSlot entries (name/type/location), and outputs are
 //      looked up by name (falling back to Output.dflt when value_id==kNoValue);
@@ -11,7 +11,7 @@
 //      (gbuffer_encode.glsl) instead of hand-copying it inline (ShaderCompiler
 //      wires up an IncluderInterface for this).
 //
-//  Cooked Forward/GBuffer/Shadow purposes share parameters and coverage.
+//  Forward Unlit, GBuffer and Shadow coverage share one canonical parameter layout.
 //  Normal decode and tangent-to-world transformation are explicit graph operations.
 //  RawExpr and visibility-buffer output remain unsupported.
 // =============================================================================
@@ -105,13 +105,7 @@ namespace lux::shadergen::glsl
             return s;
         }
 
-        // InputSlot.name (contract glsl_name) -> the interpolant variable name used by
-        // the engine material's vertex shader. The backend-neutral core keeps
-        // InputSlot.name as a generic glsl_name; the "engine uses vXxx" convention
-        // belongs to the material client (the engine half) and lives here -- this lets
-        // the forward shell #include lighting_common.glsl and reuse its input
-        // declarations, and keeps GBuffer's input naming consistent with the engine's
-        // gbuffer fragment shader.
+        // Material stage input names match the mesh feature's vertex outputs.
         std::string interpName(const std::string& glsl_name)
         {
             if (glsl_name == "world_position")
@@ -419,296 +413,167 @@ namespace lux::shadergen::glsl
         };
     } // namespace
 
-    lux::cxx::expected<std::string, std::string> emitGlsl(const ShaderIR& ir, const EmitParams& p)
+    lux::cxx::expected<std::string, std::string> emitGlsl(const ShaderIR& ir, const EmitParams& parameters)
     {
-        std::string error;
-
-        if (p.alpha_mode == rdesc::EAlphaMode::BLEND)
+        const bool shadow = parameters.purpose == rdesc::EMaterialPurpose::SHADOW;
+        const bool gbuffer = parameters.purpose == rdesc::EMaterialPurpose::GBUFFER;
+        const bool forward = parameters.purpose == rdesc::EMaterialPurpose::FORWARD;
+        const bool unlit = parameters.shading_model == rdesc::ELightingTechnique::UNLIT;
+        const bool pbr = parameters.shading_model == rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS;
+        const bool unsupported_purpose =
+            (!shadow && !gbuffer && !forward) || (forward && !unlit) || (gbuffer && !unlit && !pbr);
+        if (unsupported_purpose)
+        {
+            return lux::cxx::unexpected(std::string("shadergen: requested purpose does not support this shading model")
+            );
+        }
+        if (parameters.alpha_mode == rdesc::EAlphaMode::BLEND)
         {
             return lux::cxx::unexpected(std::string("shadergen: transparent material use is not supported"));
         }
-        const bool shadow = p.purpose == rdesc::EMaterialPurpose::SHADOW;
-        const bool gbuffer = p.purpose == rdesc::EMaterialPurpose::GBUFFER;
-        const bool unlit = p.shading_model == rdesc::ELightingTechnique::UNLIT;
-        const bool forward_lit = !gbuffer && !shadow && !unlit;
-        const bool forward_toon = forward_lit && p.shading_model == rdesc::ELightingTechnique::STYLIZED;
 
-        // Lowering already emits topologically ordered SSA. Shadow consumes only coverage;
-        // walk its dependencies backwards without copying or renumbering the shared material IR.
-        std::vector<std::uint8_t> selected(ir.values.size(), shadow ? 0 : 1);
-        if (shadow && p.alpha_mode == rdesc::EAlphaMode::MASK)
+        // Each use consumes only its surface outputs. Mark operands backwards in the existing
+        // topological IR; do not copy the graph or change the shared material record layout.
+        std::vector<std::uint8_t> selected(ir.values.size(), 0);
+        const auto select = [&](std::string_view name)
         {
-            const auto opacity = std::ranges::find(ir.outputs, "opacity", &Output::name);
-            if (opacity != ir.outputs.end() && opacity->value_id != kNoValue)
+            const auto output = std::ranges::find(ir.outputs, name, &Output::name);
+            if (output != ir.outputs.end() && output->value_id != kNoValue)
             {
-                selected[opacity->value_id] = 1;
+                selected[output->value_id] = 1;
             }
-            for (std::size_t i = selected.size(); i != 0; --i)
+        };
+        if (!shadow)
+        {
+            select("base_color");
+            select("emissive");
+        }
+        if (gbuffer && !unlit)
+        {
+            for (auto name : {"metallic", "roughness", "normal_world", "ao"})
             {
-                if (!selected[i - 1])
-                {
-                    continue;
-                }
-                for (auto operand : ir.values[i - 1].operands)
-                {
-                    if (operand != kNoValue)
-                    {
-                        selected[operand] = 1;
-                    }
-                }
+                select(name);
             }
         }
-        bool tex_mode = false, param_mode = false;
-        for (std::size_t i = 0; i < ir.values.size(); ++i)
+        if (forward || parameters.alpha_mode == rdesc::EAlphaMode::MASK)
         {
-            if (!selected[i])
+            select("opacity");
+        }
+        for (std::size_t i = selected.size(); i != 0; --i)
+        {
+            if (!selected[i - 1])
             {
                 continue;
             }
-            const auto& v = ir.values[i];
-            if (v.op == EOp::SAMPLE_TEXTURE)
+            for (auto operand : ir.values[i - 1].operands)
             {
-                tex_mode = true;
-            }
-            if (v.op == EOp::PARAM)
-            {
-                param_mode = true;
+                if (operand != kNoValue)
+                {
+                    selected[operand] = 1;
+                }
             }
         }
 
-        Emitter em{ir, &error};
-        em.tex_mode = tex_mode;
-        em.need_mat = tex_mode || param_mode; // Any per-material data -> Graph family
-        if (!em.emitValues(selected))
+        std::string error;
+        Emitter emitter{ir, &error};
+        for (std::size_t i = 0; i < selected.size(); ++i)
+        {
+            if (selected[i])
+            {
+                emitter.tex_mode |= ir.values[i].op == EOp::SAMPLE_TEXTURE;
+                emitter.need_mat |= ir.values[i].op == EOp::PARAM;
+            }
+        }
+        emitter.need_mat |= emitter.tex_mode;
+        if (!emitter.emitValues(selected))
         {
             return lux::cxx::unexpected(error.empty() ? std::string("shadergen: emitValues failed") : std::move(error));
         }
 
-        // Lit uses the graph's world-space normal or the actual geometry input; Unlit needs neither.
-        std::string normalExpr;
-        if (gbuffer || forward_lit)
+        std::string normal;
+        if (gbuffer)
         {
-            const bool normal_bound = !unlit && em.hasBoundOutput("normal_world");
-            normalExpr = unlit          ? "vec3(0.0, 0.0, 1.0)"
-                         : normal_bound ? "normalize(" + em.attr("normal_world") + ")"
-                                        : "normalize(" + em.ensureWorldNormal() + ")";
+            const bool normal_bound = !unlit && emitter.hasBoundOutput("normal_world");
+            normal = unlit          ? "vec3(0.0, 0.0, 1.0)"
+                     : normal_bound ? "normalize(" + emitter.attr("normal_world") + ")"
+                                    : "normalize(" + emitter.ensureWorldNormal() + ")";
         }
-
-        // Transition coverage is a fixed mesh-pass contract, not an optional
-        // material-graph input. The shared mesh vertex shaders always emit
-        // locations 7..9 and every material family must apply the same stable
-        // parent/child dither. Forward-lit graphs inherit these declarations
-        // from lighting_common; compact GBuffer/Forward-Unlit shells declare
-        // them explicitly even when the authored graph has no input nodes.
-        if (!forward_lit)
-        {
-            em.declared_in[7] = {"flat float", "vTransitionCoverage"};
-            em.declared_in[8] = {"flat uint", "vTransitionSeed"};
-            em.declared_in[9] = {"flat uint", "vTransitionFadeOut"};
-        }
-        const char* gbuffer_sm_id =
-            p.shading_model == rdesc::ELightingTechnique::STYLIZED ? "LUX_SM_TOON" : "LUX_SM_PBR";
 
         std::ostringstream out;
         out << "#version 450\n";
         out << "#define LUX_MATERIAL_SHADER_ABI " << rdesc::kMaterialShaderAbi << "u\n";
         out << "#define LUX_TEXTURE_DEFAULT_WHITE " << rdesc::kTextureDefaultWhite << "u\n";
-        if (em.tex_mode ||
-            forward_lit) // forward's lighting_common always needs this extension for the unbounded uTex[]
+        if (emitter.tex_mode)
         {
             out << "#extension GL_EXT_nonuniform_qualifier : require\n";
         }
-
-        const auto material_record = [&]()
+        for (const auto& [location, input] : emitter.declared_in)
         {
+            out << "layout(location = " << location << ") in " << input.first << " " << input.second << ";\n";
+        }
+        if (gbuffer)
+        {
+            out << "layout(location = 0) out vec4 gAlbedoMetallic;\n";
+            out << "layout(location = 1) out vec4 gNormalRoughness;\n";
+            out << "layout(location = 2) out vec4 gEmissiveAo;\n";
+        }
+        else if (forward)
+        {
+            out << "layout(location = 0) out vec4 outColor;\n";
+        }
+        if (emitter.need_mat)
+        {
+            out << "#include \"material_types.glsl\"\n";
             out << "struct GraphMaterialRecord {\n"
                 << " vec4 " << rdesc::kMaterialParametersName << "[" << std::max<std::size_t>(1, ir.params.size())
                 << "];\n"
                 << " TextureRefGPU " << rdesc::kMaterialTexturesName << "["
                 << std::max<std::size_t>(1, ir.textures.size()) << "];\n};\n";
-        };
-
-        if (forward_lit)
-        {
-            // Forward shell: #includes the aggregated single-source-of-truth
-            // lighting_common (which provides the FS input / set-0,2,3
-            // bindings / push constant / ViewGpuData / kAmbient /
-            // material_types / uTex), so this does NOT declare its own
-            // input/out/uTex/material_types -- it only adds the set-4 Graph SSBO.
-            out << "#include \"lighting_common.glsl\"\n";
-            out << "#ifndef LUX_SHADOW_TECHNIQUE_ID\n#define LUX_SHADOW_TECHNIQUE_ID 0\n#endif\n";
-            out << "#if LUX_SHADOW_TECHNIQUE_ID == 0\n"
-                << "#include \"shadow_pcf.glsl\"\n"
-                << "#elif LUX_SHADOW_TECHNIQUE_ID == 1\n"
-                << "#include \"shadow_evsm.glsl\"\n"
-                << "#else\n#error \"Unknown LUX_SHADOW_TECHNIQUE_ID\"\n#endif\n";
-            out << "#include \"brdf/brdf_common.glsl\"\n";
-            out << (forward_toon ? "#include \"brdf/brdf_toon.glsl\"\n" : "#include \"brdf/brdf_ggx.glsl\"\n");
-            if (em.need_mat)
+            if (emitter.tex_mode)
             {
-                material_record();
-                out << "layout(set = 4, binding = 4, std430) readonly buffer MatBuf {\n"
-                    << "    GraphMaterialRecord mats[];\n"
-                    << "} " << rdesc::kMaterialTableName << ";\n";
+                out << "layout(set = 2, binding = 0) uniform texture2D uTex[];\n";
+                out << "layout(set = 2, binding = 2) uniform sampler uTexSamplers[];\n";
+                out << "#include \"texture_sampling.glsl\"\n";
             }
+            out << "layout(set = 4, binding = 4, std430) readonly buffer MatBuf {\n"
+                << "    GraphMaterialRecord mats[];\n"
+                << "} " << rdesc::kMaterialTableName << ";\n";
         }
-        else // GBuffer / Forward-Unlit: declares its own input + out + resource blocks.
+        if (gbuffer)
         {
-            for (const auto& [loc, tn] : em.declared_in)
-            {
-                out << "layout(location = " << loc << ") in " << tn.first << " " << tn.second << ";\n";
-            }
-
-            if (gbuffer)
-            {
-                out << "layout(location = 0) out vec4 gAlbedoMetallic;\n";
-                out << "layout(location = 1) out vec4 gNormalRoughness;\n";
-                out << "layout(location = 2) out vec4 gEmissiveAo;\n";
-            }
-            else if (!shadow)
-            {
-                out << "layout(location = 0) out vec4 outColor;\n";
-            }
-
-            out << "#include \"transition_dither.glsl\"\n";
-
-            // The record shape comes from this IR. Only the texture reference
-            // representation and sampling implementation are shared includes.
-            if (em.need_mat)
-            {
-                out << "#include \"material_types.glsl\"\n";
-                material_record();
-                if (em.tex_mode)
-                {
-                    out << "layout(set = 2, binding = 0) uniform texture2D uTex[];\n";
-                    out << "layout(set = 2, binding = 2) uniform sampler uTexSamplers[];\n";
-                    out << "#include \"texture_sampling.glsl\"\n";
-                }
-                out << "layout(set = 4, binding = 4, std430) readonly buffer MatBuf {\n"
-                    << "    GraphMaterialRecord mats[];\n"
-                    << "} " << rdesc::kMaterialTableName << ";\n";
-            }
-            if (gbuffer)
-            {
-                // The real single-source-of-truth, resolved by the Includer rather than copied inline.
-                out << "#include \"gbuffer_encode.glsl\"\n";
-            }
+            out << "#include \"gbuffer_encode.glsl\"\n";
         }
 
         out << "\nvoid main()\n{\n";
-        out << "    luxApplyDirectedTransitionCoverage(\n"
-               "        vTransitionCoverage, vTransitionSeed, vTransitionFadeOut != 0u);\n";
-        out << em.body.str();
-
-        if (p.alpha_mode == rdesc::EAlphaMode::MASK)
+        out << emitter.body.str();
+        if (parameters.alpha_mode == rdesc::EAlphaMode::MASK)
         {
-            out << "    if (" << em.attr("opacity") << " < " << fmtF(p.alpha_cutoff) << ") discard;\n";
+            out << "    if (" << emitter.attr("opacity") << " < " << fmtF(parameters.alpha_cutoff) << ") discard;\n";
         }
-
-        if (shadow)
-        {
-            // Coverage is the only fragment result. Depth is produced by rasterization.
-        }
-        else if (gbuffer)
+        if (gbuffer)
         {
             if (unlit)
             {
-                out << "    gAlbedoMetallic  = vec4(" << em.attr("base_color") << ", 0.0);\n";
-                out << "    gNormalRoughness = packGNormalSM(" << normalExpr << ", LUX_SM_UNLIT, 1.0);\n";
-                out << "    gEmissiveAo      = vec4(" << em.attr("emissive") << ", 1.0);\n";
+                out << "    gAlbedoMetallic  = vec4(" << emitter.attr("base_color") << ", 0.0);\n";
+                out << "    gNormalRoughness = packGNormalSM(" << normal << ", LUX_SM_UNLIT, 1.0);\n";
+                out << "    gEmissiveAo      = vec4(" << emitter.attr("emissive") << ", 1.0);\n";
             }
             else
             {
-                out << "    vec3 _Ngb = " << normalExpr << ";\n";
+                out << "    vec3 _Ngb = " << normal << ";\n";
                 out << "    if (!gl_FrontFacing) _Ngb = -_Ngb;\n";
-                out << "    gAlbedoMetallic  = vec4(" << em.attr("base_color") << ", " << em.attr("metallic") << ");\n";
-                out << "    gNormalRoughness = packGNormalSM(_Ngb, " << gbuffer_sm_id << ", " << em.attr("roughness")
+                out << "    gAlbedoMetallic  = vec4(" << emitter.attr("base_color") << ", " << emitter.attr("metallic")
                     << ");\n";
-                out << "    gEmissiveAo      = vec4(" << em.attr("emissive") << ", " << em.attr("ao") << ");\n";
+                out << "    gNormalRoughness = packGNormalSM(_Ngb, LUX_SM_PBR, " << emitter.attr("roughness") << ");\n";
+                out << "    gEmissiveAo      = vec4(" << emitter.attr("emissive") << ", " << emitter.attr("ao")
+                    << ");\n";
             }
         }
-        // Forward Stylized (cel/toon): quantized diffuse and specular band, matching the old emitter.
-        else if (forward_toon)
+        else if (forward)
         {
-            out << "    vec3  _albedo = " << em.attr("base_color") << ";\n";
-            out << "    vec3  _N = " << normalExpr << ";\n";
-            out << "    if (!gl_FrontFacing) _N = -_N;\n";
-            out << "    vec3  _V = normalize(vViewDir);\n";
-            out << "    float _vd = computeViewDepth(vWorldPos);\n";
-            out << "    const float _steps = 4.0;\n";
-            out << "    vec3  _Lo = vec3(0.0);\n";
-            out << "    for (int i = 0; i < uDirectionalLights.lights.length(); ++i) {\n";
-            out << "        vec3 _Ld = uDirectionalLights.lights[i].direction;\n";
-            out << "        if (dot(_Ld, _Ld) < 1e-8) continue;\n";
-            out << "        vec3 _L = normalize(-_Ld);\n";
-            out << "        vec3 _lc = uDirectionalLights.lights[i].color * uDirectionalLights.lights[i].intensity;\n";
-            out << "        float _sh = directionalShadow(uint(i), vWorldPos, _N, _vd);\n";
-            out << "        _Lo += _albedo * _lc * toonStep(max(dot(_N, _L), 0.0), _steps) * _sh;\n";
-            out << "        vec3 _H = normalize(_L + _V);\n";
-            out << "        _Lo += _lc * toonStep(pow(max(dot(_N, _H), 0.0), 32.0), _steps) * _sh;\n";
-            out << "    }\n";
-            out << "    for (int i = 0; i < uPointLights.lights.length(); ++i) {\n";
-            out << "        if (uPointLights.lights[i].range <= 0.0) continue;\n";
-            out << "        vec3 _lv = luxPointLightViewPosition(uint(i)) - vWorldPos;\n";
-            out << "        float _d = length(_lv);\n";
-            out << "        if (_d > uPointLights.lights[i].range) continue;\n";
-            out << "        vec3 _L = _lv / _d;\n";
-            out << "        float _att = 1.0 / (uPointLights.lights[i].attenuation_constant"
-                   " + uPointLights.lights[i].attenuation_linear * _d"
-                   " + uPointLights.lights[i].attenuation_quadratic * _d * _d);\n";
-            out << "        vec3 _lc = uPointLights.lights[i].color * uPointLights.lights[i].intensity * _att;\n";
-            out << "        float _sh = ((uPointLights.lights[i].flags & 1u) != 0u) ? pointShadow(uint(i), vWorldPos, "
-                   "_N) : 1.0;\n";
-            out << "        _Lo += _albedo * _lc * toonStep(max(dot(_N, _L), 0.0), _steps) * _sh;\n";
-            out << "    }\n";
-            out << "    outColor = vec4(kAmbient * _albedo + _Lo + " << em.attr("emissive") << ", "
-                << em.attr("opacity") << ");\n";
+            out << "    outColor = vec4(" << emitter.attr("base_color") << " + " << emitter.attr("emissive") << ", "
+                << emitter.attr("opacity") << ");\n";
         }
-        else if (forward_lit) // Forward GGX (PBR): Cook-Torrance over set-3 lights, replicating the old emitter.
-        {
-            out << "    vec3  _albedo    = " << em.attr("base_color") << ";\n";
-            out << "    float _metallic  = " << em.attr("metallic") << ";\n";
-            out << "    float _roughness = max(" << em.attr("roughness") << ", 0.04);\n";
-            out << "    vec3  _N = " << normalExpr << ";\n";
-            out << "    if (!gl_FrontFacing) _N = -_N;\n";
-            out << "    vec3  _V = normalize(vViewDir);\n";
-            out << "    float _NdotV = max(dot(_N, _V), 0.0);\n";
-            out << "    vec3  _F0 = mix(vec3(0.04), _albedo, _metallic);\n";
-            out << "    float _vd = computeViewDepth(vWorldPos);\n";
-            out << "    vec3  _Lo = vec3(0.0);\n";
-            out << "    for (int i = 0; i < uDirectionalLights.lights.length(); ++i) {\n";
-            out << "        vec3 _Ld = uDirectionalLights.lights[i].direction;\n";
-            out << "        if (dot(_Ld, _Ld) < 1e-8) continue;\n";
-            out << "        vec3 _L = normalize(-_Ld);\n";
-            out << "        vec3 _lc = uDirectionalLights.lights[i].color * uDirectionalLights.lights[i].intensity;\n";
-            out << "        float _sh = directionalShadow(uint(i), vWorldPos, _N, _vd);\n";
-            out << "        _Lo += pbrDirectLight(_albedo, _metallic, _roughness, _F0, _N, _V, _NdotV, _L, _lc) * "
-                   "_sh;\n";
-            out << "    }\n";
-            out << "    for (int i = 0; i < uPointLights.lights.length(); ++i) {\n";
-            out << "        if (uPointLights.lights[i].range <= 0.0) continue;\n";
-            out << "        vec3 _lv = luxPointLightViewPosition(uint(i)) - vWorldPos;\n";
-            out << "        float _d = length(_lv);\n";
-            out << "        if (_d > uPointLights.lights[i].range) continue;\n";
-            out << "        vec3 _L = _lv / _d;\n";
-            out << "        float _att = 1.0 / (uPointLights.lights[i].attenuation_constant"
-                   " + uPointLights.lights[i].attenuation_linear * _d"
-                   " + uPointLights.lights[i].attenuation_quadratic * _d * _d);\n";
-            out << "        vec3 _lc = uPointLights.lights[i].color * uPointLights.lights[i].intensity * _att;\n";
-            out << "        float _sh = ((uPointLights.lights[i].flags & 1u) != 0u) ? pointShadow(uint(i), vWorldPos, "
-                   "_N) : 1.0;\n";
-            out << "        _Lo += pbrDirectLight(_albedo, _metallic, _roughness, _F0, _N, _V, _NdotV, _L, _lc) * "
-                   "_sh;\n";
-            out << "    }\n";
-            out << "    outColor = vec4(kAmbient * _albedo + _Lo + " << em.attr("emissive") << ", "
-                << em.attr("opacity") << ");\n";
-        }
-        else // Forward Unlit: passthrough (base + emissive).
-        {
-            out << "    outColor = vec4(" << em.attr("base_color") << " + " << em.attr("emissive") << ", "
-                << em.attr("opacity") << ");\n";
-        }
-
         out << "}\n";
         return out.str();
     }

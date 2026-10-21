@@ -1,24 +1,11 @@
-if(NOT DEFINED OUTPUT OR NOT DEFINED SOURCE_ROOT OR NOT DEFINED GENERATED_ROOT)
-    message(FATAL_ERROR "Embedded Shader includes require OUTPUT, SOURCE_ROOT, and GENERATED_ROOT")
+if(NOT DEFINED OUTPUT OR NOT DEFINED SOURCE_ROOT)
+    message(FATAL_ERROR "Embedded Shader includes require OUTPUT and SOURCE_ROOT")
 endif()
 
 set(resources
-    "cluster_common.glsl|${GENERATED_ROOT}/cluster_common.glsl"
-    "lighting_common.glsl|${GENERATED_ROOT}/lighting_common.glsl"
-    "shadow_common.glsl|${GENERATED_ROOT}/shadow_common.glsl"
-    "view_pc_prefix.glsl|${GENERATED_ROOT}/view_pc_prefix.glsl"
-    "brdf/brdf_common.glsl|${SOURCE_ROOT}/brdf/brdf_common.glsl"
-    "brdf/brdf_ggx.glsl|${SOURCE_ROOT}/brdf/brdf_ggx.glsl"
-    "brdf/brdf_toon.glsl|${SOURCE_ROOT}/brdf/brdf_toon.glsl"
     "gbuffer_encode.glsl|${SOURCE_ROOT}/gbuffer_encode.glsl"
-    "light_types.glsl|${SOURCE_ROOT}/light_types.glsl"
-    "lighting_tbn.glsl|${SOURCE_ROOT}/lighting_tbn.glsl"
     "material_types.glsl|${SOURCE_ROOT}/material_types.glsl"
-    "shadow_evsm.glsl|${SOURCE_ROOT}/shadow_evsm.glsl"
-    "shadow_pcf.glsl|${SOURCE_ROOT}/shadow_pcf.glsl"
     "texture_sampling.glsl|${SOURCE_ROOT}/texture_sampling.glsl"
-    "transition_dither.glsl|${SOURCE_ROOT}/transition_dither.glsl"
-    "view_common.glsl|${SOURCE_ROOT}/view_common.glsl"
 )
 
 set(data_definitions "")

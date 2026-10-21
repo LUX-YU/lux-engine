@@ -716,7 +716,8 @@ namespace lux::toolchain
                         lux::asset::MaterialAsset::asset_type,
                         source_name.length == 0U ? "material" : source_name.C_Str()
                     ),
-                    imported
+                    imported,
+                    std::array{lux::rdesc::EMaterialPurpose::GBUFFER, lux::rdesc::EMaterialPurpose::SHADOW}
                 );
                 if (!material)
                 {

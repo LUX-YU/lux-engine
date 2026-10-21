@@ -16,7 +16,8 @@ namespace lux::material
         LOWERING_FAILURE,
         SHADER_EMISSION_FAILURE,
         SHADER_COMPILATION_FAILURE,
-        INVALID_RESULT
+        INVALID_RESULT,
+        INVALID_PURPOSES
     };
 
     struct MaterialCompileFailure final

@@ -6,7 +6,7 @@
 
 namespace lux::rdesc
 {
-    inline constexpr std::uint32_t kMaterialShaderAbi = 3;
+    inline constexpr std::uint32_t kMaterialShaderAbi = 4;
     inline constexpr std::uint32_t kTextureDefaultWhite = 1u << 0;
 
     // Cooked Material field names shared by emission and reflected-layout consumers.

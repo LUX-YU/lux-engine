@@ -59,69 +59,27 @@ generate_visibility_header(
 set(lux_material_shader_source_dir
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/function/material/shaders"
 )
-set(lux_material_shader_emitted_dir "${CMAKE_BINARY_DIR}/material_lglsl_emitted")
-set(lux_material_lighting_source "${lux_material_shader_source_dir}/lighting_common.lglslh")
-set(lux_material_lighting_emitted "${lux_material_shader_emitted_dir}/lighting_common.glsl")
-set(lux_material_view_prefix_source "${lux_material_shader_source_dir}/view_pc_prefix.lglslh")
-set(lux_material_view_prefix_emitted "${lux_material_shader_emitted_dir}/view_pc_prefix.glsl")
-set(lux_material_shadow_common_source "${lux_material_shader_source_dir}/shadow_common.lglslh")
-set(lux_material_shadow_common_emitted "${lux_material_shader_emitted_dir}/shadow_common.glsl")
-set(lux_material_cluster_common_source "${lux_material_shader_source_dir}/cluster_common.lglslh")
-set(lux_material_cluster_common_emitted "${lux_material_shader_emitted_dir}/cluster_common.glsl")
-file(MAKE_DIRECTORY "${lux_material_shader_emitted_dir}")
-
-foreach(shader_include IN ITEMS lighting view_prefix shadow_common cluster_common)
-    set(source "${lux_material_${shader_include}_source}")
-    set(output "${lux_material_${shader_include}_emitted}")
-    add_custom_command(
-        OUTPUT "${output}"
-        COMMAND $<TARGET_FILE:lux_shader_emitter> --in "${source}" --out "${output}" --header
-        DEPENDS lux_shader_emitter "${source}"
-        COMMENT "Emit Material compiler ${shader_include}.glsl"
-        VERBATIM
-    )
-endforeach()
-add_custom_target(
-    toolchain_material_shader_includes
-    DEPENDS
-        "${lux_material_lighting_emitted}"
-        "${lux_material_view_prefix_emitted}"
-        "${lux_material_shadow_common_emitted}"
-        "${lux_material_cluster_common_emitted}"
-)
 
 set(lux_material_embedded_includes
     "${CMAKE_CURRENT_BINARY_DIR}/generated/lux/engine/material/compiler/MaterialShaderIncludes.generated.hpp"
 )
+
 set(lux_material_raw_includes
-    "${lux_material_shader_source_dir}/brdf/brdf_common.glsl"
-    "${lux_material_shader_source_dir}/brdf/brdf_ggx.glsl"
-    "${lux_material_shader_source_dir}/brdf/brdf_toon.glsl"
     "${lux_material_shader_source_dir}/gbuffer_encode.glsl"
-    "${lux_material_shader_source_dir}/light_types.glsl"
-    "${lux_material_shader_source_dir}/lighting_tbn.glsl"
     "${lux_material_shader_source_dir}/material_types.glsl"
-    "${lux_material_shader_source_dir}/shadow_evsm.glsl"
-    "${lux_material_shader_source_dir}/shadow_pcf.glsl"
     "${lux_material_shader_source_dir}/texture_sampling.glsl"
-    "${lux_material_shader_source_dir}/transition_dither.glsl"
-    "${lux_material_shader_source_dir}/view_common.glsl"
 )
+
 add_custom_command(
     OUTPUT "${lux_material_embedded_includes}"
     COMMAND
         ${CMAKE_COMMAND}
         "-DOUTPUT=${lux_material_embedded_includes}"
         "-DSOURCE_ROOT=${lux_material_shader_source_dir}"
-        "-DGENERATED_ROOT=${lux_material_shader_emitted_dir}"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/../shader/cmake/GenerateEmbeddedShaderIncludes.cmake"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedMaterialShaderIncludes.cmake"
     DEPENDS
         ${lux_material_raw_includes}
-        "${lux_material_lighting_emitted}"
-        "${lux_material_view_prefix_emitted}"
-        "${lux_material_shadow_common_emitted}"
-        "${lux_material_cluster_common_emitted}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../shader/cmake/GenerateEmbeddedShaderIncludes.cmake"
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedMaterialShaderIncludes.cmake"
     COMMENT "Embed Material compiler Shader includes"
     VERBATIM
 )
@@ -136,7 +94,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialCompiler.cpp
         "${lux_material_embedded_includes}"
 )
-add_dependencies(toolchain_material_compiler toolchain_material_shader_includes)
+
 component_include_directories(
     toolchain_material_compiler
     BUILD_TIME_EXPORT
@@ -148,7 +106,9 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/../shader/sinclude
         ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
+
 target_compile_definitions(toolchain_material_compiler PRIVATE LUX_ENGINE_MATERIAL_COMPILER_LIBRARY)
+
 if(TARGET lux_material_shaderc)
     add_custom_command(TARGET toolchain_material_compiler POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different

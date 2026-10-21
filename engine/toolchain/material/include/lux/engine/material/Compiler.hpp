@@ -6,9 +6,14 @@
 #include <lux/engine/material/compiler/visibility.h>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
 
+#include <span>
+
 namespace lux::material
 {
-    [[nodiscard]] LUX_ENGINE_MATERIAL_COMPILER_PUBLIC lux::cxx::
-        expected<lux::rdesc::MaterialDescription, MaterialCompileFailure>
-        compileMaterial(const MaterialGraph& graph) noexcept;
+    using MaterialCompileResult = cxx::expected<rdesc::MaterialDescription, MaterialCompileFailure>;
+
+    // Compile only the requested uses. Forward supports Unlit; GBuffer supports Unlit/PBR.
+    // Shadow evaluates coverage only. The request must be nonempty and contain no duplicates.
+    [[nodiscard]] LUX_ENGINE_MATERIAL_COMPILER_PUBLIC MaterialCompileResult
+    compileMaterial(const MaterialGraph& graph, std::span<const rdesc::EMaterialPurpose> purposes) noexcept;
 } // namespace lux::material

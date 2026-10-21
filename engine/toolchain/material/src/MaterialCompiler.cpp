@@ -40,19 +40,39 @@ namespace lux::material
 
     } // namespace
 
-    lux::cxx::expected<rdesc::MaterialDescription, MaterialCompileFailure> compileMaterial(const MaterialGraph& graph
+    MaterialCompileResult compileMaterial(
+        const MaterialGraph& graph,
+        std::span<const rdesc::EMaterialPurpose> purposes
     ) noexcept
     {
         try
         {
+            std::uint32_t selected = 0;
+            for (auto purpose : purposes)
+            {
+                const auto index = static_cast<std::uint32_t>(purpose);
+                const bool invalid_purpose = index > static_cast<std::uint32_t>(rdesc::EMaterialPurpose::SHADOW);
+                if (invalid_purpose || (selected & (1u << index)))
+                {
+                    return cxx::unexpected(
+                        failure(EMaterialCompileError::INVALID_PURPOSES, "material purposes must be valid and distinct")
+                    );
+                }
+                selected |= 1u << index;
+            }
+            if (selected == 0)
+            {
+                return cxx::unexpected(failure(EMaterialCompileError::INVALID_PURPOSES, "no material purpose requested")
+                );
+            }
             auto lowered = lowerMaterial(graph);
             if (!lowered)
             {
                 return lux::cxx::unexpected(std::move(lowered.error()));
             }
 
-            const auto compile_pass = [&](rdesc::EMaterialPurpose purpose
-                                      ) -> lux::cxx::expected<shadergen::glsl::CompiledShader, MaterialCompileFailure>
+            using ShaderCompileResult = cxx::expected<shadergen::glsl::CompiledShader, MaterialCompileFailure>;
+            const auto compile_pass = [&](rdesc::EMaterialPurpose purpose) -> ShaderCompileResult
             {
                 shadergen::glsl::EmitParams parameters;
                 parameters.purpose = purpose;
@@ -81,8 +101,7 @@ namespace lux::material
             programs.shading_model = lowered->shading_model;
             programs.alpha_mode = graph.render_state.alpha_mode;
             programs.double_sided = graph.render_state.double_sided;
-            for (auto purpose :
-                 {rdesc::EMaterialPurpose::FORWARD, rdesc::EMaterialPurpose::GBUFFER, rdesc::EMaterialPurpose::SHADOW})
+            for (auto purpose : purposes)
             {
                 auto compiled = compile_pass(purpose);
                 if (!compiled)

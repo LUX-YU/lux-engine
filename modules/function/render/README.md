@@ -207,7 +207,7 @@ and detaches consumers before deleting Storage; arbitrary early deletion is not 
 DescriptorTable maintains independent image and sampler indices. Identical sampler descriptions reuse one
 device-lifetime sampler. Texture references carry both indices and explicit flags; the material sampling code
 returns white for its default flag without accessing a descriptor. The device does not allocate a white texture.
-Cooked material shader ABI 3 and asset payload version 9 encode this contract; older artifacts require recooking.
+Cooked material shader ABI 4 and asset payload version 9 encode this contract; older artifacts require recooking.
 
 The default is two frames in flight, configurable from one to three. Dynamic instance fields, page tables,
 material parameters, descriptor records, indirect data and Target outputs have physical frame slices. CPU business
@@ -276,8 +276,11 @@ performance qualification remain separate from successful compilation or an indi
 
 ## Deferred material composition
 
-`MaterialProgramSet` owns the compiled Forward, GBuffer and Shadow fragment uses, one reflected material record,
-parameter defaults and raster state. Re-cook older material assets. Render consumes compiled metadata; it does not
+`compileMaterial(graph, purposes)` and the Cook entry points require explicit purposes. Forward supports Unlit;
+GBuffer supports Unlit and metallic-roughness PBR; Shadow computes only AlphaMask coverage. Unrequested uses are not
+compiled, and unsupported Forward lighting/Toon requests fail. Lighting and shadow-map sampling belong to features.
+`MaterialProgramSet` owns the selected fragment uses, one reflected material record, parameter defaults and raster
+state. Shader ABI 4 removes implicit mesh transition varyings; re-cook older material assets. Render consumes compiled metadata; it does not
 recompute the material record from a parameter count. The shared shader build inputs live in
 `modules/function/material/shaders`; the Material compiler remains a tool/test dependency, not a Render dependency.
 

@@ -35,7 +35,8 @@ namespace
         const auto source = material_test::add(direct, std::move(*constant_copy));
         const auto destination = material_test::add(direct, std::move(*surface_copy));
         require(material_test::connect(direct, source, 0, destination, 0));
-        auto baseline = material::compileMaterial(direct);
+        constexpr std::array purposes{rdesc::EMaterialPurpose::GBUFFER, rdesc::EMaterialPurpose::SHADOW};
+        auto baseline = material::compileMaterial(direct, purposes);
         require(baseline.has_value());
 
         material::MaterialGraph edited;
@@ -54,28 +55,28 @@ namespace
         auto connection = material::MaterialGraphEdit::prepare(edited, change);
         require(connection.has_value());
         connection->commit();
-        auto actual = material::compileMaterial(edited);
+        auto actual = material::compileMaterial(edited, purposes);
         require(actual.has_value());
         require(
             actual->programs.find(lux::rdesc::EMaterialPurpose::GBUFFER)->shader.stages.front().words ==
             baseline->programs.find(lux::rdesc::EMaterialPurpose::GBUFFER)->shader.stages.front().words
         );
         require(
-            actual->programs.find(lux::rdesc::EMaterialPurpose::FORWARD)->shader.stages.front().words ==
-            baseline->programs.find(lux::rdesc::EMaterialPurpose::FORWARD)->shader.stages.front().words
+            actual->programs.find(lux::rdesc::EMaterialPurpose::SHADOW)->shader.stages.front().words ==
+            baseline->programs.find(lux::rdesc::EMaterialPurpose::SHADOW)->shader.stages.front().words
         );
         material::MaterialGraph invalid;
         constexpr material::NodeId invalid_id{1000000031};
         auto invalid_payload = material_test::make(material::MaterialSampleTexture{29});
         require(invalid.addNodeWithId(invalid_id, std::move(invalid_payload)).value() == invalid_id);
         require(material_test::add(invalid, material::MaterialOutputSurface{}).valid());
-        auto failed = material::compileMaterial(invalid);
+        auto failed = material::compileMaterial(invalid, purposes);
         require(!failed && failed.error().code == material::EMaterialCompileError::INVALID_GRAPH);
         require(failed.error().node_id == invalid_id);
         std::printf(
             "Material actual compiler: identical SPIR-V (%zu + %zu words)\n",
             actual->programs.find(lux::rdesc::EMaterialPurpose::GBUFFER)->shader.stages.front().words.size(),
-            actual->programs.find(lux::rdesc::EMaterialPurpose::FORWARD)->shader.stages.front().words.size()
+            actual->programs.find(lux::rdesc::EMaterialPurpose::SHADOW)->shader.stages.front().words.size()
         );
     }
 

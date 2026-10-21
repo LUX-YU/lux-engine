@@ -270,7 +270,7 @@ namespace lux::material::compiler
             // TbnTransform (tangent -> WORLD via T/B/N) -> NormalTS. The TbnTransform was
             // MISSING here, so the tangent-space normal was bound directly as the world
             // normal -> ~constant world normal -> flat/unlit shading on every imported
-            // normal-mapped material. (engine path mirrors lighting_tbn::calculateWorldNormal)
+            // normal-mapped material.
             const NodeId rgb = b.swizzle(b.sample(*normal_texture), EVT::VEC3, 0, 1, 2);
             const NodeId decn = b.add(MaterialDecodeNormal{}, "Decode Normal");
             b.connect(rgb, decn);

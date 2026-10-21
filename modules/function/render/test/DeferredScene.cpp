@@ -334,26 +334,27 @@ static rdesc::MaterialProgramSet cook(bool lit, bool mask = false, bool normal_m
         CHECK(material_test::connect(graph, decode, 0, tbn, 0));
         CHECK(material_test::connect(graph, tbn, 0, surface, 4));
     }
-    auto cooked = compileMaterial(graph);
+    constexpr std::array purposes{rdesc::EMaterialPurpose::GBUFFER, rdesc::EMaterialPurpose::SHADOW};
+    auto cooked = compileMaterial(graph, purposes);
     if (!cooked)
     {
         std::fprintf(stderr, "Cook: %s\n", cooked.error().message.c_str());
     }
     CHECK(cooked);
-    CHECK(cooked->programs.programs.size() == 3);
+    CHECK(cooked->programs.programs.size() == purposes.size());
     CHECK(cooked->programs.find(rdesc::EMaterialPurpose::SHADOW)->shader.interface.entry_points.front().outputs.empty()
     );
     const auto& shadow_use = cooked->programs.find(rdesc::EMaterialPurpose::SHADOW)->shader;
     for (const auto& input : shadow_use.interface.entry_points.front().inputs)
     {
-        CHECK(input.location != 1 && input.location != 3 && input.location != 5 && input.location != 6);
+        CHECK(input.location == 4);
     }
     if (!mask)
     {
         CHECK(shadow_use.interface.sets.empty());
     }
     graph.render_state.alpha_mode = rdesc::EAlphaMode::BLEND;
-    CHECK(!compileMaterial(graph));
+    CHECK(!compileMaterial(graph, purposes));
     return std::move(cooked->programs);
 }
 

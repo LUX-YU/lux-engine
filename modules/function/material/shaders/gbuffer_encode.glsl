@@ -6,19 +6,16 @@
 //
 //  RT1 (GBufNormalRoughness, RGBA16_SFLOAT) layout:
 //    .xy = octahedral-encoded world normal  (frees .z vs the old raw xyz)
-//    .z  = shading-model id (0=Unlit, 1=PBR, 2=Toon), stored as an exact
-//          small float (fp16 represents 0/1/2 exactly; read back via round)
+//    .z  = shading-model id (0=Unlit, 1=PBR), stored as an exact
+//          small float (fp16 represents 0/1 exactly; read back via round)
 //    .w  = roughness
 //
 //  Octahedral encoding maps a unit vector to [-1,1]^2; at fp16 (~11 mantissa
 //  bits) this is at least as accurate as the previous raw 3x-fp16 normal, at
 //  zero extra bandwidth — it frees the third channel for the shading-model id.
 //
-//  LOCK-STEP CONTRACT: every GBuffer producer (gbuffer_{pbr,unlit,stylized}.frag
-//  AND the material-graph emitter's gbuffer epilogue) MUST write RT1 via
-//  packGNormalSM(); the only consumer (deferred_lighting.frag) MUST read it via
-//  unpackGNormalSM(). The device-free emitter
-//  resolves this single shared include through its embedded Shader resources.
+//  The material compiler writes this encoding; compatible lighting features decode it.
+//  Resource placement is resolved by the RenderGraph compiler, not this include.
 // =========================================================================
 
 // Dense per-pixel lighting-model ids carried through the GBuffer. These are
@@ -27,7 +24,6 @@
 // gbuffer writers and the emitter.
 #define LUX_SM_UNLIT 0u
 #define LUX_SM_PBR   1u
-#define LUX_SM_TOON  2u
 
 vec2 octSignNotZero(vec2 v)
 {

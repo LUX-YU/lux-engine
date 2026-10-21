@@ -268,6 +268,22 @@ static typename C::Response call(
     return response;
 }
 
+static void detach(ipc::IpcRequester& client, const CommandList& commands, AttachmentId attachment)
+{
+    const auto deadline = Clock::now() + 20s;
+    for (;;)
+    {
+        const auto response = call<Detach>(client, commands, attachment, false);
+        if (!response.error.type)
+        {
+            return;
+        }
+        // A graph can be between accepted batches. Retry admission, never bypass its lifetime boundary.
+        CHECK(response.error.type == kDeviceBusy && Clock::now() < deadline);
+        std::this_thread::yield();
+    }
+}
+
 static StorageId prepare(
     ipc::IpcRequester& client,
     const CommandList& commands,

@@ -413,8 +413,8 @@ int main(int argc, char** argv)
             CHECK(Clock::now() < deadline);
             std::this_thread::sleep_for(1ms);
         }
-        call<Detach>(*client, commands, attached);
-        call<Detach>(*client, commands, second);
+        detach(*client, commands, attached);
+        detach(*client, commands, second);
         while (pixels.ready.load(std::memory_order_acquire) != 2)
         {
             CHECK(Clock::now() < deadline);
@@ -496,7 +496,7 @@ int main(int argc, char** argv)
             CHECK(Clock::now() < deadline);
             std::this_thread::sleep_for(1ms);
         }
-        call<Detach>(*client, commands, attachment);
+        detach(*client, commands, attachment);
         while (!pixels.ready.load(std::memory_order_acquire))
         {
             CHECK(Clock::now() < deadline);

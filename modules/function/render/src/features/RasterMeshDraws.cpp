@@ -139,7 +139,7 @@ namespace lux::render::detail
                 {
                     return;
                 }
-                frames_.afterSubmit(
+                frames_.onPreparationSubmitted(
                     &slice,
                     [](void* value, std::uint32_t, RenderResult<void> accepted) noexcept
                     {

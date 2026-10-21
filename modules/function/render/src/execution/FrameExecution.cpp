@@ -14,7 +14,7 @@ namespace lux::render::detail
     FrameExecution::FrameExecution(DeviceSession& device, ResourceUploader* uploads, std::uint32_t count) noexcept
         : device_(device), uploads_(uploads), frame_count_(count)
     {
-        frame_receivers_.reserve(uploads ? uploads->windowRegionLimit() : 0);
+        preparation_receivers_.reserve(uploads ? uploads->windowRegionLimit() : 0);
     }
 
     RenderResult<std::unique_ptr<FrameExecution>> FrameExecution::create(
@@ -118,12 +118,12 @@ namespace lux::render::detail
         }
     }
 
-    void FrameExecution::afterSubmit(
+    void FrameExecution::onPreparationSubmitted(
         void* receiver,
         void (*complete)(void*, std::uint32_t, RenderResult<void>) noexcept
     ) noexcept
     {
-        frame_receivers_.emplace_back(receiver, complete);
+        preparation_receivers_.emplace_back(receiver, complete);
     }
 
     void FrameExecution::acceptSubmission(std::uint32_t slot, const SubmissionQueue& queue) noexcept
@@ -144,16 +144,16 @@ namespace lux::render::detail
         {
             uploads_->completeFrameCopies(result);
         }
-        const auto boundary = frame_receivers_.size();
+        const auto boundary = preparation_receivers_.size();
         const auto slot = next_frame_;
         for (std::size_t i = 0; i < boundary; ++i)
         {
             // Remove this borrow before delivery. A callback may append work for the next
             // submission and grow the vector; no iterator or record reference crosses it.
-            const auto [receiver, complete] = std::exchange(frame_receivers_[i], {});
+            const auto [receiver, complete] = std::exchange(preparation_receivers_[i], {});
             complete(receiver, slot, result);
         }
-        frame_receivers_.erase(frame_receivers_.begin(), frame_receivers_.begin() + boundary);
+        preparation_receivers_.erase(preparation_receivers_.begin(), preparation_receivers_.begin() + boundary);
     }
 
     void FrameExecution::sealFrame(FrameSlot& frame) noexcept
@@ -390,7 +390,6 @@ namespace lux::render::detail
         auto& frame = frames_[next_frame_];
         frame.instances.resize(instances.size());
         frame.recording_instances.reserve(instances.size());
-        frame.imported_uses.clear();
         frame.recorded_instances = frame.recorded_passes = 0;
         frame.preparation_serial = 0;
         for (std::uint32_t i = 0; i < instances.size(); ++i)
@@ -401,6 +400,21 @@ namespace lux::render::detail
             execution.serials.assign(instances[i]->plan().submissions().size(), 0);
             execution.accepted = {};
             execution.predecessors.clear();
+        }
+        buildImportedDependencies(instances);
+        frame.phase = EFramePhase::SUBMITTING;
+    }
+
+    void FrameExecution::buildImportedDependencies(std::span<RenderGraphInstance* const> instances) noexcept
+    {
+        auto& frame = frames_[next_frame_];
+        frame.imported_uses.clear();
+        if (instances.size() < 2)
+        {
+            return;
+        }
+        for (std::uint32_t i = 0; i < instances.size(); ++i)
+        {
             const auto& bindings = instances[i]->frames_[next_frame_].bindings;
             for (const auto& use : instances[i]->plan_->imported_accesses_)
             {
@@ -462,7 +476,6 @@ namespace lux::render::detail
             );
         }
         frame.imported_uses.clear();
-        frame.phase = EFramePhase::SUBMITTING;
     }
 
     bool FrameExecution::submitting() const noexcept
@@ -501,48 +514,52 @@ namespace lux::render::detail
         updateUploadAdmission();
     }
 
+    bool FrameExecution::collectBatchWaits(
+        const InstanceExecution& execution,
+        SubmissionFrontiers& waits,
+        std::array<nri::StageBits, 3>& stages
+    ) const noexcept
+    {
+        const auto merge = [&](std::size_t queue, std::uint64_t serial, nri::StageBits stage)
+        {
+            if (waits.serials[queue] == 0)
+            {
+                stages[queue] = stage;
+            }
+            else
+            {
+                const bool has_all_stages = stages[queue] == nri::StageBits::ALL || stage == nri::StageBits::ALL;
+                stages[queue] = has_all_stages ? nri::StageBits::ALL : stages[queue] | stage;
+            }
+            waits.serials[queue] = std::max(waits.serials[queue], serial);
+        };
+        const auto& frame = frames_[next_frame_];
+        for (auto previous : execution.predecessors)
+        {
+            const auto& predecessor = frame.instances[previous];
+            if (predecessor.instance)
+            {
+                return false;
+            }
+            for (std::size_t q = 0; q < device_.queueCount(); ++q)
+            {
+                merge(q, predecessor.accepted.serials[q], nri::StageBits::ALL);
+            }
+        }
+        const auto batches = execution.instance->plan().submissions();
+        for (const auto& dependency : batches[execution.next_batch].dependencies)
+        {
+            auto& producer = device_.queue(batches[dependency.producer].queue);
+            const auto q = queueIndex(producer);
+            merge(q, execution.serials[dependency.producer], dependency.stages);
+        }
+        return true;
+    }
+
     RenderResult<std::uint32_t> FrameExecution::advanceSubmissions() noexcept
     {
         auto& frame = frames_[next_frame_];
         std::uint32_t submissions = 0;
-        const auto prerequisites =
-            [&](const InstanceExecution& execution, SubmissionFrontiers& waits, std::array<nri::StageBits, 3>& stages)
-        {
-            const auto merge = [&](std::size_t queue, std::uint64_t serial, nri::StageBits stage)
-            {
-                if (waits.serials[queue] == 0)
-                {
-                    stages[queue] = stage;
-                }
-                else
-                {
-                    stages[queue] = stages[queue] == nri::StageBits::ALL || stage == nri::StageBits::ALL
-                                        ? nri::StageBits::ALL
-                                        : stages[queue] | stage;
-                }
-                waits.serials[queue] = std::max(waits.serials[queue], serial);
-            };
-            for (auto previous : execution.predecessors)
-            {
-                const auto& predecessor = frame.instances[previous];
-                if (predecessor.instance)
-                {
-                    return false;
-                }
-                for (std::size_t q = 0; q < device_.queueCount(); ++q)
-                {
-                    merge(q, predecessor.accepted.serials[q], nri::StageBits::ALL);
-                }
-            }
-            const auto batches = execution.instance->plan().submissions();
-            for (const auto& dependency : batches[execution.next_batch].dependencies)
-            {
-                auto& producer = device_.queue(batches[dependency.producer].queue);
-                const auto q = queueIndex(producer);
-                merge(q, execution.serials[dependency.producer], dependency.stages);
-            }
-            return true;
-        };
         bool advanced = true;
         while (advanced)
         {
@@ -563,7 +580,7 @@ namespace lux::render::detail
                 const auto queue_index = queueIndex(queue);
                 SubmissionFrontiers waits;
                 std::array<nri::StageBits, 3> stages{};
-                if (!prerequisites(first, waits, stages))
+                if (!collectBatchWaits(first, waits, stages))
                 {
                     continue;
                 }
@@ -581,7 +598,7 @@ namespace lux::render::detail
                     }
                     SubmissionFrontiers required;
                     std::array<nri::StageBits, 3> required_stages{};
-                    if (prerequisites(candidate, required, required_stages))
+                    if (collectBatchWaits(candidate, required, required_stages))
                     {
                         required.serials[queue_index] = 0;
                         required_stages[queue_index] = nri::StageBits::ALL;

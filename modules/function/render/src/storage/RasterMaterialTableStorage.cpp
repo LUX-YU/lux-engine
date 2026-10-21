@@ -522,7 +522,7 @@ namespace lux::render::detail
             {
                 if (copied_any)
                 {
-                    frame_execution_.afterSubmit(
+                    frame_execution_.onPreparationSubmitted(
                         this,
                         [](void* value, std::uint32_t frame, RenderResult<void> accepted) noexcept
                         {

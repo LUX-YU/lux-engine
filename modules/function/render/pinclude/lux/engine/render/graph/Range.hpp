@@ -155,16 +155,20 @@ namespace lux::render::detail
 
     inline bool overlaps(const VGraphRange& left, const VGraphRange& right) noexcept
     {
-        for (const auto& a : boxes(left))
+        // Callers compare normalized ranges of the same logical or physical resource.
+        // Box decomposition belongs to subtraction, not this allocation-free predicate.
+        if (const auto* a = std::get_if<GraphBufferRange>(&left))
         {
-            for (const auto& b : boxes(right))
-            {
-                if (intersection(a, b))
-                {
-                    return true;
-                }
-            }
+            const auto& b = std::get<GraphBufferRange>(right);
+            return a->offset < b.offset + b.size && b.offset < a->offset + a->size;
         }
-        return false;
+        const auto& a = std::get<GraphImageRange>(left);
+        const auto& b = std::get<GraphImageRange>(right);
+        const bool has_common_aspect = (a.aspects & b.aspects) != 0;
+        const bool has_mip_overlap = a.first_mip < std::uint64_t(b.first_mip) + b.mip_count &&
+                                     b.first_mip < std::uint64_t(a.first_mip) + a.mip_count;
+        const bool has_layer_overlap = a.first_layer < std::uint64_t(b.first_layer) + b.layer_count &&
+                                       b.first_layer < std::uint64_t(a.first_layer) + a.layer_count;
+        return has_common_aspect && has_mip_overlap && has_layer_overlap;
     }
 } // namespace lux::render::detail

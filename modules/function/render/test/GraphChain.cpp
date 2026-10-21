@@ -779,7 +779,7 @@ static void conditionalRegion(Validation& validation, std::uint32_t fif)
     CHECK(session->drain());
 }
 
-static void sharedImportedBuffer(Validation& validation, bool write_back)
+static void sharedImportedBuffer(Validation& validation, bool write_back, bool separate_ranges = false)
 {
     DeviceOptions options;
     options.multiple_queues = true;
@@ -791,14 +791,14 @@ static void sharedImportedBuffer(Validation& validation, bool write_back)
         core.CreatePlacedBuffer(
             session->device(),
             NriDeviceHeap,
-            {16, 4, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE},
+            {32, 4, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE},
             shared
         ) == nri::Result::SUCCESS
     );
     CHECK(session->queue().recordAndSubmit(
         [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
         {
-            core.CmdZeroBuffer(command, *shared, 0, 16);
+            core.CmdZeroBuffer(command, *shared, 0, 32);
             const nri::BufferBarrierDesc barrier{
                 shared,
                 {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY | nri::StageBits::CLEAR_STORAGE},
@@ -837,7 +837,8 @@ static void sharedImportedBuffer(Validation& validation, bool write_back)
     auto second = std::make_unique<RenderGraphInstance>(*session, 2, plan);
     for (auto* instance : {first.get(), second.get()})
     {
-        instance->setResource(input.index, UINT32_MAX, {shared, 0, 16});
+        const std::uint64_t offset = separate_ranges && instance == second.get() ? 16 : 0;
+        instance->setResource(input.index, UINT32_MAX, {shared, offset, 16});
         CHECK(instance->initialize());
     }
     const std::array instances{first.get(), second.get()};
@@ -853,14 +854,16 @@ static void sharedImportedBuffer(Validation& validation, bool write_back)
     CHECK(!frames->submitting());
     if (&session->queue() != &session->queue(EQueueRole::COMPUTE))
     {
-        CHECK(session->queue(EQueueRole::COMPUTE).submitted() - before == (write_back ? 2 : 1));
+        const bool has_shared_writes = write_back && !separate_ranges;
+        CHECK(session->queue(EQueueRole::COMPUTE).submitted() - before == (has_shared_writes ? 2 : 1));
     }
     CHECK(session->drain());
     const auto a =
         readHistoryResult<4>(*session, *first->nativeBuffer(output.index, first->progress().last_submitted_slot));
     const auto b =
         readHistoryResult<4>(*session, *second->nativeBuffer(output.index, second->progress().last_submitted_slot));
-    CHECK(a[0] == 1 && b[0] == (write_back ? 2 : 1));
+    const auto second_value = write_back && !separate_ranges ? 2u : 1u;
+    CHECK(a[0] == 1 && b[0] == second_value);
     first.reset();
     second.reset();
     CHECK(session->drain());
@@ -989,6 +992,7 @@ int main()
     resolveAndCopy(validation);
     sharedImportedBuffer(validation, false);
     sharedImportedBuffer(validation, true);
+    sharedImportedBuffer(validation, true, true);
     CHECK(validation.errors == 0);
     std::printf(
         "Graph: Compute -> mip -> MRT/Depth -> sampled postprocess; FIF=1/2/3; GPU IndirectCount=0/1/3; errors=%u "

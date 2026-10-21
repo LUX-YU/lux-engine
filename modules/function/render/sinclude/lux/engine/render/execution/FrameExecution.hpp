@@ -106,7 +106,9 @@ namespace lux::render::detail
         }
 
         void dispatchWrites() noexcept;
-        void afterSubmit(
+        // Register one preparation-submission result. Success means its copies were accepted;
+        // failure reports the preparation error. Neither means GPU completion.
+        void onPreparationSubmitted(
             void* receiver,
             void (*complete)(void*, std::uint32_t slot, RenderResult<void>) noexcept
         ) noexcept;
@@ -171,6 +173,12 @@ namespace lux::render::detail
         void acceptSubmission(std::uint32_t slot, const SubmissionQueue&) noexcept;
         void finishPreparation(RenderResult<void>) noexcept;
         void prepareSubmissions(std::span<RenderGraphInstance* const>) noexcept;
+        void buildImportedDependencies(std::span<RenderGraphInstance* const>) noexcept;
+        [[nodiscard]] bool collectBatchWaits(
+            const InstanceExecution& execution,
+            SubmissionFrontiers& waits,
+            std::array<nri::StageBits, 3>& stages
+        ) const noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> advanceSubmissions() noexcept;
         [[nodiscard]] std::size_t queueIndex(const SubmissionQueue&) const noexcept;
 
@@ -180,7 +188,8 @@ namespace lux::render::detail
         std::uint32_t frame_count_;
         std::uint32_t next_frame_ = 0;
         std::uint8_t wait_queue_cursor_ = 0;
-        std::vector<std::pair<void*, void (*)(void*, std::uint32_t, RenderResult<void>) noexcept>> frame_receivers_;
+        using PreparationCallback = void (*)(void*, std::uint32_t, RenderResult<void>) noexcept;
+        std::vector<std::pair<void*, PreparationCallback>> preparation_receivers_;
         WriteWaiter* frame_waiters_ = nullptr;
         WriteWaiter* frame_waiters_tail_ = nullptr;
     };

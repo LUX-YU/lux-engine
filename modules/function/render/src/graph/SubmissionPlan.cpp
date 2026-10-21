@@ -1,8 +1,58 @@
 #include <algorithm>
 #include <lux/engine/render/graph/SubmissionPlan.hpp>
+#include <tuple>
 
 namespace lux::render::detail
 {
+    namespace
+    {
+        void compactImportedAccesses(std::vector<ImportedAccess>& accesses) noexcept
+        {
+            std::ranges::sort(
+                accesses,
+                [](const auto& a, const auto& b)
+                {
+                    if (a.resource != b.resource)
+                    {
+                        return a.resource.index < b.resource.index;
+                    }
+                    // One resource has one range kind, already normalized by the Builder.
+                    if (const auto* bytes = std::get_if<GraphBufferRange>(&a.range))
+                    {
+                        const auto& other = std::get<GraphBufferRange>(b.range);
+                        return std::tie(bytes->offset, bytes->size) < std::tie(other.offset, other.size);
+                    }
+                    const auto imageKey = [](const GraphImageRange& range)
+                    {
+                        return std::tie(
+                            range.aspects,
+                            range.first_mip,
+                            range.mip_count,
+                            range.first_layer,
+                            range.layer_count
+                        );
+                    };
+                    return imageKey(std::get<GraphImageRange>(a.range)) < imageKey(std::get<GraphImageRange>(b.range));
+                }
+            );
+            std::size_t count = 0;
+            for (const auto& access : accesses)
+            {
+                const bool is_duplicate = count != 0 && accesses[count - 1].resource == access.resource &&
+                                          accesses[count - 1].range == access.range;
+                if (is_duplicate)
+                {
+                    accesses[count - 1].write |= access.write;
+                }
+                else
+                {
+                    accesses[count++] = access;
+                }
+            }
+            accesses.resize(count);
+        }
+    } // namespace
+
     void selectQueues(
         const RenderGraph& graph,
         std::array<const QueueProperties*, 3> queues,
@@ -96,6 +146,10 @@ namespace lux::render::detail
                 }
             }
         }
+        // Cross-instance ordering needs each exact range once, with all pass writes folded in.
+        // Distinct ranges and logical resources remain separate until their physical bindings are known.
+        compactImportedAccesses(imports);
+
         // Canonical imported/history/export states are restored on Graphics, outside rendering scopes.
         if (batches.back().queue != EQueueRole::GRAPHICS)
         {

@@ -172,6 +172,11 @@ namespace lux::render::detail
             const auto& pass = frame.passes[p];
             const auto& compiled = *pass.compiled_pass;
             const auto& parameters = pass.parameters;
+            if (pass.alias_barrier)
+            {
+                // Establish the alias memory dependency before any new image layout transition.
+                core.CmdBarrier(command, {&*pass.alias_barrier, 1});
+            }
             if (!pass.images.empty() || !pass.buffers.empty())
             {
                 const nri::BarrierDesc barrier{

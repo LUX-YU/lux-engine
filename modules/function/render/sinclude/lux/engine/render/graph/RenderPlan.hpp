@@ -166,7 +166,8 @@ namespace lux::render::detail
     enum class ETransientAllocation : std::uint8_t
     {
         INDEPENDENT,
-        REUSE_OBJECTS
+        REUSE_OBJECTS,
+        ALIAS_MEMORY
     };
 
     enum class EResourceReuse : std::uint8_t
@@ -183,11 +184,19 @@ namespace lux::render::detail
         REUSED
     };
 
+    struct PhysicalResourceSlot final
+    {
+        GraphResourceId resource;
+        std::array<std::uint32_t, 3> before{}, end{};
+        std::array<std::uint32_t, 3> first_pass{kGraphInvalidIndex, kGraphInvalidIndex, kGraphInvalidIndex};
+        std::array<nri::AccessBits, 3> accesses{};
+    };
+
     // Logical bindings borrow these unique physical slots; the instance owns one set per FIF.
     struct PhysicalResourcePlan final
     {
         ETransientAllocation allocation = ETransientAllocation::REUSE_OBJECTS;
-        std::vector<GraphResourceId> slots;
+        std::vector<PhysicalResourceSlot> slots;
         std::vector<std::uint32_t> resource_slots;
         std::vector<EResourceReuse> reasons;
     };

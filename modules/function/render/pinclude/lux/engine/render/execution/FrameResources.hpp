@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/execution/HistoryState.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
+#include <lux/engine/render/graph/PhysicalResourcePlan.hpp>
 
 namespace lux::render::detail
 {
@@ -22,6 +23,15 @@ namespace lux::render::detail
         std::vector<nri::Buffer*> buffers;
         std::vector<nri::Texture*> images;
         std::vector<nri::Descriptor*> views;
+
+        struct MemoryAllocation final
+        {
+            nri::Memory* memory;
+            std::uint64_t bytes;
+        };
+
+        std::vector<MemoryAllocation> memories;
+        std::vector<MemoryPlacement> memory_bindings;
         nri::DescriptorPool* descriptor_pool = nullptr;
         std::vector<nri::TextureBarrierDesc> final_images;
         std::vector<nri::BufferBarrierDesc> final_buffers;

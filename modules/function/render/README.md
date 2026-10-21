@@ -131,12 +131,25 @@ checks. Only compatible LOAD successors share a rendering scope; sampling an ear
 corresponding barrier outside rendering. The NRI backend has no discard load operation, so author DISCARD is
 lowered to a clear, while discard stores remain native discard stores.
 
-`RenderExecutor` records work into FrameExecution's existing shared Graphics submission. Professional preparation
+`RenderExecutor` records work into FrameExecution's prepared command buffers. Professional preparation
 may contribute bounded Buffer copies; it cannot hide arbitrary GPU dispatch behind a recording callback.
 ComputeWork can permit async compute. Compilation consumes immutable physical queue facts, folds aliased roles,
 and groups adjacent work into SubmissionBatch intervals. Imported images without an explicit sharing contract
-remain on Graphics. Memory aliasing is not enabled. Explicit Buffer/Texture copies are available; there is no
+remain on Graphics. Explicit Buffer/Texture copies are available; there is no
 production Readback service or implicit extra rendering.
+
+The default cold allocation strategy reuses identical transient objects, then aliases compatible Memory where
+the original submission dependencies and physical Queue FIFO prove all earlier uses precede all later uses.
+Imported resources, History, exports, conditional resources, initial contents and opaque shared tables are excluded.
+Project callers can explicitly select independent allocation or object reuse without Memory aliasing.
+Attach resolves actual NRI memory requirements. Dedicated allocations, incompatible memory types and activation
+inside a merged rendering scope remain separate. Aliased members share offset zero within one resource kind;
+this is not a general mixed Buffer/Texture heap packer. No dependency or CPU wait is added to make reuse possible.
+
+Each FIF slot owns its physical objects and Memory independently. Alias activation establishes a memory barrier
+before the new object's layout/access transitions. Cleanup releases descriptors, then resources, then each Memory
+exactly once through the existing Session cleanup scope. Plan diagnostics report logical-to-physical mappings;
+instance resource diagnostics report actual Memory groups, requested bytes and placement rejection reasons.
 
 FrameExecution advances a frozen submission window across Queue capacity limits. Each accepted batch records its
 actual queue serial; dependencies wait for that producer, never an unrelated later submission. Compatible ready

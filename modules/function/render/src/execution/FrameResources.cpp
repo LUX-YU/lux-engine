@@ -24,5 +24,9 @@ namespace lux::render::detail
         {
             nri_core.DestroyBuffer(buffer);
         }
+        for (const auto& allocation : memories)
+        {
+            nri_core.FreeMemory(allocation.memory);
+        }
     }
 } // namespace lux::render::detail

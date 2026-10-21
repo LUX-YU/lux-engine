@@ -13,6 +13,8 @@ namespace lux::render::detail
             Frontier before{kGraphInvalidIndex, kGraphInvalidIndex, kGraphInvalidIndex};
             Frontier end{};
             std::uint32_t first_pass = kGraphInvalidIndex;
+            std::array<std::uint32_t, 3> first_queue_pass{kGraphInvalidIndex, kGraphInvalidIndex, kGraphInvalidIndex};
+            std::array<nri::AccessBits, 3> accesses{};
             bool conditional = false;
         };
 
@@ -34,6 +36,12 @@ namespace lux::render::detail
                 }
             }
             return true;
+        }
+
+        bool allowsReuse(EResourceReuse reason) noexcept
+        {
+            return reason == EResourceReuse::DISTINCT_DESCRIPTION || reason == EResourceReuse::UNORDERED ||
+                   reason == EResourceReuse::REUSED;
         }
     } // namespace
 
@@ -86,6 +94,7 @@ namespace lux::render::detail
                 {
                     auto& interval = intervals[id.index];
                     interval.first_pass = std::min(interval.first_pass, p);
+                    interval.first_queue_pass[q] = std::min(interval.first_queue_pass[q], p);
                     interval.conditional |= pass.condition_region != kGraphInvalidIndex;
                     interval.end[q] = frontier[q];
                     for (std::size_t axis = 0; axis < before.size(); ++axis)
@@ -100,6 +109,14 @@ namespace lux::render::detail
                     {
                         record(use.fallback->resource);
                     }
+                }
+                for (const auto& transition : pass.before.images)
+                {
+                    intervals[transition.resource].accesses[q] |= transition.native.after.access;
+                }
+                for (const auto& transition : pass.before.buffers)
+                {
+                    intervals[transition.resource].accesses[q] |= transition.native.after.access;
                 }
             }
             completed[b] = queue_frontiers[q] = frontier;
@@ -149,9 +166,7 @@ namespace lux::render::detail
                     const auto previous = tails[s];
                     const auto& candidate = resources[previous];
                     const auto previous_reason = result.reasons[previous];
-                    const bool reusable = previous_reason == EResourceReuse::DISTINCT_DESCRIPTION ||
-                                          previous_reason == EResourceReuse::UNORDERED ||
-                                          previous_reason == EResourceReuse::REUSED;
+                    const bool reusable = allowsReuse(previous_reason);
                     // Legacy RGVulkanResourceAllocator::makeKey matches the complete description/usage.
                     // Reuse here additionally requires batch happens-before, never a frame-age heuristic.
                     const bool same_description = candidate.description == resource.description &&
@@ -174,10 +189,92 @@ namespace lux::render::detail
             if (result.resource_slots[i] == kGraphInvalidIndex)
             {
                 result.resource_slots[i] = static_cast<std::uint32_t>(result.slots.size());
-                result.slots.push_back({i});
+                result.slots.push_back({{i}, intervals[i].before});
                 tails.push_back(i);
+            }
+            auto& slot = result.slots[result.resource_slots[i]];
+            for (std::size_t q = 0; q < queues.size(); ++q)
+            {
+                slot.before[q] = std::min(slot.before[q], intervals[i].before[q]);
+                slot.end[q] = std::max(slot.end[q], intervals[i].end[q]);
+                slot.first_pass[q] = std::min(slot.first_pass[q], intervals[i].first_queue_pass[q]);
+                slot.accesses[q] |= intervals[i].accesses[q];
             }
         }
         return result;
+    }
+
+    std::vector<MemoryPlacement> instantiatePlacements(
+        const PhysicalResourcePlan& physical,
+        std::span<const CompiledResource> resources,
+        const RecordingProgram& recording,
+        std::span<const nri::MemoryDesc> requirements
+    ) noexcept
+    {
+        std::vector<MemoryPlacement> placements(physical.slots.size());
+        std::vector<std::uint32_t> tails;
+        for (std::uint32_t i = 0; i < physical.slots.size(); ++i)
+        {
+            const auto& slot = physical.slots[i];
+            auto& placement = placements[i];
+            placement = {i, EMemoryPlacement::EXCLUDED};
+            if (!allowsReuse(physical.reasons[slot.resource.index]))
+            {
+                continue;
+            }
+            if (requirements[i].mustBeDedicated)
+            {
+                placement.reason = EMemoryPlacement::DEDICATED;
+                continue;
+            }
+            const bool boundary = std::ranges::all_of(
+                slot.first_pass,
+                [&](auto p)
+                {
+                    if (p == kGraphInvalidIndex)
+                    {
+                        return true;
+                    }
+                    const auto group = recording.passes[p].rendering_group;
+                    return group == kGraphInvalidIndex || recording.groups[group].first_pass == p;
+                }
+            );
+            if (!boundary)
+            {
+                placement.reason = EMemoryPlacement::RENDERING_SCOPE;
+                continue;
+            }
+            placement.reason = EMemoryPlacement::DISTINCT_REQUIREMENTS;
+            for (auto& tail : tails)
+            {
+                const auto& previous = physical.slots[tail];
+                const bool same_type = requirements[tail].type == requirements[i].type;
+                // Keep linear buffers and non-linear textures in separate allocations. Every member
+                // starts at offset zero: there is no adjacent mixed-granularity placement to pad.
+                const bool same_kind = resources[previous.resource.index].description.index() ==
+                                       resources[slot.resource.index].description.index();
+                if (!same_type || !same_kind)
+                {
+                    continue;
+                }
+                placement.reason = EMemoryPlacement::UNORDERED;
+                bool ordered = true;
+                for (std::size_t q = 0; q < slot.before.size(); ++q)
+                {
+                    ordered &= previous.end[q] <= slot.before[q];
+                }
+                if (ordered)
+                {
+                    placement = {placements[tail].allocation, EMemoryPlacement::ALIASED};
+                    tail = i;
+                    break;
+                }
+            }
+            if (placement.allocation == i)
+            {
+                tails.push_back(i);
+            }
+        }
+        return placements;
     }
 } // namespace lux::render::detail

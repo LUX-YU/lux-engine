@@ -120,8 +120,9 @@ namespace lux::render::detail
         }
         output =
             "{\"queue\":\"compiled physical roles\",\"submission_policy\":\"merge compatible ready intervals; actual "
-            "batches in dumpSubmissions\",\"alias\":false,\"history_count\":" +
-            std::to_string(plan.histories_.size()) +
+            "batches in dumpSubmissions\",\"allocation_mode\":" +
+            std::to_string(static_cast<unsigned>(plan.physical_resources_.allocation)) +
+            ",\"history_count\":" + std::to_string(plan.histories_.size()) +
             ","
             "\"counts\":\"compiled, not measured\",\"pipelines\":" +
             std::to_string(plan.pipelines_.size()) + ",\"layouts\":" + std::to_string(plan.layouts_.size()) +

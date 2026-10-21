@@ -20,7 +20,7 @@ namespace lux::render::detail
             const RenderGraph& graph,
             const RenderGraphAnalysis& analysis,
             const TargetDesc* target = nullptr,
-            ETransientAllocation allocation = ETransientAllocation::REUSE_OBJECTS
+            ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY
         ) noexcept;
     };
 } // namespace lux::render::detail

@@ -9,6 +9,7 @@
 #include <lux/engine/render/execution/FrameResources.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
+#include <lux/engine/render/graph/PhysicalResourcePlan.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
 #include <numeric>
 
@@ -127,6 +128,7 @@ namespace lux::render::detail
             {
                 return passes;
             }
+            prepareAliasBarriers(frames_[slot]);
         }
         if (auto descriptors = prepareDescriptors(); !descriptors)
         {
@@ -146,22 +148,9 @@ namespace lux::render::detail
         const auto& core = session.nriCore();
         const auto& plan = *plan_;
         auto& frame = frames_[slot];
-        // Allocate each physical slot once; logical bindings below only borrow these objects.
-        for (auto resource : plan.physical_resources_.slots)
+        if (auto created = allocatePhysicalResources(frame); !created)
         {
-            auto& binding = frame.bindings[resource.index];
-            if (auto created = createResource(resource.index, binding); !created)
-            {
-                return created;
-            }
-            if (binding.image)
-            {
-                frame.images.push_back(binding.image);
-            }
-            else
-            {
-                frame.buffers.push_back(binding.buffer);
-            }
+            return created;
         }
         for (std::uint32_t i = 0; i < frame.bindings.size(); ++i)
         {
@@ -208,9 +197,211 @@ namespace lux::render::detail
                 continue;
             }
             const auto physical = plan.physical_resources_.resource_slots[i];
-            binding = frame.bindings[plan.physical_resources_.slots[physical].index];
+            binding = frame.bindings[plan.physical_resources_.slots[physical].resource.index];
         }
         return {};
+    }
+
+    RenderResult<void> RenderGraphInstance::allocatePhysicalResources(FrameResources& frame) noexcept
+    {
+        auto& session = *session_;
+        const auto& core = session.nriCore();
+        const auto& physical = plan_->physical_resources_;
+        const bool alias_memory = physical.allocation == ETransientAllocation::ALIAS_MEMORY;
+        std::vector<nri::MemoryDesc> requirements(alias_memory ? physical.slots.size() : 0);
+        for (std::uint32_t s = 0; s < physical.slots.size(); ++s)
+        {
+            const auto index = physical.slots[s].resource.index;
+            const auto& resource = plan_->resources()[index];
+            auto& binding = frame.bindings[index];
+            if (!alias_memory)
+            {
+                if (auto created = createResource(index, binding); !created)
+                {
+                    return created;
+                }
+            }
+            else
+            {
+                nri::Result created;
+                if (std::holds_alternative<GraphImageDesc>(resource.description))
+                {
+                    auto description = textureDescription(resource);
+                    if (!description)
+                    {
+                        return cxx::unexpected(description.error());
+                    }
+                    created = core.CreateTexture(session.device(), *description, binding.image);
+                }
+                else
+                {
+                    binding.buffer_size = std::get<GraphBufferDesc>(resource.description).size;
+                    const nri::BufferDesc description{binding.buffer_size, 4, resource.buffer_usage};
+                    created = core.CreateBuffer(session.device(), description, binding.buffer);
+                }
+                if (created != nri::Result::SUCCESS)
+                {
+                    return cxx::unexpected(nativeError(created));
+                }
+            }
+            if (binding.image)
+            {
+                frame.images.push_back(binding.image);
+                if (alias_memory)
+                {
+                    core.GetTextureMemoryDesc(*binding.image, nri::MemoryLocation::DEVICE, requirements[s]);
+                }
+            }
+            else
+            {
+                frame.buffers.push_back(binding.buffer);
+                if (alias_memory)
+                {
+                    core.GetBufferMemoryDesc(*binding.buffer, nri::MemoryLocation::DEVICE, requirements[s]);
+                }
+            }
+        }
+        if (!alias_memory)
+        {
+            return {};
+        }
+        const auto placements = instantiatePlacements(physical, plan_->resources(), plan_->recording_, requirements);
+        std::vector<nri::AllocateMemoryDesc> descriptions(physical.slots.size());
+        for (std::uint32_t s = 0; s < placements.size(); ++s)
+        {
+            auto& description = descriptions[placements[s].allocation];
+            const auto& required = requirements[s];
+            description.size = std::max(description.size, required.size);
+            description.type = required.type;
+            description.vma.enable = !required.mustBeDedicated;
+            description.vma.alignment = std::max(description.vma.alignment, required.alignment);
+            const auto* image =
+                std::get_if<GraphImageDesc>(&plan_->resources()[physical.slots[s].resource.index].description);
+            description.allowMultisampleTextures |= image && image->samples > 1;
+        }
+        frame.memory_bindings = placements;
+        for (std::uint32_t s = 0; s < placements.size(); ++s)
+        {
+            if (placements[s].allocation != s)
+            {
+                continue;
+            }
+            nri::Memory* memory = nullptr;
+            const auto allocated = core.AllocateMemory(session.device(), descriptions[s], memory);
+            if (allocated != nri::Result::SUCCESS)
+            {
+                return cxx::unexpected(nativeError(allocated));
+            }
+            frame.memory_bindings[s].allocation = static_cast<std::uint32_t>(frame.memories.size());
+            frame.memories.push_back({memory, descriptions[s].size});
+        }
+        std::vector<nri::BindBufferMemoryDesc> buffers;
+        std::vector<nri::BindTextureMemoryDesc> images;
+        for (std::uint32_t s = 0; s < placements.size(); ++s)
+        {
+            const auto group = frame.memory_bindings[placements[s].allocation].allocation;
+            frame.memory_bindings[s].allocation = group;
+            auto* memory = frame.memories[group].memory;
+            const auto& binding = frame.bindings[physical.slots[s].resource.index];
+            if (binding.image)
+            {
+                images.push_back({binding.image, memory, 0});
+            }
+            else
+            {
+                buffers.push_back({binding.buffer, memory, 0});
+            }
+        }
+        if (!buffers.empty())
+        {
+            const auto status = core.BindBufferMemory(buffers.data(), static_cast<std::uint32_t>(buffers.size()));
+            if (status != nri::Result::SUCCESS)
+            {
+                return cxx::unexpected(nativeError(status));
+            }
+        }
+        if (!images.empty())
+        {
+            const auto status = core.BindTextureMemory(images.data(), static_cast<std::uint32_t>(images.size()));
+            if (status != nri::Result::SUCCESS)
+            {
+                return cxx::unexpected(nativeError(status));
+            }
+        }
+        return {};
+    }
+
+    void RenderGraphInstance::prepareAliasBarriers(FrameResources& frame) noexcept
+    {
+        std::vector<std::uint32_t> tails(frame.memories.size(), kGraphInvalidIndex);
+        const auto& slots = plan_->physical_resources_.slots;
+        for (std::uint32_t s = 0; s < frame.memory_bindings.size(); ++s)
+        {
+            auto& previous = tails[frame.memory_bindings[s].allocation];
+            if (previous != kGraphInvalidIndex)
+            {
+                for (std::size_t q = 0; q < slots[s].first_pass.size(); ++q)
+                {
+                    const auto first = slots[s].first_pass[q];
+                    if (first == kGraphInvalidIndex)
+                    {
+                        continue;
+                    }
+                    auto& barrier = frame.passes[first].alias_barrier;
+                    if (!barrier)
+                    {
+                        barrier.emplace();
+                    }
+                    barrier->before.access |= slots[previous].accesses[q];
+                    barrier->after.access |= slots[s].accesses[q];
+                    // ALL is zero in NRI. Cross-Queue visibility comes from the already-proven Fence waits.
+                    barrier->before.stages = barrier->after.stages = nri::StageBits::ALL;
+                }
+            }
+            previous = s;
+        }
+    }
+
+    RenderResult<nri::TextureDesc> RenderGraphInstance::textureDescription(const CompiledResource& resource
+    ) const noexcept
+    {
+        auto& session = *session_;
+        const auto max_extent = session.description().dimensions.texture2DMaxDim;
+        const auto* image = &std::get<GraphImageDesc>(resource.description);
+        const auto dimension = [&](std::uint32_t absolute, std::uint32_t target)
+        {
+            if (!resource.target_sized)
+            {
+                return std::uint64_t(absolute);
+            }
+            const auto& expression = image->extent;
+            const auto scaled =
+                (std::uint64_t(target) * expression.numerator + expression.denominator - 1) / expression.denominator;
+            return (scaled + expression.alignment - 1) / expression.alignment * expression.alignment;
+        };
+        const auto width = dimension(image->width, target_.width);
+        const auto height = dimension(image->height, target_.height);
+        if (!width || !height || width > max_extent || height > max_extent)
+        {
+            return cxx::unexpected(RenderError{kInvalidTargetExtent});
+        }
+        const nri::TextureDesc description{
+            nri::TextureType::TEXTURE_2D,
+            resource.image_usage,
+            imageFormat(image->format).native,
+            static_cast<nri::Dim_t>(width),
+            static_cast<nri::Dim_t>(height),
+            1,
+            static_cast<nri::Dim_t>(image->mips),
+            static_cast<nri::Dim_t>(image->layers),
+            static_cast<nri::Sample_t>(image->samples),
+            nri::SharingMode::CONCURRENT
+        };
+        if (auto valid = session.validateTexture(description); !valid)
+        {
+            return cxx::unexpected(valid.error());
+        }
+        return description;
     }
 
     RenderResult<void> RenderGraphInstance::createResource(std::uint32_t index, Binding& binding) noexcept
@@ -218,43 +409,14 @@ namespace lux::render::detail
         auto& session = *session_;
         const auto& core = session.nriCore();
         const auto& resource = plan_->resources()[index];
-        const auto max_extent = session.description().dimensions.texture2DMaxDim;
-        if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
+        if (std::holds_alternative<GraphImageDesc>(resource.description))
         {
-            const auto dimension = [&](std::uint32_t absolute, std::uint32_t target)
+            auto description = textureDescription(resource);
+            if (!description)
             {
-                if (!resource.target_sized)
-                {
-                    return std::uint64_t(absolute);
-                }
-                const auto& expression = image->extent;
-                const auto scaled = (std::uint64_t(target) * expression.numerator + expression.denominator - 1) /
-                                    expression.denominator;
-                return (scaled + expression.alignment - 1) / expression.alignment * expression.alignment;
-            };
-            const auto width = dimension(image->width, target_.width);
-            const auto height = dimension(image->height, target_.height);
-            if (!width || !height || width > max_extent || height > max_extent)
-            {
-                return cxx::unexpected(RenderError{kInvalidTargetExtent});
+                return cxx::unexpected(description.error());
             }
-            const nri::TextureDesc description{
-                nri::TextureType::TEXTURE_2D,
-                resource.image_usage,
-                imageFormat(image->format).native,
-                static_cast<nri::Dim_t>(width),
-                static_cast<nri::Dim_t>(height),
-                1,
-                static_cast<nri::Dim_t>(image->mips),
-                static_cast<nri::Dim_t>(image->layers),
-                static_cast<nri::Sample_t>(image->samples),
-                nri::SharingMode::CONCURRENT
-            };
-            if (auto valid = session.validateTexture(description); !valid)
-            {
-                return cxx::unexpected(valid.error());
-            }
-            const auto status = core.CreatePlacedTexture(session.device(), NriDeviceHeap, description, binding.image);
+            const auto status = core.CreatePlacedTexture(session.device(), NriDeviceHeap, *description, binding.image);
             if (status != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(status));
@@ -1077,9 +1239,30 @@ namespace lux::render::detail
                 session_->nriCore().GetTextureMemoryDesc(*image, nri::MemoryLocation::DEVICE, memory);
                 bytes += memory.size;
             }
+            const auto allocated = std::accumulate(
+                frame.memories.begin(),
+                frame.memories.end(),
+                std::uint64_t{0},
+                [](auto sum, const auto& allocation) { return sum + allocation.bytes; }
+            );
             output += "{\"slot\":" + std::to_string(i) + ",\"owned_buffers\":" + std::to_string(frame.buffers.size()) +
                       ",\"owned_textures\":" + std::to_string(frame.images.size()) +
-                      ",\"allocation_requirement_bytes\":" + std::to_string(bytes) + "}";
+                      ",\"allocation_requirement_bytes\":" + std::to_string(bytes) +
+                      ",\"explicit_memory_count\":" + std::to_string(frame.memories.size()) +
+                      ",\"explicit_memory_bytes\":" + std::to_string(allocated) + ",\"memory_bindings\":[";
+            constexpr std::array
+                reasons{"excluded", "dedicated", "rendering_scope", "distinct_requirements", "unordered", "aliased"};
+            for (std::size_t s = 0; s < frame.memory_bindings.size(); ++s)
+            {
+                if (s)
+                {
+                    output += ',';
+                }
+                const auto& binding = frame.memory_bindings[s];
+                output += "{\"allocation\":" + std::to_string(binding.allocation) + ",\"reason\":\"" +
+                          reasons[static_cast<std::size_t>(binding.reason)] + "\"}";
+            }
+            output += "]}";
         }
         output += "],\"histories\":[";
         for (std::size_t i = 0; i < histories_.size(); ++i)

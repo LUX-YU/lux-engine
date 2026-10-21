@@ -57,7 +57,7 @@ static RenderPlan compile(
     const RenderGraph& graph,
     const RenderGraphAnalysis& analysis,
     const TargetDesc* target,
-    ETransientAllocation allocation = ETransientAllocation::REUSE_OBJECTS
+    ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY
 )
 {
     return take(GraphCompiler::compile(
@@ -974,15 +974,16 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
     CHECK(session->drain());
 }
 
-static void physicalImageReuse(Validation& validation, std::uint32_t fif)
+static void physicalImageReuse(Validation& validation, std::uint32_t fif, bool alias_memory = false)
 {
     auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     const auto a = take(builder.declareResource({"red temporary", GraphImageDesc{16, 16}}));
-    const auto b = take(builder.declareResource({"green temporary", GraphImageDesc{16, 16}}));
+    const auto extent = alias_memory ? 32u : 16u;
+    const auto b = take(builder.declareResource({"green temporary", GraphImageDesc{extent, extent}}));
     const auto red = take(builder.declareResource({"red pixels", GraphBufferDesc{4096}}));
-    const auto green = take(builder.declareResource({"green pixels", GraphBufferDesc{4096}}));
+    const auto green = take(builder.declareResource({"green pixels", GraphBufferDesc{extent * 256}}));
     const auto first = take(builder.addTransferPass("red", TransferWork{{ClearImage{{{a, 0}}, {1, 0, 0, 1}}}}));
     const auto first_copy = take(builder.addTransferPass(
         "preserve red",
@@ -992,16 +993,38 @@ static void physicalImageReuse(Validation& validation, std::uint32_t fif)
     CHECK(builder.dependsOn(first_copy.pass, second.pass));
     const auto second_copy = take(builder.addTransferPass(
         "preserve green",
-        TransferWork{{CopyImageBuffer{{second.written.front()}, {{green, 0}}, 256, 4096}}}
+        TransferWork{{CopyImageBuffer{{second.written.front()}, {{green, 0}}, 256, extent * 256}}}
     ));
     exportRows(builder, first_copy.written.front(), 16, 16, 256);
-    exportRows(builder, second_copy.written.front(), 16, 16, 256);
+    exportRows(builder, second_copy.written.front(), extent, extent, 256);
     const auto graph = take(std::move(builder).finish());
-    auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
-    CHECK(plan.physicalResources().resource_slots[a.index] == plan.physicalResources().resource_slots[b.index]);
-    CHECK(plan.physicalResources().slots.size() == 3);
+    auto plan = compile(
+        *session,
+        graph,
+        take(analyzeRenderGraph(graph)),
+        nullptr,
+        alias_memory ? ETransientAllocation::ALIAS_MEMORY : ETransientAllocation::REUSE_OBJECTS
+    );
+    CHECK(
+        (plan.physicalResources().resource_slots[a.index] == plan.physicalResources().resource_slots[b.index]) ==
+        !alias_memory
+    );
+    CHECK(plan.physicalResources().slots.size() == (alias_memory ? 4 : 3));
     auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
     CHECK(instance->initialize());
+    if (alias_memory)
+    {
+        std::string dump;
+        CHECK(instance->dumpResources(
+            {&dump,
+             [](void* p, std::string_view text) noexcept
+             {
+                 static_cast<std::string*>(p)->append(text);
+                 return true;
+             }}
+        ));
+        CHECK(dump.find("\"explicit_memory_count\":3") != std::string::npos);
+    }
     const std::array instances{instance.get()};
     for (std::uint32_t i = 0; i < fif + 1; ++i)
     {
@@ -1009,19 +1032,25 @@ static void physicalImageReuse(Validation& validation, std::uint32_t fif)
         CHECK(session->drain());
         const auto slot = instance->progress().last_submitted_slot;
         checkPixels(*session, *instance->nativeBuffer(red.index, slot), 16, 0, {255, 0, 0, 255}, 256);
-        checkPixels(*session, *instance->nativeBuffer(green.index, slot), 16, 0, {0, 255, 0, 255}, 256);
+        checkPixels(*session, *instance->nativeBuffer(green.index, slot), extent, 0, {0, 255, 0, 255}, 256);
     }
     instance.reset();
     CHECK(session->drain());
 }
 
-static void physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, bool ordered)
+static void physicalReuse(
+    Validation& validation,
+    DeviceOptions options,
+    std::uint32_t fif,
+    bool ordered,
+    bool alias_memory = false
+)
 {
     auto session = take(DeviceSession::create(options, diagnostics(validation), true, 3));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     const auto a = take(builder.declareResource({"first temporary", GraphBufferDesc{16}}));
-    const auto b = take(builder.declareResource({"second temporary", GraphBufferDesc{16}}));
+    const auto b = take(builder.declareResource({"second temporary", GraphBufferDesc{alias_memory ? 32u : 16u}}));
     const auto output_a = take(builder.declareResource({"first result", GraphBufferDesc{16}}));
     const auto output_b = take(builder.declareResource({"second result", GraphBufferDesc{16}}));
     const auto shader =
@@ -1049,7 +1078,13 @@ static void physicalReuse(Validation& validation, DeviceOptions options, std::ui
     CHECK(builder.exportOutput({second.written.front(), {}, {}, EGraphUse::TRANSFER_DESTINATION}));
     const auto graph = take(std::move(builder).finish());
     const auto analysis = take(analyzeRenderGraph(graph));
-    auto plan = compile(*session, graph, analysis, nullptr);
+    auto plan = compile(
+        *session,
+        graph,
+        analysis,
+        nullptr,
+        alias_memory ? ETransientAllocation::ALIAS_MEMORY : ETransientAllocation::REUSE_OBJECTS
+    );
     auto control = compile(*session, graph, analysis, nullptr, ETransientAllocation::INDEPENDENT);
     CHECK(plan.submissions().size() == control.submissions().size());
     for (std::size_t i = 0; i < plan.submissions().size(); ++i)
@@ -1064,16 +1099,33 @@ static void physicalReuse(Validation& validation, DeviceOptions options, std::ui
     }
     const bool reuse = ordered || &session->queue() == &session->queue(EQueueRole::COMPUTE);
     CHECK(
-        (plan.physicalResources().resource_slots[a.index] == plan.physicalResources().resource_slots[b.index]) == reuse
+        (plan.physicalResources().resource_slots[a.index] == plan.physicalResources().resource_slots[b.index]) ==
+        (reuse && !alias_memory)
     );
     CHECK(plan.physicalResources().reasons[output_a.index] == EResourceReuse::EXPORTED);
     CHECK(control.physicalResources().slots.size() == 4);
-    CHECK(plan.physicalResources().slots.size() == (reuse ? 3 : 4));
+    CHECK(plan.physicalResources().slots.size() == (reuse && !alias_memory ? 3 : 4));
     auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan);
     CHECK(instance->initialize());
+    if (alias_memory)
+    {
+        std::string dump;
+        CHECK(instance->dumpResources(
+            {&dump,
+             [](void* p, std::string_view text) noexcept
+             {
+                 static_cast<std::string*>(p)->append(text);
+                 return true;
+             }}
+        ));
+        CHECK(dump.find("\"explicit_memory_count\":" + std::to_string(reuse ? 3 : 4)) != std::string::npos);
+        CHECK(dump.find(reuse ? "\"reason\":\"aliased\"" : "\"reason\":\"unordered\"") != std::string::npos);
+    }
     for (std::uint32_t slot = 0; slot < fif; ++slot)
     {
-        CHECK((instance->nativeBuffer(a.index, slot) == instance->nativeBuffer(b.index, slot)) == reuse);
+        CHECK(
+            (instance->nativeBuffer(a.index, slot) == instance->nativeBuffer(b.index, slot)) == (reuse && !alias_memory)
+        );
         for (std::uint32_t previous = 0; previous < slot; ++previous)
         {
             CHECK(instance->nativeBuffer(a.index, slot) != instance->nativeBuffer(a.index, previous));
@@ -1121,6 +1173,7 @@ int main()
         conditionalRegion(validation, fif);
         hzbHistory(validation, fif);
         physicalImageReuse(validation, fif);
+        physicalImageReuse(validation, fif, true);
         for (unsigned topology = 0; topology < 3; ++topology)
         {
             DeviceOptions options;
@@ -1129,6 +1182,8 @@ int main()
             multiQueueHistory(validation, options, fif);
             physicalReuse(validation, options, fif, true);
             physicalReuse(validation, options, fif, false);
+            physicalReuse(validation, options, fif, true, true);
+            physicalReuse(validation, options, fif, false, true);
         }
     }
     indirectCounts(validation);

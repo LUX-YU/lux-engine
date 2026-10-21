@@ -114,6 +114,10 @@ namespace lux::render::detail
         };
 
         struct HistoryState;
+        struct FrameResources;
+        [[nodiscard]] RenderResult<nri::TextureDesc> textureDescription(const CompiledResource&) const noexcept;
+        [[nodiscard]] RenderResult<void> allocatePhysicalResources(FrameResources&) noexcept;
+        void prepareAliasBarriers(FrameResources&) noexcept;
         [[nodiscard]] RenderResult<void> createResource(std::uint32_t resource, Binding&) noexcept;
         [[nodiscard]] RenderResult<void> createHistories() noexcept;
         [[nodiscard]] RenderResult<void> createHistoryViews(HistoryState&) noexcept;
@@ -127,6 +131,7 @@ namespace lux::render::detail
             const CompiledPass* compiled_pass;
             std::vector<nri::TextureBarrierDesc> images;
             std::vector<nri::BufferBarrierDesc> buffers;
+            std::optional<nri::GlobalBarrierDesc> alias_barrier;
             std::vector<nri::DescriptorSet*> descriptors;
             nri::DescriptorSet* private_descriptors = nullptr;
             std::vector<nri::Descriptor*> private_views;
@@ -146,7 +151,6 @@ namespace lux::render::detail
         };
 
         DeviceSession* session_;
-        struct FrameResources;
         std::vector<FrameResources> frames_;
         std::vector<HistoryState> histories_;
         const RenderPlan* plan_;

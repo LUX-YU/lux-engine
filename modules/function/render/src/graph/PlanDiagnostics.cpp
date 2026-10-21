@@ -118,13 +118,14 @@ namespace lux::render::detail
             output += "}\n";
             return sink.write(sink.destination, output);
         }
-        output = "{\"queue\":\"graphics\",\"submission_policy\":\"merge prepared instances in FrameExecution; actual "
-                 "batches in dumpSubmissions\",\"alias\":false,\"history_count\":" +
-                 std::to_string(plan.histories_.size()) +
-                 ","
-                 "\"async_compute\":false,\"counts\":\"compiled, not measured\",\"pipelines\":" +
-                 std::to_string(plan.pipelines_.size()) + ",\"layouts\":" + std::to_string(plan.layouts_.size()) +
-                 ",\"passes\":[";
+        output =
+            "{\"queue\":\"compiled physical roles\",\"submission_policy\":\"merge compatible ready intervals; actual "
+            "batches in dumpSubmissions\",\"alias\":false,\"history_count\":" +
+            std::to_string(plan.histories_.size()) +
+            ","
+            "\"counts\":\"compiled, not measured\",\"pipelines\":" +
+            std::to_string(plan.pipelines_.size()) + ",\"layouts\":" + std::to_string(plan.layouts_.size()) +
+            ",\"passes\":[";
         for (std::size_t p = 0; p < program.passes.size(); ++p)
         {
             if (p)
@@ -136,6 +137,7 @@ namespace lux::render::detail
                 "{\"source\":" + std::to_string(pass.source_pass) + ",\"kind\":" + std::to_string(pass.work.index()) +
                 ",\"group\":" + std::to_string(pass.rendering_group) +
                 ",\"condition_region\":" + std::to_string(pass.condition_region) +
+                ",\"queue_role\":" + std::to_string(static_cast<unsigned>(pass.queue)) +
                 ",\"rendering_boundary\":" + quoteDumpText(boundaries[static_cast<unsigned>(pass.rendering_boundary)]) +
                 ",\"descriptors\":[";
             const auto& layout = plan.descriptor_plan_->passes[pass.source_pass];
@@ -185,6 +187,27 @@ namespace lux::render::detail
                     output += ',';
                 }
                 output += bufferTransitionDump(pass.before.buffers[i]);
+            }
+            output += "]}";
+        }
+        output += "],\"submissions\":[";
+        for (std::size_t i = 0; i < plan.submissions_.size(); ++i)
+        {
+            if (i)
+            {
+                output += ',';
+            }
+            const auto& batch = plan.submissions_[i];
+            output += "{\"queue_role\":" + std::to_string(static_cast<unsigned>(batch.queue)) +
+                      ",\"first_pass\":" + std::to_string(batch.first_pass) +
+                      ",\"pass_count\":" + std::to_string(batch.pass_count) + ",\"dependencies\":[";
+            for (std::size_t d = 0; d < batch.dependencies.size(); ++d)
+            {
+                if (d)
+                {
+                    output += ',';
+                }
+                output += std::to_string(batch.dependencies[d].producer);
             }
             output += "]}";
         }

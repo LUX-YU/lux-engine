@@ -117,11 +117,17 @@ namespace lux::render::detail
         }
     }
 
-    void RenderExecutor::record(RenderGraphInstance& instance, nri::CommandBuffer& command, std::uint32_t slot) noexcept
+    void RenderExecutor::recordBatch(
+        RenderGraphInstance& instance,
+        nri::CommandBuffer& command,
+        std::uint32_t slot,
+        std::uint32_t batch_index
+    ) noexcept
     {
         const auto& core = instance.session_->nriCore();
         const auto& plan = *instance.plan_;
         const auto& frame = instance.frames_[slot];
+        const auto& batch = plan.submissions_[batch_index];
         const auto& bindings = frame.bindings;
         const auto readBinding = [&](const ResourceAccess& access) -> const RenderGraphInstance::Binding&
         {
@@ -134,7 +140,10 @@ namespace lux::render::detail
             return bindings[resource];
         };
         BindingState binding_state;
-        recordHistoryInitialization(instance, command);
+        if (batch_index == 0)
+        {
+            recordHistoryInitialization(instance, command);
+        }
         auto region = [&](const ResourceAccess& access, const std::optional<ImageCopyRegion>& rectangle = {})
         {
             const auto& range = std::get<GraphImageRange>(access.range);
@@ -158,11 +167,11 @@ namespace lux::render::detail
                 planes
             };
         };
-        for (std::size_t p = 0; p < frame.passes.size(); ++p)
+        for (std::size_t p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
         {
             const auto& pass = frame.passes[p];
             const auto& compiled = *pass.compiled_pass;
-            const auto& parameters = instance.pass_parameters_[p];
+            const auto& parameters = pass.parameters;
             if (!pass.images.empty() || !pass.buffers.empty())
             {
                 const nri::BarrierDesc barrier{
@@ -225,7 +234,7 @@ namespace lux::render::detail
                     const auto mip = std::get<GraphImageRange>(attachment.access.range).first_mip;
                     const auto width = std::max(1u, std::uint32_t(image.width) >> mip);
                     const auto height = std::max(1u, std::uint32_t(image.height) >> mip);
-                    const auto& area = instance.viewport_;
+                    const auto& area = frame.viewport;
                     const nri::Viewport viewport{
                         area.x * width,
                         area.y * height,
@@ -485,7 +494,8 @@ namespace lux::render::detail
                 }
             }
         }
-        if (!frame.final_images.empty() || !frame.final_buffers.empty())
+        if (batch_index + 1 == plan.submissions_.size() &&
+            (!frame.final_images.empty() || !frame.final_buffers.empty()))
         {
             const nri::BarrierDesc barrier{
                 nullptr,

@@ -611,15 +611,13 @@ namespace lux::render::detail
                 );
             }
         );
-        std::size_t graphics = 0;
-        while (&session_->physicalQueue(graphics) != &session_->queue())
+        if (!produced)
         {
-            ++graphics;
+            return;
         }
-        const auto serial = session_->queue().submitted();
         for (auto& history : histories_)
         {
-            history.submitted(graphics, serial, produced);
+            history.publish();
         }
     }
 
@@ -884,6 +882,7 @@ namespace lux::render::detail
                     }
                 }
             }
+            pass.parameters.resize(pass_parameters_[frame.passes.size()].size());
             frame.passes.push_back(std::move(pass));
         }
         return {};
@@ -1193,7 +1192,11 @@ namespace lux::render::detail
                 {
                     auto& barrier = frame.passes[p].buffers[index];
                     barrier.buffer = source.buffer;
-                    if (barrier.before.stages == nri::StageBits::ALL && barrier.before.access == nri::AccessBits::NONE)
+                    const auto& pass = *frame.passes[p].compiled_pass;
+                    const bool initial_graphics = pass.queue == EQueueRole::GRAPHICS &&
+                                                  pass.before.buffers[index].previous.index == kGraphInvalidIndex;
+                    if (initial_graphics && barrier.before.stages == nri::StageBits::ALL &&
+                        barrier.before.access == nri::AccessBits::NONE)
                     {
                         barrier.before.access = bufferAccess(core.GetBufferDesc(*source.buffer).usage);
                     }
@@ -1340,6 +1343,10 @@ namespace lux::render::detail
 
     RenderResult<bool> RenderGraphInstance::prepareFrame(std::uint32_t slot) noexcept
     {
+        if (submission_error_.type != 0)
+        {
+            return cxx::unexpected(submission_error_);
+        }
         auto& frame = frames_[slot];
         if (frame.unavailable_buffers)
         {
@@ -1372,9 +1379,11 @@ namespace lux::render::detail
             }
         }
         updateHistoryViews(slot);
+        frame.viewport = viewport_;
         for (std::size_t p = 0; p < frame.passes.size(); ++p)
         {
-            auto& parameters = pass_parameters_[p];
+            auto& parameters = frame.passes[p].parameters;
+            std::ranges::copy(pass_parameters_[p], parameters.begin());
             for (const auto& copy : parameter_copies_[p])
             {
                 const auto* source = copy.resource == kGraphInvalidIndex
@@ -1384,6 +1393,40 @@ namespace lux::render::detail
             }
         }
         return true;
+    }
+
+    void RenderGraphInstance::acceptedBatch(std::uint32_t batch, std::size_t queue, std::uint64_t serial) noexcept
+    {
+        const auto mark = [&](HistoryState::HistorySlot& slot)
+        {
+            slot.last_use.serials[queue] = std::max(slot.last_use.serials[queue], serial);
+            slot.initialized = true;
+        };
+        if (batch == 0)
+        {
+            for (auto& history : histories_)
+            {
+                if (history.clear_previous)
+                {
+                    mark(history.slots[history.previous]);
+                }
+                if (history.clear_current)
+                {
+                    mark(history.slots[history.current]);
+                }
+            }
+        }
+        for (auto resource : plan_->submissions_[batch].histories)
+        {
+            const auto& compiled = plan_->resources_[resource.index];
+            auto& history = histories_[compiled.history];
+            mark(history.slots[compiled.origin == EGraphOrigin::HISTORY_PREVIOUS ? history.previous : history.current]);
+        }
+    }
+
+    void RenderGraphInstance::failedSubmission(RenderError error) noexcept
+    {
+        submission_error_ = error;
     }
 
     std::uint32_t RenderGraphInstance::recordedPassCount(std::uint32_t slot) const noexcept

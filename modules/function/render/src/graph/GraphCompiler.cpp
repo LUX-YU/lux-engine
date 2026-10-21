@@ -8,6 +8,7 @@
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
 #include <lux/engine/render/graph/RenderingPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
+#include <lux/engine/render/graph/SubmissionPlan.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -277,7 +278,7 @@ namespace lux::render::detail
         const EnabledDeviceFeatures& enabled,
         std::span<const nri::FormatSupportBits> formats,
         std::array<std::uint32_t, 2> vertex_limits,
-        nri::QueueType queue_type,
+        std::array<const QueueProperties*, 3> queues,
         std::uint32_t image_capacity,
         std::uint32_t sampler_capacity,
         const RenderGraph& graph,
@@ -285,7 +286,7 @@ namespace lux::render::detail
         const TargetDesc* target
     ) noexcept
     {
-        if (queue_type != nri::QueueType::GRAPHICS)
+        if (!queues[0] || !queues[1] || !queues[2] || queues[0]->type != nri::QueueType::GRAPHICS)
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
@@ -657,13 +658,14 @@ namespace lux::render::detail
                 }
             }
         }
+        planConditions(graph, plan.recording_);
+        selectQueues(graph, queues, plan.recording_);
         // Resource transitions are compiled once; frame instances only patch actual handles.
         auto barriers = planBarriers(graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_);
         if (!barriers)
         {
             return cxx::unexpected(barriers.error());
         }
-        planConditions(graph, plan.recording_);
         auto rendering = planRendering(analysis, plan.resources_, plan.recording_);
         if (!rendering)
         {
@@ -702,6 +704,7 @@ namespace lux::render::detail
                 }
             }
         }
+        planSubmissions(graph, analysis, plan.resources_, plan.recording_, plan.submissions_, plan.imported_accesses_);
         return plan;
     }
 } // namespace lux::render::detail

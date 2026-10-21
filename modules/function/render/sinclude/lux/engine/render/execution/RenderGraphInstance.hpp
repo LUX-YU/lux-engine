@@ -94,6 +94,8 @@ namespace lux::render::detail
         friend class FrameExecution;
         friend class RenderExecutor;
         void submitted(std::uint32_t slot) noexcept;
+        void acceptedBatch(std::uint32_t batch, std::size_t queue, std::uint64_t serial) noexcept;
+        void failedSubmission(RenderError error) noexcept;
         [[nodiscard]] std::uint32_t recordedPassCount(std::uint32_t slot) const noexcept;
         [[nodiscard]] RenderResult<void> createFrameResources(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareFrameBindings(std::uint32_t slot) noexcept;
@@ -134,6 +136,7 @@ namespace lux::render::detail
             std::vector<nri::TextureDataLayoutDesc> copy_layouts;
             std::vector<nri::Descriptor*> clear_views;
             std::array<std::uint32_t, 3> dispatch_groups{};
+            std::vector<std::byte> parameters;
         };
 
         struct ParameterCopy final
@@ -156,5 +159,6 @@ namespace lux::render::detail
         std::vector<std::byte> instance_values_;
         std::vector<std::uint8_t> condition_values_;
         ExecutionProgress progress_;
+        RenderError submission_error_;
     };
 } // namespace lux::render::detail

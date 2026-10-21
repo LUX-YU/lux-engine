@@ -66,16 +66,10 @@ namespace lux::render::detail
         return true;
     }
 
-    void RenderGraphInstance::HistoryState::submitted(std::size_t queue, std::uint64_t serial, bool produced) noexcept
+    void RenderGraphInstance::HistoryState::publish() noexcept
     {
-        auto& read = slots[previous];
         auto& written = slots[current];
-        read.initialized = written.initialized = true;
-        read.last_use.serials[queue] = written.last_use.serials[queue] = serial;
-        if (produced)
-        {
-            written.sample_sequence = ++sequence;
-            latest = current;
-        }
+        written.sample_sequence = ++sequence;
+        latest = current;
     }
 } // namespace lux::render::detail

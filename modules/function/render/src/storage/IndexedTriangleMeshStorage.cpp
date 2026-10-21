@@ -12,7 +12,7 @@
 namespace lux::render::detail
 {
     IndexedTriangleMeshStorage::IndexedTriangleMeshStorage(StorageCreateContext& dependencies, StorageId id) noexcept
-        : session_(dependencies.device), uploads_(*dependencies.uploads), id_(id),
+        : session_(dependencies.device), uploads_(*dependencies.uploads), frames_(*dependencies.frames), id_(id),
           vertices_(dependencies.device, nri::BufferUsageBits::VERTEX_BUFFER),
           indices_(dependencies.device, nri::BufferUsageBits::INDEX_BUFFER),
           sections_(dependencies.device, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE, 65536)
@@ -196,6 +196,10 @@ namespace lux::render::detail
 
     RenderResult<void> IndexedTriangleMeshStorage::release(MeshId id) noexcept
     {
+        if (frames_.submitting())
+        {
+            return cxx::unexpected(RenderError{kDeviceBusy});
+        }
         auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
         if (!entry)
         {
@@ -270,7 +274,7 @@ namespace lux::render::detail
         static const auto create = +[](StorageCreateContext& dependencies, StorageId id
                                     ) noexcept -> RenderResult<std::unique_ptr<IndexedTriangleMeshStorage>>
         {
-            if (!dependencies.uploads)
+            if (!dependencies.uploads || !dependencies.frames)
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }

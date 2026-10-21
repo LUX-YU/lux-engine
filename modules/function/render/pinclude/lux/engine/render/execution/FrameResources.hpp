@@ -16,6 +16,7 @@ namespace lux::render::detail
         std::vector<std::uint8_t> enabled_regions;
         std::vector<std::uint8_t> history_valid;
         std::uint32_t enabled_pass_count = 0;
+        RasterViewport viewport;
         std::vector<std::uint32_t> changed_resources;
         std::size_t unavailable_buffers = 0;
         std::vector<nri::Buffer*> buffers;

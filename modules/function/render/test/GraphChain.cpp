@@ -9,6 +9,7 @@
 #include <lux/engine/render/graph/PlanDiagnostics.hpp>
 #include <lux/engine/render/graph/RenderGraphBuilder.hpp>
 #include <string>
+#include <thread>
 
 #include "GraphCount.hpp"
 #include "GraphDepthField.hpp"
@@ -64,7 +65,9 @@ static RenderPlan compile(
         session.enabledFeatures(),
         session.formatSupport(),
         {session.vertexStrideLimit(), session.vertexOffsetLimit()},
-        session.queue().properties().type,
+        {&session.queue(EQueueRole::GRAPHICS).properties(),
+         &session.queue(EQueueRole::COMPUTE).properties(),
+         &session.queue(EQueueRole::TRANSFER).properties()},
         0,
         0,
         graph,
@@ -162,9 +165,11 @@ static void exportRows(
     }
 }
 
-static void imageChain(Validation& validation, std::uint32_t fif)
+static void imageChain(Validation& validation, std::uint32_t fif, bool async_compute = false)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    DeviceOptions options;
+    options.multiple_queues = async_compute;
+    auto session = take(DeviceSession::create(options, diagnostics(validation), true, 3));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     GraphImageDesc image{64, 64};
@@ -182,6 +187,7 @@ static void imageChain(Validation& validation, std::uint32_t fif)
     const auto pixels = take(builder.declareResource({"pixels", GraphBufferDesc{128 * 512 + 256}}));
     const auto tint_pass = take(builder.addTransferPass("tint", TransferWork{{FillBuffer{{{tint, 0}}, 0x3f800000u}}}));
     ComputeWork compute;
+    compute.allow_async_compute = async_compute;
     compute.interface.program =
         take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphFill, kGraphFillReflection)));
     compute.interface.resources = {{"generated", {{seed, 0}, GraphImageRange{1, 1, 1}, EGraphAccess::WRITE}}};
@@ -262,11 +268,35 @@ static void imageChain(Validation& validation, std::uint32_t fif)
     CHECK(second_instance->bindSampler(0, *sampler));
     CHECK(second_instance->initialize());
     const std::array instances{instance.get(), second_instance.get()};
+    const auto submit = [&](std::span<RenderGraphInstance* const> selected)
+    {
+        auto submitted = take(frames->render(selected, {}));
+        for (unsigned attempts = 0; frames->submitting() && attempts < 10000; ++attempts)
+        {
+            CHECK(session->pollQueues());
+            session->dispatchQueueCompletions();
+            submitted += take(frames->render({}, {}));
+            std::this_thread::yield();
+        }
+        CHECK(!frames->submitting());
+        return submitted;
+    };
     for (std::uint32_t slot = 0; slot < fif; ++slot)
     {
-        CHECK(take(frames->render(instances, {})) == 1);
+        if (async_compute)
+        {
+            CHECK(submit(instances) > 0);
+            CHECK(session->drain());
+        }
+        else
+        {
+            CHECK(submit(instances) == 1);
+        }
     }
-    CHECK(take(frames->render(instances, {})) == 0);
+    if (!async_compute)
+    {
+        CHECK(take(frames->render(instances, {})) == 0);
+    }
     CHECK(session->drain());
     const auto submission_dump_offset = dump.size();
     CHECK(frames->dumpSubmissions(sink));
@@ -282,12 +312,12 @@ static void imageChain(Validation& validation, std::uint32_t fif)
         checkPixels(*session, *instance->nativeBuffer(pixels.index, slot), 64, 256, {64, 64, 64, 255});
         checkPixels(*session, *second_instance->nativeBuffer(pixels.index, slot), 128, 256, {64, 64, 64, 255});
     }
-    CHECK(take(frames->render(instances, {})) == 1);
+    CHECK(submit(instances) > 0);
     instance.reset();
     physical.reset();
     CHECK(session->drain());
     const std::array remaining{second_instance.get()};
-    CHECK(take(frames->render(remaining, {})) == 1);
+    CHECK(submit(remaining) > 0);
     second_instance.reset();
     larger.reset();
     CHECK(session->drain());
@@ -589,7 +619,9 @@ static void historySequence(Validation& validation, std::uint32_t fif, bool use_
 
 static void hzbHistory(Validation& validation, std::uint32_t fif)
 {
-    auto session = take(DeviceSession::create({}, diagnostics(validation), true, 3));
+    DeviceOptions options;
+    options.multiple_queues = true;
+    auto session = take(DeviceSession::create(options, diagnostics(validation), true, 3));
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     GraphImageDesc image{9, 7, 1, 1, rdesc::ETextureFormat::R32_SFLOAT};
@@ -620,6 +652,7 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
     {
         ComputeWork work;
         work.interface.program = reduce;
+        work.allow_async_compute = true;
         work.interface.resources = {
             {"uSrc", {mip ? current : generated.written.front(), GraphImageRange{1, mip ? mip - 1 : 0, 1}}},
             {"uDst", {current, GraphImageRange{1, mip, 1}, EGraphAccess::WRITE}}
@@ -663,7 +696,7 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
         {
             // Retire an in-flight old instance while preparing a larger candidate from the same immutable plan.
             const std::array old{instance.get()};
-            CHECK(take(frames->render(old, {})) == 1);
+            CHECK(take(frames->render(old, {})) > 0 && !frames->submitting());
             target.width = 17;
             target.height = 11;
             auto replacement = take(OffscreenTarget::create(*session, target, fif));
@@ -674,7 +707,7 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
             CHECK(session->drain());
         }
         const std::array instances{instance.get()};
-        CHECK(take(frames->render(instances, {})) == 1);
+        CHECK(take(frames->render(instances, {})) > 0 && !frames->submitting());
         CHECK(session->drain());
         const auto values = readHistoryResult<128>(
             *session,
@@ -746,19 +779,216 @@ static void conditionalRegion(Validation& validation, std::uint32_t fif)
     CHECK(session->drain());
 }
 
+static void sharedImportedBuffer(Validation& validation, bool write_back)
+{
+    DeviceOptions options;
+    options.multiple_queues = true;
+    auto session = take(DeviceSession::create(options, diagnostics(validation), true, 1));
+    auto frames = take(FrameExecution::create(*session, nullptr, 2));
+    const auto& core = session->nriCore();
+    nri::Buffer* shared = nullptr;
+    CHECK(
+        core.CreatePlacedBuffer(
+            session->device(),
+            NriDeviceHeap,
+            {16, 4, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE},
+            shared
+        ) == nri::Result::SUCCESS
+    );
+    CHECK(session->queue().recordAndSubmit(
+        [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
+        {
+            core.CmdZeroBuffer(command, *shared, 0, 16);
+            const nri::BufferBarrierDesc barrier{
+                shared,
+                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY | nri::StageBits::CLEAR_STORAGE},
+                {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::ALL}
+            };
+            core.CmdBarrier(command, {nullptr, 0, &barrier, 1});
+            return {};
+        }
+    ));
+    CHECK(session->drain());
+    RenderGraphBuilder builder;
+    const auto input = take(builder.declareResource(
+        {"shared input", GraphBufferDesc{16}, EGraphOrigin::IMPORTED, {{}}, EGraphUse::STORAGE_READ}
+    ));
+    const auto current = take(builder.declareResource({"increment", GraphBufferDesc{16}}));
+    const auto output = take(builder.declareResource({"observed", GraphBufferDesc{16}}));
+    ComputeWork work;
+    work.allow_async_compute = true;
+    work.interface.program =
+        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphHistory, kGraphHistoryReflection)));
+    work.interface.resources = {
+        {"previous_sample", {{input, 0}}},
+        {"current_sample", {{current, 0}, {}, EGraphAccess::WRITE}}
+    };
+    const auto incremented = take(builder.addComputePass("increment", std::move(work)));
+    TransferWork copies{{CopyBuffer{{incremented.written.front()}, {{output, 0}}}}};
+    if (write_back)
+    {
+        copies.operations.push_back(CopyBuffer{{incremented.written.front()}, {{input, 0}}});
+    }
+    const auto copied = take(builder.addTransferPass("copy result", std::move(copies)));
+    CHECK(builder.exportOutput({copied.written.front()}));
+    const auto graph = take(std::move(builder).finish());
+    auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    auto first = std::make_unique<RenderGraphInstance>(*session, 2, plan);
+    auto second = std::make_unique<RenderGraphInstance>(*session, 2, plan);
+    for (auto* instance : {first.get(), second.get()})
+    {
+        instance->setResource(input.index, UINT32_MAX, {shared, 0, 16});
+        CHECK(instance->initialize());
+    }
+    const std::array instances{first.get(), second.get()};
+    const auto before = session->queue(EQueueRole::COMPUTE).submitted();
+    CHECK(take(frames->render(instances, {})) > 0);
+    for (unsigned attempt = 0; frames->submitting() && attempt < 10000; ++attempt)
+    {
+        CHECK(session->pollQueues());
+        session->dispatchQueueCompletions();
+        take(frames->render({}, {}));
+        std::this_thread::yield();
+    }
+    CHECK(!frames->submitting());
+    if (&session->queue() != &session->queue(EQueueRole::COMPUTE))
+    {
+        CHECK(session->queue(EQueueRole::COMPUTE).submitted() - before == (write_back ? 2 : 1));
+    }
+    CHECK(session->drain());
+    const auto a =
+        readHistoryResult<4>(*session, *first->nativeBuffer(output.index, first->progress().last_submitted_slot));
+    const auto b =
+        readHistoryResult<4>(*session, *second->nativeBuffer(output.index, second->progress().last_submitted_slot));
+    CHECK(a[0] == 1 && b[0] == (write_back ? 2 : 1));
+    first.reset();
+    second.reset();
+    CHECK(session->drain());
+    core.DestroyBuffer(shared);
+}
+
+static void multiQueueHistory(Validation& validation, DeviceOptions options, std::uint32_t fif)
+{
+    auto session = take(DeviceSession::create(options, diagnostics(validation), true, 1));
+    auto frames = take(FrameExecution::create(*session, nullptr, fif));
+    RenderGraphBuilder builder;
+    const auto history = take(builder.declareHistory("samples", GraphBufferDesc{16}));
+    const auto temporary = take(builder.declareResource({"temporary", GraphBufferDesc{16}}));
+    const auto initial = take(builder.declareResource({"initial", GraphBufferDesc{16}}));
+    const auto output = take(builder.declareResource({"observed", GraphBufferDesc{16}}));
+    const auto seeded = take(builder.addTransferPass("seed", TransferWork{{FillBuffer{{{initial, 0}}, 1}}}));
+    const auto shader =
+        take(builder.addProgram(program(rdesc::EShaderType::COMPUTE, kGraphHistory, kGraphHistoryReflection)));
+    ResourceVersion current{history.current, 0};
+    ResourceVersion scratch{temporary, 0};
+    for (std::uint32_t i = 0; i < 3; ++i)
+    {
+        ComputeWork work;
+        work.allow_async_compute = true;
+        work.interface.program = shader;
+        work.interface.resources = {
+            {"previous_sample",
+             i == 0 ? ResourceAccess{{history.previous, 0}, {}, EGraphAccess::READ, 0, seeded.written.front()}
+                    : ResourceAccess{current}},
+            {"current_sample", {scratch, {}, EGraphAccess::WRITE}}
+        };
+        scratch = take(builder.addComputePass("increment " + std::to_string(i), std::move(work))).written.front();
+        current =
+            take(builder.addTransferPass("copy " + std::to_string(i), TransferWork{{CopyBuffer{{scratch}, {current}}}})
+            ).written.front();
+    }
+    CHECK(builder.publishHistory(current));
+    const auto observed =
+        take(builder.addTransferPass("observe", TransferWork{{CopyBuffer{{current}, {{output, 0}}}}}));
+    CHECK(builder.exportOutput({observed.written.front()}));
+    const auto graph = take(std::move(builder).finish());
+    auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
+    const bool separate = &session->queue() != &session->queue(EQueueRole::COMPUTE);
+    CHECK(plan.submissions().size() == (separate ? 7 : 1));
+    auto first = std::make_unique<RenderGraphInstance>(*session, fif, plan);
+    auto second = std::make_unique<RenderGraphInstance>(*session, fif, plan);
+    CHECK(first->initialize() && second->initialize());
+    const std::array instances{first.get(), second.get()};
+    for (unsigned frame = 0; frame < 2; ++frame)
+    {
+        const auto before_graphics = session->queue().submitted();
+        const auto before_compute = session->queue(EQueueRole::COMPUTE).submitted();
+        CHECK(take(frames->render(instances, {})) != 0);
+        if (separate)
+        {
+            CHECK(frames->submitting(*first) && frames->submitting(*second));
+            CHECK(first->progress().count(EExecutionOutcome::EXECUTED) == frame);
+            if (frame == 0)
+            {
+                CHECK(first->invalidateHistory());
+            }
+            for (unsigned progress = 0; frames->submitting() && progress < 10000; ++progress)
+            {
+                CHECK(session->pollQueues());
+                session->dispatchQueueCompletions();
+                take(frames->render({}, {})); // Continue the frozen window, not a fresh preparation.
+                std::this_thread::yield();
+            }
+            CHECK(!frames->submitting());
+            CHECK(session->queue().submitted() - before_graphics == 4);
+            CHECK(session->queue(EQueueRole::COMPUTE).submitted() - before_compute == 3);
+        }
+        else
+        {
+            CHECK(session->queue().submitted() - before_graphics == 1);
+        }
+        CHECK(session->drain());
+        const auto a =
+            readHistoryResult<4>(*session, *first->nativeBuffer(output.index, first->progress().last_submitted_slot));
+        const auto b =
+            readHistoryResult<4>(*session, *second->nativeBuffer(output.index, second->progress().last_submitted_slot));
+        CHECK(a[0] == (separate ? 4 : 4 + frame * 3));
+        CHECK(b[0] == 4 + frame * 3);
+    }
+    if (separate)
+    {
+        CHECK(take(frames->render(instances, {})) != 0);
+        CHECK(frames->submitting());
+        frames->cancelSubmissions(RenderError{kDeviceArgument});
+        CHECK(first->progress().count(EExecutionOutcome::EXECUTED) == 2);
+        CHECK(!frames->submitting() && !first->prepareFrame(0));
+    }
+    first.reset();
+    second.reset();
+    CHECK(session->drain());
+    const auto old_serial = session->queue().submitted();
+    CHECK(session->queue().recordAndSubmit(
+        [](nri::CommandBuffer&, std::uint32_t) noexcept -> RenderResult<void> { return {}; }
+    ));
+    const auto dependency = take(session->queue().dependency(old_serial, nri::StageBits::ALL));
+    CHECK(dependency.value == old_serial && dependency.value != session->queue().submitted());
+    CHECK(!session->queue().dependency(session->queue().submitted() + 1, nri::StageBits::ALL));
+    CHECK(session->drain());
+}
+
 int main()
 {
     Validation validation;
     for (std::uint32_t fif : {1u, 2u, 3u})
     {
         imageChain(validation, fif);
+        imageChain(validation, fif, true);
         historySequence(validation, fif, false);
         historySequence(validation, fif, true);
         conditionalRegion(validation, fif);
         hzbHistory(validation, fif);
+        for (unsigned topology = 0; topology < 3; ++topology)
+        {
+            DeviceOptions options;
+            options.multiple_queues = topology != 0;
+            options.prefer_dedicated_queues = topology == 2;
+            multiQueueHistory(validation, options, fif);
+        }
     }
     indirectCounts(validation);
     resolveAndCopy(validation);
+    sharedImportedBuffer(validation, false);
+    sharedImportedBuffer(validation, true);
     CHECK(validation.errors == 0);
     std::printf(
         "Graph: Compute -> mip -> MRT/Depth -> sampled postprocess; FIF=1/2/3; GPU IndirectCount=0/1/3; errors=%u "

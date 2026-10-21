@@ -103,6 +103,8 @@ namespace lux::render
     {
         PassInterface interface;
         VDispatchArguments dispatch = DispatchArguments{};
+        // Permission to use the device's compute queue. Graphics remains a valid fallback.
+        bool allow_async_compute = false;
     };
 
     struct CopyBuffer final

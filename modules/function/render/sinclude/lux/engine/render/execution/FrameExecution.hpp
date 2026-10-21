@@ -117,6 +117,9 @@ namespace lux::render::detail
         ) noexcept;
         [[nodiscard]] bool dumpSubmissions(DumpSink) const noexcept;
         [[nodiscard]] RenderResult<bool> waitForProgress(std::uint64_t timeout_ns) noexcept;
+        [[nodiscard]] bool submitting(const RenderGraphInstance&) const noexcept;
+        [[nodiscard]] bool submitting() const noexcept;
+        void cancelSubmissions(RenderError) noexcept;
 
     private:
         enum class EFramePhase : std::uint8_t
@@ -124,7 +127,25 @@ namespace lux::render::detail
             FREE,
             COLLECTING,
             PREPARING,
+            SUBMITTING,
             SUBMITTED
+        };
+
+        struct InstanceExecution final
+        {
+            RenderGraphInstance* instance = nullptr;
+            std::uint32_t next_batch = 0;
+            std::vector<std::uint64_t> serials;
+            SubmissionFrontiers accepted;
+            std::vector<std::uint32_t> predecessors;
+        };
+
+        struct ImportedUse final
+        {
+            const void* physical = nullptr;
+            VGraphRange range;
+            std::uint32_t instance = 0;
+            bool write = false;
         };
 
         struct FrameSlot final
@@ -136,6 +157,11 @@ namespace lux::render::detail
             std::uint8_t pending_queues = 0;
             std::uint32_t recorded_instances = 0, recorded_passes = 0;
             std::uint64_t graphics_serial = 0;
+            std::uint64_t preparation_serial = 0;
+            std::vector<InstanceExecution> instances;
+            std::vector<ImportedUse> imported_uses;
+            std::vector<std::uint32_t> recording_instances;
+            std::vector<ResourceUploader::BufferCopy> feature_copies;
         };
 
         FrameExecution(DeviceSession&, ResourceUploader*, std::uint32_t) noexcept;
@@ -143,7 +169,10 @@ namespace lux::render::detail
         void sealFrame(FrameSlot&) noexcept;
         void updateUploadAdmission() noexcept;
         void acceptSubmission(std::uint32_t slot, const SubmissionQueue&) noexcept;
-        void finishSubmission(RenderResult<void>) noexcept;
+        void finishPreparation(RenderResult<void>) noexcept;
+        void prepareSubmissions(std::span<RenderGraphInstance* const>) noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> advanceSubmissions() noexcept;
+        [[nodiscard]] std::size_t queueIndex(const SubmissionQueue&) const noexcept;
 
         DeviceSession& device_;
         ResourceUploader* uploads_;

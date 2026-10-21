@@ -133,8 +133,26 @@ lowered to a clear, while discard stores remain native discard stores.
 
 `RenderExecutor` records work into FrameExecution's existing shared Graphics submission. Professional preparation
 may contribute bounded Buffer copies; it cannot hide arbitrary GPU dispatch behind a recording callback.
-Graph async compute and memory aliasing are not enabled. Explicit Buffer/Texture copies are
-available; there is no production Readback service or implicit extra rendering.
+ComputeWork can permit async compute. Compilation consumes immutable physical queue facts, folds aliased roles,
+and groups adjacent work into SubmissionBatch intervals. Imported images without an explicit sharing contract
+remain on Graphics. Memory aliasing is not enabled. Explicit Buffer/Texture copies are available; there is no
+production Readback service or implicit extra rendering.
+
+FrameExecution advances a frozen submission window across Queue capacity limits. Each accepted batch records its
+actual queue serial; dependencies wait for that producer, never an unrelated later submission. Compatible ready
+intervals from multiple instances share a submit. Shared imported reads remain independent; overlapping writes
+preserve instance order. NRI concurrent graph resources use semaphore memory dependencies and consumer-side
+layout transitions. First and final Graphics boundaries cover preparation copies, History initialization and
+canonical resource states.
+
+Preparation-copy completion and complete-instance publication are separate. Accepted copies can settle their
+upload Senders before the graph finishes submitting. History publishes only after the instance's required batches
+are accepted; partial failure stops that instance until replacement. FIF reuse waits for every accepted physical
+queue. Root parameters, viewport, conditions and History inputs stay fixed throughout a suspended CPU window.
+Destroy/Detach/Resize of an instance still in that window returns busy. Professional physical release also returns
+busy while such a window exists; it does not destroy objects referenced by future batches. Standalone callers must
+finish or cancel that window before destroying its borrowed inputs. These checks end at CPU submission completion,
+not GPU completion; physical cleanup still uses only DeviceSession.cleanup_scope_.
 
 `declareHistory` creates a Previous/Current pair. `publishHistory` observes the complete resulting version,
 including inherited mip ranges. Distance 1 is supported. Image initial values are explicit; Buffer history currently

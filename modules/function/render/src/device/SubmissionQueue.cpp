@@ -311,13 +311,18 @@ namespace lux::render::detail
         return wait(submitted_, timeout_ns);
     }
 
-    RenderResult<nri::FenceSubmitDesc> SubmissionQueue::dependency(nri::StageBits stages) const noexcept
+    RenderResult<nri::FenceSubmitDesc> SubmissionQueue::dependency(std::uint64_t serial, nri::StageBits stages)
+        const noexcept
     {
         if (terminal_)
         {
             return cxx::unexpected(*terminal_);
         }
-        return nri::FenceSubmitDesc{fence_, submitted_, stages};
+        if (serial > submitted_)
+        {
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        return nri::FenceSubmitDesc{fence_, serial, stages};
     }
 
     SubmissionQueue::CompletionSender SubmissionQueue::whenSubmittedWorkCompletes() noexcept

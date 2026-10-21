@@ -56,6 +56,7 @@ namespace lux::render::detail
         void retire(Geometry&) noexcept;
         DeviceSession& session_;
         ResourceUploader& uploads_;
+        FrameExecution& frames_;
 
         StorageId id_;
         cxx::StableSlotMap<Entry, MeshTag> entries_;

@@ -224,7 +224,7 @@ namespace lux::render::detail
     }
 
     SampledTexture2DStorage::SampledTexture2DStorage(StorageCreateContext& dependencies, StorageId id) noexcept
-        : session_(dependencies.device), uploads_(*dependencies.uploads), id_(id)
+        : session_(dependencies.device), uploads_(*dependencies.uploads), frames_(*dependencies.frames), id_(id)
     {
     }
 
@@ -233,7 +233,7 @@ namespace lux::render::detail
         StorageId id
     ) noexcept
     {
-        if (!dependencies.uploads)
+        if (!dependencies.uploads || !dependencies.frames)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
@@ -382,6 +382,10 @@ namespace lux::render::detail
 
     RenderResult<void> SampledTexture2DStorage::release(TextureId id) noexcept
     {
+        if (frames_.submitting())
+        {
+            return cxx::unexpected(RenderError{kDeviceBusy});
+        }
         auto* value = id.storage == id_ ? textures_.find(id.local) : nullptr;
         if (!value)
         {

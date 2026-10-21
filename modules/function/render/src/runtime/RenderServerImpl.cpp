@@ -126,7 +126,12 @@ namespace lux::render
                  enabled = device->enabledFeatures(),
                  formats = device->formatSupport(),
                  vertex_limits = std::array{device->vertexStrideLimit(), device->vertexOffsetLimit()},
-                 queue_type = device->queue().properties().type,
+                 queues =
+                     std::array{
+                         &device->queue(detail::EQueueRole::GRAPHICS).properties(),
+                         &device->queue(detail::EQueueRole::COMPUTE).properties(),
+                         &device->queue(detail::EQueueRole::TRANSFER).properties()
+                     },
                  sampled_image_capacity,
                  sampler_capacity,
                  storage_types = std::move(storage_types),
@@ -140,7 +145,7 @@ namespace lux::render
                         enabled,
                         formats,
                         vertex_limits,
-                        queue_type,
+                        queues,
                         sampled_image_capacity,
                         sampler_capacity,
                         storage_types,
@@ -197,6 +202,11 @@ namespace lux::render
         if (!effect)
         {
             output_response.error = RenderError{kRuntimeIdentity};
+            return;
+        }
+        if (attachmentsSubmitting(effect->attachments))
+        {
+            output_response.error = RenderError{kDeviceBusy};
             return;
         }
         while (!effect->attachments.empty())
@@ -440,12 +450,22 @@ namespace lux::render
             output_response.error = RenderError{kStorageIdentity};
             return;
         }
+        if (frames->submitting())
+        {
+            output_response.error = RenderError{kDeviceBusy};
+            return;
+        }
         if (auto result = storage_set->remove(id); !result)
         {
             output_response.error = result.error();
             return;
         }
         output_response = {};
+    }
+
+    bool RenderServer::Impl::attachmentsSubmitting(std::span<const AttachmentId> ids) const noexcept
+    {
+        return std::ranges::any_of(ids, [&](auto id) { return frames->submitting(*attachments.find(id)->instance); });
     }
 
     void RenderServer::Impl::detachAttachment(AttachmentId id) noexcept
@@ -600,6 +620,14 @@ namespace lux::render
         }
         for (auto& view : scene->views)
         {
+            if (attachmentsSubmitting(view.attachments))
+            {
+                output_response.error = RenderError{kDeviceBusy};
+                return;
+            }
+        }
+        for (auto& view : scene->views)
+        {
             while (!view.attachments.empty())
             {
                 detachAttachment(view.attachments.back());
@@ -682,6 +710,11 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
+        if (attachmentsSubmitting(view->attachments))
+        {
+            output_response.error = RenderError{kDeviceBusy};
+            return;
+        }
         while (!view->attachments.empty())
         {
             detachAttachment(view->attachments.back());
@@ -737,6 +770,11 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
+        if (!target->attachment.isNull() && attachmentsSubmitting({&target->attachment, 1}))
+        {
+            output_response.error = RenderError{kDeviceBusy};
+            return;
+        }
         if (target->epoch == UINT64_MAX)
         {
             output_response.error = RenderError{kRuntimeCapacity};
@@ -756,6 +794,11 @@ namespace lux::render
         if (!attachment)
         {
             output_response.error = RenderError{kRuntimeIdentity};
+            return;
+        }
+        if (frames->submitting(*attachment->instance))
+        {
+            output_response.error = RenderError{kDeviceBusy};
             return;
         }
         detachAttachment(_request);
@@ -945,6 +988,10 @@ namespace lux::render
         stop_requested.store(true);
         command_scope_.close();
         command_scope_.request_stop();
+        if (frames)
+        {
+            frames->cancelSubmissions(RenderError{kUploadStopped});
+        }
         std::atomic<bool> joined{false};
 
         struct Joined final
@@ -978,6 +1025,7 @@ namespace lux::render
                 if (frames)
                 {
                     frames->dispatchWrites();
+                    frames->cancelSubmissions(RenderError{kUploadStopped});
                 }
                 if (uploads)
                 {

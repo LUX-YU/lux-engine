@@ -38,7 +38,7 @@ namespace lux::render::detail
 
         void release(const nri::CoreInterface&) noexcept;
         [[nodiscard]] bool select(const DeviceSession&) noexcept;
-        void submitted(std::size_t queue, std::uint64_t serial, bool produced) noexcept;
+        void publish() noexcept;
 
         const HistoryPlan* plan = nullptr;
         std::vector<HistorySlot> slots;

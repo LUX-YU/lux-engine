@@ -580,7 +580,7 @@ namespace lux::render::detail
             nri::FenceSubmitDesc wait{};
             if (acquiring)
             {
-                auto dependency = source_queue.dependency(nri::StageBits::ALL);
+                auto dependency = source_queue.dependency(source_queue.submitted(), nri::StageBits::ALL);
                 if (dependency)
                 {
                     wait = *dependency;

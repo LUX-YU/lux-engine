@@ -1,10 +1,12 @@
 #include <algorithm>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/execution/FrameExecution.hpp>
+#include <lux/engine/render/execution/FrameResources.hpp>
 #include <lux/engine/render/execution/RenderExecutor.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/features/FeatureBinding.hpp>
 #include <lux/engine/render/graph/DumpText.hpp>
+#include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
@@ -84,7 +86,8 @@ namespace lux::render::detail
         if (uploads_)
         {
             const auto& frame = frames_[next_frame_];
-            uploads_->setBackgroundTransfersAllowed(frame.phase != EFramePhase::PREPARING && frame.pending_writes == 0);
+            const bool preparing = frame.phase == EFramePhase::PREPARING || frame.phase == EFramePhase::SUBMITTING;
+            uploads_->setBackgroundTransfersAllowed(!preparing && frame.pending_writes == 0);
         }
     }
 
@@ -135,7 +138,7 @@ namespace lux::render::detail
         }
     }
 
-    void FrameExecution::finishSubmission(RenderResult<void> result) noexcept
+    void FrameExecution::finishPreparation(RenderResult<void> result) noexcept
     {
         if (uploads_)
         {
@@ -200,6 +203,10 @@ namespace lux::render::detail
         }
         cxx::scope_exit update_admission([this]() noexcept { updateUploadAdmission(); });
         auto& frame = frames_[next_frame_];
+        if (frame.phase == EFramePhase::SUBMITTING)
+        {
+            return advanceSubmissions();
+        }
         if (instances.empty() && frame.phase == EFramePhase::FREE)
         {
             return 0;
@@ -252,7 +259,7 @@ namespace lux::render::detail
             auto prepared = use.ops->prepareFrame(use.storage, next_frame_, *uploads_);
             if (!prepared)
             {
-                finishSubmission(cxx::unexpected(prepared.error()));
+                finishPreparation(cxx::unexpected(prepared.error()));
                 sealFrame(frame);
                 return cxx::unexpected(prepared.error());
             }
@@ -268,7 +275,7 @@ namespace lux::render::detail
                 auto prepared = binding->prepare(binding->value.get(), next_frame_, *uploads_);
                 if (!prepared)
                 {
-                    finishSubmission(cxx::unexpected(prepared.error()));
+                    finishPreparation(cxx::unexpected(prepared.error()));
                     sealFrame(frame);
                     return cxx::unexpected(prepared.error());
                 }
@@ -290,7 +297,7 @@ namespace lux::render::detail
                 const auto prepared = instance->prepareFrame(next_frame_);
                 if (!prepared)
                 {
-                    finishSubmission(cxx::unexpected(prepared.error()));
+                    finishPreparation(cxx::unexpected(prepared.error()));
                     sealFrame(frame);
                     return cxx::unexpected(prepared.error());
                 }
@@ -305,8 +312,23 @@ namespace lux::render::detail
         const bool has_copies = uploads_ && uploads_->hasFrameCopies();
         if (!instances_ready && !has_copies && !native_records)
         {
-            finishSubmission(cxx::unexpected(RenderError{kDeviceBusy}));
+            finishPreparation(cxx::unexpected(RenderError{kDeviceBusy}));
             return outcome(waiting);
+        }
+        if (instances_ready)
+        {
+            frame.feature_copies.clear();
+            for (const auto& [instance, binding] : features)
+            {
+                frame.feature_copies.insert(
+                    frame.feature_copies.end(),
+                    binding->prepared_copies.begin(),
+                    binding->prepared_copies.end()
+                );
+                binding->prepared_copies = {};
+            }
+            prepareSubmissions(instances);
+            return advanceSubmissions();
         }
         auto accepted = graphics.recordAndSubmit(
             [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
@@ -323,40 +345,348 @@ namespace lux::render::detail
                         binding->prepared_copies = {};
                     }
                 }
-                if (instances_ready)
-                {
-                    for (auto* instance : instances)
-                    {
-                        RenderExecutor::record(*instance, command, next_frame_);
-                    }
-                }
                 return {};
             }
         );
         if (!accepted)
         {
-            finishSubmission(accepted);
+            finishPreparation(accepted);
             sealFrame(frame);
             return cxx::unexpected(accepted.error());
         }
         acceptSubmission(next_frame_, graphics);
         frame.graphics_serial = graphics.submitted();
-        frame.recorded_instances = instances_ready ? static_cast<std::uint32_t>(instances.size()) : 0;
+        frame.recorded_instances = 0;
         frame.recorded_passes = 0;
-        finishSubmission({});
-        if (!instances_ready)
+        finishPreparation({});
+        (void)outcome(waiting);
+        return 1; // A preparation submission does not publish an instance or advance its history.
+    }
+
+    std::size_t FrameExecution::queueIndex(const SubmissionQueue& queue) const noexcept
+    {
+        for (std::size_t i = 0; i < device_.queueCount(); ++i)
         {
-            (void)outcome(waiting);
-            return 1; // A real replica-preparation submission; the frame stays open for its next finite window.
+            if (&device_.physicalQueue(i) == &queue)
+            {
+                return i;
+            }
         }
+        std::terminate();
+    }
+
+    bool FrameExecution::submitting(const RenderGraphInstance& instance) const noexcept
+    {
+        const auto& frame = frames_[next_frame_];
+        return frame.phase == EFramePhase::SUBMITTING &&
+               std::ranges::any_of(
+                   frame.instances,
+                   [&](const auto& execution) { return execution.instance == &instance; }
+               );
+    }
+
+    void FrameExecution::prepareSubmissions(std::span<RenderGraphInstance* const> instances) noexcept
+    {
+        auto& frame = frames_[next_frame_];
+        frame.instances.resize(instances.size());
+        frame.recording_instances.reserve(instances.size());
+        frame.imported_uses.clear();
+        frame.recorded_instances = frame.recorded_passes = 0;
+        frame.preparation_serial = 0;
+        for (std::uint32_t i = 0; i < instances.size(); ++i)
+        {
+            auto& execution = frame.instances[i];
+            execution.instance = instances[i];
+            execution.next_batch = 0;
+            execution.serials.assign(instances[i]->plan().submissions().size(), 0);
+            execution.accepted = {};
+            execution.predecessors.clear();
+            const auto& bindings = instances[i]->frames_[next_frame_].bindings;
+            for (const auto& use : instances[i]->plan_->imported_accesses_)
+            {
+                const auto& binding = bindings[use.resource.index];
+                auto range = use.range;
+                if (auto* buffer = std::get_if<GraphBufferRange>(&range))
+                {
+                    buffer->offset += binding.buffer_offset;
+                }
+                frame.imported_uses.push_back(
+                    {binding.image ? static_cast<const void*>(binding.image) : binding.buffer, range, i, use.write}
+                );
+            }
+        }
+        std::ranges::sort(
+            frame.imported_uses,
+            [](const auto& a, const auto& b)
+            {
+                if (a.physical != b.physical)
+                {
+                    return std::less<const void*>{}(a.physical, b.physical);
+                }
+                return a.instance < b.instance;
+            }
+        );
+        for (std::size_t first = 0; first < frame.imported_uses.size();)
+        {
+            auto end = first + 1;
+            while (end < frame.imported_uses.size() &&
+                   frame.imported_uses[end].physical == frame.imported_uses[first].physical)
+            {
+                ++end;
+            }
+            const auto group = std::span(frame.imported_uses).subspan(first, end - first);
+            if (std::ranges::any_of(group, &ImportedUse::write))
+            {
+                for (std::size_t a = 0; a < group.size(); ++a)
+                {
+                    for (std::size_t b = 0; b < a; ++b)
+                    {
+                        const bool conflict = group[a].instance != group[b].instance &&
+                                              (group[a].write || group[b].write) &&
+                                              overlaps(group[a].range, group[b].range);
+                        if (conflict)
+                        {
+                            frame.instances[group[a].instance].predecessors.push_back(group[b].instance);
+                        }
+                    }
+                }
+            }
+            first = end;
+        }
+        for (auto& execution : frame.instances)
+        {
+            std::ranges::sort(execution.predecessors);
+            execution.predecessors.erase(
+                std::unique(execution.predecessors.begin(), execution.predecessors.end()),
+                execution.predecessors.end()
+            );
+        }
+        frame.imported_uses.clear();
+        frame.phase = EFramePhase::SUBMITTING;
+    }
+
+    bool FrameExecution::submitting() const noexcept
+    {
+        return frames_[next_frame_].phase == EFramePhase::SUBMITTING;
+    }
+
+    void FrameExecution::cancelSubmissions(RenderError error) noexcept
+    {
+        auto& frame = frames_[next_frame_];
+        if (frame.phase != EFramePhase::SUBMITTING)
+        {
+            if (frame.phase == EFramePhase::COLLECTING || frame.phase == EFramePhase::PREPARING)
+            {
+                // Unsubmitted replica copies can still have Sender receivers waiting for acceptance.
+                // Accepted uploads retain their existing GPU completion and finishWrite paths.
+                finishPreparation(cxx::unexpected(error));
+            }
+            return;
+        }
+        if (frame.preparation_serial == 0)
+        {
+            finishPreparation(cxx::unexpected(error));
+        }
+        for (auto& execution : frame.instances)
+        {
+            if (execution.instance && execution.next_batch != 0)
+            {
+                execution.instance->failedSubmission(error);
+            }
+            execution.instance = nullptr;
+        }
+        frame.feature_copies.clear();
         sealFrame(frame);
-        for (auto* instance : instances)
-        {
-            frame.recorded_passes += instance->recordedPassCount(next_frame_);
-            instance->submitted(next_frame_);
-        }
         next_frame_ = (next_frame_ + 1) % frame_count_;
-        return 1;
+        updateUploadAdmission();
+    }
+
+    RenderResult<std::uint32_t> FrameExecution::advanceSubmissions() noexcept
+    {
+        auto& frame = frames_[next_frame_];
+        std::uint32_t submissions = 0;
+        const auto prerequisites =
+            [&](const InstanceExecution& execution, SubmissionFrontiers& waits, std::array<nri::StageBits, 3>& stages)
+        {
+            const auto merge = [&](std::size_t queue, std::uint64_t serial, nri::StageBits stage)
+            {
+                if (waits.serials[queue] == 0)
+                {
+                    stages[queue] = stage;
+                }
+                else
+                {
+                    stages[queue] = stages[queue] == nri::StageBits::ALL || stage == nri::StageBits::ALL
+                                        ? nri::StageBits::ALL
+                                        : stages[queue] | stage;
+                }
+                waits.serials[queue] = std::max(waits.serials[queue], serial);
+            };
+            for (auto previous : execution.predecessors)
+            {
+                const auto& predecessor = frame.instances[previous];
+                if (predecessor.instance)
+                {
+                    return false;
+                }
+                for (std::size_t q = 0; q < device_.queueCount(); ++q)
+                {
+                    merge(q, predecessor.accepted.serials[q], nri::StageBits::ALL);
+                }
+            }
+            const auto batches = execution.instance->plan().submissions();
+            for (const auto& dependency : batches[execution.next_batch].dependencies)
+            {
+                auto& producer = device_.queue(batches[dependency.producer].queue);
+                const auto q = queueIndex(producer);
+                merge(q, execution.serials[dependency.producer], dependency.stages);
+            }
+            return true;
+        };
+        bool advanced = true;
+        while (advanced)
+        {
+            advanced = false;
+            for (std::uint32_t i = 0; i < frame.instances.size(); ++i)
+            {
+                auto& first = frame.instances[i];
+                if (!first.instance)
+                {
+                    continue;
+                }
+                const auto& batch = first.instance->plan().submissions()[first.next_batch];
+                auto& queue = device_.queue(batch.queue);
+                if (queue.recording() || !queue.hasCapacity())
+                {
+                    continue;
+                }
+                const auto queue_index = queueIndex(queue);
+                SubmissionFrontiers waits;
+                std::array<nri::StageBits, 3> stages{};
+                if (!prerequisites(first, waits, stages))
+                {
+                    continue;
+                }
+                waits.serials[queue_index] = 0; // Same physical queue is ordered by submission.
+                stages[queue_index] = nri::StageBits::ALL;
+                frame.recording_instances.clear();
+                frame.recording_instances.push_back(i);
+                for (auto other = i + 1; other < frame.instances.size(); ++other)
+                {
+                    auto& candidate = frame.instances[other];
+                    if (!candidate.instance ||
+                        &device_.queue(candidate.instance->plan().submissions()[candidate.next_batch].queue) != &queue)
+                    {
+                        continue;
+                    }
+                    SubmissionFrontiers required;
+                    std::array<nri::StageBits, 3> required_stages{};
+                    if (prerequisites(candidate, required, required_stages))
+                    {
+                        required.serials[queue_index] = 0;
+                        required_stages[queue_index] = nri::StageBits::ALL;
+                        if (required.serials == waits.serials && required_stages == stages)
+                        {
+                            frame.recording_instances.push_back(other);
+                        }
+                    }
+                }
+                std::array<nri::FenceSubmitDesc, 3> fences{};
+                std::uint32_t fence_count = 0;
+                for (std::size_t q = 0; q < device_.queueCount(); ++q)
+                {
+                    if (waits.serials[q] == 0)
+                    {
+                        continue;
+                    }
+                    auto dependency = device_.physicalQueue(q).dependency(waits.serials[q], stages[q]);
+                    if (!dependency)
+                    {
+                        cancelSubmissions(dependency.error());
+                        return cxx::unexpected(dependency.error());
+                    }
+                    fences[fence_count++] = *dependency;
+                }
+                const bool preparation = frame.preparation_serial == 0;
+                auto accepted = queue.recordAndSubmit(
+                    [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
+                    {
+                        if (preparation && uploads_)
+                        {
+                            uploads_->recordFrameCopies(command);
+                            uploads_->recordCopies(command, frame.feature_copies);
+                        }
+                        for (auto selected : frame.recording_instances)
+                        {
+                            auto& execution = frame.instances[selected];
+                            RenderExecutor::recordBatch(
+                                *execution.instance,
+                                command,
+                                next_frame_,
+                                execution.next_batch
+                            );
+                        }
+                        return {};
+                    },
+                    std::span(fences).first(fence_count)
+                );
+                if (!accepted)
+                {
+                    cancelSubmissions(accepted.error());
+                    return cxx::unexpected(accepted.error());
+                }
+                const auto serial = queue.submitted();
+                acceptSubmission(next_frame_, queue);
+                if (&queue == &device_.queue())
+                {
+                    frame.graphics_serial = serial;
+                }
+                for (auto selected : frame.recording_instances)
+                {
+                    auto& execution = frame.instances[selected];
+                    execution.serials[execution.next_batch] = serial;
+                    execution.accepted.serials[queue_index] = serial;
+                    execution.instance->acceptedBatch(execution.next_batch, queue_index, serial);
+                    if (++execution.next_batch == execution.serials.size())
+                    {
+                        frame.recorded_passes += execution.instance->recordedPassCount(next_frame_);
+                        execution.instance->submitted(next_frame_);
+                        execution.instance = nullptr;
+                        ++frame.recorded_instances;
+                    }
+                }
+                if (preparation)
+                {
+                    frame.preparation_serial = serial;
+                    frame.feature_copies.clear();
+                    finishPreparation({});
+                }
+                ++submissions;
+                advanced = true;
+                // Reconsider the whole ready set after a merged submission. Advancing a later
+                // member again in this sweep would split otherwise identical instance batches.
+                break;
+            }
+        }
+        if (std::ranges::none_of(frame.instances, [](const auto& execution) { return execution.instance != nullptr; }))
+        {
+            sealFrame(frame);
+            next_frame_ = (next_frame_ + 1) % frame_count_;
+        }
+        else if (submissions == 0)
+        {
+            for (const auto& execution : frame.instances)
+            {
+                if (execution.instance)
+                {
+                    const auto queue = execution.instance->plan().submissions()[execution.next_batch].queue;
+                    const auto reason = device_.queue(queue).recording() ? EExecutionOutcome::RECORDING_BUSY
+                                                                         : EExecutionOutcome::QUEUE_FULL;
+                    ++execution.instance->progress_.counts[static_cast<std::size_t>(reason)];
+                }
+            }
+        }
+        return submissions;
     }
 
     bool FrameExecution::dumpSubmissions(DumpSink sink) const noexcept
@@ -365,7 +695,7 @@ namespace lux::render::detail
         {
             return false;
         }
-        std::string output = "{\"kind\":\"latest accepted graphics submission per FIF slot\",\"slots\":[";
+        std::string output = "{\"kind\":\"accepted graph batches per FIF slot\",\"slots\":[";
         for (std::uint32_t i = 0; i < frame_count_; ++i)
         {
             if (i)
@@ -374,6 +704,8 @@ namespace lux::render::detail
             }
             const auto& frame = frames_[i];
             output += "{\"slot\":" + std::to_string(i) + ",\"serial\":" + std::to_string(frame.graphics_serial) +
+                      ",\"phase\":" + std::to_string(static_cast<unsigned>(frame.phase)) +
+                      ",\"preparation_serial\":" + std::to_string(frame.preparation_serial) +
                       ",\"instances\":" + std::to_string(frame.recorded_instances) +
                       ",\"passes\":" + std::to_string(frame.recorded_passes) + ",\"accepted_frontiers\":[";
             for (std::size_t queue = 0; queue < frame.accepted.serials.size(); ++queue)
@@ -383,6 +715,24 @@ namespace lux::render::detail
                     output += ',';
                 }
                 output += std::to_string(frame.accepted.serials[queue]);
+            }
+            output += "],\"batch_serials\":[";
+            for (std::size_t instance = 0; instance < frame.instances.size(); ++instance)
+            {
+                if (instance)
+                {
+                    output += ',';
+                }
+                output += '[';
+                for (std::size_t batch = 0; batch < frame.instances[instance].serials.size(); ++batch)
+                {
+                    if (batch)
+                    {
+                        output += ',';
+                    }
+                    output += std::to_string(frame.instances[instance].serials[batch]);
+                }
+                output += ']';
             }
             output += "]}";
         }

@@ -84,6 +84,7 @@ namespace lux::render::detail
         void retire(SampledImage&) noexcept;
         DeviceSession& session_;
         ResourceUploader& uploads_;
+        FrameExecution& frames_;
 
         StorageId id_;
         DescriptorTable* descriptors_ = nullptr;

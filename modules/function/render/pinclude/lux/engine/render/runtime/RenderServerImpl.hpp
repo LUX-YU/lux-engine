@@ -84,6 +84,7 @@ namespace lux::render
         }
 
         void detachAttachment(AttachmentId id) noexcept;
+        [[nodiscard]] bool attachmentsSubmitting(std::span<const AttachmentId>) const noexcept;
 
         RenderResult<StorageSet*> findStorageSet(const VStorageLocation&) noexcept;
         void findStorage(const FindStorage::Request&, FindStorage::Response&) noexcept;

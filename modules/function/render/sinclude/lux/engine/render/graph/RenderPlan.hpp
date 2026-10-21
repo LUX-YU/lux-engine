@@ -4,6 +4,7 @@
 
 #include <NRI.h>
 #include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/graph/Diagnostics.hpp>
 #include <lux/engine/render/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/graph/Work.hpp>
@@ -105,6 +106,7 @@ namespace lux::render::detail
         std::uint32_t rendering_group = kGraphInvalidIndex;
         ERenderingBoundary rendering_boundary = ERenderingBoundary::NON_RASTER;
         std::uint32_t condition_region = kGraphInvalidIndex;
+        EQueueRole queue = EQueueRole::GRAPHICS;
     };
 
     // A linear, non-nested interval. Both paths execute its compiled transitions;
@@ -137,6 +139,28 @@ namespace lux::render::detail
         HistoryDescription description;
         // Compiled producer indexes, including disjoint writes composing the published version.
         std::vector<std::uint32_t> writers;
+    };
+
+    struct SubmissionDependency final
+    {
+        std::uint32_t producer;
+        nri::StageBits stages = nri::StageBits::ALL;
+    };
+
+    struct SubmissionBatch final
+    {
+        EQueueRole queue = EQueueRole::GRAPHICS;
+        std::uint32_t first_pass = 0;
+        std::uint32_t pass_count = 0;
+        std::vector<SubmissionDependency> dependencies;
+        std::vector<GraphResourceId> histories;
+    };
+
+    struct ImportedAccess final
+    {
+        GraphResourceId resource;
+        VGraphRange range;
+        bool write = false;
     };
 
     // The Effect owns this immutable result; execution contexts borrow it within the Effect lifetime.
@@ -176,10 +200,16 @@ namespace lux::render::detail
 
         [[nodiscard]] bool compatible(const TargetDesc& target) const noexcept;
 
+        [[nodiscard]] std::span<const SubmissionBatch> submissions() const noexcept
+        {
+            return submissions_;
+        }
+
     private:
         friend class RenderGraphInstance;
         friend class GraphCompiler;
         friend class RenderExecutor;
+        friend class FrameExecution;
         friend LUX_RENDER_PUBLIC bool dumpPlan(const RenderPlan&, EGraphDumpFormat, DumpSink) noexcept;
 
         RenderPlan(nri::Device& device, const nri::CoreInterface&, TargetDesc target) noexcept;
@@ -192,6 +222,8 @@ namespace lux::render::detail
         std::vector<HistoryPlan> histories_;
         std::uint32_t condition_count_ = 0;
         RecordingProgram recording_;
+        std::vector<SubmissionBatch> submissions_;
+        std::vector<ImportedAccess> imported_accesses_;
         std::vector<std::uint32_t> pass_indices_;
 
         std::vector<nri::Pipeline*> pipelines_; // unique physical owners; recorded work only borrows handles

@@ -134,7 +134,8 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> submit(std::span<const nri::FenceSubmitDesc>) noexcept;
 
     public:
-        [[nodiscard]] RenderResult<nri::FenceSubmitDesc> dependency(nri::StageBits) const noexcept;
+        [[nodiscard]] RenderResult<nri::FenceSubmitDesc> dependency(std::uint64_t serial, nri::StageBits)
+            const noexcept;
         [[nodiscard]] RenderResult<bool> wait(std::uint64_t serial, std::uint64_t timeout_ns) noexcept;
         [[nodiscard]] std::uint64_t completed() const noexcept;
         [[nodiscard]] std::uint64_t submitted() const noexcept;

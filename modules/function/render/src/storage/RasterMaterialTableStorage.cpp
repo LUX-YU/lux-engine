@@ -443,6 +443,10 @@ namespace lux::render::detail
 
     RenderResult<void> RasterMaterialTableStorage::release(MaterialId id) noexcept
     {
+        if (frame_execution_.submitting())
+        {
+            return cxx::unexpected(RenderError{kDeviceBusy});
+        }
         auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
         if (!entry)
         {

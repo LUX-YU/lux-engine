@@ -27,7 +27,7 @@ namespace lux::render::runtime_detail
         const detail::EnabledDeviceFeatures& enabled,
         std::span<const nri::FormatSupportBits> formats,
         std::array<std::uint32_t, 2> vertex_limits,
-        nri::QueueType queue_type,
+        std::array<const detail::QueueProperties*, 3> queues,
         std::uint32_t sampled_image_capacity,
         std::uint32_t sampler_capacity,
         std::span<const StorageNameView> storage_types,

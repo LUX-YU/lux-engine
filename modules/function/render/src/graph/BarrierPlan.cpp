@@ -17,6 +17,7 @@ namespace lux::render::detail
             bool known = false;
             GraphPassId pass;
             ETransitionBoundary boundary = ETransitionBoundary::PASS;
+            EQueueRole queue = EQueueRole::GRAPHICS;
         };
 
         nri::StageBits combineStages(nri::StageBits a, nri::StageBits b) noexcept
@@ -186,6 +187,7 @@ namespace lux::render::detail
         auto apply = [&](std::uint32_t index, std::size_t cell, Access current, BarrierBatch& batch)
         {
             auto& previous = states[index][cell];
+            const bool cross_queue = previous.queue != current.queue;
             const auto* image = std::get_if<GraphImageDesc>(&resources[index].description);
             const bool transition = !previous.known || (image && previous.layout != current.layout) || previous.write ||
                                     current.write || previous.access != current.access;
@@ -194,7 +196,11 @@ namespace lux::render::detail
                 if (image)
                 {
                     nri::TextureBarrierDesc barrier{};
-                    barrier.before = {previous.access, previous.layout, previous.stages};
+                    barrier.before = {
+                        cross_queue ? nri::AccessBits::NONE : previous.access,
+                        previous.layout,
+                        cross_queue ? nri::StageBits::ALL : previous.stages
+                    };
                     barrier.after = {current.access, current.layout, current.stages};
                     barrier.mipOffset = static_cast<nri::Dim_t>(cell % image->mips);
                     barrier.mipNum = 1;
@@ -209,12 +215,15 @@ namespace lux::render::detail
                 else
                 {
                     nri::BufferBarrierDesc barrier{};
-                    barrier.before = {previous.access, previous.stages};
+                    barrier.before = {
+                        cross_queue ? nri::AccessBits::NONE : previous.access,
+                        cross_queue ? nri::StageBits::ALL : previous.stages
+                    };
                     barrier.after = {current.access, current.stages};
                     batch.buffers.push_back({index, barrier, previous.pass, current.boundary});
                 }
             }
-            else
+            else if (!cross_queue)
             {
                 current.stages = combineStages(current.stages, previous.stages);
                 current.access |= previous.access;
@@ -283,6 +292,7 @@ namespace lux::render::detail
                         continue;
                     }
                     auto current = accessFor(use, layout);
+                    current.queue = pass.queue;
                     current.pass = analysis.execution_order[p];
                     if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
                     {

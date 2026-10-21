@@ -76,7 +76,9 @@ target_include_directories(render_graph_chain PRIVATE
 target_link_libraries(render_graph_chain PRIVATE render NRI)
 set_target_properties(render_graph_chain PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 add_test(NAME render.graph.chain COMMAND render_graph_chain)
-set_tests_properties(render.graph.chain PROPERTIES TIMEOUT 90)
+# The combined matrix creates 74 independent devices. ASan + validation exceeds 90 seconds;
+# per-scenario progress assertions remain unchanged by this outer process budget.
+set_tests_properties(render.graph.chain PROPERTIES TIMEOUT 180)
 
 add_executable(render_deferred_scene DeferredScene.cpp)
 target_include_directories(render_deferred_scene PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")

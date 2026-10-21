@@ -101,6 +101,13 @@ public:
                 buffer
             );
             CHECK(status == nri::Result::SUCCESS);
+            // A short scene need not visit every available FIF slot. Define the unused-slot marker
+            // explicitly; newly allocated host memory is not required to contain zeroes.
+            auto* mapped = context.device.nriCore().MapBuffer(*buffer, 0, value->pitch_ * 64);
+            CHECK(mapped);
+            std::memset(mapped, 0, value->pitch_ * 64);
+            CHECK(context.device.flushMappedRange(*buffer, 0, value->pitch_ * 64) == nri::Result::SUCCESS);
+            context.device.nriCore().UnmapBuffer(*buffer);
         }
         return value;
     }

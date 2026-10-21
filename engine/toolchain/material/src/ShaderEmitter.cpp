@@ -435,12 +435,20 @@ namespace lux::shadergen::glsl
         // Each use consumes only its surface outputs. Mark operands backwards in the existing
         // topological IR; do not copy the graph or change the shared material record layout.
         std::vector<std::uint8_t> selected(ir.values.size(), 0);
+        bool invalid_output = false;
         const auto select = [&](std::string_view name)
         {
             const auto output = std::ranges::find(ir.outputs, name, &Output::name);
             if (output != ir.outputs.end() && output->value_id != kNoValue)
             {
-                selected[output->value_id] = 1;
+                if (output->value_id >= selected.size())
+                {
+                    invalid_output = true;
+                }
+                else
+                {
+                    selected[output->value_id] = 1;
+                }
             }
         };
         if (!shadow)
@@ -459,6 +467,10 @@ namespace lux::shadergen::glsl
         {
             select("opacity");
         }
+        if (invalid_output)
+        {
+            return lux::cxx::unexpected(std::string("shadergen: invalid material output value"));
+        }
         for (std::size_t i = selected.size(); i != 0; --i)
         {
             if (!selected[i - 1])
@@ -469,6 +481,10 @@ namespace lux::shadergen::glsl
             {
                 if (operand != kNoValue)
                 {
+                    if (operand >= i - 1)
+                    {
+                        return lux::cxx::unexpected(std::string("shadergen: material operand must precede its use"));
+                    }
                     selected[operand] = 1;
                 }
             }

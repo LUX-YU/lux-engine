@@ -126,6 +126,40 @@ int main(int argc, char** argv)
     require(shadow_interface.sets.empty() && shadow_interface.entry_points.front().inputs.empty());
     unlit = compileMaterial(graph, forward);
     require(unlit.has_value() && unlit->programs.programs.front().shader.interface.sets.empty());
+    // Extension compilers may return a valid output index with malformed operands.
+    // Purpose pruning must reject it before indexing the dependency marks.
+    auto registrations = materialBuiltinRegistrations();
+    auto registration = *std::ranges::find(
+        registrations,
+        MaterialConstant::TypeName,
+        [](const auto& value) { return value.identity.canonical_name; }
+    );
+    registration.compile = [](const MaterialNodePayload& payload,
+                              std::span<const std::uint32_t>,
+                              lux::shadergen::ShaderIR& ir) noexcept -> MaterialNodeResult<std::vector<std::uint32_t>>
+    {
+        const auto index = static_cast<std::uint32_t>(ir.values.size());
+        lux::shadergen::ShaderIRValue value{lux::shadergen::EOp::ADD, lux::shadergen::EValueType::VEC4};
+        value.operands[0] = payload.get<MaterialConstant>()->value[0] == 0 ? index : UINT32_MAX - 1;
+        value.operands[1] = value.operands[0];
+        ir.values.push_back(value);
+        return std::vector{index};
+    };
+    MaterialNodeCatalog catalog;
+    require(catalog.add(std::span(&registration, 1)).has_value());
+    auto definition = catalog.find(registration.identity.id);
+    for (float malformed : {0.0F, 1.0F})
+    {
+        MaterialGraph invalid_ir;
+        auto payload = definition->create();
+        require(payload.has_value());
+        payload->get<MaterialConstant>()->value[0] = malformed;
+        auto value = material_test::add(invalid_ir, MaterialNode{definition, "invalid", std::move(*payload)});
+        auto target = material_test::add(invalid_ir, MaterialOutputSurface{});
+        require(material_test::connect(invalid_ir, value, 0, target, 0));
+        auto rejected = compileMaterial(invalid_ir, gbuffer);
+        require(!rejected && rejected.error().code == EMaterialCompileError::SHADER_EMISSION_FAILURE);
+    }
     const auto invalid_id = material_test::add(graph, MaterialSampleTexture{});
     auto failure = compileMaterial(graph, purposes);
     require(!failure && failure.error().code == EMaterialCompileError::INVALID_GRAPH);

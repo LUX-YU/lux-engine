@@ -6,8 +6,12 @@
 
 namespace lux::render
 {
-    const FeatureDescriptor MeshDepthRasterDescriptor::
-        descriptor{name, cppType<Config>(), "Depth raster passes over indexed triangle meshes and raster instances.", detail::describe<true>};
+    const FeatureDescriptor MeshDepthRasterDescriptor::descriptor{
+        name,
+        cppType<Config>(),
+        "Depth raster passes over indexed triangle meshes and raster instances.",
+        detail::describe<true>
+    };
 
     template <>
     RenderResult<void> RenderServer::prepareFeature<MeshDepthRasterDescriptor>(

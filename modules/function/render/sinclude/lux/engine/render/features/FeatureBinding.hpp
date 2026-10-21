@@ -45,8 +45,13 @@ namespace lux::render::detail
     // its output; no new resource table, identifier domain or author graph is introduced.
     struct FeatureFrameContribution final
     {
-        using Create = RenderResult<
-            FeatureBinding> (*)(DeviceSession&, FrameExecution&, ResourceRegistry&, std::span<const StorageId>, const void*) noexcept;
+        using Create = RenderResult<FeatureBinding> (*)(
+            DeviceSession&,
+            FrameExecution&,
+            ResourceRegistry&,
+            std::span<const StorageId>,
+            const void*
+        ) noexcept;
 
         GraphResourceId resource;
         ConfigValue configuration;

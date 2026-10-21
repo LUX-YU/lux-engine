@@ -115,8 +115,13 @@ namespace lux::render::detail
 
     struct StorageBindingOps final
     {
-        using Resolve = RenderResult<
-            void> (*)(void*, const CompiledResource&, const void*, StorageSubscription&, std::span<ResourceInput>) noexcept;
+        using Resolve = RenderResult<void> (*)(
+            void*,
+            const CompiledResource&,
+            const void*,
+            StorageSubscription&,
+            std::span<ResourceInput>
+        ) noexcept;
         Resolve resolve;
         RenderResult<bool> (*prepareFrame)(void*, std::uint32_t slot, ResourceUploader&) noexcept = nullptr;
     };

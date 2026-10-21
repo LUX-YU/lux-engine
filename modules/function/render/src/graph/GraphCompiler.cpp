@@ -86,8 +86,10 @@ namespace lux::render::detail
                         }
                         else if constexpr (std::is_same_v<Operation, ClearImage>)
                         {
-                            return to_image && to_image->mip_count == 1 && std::isfinite(copy.depth) &&
-                                   std::ranges::all_of(copy.color, [](float value) { return std::isfinite(value); });
+                            const bool is_valid_range = to_image && to_image->mip_count == 1;
+                            const bool is_valid_clear = std::isfinite(copy.depth) &&
+                                std::ranges::all_of(copy.color, [](float value) { return std::isfinite(value); });
+                            return is_valid_range && is_valid_clear;
                         }
                         else
                         {
@@ -114,10 +116,12 @@ namespace lux::render::detail
                                                                         : std::max(1u, b.width >> to_image->first_mip);
                                 const auto bh = copy.destination_region ? copy.destination_region->height
                                                                         : std::max(1u, b.height >> to_image->first_mip);
-                                return a.format == b.format && a.samples == b.samples && aw == bw && ah == bh &&
-                                       from_image->aspects == to_image->aspects &&
-                                       from_image->mip_count == to_image->mip_count &&
-                                       from_image->layer_count == to_image->layer_count && a.extent == b.extent;
+                                const bool is_same_format = a.format == b.format && a.samples == b.samples;
+                                const bool is_same_extent = aw == bw && ah == bh && a.extent == b.extent;
+                                const bool is_same_subresources = from_image->aspects == to_image->aspects &&
+                                    from_image->mip_count == to_image->mip_count &&
+                                    from_image->layer_count == to_image->layer_count;
+                                return is_same_format && is_same_extent && is_same_subresources;
                             }
                             else
                             {

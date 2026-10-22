@@ -1,5 +1,5 @@
 find_package(lux-cxx REQUIRED COMPONENTS compile_time container)
-find_package(stdexec CONFIG REQUIRED)
+find_package(stdexec CONFIG REQUIRED GLOBAL)
 
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_CORE_EXECUTION_LIBRARY
@@ -46,7 +46,7 @@ component_add_transitive_commands(
     core_execution
     "find_package(lux-engine-core REQUIRED COMPONENTS async_port error)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time container)"
-    "find_package(stdexec CONFIG REQUIRED)"
+    "find_package(stdexec CONFIG REQUIRED GLOBAL)"
 )
 
 lux_engine_install_components(

@@ -1,5 +1,5 @@
 find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core)
-find_package(stdexec CONFIG REQUIRED)
+find_package(stdexec CONFIG REQUIRED GLOBAL)
 find_package(Eigen3 CONFIG REQUIRED)
 find_package(Vulkan 1.3 REQUIRED)
 
@@ -269,7 +269,7 @@ target_link_libraries(render
 
 component_add_transitive_commands(render
     "find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core)"
-    "find_package(stdexec CONFIG REQUIRED)"
+    "find_package(stdexec CONFIG REQUIRED GLOBAL)"
     "find_package(lux-engine-core CONFIG REQUIRED COMPONENTS error_values)"
     "find_package(lux-engine-resource CONFIG REQUIRED COMPONENTS description_types shader_metadata)"
     "find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)"

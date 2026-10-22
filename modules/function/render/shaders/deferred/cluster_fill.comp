@@ -1,0 +1,21 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "ClusterIntersection.glsl"
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 1, std430) readonly buffer Offsets { uint values[]; } offsets;
+layout(set = 0, binding = 2, std430) readonly buffer Status { uvec4 values; } status;
+layout(set = 0, binding = 3, std430) writeonly buffer Indices { uint values[]; } indices;
+void main()
+{
+    uint cell = gl_GlobalInvocationID.x;
+    if (cell + 1 >= offsets.values.length() || status.values.y != 0) return;
+    // One writer per cell replaces Legacy's atomic write-head array. Preserve full-light order
+    // (points then spots) so the same contributions also have the same floating-point sum order.
+    // Scan has admitted the entire prefix against this buffer's declared capacity. Count/Fill
+    // share both inputs and predicate; each writer's exclusive interval is therefore in bounds.
+    uint destination = offsets.values[cell];
+    for (uint i = 0; i < light_counts.values.y; ++i)
+        if (overlapsCluster(bounds.values[cell], point_lights.values[i].position_range)) indices.values[destination++] = i;
+    for (uint i = 0; i < light_counts.values.z; ++i)
+        if (overlapsCluster(bounds.values[cell], spot_lights.values[i].position_range)) indices.values[destination++] = i | 0x80000000u;
+}

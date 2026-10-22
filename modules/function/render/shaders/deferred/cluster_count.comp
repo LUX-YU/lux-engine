@@ -1,0 +1,16 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "ClusterIntersection.glsl"
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 1, std430) writeonly buffer Counts { uint values[]; } counts;
+void main()
+{
+    uint cell = gl_GlobalInvocationID.x;
+    if (cell >= counts.values.length()) return;
+    uint count = 0;
+    for (uint i = 0; i < light_counts.values.y; ++i)
+        if (overlapsCluster(bounds.values[cell], point_lights.values[i].position_range)) count = saturatedAdd(count, 1u);
+    for (uint i = 0; i < light_counts.values.z; ++i)
+        if (overlapsCluster(bounds.values[cell], spot_lights.values[i].position_range)) count = saturatedAdd(count, 1u);
+    counts.values[cell] = count;
+}

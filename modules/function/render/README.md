@@ -353,3 +353,38 @@ Session cleanup scope. Clustered lighting, EVSM, HZB occlusion, deformation boun
 `render_deferred_scene` retains the CPU lighting reference. `render_shadow_scene` uses public Commands and independent
 Feature registration, then test-owned Graph Copies to check actual GPU visibility, shadow pixels, projection data and
 AlphaMask coverage. These output probes do not add a production Readback command.
+
+## Clustered light composition
+
+Install `ClusteredLightingFeatureDescriptor` independently. It contributes Reset/Build/Count/Scan/Fill graph work;
+it does not call DeferredLighting, ShadowMap or GBuffer. `ClusterGrid` declares XYZ cells, linear/logarithmic depth
+slices and an explicit index capacity. `ClusteredLightingParameters` supplies the finite forward-Z inverse projection,
+camera position/near distance and unit forward/far distance through the attachment parameter block.
+
+With `external_lights=false`, ClusteredLighting resolves its Scene `DirectLighting` storage and exposes the four light
+ports. With `external_lights=true`, connect the same light ports supplied to shading and shadow projection. Connect
+`grid`, `offsets`, `indices`, `status` to DeferredLighting's `cluster_grid`, `cluster_offsets`, `cluster_indices`,
+`cluster_status`, and set `DeferredLightingFeatureConfig::clusters` to the same grid shape/capacity. Lighting then
+receives its four light arrays through ports too. No feature is discovered by name or installed as a sibling.
+
+Build unprojects each cell's eight world-space corners. Its conservative AABB works for perspective and orthographic
+projections without Legacy's projected-radius approximation near the camera. Count and Fill use one sphere/AABB
+predicate; a spot cone uses its enclosing range sphere. Directional lights retain their global loop. Lists keep the
+same dense point-then-spot order as the full-light path. One writer per cell removes the atomic write-head resource.
+Scan reuses Legacy's 128-lane chunked Blelloch algorithm with saturating addition and an always-written sentinel.
+
+An incomplete list is never consumed: capacity overflow, arithmetic saturation or invalid grid projection sets GPU
+status. Lighting uses the complete same-frame light arrays in that case; pixels outside the grid also use full lights.
+There is no CPU readback/wait for this decision. Status can be inspected with an explicitly requested graph Copy.
+Buffers and their barriers, queue dependencies, FIF instances and cleanup remain ordinary Graph resources.
+
+The initial implementation rebuilds transient bounds/lists each execution. Count/Fill cost is proportional to cells
+times finite lights, Scan to cells, and normal shading to the selected list. Reset initializes the declared index
+capacity. This is not a claim of sparse construction, cached GPU bounds or a measured speedup; specialized performance
+and any larger-grid scan/range optimization require equivalent-workload evidence.
+
+`render_clustered_scene` compares actual pre-Tonemap RGBA16F pixels, copies one coherent frame of cluster data for an
+independent CPU geometric/list oracle, and tests the production Scan with overflowing counts. `render_shadow_scene 3
+--clustered` adds the same HDR comparison to shadows, multiple materials and lights,
+including an intentionally tiny list capacity. These checks use the full-light result as a correctness reference,
+not as a hidden replacement for the successful non-overflow Clustered path.

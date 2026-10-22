@@ -56,7 +56,7 @@ public:
     {
         auto* device = &device_;
         device_.deferRelease(
-            [device, result = result_, buffers = std::move(buffers_), pitch = pitch_]() noexcept
+            [device, result = result_, buffers = std::move(buffers_), pitch = pitch_, bytes = bytes_]() noexcept
             {
                 result->pitch = pitch;
                 for (auto* buffer : buffers)
@@ -65,11 +65,10 @@ public:
                     {
                         continue;
                     }
-                    const auto* mapped =
-                        static_cast<const std::byte*>(device->nriCore().MapBuffer(*buffer, 0, pitch * 64));
+                    const auto* mapped = static_cast<const std::byte*>(device->nriCore().MapBuffer(*buffer, 0, bytes));
                     CHECK(mapped);
-                    CHECK(device->invalidateMappedRange(*buffer, 0, pitch * 64) == nri::Result::SUCCESS);
-                    result->frames.emplace_back(mapped, mapped + pitch * 64);
+                    CHECK(device->invalidateMappedRange(*buffer, 0, bytes) == nri::Result::SUCCESS);
+                    result->frames.emplace_back(mapped, mapped + bytes);
                     device->nriCore().UnmapBuffer(*buffer);
                     device->nriCore().DestroyBuffer(buffer);
                 }
@@ -87,21 +86,22 @@ public:
         auto value = std::make_unique<CaptureBuffer>(context, config);
         const auto alignment = context.device.description().memoryAlignment.uploadBufferTextureRow;
         value->pitch_ = (256 + alignment - 1) / alignment * alignment;
+        value->bytes_ = std::max<std::uint64_t>(value->pitch_ * 64u, config.bytes);
         for (auto*& buffer : value->buffers_)
         {
             auto status = context.device.nriCore().CreatePlacedBuffer(
                 context.device.device(),
                 NriHostReadbackHeap,
-                {value->pitch_ * 64u, 0, nri::BufferUsageBits::NONE},
+                {value->bytes_, 0, nri::BufferUsageBits::NONE},
                 buffer
             );
             CHECK(status == nri::Result::SUCCESS);
             // A short scene need not visit every available FIF slot. Define the unused-slot marker
             // explicitly; newly allocated host memory is not required to contain zeroes.
-            auto* mapped = context.device.nriCore().MapBuffer(*buffer, 0, value->pitch_ * 64);
+            auto* mapped = context.device.nriCore().MapBuffer(*buffer, 0, value->bytes_);
             CHECK(mapped);
-            std::memset(mapped, 0, value->pitch_ * 64);
-            CHECK(context.device.flushMappedRange(*buffer, 0, value->pitch_ * 64) == nri::Result::SUCCESS);
+            std::memset(mapped, 0, value->bytes_);
+            CHECK(context.device.flushMappedRange(*buffer, 0, value->bytes_) == nri::Result::SUCCESS);
             context.device.nriCore().UnmapBuffer(*buffer);
         }
         return value;
@@ -123,7 +123,7 @@ public:
         auto& value = *static_cast<CaptureBuffer*>(object);
         for (std::size_t i = 0; i < output.size(); ++i)
         {
-            output[i] = {value.buffers_[i], 0, value.pitch_ * 64u};
+            output[i] = {value.buffers_[i], 0, value.bytes_};
         }
         return {};
     }
@@ -133,6 +133,7 @@ private:
     CapturedPixels* result_;
     std::vector<nri::Buffer*> buffers_;
     std::uint32_t pitch_ = 0;
+    std::uint64_t bytes_ = 0;
 };
 
 struct CaptureFeature
@@ -152,7 +153,7 @@ struct CaptureFeature
         ports.storage.attachment.push_back(
             {"pixels",
              EFeaturePort::OUTPUT,
-             GraphBufferDesc{64 * 256},
+             GraphBufferDesc{std::max(64u * 256, config.bytes)},
              EGraphOrigin::IMPORTED,
              {},
              StorageRequirement{

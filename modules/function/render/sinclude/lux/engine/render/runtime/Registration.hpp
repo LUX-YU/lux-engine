@@ -19,8 +19,15 @@ namespace lux::render
     struct DeferredLightingFeatureDescriptor;
     struct TonemapFeatureDescriptor;
     struct ShadowMapFeatureDescriptor;
+    struct ClusteredLightingFeatureDescriptor;
     struct MeshVisibilityFeatureDescriptor;
     struct MeshShadowFeatureDescriptor;
+
+    template <>
+    LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareFeature<ClusteredLightingFeatureDescriptor>(
+        RegistrationBatch&,
+        std::string_view
+    ) noexcept;
 
     template <>
     LUX_RENDER_PUBLIC RenderResult<void> RenderServer::prepareFeature<ShadowMapFeatureDescriptor>(

@@ -1,4 +1,6 @@
 #include "DeferredLighting.hpp"
+#include "DeferredLightingClustered.hpp"
+#include "DeferredLightingClusteredShadow.hpp"
 #include "DeferredLightingShadow.hpp"
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/FeatureAssembly.hpp>
@@ -22,7 +24,10 @@ namespace lux::render
             const auto& config = *static_cast<const DeferredLightingFeatureConfig*>(value);
             const bool invalid_extent = !config.extent.width || !config.extent.height || config.extent.mips != 1 ||
                                         config.extent.layers != 1 || config.extent.samples != 1;
-            if (invalid_extent || config.lights.empty())
+            const bool missing_lights = !config.shadows && !config.clusters && config.lights.empty();
+            const bool invalid_clusters = config.clusters && !config.clusters->valid();
+            const bool invalid_configuration = invalid_extent || missing_lights || invalid_clusters;
+            if (invalid_configuration)
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
@@ -33,7 +38,7 @@ namespace lux::render
                 FeaturePort port{std::string(surfaces[i]), EFeaturePort::INPUT, image};
                 port.semantic = std::string(rdesc::GBufferLayout::semantic) + "." + std::string(surfaces[i]);
                 result.resources.push_back(std::move(port));
-                if (config.shadows)
+                if (config.shadows || config.clusters)
                 {
                     result.resources.push_back(
                         {std::string(lights[i]), EFeaturePort::INPUT, GraphBufferDesc{strides[i]}}
@@ -71,6 +76,19 @@ namespace lux::render
                 depth.semantic = kShadowDepth;
                 result.resources.push_back(std::move(depth));
             }
+            if (config.clusters)
+            {
+                const auto port = [&](std::string name, std::uint64_t bytes, std::string_view semantic)
+                {
+                    FeaturePort input{std::move(name), EFeaturePort::INPUT, GraphBufferDesc{bytes}};
+                    input.semantic = semantic;
+                    result.resources.push_back(std::move(input));
+                };
+                port("cluster_grid", sizeof(ClusterGridGpu), kClusterGrid);
+                port("cluster_offsets", (config.clusters->count() + 1) * 4, kClusterOffsets);
+                port("cluster_indices", std::uint64_t(config.clusters->index_capacity) * 4, kClusterIndices);
+                port("cluster_status", sizeof(ClusterStatusGpu), kClusterStatus);
+            }
             auto image = config.extent;
             image.format = rdesc::ETextureFormat::RGBA16_SFLOAT;
             FeaturePort hdr{"hdr_color", EFeaturePort::OUTPUT, image};
@@ -82,10 +100,24 @@ namespace lux::render
         RenderResult<void> buildLighting(const void* value, std::string_view key, FeatureBuildContext& context) noexcept
         {
             const auto& config = *static_cast<const DeferredLightingFeatureConfig*>(value);
-            auto work =
-                config.shadows
-                    ? detail::fullscreenRaster(context, kDeferredLightingShadow, kDeferredLightingShadowReflection)
-                    : detail::fullscreenRaster(context, kDeferredLighting, kDeferredLightingReflection);
+            auto work = config.clusters
+                            ? (config.shadows ? detail::fullscreenRaster(
+                                                    context,
+                                                    kDeferredLightingClusteredShadow,
+                                                    kDeferredLightingClusteredShadowReflection
+                                                )
+                                              : detail::fullscreenRaster(
+                                                    context,
+                                                    kDeferredLightingClustered,
+                                                    kDeferredLightingClusteredReflection
+                                                ))
+                            : (config.shadows
+                                   ? detail::fullscreenRaster(
+                                         context,
+                                         kDeferredLightingShadow,
+                                         kDeferredLightingShadowReflection
+                                     )
+                                   : detail::fullscreenRaster(context, kDeferredLighting, kDeferredLightingReflection));
             if (!work)
             {
                 return cxx::unexpected(work.error());
@@ -98,7 +130,7 @@ namespace lux::render
             {
                 auto resource = context.resource(lights[i]);
                 work->interface.resources.push_back({std::string(lights[i]), {resource}});
-                if (!config.shadows)
+                if (!config.shadows && !config.clusters)
                 {
                     context.arguments.push_back(StorageArgument::make(
                         resource.resource,
@@ -117,6 +149,13 @@ namespace lux::render
                 );
                 work->interface.samplers.push_back({"shadow_compare", {sampler}, kGraphInvalidIndex, true});
             }
+            if (config.clusters)
+            {
+                for (auto name : {"cluster_grid", "cluster_offsets", "cluster_indices", "cluster_status"})
+                {
+                    work->interface.resources.push_back({name, {context.resource(name)}});
+                }
+            }
             work->interface.parameters.instance_layout = config.input_layout;
             for (auto name : {"inverse_view_projection", "camera_position", "viewport", "background", "environment"})
             {
@@ -124,7 +163,11 @@ namespace lux::render
             }
             work->colors.push_back({{context.resource("hdr_color")}});
             auto pass = context.graph.addRasterPass(
-                featureKey(DeferredLightingFeatureDescriptor::name, key, "all lights"),
+                featureKey(
+                    DeferredLightingFeatureDescriptor::name,
+                    key,
+                    config.clusters ? "clustered lights" : "all lights"
+                ),
                 std::move(*work)
             );
             if (!pass)
@@ -152,7 +195,7 @@ namespace lux::render
     const FeatureDescriptor DeferredLightingFeatureDescriptor::descriptor{
         name,
         cppType<Config>(),
-        "All-lights deferred shading; optional shadow inputs are supplied through independent ports.",
+        "Deferred shading over light, optional cluster and shadow ports; full-light fallback is lossless.",
         describeLighting
     };
 

@@ -1,0 +1,47 @@
+#version 450
+// Legacy's 128-lane contiguous-chunk Blelloch scan; saturated addition prevents wrapping
+// before the capacity check. The sentinel is written even for an empty light set.
+layout(local_size_x = 128) in;
+layout(set = 0, binding = 0, std430) readonly buffer Counts { uint values[]; } counts;
+layout(set = 0, binding = 1, std430) writeonly buffer Offsets { uint values[]; } offsets;
+layout(set = 0, binding = 2, std430) buffer Status { uvec4 values; } status;
+layout(push_constant) uniform Parameters { uint cluster_count; uint capacity; } parameters;
+shared uint sums[128];
+shared uint total;
+uint add(uint a, uint b) { return a > 0xffffffffu - b ? 0xffffffffu : a + b; }
+void main()
+{
+    uint lane = gl_LocalInvocationIndex;
+    uint chunk = parameters.cluster_count / 128 + uint(parameters.cluster_count % 128 != 0);
+    uint begin = min(lane * chunk, parameters.cluster_count);
+    uint end = min(begin + min(chunk, parameters.cluster_count - begin), parameters.cluster_count);
+    uint local = 0;
+    for (uint i = begin; i < end; ++i) local = add(local, counts.values[i]);
+    sums[lane] = local;
+    barrier();
+    for (uint stride = 1; stride < 128; stride <<= 1)
+    {
+        uint i = (lane + 1) * stride * 2 - 1;
+        if (i < 128) sums[i] = add(sums[i], sums[i - stride]);
+        barrier();
+    }
+    if (lane == 0) { total = sums[127]; sums[127] = 0; }
+    barrier();
+    for (uint stride = 64; stride != 0; stride >>= 1)
+    {
+        uint i = (lane + 1) * stride * 2 - 1;
+        if (i < 128)
+        {
+            uint before = sums[i - stride]; sums[i - stride] = sums[i]; sums[i] = add(sums[i], before);
+        }
+        barrier();
+    }
+    uint running = sums[lane];
+    for (uint i = begin; i < end; ++i) { offsets.values[i] = running; running = add(running, counts.values[i]); }
+    if (lane == 0)
+    {
+        offsets.values[parameters.cluster_count] = total;
+        status.values.x = total;
+        status.values.y |= (total > parameters.capacity ? 1u : 0u) | (total == 0xffffffffu ? 4u : 0u);
+    }
+}

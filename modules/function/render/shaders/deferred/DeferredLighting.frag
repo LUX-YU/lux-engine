@@ -6,6 +6,9 @@
 #include "brdf/brdf_common.glsl"
 #include "brdf/brdf_ggx.glsl"
 #include "brdf/direct_lighting.glsl"
+#ifdef CLUSTERED
+#include "ClusterLookup.glsl"
+#endif
 #ifdef SHADOWS
 #include "../shadow/ShadowPcf.glsl"
 #endif
@@ -33,6 +36,36 @@ layout(push_constant) uniform Parameters
 } parameters;
 
 layout(location = 0) out vec4 hdr_color;
+
+vec3 evaluateLocalLight(uint packed, vec3 position, vec3 n, vec3 view, float ndotv,
+                        vec3 albedo, float metallic, float roughness, vec3 f0)
+{
+    uint index = packed & 0x7fffffffu;
+    bool spot = (packed & 0x80000000u) != 0;
+    vec4 position_range, radiance, attenuation;
+    vec4 direction_outer = vec4(0);
+    if (spot)
+    {
+        SpotLight light = spot_lights.values[index];
+        position_range = light.position_range; radiance = light.radiance;
+        attenuation = light.attenuation_inner; direction_outer = light.direction_outer;
+    }
+    else
+    {
+        PointLight light = point_lights.values[index];
+        position_range = light.position_range; radiance = light.radiance; attenuation = light.attenuation;
+    }
+    vec3 delta = position_range.xyz - position;
+    float distanceToLight = length(delta);
+    if (distanceToLight <= 1e-5 || distanceToLight >= position_range.w) return vec3(0);
+    vec3 direction = delta / distanceToLight;
+    float cone = spot ? smoothstep(direction_outer.w, attenuation.w, dot(-direction, direction_outer.xyz)) : 1;
+    vec3 incident = radiance.rgb * cone * rangeAttenuation(distanceToLight, position_range.w, attenuation.xyz);
+#ifdef SHADOWS
+    incident *= shadowVisibility(spot ? 2 : 1, index, position, n, position_range.xyz);
+#endif
+    return pbrDirectLight(albedo, metallic, roughness, f0, n, view, ndotv, direction, incident);
+}
 
 void main()
 {
@@ -73,31 +106,20 @@ void main()
 #endif
         color += pbrDirectLight(a.rgb, metallic, roughness, f0, n, view, ndotv, -light.direction.xyz, radiance);
     }
-    for (uint i = 0; i < light_counts.values.y; ++i)
+#ifdef CLUSTERED
+    uint first, end;
+    if (clusterRange(position, first, end))
     {
-        PointLight light = point_lights.values[i];
-        vec3 delta = light.position_range.xyz - position;
-        float distanceToLight = length(delta);
-        if (distanceToLight <= 1e-5 || distanceToLight >= light.position_range.w) continue;
-        vec3 radiance = light.radiance.rgb * rangeAttenuation(distanceToLight, light.position_range.w, light.attenuation.xyz);
-#ifdef SHADOWS
-        radiance *= shadowVisibility(1, i, position, n, light.position_range.xyz);
-#endif
-        color += pbrDirectLight(a.rgb, metallic, roughness, f0, n, view, ndotv, delta / distanceToLight, radiance);
+        for (uint at = first; at < end; ++at)
+            color += evaluateLocalLight(cluster_indices.values[at], position, n, view, ndotv, a.rgb, metallic, roughness, f0);
     }
-    for (uint i = 0; i < light_counts.values.z; ++i)
-    {
-        SpotLight light = spot_lights.values[i];
-        vec3 delta = light.position_range.xyz - position;
-        float distanceToLight = length(delta);
-        if (distanceToLight <= 1e-5 || distanceToLight >= light.position_range.w) continue;
-        vec3 direction = delta / distanceToLight;
-        float cone = smoothstep(light.direction_outer.w, light.attenuation_inner.w, dot(-direction, light.direction_outer.xyz));
-        vec3 radiance = light.radiance.rgb * cone * rangeAttenuation(distanceToLight, light.position_range.w, light.attenuation_inner.xyz);
-#ifdef SHADOWS
-        radiance *= shadowVisibility(2, i, position, n, light.position_range.xyz);
+    else
 #endif
-        color += pbrDirectLight(a.rgb, metallic, roughness, f0, n, view, ndotv, direction, radiance);
+    {
+        for (uint i = 0; i < light_counts.values.y; ++i)
+            color += evaluateLocalLight(i, position, n, view, ndotv, a.rgb, metallic, roughness, f0);
+        for (uint i = 0; i < light_counts.values.z; ++i)
+            color += evaluateLocalLight(i | 0x80000000u, position, n, view, ndotv, a.rgb, metallic, roughness, f0);
     }
     hdr_color = vec4(color, 1.0);
 }

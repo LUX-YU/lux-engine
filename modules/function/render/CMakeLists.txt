@@ -38,6 +38,7 @@ set(render_sources
     src/features/HzbFeature.cpp
     src/features/GBufferFeature.cpp
     src/features/DeferredLightingFeature.cpp
+    src/features/ClusteredLightingFeature.cpp
     src/features/ShadowMapFeature.cpp
     src/features/ShadowProjection.cpp
     src/features/ShadowProjectionBinding.cpp
@@ -144,14 +145,22 @@ add_custom_command(
 
 set(material_shader_root "${CMAKE_CURRENT_SOURCE_DIR}/../material/shaders")
 set(feature_shader_headers)
-foreach(shader FullscreenVertex DeferredLighting DeferredLightingShadow TonemapLinear TonemapSrgb)
+foreach(shader
+    FullscreenVertex
+    DeferredLighting DeferredLightingShadow
+    DeferredLightingClustered DeferredLightingClusteredShadow
+    TonemapLinear TonemapSrgb
+)
     set(defines)
     if(shader STREQUAL "FullscreenVertex")
         set(source shaders/deferred/Fullscreen.vert)
     elseif(shader MATCHES "^DeferredLighting")
         set(source shaders/deferred/DeferredLighting.frag)
-        if(shader STREQUAL "DeferredLightingShadow")
+        if(shader MATCHES "Shadow$")
             list(APPEND defines -DSHADOWS=1)
+        endif()
+        if(shader MATCHES "Clustered")
+            list(APPEND defines -DCLUSTERED=1)
         endif()
     else()
         set(source shaders/postprocess/Tonemap.frag)
@@ -169,6 +178,7 @@ foreach(shader FullscreenVertex DeferredLighting DeferredLightingShadow TonemapL
         COMMAND lux_shader_metadata "${binary}" "${header}" k${shader}
         DEPENDS "${source}" lux_shader_metadata
             shaders/shadow/ShadowPcf.glsl
+            shaders/deferred/ClusterLookup.glsl
             "${material_shader_root}/gbuffer_encode.glsl"
             "${material_shader_root}/brdf/brdf_common.glsl"
             "${material_shader_root}/brdf/brdf_ggx.glsl"
@@ -195,6 +205,26 @@ foreach(shader MeshFrustumCull MeshFrustumCullPaged MeshCompact)
             ${defines} "${CMAKE_CURRENT_SOURCE_DIR}/${source}" -o "${binary}"
         COMMAND lux_shader_metadata "${binary}" "${header}" k${shader}
         DEPENDS "${source}" lux_shader_metadata
+        VERBATIM
+    )
+    list(APPEND feature_shader_headers "${header}")
+endforeach()
+
+foreach(stage build count scan fill)
+    string(SUBSTRING "${stage}" 0 1 first)
+    string(TOUPPER "${first}" first)
+    string(SUBSTRING "${stage}" 1 -1 rest)
+    set(shader "Cluster${first}${rest}")
+    set(source "shaders/deferred/cluster_${stage}.comp")
+    set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.hpp")
+    set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.spv")
+    add_custom_command(
+        OUTPUT "${header}"
+        BYPRODUCTS "${binary}"
+        COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3
+            "${CMAKE_CURRENT_SOURCE_DIR}/${source}" -o "${binary}"
+        COMMAND lux_shader_metadata "${binary}" "${header}" k${shader}
+        DEPENDS "${source}" shaders/deferred/ClusterIntersection.glsl lux_shader_metadata
         VERBATIM
     )
     list(APPEND feature_shader_headers "${header}")

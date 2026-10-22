@@ -2,6 +2,7 @@
 
 #include <lux/engine/description/GBufferLayout.hpp>
 #include <lux/engine/description/ShaderBlock.hpp>
+#include <lux/engine/render/features/ClusteredLightInputs.hpp>
 #include <lux/engine/render/features/FeatureDescriptor.hpp>
 #include <lux/engine/render/features/ShadowInputs.hpp>
 #include <lux/engine/render/graph/GraphResource.hpp>
@@ -38,6 +39,7 @@ namespace lux::render
         std::string lights = "direct_lights";
         rdesc::ShaderBlock input_layout = deferredLightingParameterBlock();
         std::optional<ShadowMapShape> shadows;
+        std::optional<ClusterGrid> clusters;
         bool operator==(const DeferredLightingFeatureConfig&) const noexcept = default;
     };
 

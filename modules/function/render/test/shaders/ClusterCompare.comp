@@ -1,0 +1,13 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0) uniform texture2D reference_image;
+layout(set = 0, binding = 1) uniform texture2D candidate_image;
+layout(set = 0, binding = 2, std430) writeonly buffer Differences { uint values[]; } differences;
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy), size = textureSize(reference_image, 0);
+    if (any(greaterThanEqual(pixel, size))) return;
+    vec4 a = texelFetch(reference_image, pixel, 0), b = texelFetch(candidate_image, pixel, 0);
+    differences.values[pixel.y * size.x + pixel.x] = all(equal(a, b)) ? 1u : 2u;
+}

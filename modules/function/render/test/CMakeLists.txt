@@ -49,7 +49,7 @@ set_target_properties(render PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY
 
 set(graph_shader_headers)
 foreach(spec GraphFill.comp GraphTriangle.vert GraphMrt.frag GraphPresent.frag GraphCount.comp GraphRed.frag
-    GraphHistory.comp GraphDepthField.comp GraphShadowSampler.frag
+    GraphHistory.comp GraphDepthField.comp GraphShadowSampler.frag ClusterCompare.comp
 )
     get_filename_component(shader_name "${spec}" NAME_WE)
     set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.hpp")
@@ -103,3 +103,22 @@ target_link_libraries(render_shadow_scene PRIVATE
 set_target_properties(render_shadow_scene PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 add_test(NAME render.sample.shadow COMMAND render_shadow_scene)
 set_tests_properties(render.sample.shadow PROPERTIES TIMEOUT 120)
+
+add_test(NAME render.sample.clustered_shadow COMMAND render_shadow_scene 3 --clustered)
+set_tests_properties(render.sample.clustered_shadow PROPERTIES TIMEOUT 120)
+
+add_executable(render_clustered_scene ClusteredScene.cpp ${graph_shader_headers})
+target_include_directories(render_clustered_scene PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude"
+    "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+    "${CMAKE_CURRENT_BINARY_DIR}/../shaders"
+)
+
+target_link_libraries(render_clustered_scene PRIVATE
+    render NRI lux::engine::core::core_execution
+    lux::engine::toolchain::toolchain_material_compiler
+)
+
+set_target_properties(render_clustered_scene PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+add_test(NAME render.sample.clustered COMMAND render_clustered_scene)
+set_tests_properties(render.sample.clustered PROPERTIES TIMEOUT 120)

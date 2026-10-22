@@ -2,9 +2,11 @@
 #include "FullscreenVertex.hpp"
 #include "GraphShadowSampler.hpp"
 #include "SceneCapture.hpp"
+#include "SceneComparison.hpp"
 #include <cmath>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/material/Compiler.hpp>
+#include <lux/engine/render/features/ClusteredLightingFeature.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
 #include <lux/engine/render/features/MeshShadowFeature.hpp>
@@ -149,6 +151,7 @@ struct Parameters
     TonemapParameters tone;
     std::array<float, 3> padding{};
     ShadowCamera shadow;
+    ClusteredLightingParameters cluster;
 };
 
 static rdesc::ShaderBlock parameterLayout()
@@ -163,6 +166,11 @@ static rdesc::ShaderBlock parameterLayout()
     auto field = tonemapParameterBlock().fields.front();
     field.offset += offsetof(Parameters, tone);
     result.fields.push_back(std::move(field));
+    for (auto field : clusteredLightingParameterBlock().fields)
+    {
+        field.offset += offsetof(Parameters, cluster);
+        result.fields.push_back(std::move(field));
+    }
     return result;
 }
 
@@ -172,11 +180,11 @@ static std::vector<std::byte> parameterBytes(const Parameters& value)
     return {bytes.begin(), bytes.end()};
 }
 
-static rdesc::MaterialProgramSet material(bool masked = false)
+static rdesc::MaterialProgramSet material(bool masked = false, bool unlit = false)
 {
     using namespace lux::material;
     MaterialGraph graph;
-    graph.shading_model = rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS;
+    graph.shading_model = unlit ? rdesc::ELightingTechnique::UNLIT : rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS;
     graph.render_state.double_sided = true;
     graph.render_state.alpha_mode = masked ? rdesc::EAlphaMode::MASK : rdesc::EAlphaMode::OPAQUE_SURFACE;
     auto output = material_test::add(graph, MaterialOutputSurface{});
@@ -220,13 +228,18 @@ int main(int argc, char** argv)
     RenderServerConfig config{"test.shadow", true};
     config.frames_in_flight = fif;
     config.uploads = TransferOptions{65536, 2, 2 * 1024 * 1024};
+    bool clustered = false;
     DeviceOptions device;
     device.multiple_queues = true;
     device.texture_descriptors = true;
     for (int i = 2; i < argc; ++i)
     {
         const std::string_view option = argv[i];
-        if (option == "--paged")
+        if (option == "--clustered")
+        {
+            clustered = true;
+        }
+        else if (option == "--paged")
         {
             device.buffer_device_address = true;
         }
@@ -263,6 +276,8 @@ int main(int argc, char** argv)
     const auto visibility = take(server->registerFeature<MeshVisibilityFeatureDescriptor>());
     const auto shadow = take(server->registerFeature<MeshShadowFeatureDescriptor>());
     const auto capture = take(server->registerFeature<CaptureFeature>());
+    const auto cluster_feature = take(server->registerFeature<ClusteredLightingFeatureDescriptor>());
+    const auto comparison = take(server->registerFeature<SceneComparison>());
     CommandList bootstrap;
     bootstrap.commands.push_back({std::string(ListCommands::name), take(server->commandId<ListCommands>())});
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
@@ -308,16 +323,27 @@ int main(int argc, char** argv)
     auto program = material();
     MaterialParameters material_values{{.7F, .7F, .7F, 1}};
     auto material_id = call<CreateMaterial>(*client, commands, {materials, program, material_values}).material;
-    std::array<MeshInstanceDescription, 3> descriptions{
-        {{mesh, material_id}, {caster_mesh, material_id}, {caster_mesh, material_id}}
+    auto unlit_program = material(false, true);
+    auto unlit_material = call<CreateMaterial>(
+                              *client,
+                              commands,
+                              {materials, unlit_program, MaterialParameters{{.2F, .1F, .05F, 1}}}
+    ).material;
+    std::array<MeshInstanceDescription, 4> descriptions{
+        {{mesh, material_id}, {caster_mesh, material_id}, {caster_mesh, material_id}, {mesh, unlit_material}}
     };
     descriptions[1].transform[0] = -.25F; // Mirrored caster with nonuniform scale.
     descriptions[1].transform[5] = .2F;
     descriptions[1].transform[14] = .5F;
     descriptions[2].transform[12] = 100;
+    descriptions[3].transform[0] = descriptions[3].transform[5] = .08F;
+    descriptions[3].transform[12] = descriptions[3].transform[13] = .8F;
+    descriptions[3].transform[14] = .2F;
     auto instance_ids = call<CreateMeshInstances>(*client, commands, {instances, descriptions}).instances;
     RasterMeshGroup group{geometry, program, {caster_mesh, material_id}};
     RasterMeshGroup receiver_group{geometry, program, {mesh, material_id}};
+    RasterMeshGroup unlit_group{geometry, unlit_program, {mesh, unlit_material}};
+    unlit_group.front_counter_clockwise = false;
     // Positive-height viewport: this unmirrored quad is clockwise in framebuffer coordinates.
     receiver_group.front_counter_clockwise = false;
     const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
@@ -331,8 +357,10 @@ int main(int argc, char** argv)
     parameters.shadow.inverse_view_projection = parameters.lighting.inverse_view_projection;
     parameters.shadow.position_near = {0, 0, 2, .1F};
     parameters.shadow.direction_far = {0, 0, -1, 3};
+    parameters.cluster =
+        {parameters.shadow.inverse_view_projection, parameters.shadow.position_near, parameters.shadow.direction_far};
     auto layout = parameterLayout();
-    std::array<unsigned, 4> reference_lit{};
+    std::array<unsigned, 4> reference_lit{}, reference_occluded{};
     bool masked = false;
 
     const auto run = [&](EDirectLightingBuffer kind,
@@ -366,6 +394,17 @@ int main(int argc, char** argv)
                 PointLightGpu{{-1, 0, 2, 6}, {1, 1, 1, 0}, {1, 0, 0, 0}},
                 SpotLightGpu{{-1, 0, 2, 6}, {1, 1, 1, 0}, {inverse, 0, -2 * inverse, .7F}, {1, 0, 0, .95F}}
             };
+        }
+        if (clustered && mixed)
+        {
+            for (unsigned i = 0; i < 64; ++i)
+            {
+                values.push_back(PointLightGpu{
+                    {(int(i % 9) - 4) * .37F, (int(i % 7) - 3) * .31F, 1.5F, 3},
+                    {.003F, .004F, .005F, 0},
+                    {1, 0, 0, 0}
+                });
+            }
         }
         auto lights = call<CreateDirectLights>(*client, commands, {light_storage, 1, values}).lights;
         const ShadowMapShape shape{
@@ -410,14 +449,14 @@ int main(int argc, char** argv)
         visibility_config.frustum_culling = cull;
         MeshShadowFeatureConfig shadow_config{shape, {group}, 8};
         GBufferFeatureConfig surface{target};
-        surface.groups = {receiver_group, group};
+        surface.groups = {receiver_group, group, unlit_group};
         surface.input_layout = layout;
         DeferredLightingFeatureConfig light_config;
         light_config.extent = {64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
         light_config.extent.extent.target_relative = true;
         light_config.input_layout = layout;
         light_config.shadows = shape;
-        CapturedPixels pixels, view_bytes, counts, surface_pixels, depth_pixels, indirect;
+        CapturedPixels pixels, view_bytes, counts, surface_pixels, depth_pixels, indirect, differences, cluster_status;
         CreateEffectRequest request{target};
         request.definition.features.push_back({gbuffer, "gbuffer", take(ConfigValue::make(surface))});
         request.definition.features.push_back({projection, "projection", take(ConfigValue::make(projections))});
@@ -473,6 +512,52 @@ int main(int argc, char** argv)
         for (unsigned capture_index : {6u, 7u, 8u, 9u, 10u, 11u})
         {
             request.definition.outputs.push_back({{capture_index, "pixels"}, {}});
+        }
+        if (clustered)
+        {
+            ClusteredLightingFeatureConfig clusters;
+            clusters.grid = {{7, 5, 9}, radius ? 1u : 65536u, EClusterDepth::LOGARITHMIC};
+            clusters.external_lights = true;
+            clusters.input_layout = layout;
+            auto optimized = light_config;
+            optimized.clusters = clusters.grid;
+            request.definition.features.push_back({cluster_feature, "clusters", take(ConfigValue::make(clusters))}
+            ); // 12
+            request.definition.features.push_back({lighting, "clustered_lighting", take(ConfigValue::make(optimized))}
+            );                                                                  // 13
+            request.definition.features.push_back({comparison, "compare", {}}); // 14
+            CaptureConfig compare_config{&differences};
+            compare_config.bytes = 64 * 64 * 4;
+            request.definition.features.push_back(
+                {capture, "difference_pixels", take(ConfigValue::make(compare_config))}
+            ); // 15
+            CaptureConfig status_config{&cluster_status};
+            status_config.bytes = sizeof(ClusterStatusGpu);
+            request.definition.features.push_back({capture, "cluster_status", take(ConfigValue::make(status_config))}
+            ); // 16
+            for (auto name : {"directional_lights", "point_lights", "spot_lights", "light_counts"})
+            {
+                connections.push_back({{1, name}, {12, name}});
+                connections.push_back({{1, name}, {13, name}});
+            }
+            for (auto name : {"albedo_metallic", "normal_roughness", "emissive_ao", "depth"})
+            {
+                connections.push_back({{0, name}, {13, name}});
+            }
+            for (auto name : {"grid", "offsets", "indices", "status"})
+            {
+                connections.push_back({{12, name}, {13, "cluster_" + std::string(name)}});
+            }
+            connections.push_back({{1, "views"}, {13, "shadow_views"}});
+            connections.push_back({{1, "slices"}, {13, "shadow_slices"}});
+            connections.push_back({{1, "light_ranges"}, {13, "shadow_ranges"}});
+            connections.push_back({{3, "depth"}, {13, "shadow_depth"}});
+            connections.push_back({{4, "hdr_color"}, {14, "reference"}});
+            connections.push_back({{13, "hdr_color"}, {14, "candidate"}});
+            connections.push_back({{14, "differences"}, {15, "color"}});
+            connections.push_back({{12, "status"}, {16, "color"}});
+            request.definition.outputs.push_back({{15, "pixels"}, {}});
+            request.definition.outputs.push_back({{16, "pixels"}, {}});
         }
         auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
         const auto view = call<CreateView>(*client, commands, {scene}).view;
@@ -537,10 +622,25 @@ int main(int argc, char** argv)
                counts.ready.load(std::memory_order_acquire) != 2 ||
                surface_pixels.ready.load(std::memory_order_acquire) != 2 ||
                depth_pixels.ready.load(std::memory_order_acquire) != 2 ||
-               indirect.ready.load(std::memory_order_acquire) != 2)
+               indirect.ready.load(std::memory_order_acquire) != 2 ||
+               (clustered && (differences.ready.load(std::memory_order_acquire) != 2 ||
+                              cluster_status.ready.load(std::memory_order_acquire) != 2)))
         {
             CHECK(Clock::now() < deadline);
             std::this_thread::yield();
+        }
+        if (clustered)
+        {
+            verifyEqualPixels(differences);
+            bool overflow = false;
+            for (const auto& frame : cluster_status.frames)
+            {
+                ClusterStatusGpu state;
+                std::memcpy(&state, frame.data(), sizeof(state));
+                CHECK((state.flags & ~1u) == 0);
+                overflow |= (state.flags & 1u) != 0;
+            }
+            CHECK(overflow == (radius != 0 && (mixed || kind != EDirectLightingBuffer::DIRECTIONAL)));
         }
         unsigned rendered = 0;
         for (const auto& frame : surface_pixels.frames)
@@ -586,7 +686,14 @@ int main(int argc, char** argv)
             if (cast)
             {
                 CHECK(std::abs(int(lit_value) - int(reference_lit[mixed ? 3 : static_cast<unsigned>(kind)])) <= 2);
-                CHECK(masked ? shadow_value > 0 : shadow_value <= 3);
+                if (clustered && mixed)
+                {
+                    CHECK(shadow_value > 0 && shadow_value + 10 < reference_occluded[3]);
+                }
+                else
+                {
+                    CHECK(masked ? shadow_value > 0 : shadow_value <= 3);
+                }
                 if (seam)
                 {
                     CHECK(std::to_integer<unsigned>(frame[32 * pixels.pitch + 47 * 4]) <= 3);
@@ -601,6 +708,7 @@ int main(int argc, char** argv)
             {
                 CHECK(lit_value > 0 && shadow_value > 0);
                 reference_lit[mixed ? 3 : static_cast<unsigned>(kind)] = lit_value;
+                reference_occluded[mixed ? 3 : static_cast<unsigned>(kind)] = shadow_value;
             }
         }
         CHECK(rendered);
@@ -716,6 +824,10 @@ int main(int argc, char** argv)
         run(kind, false, 1);
     }
     run(EDirectLightingBuffer::DIRECTIONAL, true, 0, false, true);
+    if (clustered)
+    {
+        run(EDirectLightingBuffer::DIRECTIONAL, true, 0, true, true);
+    }
     run(EDirectLightingBuffer::DIRECTIONAL, true, 1, true, true);
     run(EDirectLightingBuffer::POINT, true, 1, false, false, true);
     run(EDirectLightingBuffer::POINT, true, 1, true, false, true);
@@ -734,6 +846,7 @@ int main(int argc, char** argv)
     call<RemoveScene>(*client, commands, {scene});
     call<ReleaseMaterial>(*client, commands, material_id);
     call<ReleaseMaterial>(*client, commands, masked_material);
+    call<ReleaseMaterial>(*client, commands, unlit_material);
     call<ReleaseMesh>(*client, commands, mesh);
     call<ReleaseMesh>(*client, commands, caster_mesh);
     server->stop();

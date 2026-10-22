@@ -1,0 +1,71 @@
+#version 450
+layout(local_size_x = 64) in;
+struct ClusterBounds { vec4 minimum; vec4 maximum; };
+layout(set = 0, binding = 0, std430) writeonly buffer Bounds { ClusterBounds values[]; } bounds;
+layout(set = 0, binding = 1, std430) writeonly buffer Grid
+{
+    uvec4 cells; uvec4 limits;
+    vec4 position_near; vec4 direction_far;
+    mat4 world_to_clip;
+} grid_data;
+layout(set = 0, binding = 2, std430) buffer Status { uvec4 values; } status;
+layout(push_constant) uniform Parameters
+{
+    mat4 inverse_view_projection;
+    vec4 position_near; vec4 direction_far;
+    uvec4 cells; uvec4 limits;
+} parameters;
+
+bool finiteVector(vec4 value) { return !any(isnan(value)) && !any(isinf(value)); }
+float sliceDistance(uint z)
+{
+    float t = float(z) / float(parameters.cells.z);
+    float near_z = parameters.position_near.w, far_z = parameters.direction_far.w;
+    return parameters.cells.w == 0 ? mix(near_z, far_z, t) : near_z * pow(far_z / near_z, t);
+}
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= parameters.limits.x) return;
+    uvec3 cell = uvec3(index % parameters.cells.x, (index / parameters.cells.x) % parameters.cells.y,
+                       index / (parameters.cells.x * parameters.cells.y));
+    bool valid = finiteVector(parameters.position_near) && finiteVector(parameters.direction_far) &&
+        parameters.position_near.w > 0 && parameters.direction_far.w > parameters.position_near.w &&
+        abs(dot(parameters.direction_far.xyz, parameters.direction_far.xyz) - 1) < 0.001;
+    vec3 minimum = vec3(3.402823e38), maximum = -minimum;
+    for (uint y = 0; y < 2; ++y)
+    {
+        for (uint x = 0; x < 2; ++x)
+        {
+            vec2 xy = vec2(cell.xy + uvec2(x, y)) / vec2(parameters.cells.xy) * 2 - 1;
+            vec4 a = parameters.inverse_view_projection * vec4(xy, 0, 1);
+            vec4 b = parameters.inverse_view_projection * vec4(xy, 1, 1);
+            bool ray_valid = finiteVector(a) && finiteVector(b) && abs(a.w) > 1e-12 && abs(b.w) > 1e-12;
+            if (!ray_valid) { valid = false; continue; }
+            vec3 origin = a.xyz / a.w, ray = b.xyz / b.w - origin;
+            float depth = dot(origin - parameters.position_near.xyz, parameters.direction_far.xyz);
+            float length_z = dot(ray, parameters.direction_far.xyz);
+            if (length_z <= 1e-7) { valid = false; continue; }
+            for (uint z = 0; z < 2; ++z)
+            {
+                vec3 point = origin + ray * ((sliceDistance(cell.z + z) - depth) / length_z);
+                valid = valid && finiteVector(vec4(point, 1));
+                minimum = min(minimum, point); maximum = max(maximum, point);
+            }
+        }
+    }
+    // Enclose the complete convex frustum cell, with a scale-relative rounding guard.
+    vec3 guard = 1e-4 * (vec3(1) + max(abs(minimum), abs(maximum)));
+    bounds.values[index] = ClusterBounds(vec4(minimum - guard, 0), vec4(maximum + guard, 0));
+    if (!valid) atomicOr(status.values.y, 2u);
+    if (index == 0)
+    {
+        mat4 projection = inverse(parameters.inverse_view_projection);
+        if (!finiteVector(projection[0]) || !finiteVector(projection[1]) ||
+            !finiteVector(projection[2]) || !finiteVector(projection[3])) atomicOr(status.values.y, 2u);
+        grid_data.cells = parameters.cells; grid_data.limits = parameters.limits;
+        grid_data.position_near = parameters.position_near; grid_data.direction_far = parameters.direction_far;
+        grid_data.world_to_clip = projection;
+    }
+}

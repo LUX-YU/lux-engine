@@ -21,9 +21,9 @@ int main()
 {
     using namespace lux::render;
     namespace ipc = lux::platform::ipc;
-    auto runtime = lux::execution::ExecutionRuntime::create({1, 64, 64, {64}});
-    check(bool(runtime));
-    auto server = createRenderServer({"spatial.external"}, *runtime);
+    auto execution = lux::execution::ExecutionRuntime::create({1, 64, 64, {64}});
+    check(bool(execution));
+    auto server = RenderServer::create({"spatial.external"}, *execution);
     check(bool(server));
     auto handler = probe::install(**server);
     check(bool(handler));
@@ -49,6 +49,6 @@ int main()
     (*server)->stop();
     render.join();
     server->reset();
-    runtime->requestStop();
-    check(bool(runtime->join()));
+    execution->requestStop();
+    check(bool(execution->join()));
 }

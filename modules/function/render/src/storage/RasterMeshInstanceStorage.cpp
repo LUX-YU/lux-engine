@@ -1306,7 +1306,7 @@ namespace lux::render::detail
         return {};
     }
 
-    StorageFactory meshInstanceStorageFactory() noexcept
+    StorageFactory RasterMeshInstanceStorage::factory() noexcept
     {
         static const StorageBindingOps binding{
             [](void* value,

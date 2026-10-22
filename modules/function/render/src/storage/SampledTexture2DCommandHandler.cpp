@@ -9,8 +9,7 @@ namespace lux::render::detail
         co_return cxx::unexpected(error);
     }
 
-    exec::task<RenderResult<TextureId>> SampledTexture2DCommandHandler::createTextureSource(
-        CreateTexture::Request&& input
+    exec::task<RenderResult<TextureId>> SampledTexture2DCommandHandler::uploadTexture(CreateTexture::Request&& input
     ) noexcept
     {
         auto storage = resources_.borrow<SampledTexture2DStorage>(input.storage);
@@ -21,7 +20,7 @@ namespace lux::render::detail
         return render::upload(**storage, std::move(input));
     }
 
-    exec::task<RenderResult<TextureId>> SampledTexture2DCommandHandler::createPatchedTextureSource(
+    exec::task<RenderResult<TextureId>> SampledTexture2DCommandHandler::uploadPatchedTexture(
         CreatePatchedTexture::Request&& input
     ) noexcept
     {
@@ -49,31 +48,3 @@ namespace lux::render::detail
     }
 
 } // namespace lux::render::detail
-
-#include <lux/engine/render/runtime/Registration.hpp>
-
-namespace lux::render
-{
-    template <>
-    RenderResult<void> RenderServer::prepareStorage<SampledTexture2DStorageDescriptor>(
-        RegistrationBatch& batch,
-        ConfigValue configuration,
-        bool use_existing,
-        std::string_view handler_key
-    ) noexcept
-    {
-        return prepareStorageDefinition<
-            SampledTexture2DStorageDescriptor,
-            detail::SampledTexture2DStorage,
-            detail::SampledTexture2DCommandHandler>(
-            batch,
-            detail::textureStorageFactory(),
-            std::move(configuration),
-            use_existing,
-            handler_key
-        );
-    }
-
-    template LUX_RENDER_PUBLIC RenderResult<StorageTypeId> RenderServer::registerStorage<
-        SampledTexture2DStorageDescriptor>(std::string_view) noexcept;
-} // namespace lux::render

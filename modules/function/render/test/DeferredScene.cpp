@@ -9,14 +9,14 @@
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
-#include <lux/engine/render/features/FeatureDefinition.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
 #include <lux/engine/render/features/MeshDepthRaster.hpp>
 #include <lux/engine/render/features/MeshVisibilityFeature.hpp>
 #include <lux/engine/render/features/TonemapFeature.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
-#include <lux/engine/render/runtime/Registration.hpp>
+#include <lux/engine/render/runtime/FeatureRegistration.hpp>
+#include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/storage/DirectLighting.hpp>
 #include <thread>
 
@@ -324,13 +324,13 @@ int main(int argc, char** argv)
             CHECK(false);
         }
     }
-    auto server = take(createRenderServer(config, *runtime, device));
-    const auto visibility = take(server->registerFeature<MeshVisibilityFeatureDescriptor>());
-    const auto gbuffer = take(server->registerFeature<GBufferFeatureDescriptor>());
-    const auto lighting = take(server->registerFeature<DeferredLightingFeatureDescriptor>());
-    const auto tone = take(server->registerFeature<TonemapFeatureDescriptor>());
+    auto server = take(RenderServer::create(config, *runtime, device));
+    const auto visibility = take(server->featureId<MeshVisibilityFeatureDescriptor>());
+    const auto gbuffer = take(server->featureId<GBufferFeatureDescriptor>());
+    const auto lighting = take(server->featureId<DeferredLightingFeatureDescriptor>());
+    const auto tone = take(server->featureId<TonemapFeatureDescriptor>());
     const auto capture = take(server->registerFeature<CaptureFeature>());
-    const auto shadow = take(server->registerFeature<MeshDepthRasterDescriptor>());
+    const auto shadow = take(server->featureId<MeshDepthRasterDescriptor>());
     CommandList bootstrap;
     bootstrap.commands.push_back({std::string(ListCommands::name), take(server->commandId<ListCommands>())});
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);

@@ -67,8 +67,7 @@ namespace lux::render::detail
         ResourceUploader(const ResourceUploader&) = delete;
         ResourceUploader& operator=(const ResourceUploader&) = delete;
 
-        // Success means all required Copy/Acquire submissions were accepted. The caller retains targets or retires
-        // failed candidates; success does not wait for the final fence observation.
+        // Creates staging and timestamp facilities without starting work. The device and CPU execution outlive it.
         [[nodiscard]] static RenderResult<std::unique_ptr<ResourceUploader>> create(
             DeviceSession&,
             const TransferOptions&,
@@ -90,9 +89,13 @@ namespace lux::render::detail
 
         void submitReadyTransfers() noexcept;
         void recordFrameCopies(nri::CommandBuffer&) noexcept;
-        void completeFrameCopies(RenderResult<void>) noexcept;
+        // Settles staging after the frame submission attempt; this does not observe GPU completion.
+        void finishFrameCopySubmission(RenderResult<void>) noexcept;
         [[nodiscard]] bool hasFrameCopies() const noexcept;
 
+        // Lazy device-thread task. Source ranges and their descriptors stay valid through terminal completion.
+        // Success means Copy/Acquire acceptance; it does not wait for GPU completion. Partial failures still
+        // require the caller to retain or defer-release targets already referenced by accepted work.
         [[nodiscard]] Task writeBuffers(
             std::span<const BufferWrite> writes,
             std::span<const BufferZero> fills = {},
@@ -122,17 +125,17 @@ namespace lux::render::detail
 
         [[nodiscard]] std::size_t windowRegionLimit() const noexcept
         {
-            return options.window_regions;
+            return options_.window_regions;
         }
 
         [[nodiscard]] std::size_t windowByteLimit() const noexcept
         {
-            return options.chunk_bytes * options.staging_pages;
+            return options_.chunk_bytes * options_.staging_pages;
         }
 
         [[nodiscard]] TransferStats statistics() const noexcept
         {
-            return stats;
+            return statistics_;
         }
 
     private:
@@ -156,16 +159,16 @@ namespace lux::render::detail
             std::uint32_t source_stride = 0,
             SubmissionFrontiers* progress = nullptr
         ) noexcept;
-        [[nodiscard]] RenderResult<void> measure(std::size_t page, std::uint32_t bits) noexcept;
+        [[nodiscard]] RenderResult<void> collectUploadTimestamps(std::size_t page, std::uint32_t bits) noexcept;
 
         std::unique_ptr<StagingArena> staging_arena_;
         bool background_allowed_ = true;
         bool reserve_frame_staging_ = false;
-        DeviceSession& session;
-        SubmissionQueue* copy_queue = nullptr;
-        TransferOptions options;
-        execution::CpuScheduler cpu;
-        TransferStats stats;
+        DeviceSession& device_;
+        SubmissionQueue* copy_queue_ = nullptr;
+        TransferOptions options_;
+        execution::CpuScheduler cpu_scheduler_;
+        TransferStats statistics_;
         BatchEntry* ready_head_ = nullptr;
         BatchEntry* ready_tail_ = nullptr;
         BatchEntry* range_waiters_ = nullptr;
@@ -177,6 +180,6 @@ namespace lux::render::detail
         std::array<nri::QueryPool*, 2> timestamps_{};
         nri::Buffer* timestamp_results_ = nullptr;
         std::uint64_t* mapped_timestamps_ = nullptr;
-        std::uint32_t copy_timestamp_bits = 0, graphics_timestamp_bits = 0;
+        std::uint32_t copy_timestamp_bits_ = 0, graphics_timestamp_bits_ = 0;
     };
 } // namespace lux::render::detail

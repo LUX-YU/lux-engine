@@ -8,10 +8,13 @@ function(run_checked)
     endif()
 endfunction()
 
-string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef nonce)
-set(root "${BUILD_DIR}/execution-standalone-${nonce}")
+file(REAL_PATH "${BUILD_DIR}" build_root)
+set(root "${build_root}/execution-standalone")
 set(prefix "${root}/original")
 set(relocated "${root}/relocated")
+# Reuse compiled objects, but qualify a fresh install rather than stale public headers.
+# Both disposable prefixes are fixed children of this test's build directory.
+file(REMOVE_RECURSE "${prefix}" "${relocated}")
 set(common
     -G "${GENERATOR}"
     "-DCMAKE_BUILD_TYPE=${CONFIG}"

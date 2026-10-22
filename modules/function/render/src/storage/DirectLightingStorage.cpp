@@ -582,7 +582,7 @@ namespace lux::render::detail
         }
     }
 
-    StorageFactory directLightingStorageFactory() noexcept
+    StorageFactory DirectLightingStorage::factory() noexcept
     {
         static const StorageBindingOps binding{
             [](void* value,

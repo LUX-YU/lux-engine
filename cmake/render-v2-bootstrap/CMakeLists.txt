@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.25)
 
 project(lux-render-v2-bootstrap VERSION 0.0.1 LANGUAGES CXX)
 
@@ -28,8 +28,6 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/error/cmake/Values.cmake")
 
 
 include("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description/cmake/ShaderMetadata.cmake")
-
-find_package(stdexec CONFIG REQUIRED)
 
 set(platform_components platform_ipc gapi platform_process)
 

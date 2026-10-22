@@ -1,5 +1,10 @@
 # Owner-driven execution
 
+Source and installed consumers require CMake 3.25 or newer, as does the pinned stdexec package.
+Execution imports the complete stdexec export set with `find_package(stdexec CONFIG REQUIRED GLOBAL)`.
+Render uses the same package and visibility contract. No replacement targets are created; sibling modules
+can import the package in either order without relying on an application-level preload.
+
 `RunLoop` is a nonblocking scheduling destination, not a worker thread. Its owner calls
 `executeReady(budget)` at a safe point. The host supplies a borrowed wakeup callback;
 Core knows nothing about IPC, Vulkan or request results. `post()` accepts a stable

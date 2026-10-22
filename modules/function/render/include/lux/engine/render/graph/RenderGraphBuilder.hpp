@@ -6,6 +6,8 @@
 
 namespace lux::render
 {
+    // One cold graph candidate. IDs and resource versions belong only to this candidate.
+    // Mutations are single-threaded; the Builder owns moved programs/work and never submits GPU commands.
     class LUX_RENDER_PUBLIC RenderGraphBuilder final
     {
     public:
@@ -29,6 +31,7 @@ namespace lux::render
             return candidate_.dependencies().size();
         }
 
+        // Validates the logical description, including imported initial/final access contracts.
         [[nodiscard]] RenderResult<GraphResourceId> declareResource(GraphResource resource) noexcept;
         [[nodiscard]] RenderResult<HistoryDescription> declareHistory(
             std::string key,
@@ -40,6 +43,8 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> publishHistory(ResourceVersion) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> declareCondition(std::string key) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> addProgram(rdesc::SpirvArtifact program) noexcept;
+        // Pass resource accesses use declared ranges/versions. Writes return new versions in PassResult;
+        // callers connect consumers to those versions instead of inventing execution ordering.
         [[nodiscard]] RenderResult<PassResult> addRasterPass(
             std::string key,
             RasterWork work,

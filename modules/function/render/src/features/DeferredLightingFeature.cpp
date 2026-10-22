@@ -2,13 +2,12 @@
 #include "DeferredLightingClustered.hpp"
 #include "DeferredLightingClusteredShadow.hpp"
 #include "DeferredLightingShadow.hpp"
+#include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/FeatureAssembly.hpp>
-#include <lux/engine/render/features/FeatureDefinition.hpp>
 #include <lux/engine/render/features/FullscreenRaster.hpp>
 #include <lux/engine/render/features/ParameterLayout.hpp>
-#include <lux/engine/render/runtime/Registration.hpp>
-#include <lux/engine/render/storage/DirectLightingCommandHandler.hpp>
+#include <lux/engine/render/storage/DirectLighting.hpp>
 
 namespace lux::render
 {
@@ -195,27 +194,14 @@ namespace lux::render
 
     const FeatureDescriptor DeferredLightingFeatureDescriptor::descriptor{
         name,
-        cppType<Config>(),
+        cxx::typeToken<Config>(),
         "Deferred shading over light, optional cluster and shadow ports; full-light fallback is lossless.",
         describeLighting
     };
 
-    template <>
-    RenderResult<void> RenderServer::prepareFeature<DeferredLightingFeatureDescriptor>(
-        RegistrationBatch& batch,
-        std::string_view
-    ) noexcept
+    const FeatureGraphOps& detail::DeferredLightingFeature::graph(bool) noexcept
     {
-        if (auto result = prepareStorage<DirectLightingStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
         static const FeatureGraphOps graph{buildLighting};
-        batch.addFeature({&DeferredLightingFeatureDescriptor::descriptor, &graph});
-        return {};
+        return graph;
     }
-
-    template LUX_RENDER_PUBLIC RenderResult<FeatureId> RenderServer::registerFeature<DeferredLightingFeatureDescriptor>(
-        std::string_view
-    ) noexcept;
 } // namespace lux::render

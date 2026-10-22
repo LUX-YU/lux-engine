@@ -46,6 +46,12 @@ namespace lux::render::detail
     class DirectLightingCommandHandler final
     {
     public:
+        // Factory registration does not construct an object. Activation borrows the one resource directory.
+        static DirectLightingCommandHandler* create(ResourceRegistry& resources) noexcept
+        {
+            return new DirectLightingCommandHandler(resources);
+        }
+
         using CreateSender = decltype(stdexec::then(
             std::declval<exec::task<RenderResult<std::vector<LightId>>>>(),
             createLightResponse(0)
@@ -59,32 +65,32 @@ namespace lux::render::detail
 
         explicit DirectLightingCommandHandler(ResourceRegistry& resources) noexcept : resources_(resources) {}
 
-        CreateSender create(CreateDirectLights::Request&& input) noexcept
+        CreateSender createLights(CreateDirectLights::Request&& input) noexcept
         {
             const auto sequence = input.sequence;
-            return createSource(input) | stdexec::then(createLightResponse(sequence));
+            return uploadLights(input) | stdexec::then(createLightResponse(sequence));
         }
 
-        UpdateSender update(UpdateDirectLights::Request&& input) noexcept
+        UpdateSender updateLights(UpdateDirectLights::Request&& input) noexcept
         {
             const auto sequence = input.sequence;
-            return updateSource(input) | stdexec::then(updateLightResponse(sequence));
+            return applyLightUpdates(input) | stdexec::then(updateLightResponse(sequence));
         }
 
-        RemoveSender remove(RemoveDirectLight::Request&& input) noexcept
+        RemoveSender removeLight(RemoveDirectLight::Request&& input) noexcept
         {
-            return removeSource(input.light) | stdexec::then(removeLightResponse(input.sequence));
+            return releaseLight(input.light) | stdexec::then(removeLightResponse(input.sequence));
         }
 
         using Bindings = std::tuple<
-            CommandMethod<CreateDirectLights, &DirectLightingCommandHandler::create>,
-            CommandMethod<UpdateDirectLights, &DirectLightingCommandHandler::update>,
-            CommandMethod<RemoveDirectLight, &DirectLightingCommandHandler::remove>>;
+            CommandMethod<CreateDirectLights, &DirectLightingCommandHandler::createLights>,
+            CommandMethod<UpdateDirectLights, &DirectLightingCommandHandler::updateLights>,
+            CommandMethod<RemoveDirectLight, &DirectLightingCommandHandler::removeLight>>;
 
     private:
-        exec::task<RenderResult<std::vector<LightId>>> createSource(CreateDirectLights::Request) noexcept;
-        exec::task<RenderResult<std::uint32_t>> updateSource(UpdateDirectLights::Request) noexcept;
-        exec::task<RenderResult<Ack>> removeSource(LightId) noexcept;
+        exec::task<RenderResult<std::vector<LightId>>> uploadLights(CreateDirectLights::Request) noexcept;
+        exec::task<RenderResult<std::uint32_t>> applyLightUpdates(UpdateDirectLights::Request) noexcept;
+        exec::task<RenderResult<Ack>> releaseLight(LightId) noexcept;
         ResourceRegistry& resources_;
     };
 } // namespace lux::render::detail

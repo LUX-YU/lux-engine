@@ -8,6 +8,7 @@
 
 namespace lux::render
 {
+
     struct StorageNameTag;
     using StorageName = cxx::SchemaId<StorageNameTag>;
     using StorageNameView = cxx::SchemaIdView<StorageNameTag>;
@@ -48,7 +49,7 @@ namespace lux::render
         StorageNameView type;
         std::uint32_t required_capabilities = 0;
         std::uint32_t optional_capabilities = 0;
-        CppType binding_type;
+        cxx::TypeToken binding_type;
         std::string_view description;
     };
 

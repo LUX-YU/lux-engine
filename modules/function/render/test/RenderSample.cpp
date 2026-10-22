@@ -71,11 +71,10 @@ int main(int argc, char** argv)
             return 2;
         }
     }
-    auto server = require(createRenderServer(config, execution, options));
-    (void)require(server->registerFeature<MaterialMeshRasterDescriptor>());
-    (void)require(server->registerFeature<MeshDepthRasterDescriptor>());
-    (void)require(server->registerFeature<HzbFeatureDescriptor>());
-    (void)require(server->registerStorage<SampledTexture2DStorageDescriptor>("B"));
+    auto server = require(RenderServer::create(config, execution, options));
+    (void)require(server->featureId<MaterialMeshRasterDescriptor>());
+    (void)require(server->featureId<MeshDepthRasterDescriptor>());
+    (void)require(server->featureId<HzbFeatureDescriptor>());
 
     const auto directory_id = require(server->commandId<lux::render::ListCommands>());
     bool ran = false;
@@ -112,7 +111,7 @@ int main(int argc, char** argv)
     std::printf(
         "3D sample: two Clients, one ExecutionRuntime, one Mesh/Material shared, typed Camera parameters and "
         "continuous rendering; "
-        "Texture binding B selected; graphs=%llu submissions=%llu validation=%llu warnings=%llu\n",
+        "graphs=%llu submissions=%llu validation=%llu warnings=%llu\n",
         static_cast<unsigned long long>(stats.compiled_graphs),
         static_cast<unsigned long long>(stats.submissions),
         static_cast<unsigned long long>(stats.validation_errors),

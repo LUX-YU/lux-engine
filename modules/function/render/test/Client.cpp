@@ -427,13 +427,8 @@ namespace mesh_sample
         check(applied.sequence == 7 && applied.changed == 1);
         await_frame();
 
-        // Handler selection is Server-global and observed by the already bound Asset Client.
-        const auto set_texture = command<CreateTexture>(main_commands);
-        const auto choices = coldCall<ListCommandBindings>(main, main_commands, main_next, set_texture);
-        const auto alternate = std::ranges::find(choices.handlers, "B", &HandlerInfo::instance);
-        check(alternate != choices.handlers.end() && choices.selected != alternate->id);
-        (void)coldCall<SelectCommandBinding>(main, main_commands, main_next, {set_texture, alternate->id});
-        check(coldCall<ListCommandBindings>(main, main_commands, main_next, set_texture).selected == alternate->id);
+        // The installed-consumer extension verifies A/B routing with distinct Handler implementations.
+        // This scene keeps exercising the real built-in Texture upload and explicit Material update.
         replace_texture.count_down();
         texture_ready.wait();
         check(!assets.texture.isNull());

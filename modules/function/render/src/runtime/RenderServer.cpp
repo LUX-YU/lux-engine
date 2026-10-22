@@ -1,4 +1,6 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/render/features/BuiltinFeatures.hpp>
+#include <lux/engine/render/runtime/FeatureRegistration.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 
 namespace lux::render
@@ -7,17 +9,11 @@ namespace lux::render
     {
         bool sameFactory(const StorageFactory& left, const StorageFactory& right) noexcept
         {
-            return left.native_type == right.native_type && left.config_type == right.config_type &&
+            return left.implementation_type == right.implementation_type && left.config_type == right.config_type &&
                    left.ops_type == right.ops_type && left.create == right.create && left.ops == right.ops &&
                    left.binding_ops == right.binding_ops && left.compatible_config == right.compatible_config;
         }
 
-        bool sameFeature(FeatureDefinition left, FeatureDefinition right) noexcept
-        {
-            return left.descriptor->config == right.descriptor->config &&
-                   left.descriptor->describe_ports == right.descriptor->describe_ports &&
-                   left.graph->build == right.graph->build;
-        }
     } // namespace
 
     RenderServer::RenderServer(std::unique_ptr<Impl> state) noexcept : impl_(std::move(state)) {}
@@ -34,10 +30,10 @@ namespace lux::render
         }
     }
 
-    RenderResult<std::unique_ptr<RenderServer>> createRenderServer(
+    RenderResult<std::unique_ptr<RenderServer>> RenderServer::create(
         RenderServerConfig config,
-        execution::ExecutionRuntime& runtime,
-        DeviceOptions options
+        execution::ExecutionRuntime& execution,
+        DeviceOptions device_options
     ) noexcept
     {
         const bool invalid = config.frames_in_flight == 0 || config.frames_in_flight > 3 ||
@@ -52,17 +48,238 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
-        auto state = std::make_unique<RenderServer::Impl>(std::move(config), std::move(*responder), runtime.cpu());
-        if (auto initialized = state->initialize(options); !initialized)
+        auto state = std::make_unique<RenderServer::Impl>(std::move(config), std::move(*responder), execution.cpu());
+        if (auto initialized = state->initialize(device_options); !initialized)
         {
             return cxx::unexpected(initialized.error());
         }
+        state->registerBuiltinFeatures();
         return std::unique_ptr<RenderServer>(new RenderServer(std::move(state)));
     }
 
-    ResourceRegistry& RenderServer::resources() noexcept
+    void RenderServer::Impl::registerBuiltinFeatures() noexcept
     {
-        return *impl_->resources;
+        // Built-ins have a closed, statically typed dependency set. No candidate owners,
+        // external compatibility checks or rollback transaction belong on this path.
+        cxx::tuple_traits::for_each_type<detail::BuiltinFeatures>(
+            [&]<class Feature, std::size_t>() noexcept
+            {
+                using StorageTypes = decltype(uniqueTypes(static_cast<typename Feature::Storages*>(nullptr)));
+                const auto required = []<class... Types>(std::tuple<Types...>*) noexcept
+                {
+                    return (0u | ... | Types::type::Descriptor::descriptor.required_capabilities);
+                }(static_cast<StorageTypes*>(nullptr));
+                if ((required & ~resources->capabilities()) != 0)
+                {
+                    return; // Unsupported hardware is not an invalid built-in declaration.
+                }
+                cxx::tuple_traits::for_each_type<StorageTypes>(
+                    [&]<class Type, std::size_t>() noexcept
+                    {
+                        using Storage = typename Type::type;
+                        if (resources->typeId(Storage::Descriptor::descriptor.type).isNull())
+                        {
+                            resources->publishFactory(Storage::factory());
+                        }
+                    }
+                );
+                using HandlerTypes = decltype(handlerTypes(static_cast<typename Feature::Commands*>(nullptr)));
+                cxx::tuple_traits::for_each_type<HandlerTypes>(
+                    [&]<class Type, std::size_t>() noexcept
+                    {
+                        using Handler = typename Type::type;
+                        if (command_registry_.handlerId(cxx::typeToken<Handler>(), {}).isNull())
+                        {
+                            command_registry_.publishHandler(handlerRecord<Handler>({}));
+                        }
+                    }
+                );
+                for (const auto& binding : commandBindings(static_cast<typename Feature::Commands*>(nullptr)))
+                {
+                    command_registry_.publishBinding(command_registry_.handlerId(binding.handlerType(), {}), binding);
+                }
+                publishFeature(Feature::Descriptor::descriptor, Feature::graph(paged_instances));
+            }
+        );
+    }
+
+    FeatureId RenderServer::Impl::publishFeature(
+        const FeatureDescriptor& descriptor,
+        const FeatureGraphOps& graph
+    ) noexcept
+    {
+        const auto found = features_by_name.find(descriptor.type.name());
+        if (found != features_by_name.end())
+        {
+            return found->second;
+        }
+        const auto id = features.emplace(descriptor, graph);
+        auto& entry = *features.find(id);
+        entry.id = id;
+        features_by_name.emplace(entry.name, id);
+        return id;
+    }
+
+    RenderResult<void> RenderServer::Impl::validateFeature(
+        const FeatureDescriptor& descriptor,
+        const FeatureGraphOps& graph
+    ) const noexcept
+    {
+        const bool is_invalid_declaration =
+            descriptor.type.name().empty() || !descriptor.describe_ports;
+        if (is_invalid_declaration)
+        {
+            return cxx::unexpected(RenderError{kFeatureContract});
+        }
+        const auto found = features_by_name.find(descriptor.type.name());
+        if (found != features_by_name.end())
+        {
+            const auto& previous = *features.find(found->second);
+            const bool is_incompatible = previous.descriptor.config != descriptor.config ||
+                                         previous.descriptor.describe_ports != descriptor.describe_ports ||
+                                         previous.graph.build != graph.build;
+            if (is_incompatible)
+            {
+                return cxx::unexpected(RenderError{kFeatureDuplicate});
+            }
+        }
+        return {};
+    }
+
+    RenderResult<void> RenderServer::Impl::validateRegistration(
+        std::span<const StorageFactory> factories,
+        std::span<const HandlerRecord> handlers,
+        std::span<const CommandBinding> bindings
+    ) const noexcept
+    {
+        for (std::size_t i = 0; i < factories.size(); ++i)
+        {
+            const auto& factory = factories[i];
+            if (auto valid = resources->validateFactory(factory); !valid)
+            {
+                return valid;
+            }
+            for (std::size_t j = 0; j < i; ++j)
+            {
+                if (factories[j].descriptor->type != factory.descriptor->type)
+                {
+                    continue;
+                }
+                if (auto valid = compatibleStorage(*factories[j].descriptor, *factory.descriptor); !valid)
+                {
+                    return valid;
+                }
+                if (!sameFactory(factories[j], factory))
+                {
+                    return cxx::unexpected(RenderError{kStorageMismatch});
+                }
+            }
+        }
+        for (const auto& handler : handlers)
+        {
+            if (auto valid = command_registry_.validateHandler(handler, bindings); !valid)
+            {
+                return valid;
+            }
+        }
+        return {};
+    }
+
+    void RenderServer::Impl::publishRegistration(
+        std::span<const StorageFactory> factories,
+        std::span<HandlerRecord> handlers,
+        std::span<const CommandBinding> bindings
+    ) noexcept
+    {
+        // Every recoverable boundary precedes this point. Publishing only allocates ordinary
+        // host memory; no Handler/Storage constructor or user callback can partially commit.
+        command_registry_.reserve(bindings.size(), handlers.size());
+        for (const auto& factory : factories)
+        {
+            resources->publishFactory(factory);
+        }
+        for (auto& handler : handlers)
+        {
+            const auto type = handler.type;
+            const auto id = command_registry_.publishHandler(std::move(handler));
+            for (const auto& binding : bindings)
+            {
+                if (binding.handlerType() == type)
+                {
+                    command_registry_.publishBinding(id, binding);
+                }
+            }
+        }
+    }
+
+    RenderResult<FeatureId> RenderServer::registerFeature(
+        const FeatureDescriptor& descriptor,
+        const FeatureGraphOps& graph,
+        std::span<const StorageFactory> factories,
+        std::span<HandlerRecord> handlers,
+        std::span<const CommandBinding> bindings
+    ) noexcept
+    {
+        auto& state = *impl_;
+        if (state.stop_requested.load())
+        {
+            return cxx::unexpected(RenderError{kRuntimeState});
+        }
+        if (auto valid = state.validateFeature(descriptor, graph); !valid)
+        {
+            return cxx::unexpected(valid.error());
+        }
+        if (auto valid = state.validateRegistration(factories, handlers, bindings); !valid)
+        {
+            return cxx::unexpected(valid.error());
+        }
+        state.publishRegistration(factories, handlers, bindings);
+        const auto id = state.publishFeature(descriptor, graph);
+        // A running Server may be extended only at its control safe point. Finish activation
+        // before dispatch resumes; the registration templates themselves invoke no constructors.
+        if (state.running.load())
+        {
+            state.command_registry_.activateSelectedHandlers(*state.resources);
+        }
+        return id;
+    }
+
+    RenderResult<StorageTypeId> RenderServer::registerStorage(
+        StorageFactory factory,
+        ConfigValue configuration
+    ) noexcept
+    {
+        if (impl_->stop_requested.load())
+        {
+            return cxx::unexpected(RenderError{kRuntimeState});
+        }
+        return impl_->resources->installFactory(std::move(factory), std::move(configuration));
+    }
+
+    RenderResult<HandlerId> RenderServer::registerHandler(
+        HandlerRecord handler,
+        std::span<const CommandBinding> bindings
+    ) noexcept
+    {
+        auto& state = *impl_;
+        if (state.stop_requested.load())
+        {
+            return cxx::unexpected(RenderError{kRuntimeState});
+        }
+        if (auto valid = state.command_registry_.validateHandler(handler, bindings); !valid)
+        {
+            return cxx::unexpected(valid.error());
+        }
+        const auto id = state.command_registry_.publishHandler(std::move(handler));
+        for (const auto& binding : bindings)
+        {
+            state.command_registry_.publishBinding(id, binding);
+        }
+        if (state.running.load())
+        {
+            state.command_registry_.activateSelectedHandlers(*state.resources);
+        }
+        return id;
     }
 
     bool RenderServer::pagedInstances() const noexcept
@@ -70,168 +287,18 @@ namespace lux::render
         return impl_->paged_instances;
     }
 
-    RenderResult<void> RenderServer::install(RegistrationBatch& transaction) noexcept
+    RenderResult<FeatureId> RenderServer::findFeature(const FeatureDescriptor& descriptor) const noexcept
     {
-        auto& batch = *transaction.state_;
-        auto& state = *impl_;
-        if (state.stop_requested.load())
+        const auto found = impl_->features_by_name.find(descriptor.type.name());
+        if (found == impl_->features_by_name.end())
         {
-            return cxx::unexpected(RenderError{kRuntimeState});
+            return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
-
-        // Validate the complete Command set, both against the live directory and within this batch.
-        std::vector<std::vector<CommandId>> commands;
-        commands.reserve(batch.handlers.size());
-        std::map<std::string_view, const CommandDescriptor*, std::less<>> descriptions;
-        for (const auto& handler : batch.handlers)
+        if (impl_->features.find(found->second)->descriptor.config != descriptor.config)
         {
-            auto prepared = state.command_registry_.prepareHandler(*handler.record, handler.calls);
-            if (!prepared)
-            {
-                return cxx::unexpected(prepared.error());
-            }
-            commands.push_back(std::move(*prepared));
-            for (const auto& call : handler.calls)
-            {
-                const auto* description = call.descriptor();
-                const auto [found, inserted] = descriptions.emplace(description->name.name(), description);
-                if (!inserted)
-                {
-                    if (auto valid = compatibleCommands(*found->second, *description); !valid)
-                    {
-                        return valid;
-                    }
-                }
-            }
+            return cxx::unexpected(RenderError{kFeatureContract});
         }
-
-        // Feature entries are stable. Names only discover declarations; live requests use FeatureId.
-        std::map<std::string_view, std::size_t, std::less<>> feature_names;
-        for (std::size_t i = 0; i < batch.features.size(); ++i)
-        {
-            auto& feature = batch.features[i];
-            const auto definition = feature.definition;
-            const bool is_missing_definition = !definition.descriptor || !definition.graph;
-            if (is_missing_definition)
-            {
-                return cxx::unexpected(RenderError{kFeatureContract});
-            }
-            const bool is_invalid_definition =
-                definition.descriptor->type.name().empty() || !definition.descriptor->describe_ports;
-            if (is_invalid_definition)
-            {
-                return cxx::unexpected(RenderError{kFeatureContract});
-            }
-            const auto name = definition.descriptor->type.name();
-            const auto installed = state.features_by_name.find(name);
-            if (installed != state.features_by_name.end())
-            {
-                const auto& entry = *state.features.find(installed->second);
-                if (!sameFeature({&entry.descriptor, &entry.graph}, definition))
-                {
-                    return cxx::unexpected(RenderError{kFeatureDuplicate});
-                }
-                feature.id = installed->second;
-            }
-            const auto [found, inserted] = feature_names.emplace(name, i);
-            if (!inserted && !sameFeature(batch.features[found->second].definition, definition))
-            {
-                return cxx::unexpected(RenderError{kFeatureDuplicate});
-            }
-        }
-
-        auto& resources = *state.resources;
-        std::vector<StorageFactoryInstall> factories;
-        factories.reserve(batch.storage_factories.size());
-        std::map<std::string_view, std::size_t, std::less<>> storage_names;
-        for (std::size_t i = 0; i < batch.storage_factories.size(); ++i)
-        {
-            auto& storage = batch.storage_factories[i];
-            const auto& factory = storage.factory;
-            storage.id = resources.typeId(factory.descriptor->type);
-            if (!storage.id.isNull())
-            {
-                const auto& previous = *resources.factory(storage.id);
-                if (auto valid = compatibleStorage(*previous.descriptor, *factory.descriptor); !valid)
-                {
-                    return valid;
-                }
-                if (!sameFactory(previous, factory))
-                {
-                    return cxx::unexpected(RenderError{kStorageMismatch});
-                }
-                if (!storage.use_existing_configuration)
-                {
-                    const auto* configuration = resources.configuration(storage.id);
-                    if (!configuration || *configuration != storage.configuration)
-                    {
-                        return cxx::unexpected(RenderError{kStorageMismatch});
-                    }
-                }
-            }
-            const auto [found, inserted] = storage_names.emplace(factory.descriptor->type.name(), i);
-            if (!inserted)
-            {
-                const auto& previous = batch.storage_factories[found->second];
-                if (auto valid = compatibleStorage(*previous.factory.descriptor, *factory.descriptor); !valid)
-                {
-                    return valid;
-                }
-                const bool is_factory_mismatch = !sameFactory(previous.factory, factory);
-                const bool is_config_mismatch =
-                    !storage.use_existing_configuration && previous.configuration != storage.configuration;
-                if (is_factory_mismatch || is_config_mismatch)
-                {
-                    return cxx::unexpected(RenderError{kStorageMismatch});
-                }
-            }
-        }
-
-        for (const auto& [name, index] : storage_names)
-        {
-            auto& storage = batch.storage_factories[index];
-            if (storage.id.isNull())
-            {
-                factories.push_back({storage.factory, std::move(storage.configuration)});
-            }
-        }
-
-        // This is the last recoverable boundary: Registry validates every capability/config before publication.
-        // No Provider callback is called after this point. Ordinary host OOM remains fatal.
-        state.command_registry_.reserve(descriptions.size(), batch.handlers.size());
-        state.features.reserve(state.features.size() + feature_names.size());
-        auto installed = resources.installFactories(factories);
-        if (!installed)
-        {
-            return cxx::unexpected(installed.error());
-        }
-        for (std::size_t i = 0; i < batch.handlers.size(); ++i)
-        {
-            auto& handler = batch.handlers[i];
-            state.command_registry_.registerHandler(std::move(handler.record), handler.calls, std::move(commands[i]));
-        }
-        for (auto& feature : batch.features)
-        {
-            if (!feature.id.isNull())
-            {
-                continue;
-            }
-            const auto found = state.features_by_name.find(feature.definition.descriptor->type.name());
-            if (found != state.features_by_name.end())
-            {
-                feature.id = found->second;
-                continue;
-            }
-            feature.id = state.features.emplace(feature.definition);
-            auto& entry = *state.features.find(feature.id);
-            entry.id = feature.id;
-            state.features_by_name.emplace(entry.name, feature.id);
-        }
-        for (auto& storage : batch.storage_factories)
-        {
-            storage.id = resources.typeId(storage.factory.descriptor->type);
-        }
-        return {};
+        return found->second;
     }
 
     RenderResult<CommandId> RenderServer::findCommand(const CommandDescriptor& descriptor) const noexcept
@@ -239,23 +306,14 @@ namespace lux::render
         return impl_->command_registry_.findCommand(descriptor);
     }
 
-    RenderResult<HandlerId> RenderServer::findHandler(CppType type, std::string_view instance) const noexcept
+    RenderResult<void> RenderServer::run() noexcept
     {
-        if (impl_->stop_requested.load())
-        {
-            return cxx::unexpected(RenderError{kRuntimeState});
-        }
-        return impl_->command_registry_.findHandler(type, instance);
+        return impl_->run();
     }
 
     void RenderServer::stop() noexcept
     {
         impl_->stop();
-    }
-
-    RenderResult<void> RenderServer::run() noexcept
-    {
-        return impl_->run();
     }
 
     RenderServerStats RenderServer::stats() const noexcept

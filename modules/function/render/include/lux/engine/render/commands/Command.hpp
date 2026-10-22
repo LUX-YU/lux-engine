@@ -6,9 +6,9 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/cxx/core/Schema.hpp>
-#include <lux/engine/render/core/CppType.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <span>
 #include <string_view>
@@ -55,11 +55,13 @@ namespace lux::render
     };
 
     // Cold declaration metadata; same controlled C++ build is the host precondition.
+    // Cold C++ type agreement in one compatible build. IPC accepts typed objects, not serialized ABI blobs.
+    // Runtime dispatch uses CommandId after registration; type names belong to the defining module.
     struct CommandDescriptor final
     {
         CommandName name;
-        CppType request;
-        CppType response;
+        cxx::TypeToken request;
+        cxx::TypeToken response;
     };
 
     template <typename C>
@@ -78,8 +80,8 @@ namespace lux::render
     template <RenderCommand C>
     inline constexpr CommandDescriptor kCommandDescriptor{
         CommandName(C::name),
-        cppType<typename C::Request>(),
-        cppType<typename C::Response>()
+        cxx::typeToken<typename C::Request>(),
+        cxx::typeToken<typename C::Response>()
     };
 
     template <RenderCommand C> [[nodiscard]] constexpr const CommandDescriptor& commandDescriptor() noexcept

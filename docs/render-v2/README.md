@@ -5,6 +5,9 @@ Render 作为一个共享库提供逻辑图、Feature、资源和执行能力，
 设计与审查遵守 [通用软件设计与 C++ 工程规范](../engineering-principles.md)；
 当前 API 和运行合同见 [Render README](../../modules/function/render/README.md)。
 
+- [从请求到图像的完整流程](rendering-flow.md)：当前类的职责、调用链、线程和释放顺序，供源码审查。
+- [Engine/Editor 接线设计](engine-editor-integration.md)：尚未实施的执行资源、对象体系、Scene、窗口与 UI 接线。
+
 ## 目录与职责
 
 顶级目录统一为 `include/`、`sinclude/`、`pinclude/` 和 `src/`，分别表示安装公开头、
@@ -25,7 +28,7 @@ Render 作为一个共享库提供逻辑图、Feature、资源和执行能力，
 `sinclude/` 接缝。Platform IPC 位于独立模块，提供进程内类型化消息、SPSC 和来源关联。
 
 稳定名称用于冷态发现；Command、Handler、Scene、View、Effect、Storage 等运行时身份各有独立身份域。
-Scene 拥有 View，Effect 拥有不可变 CompiledGraph，Attachment 拥有 ExecutionContext。
+Scene 拥有 View，Effect 拥有不可变 RenderPlan 及同源 Graph/Analysis，Attachment 拥有 RenderGraphInstance。
 Target 拥有实际输出图像，同一 Target 只有一个 Attachment。
 StorageSet 独占专业 Storage；Registry 只定位实例。Client 显式管理资源间的业务依赖。
 
@@ -34,14 +37,15 @@ Session 的 `cleanup_scope_`。资源在 Copy/Acquire 接纳、使用顺序成�
 实际 GPU 完成决定物理资源何时可以复用或释放。没有对外 Ticket 或生产 Readback Command。
 
 帧槽在参与的物理 Queue 完成且 CPU 写入结束后复用。默认两个在途帧，可配置一到三个。
-动态 Storage、Context 和 Target 使用对应物理 slice；CPU 业务数据、Shader 和 Pipeline 保持唯一。
-当前帧准备与提交入口位于 DeviceSession；具体职责收窄仍待后续方案确定，不能把现有类划分当作永久
-要求。上传保持 stdexec，物理清理只有一个 `cleanup_scope_`。
+动态 Storage、RenderGraphInstance 和 Target 使用对应物理 slice；CPU 已采用数据、Shader 和 Pipeline 保持唯一。
+FrameExecution 负责帧准备、批次依赖和提交合并，RenderExecutor 按计划录制，DeviceSession 提供设备设施和完成推进。
+上传由 ResourceUploader 执行 stdexec 流程，物理清理只有 DeviceSession 的一个 `cleanup_scope_`。
+当前输出仍是 OffscreenTarget；Surface/Present 以及 Engine/Editor 接线不能从离屏验收中推定完成。
 
 ## 宿主与 Client
 
 应用创建一个 Core `ExecutionRuntime`，调用
-[`createRenderServer`](../../modules/function/render/include/lux/engine/render/runtime/RenderServer.hpp)
+[`RenderServer::create`](../../modules/function/render/include/lux/engine/render/runtime/RenderServer.hpp)
 装配 Server，并在冷态注册 Feature/Storage 描述。应用拥有线程；Server 借用同一个 CPU scheduler。
 具体内置实现不公开，不需要应用构造 Provider 或包含专业 Storage 实现头。
 
@@ -89,3 +93,25 @@ Main/Asset 双 Client 的 Mesh/Material 场景。Client 翻译单元不包含后
 [色彩空间约定](color-space.md) 说明采样与工作色转换；
 [Legacy 参考边界](LEGACY_MANIFEST.md) 说明冻结源码的用途与校验方式。
 阶段报告和历史资格从 Git 历史查询；原始验证输出保存在源码树外。
+
+### 创建与声明式安装
+
+```cpp
+auto server = RenderServer::create(config, execution, device_options);
+if (!server)
+{
+    return server.error();
+}
+auto mesh_feature = (*server)->featureId<MaterialMeshRasterDescriptor>();
+```
+
+`create()` 从私有 `BuiltinFeatures` 的 tuple 清单直接登记支持的 Feature、Storage 和 Command。
+Descriptor 不再导出私有定义，登记不创建实例。`run()` 激活已选 Handler，PrepareStorage/Attach 才创建 Storage。
+内置路径不执行外部扩展的事务验证或回退；设备能力仍在冷态选择支持项。
+
+外部扩展包含 `sinclude` 的 `runtime/FeatureRegistration.hpp`，声明 `Descriptor`、`Storages`、`Commands`
+和 Graph 构建入口。模板验证整个依赖集合后发布到同一目录；失败不留下部分目录，重复登记保留 ID 和当前选择。
+具体实现不进入安装公共头。所有声明、回调和类型名都要求定义模块存活至 Server 及相关消息销毁。
+扩展只在 `run()` 前或 RenderThread 安全点登记，普通请求不承担注册或实例化工作。
+
+`stop()` 只请求停止，应用仍须 join 渲染线程，并让传入的 ExecutionRuntime 保持存活。

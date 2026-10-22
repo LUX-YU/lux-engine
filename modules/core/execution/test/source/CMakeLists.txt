@@ -25,6 +25,10 @@ add_subdirectory("${LUX_SOURCE_DIR}/modules/core/async_port" async-port)
 add_subdirectory("${LUX_SOURCE_DIR}/modules/core/error" error)
 add_subdirectory("${LUX_SOURCE_DIR}/modules/core/execution" execution)
 
+# Import again outside Execution's directory, without a parent-level preload.
+# A partial export set (global stdexec, local system_context) must fail here.
+find_package(stdexec CONFIG REQUIRED)
+
 lux_engine_install_components(
     PROJECT_NAME lux-engine-core
     VERSION ${PROJECT_VERSION}

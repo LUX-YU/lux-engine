@@ -9,7 +9,7 @@ namespace lux::render::detail
         co_return cxx::unexpected(error);
     }
 
-    exec::task<RenderResult<MaterialId>> RasterMaterialTableCommandHandler::createMaterialSource(
+    exec::task<RenderResult<MaterialId>> RasterMaterialTableCommandHandler::uploadMaterial(
         CreateMaterial::Request&& input
     ) noexcept
     {
@@ -21,7 +21,7 @@ namespace lux::render::detail
         return render::upload(**storage, std::move(input));
     }
 
-    exec::task<RenderResult<Ack>> RasterMaterialTableCommandHandler::updateMaterialSource(
+    exec::task<RenderResult<Ack>> RasterMaterialTableCommandHandler::uploadMaterialParameters(
         UpdateMaterial::Request&& input
     ) noexcept
     {
@@ -49,31 +49,3 @@ namespace lux::render::detail
     }
 
 } // namespace lux::render::detail
-
-#include <lux/engine/render/runtime/Registration.hpp>
-
-namespace lux::render
-{
-    template <>
-    RenderResult<void> RenderServer::prepareStorage<RasterMaterialTableStorageDescriptor>(
-        RegistrationBatch& batch,
-        ConfigValue configuration,
-        bool use_existing,
-        std::string_view handler_key
-    ) noexcept
-    {
-        return prepareStorageDefinition<
-            RasterMaterialTableStorageDescriptor,
-            detail::RasterMaterialTableStorage,
-            detail::RasterMaterialTableCommandHandler>(
-            batch,
-            detail::materialStorageFactory(),
-            std::move(configuration),
-            use_existing,
-            handler_key
-        );
-    }
-
-    template LUX_RENDER_PUBLIC RenderResult<StorageTypeId> RenderServer::registerStorage<
-        RasterMaterialTableStorageDescriptor>(std::string_view) noexcept;
-} // namespace lux::render

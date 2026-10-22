@@ -16,6 +16,12 @@
 
 struct SamplerProbe
 {
+    using Descriptor = SamplerProbe;
+    using Storages = std::tuple<>;
+    using Commands = std::tuple<>;
+    static const FeatureDescriptor descriptor;
+    static const FeatureGraphOps& graph(bool) noexcept;
+
     static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
     {
         GraphImageDesc color{64, 64};
@@ -73,22 +79,18 @@ struct SamplerProbe
     }
 };
 
-namespace lux::render
+inline const FeatureDescriptor SamplerProbe::descriptor{
+    FeatureName{"test.SamplerProbe"},
+    {},
+    "Ordinary and comparison array samplers",
+    SamplerProbe::describe
+};
+
+inline const FeatureGraphOps& SamplerProbe::graph(bool) noexcept
 {
-    template <>
-    RenderResult<void> RenderServer::prepareFeature<SamplerProbe>(RegistrationBatch& batch, std::string_view) noexcept
-    {
-        static const FeatureDescriptor descriptor{
-            FeatureName{"test.SamplerProbe"},
-            {},
-            "Ordinary and comparison array samplers",
-            SamplerProbe::describe
-        };
-        static const FeatureGraphOps graph{SamplerProbe::build};
-        batch.addFeature({&descriptor, &graph});
-        return {};
-    }
-} // namespace lux::render
+    static const FeatureGraphOps value{SamplerProbe::build};
+    return value;
+}
 
 static void verifySamplers(RenderServer& server, const RenderServerConfig& config)
 {
@@ -260,7 +262,7 @@ int main(int argc, char** argv)
             CHECK(false);
         }
     }
-    auto server = take(createRenderServer(config, *runtime, device));
+    auto server = take(RenderServer::create(config, *runtime, device));
     if (!device.texture_descriptors)
     {
         verifySamplers(*server, config);
@@ -269,14 +271,14 @@ int main(int argc, char** argv)
         CHECK(runtime->join());
         return 0;
     }
-    const auto gbuffer = take(server->registerFeature<GBufferFeatureDescriptor>());
-    const auto lighting = take(server->registerFeature<DeferredLightingFeatureDescriptor>());
-    const auto tonemap = take(server->registerFeature<TonemapFeatureDescriptor>());
-    const auto projection = take(server->registerFeature<ShadowMapFeatureDescriptor>());
-    const auto visibility = take(server->registerFeature<MeshVisibilityFeatureDescriptor>());
-    const auto shadow = take(server->registerFeature<MeshShadowFeatureDescriptor>());
+    const auto gbuffer = take(server->featureId<GBufferFeatureDescriptor>());
+    const auto lighting = take(server->featureId<DeferredLightingFeatureDescriptor>());
+    const auto tonemap = take(server->featureId<TonemapFeatureDescriptor>());
+    const auto projection = take(server->featureId<ShadowMapFeatureDescriptor>());
+    const auto visibility = take(server->featureId<MeshVisibilityFeatureDescriptor>());
+    const auto shadow = take(server->featureId<MeshShadowFeatureDescriptor>());
     const auto capture = take(server->registerFeature<CaptureFeature>());
-    const auto cluster_feature = take(server->registerFeature<ClusteredLightingFeatureDescriptor>());
+    const auto cluster_feature = take(server->featureId<ClusteredLightingFeatureDescriptor>());
     const auto comparison = take(server->registerFeature<SceneComparison>());
     CommandList bootstrap;
     bootstrap.commands.push_back({std::string(ListCommands::name), take(server->commandId<ListCommands>())});

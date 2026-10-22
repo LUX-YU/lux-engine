@@ -14,7 +14,6 @@
 
 namespace lux::render::detail
 {
-    [[nodiscard]] StorageFactory meshStorageFactory() noexcept;
 
     class IndexedTriangleMeshStorage final
     {
@@ -30,6 +29,9 @@ namespace lux::render::detail
         };
 
     public:
+        using Descriptor = IndexedTriangleMeshStorageDescriptor;
+        [[nodiscard]] static StorageFactory factory() noexcept;
+
         IndexedTriangleMeshStorage(StorageCreateContext&, StorageId) noexcept;
         ~IndexedTriangleMeshStorage() noexcept;
         IndexedTriangleMeshStorage(const IndexedTriangleMeshStorage&) = delete;
@@ -48,7 +50,6 @@ namespace lux::render::detail
         resolve(const CompiledResource&, const MeshBinding&, StorageSubscription&) noexcept;
 
     private:
-        friend StorageFactory meshStorageFactory() noexcept;
         friend struct lux::render::StorageTraits<IndexedTriangleMeshStorage>;
         using UploadResult = exec::task<RenderResult<MeshId>>;
         [[nodiscard]] UploadResult upload(MeshWrite) noexcept;

@@ -1,11 +1,10 @@
 #include "TonemapLinear.hpp"
 #include "TonemapSrgb.hpp"
+#include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/FeatureAssembly.hpp>
-#include <lux/engine/render/features/FeatureDefinition.hpp>
 #include <lux/engine/render/features/FullscreenRaster.hpp>
 #include <lux/engine/render/features/ParameterLayout.hpp>
 #include <lux/engine/render/features/TonemapFeature.hpp>
-#include <lux/engine/render/runtime/Registration.hpp>
 
 namespace lux::render
 {
@@ -73,23 +72,14 @@ namespace lux::render
 
     const FeatureDescriptor TonemapFeatureDescriptor::descriptor{
         name,
-        cppType<Config>(),
+        cxx::typeToken<Config>(),
         "ACES-fit SDR output with explicit exposure and exactly one sRGB encoding.",
         describeTonemap
     };
 
-    template <>
-    RenderResult<void> RenderServer::prepareFeature<TonemapFeatureDescriptor>(
-        RegistrationBatch& batch,
-        std::string_view
-    ) noexcept
+    const FeatureGraphOps& detail::TonemapFeature::graph(bool) noexcept
     {
         static const FeatureGraphOps graph{buildTonemap};
-        batch.addFeature({&TonemapFeatureDescriptor::descriptor, &graph});
-        return {};
+        return graph;
     }
-
-    template LUX_RENDER_PUBLIC RenderResult<FeatureId> RenderServer::registerFeature<TonemapFeatureDescriptor>(
-        std::string_view
-    ) noexcept;
 } // namespace lux::render

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <concepts>
-#include <lux/engine/render/core/CppType.hpp>
+#include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <memory>
 #include <type_traits>
@@ -22,18 +22,20 @@ namespace lux::render
     };
 
     // One immutable, exclusively owned configuration. Borrowed views last only as long as this value.
+    // TypeToken compares semantic C++ identity, not a portable serialization/DLL ABI. The defining module
+    // supplies equality/destruction code and must remain loaded until this value is destroyed.
     class ConfigValue final
     {
     public:
-        [[nodiscard]] CppType typeInfo() const noexcept
+        [[nodiscard]] cxx::TypeToken type() const noexcept
         {
-            return type_ ? type_->identity : CppType{};
+            return type_ ? type_->identity : cxx::TypeToken{};
         }
 
         // Cold semantic agreement only. No object representation/padding comparison and no hash shortcut.
         [[nodiscard]] bool operator==(const ConfigValue& other) const noexcept
         {
-            if (typeInfo() != other.typeInfo())
+            if (type() != other.type())
             {
                 return false;
             }
@@ -90,7 +92,7 @@ namespace lux::render
                 new const Value(std::forward<T>(value)),
                 [](const void* object) noexcept { delete static_cast<const Value*>(object); }
             };
-            static constexpr Metadata type{cppType<Value>(), equality<Value>()};
+            static constexpr Metadata type{cxx::typeToken<Value>(), equality<Value>()};
             result.type_ = &type;
             result.retained_bytes_ = *bytes;
             return result;
@@ -101,21 +103,6 @@ namespace lux::render
             return bool(value_);
         }
 
-        [[nodiscard]] cxx::TypeToken type() const noexcept
-        {
-            return typeInfo().token;
-        }
-
-        [[nodiscard]] std::size_t objectSize() const noexcept
-        {
-            return typeInfo().size;
-        }
-
-        [[nodiscard]] std::size_t objectAlignment() const noexcept
-        {
-            return typeInfo().alignment;
-        }
-
         [[nodiscard]] std::size_t retainedBytes() const noexcept
         {
             return retained_bytes_;
@@ -123,7 +110,7 @@ namespace lux::render
 
         template <class T> [[nodiscard]] const T* borrow() const noexcept
         {
-            const bool matches = typeInfo() == cppType<T>();
+            const bool matches = type() == cxx::typeToken<T>();
             return matches ? static_cast<const T*>(value_.get()) : nullptr;
         }
 
@@ -138,7 +125,7 @@ namespace lux::render
 
         struct Metadata final
         {
-            CppType identity;
+            cxx::TypeToken identity;
             Equal equal;
         };
 

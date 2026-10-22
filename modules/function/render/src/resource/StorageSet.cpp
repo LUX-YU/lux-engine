@@ -18,9 +18,7 @@ namespace lux::render
         StorageCreateContext& dependencies,
         StorageTypeId type,
         std::string_view key,
-        const ConfigValue& config,
-        CppType requested_config,
-        CppType requested_ops
+        const ConfigValue& config
     ) noexcept
     {
         if (key.empty())
@@ -33,45 +31,40 @@ namespace lux::render
             return cxx::unexpected(RenderError{kStorageFactory});
         }
         const auto& factory = *installed;
-        const bool is_wrong_config = requested_ops.size && requested_config != factory.config_type;
-        const bool is_wrong_ops = requested_ops.size && requested_ops != factory.ops_type;
-        if (is_wrong_config || is_wrong_ops)
-        {
-            return cxx::unexpected(RenderError{kStorageMismatch});
-        }
         if (config)
         {
-            const auto actual = config.typeInfo();
+            const auto actual = config.type();
             if (actual != factory.config_type)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
         }
         const auto& selected_config = config ? config : *registry_.configuration(type);
-        if (factory.config_type.size && !selected_config)
+        if (factory.config_type.isValid() && !selected_config)
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
         if (const auto id = find(type, key); !id.isNull())
         {
-            if (factory.compatible_config && !factory.compatible_config(registry_.native(id), selected_config.data()))
+            if (factory.compatible_config &&
+                !factory.compatible_config(registry_.storageInstance(id), selected_config.data()))
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
             return id;
         }
         const auto id = registry_.reserve(*this, type);
-        auto native = registry_.create(dependencies, id, selected_config.data());
-        if (!native || !*native)
+        auto instance = registry_.create(dependencies, id, selected_config.data());
+        if (!instance || !*instance)
         {
-            const auto error = native ? RenderError{kStorageFactory} : native.error();
+            const auto error = instance ? RenderError{kStorageFactory} : instance.error();
             registry_.revoke(id);
             return cxx::unexpected(error);
         }
-        // Native creation may grow either Set. Publish only after insertion, using the current position.
+        // Implementation creation may grow either Set. Publish only after insertion, using the current position.
         const auto name = instances_by_name_.emplace(NameKey{type.index, type.gen, std::string(key)}, id).first;
-        records_.push_back(Record{id, name, std::move(*native)});
-        registry_.publish(id, records_.size() - 1, records_.back().native.get());
+        records_.push_back(Record{id, name, std::move(*instance)});
+        registry_.publish(id, records_.size() - 1, records_.back().instance.get());
         return id;
     }
 
@@ -80,8 +73,8 @@ namespace lux::render
         const StorageDescriptor& description,
         std::string_view key,
         const ConfigValue& config,
-        CppType config_type,
-        CppType ops_type
+        cxx::TypeToken config_type,
+        cxx::TypeToken ops_type
     ) noexcept
     {
         const auto type = registry_.typeId(description.type);
@@ -94,7 +87,12 @@ namespace lux::render
         {
             return cxx::unexpected(compatible.error());
         }
-        return ensure(dependencies, type, key, config, config_type, ops_type);
+        const bool is_type_mismatch = config_type != factory->config_type || ops_type != factory->ops_type;
+        if (is_type_mismatch)
+        {
+            return cxx::unexpected(RenderError{kStorageMismatch});
+        }
+        return ensure(dependencies, type, key, config);
     }
 
     RenderResult<StorageId> StorageSet::getOrCreate(
@@ -123,14 +121,14 @@ namespace lux::render
         const auto& record = records_[position];
         instances_by_name_.erase(record.name);
         registry_.revoke(record.id);
-        auto native = std::move(records_[position].native);
+        auto instance = std::move(records_[position].instance);
         if (position + 1 != records_.size())
         {
             records_[position] = std::move(records_.back());
             registry_.relocate(records_[position].id, position);
         }
         records_.pop_back();
-        // All indexes are repaired before a Native destructor can release another actual instance.
+        // All indexes are repaired before a Implementation destructor can release another actual instance.
     }
 
     void StorageSet::clear() noexcept
@@ -143,7 +141,7 @@ namespace lux::render
         // Revoke the entire set before any destructor runs. No temporary container or allocation is needed.
         while (!records_.empty())
         {
-            auto native = std::move(records_.back().native);
+            auto instance = std::move(records_.back().instance);
             records_.pop_back();
         }
     }

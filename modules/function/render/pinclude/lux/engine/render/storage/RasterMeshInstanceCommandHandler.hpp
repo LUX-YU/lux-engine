@@ -61,6 +61,12 @@ namespace lux::render::detail
         { return {result ? RenderError{} : result.error()}; };
 
     public:
+        // Factory registration does not construct an object. Activation borrows the one resource directory.
+        static RasterMeshInstanceCommandHandler* create(ResourceRegistry& resources) noexcept
+        {
+            return new RasterMeshInstanceCommandHandler(resources);
+        }
+
         using CreateInstanceSender =
             decltype(stdexec::then(std::declval<exec::task<RenderResult<MeshInstanceId>>>(), create_instance_response_)
             );
@@ -89,27 +95,27 @@ namespace lux::render::detail
 
         CreateInstanceSender createInstance(CreateMeshInstance::Request&& input) noexcept
         {
-            return createInstanceSource(std::move(input)) | stdexec::then(create_instance_response_);
+            return uploadInstance(std::move(input)) | stdexec::then(create_instance_response_);
         }
 
         CreateInstancesSender createInstances(CreateMeshInstances::Request&& input) noexcept
         {
-            return createInstancesSource(std::move(input)) | stdexec::then(create_instances_response_);
+            return uploadInstances(std::move(input)) | stdexec::then(create_instances_response_);
         }
 
         UpdateTransformsSender updateTransforms(UpdateTransforms::Request&& input) noexcept
         {
-            return updateTransformsSource(std::move(input)) | stdexec::then(update_transforms_response_);
+            return applyTransformUpdates(std::move(input)) | stdexec::then(update_transforms_response_);
         }
 
         UpdateInstancesSender updateInstances(UpdateMeshInstances::Request&& input) noexcept
         {
-            return updateInstancesSource(std::move(input)) | stdexec::then(update_instances_response_);
+            return applyInstanceUpdates(std::move(input)) | stdexec::then(update_instances_response_);
         }
 
         ReleaseInstanceSender releaseInstance(ReleaseMeshInstance::Request&& input) noexcept
         {
-            return releaseInstanceSource(std::move(input)) | stdexec::then(release_instance_response_);
+            return releaseStoredInstance(std::move(input)) | stdexec::then(release_instance_response_);
         }
 
         using Bindings = std::tuple<
@@ -120,12 +126,11 @@ namespace lux::render::detail
             CommandMethod<ReleaseMeshInstance, &RasterMeshInstanceCommandHandler::releaseInstance>>;
 
     private:
-        exec::task<RenderResult<std::vector<MeshInstanceId>>> createInstancesSource(CreateMeshInstances::
-                                                                                        Request&&) noexcept;
-        exec::task<RenderResult<MeshInstanceId>> createInstanceSource(CreateMeshInstance::Request&&) noexcept;
-        exec::task<RenderResult<TransformApplied>> updateTransformsSource(UpdateTransforms::Request&&) noexcept;
-        exec::task<RenderResult<TransformApplied>> updateInstancesSource(UpdateMeshInstances::Request&&) noexcept;
-        exec::task<RenderResult<Ack>> releaseInstanceSource(ReleaseMeshInstance::Request&&) noexcept;
+        exec::task<RenderResult<std::vector<MeshInstanceId>>> uploadInstances(CreateMeshInstances::Request&&) noexcept;
+        exec::task<RenderResult<MeshInstanceId>> uploadInstance(CreateMeshInstance::Request&&) noexcept;
+        exec::task<RenderResult<TransformApplied>> applyTransformUpdates(UpdateTransforms::Request&&) noexcept;
+        exec::task<RenderResult<TransformApplied>> applyInstanceUpdates(UpdateMeshInstances::Request&&) noexcept;
+        exec::task<RenderResult<Ack>> releaseStoredInstance(ReleaseMeshInstance::Request&&) noexcept;
 
         ResourceRegistry& resources_;
     };

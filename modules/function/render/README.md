@@ -12,7 +12,7 @@ extension or private headers. Checked backend failures remain structured Render 
 
 - `include/` contains installed values, Commands, graph declarations, descriptors and Server APIs.
 - `sinclude/` contains uninstalled project extension contracts for device access, uploads, Storage factories,
-  Feature definitions and generic registration. A GPU extension explicitly selects these dependencies.
+  Feature tuple declarations and typed Handler factories. A GPU extension explicitly selects these dependencies.
 - `pinclude/` contains concrete built-in Storage/Handler implementations and private algorithms.
 - `src/` follows the same responsibilities. A single target compiles each production source once.
 
@@ -20,18 +20,18 @@ Public headers contain no graphics API types. Neutral Command and resource decla
 the Server's actual asynchronous Handler interface does. Project extension headers are a source integration
 contract for the selected backend and compiler ABI, not a separately installed graphics SDK.
 
-Applications explicitly register descriptions:
+Server creation registers the supported built-in Features and their dependencies. Applications discover their IDs:
 
 ```cpp
 #include <lux/engine/render/features/MaterialMeshRaster.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 
-auto server = lux::render::createRenderServer(config, execution, options);
+auto server = lux::render::RenderServer::create(config, execution, device_options);
 if (!server)
 {
     return server.error();
 }
-auto feature = (*server)->registerFeature<lux::render::MaterialMeshRasterDescriptor>();
+auto feature = (*server)->featureId<lux::render::MaterialMeshRasterDescriptor>();
 ```
 
 `IndexedTriangleMeshStorageDescriptor`, `RasterMeshInstanceStorageDescriptor`,
@@ -40,13 +40,33 @@ contracts. Their descriptions explain intended use; description text does not pa
 comparison. Different contracts use different semantic names. Instance keys only select instances of one type.
 `ListFeatures` and `ListStorages` return independently owned names and descriptions.
 
+Private `BuiltinFeatures` declares each Feature's `Storages` and `Commands` tuples. The setup template walks types,
+never objects, and writes factories/call thunks directly into the existing ResourceRegistry, CommandRegistry and
+Feature directory. Known built-ins do not use external validation or rollback. Required capabilities still select
+which declarations are usable; automatic registration never enables unrequested device features.
+
+Project extensions include `runtime/FeatureRegistration.hpp`. A Feature supplies `Descriptor`, `Storages`,
+`Commands` and `graph(bool paged_instances)`. A command-only Feature can return empty FeatureGraphOps; no dummy
+graph callback is required. Each Storage supplies its typed `factory()`. Each CommandMethod names
+one Command and Handler method; the Handler supplies an explicit `create(ResourceRegistry&) noexcept` factory
+returning a valid new object. No constructor-shape inference is performed. External registration checks the full
+closure before publishing, including conflicts between incoming declarations. Repeated compatible registration
+reuses identities and never takes over a selected binding. Failed registration invokes no implementation factory.
+
+`HandlerRecord` is the existing sole runtime record, now containing the constructor as well as the optional object.
+Registration before `run()` creates no Handler or Storage. Startup activates selected Handlers once; selecting an
+unused implementation activates it at that control safe point. A running Server may register extensions only at
+its rendering-thread safe point; after publication it activates newly selected bindings before dispatch resumes.
+Storage instances are created only by PrepareStorage/Attach and owned by their StorageSet. Handler objects survive
+selection changes until all accepted work is settled during shutdown. Ordinary Command dispatch stays `{invoke, object}`.
+
+Command/configuration/binding C++ identities use `cxx::TypeToken` directly. This is semantic type agreement for
+compatible builds, not cross-ABI serialization. Modules supplying names, callbacks and destructors must outlive
+the Server, accepted work and any message/configuration values that use them.
+
 `FeatureDescriptor::describe_ports` exposes config-dependent port information without building a graph or creating
 device objects. Composition calls that same cold entry. Imported ports carry their initial use; selected exports
 carry their exact range and final use. Concrete graph building remains in the project-level Feature implementation.
-
-Built-in registration definitions are compiled in their functional implementation files. Applications do not
-construct a Provider or include a concrete Storage. Project extensions submit their factories and typed Handler
-bindings through the same registration transaction, without changing Server dispatch branches.
 
 ## Requests and execution
 
@@ -75,8 +95,8 @@ Synchronous Handlers fill the Response directly in the Outbox message. Asynchron
 Sender. `counting_scope + spawn` owns connected operation states; a `ResponseDelivery` only carries the completed
 result and routing through the existing RunLoop to `ResponseOutbox`. The RenderThread publishes IPC replies.
 The CommandRegistry owns one Command directory, stable Handler objects and one selected binding index per
-Command. Installing a batch prepares and validates all its entries before publishing. Selection affects future
-dispatch, never an operation already started with another Handler.
+Command. External installation validates its entries before publishing. Selection affects future dispatch, never
+an operation already started with another Handler.
 
 Upload sources are borrowed. After successful submission, the Client keeps their addresses, extents and contents
 valid until Response, including failure or cancellation. Failed submission takes no borrow. Abandon or connection
@@ -108,7 +128,7 @@ build once, audits its appended resource/pass interval and analyzes the finished
 the supplied version, while only its producer may write that output. Output versions are not restricted to v1.
 Zero-pass resource Features need no dummy build callback.
 
-`FeatureDefinition` holds project-side describe/build callbacks. The public FeatureDescriptor only describes
+`FeatureEntry` retains the selected cold build callback; the private tuple declaration carries dependencies. The public FeatureDescriptor only describes
 identity/configuration and purpose. `MaterialMeshRasterDescriptor` and `MeshDepthRasterDescriptor` share the
 documented raster mesh parameter ABI; their implementation and dependency lists remain private. Features describe
 draws, compilation lowers them, and execution records them. No Feature build callback or graph analysis runs in a

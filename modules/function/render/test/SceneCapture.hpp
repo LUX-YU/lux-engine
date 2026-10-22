@@ -7,9 +7,9 @@
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/features/FeatureAssembly.hpp>
-#include <lux/engine/render/features/FeatureDefinition.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
-#include <lux/engine/render/runtime/Registration.hpp>
+#include <lux/engine/render/runtime/FeatureRegistration.hpp>
+#include <lux/engine/render/runtime/RenderServer.hpp>
 #include <thread>
 
 using namespace foundation_test;
@@ -47,6 +47,19 @@ struct CaptureDescriptor
 class CaptureBuffer
 {
 public:
+    using Descriptor = CaptureDescriptor;
+
+    static StorageFactory factory() noexcept
+    {
+        static const StorageBindingOps bindings{resolve};
+        return makeStorageFactory<
+            CaptureDescriptor,
+            CaptureBuffer,
+            StorageCreateContext,
+            &CaptureBuffer::create,
+            &CaptureBuffer::compatible>(nullptr, &bindings);
+    }
+
     explicit CaptureBuffer(StorageCreateContext& context, CaptureConfig config) noexcept
         : device_(context.device), result_(config.result), buffers_(context.frames->frameCount())
     {
@@ -138,6 +151,12 @@ private:
 
 struct CaptureFeature
 {
+    using Descriptor = CaptureFeature;
+    using Storages = std::tuple<CaptureBuffer>;
+    using Commands = std::tuple<>;
+    static const FeatureDescriptor descriptor;
+    static const FeatureGraphOps& graph(bool) noexcept;
+
     static RenderResult<void> describe(const void* value, std::string_view key, FeaturePorts& ports) noexcept
     {
         GraphImageDesc image{64, 64};
@@ -202,33 +221,18 @@ struct CaptureFeature
     }
 };
 
-namespace lux::render
+inline const FeatureDescriptor CaptureFeature::descriptor{
+    FeatureName{"test.deferred.Copy"},
+    lux::cxx::typeToken<CaptureConfig>(),
+    "Terminal test capture",
+    CaptureFeature::describe
+};
+
+inline const FeatureGraphOps& CaptureFeature::graph(bool) noexcept
 {
-    template <>
-    RenderResult<void> RenderServer::prepareFeature<CaptureFeature>(RegistrationBatch& batch, std::string_view) noexcept
-    {
-        static const StorageBindingOps bindings{CaptureBuffer::resolve};
-        batch.addStorage(
-            makeStorageFactory<
-                CaptureDescriptor,
-                CaptureBuffer,
-                StorageCreateContext,
-                &CaptureBuffer::create,
-                &CaptureBuffer::compatible>(nullptr, &bindings),
-            {},
-            true
-        );
-        static const FeatureDescriptor descriptor{
-            FeatureName{"test.deferred.Copy"},
-            cppType<CaptureConfig>(),
-            "Terminal test capture",
-            CaptureFeature::describe
-        };
-        static const FeatureGraphOps graph{CaptureFeature::build};
-        batch.addFeature({&descriptor, &graph});
-        return {};
-    }
-} // namespace lux::render
+    static const FeatureGraphOps value{CaptureFeature::build};
+    return value;
+}
 
 template <class C>
 static typename C::Response call(

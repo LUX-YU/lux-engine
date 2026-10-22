@@ -49,11 +49,11 @@ namespace lux::render
                 {
                     if constexpr (std::is_void_v<typename T::Config>)
                     {
-                        return CppType{};
+                        return cxx::TypeToken{};
                     }
                     else
                     {
-                        return cppType<typename T::Config>();
+                        return cxx::typeToken<typename T::Config>();
                     }
                 }(),
                 storageOpsType<T>()
@@ -91,7 +91,7 @@ namespace lux::render
         {
             StorageId id;
             NameIndex::iterator name;
-            StorageInstance native;
+            StorageInstance instance;
         };
 
         [[nodiscard]] RenderResult<StorageId> getOrCreateImpl(
@@ -99,17 +99,11 @@ namespace lux::render
             const StorageDescriptor&,
             std::string_view,
             const ConfigValue&,
-            CppType,
-            CppType
+            cxx::TypeToken,
+            cxx::TypeToken
         ) noexcept;
-        [[nodiscard]] RenderResult<StorageId> ensure(
-            StorageCreateContext&,
-            StorageTypeId,
-            std::string_view,
-            const ConfigValue&,
-            CppType = {},
-            CppType = {}
-        ) noexcept;
+        [[nodiscard]] RenderResult<StorageId>
+        ensure(StorageCreateContext&, StorageTypeId, std::string_view, const ConfigValue&) noexcept;
         void erase(std::size_t position) noexcept;
         ResourceRegistry& registry_;
         bool global_;

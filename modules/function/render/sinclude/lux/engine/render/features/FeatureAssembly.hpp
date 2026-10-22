@@ -50,6 +50,8 @@ namespace lux::render
         std::string_view local
     ) noexcept;
 
+    // Synchronous cold assembly. Inputs/configurations are borrowed for this call only; the result owns
+    // graph, analysis and Attach arguments. Failure publishes no Effect and leaves inputs untouched.
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<FeatureAssembly> composeFeatures(
         std::span<const FeatureBuildInput> instances,
         std::size_t config_byte_limit,

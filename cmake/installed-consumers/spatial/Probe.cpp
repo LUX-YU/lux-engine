@@ -1,4 +1,4 @@
-#include <lux/engine/render/runtime/RenderServer.hpp>
+#include <lux/engine/render/runtime/FeatureRegistration.hpp>
 #include <probe/Probe.hpp>
 
 namespace probe
@@ -6,6 +6,11 @@ namespace probe
     class ProbeCommandHandler final
     {
     public:
+        static ProbeCommandHandler* create(lux::render::ResourceRegistry&) noexcept
+        {
+            return new ProbeCommandHandler;
+        }
+
         static constexpr std::string_view name = "test.external.ProbeCommandHandler";
 
         void set(const SetValues::Request& input, SetValues::Response& output) noexcept
@@ -23,6 +28,6 @@ namespace probe
 
     lux::render::RenderResult<lux::render::HandlerId> install(lux::render::RenderServer& server) noexcept
     {
-        return server.emplaceHandler<ProbeCommandHandler>("external");
+        return server.registerHandler<ProbeCommandHandler>("external");
     }
 } // namespace probe

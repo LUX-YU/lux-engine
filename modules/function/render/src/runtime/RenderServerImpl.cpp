@@ -7,32 +7,32 @@
 namespace lux::render
 {
     RenderServer::Impl::Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler cpu_scheduler)
-        : config(std::move(value)), scheduler(std::move(cpu_scheduler)), responder(std::move(input)),
+        : config(std::move(value)), cpu_scheduler(std::move(cpu_scheduler)), responder(std::move(input)),
           render_loop_([](void*) noexcept { ipc::IpcCore::instance().notifyWork(); })
     {
-        addBuiltin<CreateScene, &Impl::createScene>();
-        addBuiltin<RemoveScene, &Impl::removeScene>();
-        addBuiltin<CreateView, &Impl::createView>();
-        addBuiltin<UpdateAttachmentInputs, &Impl::updateAttachmentInputs>();
-        addBuiltin<InvalidateHistory, &Impl::invalidateHistory>();
-        addBuiltin<RemoveView, &Impl::removeView>();
-        addBuiltin<CreateTarget, &Impl::createTarget>();
-        addBuiltin<ResizeTarget, &Impl::resizeTarget>();
-        installAsyncBuiltins();
-        addBuiltin<RemoveEffect, &Impl::removeEffect>();
-        addBuiltin<Attach, &Impl::attachEffect>();
-        addBuiltin<Detach, &Impl::detachEffect>();
-        addBuiltin<Stop, &Impl::stopCommand>();
-        addBuiltin<QueryRenderStats, &Impl::queryRenderStats>();
-        addBuiltin<QueryExecutionProgress, &Impl::queryExecutionProgress>();
-        addBuiltin<ListFeatures, &Impl::listFeatures>();
-        addBuiltin<ListStorages, &Impl::listStorages>();
-        addBuiltin<FindStorage, &Impl::findStorage>();
-        addBuiltin<PrepareStorage, &Impl::prepareStorage>();
-        addBuiltin<RemoveStorage, &Impl::removeStorage>();
-        addBuiltin<ListCommands, &Impl::listCommands>();
-        addBuiltin<ListCommandBindings, &Impl::listCommandBindings>();
-        addBuiltin<SelectCommandBinding, &Impl::selectCommandBinding>();
+        bindFrameworkCommand<CreateScene, &Impl::createScene>();
+        bindFrameworkCommand<RemoveScene, &Impl::removeScene>();
+        bindFrameworkCommand<CreateView, &Impl::createView>();
+        bindFrameworkCommand<UpdateAttachmentInputs, &Impl::updateAttachmentInputs>();
+        bindFrameworkCommand<InvalidateHistory, &Impl::invalidateHistory>();
+        bindFrameworkCommand<RemoveView, &Impl::removeView>();
+        bindFrameworkCommand<CreateTarget, &Impl::createTarget>();
+        bindFrameworkCommand<ResizeTarget, &Impl::resizeTarget>();
+        bindCreateEffectCommand();
+        bindFrameworkCommand<RemoveEffect, &Impl::removeEffect>();
+        bindFrameworkCommand<Attach, &Impl::attachEffect>();
+        bindFrameworkCommand<Detach, &Impl::detachEffect>();
+        bindFrameworkCommand<Stop, &Impl::stopCommand>();
+        bindFrameworkCommand<QueryRenderStats, &Impl::queryRenderStats>();
+        bindFrameworkCommand<QueryExecutionProgress, &Impl::queryExecutionProgress>();
+        bindFrameworkCommand<ListFeatures, &Impl::listFeatures>();
+        bindFrameworkCommand<ListStorages, &Impl::listStorages>();
+        bindFrameworkCommand<FindStorage, &Impl::findStorage>();
+        bindFrameworkCommand<PrepareStorage, &Impl::prepareStorage>();
+        bindFrameworkCommand<RemoveStorage, &Impl::removeStorage>();
+        bindFrameworkCommand<ListCommands, &Impl::listCommands>();
+        bindFrameworkCommand<ListCommandBindings, &Impl::listCommandBindings>();
+        bindFrameworkCommand<SelectCommandBinding, &Impl::selectCommandBinding>();
     }
 
     void NRI_CALL RenderServer::Impl::diagnostic(
@@ -69,11 +69,11 @@ namespace lux::render
         }
     }
 
-    RenderResult<void> RenderServer::Impl::initialize(DeviceOptions options) noexcept
+    RenderResult<void> RenderServer::Impl::initialize(DeviceOptions device_options) noexcept
     {
         auto& s = *this;
         const nri::CallbackInterface diagnostic{Impl::diagnostic, [](void*) noexcept {}, &s};
-        auto device = detail::DeviceSession::create(options, diagnostic, s.config.validation, 3);
+        auto device = detail::DeviceSession::create(device_options, diagnostic, s.config.validation, 3);
         if (!device)
         {
             return cxx::unexpected(device.error());
@@ -81,7 +81,7 @@ namespace lux::render
         s.device = std::move(*device);
         if (s.config.uploads)
         {
-            auto uploads = detail::ResourceUploader::create(*s.device, *s.config.uploads, s.scheduler);
+            auto uploads = detail::ResourceUploader::create(*s.device, *s.config.uploads, s.cpu_scheduler);
             if (!uploads)
             {
                 return cxx::unexpected(uploads.error());
@@ -99,7 +99,7 @@ namespace lux::render
             (s.device->descriptors().imageCapacity() ? 1u : 0u) | (enabled.texture_compression_bc ? 2u : 0u)
         );
         s.global_storages.emplace(*s.resources, true);
-        s.paged_instances = options.buffer_device_address;
+        s.paged_instances = device_options.buffer_device_address;
         return {};
     }
 
@@ -141,7 +141,7 @@ namespace lux::render
         // Workers receive only immutable feature entries, the request and actual device facts.
         // The final continuation is the sole place that adopts a candidate into the Effect table.
         auto compiled =
-            stdexec::schedule(scheduler) |
+            stdexec::schedule(cpu_scheduler) |
             stdexec::then(
                 [native = &device->device(),
                  nri_core = &device->nriCore(),
@@ -209,9 +209,9 @@ namespace lux::render
         return initial_error.type != error::ErrorId{} ? VSource{std::move(invalid)} : VSource{std::move(compiled)};
     }
 
-    void RenderServer::Impl::installAsyncBuiltins() noexcept
+    void RenderServer::Impl::bindCreateEffectCommand() noexcept
     {
-        addBuiltin<CreateEffect, &Impl::createEffect>();
+        bindFrameworkCommand<CreateEffect, &Impl::createEffect>();
     }
 
     void RenderServer::Impl::removeEffect(
@@ -332,7 +332,7 @@ namespace lux::render
                 const auto* factory = dependencies.resources.factory(binding.storage.type.view());
                 const auto key = binding.storage.key.empty() ? resource.key : binding.storage.key;
                 const auto* argument = resolved_arguments[i];
-                const auto type = argument ? argument->typeInfo() : CppType{};
+                const auto type = argument ? argument->type() : cxx::TypeToken{};
                 if (type != factory->descriptor->binding_type)
                 {
                     return cxx::unexpected(RenderError{kStorageContract});
@@ -352,7 +352,8 @@ namespace lux::render
                     created_storages.emplace_back(set, id);
                 }
                 resolved[i] = id;
-                if (auto bound = candidate.bindStorage(i, id, *ops, resources->native(id), value, frames->frameCount());
+                if (auto bound =
+                        candidate.bindStorage(i, id, *ops, resources->storageInstance(id), value, frames->frameCount());
                     !bound)
                 {
                     return cxx::unexpected(bound.error());
@@ -895,9 +896,7 @@ namespace lux::render
             result.features.push_back(
                 {entry.id,
                  std::string(entry.descriptor.type.name()),
-                 std::string(entry.descriptor.config.token.name()),
-                 entry.descriptor.config.size,
-                 entry.descriptor.config.alignment,
+                 std::string(entry.descriptor.config.name()),
                  std::string(entry.descriptor.description)}
             );
         }
@@ -942,10 +941,10 @@ namespace lux::render
         SelectCommandBinding::Response& response
     ) noexcept
     {
-        command_registry_.selectHandler(input, response);
+        command_registry_.selectHandler(input, response, *resources);
     }
 
-    std::size_t RenderServer::Impl::drainCompletions(std::size_t budget) noexcept
+    std::size_t RenderServer::Impl::executeReadyWork(std::size_t budget) noexcept
     {
         const auto consumed = render_loop_.executeReady(budget);
         return consumed;
@@ -965,7 +964,7 @@ namespace lux::render
         }
         // GPU reuse notifications resume admitted writers on RenderThread. Consume this ready
         // prefix before closing frame input, otherwise continuous drawing can starve retries.
-        drainCompletions();
+        executeReadyWork();
         const auto& active = active_targets.keys();
         frame_instances.clear();
         for (std::size_t i = 0; i < active.size(); ++i)
@@ -1044,7 +1043,7 @@ namespace lux::render
         {
             response_outbox_.emplaceResponse<AckResponse>(route, AckResponse{RenderError{kCommandContract}});
         }
-        else if (received.message().typeHash() != entry->description->request.token.hash())
+        else if (received.message().typeHash() != entry->description->request.hash())
         {
             entry->make_error(response_outbox_.prepare(route), RenderError{kCommandContract});
         }
@@ -1094,7 +1093,7 @@ namespace lux::render
         // Keep RenderThread and GPU completion paths advancing until every accepted Sender settles.
         while (!joined.load(std::memory_order_acquire) || !render_loop_.empty())
         {
-            drainCompletions();
+            executeReadyWork();
             response_outbox_.flushTo(responder, config.request_work_budget);
             if (device)
             {
@@ -1140,7 +1139,7 @@ namespace lux::render
         effects.clear();
         targets.clear();
         scenes.clear();
-        command_registry_.clear(); // All operations ended; professional Handler borrows still have a live Device.
+        command_registry_.clear(); // All operations ended; the borrowed resource directory is still alive.
         if (global_storages)
         {
             global_storages->clear();
@@ -1170,6 +1169,7 @@ namespace lux::render
             s.shutdown();
             return {};
         }
+        s.command_registry_.activateSelectedHandlers(*s.resources);
         s.running.store(true);
         RenderResult<void> result;
         auto& notifications = ipc::IpcCore::instance();
@@ -1179,7 +1179,7 @@ namespace lux::render
             // changes the epoch, so WaitOnAddress/futex cannot sleep through that publication.
             const auto observed = notifications.workEpoch();
             const auto submitted_before = s.submissions.load();
-            bool progressed = s.drainCompletions() != 0;
+            bool progressed = s.executeReadyWork() != 0;
             for (std::uint32_t i = 0; i < s.config.request_work_budget && !s.stop_requested.load(); ++i)
             {
                 ipc::ReceivedRequest request;
@@ -1199,7 +1199,7 @@ namespace lux::render
                 result = cxx::unexpected(rendered.error());
                 break;
             }
-            progressed |= s.drainCompletions() != 0;
+            progressed |= s.executeReadyWork() != 0;
             progressed |= s.response_outbox_.flushTo(s.responder, s.config.request_work_budget) != 0;
             progressed |= s.submissions.load() != submitted_before;
             ++s.ticks;

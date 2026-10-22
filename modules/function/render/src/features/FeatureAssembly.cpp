@@ -71,9 +71,9 @@ namespace lux::render
             }
             const bool invalid_identity = !input.descriptor->type.isValid() || input.contribution_key.empty();
             const bool has_config = input.config && *input.config;
-            const bool requires_config = !input.descriptor->config.token.name().empty();
+            const bool requires_config = !input.descriptor->config.name().empty();
             const bool invalid_config =
-                has_config != requires_config || (has_config && (input.descriptor->config != input.config->typeInfo() ||
+                has_config != requires_config || (has_config && (input.descriptor->config != input.config->type() ||
                                                                  input.config->retainedBytes() > config_byte_limit));
             if (invalid_identity || invalid_config)
             {

@@ -26,6 +26,12 @@ namespace lux::render::detail
         };
 
     public:
+        // Factory registration does not construct an object. Activation borrows the one resource directory.
+        static IndexedTriangleMeshCommandHandler* create(ResourceRegistry& resources) noexcept
+        {
+            return new IndexedTriangleMeshCommandHandler(resources);
+        }
+
         using CreateMeshSender =
             decltype(stdexec::then(std::declval<exec::task<RenderResult<MeshId>>>(), create_mesh_response_));
 
@@ -35,7 +41,7 @@ namespace lux::render::detail
 
         CreateMeshSender createMesh(CreateMesh::Request&& input) noexcept
         {
-            return createMeshSource(std::move(input)) | stdexec::then(create_mesh_response_);
+            return uploadMesh(std::move(input)) | stdexec::then(create_mesh_response_);
         }
 
         void releaseMesh(const ReleaseMesh::Request&, ReleaseMesh::Response&) noexcept;
@@ -44,7 +50,7 @@ namespace lux::render::detail
             CommandMethod<ReleaseMesh, &IndexedTriangleMeshCommandHandler::releaseMesh>>;
 
     private:
-        exec::task<RenderResult<MeshId>> createMeshSource(CreateMesh::Request&&) noexcept;
+        exec::task<RenderResult<MeshId>> uploadMesh(CreateMesh::Request&&) noexcept;
 
         ResourceRegistry& resources_;
     };

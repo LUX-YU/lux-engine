@@ -97,7 +97,7 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(commands.error());
             }
-            cxx::scope_exit release([this]() noexcept { cancel(); });
+            cxx::scope_exit release([this]() noexcept { cancelRecording(); });
             auto recorded = std::invoke(record, **commands, slot);
             auto ended = finishRecording();
             if (!ended)
@@ -142,7 +142,7 @@ namespace lux::render::detail
         void arm(std::uint64_t serial, SubmissionCallback&, SubmissionCallbackFn, void*) noexcept;
 
     private:
-        void cancel() noexcept;
+        void cancelRecording() noexcept;
         void completePending() noexcept;
         RenderError failure(nri::Result) noexcept;
 

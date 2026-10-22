@@ -1460,13 +1460,16 @@ namespace
         const auto& descriptor = commandDescriptor<AssetIncrement>();
         check(static_cast<bool>(validateCommand(descriptor)), "typed command contract");
         auto conflict = descriptor;
-        conflict.response.token = lux::cxx::typeToken<Ack>();
+        conflict.response = lux::cxx::typeToken<Ack>();
         check(!compatibleCommands(descriptor, conflict), "response type rejected by pure protocol");
         conflict = descriptor;
-        conflict.request.alignment *= 2;
-        check(!compatibleCommands(descriptor, conflict), "layout rejected");
+        struct alignas(64) AlignedRequest { std::uint64_t value; };
+        conflict.request = lux::cxx::typeToken<AlignedRequest>();
+        check(!compatibleCommands(descriptor, conflict), "different aligned request type rejected");
+        conflict.request = {};
+        check(!validateCommand(conflict), "missing request type rejected");
         conflict = descriptor;
-        conflict.request.token = lux::cxx::TypeToken(conflict.request.token.hash(), "collision.other");
+        conflict.request = lux::cxx::TypeToken(conflict.request.hash(), "collision.other");
         check(!compatibleCommands(descriptor, conflict), "full type name rejects a hash collision");
 
         auto& core = IpcCore::instance();

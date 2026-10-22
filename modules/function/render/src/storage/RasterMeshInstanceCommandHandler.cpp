@@ -9,7 +9,7 @@ namespace lux::render::detail
         co_return cxx::unexpected(error);
     }
 
-    exec::task<RenderResult<MeshInstanceId>> RasterMeshInstanceCommandHandler::createInstanceSource(
+    exec::task<RenderResult<MeshInstanceId>> RasterMeshInstanceCommandHandler::uploadInstance(
         CreateMeshInstance::Request&& input
     ) noexcept
     {
@@ -21,7 +21,7 @@ namespace lux::render::detail
         return (*storage)->create(std::move(input.description));
     }
 
-    exec::task<RenderResult<std::vector<MeshInstanceId>>> RasterMeshInstanceCommandHandler::createInstancesSource(
+    exec::task<RenderResult<std::vector<MeshInstanceId>>> RasterMeshInstanceCommandHandler::uploadInstances(
         CreateMeshInstances::Request&& input
     ) noexcept
     {
@@ -33,7 +33,7 @@ namespace lux::render::detail
         return (*storage)->create(std::move(input.descriptions));
     }
 
-    exec::task<RenderResult<TransformApplied>> RasterMeshInstanceCommandHandler::updateTransformsSource(
+    exec::task<RenderResult<TransformApplied>> RasterMeshInstanceCommandHandler::applyTransformUpdates(
         UpdateTransforms::Request&& input
     ) noexcept
     {
@@ -45,7 +45,7 @@ namespace lux::render::detail
         return (*storage)->update(std::move(input));
     }
 
-    exec::task<RenderResult<TransformApplied>> RasterMeshInstanceCommandHandler::updateInstancesSource(
+    exec::task<RenderResult<TransformApplied>> RasterMeshInstanceCommandHandler::applyInstanceUpdates(
         UpdateMeshInstances::Request&& input
     ) noexcept
     {
@@ -57,7 +57,7 @@ namespace lux::render::detail
         return (*storage)->update(std::move(input));
     }
 
-    exec::task<RenderResult<Ack>> RasterMeshInstanceCommandHandler::releaseInstanceSource(
+    exec::task<RenderResult<Ack>> RasterMeshInstanceCommandHandler::releaseStoredInstance(
         ReleaseMeshInstance::Request&& input
     ) noexcept
     {
@@ -70,31 +70,3 @@ namespace lux::render::detail
     }
 
 } // namespace lux::render::detail
-
-#include <lux/engine/render/runtime/Registration.hpp>
-
-namespace lux::render
-{
-    template <>
-    RenderResult<void> RenderServer::prepareStorage<RasterMeshInstanceStorageDescriptor>(
-        RegistrationBatch& batch,
-        ConfigValue configuration,
-        bool use_existing,
-        std::string_view handler_key
-    ) noexcept
-    {
-        return prepareStorageDefinition<
-            RasterMeshInstanceStorageDescriptor,
-            detail::RasterMeshInstanceStorage,
-            detail::RasterMeshInstanceCommandHandler>(
-            batch,
-            detail::meshInstanceStorageFactory(),
-            std::move(configuration),
-            use_existing,
-            handler_key
-        );
-    }
-
-    template LUX_RENDER_PUBLIC RenderResult<StorageTypeId> RenderServer::registerStorage<
-        RasterMeshInstanceStorageDescriptor>(std::string_view) noexcept;
-} // namespace lux::render

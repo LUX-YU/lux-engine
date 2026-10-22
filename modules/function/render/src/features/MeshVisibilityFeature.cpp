@@ -4,14 +4,13 @@
 #include "MeshFrustumCull.hpp"
 #include "MeshFrustumCullPaged.hpp"
 #include "MeshView.hpp"
+#include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/FeatureAssembly.hpp>
-#include <lux/engine/render/features/FeatureDefinition.hpp>
 #include <lux/engine/render/features/ParameterLayout.hpp>
 #include <lux/engine/render/features/RasterMeshDraws.hpp>
-#include <lux/engine/render/runtime/Registration.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMeshCommandHandler.hpp>
-#include <lux/engine/render/storage/RasterMaterialTableCommandHandler.hpp>
-#include <lux/engine/render/storage/RasterMeshInstanceCommandHandler.hpp>
+#include <lux/engine/render/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/storage/RasterMaterialTable.hpp>
+#include <lux/engine/render/storage/RasterMeshInstances.hpp>
 
 namespace lux::render
 {
@@ -286,35 +285,14 @@ namespace lux::render
 
     const FeatureDescriptor MeshVisibilityFeatureDescriptor::descriptor{
         name,
-        cppType<Config>(),
+        cxx::typeToken<Config>(),
         "GPU frustum visibility and indexed indirect counts over explicit geometric views.",
         describeVisibility
     };
 
-    template <>
-    RenderResult<void> RenderServer::prepareFeature<MeshVisibilityFeatureDescriptor>(
-        RegistrationBatch& batch,
-        std::string_view
-    ) noexcept
+    const FeatureGraphOps& detail::MeshVisibilityFeature::graph(bool paged_instances) noexcept
     {
-        if (auto result = prepareStorage<IndexedTriangleMeshStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
-        if (auto result = prepareStorage<RasterMaterialTableStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
-        if (auto result = prepareStorage<RasterMeshInstanceStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
         static const FeatureGraphOps contiguous{buildVisibility<false>}, paged{buildVisibility<true>};
-        batch.addFeature({&MeshVisibilityFeatureDescriptor::descriptor, pagedInstances() ? &paged : &contiguous});
-        return {};
+        return paged_instances ? paged : contiguous;
     }
-
-    template LUX_RENDER_PUBLIC RenderResult<FeatureId> RenderServer::registerFeature<MeshVisibilityFeatureDescriptor>(
-        std::string_view
-    ) noexcept;
 } // namespace lux::render

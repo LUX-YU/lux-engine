@@ -30,6 +30,15 @@ namespace lux::render
     struct RenderServer::Impl final
     {
         [[nodiscard]] RenderResult<void> initialize(DeviceOptions options) noexcept;
+        void registerBuiltinFeatures() noexcept;
+        FeatureId publishFeature(const FeatureDescriptor&, const FeatureGraphOps&) noexcept;
+        RenderResult<void> validateFeature(const FeatureDescriptor&, const FeatureGraphOps&) const noexcept;
+        RenderResult<void>
+            validateRegistration(std::span<const StorageFactory>, std::span<const HandlerRecord>, std::span<const CommandBinding>)
+                const noexcept;
+        void
+            publishRegistration(std::span<const StorageFactory>, std::span<HandlerRecord>, std::span<const CommandBinding>) noexcept;
+
         [[nodiscard]] RenderResult<void> run() noexcept;
 
         void stop() noexcept
@@ -41,7 +50,7 @@ namespace lux::render
         [[nodiscard]] RenderServerStats stats() const noexcept;
 
         RenderServerConfig config;
-        execution::CpuScheduler scheduler; // Borrowed from the application's ExecutionRuntime.
+        execution::CpuScheduler cpu_scheduler; // Borrowed from the application's ExecutionRuntime.
         ipc::IpcResponder responder;
         cxx::StableSlotMap<FeatureEntry, FeatureTag> features;
         std::map<std::string_view, FeatureId, std::less<>> features_by_name;
@@ -76,9 +85,9 @@ namespace lux::render
         std::atomic<std::uint64_t> validation_errors{0}, validation_warnings{0};
         std::atomic<std::uint64_t> storages_created{0};
 
-        Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler scheduler);
+        Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler cpu_scheduler);
 
-        template <RenderCommand C, auto Method> void addBuiltin() noexcept
+        template <RenderCommand C, auto Method> void bindFrameworkCommand() noexcept
         {
             command_registry_.registerCommand(CommandBinding::bind<C, Method>(*this));
         }
@@ -123,9 +132,9 @@ namespace lux::render
         void resizeTarget(const ResizeTarget::Request&, ResizeTarget::Response&) noexcept;
 
         auto createEffect(CreateEffect::Request&&) noexcept;
-        void installAsyncBuiltins() noexcept;
+        void bindCreateEffectCommand() noexcept;
 
-        std::size_t drainCompletions(std::size_t budget = 128) noexcept;
+        std::size_t executeReadyWork(std::size_t budget = 128) noexcept;
 
         void removeEffect(const RemoveEffect::Request&, RemoveEffect::Response&) noexcept;
 

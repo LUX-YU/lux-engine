@@ -123,7 +123,7 @@ namespace lux::render
             kMeshStorageType,
             0,
             0,
-            cppType<MeshBinding>(),
+            cxx::typeToken<MeshBinding>(),
             "Indexed triangle geometry with vertex and index arenas and section records."
         };
 

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/runtime/CommandRegistry.hpp>
 #include <tuple>
 
@@ -63,7 +64,8 @@ namespace lux::render::runtime_detail
 
     void CommandRegistry::selectHandler(
         const SelectCommandBinding::Request& input,
-        SelectCommandBinding::Response& response
+        SelectCommandBinding::Response& response,
+        ResourceRegistry& resources
     ) noexcept
     {
         auto* entry = commands_.find(input.command);
@@ -97,6 +99,7 @@ namespace lux::render::runtime_detail
             response.error = RenderError{kRuntimeIdentity};
             return;
         }
+        activateHandler(input.handler, resources);
         entry->selected_binding = static_cast<std::size_t>(found - entry->bindings.begin());
         response = {};
     }
@@ -110,9 +113,9 @@ namespace lux::render::runtime_detail
         return id;
     }
 
-    RenderResult<HandlerId> CommandRegistry::findHandler(CppType type, std::string_view instance) const noexcept
+    RenderResult<HandlerId> CommandRegistry::findHandler(cxx::TypeToken type, std::string_view instance) const noexcept
     {
-        const auto found = handlers_by_name_.find({type.token.name(), instance});
+        const auto found = handlers_by_name_.find({type.name(), instance});
         if (found == handlers_by_name_.end())
         {
             return HandlerId{};
@@ -125,27 +128,63 @@ namespace lux::render::runtime_detail
         return found->second;
     }
 
-    RenderResult<std::vector<CommandId>> CommandRegistry::prepareHandler(
+    HandlerId CommandRegistry::handlerId(cxx::TypeToken type, std::string_view instance) const noexcept
+    {
+        const auto found = handlers_by_name_.find({type.name(), instance});
+        return found == handlers_by_name_.end() ? HandlerId{} : found->second;
+    }
+
+    RenderResult<void> CommandRegistry::validateHandler(
         const HandlerRecord& handler,
-        std::span<const CommandBinding> calls
+        std::span<const CommandBinding> bindings
     ) const noexcept
     {
-        const bool is_invalid_installation = handler.name.empty() || calls.empty();
-        if (is_invalid_installation)
+        const bool is_invalid_factory = handler.name.empty() || !handler.create || !handler.object.get_deleter();
+        if (is_invalid_factory)
         {
-            return cxx::unexpected(RenderError{kFeatureContract});
+            return cxx::unexpected(RenderError{kCommandContract});
         }
-        std::vector<CommandId> commands(calls.size());
-        std::vector<std::string_view> names;
-        names.reserve(calls.size());
-        for (std::size_t i = 0; i < calls.size(); ++i)
+        const auto existing = findHandler(handler.type, handler.instance_name);
+        if (!existing)
         {
-            const auto& description = *calls[i].descriptor();
+            return cxx::unexpected(existing.error());
+        }
+        if (!existing->isNull() && (*handlers_.find(*existing))->name != handler.name)
+        {
+            return cxx::unexpected(RenderError{kCommandContract});
+        }
+        bool has_methods = false;
+        for (std::size_t i = 0; i < bindings.size(); ++i)
+        {
+            const auto& binding = bindings[i];
+            if (binding.handlerType() != handler.type)
+            {
+                continue;
+            }
+            has_methods = true;
+            const auto& description = *binding.descriptor();
             if (auto valid = validateCommand(description); !valid)
             {
-                return cxx::unexpected(valid.error());
+                return valid;
             }
-            names.push_back(description.name.name());
+            // Qualify collisions within the incoming closure as well as the published directory.
+            for (std::size_t j = 0; j < i; ++j)
+            {
+                if (bindings[j].descriptor()->name != description.name)
+                {
+                    continue;
+                }
+                if (auto valid = compatibleCommands(*bindings[j].descriptor(), description); !valid)
+                {
+                    return valid;
+                }
+                // Identical CommandMethod types were deduplicated by the template. Two remaining
+                // methods for one Handler/Command are ambiguous, even if the linker folds their code.
+                if (bindings[j].handlerType() == handler.type)
+                {
+                    return cxx::unexpected(RenderError{kCommandContract});
+                }
+            }
             const auto found = commands_by_name_.find(description.name.name());
             if (found == commands_by_name_.end())
             {
@@ -154,57 +193,93 @@ namespace lux::render::runtime_detail
             const auto& stored = *commands_.find(found->second);
             if (auto valid = compatibleCommands(*stored.description, description); !valid)
             {
-                return cxx::unexpected(valid.error());
+                return valid;
             }
             if (stored.bindings.front().handler.isNull())
             {
                 return cxx::unexpected(RenderError{kRuntimeUnsupported});
             }
-            commands[i] = found->second;
+            // Existing Handler/type + Command contracts are canonical. Callback addresses can
+            // differ between compatible DLLs; repeated registration preserves the published call.
         }
-        std::ranges::sort(names);
-        if (std::ranges::adjacent_find(names) != names.end())
-        {
-            return cxx::unexpected(RenderError{kFeatureDuplicate});
-        }
-        return commands;
+        return has_methods ? RenderResult<void>{} : cxx::unexpected(RenderError{kCommandContract});
     }
 
-    HandlerId CommandRegistry::registerHandler(
-        std::unique_ptr<HandlerRecord> handler,
-        std::span<const CommandBinding> calls,
-        std::vector<CommandId> commands
-    ) noexcept
+    HandlerId CommandRegistry::publishHandler(HandlerRecord handler) noexcept
     {
-        // Recoverable validation is complete; ordinary heap allocation exhaustion remains fatal.
-        auto* record = handler.get();
-        const auto id = handlers_.emplace(std::move(handler));
-        handlers_by_name_.emplace(HandlerName{record->type.token.name(), record->instance_name}, id);
-        for (std::size_t i = 0; i < calls.size(); ++i)
+        const auto existing = handlerId(handler.type, handler.instance_name);
+        if (!existing.isNull())
         {
-            // An earlier dependency in this validated batch can have published the same declaration.
-            if (commands[i].isNull())
+            return existing;
+        }
+        const auto id = handlers_.emplace(std::make_unique<HandlerRecord>(std::move(handler)));
+        const auto& record = **handlers_.find(id);
+        handlers_by_name_.emplace(HandlerName{record.type.name(), record.instance_name}, id);
+        return id;
+    }
+
+    void CommandRegistry::publishBinding(HandlerId handler, const CommandBinding& binding) noexcept
+    {
+        auto call = binding.call();
+        call.object = (*handlers_.find(handler))->object.get();
+        const auto found = commands_by_name_.find(binding.descriptor()->name.name());
+        if (found == commands_by_name_.end())
+        {
+            const auto id =
+                commands_.emplace(CommandRecord{binding.descriptor_, binding.make_error_, {{handler, call}}, 0});
+            commands_by_name_.emplace(binding.descriptor()->name.name(), id);
+            return;
+        }
+        auto& entry = *commands_.find(found->second);
+        const auto position = std::ranges::lower_bound(
+            entry.bindings,
+            handler.index,
+            {},
+            [](const HandlerBinding& value) { return value.handler.index; }
+        );
+        if (position != entry.bindings.end() && position->handler == handler)
+        {
+            return;
+        }
+        const auto index = static_cast<std::size_t>(position - entry.bindings.begin());
+        entry.bindings.insert(position, {handler, call});
+        // An older Handler can gain a new method. Keep the selected identity when inserting before it.
+        if (entry.selected_binding != CommandRecord::kUnbound && index <= entry.selected_binding)
+        {
+            ++entry.selected_binding;
+        }
+    }
+
+    void CommandRegistry::activateHandler(HandlerId id, ResourceRegistry& resources) noexcept
+    {
+        auto& record = **handlers_.find(id);
+        if (record.object)
+        {
+            return;
+        }
+        record.object.reset(record.create(resources));
+        for (auto& command : commands_)
+        {
+            for (auto& binding : command.bindings)
             {
-                const auto found = commands_by_name_.find(calls[i].descriptor()->name.name());
-                if (found != commands_by_name_.end())
+                if (binding.handler == id)
                 {
-                    commands[i] = found->second;
+                    binding.call.object = record.object.get();
                 }
             }
-            if (commands[i].isNull())
+        }
+    }
+
+    void CommandRegistry::activateSelectedHandlers(ResourceRegistry& resources) noexcept
+    {
+        // Setup/control path only. Ordinary dispatch never resolves or constructs a Handler.
+        for (auto& command : commands_)
+        {
+            const auto* selected = command.selectedBinding();
+            if (selected && !selected->handler.isNull())
             {
-                const auto& binding = calls[i];
-                commands[i] =
-                    commands_.emplace(CommandRecord{binding.descriptor_, binding.make_error_, {{id, binding.call_}}, 0}
-                    );
-                commands_by_name_.emplace(binding.descriptor_->name.name(), commands[i]);
-            }
-            else
-            {
-                commands_.find(commands[i])->bindings.push_back({id, calls[i].call()});
-                // Preserve the selected index, including deliberate unbinding.
+                activateHandler(selected->handler, resources);
             }
         }
-        return id;
     }
 } // namespace lux::render::runtime_detail

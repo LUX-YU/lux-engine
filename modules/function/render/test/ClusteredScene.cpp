@@ -27,6 +27,12 @@ static auto sizes(const ClusterGrid& grid)
 
 struct ClusterCapture
 {
+    using Descriptor = ClusterCapture;
+    using Storages = std::tuple<CaptureBuffer>;
+    using Commands = std::tuple<>;
+    static const FeatureDescriptor descriptor;
+    static const FeatureGraphOps& graph(bool) noexcept;
+
     static RenderResult<void> describe(const void* data, std::string_view key, FeaturePorts& ports) noexcept
     {
         const auto& config = *static_cast<const ClusterCaptureConfig*>(data);
@@ -79,6 +85,12 @@ struct ClusterCapture
 
 struct ScanProbe
 {
+    using Descriptor = ScanProbe;
+    using Storages = std::tuple<>;
+    using Commands = std::tuple<>;
+    static const FeatureDescriptor descriptor;
+    static const FeatureGraphOps& graph(bool) noexcept;
+
     static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
     {
         for (auto [name, size] : {std::pair{"counts", 129u * 4}, {"offsets", 130u * 4}, {"status", 16u}})
@@ -119,32 +131,27 @@ struct ScanProbe
     }
 };
 
-namespace lux::render
-{
-    template <>
-    RenderResult<void> RenderServer::prepareFeature<ClusterCapture>(RegistrationBatch& batch, std::string_view) noexcept
-    {
-        static const FeatureDescriptor descriptor{
-            FeatureName{"test.ClusterCapture"},
-            cppType<ClusterCaptureConfig>(),
-            "One-frame cluster data capture",
-            ClusterCapture::describe
-        };
-        static const FeatureGraphOps graph{ClusterCapture::build};
-        batch.addFeature({&descriptor, &graph});
-        return {};
-    }
+inline const FeatureDescriptor ClusterCapture::descriptor{
+    FeatureName{"test.ClusterCapture"},
+    lux::cxx::typeToken<ClusterCaptureConfig>(),
+    "One-frame cluster data capture",
+    ClusterCapture::describe
+};
 
-    template <>
-    RenderResult<void> RenderServer::prepareFeature<ScanProbe>(RegistrationBatch& batch, std::string_view) noexcept
-    {
-        static const FeatureDescriptor
-            descriptor{FeatureName{"test.Scan"}, {}, "Production scan overflow input", ScanProbe::describe};
-        static const FeatureGraphOps graph{ScanProbe::build};
-        batch.addFeature({&descriptor, &graph});
-        return {};
-    }
-} // namespace lux::render
+inline const FeatureGraphOps& ClusterCapture::graph(bool) noexcept
+{
+    static const FeatureGraphOps value{ClusterCapture::build};
+    return value;
+}
+
+inline const FeatureDescriptor
+    ScanProbe::descriptor{FeatureName{"test.Scan"}, {}, "Production scan overflow input", ScanProbe::describe};
+
+inline const FeatureGraphOps& ScanProbe::graph(bool) noexcept
+{
+    static const FeatureGraphOps value{ScanProbe::build};
+    return value;
+}
 
 struct Parameters
 {
@@ -340,11 +347,11 @@ int main(int argc, char** argv)
     {
         device.buffer_device_address = true;
     }
-    auto server = take(createRenderServer(config, *execution, device));
-    auto gbuffer = take(server->registerFeature<GBufferFeatureDescriptor>());
-    auto visibility = take(server->registerFeature<MeshVisibilityFeatureDescriptor>());
-    auto lighting = take(server->registerFeature<DeferredLightingFeatureDescriptor>());
-    auto cluster = take(server->registerFeature<ClusteredLightingFeatureDescriptor>());
+    auto server = take(RenderServer::create(config, *execution, device));
+    auto gbuffer = take(server->featureId<GBufferFeatureDescriptor>());
+    auto visibility = take(server->featureId<MeshVisibilityFeatureDescriptor>());
+    auto lighting = take(server->featureId<DeferredLightingFeatureDescriptor>());
+    auto cluster = take(server->featureId<ClusteredLightingFeatureDescriptor>());
     auto capture = take(server->registerFeature<CaptureFeature>());
     auto cluster_capture = take(server->registerFeature<ClusterCapture>());
     auto compare = take(server->registerFeature<SceneComparison>());

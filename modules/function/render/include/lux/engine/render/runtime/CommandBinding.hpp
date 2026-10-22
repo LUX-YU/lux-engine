@@ -45,6 +45,8 @@ namespace lux::render
         void* object = nullptr;
     };
 
+    // Non-owning typed dispatch. The registry retains the Handler; accepted asynchronous operations
+    // retain their own Request/Response state in the Server scope. No caller-thread reply publication.
     class CommandBinding final
     {
     public:
@@ -56,6 +58,11 @@ namespace lux::render
         [[nodiscard]] HandlerCall call() const noexcept
         {
             return call_;
+        }
+
+        [[nodiscard]] cxx::TypeToken handlerType() const noexcept
+        {
+            return handler_type_;
         }
 
         [[nodiscard]] bool valid() const noexcept
@@ -70,10 +77,11 @@ namespace lux::render
 
         template <RenderCommand C, auto Method, class H>
             requires(SyncCommandHandlerFor<C, H, Method> || AsyncCommandHandlerFor<C, H, Method>)
-        [[nodiscard]] static CommandBinding bind(H& handler) noexcept
+        [[nodiscard]] static CommandBinding declare() noexcept
         {
             CommandBinding result;
             result.descriptor_ = &commandDescriptor<C>();
+            result.handler_type_ = cxx::typeToken<H>();
             result.make_error_ = [](platform::ipc::IpcMessage& output, RenderError error) noexcept
             { output.emplace<typename C::Response>().error = error; };
             result.call_ = {
@@ -107,16 +115,27 @@ namespace lux::render
                                     runtime_detail::publishCompletion(*record);
                                 }
                             );
-                        const auto scheduler = runtime_detail::renderScheduler(context);
+                        const auto render_scheduler = runtime_detail::renderScheduler(context);
                         stdexec::spawn(
                             std::move(normalized),
                             runtime_detail::commandScope(context).get_token(),
-                            stdexec::env{stdexec::prop{stdexec::get_scheduler, scheduler}}
+                            stdexec::env{stdexec::prop{stdexec::get_scheduler, render_scheduler}}
                         );
                     }
                 },
-                &handler
+                nullptr
             };
+            return result;
+        }
+
+        // Framework commands borrow an already existing Impl. Professional Handler declarations
+        // use declare(); the registry supplies their object only when activating the binding.
+        template <RenderCommand C, auto Method, class H>
+            requires(SyncCommandHandlerFor<C, H, Method> || AsyncCommandHandlerFor<C, H, Method>)
+        [[nodiscard]] static CommandBinding bind(H& handler) noexcept
+        {
+            auto result = declare<C, Method, H>();
+            result.call_.object = &handler;
             return result;
         }
 
@@ -144,6 +163,7 @@ namespace lux::render
         };
 
         const CommandDescriptor* descriptor_ = nullptr;
+        cxx::TypeToken handler_type_;
         HandlerCall call_;
         void (*make_error_)(platform::ipc::IpcMessage&, RenderError) noexcept = nullptr;
     };

@@ -1,10 +1,9 @@
 #include <lux/engine/render/features/ShadowMapFeature.hpp>
 
+#include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/FeatureAssembly.hpp>
-#include <lux/engine/render/features/FeatureDefinition.hpp>
 #include <lux/engine/render/features/ShadowProjectionBinding.hpp>
-#include <lux/engine/render/runtime/Registration.hpp>
-#include <lux/engine/render/storage/DirectLightingCommandHandler.hpp>
+#include <lux/engine/render/storage/DirectLighting.hpp>
 
 namespace lux::render
 {
@@ -116,27 +115,14 @@ namespace lux::render
 
     const FeatureDescriptor ShadowMapFeatureDescriptor::descriptor{
         name,
-        cppType<Config>(),
+        cxx::typeToken<Config>(),
         "Explicit shadow light selection, projections and dense-light mapping; no raster work.",
         describeShadows
     };
 
-    template <>
-    RenderResult<void> RenderServer::prepareFeature<ShadowMapFeatureDescriptor>(
-        RegistrationBatch& batch,
-        std::string_view
-    ) noexcept
+    const FeatureGraphOps& detail::ShadowMapFeature::graph(bool) noexcept
     {
-        if (auto result = prepareStorage<DirectLightingStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
         static const FeatureGraphOps graph{buildShadows};
-        batch.addFeature({&ShadowMapFeatureDescriptor::descriptor, &graph});
-        return {};
+        return graph;
     }
-
-    template LUX_RENDER_PUBLIC RenderResult<FeatureId> RenderServer::registerFeature<ShadowMapFeatureDescriptor>(
-        std::string_view
-    ) noexcept;
 } // namespace lux::render

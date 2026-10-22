@@ -14,6 +14,9 @@ namespace lux::render::detail
     class DirectLightingStorage final
     {
     public:
+        using Descriptor = DirectLightingStorageDescriptor;
+        [[nodiscard]] static StorageFactory factory() noexcept;
+
         DirectLightingStorage(StorageCreateContext&, StorageId) noexcept;
         ~DirectLightingStorage() noexcept;
         [[nodiscard]] exec::task<RenderResult<std::vector<LightId>>> create(CreateDirectLights::Request) noexcept;
@@ -75,5 +78,4 @@ namespace lux::render::detail
         std::uint64_t revision_ = 1;
     };
 
-    [[nodiscard]] StorageFactory directLightingStorageFactory() noexcept;
 } // namespace lux::render::detail

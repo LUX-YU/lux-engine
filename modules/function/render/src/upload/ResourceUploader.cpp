@@ -116,9 +116,9 @@ namespace lux::render::detail
     ResourceUploader::ResourceUploader(
         DeviceSession& device,
         TransferOptions settings,
-        execution::CpuScheduler scheduler
+        execution::CpuScheduler cpu_scheduler
     ) noexcept
-        : session(device), options(settings), cpu(std::move(scheduler))
+        : device_(device), options_(settings), cpu_scheduler_(std::move(cpu_scheduler))
     {
     }
 
@@ -130,48 +130,48 @@ namespace lux::render::detail
         }
         if (mapped_timestamps_)
         {
-            session.nriCore().UnmapBuffer(*timestamp_results_);
+            device_.nriCore().UnmapBuffer(*timestamp_results_);
         }
-        session.nriCore().DestroyBuffer(timestamp_results_);
+        device_.nriCore().DestroyBuffer(timestamp_results_);
         for (auto* pool : timestamps_)
         {
-            session.nriCore().DestroyQueryPool(pool);
+            device_.nriCore().DestroyQueryPool(pool);
         }
     }
 
     RenderResult<std::unique_ptr<ResourceUploader>> ResourceUploader::create(
-        DeviceSession& session,
-        const TransferOptions& options,
-        execution::CpuScheduler cpu
+        DeviceSession& device_,
+        const TransferOptions& options_,
+        execution::CpuScheduler cpu_scheduler_
     ) noexcept
     {
-        const bool invalid = cpu == execution::CpuScheduler{} || options.chunk_bytes < 256 ||
-                             options.chunk_bytes > 16 * 1024 * 1024 || options.staging_pages == 0 ||
-                             options.staging_pages > 16 || options.pending_bytes < options.chunk_bytes ||
-                             options.batch_entries == 0 || options.window_regions == 0;
+        const bool invalid = cpu_scheduler_ == execution::CpuScheduler{} || options_.chunk_bytes < 256 ||
+                             options_.chunk_bytes > 16 * 1024 * 1024 || options_.staging_pages == 0 ||
+                             options_.staging_pages > 16 || options_.pending_bytes < options_.chunk_bytes ||
+                             options_.batch_entries == 0 || options_.window_regions == 0;
         if (invalid)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        auto state = std::unique_ptr<ResourceUploader>(new ResourceUploader(session, options, cpu));
-        auto& transfer = session.queue(EQueueRole::TRANSFER);
+        auto state = std::unique_ptr<ResourceUploader>(new ResourceUploader(device_, options_, cpu_scheduler_));
+        auto& transfer = device_.queue(EQueueRole::TRANSFER);
         const auto& granularity = transfer.properties().image_transfer_granularity;
         const bool row_chunks = granularity[0] == 1 && granularity[1] == 1 && granularity[2] == 1;
-        state->copy_queue = row_chunks ? &transfer : &session.queue();
-        state->copy_timestamp_bits = state->copy_queue->properties().timestamp_bits;
-        state->graphics_timestamp_bits = session.queue().properties().timestamp_bits;
-        if (options.measure_gpu && (state->copy_timestamp_bits || state->graphics_timestamp_bits))
+        state->copy_queue_ = row_chunks ? &transfer : &device_.queue();
+        state->copy_timestamp_bits_ = state->copy_queue_->properties().timestamp_bits;
+        state->graphics_timestamp_bits_ = device_.queue().properties().timestamp_bits;
+        if (options_.measure_gpu && (state->copy_timestamp_bits_ || state->graphics_timestamp_bits_))
         {
             state->graphics_measurement_base_ =
-                state->copy_queue == &session.queue() ? 0 : state->copy_queue->capacity();
-            const auto query_slots = state->graphics_measurement_base_ + session.queue().capacity();
+                state->copy_queue_ == &device_.queue() ? 0 : state->copy_queue_->capacity();
+            const auto query_slots = state->graphics_measurement_base_ + device_.queue().capacity();
             state->measurements_ = std::make_unique<ResourceUploader::Measurement[]>(query_slots);
             for (std::size_t i = 0; i < query_slots; ++i)
             {
                 state->measurements_[i].uploads = state.get();
                 state->measurements_[i].index = i;
             }
-            const std::array queues{state->copy_queue, &session.queue()};
+            const std::array queues{state->copy_queue_, &device_.queue()};
             for (std::size_t i = 0; i < queues.size(); ++i)
             {
                 if (i == 1 && state->graphics_measurement_base_ == 0)
@@ -186,24 +186,24 @@ namespace lux::render::detail
                                       ? nri::QueryType::TIMESTAMP_COPY_QUEUE
                                       : nri::QueryType::TIMESTAMP;
                 const nri::QueryPoolDesc query{type, queues[i]->capacity() * 2};
-                const auto result = session.nriCore().CreateQueryPool(session.device(), query, state->timestamps_[i]);
+                const auto result = device_.nriCore().CreateQueryPool(device_.device(), query, state->timestamps_[i]);
                 if (result != nri::Result::SUCCESS)
                 {
                     return cxx::unexpected(nativeError(result));
                 }
             }
             // Distinct in-flight pairs must not share a non-coherent memory atom.
-            state->query_result_stride_ = std::lcm<std::uint64_t>(session.uploadAlignment(), 16);
+            state->query_result_stride_ = std::lcm<std::uint64_t>(device_.uploadAlignment(), 16);
             const nri::BufferDesc description{query_slots * state->query_result_stride_, 0, nri::BufferUsageBits::NONE};
             const auto result =
-                session.nriCore()
-                    .CreatePlacedBuffer(session.device(), NriHostReadbackHeap, description, state->timestamp_results_);
+                device_.nriCore()
+                    .CreatePlacedBuffer(device_.device(), NriHostReadbackHeap, description, state->timestamp_results_);
             if (result != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(result));
             }
             state->mapped_timestamps_ =
-                static_cast<std::uint64_t*>(session.nriCore().MapBuffer(*state->timestamp_results_, 0, description.size)
+                static_cast<std::uint64_t*>(device_.nriCore().MapBuffer(*state->timestamp_results_, 0, description.size)
                 );
             if (!state->mapped_timestamps_)
             {
@@ -211,32 +211,32 @@ namespace lux::render::detail
             }
         }
         auto arena =
-            StagingArena::create(session, options.chunk_bytes, options.staging_pages, session.uploadAlignment());
+            StagingArena::create(device_, options_.chunk_bytes, options_.staging_pages, device_.uploadAlignment());
         if (!arena)
         {
             return cxx::unexpected(arena.error());
         }
         state->staging_arena_ = std::move(*arena);
-        state->stats.staging_bytes = options.chunk_bytes * options.staging_pages;
-        state->batch_entries_.reserve(options.batch_entries);
-        state->frame_copies_.reserve(options.window_regions);
+        state->statistics_.staging_bytes = options_.chunk_bytes * options_.staging_pages;
+        state->batch_entries_.reserve(options_.batch_entries);
+        state->frame_copies_.reserve(options_.window_regions);
         return state;
     }
 
     bool ResourceUploader::reserveSourceBytes(std::size_t bytes) noexcept
     {
-        if (bytes > options.pending_bytes - stats.pending_bytes)
+        if (bytes > options_.pending_bytes - statistics_.pending_bytes)
         {
             return false;
         }
-        stats.pending_bytes += bytes;
-        stats.pending_peak = std::max(stats.pending_peak, stats.pending_bytes);
+        statistics_.pending_bytes += bytes;
+        statistics_.pending_peak = std::max(statistics_.pending_peak, statistics_.pending_bytes);
         return true;
     }
 
     void ResourceUploader::releaseSourceBytes(std::size_t bytes) noexcept
     {
-        stats.pending_bytes -= bytes;
+        statistics_.pending_bytes -= bytes;
     }
 
     static void bufferBarrier(
@@ -386,30 +386,30 @@ namespace lux::render::detail
         }
     }
 
-    RenderResult<void> ResourceUploader::measure(std::size_t index, std::uint32_t bits) noexcept
+    RenderResult<void> ResourceUploader::collectUploadTimestamps(std::size_t index, std::uint32_t bits) noexcept
     {
-        const auto result = session.invalidateMappedRange(*timestamp_results_, index * query_result_stride_, 16);
+        const auto result = device_.invalidateMappedRange(*timestamp_results_, index * query_result_stride_, 16);
         if (result != nri::Result::SUCCESS)
         {
-            ++stats.gpu_query_errors;
+            ++statistics_.gpu_query_errors;
             return cxx::unexpected(nativeError(result));
         }
         const auto* values = mapped_timestamps_ + index * (query_result_stride_ / sizeof(std::uint64_t));
         const auto mask = bits == 64 ? UINT64_MAX : (std::uint64_t{1} << bits) - 1;
-        stats.gpu_ns += std::uint64_t(
-            double((values[1] - values[0]) & mask) * 1'000'000'000.0 / session.description().other.timestampFrequencyHz
+        statistics_.gpu_ns += std::uint64_t(
+            double((values[1] - values[0]) & mask) * 1'000'000'000.0 / device_.description().other.timestampFrequencyHz
         );
-        ++stats.gpu_samples;
+        ++statistics_.gpu_samples;
         return {};
     }
 
     RenderResult<std::size_t> ResourceUploader::stageBuffer(const BufferWrite& write, std::size_t unit) noexcept
     {
-        if (frame_copies_.size() == options.window_regions)
+        if (frame_copies_.size() == options_.window_regions)
         {
             return 0;
         }
-        auto range = staging_arena_->acquire(std::min(write.source.size(), options.chunk_bytes), unit);
+        auto range = staging_arena_->acquire(std::min(write.source.size(), options_.chunk_bytes), unit);
         if (!range)
         {
             return 0;
@@ -427,7 +427,7 @@ namespace lux::render::detail
         copy.bytes = bytes;
         copy.final = true;
         frame_copies_.push_back(std::move(copy));
-        stats.copied_bytes += bytes;
+        statistics_.copied_bytes += bytes;
         return bytes;
     }
 
@@ -438,7 +438,7 @@ namespace lux::render::detail
 
     void ResourceUploader::recordFrameCopies(nri::CommandBuffer& command) noexcept
     {
-        const auto& nri_core = session.nriCore();
+        const auto& nri_core = device_.nriCore();
         std::size_t first = 0;
         while (first < frame_copies_.size())
         {
@@ -488,14 +488,14 @@ namespace lux::render::detail
         }
     }
 
-    void ResourceUploader::completeFrameCopies(RenderResult<void> result) noexcept
+    void ResourceUploader::finishFrameCopySubmission(RenderResult<void> result) noexcept
     {
         for (auto& copy : frame_copies_)
         {
             if (result)
             {
-                staging_arena_->markSubmitted(copy.staging, session.queue());
-                ++stats.copy_regions;
+                staging_arena_->markSubmitted(copy.staging, device_.queue());
+                ++statistics_.copy_regions;
             }
             else
             {
@@ -554,7 +554,7 @@ namespace lux::render::detail
             auto& first = *ready_head_;
             const bool acquiring = first.acquiring;
             auto& source_queue = *first.queue;
-            auto& queue = acquiring ? session.queue() : source_queue;
+            auto& queue = acquiring ? device_.queue() : source_queue;
             batch_entries_.clear();
             while (ready_head_ && batch_entries_.size() < batch_entries_.capacity())
             {
@@ -596,16 +596,16 @@ namespace lux::render::detail
                     accepted = cxx::unexpected(dependency.error());
                 }
             }
-            const auto bits = &queue == &session.queue() ? graphics_timestamp_bits : copy_timestamp_bits;
-            const auto pool_index = &queue == &session.queue() && graphics_measurement_base_ ? 1 : 0;
+            const auto bits = &queue == &device_.queue() ? graphics_timestamp_bits_ : copy_timestamp_bits_;
+            const auto pool_index = &queue == &device_.queue() && graphics_measurement_base_ ? 1 : 0;
             auto* query_pool = timestamps_[pool_index];
             const bool timestamp_requested = query_pool && bits && !acquiring;
             bool timestamp = false;
             // NRI/Vulkan permits timestamp writes on a pure Copy queue, but query result Copy
             // requires Graphics/Compute. Resolve in existing Graphics work only: its normal
             // upload dependency or an already observed Copy frontier proves availability.
-            auto resolve_through = copy_queue->completed();
-            if (acquiring && &source_queue == copy_queue)
+            auto resolve_through = copy_queue_->completed();
+            if (acquiring && &source_queue == copy_queue_)
             {
                 resolve_through = std::max(resolve_through, wait.value);
             }
@@ -616,7 +616,7 @@ namespace lux::render::detail
                 accepted = queue.recordAndSubmit(
                     [&](nri::CommandBuffer& command, std::uint32_t slot) noexcept -> RenderResult<void>
                     {
-                        const auto& nri_core = session.nriCore();
+                        const auto& nri_core = device_.nriCore();
                         query_index = (pool_index ? graphics_measurement_base_ : 0) + slot;
                         if (timestamp_requested)
                         {
@@ -681,10 +681,10 @@ namespace lux::render::detail
                                         copy.row,
                                         copy.rows,
                                         copy.row_pitch,
-                                        session.description().memoryAlignment.uploadBufferTextureSlice,
+                                        device_.description().memoryAlignment.uploadBufferTextureSlice,
                                         copy.first,
                                         source_queue,
-                                        session.queue(),
+                                        device_.queue(),
                                         acquiring,
                                         copy.final
                                     );
@@ -694,7 +694,7 @@ namespace lux::render::detail
                         if (timestamp)
                         {
                             nri_core.CmdEndQuery(command, *query_pool, slot * 2 + 1);
-                            if (&queue == &session.queue())
+                            if (&queue == &device_.queue())
                             {
                                 nri_core.CmdCopyQueries(
                                     command,
@@ -706,7 +706,7 @@ namespace lux::render::detail
                                 );
                             }
                         }
-                        if (&queue == &session.queue())
+                        if (&queue == &device_.queue())
                         {
                             for (std::uint32_t i = 0; i < graphics_measurement_base_; ++i)
                             {
@@ -730,7 +730,7 @@ namespace lux::render::detail
                               : std::span<const nri::FenceSubmitDesc>{}
                 );
             }
-            stats.record_submit_ns += elapsed(started);
+            statistics_.record_submit_ns += elapsed(started);
             const auto accepted_serial = accepted ? queue.submitted() : 0;
             if (!accepted && (accepted.error().type == kDeviceCapacity || accepted.error().type == kDeviceBusy))
             {
@@ -752,12 +752,12 @@ namespace lux::render::detail
             }
             if (accepted)
             {
-                acquiring ? ++stats.acquire_submissions : ++stats.copy_submissions;
+                acquiring ? ++statistics_.acquire_submissions : ++statistics_.copy_submissions;
                 for (auto* entry : batch_entries_)
                 {
                     if (entry->progress)
                     {
-                        const auto index = session.queueIndex(queue);
+                        const auto index = device_.queueIndex(queue);
                         auto& serial = entry->progress->serials[index];
                         serial = std::max(serial, queue.submitted());
                     }
@@ -772,13 +772,13 @@ namespace lux::render::detail
                             auto& state = *static_cast<Measurement*>(value);
                             if (completed)
                             {
-                                (void)state.uploads->measure(state.index, state.bits);
+                                (void)state.uploads->collectUploadTimestamps(state.index, state.bits);
                             }
                         },
                         &measurement
                     );
                 };
-                if (&queue == &session.queue())
+                if (&queue == &device_.queue())
                 {
                     for (std::uint32_t i = 0; i < graphics_measurement_base_; ++i)
                     {
@@ -794,7 +794,7 @@ namespace lux::render::detail
                 {
                     auto& measurement = measurements_[query_index];
                     measurement.bits = bits;
-                    if (&queue == &session.queue())
+                    if (&queue == &device_.queue())
                     {
                         observe_measurement(measurement);
                     }
@@ -805,7 +805,7 @@ namespace lux::render::detail
                 }
                 else if (timestamp_requested)
                 {
-                    ++stats.gpu_samples_skipped;
+                    ++statistics_.gpu_samples_skipped;
                 }
                 if (!acquiring)
                 {
@@ -814,7 +814,7 @@ namespace lux::render::detail
                         for (auto& copy : entry->copies)
                         {
                             staging_arena_->markSubmitted(copy.staging, queue);
-                            ++stats.copy_regions;
+                            ++statistics_.copy_regions;
                         }
                     }
                 }
@@ -822,7 +822,7 @@ namespace lux::render::detail
             for (auto* entry : batch_entries_)
             {
                 const bool needs_acquire =
-                    accepted && !acquiring && entry->queue != &session.queue() &&
+                    accepted && !acquiring && entry->queue != &device_.queue() &&
                     std::ranges::any_of(entry->copies, [](const auto& copy) { return copy.final; });
                 if (needs_acquire)
                 {
@@ -853,7 +853,7 @@ namespace lux::render::detail
         {
             auto* entry = range_waiters_;
             const bool stopping = entry->stopping(entry->receiver);
-            if (!stopping && !session.deviceLost() &&
+            if (!stopping && !device_.deviceLost() &&
                 (!canStage(entry->frame_slot) || !staging_arena_->canAcquire(
                                                      entry->minimum_range,
                                                      entry->frame_slot == UINT32_MAX && reserve_frame_staging_
@@ -875,7 +875,7 @@ namespace lux::render::detail
             auto* receiver = entry->receiver;
             complete(
                 receiver,
-                session.deviceLost() ? RenderResult<void>{cxx::unexpected(nativeError(nri::Result::DEVICE_LOST))}
+                device_.deviceLost() ? RenderResult<void>{cxx::unexpected(nativeError(nri::Result::DEVICE_LOST))}
                 : stopping           ? RenderResult<void>{cxx::unexpected(RenderError{kUploadStopped})}
                                      : RenderResult<void>{}
             );
@@ -953,13 +953,13 @@ namespace lux::render::detail
                 }
                 const auto bytes = bufferBytes(input, element_bytes, source_stride);
                 const bool invalid = bytes % 4 || input.offset % 4 ||
-                                     input.offset > session.nriCore().GetBufferDesc(*input.target).size ||
-                                     bytes > session.nriCore().GetBufferDesc(*input.target).size - input.offset;
+                                     input.offset > device_.nriCore().GetBufferDesc(*input.target).size ||
+                                     bytes > device_.nriCore().GetBufferDesc(*input.target).size - input.offset;
                 if (invalid)
                 {
                     co_return cxx::unexpected(RenderError{kDeviceArgument});
                 }
-                if (bytes > options.pending_bytes - pending_bytes)
+                if (bytes > options_.pending_bytes - pending_bytes)
                 {
                     co_return cxx::unexpected(RenderError{kDeviceCapacity});
                 }
@@ -975,7 +975,7 @@ namespace lux::render::detail
             {
                 co_return cxx::unexpected(RenderError{kDeviceArgument});
             }
-            const auto& description = session.nriCore().GetTextureDesc(*image);
+            const auto& description = device_.nriCore().GetTextureDesc(*image);
             const bool invalid = description.sampleNum != 1;
             if (invalid)
             {
@@ -983,14 +983,14 @@ namespace lux::render::detail
             }
             for (const auto& region : regions)
             {
-                if (auto valid = imageRegionBytes(description, region, source.size(), options.chunk_bytes); !valid)
+                if (auto valid = imageRegionBytes(description, region, source.size(), options_.chunk_bytes); !valid)
                 {
                     co_return cxx::unexpected(valid.error());
                 }
                 const auto bytes =
                     std::size_t((region.texture.width - 1) / region.block_extent + 1) * region.block_bytes;
-                const auto alignment = session.description().memoryAlignment.uploadBufferTextureRow;
-                if ((bytes + alignment - 1) / alignment * alignment > options.chunk_bytes)
+                const auto alignment = device_.description().memoryAlignment.uploadBufferTextureRow;
+                if ((bytes + alignment - 1) / alignment * alignment > options_.chunk_bytes)
                 {
                     co_return cxx::unexpected(RenderError{kDeviceArgument});
                 }
@@ -1004,8 +1004,8 @@ namespace lux::render::detail
                 co_return cxx::unexpected(RenderError{kDeviceArgument});
             }
             const bool invalid = !fill.size || (fill.offset | fill.size) % 4 ||
-                                 fill.offset > session.nriCore().GetBufferDesc(*fill.target).size ||
-                                 fill.size > session.nriCore().GetBufferDesc(*fill.target).size - fill.offset;
+                                 fill.offset > device_.nriCore().GetBufferDesc(*fill.target).size ||
+                                 fill.size > device_.nriCore().GetBufferDesc(*fill.target).size - fill.offset;
             if (invalid)
             {
                 co_return cxx::unexpected(RenderError{kDeviceArgument});
@@ -1021,7 +1021,7 @@ namespace lux::render::detail
         }
         cxx::scope_exit budget([&]() noexcept { releaseSourceBytes(pending_bytes); });
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        auto& copy_queue = !image || clone ? session.queue() : *this->copy_queue;
+        auto& copy_queue_ = !image || clone ? device_.queue() : *this->copy_queue_;
         bool accepted_any = false;
         const auto failure = [&](RenderError error) noexcept
         {
@@ -1040,7 +1040,7 @@ namespace lux::render::detail
             }
         );
         const auto ranges = image ? regions.size() : buffer_runs;
-        copies.reserve(std::min(options.window_regions, std::max(options.staging_pages, ranges)));
+        copies.reserve(std::min(options_.window_regions, std::max(options_.staging_pages, ranges)));
         std::size_t index = 0, offset = 0, run_end = 0, run_remaining = 0;
         std::uint32_t row = 0;
         const auto count = image ? regions.size() : writes.size();
@@ -1057,7 +1057,7 @@ namespace lux::render::detail
                 const auto row_bytes =
                     region ? std::size_t((region->texture.width - 1) / region->block_extent + 1) * region->block_bytes
                            : 0;
-                const auto row_alignment = session.description().memoryAlignment.uploadBufferTextureRow;
+                const auto row_alignment = device_.description().memoryAlignment.uploadBufferTextureRow;
                 const auto row_pitch = region ? (row_bytes + row_alignment - 1) / row_alignment * row_alignment : 0;
                 if (!region && run_remaining == 0)
                 {
@@ -1077,7 +1077,7 @@ namespace lux::render::detail
                     region ? std::size_t((region->texture.height - 1) / region->block_extent + 1 - row) * row_pitch
                            : run_remaining;
                 auto range = staging_arena_->acquire(
-                    std::min(remaining, options.chunk_bytes),
+                    std::min(remaining, options_.chunk_bytes),
                     region ? row_pitch : 4,
                     frame_slot == UINT32_MAX && reserve_frame_staging_
                 );
@@ -1133,7 +1133,7 @@ namespace lux::render::detail
             }
             if (copies.empty() && index < count)
             {
-                BatchEntry wait{this, &copy_queue, {}};
+                BatchEntry wait{this, &copy_queue_, {}};
                 wait.waiting_range = true;
                 wait.frame_slot = frame_slot;
                 if (image)
@@ -1141,7 +1141,7 @@ namespace lux::render::detail
                     const auto& region = regions[index];
                     const auto bytes =
                         std::size_t((region.texture.width - 1) / region.block_extent + 1) * region.block_bytes;
-                    const auto alignment = session.description().memoryAlignment.uploadBufferTextureRow;
+                    const auto alignment = device_.description().memoryAlignment.uploadBufferTextureRow;
                     wait.minimum_range = (bytes + alignment - 1) / alignment * alignment;
                 }
                 auto available = co_await BatchSender{wait};
@@ -1153,9 +1153,9 @@ namespace lux::render::detail
             }
             if (!copies.empty())
             {
-                ++stats.prepare_windows;
+                ++statistics_.prepare_windows;
                 auto prepared = co_await (
-                    stdexec::schedule(cpu) |
+                    stdexec::schedule(cpu_scheduler_) |
                     stdexec::then(
                         [&copies, element_bytes, source_stride]() noexcept
                         {
@@ -1233,10 +1233,10 @@ namespace lux::render::detail
                 {
                     co_return failure(prepared.error());
                 }
-                stats.prepare_ns += *prepared;
+                statistics_.prepare_ns += *prepared;
                 for (auto& copy : copies)
                 {
-                    stats.copied_bytes +=
+                    statistics_.copied_bytes +=
                         copy.buffer
                             ? copy.bytes
                             : copy.rows * std::size_t((copy.region.texture.width - 1) / copy.region.block_extent + 1) *
@@ -1251,7 +1251,7 @@ namespace lux::render::detail
             {
                 co_return failure(RenderError{kUploadStopped});
             }
-            BatchEntry entry{this, &copy_queue, copies};
+            BatchEntry entry{this, &copy_queue_, copies};
             entry.frame_slot = frame_slot;
             entry.progress = progress;
             if (!accepted_any)
@@ -1273,7 +1273,7 @@ namespace lux::render::detail
 
     void ResourceUploader::recordCopies(nri::CommandBuffer& command, std::span<const BufferCopy> copies) noexcept
     {
-        const auto& core = session.nriCore();
+        const auto& core = device_.nriCore();
         for (const auto& copy : copies)
         {
             const std::array<nri::BufferBarrierDesc, 2> barriers{

@@ -2,7 +2,8 @@
 
 #include <limits>
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/runtime/RegistrationBatch.hpp>
+#include <lux/engine/render/runtime/CommandBinding.hpp>
+#include <lux/engine/render/runtime/HandlerRecord.hpp>
 #include <map>
 
 namespace lux::render::runtime_detail
@@ -32,14 +33,15 @@ namespace lux::render::runtime_detail
     class CommandRegistry final
     {
     public:
-        using HandlerRecord = RenderServer::HandlerRecord;
         CommandId registerCommand(CommandBinding) noexcept;
         RenderResult<CommandId> findCommand(const CommandDescriptor&) const noexcept;
-        RenderResult<HandlerId> findHandler(CppType, std::string_view) const noexcept;
-        RenderResult<std::vector<CommandId>> prepareHandler(const HandlerRecord&, std::span<const CommandBinding>)
-            const noexcept;
-        HandlerId
-            registerHandler(std::unique_ptr<HandlerRecord>, std::span<const CommandBinding>, std::vector<CommandId>) noexcept;
+        RenderResult<HandlerId> findHandler(cxx::TypeToken, std::string_view) const noexcept;
+        // Validation is used only for external declarations. Publication is shared with built-ins.
+        RenderResult<void> validateHandler(const HandlerRecord&, std::span<const CommandBinding>) const noexcept;
+        HandlerId publishHandler(HandlerRecord) noexcept;
+        void publishBinding(HandlerId, const CommandBinding&) noexcept;
+        [[nodiscard]] HandlerId handlerId(cxx::TypeToken, std::string_view) const noexcept;
+        void activateSelectedHandlers(ResourceRegistry&) noexcept;
         CommandList listCommands() const noexcept;
 
         void reserve(std::size_t added_commands, std::size_t added_handlers)
@@ -60,7 +62,8 @@ namespace lux::render::runtime_detail
         }
 
         void listCommandBindings(const ListCommandBindings::Request&, ListCommandBindings::Response&) noexcept;
-        void selectHandler(const SelectCommandBinding::Request&, SelectCommandBinding::Response&) noexcept;
+        void
+        selectHandler(const SelectCommandBinding::Request&, SelectCommandBinding::Response&, ResourceRegistry&) noexcept;
 
         void clear() noexcept
         {
@@ -71,6 +74,8 @@ namespace lux::render::runtime_detail
         }
 
     private:
+        void activateHandler(HandlerId, ResourceRegistry&) noexcept;
+
         // Handler records have stable addresses; these views borrow their owned names until clear().
         using HandlerName = std::pair<std::string_view, std::string_view>;
         cxx::SlotMap<CommandRecord, CommandTag> commands_;

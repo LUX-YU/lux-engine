@@ -1,12 +1,12 @@
+#include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
 #include <lux/engine/render/features/ParameterLayout.hpp>
 #include <lux/engine/render/features/RasterMesh.hpp>
-#include <lux/engine/render/runtime/Registration.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMeshCommandHandler.hpp>
-#include <lux/engine/render/storage/RasterMaterialTableCommandHandler.hpp>
-#include <lux/engine/render/storage/RasterMeshInstanceCommandHandler.hpp>
-#include <lux/engine/render/storage/SampledTexture2DCommandHandler.hpp>
+#include <lux/engine/render/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/storage/RasterMaterialTable.hpp>
+#include <lux/engine/render/storage/RasterMeshInstances.hpp>
+#include <lux/engine/render/storage/SampledTexture2D.hpp>
 
 namespace lux::render
 {
@@ -157,39 +157,14 @@ namespace lux::render
 
     const FeatureDescriptor GBufferFeatureDescriptor::descriptor{
         name,
-        cppType<Config>(),
+        cxx::typeToken<Config>(),
         "World-space material surfaces in a linear MRT GBuffer with forward depth.",
         describeGBuffer
     };
 
-    template <>
-    RenderResult<void> RenderServer::prepareFeature<GBufferFeatureDescriptor>(
-        RegistrationBatch& batch,
-        std::string_view
-    ) noexcept
+    const FeatureGraphOps& detail::GBufferFeature::graph(bool paged_instances) noexcept
     {
-        if (auto result = prepareStorage<SampledTexture2DStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
-        if (auto result = prepareStorage<IndexedTriangleMeshStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
-        if (auto result = prepareStorage<RasterMaterialTableStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
-        if (auto result = prepareStorage<RasterMeshInstanceStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
         static const FeatureGraphOps contiguous{buildGBuffer<false>}, paged{buildGBuffer<true>};
-        batch.addFeature({&GBufferFeatureDescriptor::descriptor, pagedInstances() ? &paged : &contiguous});
-        return {};
+        return paged_instances ? paged : contiguous;
     }
-
-    template LUX_RENDER_PUBLIC RenderResult<FeatureId> RenderServer::registerFeature<GBufferFeatureDescriptor>(
-        std::string_view
-    ) noexcept;
 } // namespace lux::render

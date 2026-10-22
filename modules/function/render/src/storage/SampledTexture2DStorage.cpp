@@ -437,7 +437,7 @@ namespace lux::render::detail
         return ResourceInput{nullptr, 0, 0, std::as_bytes(std::span(&reference, 1)), &layout};
     }
 
-    StorageFactory textureStorageFactory() noexcept
+    StorageFactory SampledTexture2DStorage::factory() noexcept
     {
         static const StorageBindingOps bindings{
             [](void* storage,

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/features/FeatureDefinition.hpp>
+#include <lux/engine/render/features/FeatureAssembly.hpp>
 #include <lux/engine/render/runtime/Scene.hpp>
 
 namespace lux::render::runtime_detail
@@ -14,8 +14,8 @@ namespace lux::render::runtime_detail
         FeatureDescriptor descriptor;
         FeatureGraphOps graph;
 
-        FeatureEntry(FeatureDefinition input) noexcept
-            : name(input.descriptor->type.name()), descriptor(*input.descriptor), graph(*input.graph)
+        FeatureEntry(const FeatureDescriptor& declaration, const FeatureGraphOps& contribution) noexcept
+            : name(declaration.type.name()), descriptor(declaration), graph(contribution)
         {
             descriptor.type = FeatureName(name);
         }

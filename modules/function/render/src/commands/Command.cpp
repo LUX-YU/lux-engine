@@ -1,19 +1,12 @@
 #include <lux/engine/render/commands/Command.hpp>
 
-#include <bit>
-
 namespace lux::render
 {
     RenderResult<void> validateCommand(const CommandDescriptor& descriptor) noexcept
     {
         const bool is_invalid_identity = !descriptor.name.isValid();
-        const auto invalid_value = [](const CppType& value) noexcept
-        {
-            return !value.token.isValid() || value.size == 0 || !std::has_single_bit(value.alignment) ||
-                   value.size % value.alignment != 0;
-        };
-        const bool is_invalid_layout = invalid_value(descriptor.request) || invalid_value(descriptor.response);
-        if (is_invalid_identity || is_invalid_layout)
+        const bool is_invalid_types = !descriptor.request.isValid() || !descriptor.response.isValid();
+        if (is_invalid_identity || is_invalid_types)
         {
             return cxx::unexpected(RenderError{kCommandContract});
         }

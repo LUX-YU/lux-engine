@@ -9,8 +9,7 @@ namespace lux::render::detail
         co_return cxx::unexpected(error);
     }
 
-    exec::task<RenderResult<MeshId>> IndexedTriangleMeshCommandHandler::createMeshSource(CreateMesh::Request&& input
-    ) noexcept
+    exec::task<RenderResult<MeshId>> IndexedTriangleMeshCommandHandler::uploadMesh(CreateMesh::Request&& input) noexcept
     {
         auto storage = resources_.borrow<IndexedTriangleMeshStorage>(input.storage);
         if (!storage)
@@ -36,31 +35,3 @@ namespace lux::render::detail
     }
 
 } // namespace lux::render::detail
-
-#include <lux/engine/render/runtime/Registration.hpp>
-
-namespace lux::render
-{
-    template <>
-    RenderResult<void> RenderServer::prepareStorage<IndexedTriangleMeshStorageDescriptor>(
-        RegistrationBatch& batch,
-        ConfigValue configuration,
-        bool use_existing,
-        std::string_view handler_key
-    ) noexcept
-    {
-        return prepareStorageDefinition<
-            IndexedTriangleMeshStorageDescriptor,
-            detail::IndexedTriangleMeshStorage,
-            detail::IndexedTriangleMeshCommandHandler>(
-            batch,
-            detail::meshStorageFactory(),
-            std::move(configuration),
-            use_existing,
-            handler_key
-        );
-    }
-
-    template LUX_RENDER_PUBLIC RenderResult<StorageTypeId> RenderServer::registerStorage<
-        IndexedTriangleMeshStorageDescriptor>(std::string_view) noexcept;
-} // namespace lux::render

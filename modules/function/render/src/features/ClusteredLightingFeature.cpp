@@ -6,10 +6,9 @@
 #include "ClusterFill.hpp"
 #include "ClusterScan.hpp"
 #include <cstring>
+#include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/FeatureAssembly.hpp>
-#include <lux/engine/render/features/FeatureDefinition.hpp>
-#include <lux/engine/render/runtime/Registration.hpp>
-#include <lux/engine/render/storage/DirectLightingCommandHandler.hpp>
+#include <lux/engine/render/storage/DirectLighting.hpp>
 
 namespace lux::render
 {
@@ -251,26 +250,14 @@ namespace lux::render
 
     const FeatureDescriptor ClusteredLightingFeatureDescriptor::descriptor{
         name,
-        cppType<Config>(),
+        cxx::typeToken<Config>(),
         "Independent conservative Cluster Build/Count/Scan/Fill with full-light overflow fallback.",
         describeClusters
     };
 
-    template <>
-    RenderResult<void> RenderServer::prepareFeature<ClusteredLightingFeatureDescriptor>(
-        RegistrationBatch& batch,
-        std::string_view
-    ) noexcept
+    const FeatureGraphOps& detail::ClusteredLightingFeature::graph(bool) noexcept
     {
-        if (auto result = prepareStorage<DirectLightingStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
         static const FeatureGraphOps graph{buildClusters};
-        batch.addFeature({&ClusteredLightingFeatureDescriptor::descriptor, &graph});
-        return {};
+        return graph;
     }
-
-    template LUX_RENDER_PUBLIC RenderResult<FeatureId> RenderServer::registerFeature<
-        ClusteredLightingFeatureDescriptor>(std::string_view) noexcept;
 } // namespace lux::render

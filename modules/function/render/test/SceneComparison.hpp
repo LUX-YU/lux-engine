@@ -6,6 +6,12 @@
 // Exact comparison of the actual RGBA16F images before exposure, quantization or Tonemap.
 struct SceneComparison
 {
+    using Descriptor = SceneComparison;
+    using Storages = std::tuple<>;
+    using Commands = std::tuple<>;
+    static const FeatureDescriptor descriptor;
+    static const FeatureGraphOps& graph(bool) noexcept;
+
     static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
     {
         GraphImageDesc image{64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
@@ -41,21 +47,14 @@ struct SceneComparison
     }
 };
 
-namespace lux::render
+inline const FeatureDescriptor
+    SceneComparison::descriptor{FeatureName{"test.Compare"}, {}, "HDR pixel comparison", SceneComparison::describe};
+
+inline const FeatureGraphOps& SceneComparison::graph(bool) noexcept
 {
-    template <>
-    RenderResult<void> RenderServer::prepareFeature<SceneComparison>(
-        RegistrationBatch& batch,
-        std::string_view
-    ) noexcept
-    {
-        static const FeatureDescriptor
-            descriptor{FeatureName{"test.Compare"}, {}, "HDR pixel comparison", SceneComparison::describe};
-        static const FeatureGraphOps graph{SceneComparison::build};
-        batch.addFeature({&descriptor, &graph});
-        return {};
-    }
-} // namespace lux::render
+    static const FeatureGraphOps value{SceneComparison::build};
+    return value;
+}
 
 static void verifyEqualPixels(const CapturedPixels& pixels)
 {

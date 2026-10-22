@@ -37,10 +37,7 @@ namespace lux::render
         return entry ? &entry->configuration : nullptr;
     }
 
-    RenderResult<void> ResourceRegistry::validateFactory(
-        const StorageFactory& factory,
-        const ConfigValue& configuration
-    ) const noexcept
+    RenderResult<void> ResourceRegistry::validateFactory(const StorageFactory& factory) const noexcept
     {
         if (!factory.descriptor)
         {
@@ -55,20 +52,54 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kStorageCapability});
         }
-        const auto actual = configuration.typeInfo();
-        if (configuration && factory.config_type != actual)
+        const auto existing = typeId(type.type);
+        if (!existing.isNull())
+        {
+            const auto& previous = *types_.find(existing);
+            if (auto valid = compatibleStorage(*previous.factory.descriptor, type); !valid)
+            {
+                return valid;
+            }
+            const bool is_factory_mismatch =
+                previous.factory.implementation_type != factory.implementation_type ||
+                previous.factory.config_type != factory.config_type || previous.factory.ops_type != factory.ops_type ||
+                previous.factory.create != factory.create || previous.factory.ops != factory.ops ||
+                previous.factory.binding_ops != factory.binding_ops ||
+                previous.factory.compatible_config != factory.compatible_config;
+            if (is_factory_mismatch)
+            {
+                return cxx::unexpected(RenderError{kStorageMismatch});
+            }
+        }
+        return {};
+    }
+
+    RenderResult<void> ResourceRegistry::validateFactory(
+        const StorageFactory& factory,
+        const ConfigValue& configuration
+    ) const noexcept
+    {
+        if (auto valid = validateFactory(factory); !valid)
+        {
+            return valid;
+        }
+        const auto existing = typeId(factory.descriptor->type);
+        const bool is_wrong_config_type = configuration && factory.config_type != configuration.type();
+        const bool is_default_mismatch = !existing.isNull() && types_.find(existing)->configuration != configuration;
+        if (is_wrong_config_type || is_default_mismatch)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
-        }
-        if (!typeId(factory.descriptor->type).isNull())
-        {
-            return cxx::unexpected(RenderError{kStorageFactory});
         }
         return {};
     }
 
     StorageTypeId ResourceRegistry::publishFactory(StorageFactory factory, ConfigValue configuration) noexcept
     {
+        const auto existing = typeId(factory.descriptor->type);
+        if (!existing.isNull())
+        {
+            return existing;
+        }
         const auto id = types_.emplace(Type{{}, std::move(factory), std::move(configuration)});
         types_.find(id)->id = id;
         types_by_name_.emplace(std::string(types_.find(id)->factory.descriptor->type.name()), id);
@@ -85,35 +116,6 @@ namespace lux::render
             return cxx::unexpected(valid.error());
         }
         return publishFactory(std::move(factory), std::move(configuration));
-    }
-
-    RenderResult<std::vector<StorageTypeId>> ResourceRegistry::installFactories(
-        std::span<StorageFactoryInstall> candidates
-    ) noexcept
-    {
-        for (std::size_t i = 0; i < candidates.size(); ++i)
-        {
-            const auto& candidate = candidates[i];
-            if (auto valid = validateFactory(candidate.factory, candidate.configuration); !valid)
-            {
-                return cxx::unexpected(valid.error());
-            }
-            for (std::size_t j = 0; j < i; ++j)
-            {
-                if (candidates[j].factory.descriptor->type == candidate.factory.descriptor->type)
-                {
-                    return cxx::unexpected(RenderError{kStorageFactory});
-                }
-            }
-        }
-        types_.reserve(types_.size() + candidates.size());
-        std::vector<StorageTypeId> ids;
-        ids.reserve(candidates.size());
-        for (auto& candidate : candidates)
-        {
-            ids.push_back(publishFactory(std::move(candidate.factory), std::move(candidate.configuration)));
-        }
-        return ids;
     }
 
     StorageId ResourceRegistry::reserve(StorageSet& set, StorageTypeId type) noexcept
@@ -136,7 +138,7 @@ namespace lux::render
         // A factory may have reentered another Set and grown the index. Reacquire after it returns.
         auto& entry = *entries_.find(id);
         entry.position = position;
-        entry.native = instance;
+        entry.instance = instance;
         ++creations_;
     }
 
@@ -153,19 +155,19 @@ namespace lux::render
     std::optional<std::size_t> ResourceRegistry::position(StorageId id, const StorageSet& set) const noexcept
     {
         const auto* entry = entries_.find(id);
-        return entry && entry->native && entry->storage_set == &set ? std::optional{entry->position} : std::nullopt;
+        return entry && entry->instance && entry->storage_set == &set ? std::optional{entry->position} : std::nullopt;
     }
 
-    void* ResourceRegistry::native(StorageId id) const noexcept
+    void* ResourceRegistry::storageInstance(StorageId id) const noexcept
     {
         const auto* entry = entries_.find(id);
-        return entry ? entry->native : nullptr;
+        return entry ? entry->instance : nullptr;
     }
 
     StorageSet* ResourceRegistry::storageSet(StorageId id) const noexcept
     {
         const auto* entry = entries_.find(id);
-        return entry && entry->native ? entry->storage_set : nullptr;
+        return entry && entry->instance ? entry->storage_set : nullptr;
     }
 
 } // namespace lux::render

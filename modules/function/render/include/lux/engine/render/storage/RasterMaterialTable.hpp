@@ -97,7 +97,7 @@ namespace lux::render
             kMaterialStorageType,
             0,
             0,
-            cppType<MaterialBinding>(),
+            cxx::typeToken<MaterialBinding>(),
             "Reflected cooked raster material parameter tables with stable slots and sampled texture references."
         };
 

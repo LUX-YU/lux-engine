@@ -31,6 +31,12 @@ namespace lux::render::detail
         { return {result ? RenderError{} : result.error()}; };
 
     public:
+        // Factory registration does not construct an object. Activation borrows the one resource directory.
+        static RasterMaterialTableCommandHandler* create(ResourceRegistry& resources) noexcept
+        {
+            return new RasterMaterialTableCommandHandler(resources);
+        }
+
         using CreateMaterialSender =
             decltype(stdexec::then(std::declval<exec::task<RenderResult<MaterialId>>>(), create_material_response_));
 
@@ -43,12 +49,12 @@ namespace lux::render::detail
 
         CreateMaterialSender createMaterial(CreateMaterial::Request&& input) noexcept
         {
-            return createMaterialSource(std::move(input)) | stdexec::then(create_material_response_);
+            return uploadMaterial(std::move(input)) | stdexec::then(create_material_response_);
         }
 
         UpdateMaterialSender updateMaterial(UpdateMaterial::Request&& input) noexcept
         {
-            return updateMaterialSource(std::move(input)) | stdexec::then(update_material_response_);
+            return uploadMaterialParameters(std::move(input)) | stdexec::then(update_material_response_);
         }
 
         void releaseMaterial(const ReleaseMaterial::Request&, ReleaseMaterial::Response&) noexcept;
@@ -58,8 +64,8 @@ namespace lux::render::detail
             CommandMethod<ReleaseMaterial, &RasterMaterialTableCommandHandler::releaseMaterial>>;
 
     private:
-        exec::task<RenderResult<MaterialId>> createMaterialSource(CreateMaterial::Request&&) noexcept;
-        exec::task<RenderResult<Ack>> updateMaterialSource(UpdateMaterial::Request&&) noexcept;
+        exec::task<RenderResult<MaterialId>> uploadMaterial(CreateMaterial::Request&&) noexcept;
+        exec::task<RenderResult<Ack>> uploadMaterialParameters(UpdateMaterial::Request&&) noexcept;
 
         ResourceRegistry& resources_;
     };

@@ -276,7 +276,7 @@ namespace lux::render::detail
         sections_.release(geometry.sections);
     }
 
-    StorageFactory meshStorageFactory() noexcept
+    StorageFactory IndexedTriangleMeshStorage::factory() noexcept
     {
         static const StorageBindingOps binding{
             [](void* object,

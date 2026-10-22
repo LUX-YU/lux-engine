@@ -255,7 +255,7 @@ namespace lux::render::detail
         return {};
     }
 
-    void SubmissionQueue::cancel() noexcept
+    void SubmissionQueue::cancelRecording() noexcept
     {
         recording_ = false;
     }

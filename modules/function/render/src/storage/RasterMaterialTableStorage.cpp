@@ -709,7 +709,7 @@ namespace lux::render::detail
         }
     }
 
-    StorageFactory materialStorageFactory() noexcept
+    StorageFactory RasterMaterialTableStorage::factory() noexcept
     {
         static const StorageBindingOps binding{
             [](void* object,

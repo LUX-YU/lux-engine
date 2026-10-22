@@ -13,7 +13,6 @@
 
 namespace lux::render::detail
 {
-    [[nodiscard]] StorageFactory meshInstanceStorageFactory() noexcept;
 
     class RasterMeshInstanceStorage final
     {
@@ -31,6 +30,9 @@ namespace lux::render::detail
         };
 
     public:
+        using Descriptor = RasterMeshInstanceStorageDescriptor;
+        [[nodiscard]] static StorageFactory factory() noexcept;
+
         struct Selection final
         {
             MeshId mesh;
@@ -89,17 +91,12 @@ namespace lux::render::detail
         [[nodiscard]] std::uint64_t capacity() const noexcept;
 
     private:
-        friend StorageFactory meshInstanceStorageFactory() noexcept;
         template <class Input>
         using CreateValue = std::
             conditional_t<std::same_as<Input, MeshInstanceDescription>, MeshInstanceId, std::vector<MeshInstanceId>>;
         template <class Input> [[nodiscard]] exec::task<RenderResult<CreateValue<Input>>> createBatch(Input) noexcept;
-        [[nodiscard]] RenderResult<void> resolve(
-            const CompiledResource&,
-            const MeshInstanceBinding&,
-            StorageSubscription&,
-            std::span<ResourceInput>
-        ) noexcept;
+        [[nodiscard]] RenderResult<void>
+        resolve(const CompiledResource&, const MeshInstanceBinding&, StorageSubscription&, std::span<ResourceInput>) noexcept;
         [[nodiscard]] RenderResult<void> allocate(GpuPage&, std::size_t slots) noexcept;
         [[nodiscard]] RenderResult<void> ensureFrame(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, ResourceUploader&) noexcept;

@@ -13,7 +13,7 @@ namespace lux::render::detail
     class DeviceSession;
     class SampledTexture2DStorage;
 
-    // One device-borrowing object for all Texture Commands. Storage remains separately scope-owned.
+    // One resource-directory borrower for all Texture Commands. Storage remains separately scope-owned.
     class SampledTexture2DCommandHandler final
     {
     private:
@@ -38,6 +38,12 @@ namespace lux::render::detail
         };
 
     public:
+        // Factory registration does not construct an object. Activation borrows the one resource directory.
+        static SampledTexture2DCommandHandler* create(ResourceRegistry& resources) noexcept
+        {
+            return new SampledTexture2DCommandHandler(resources);
+        }
+
         using CreateTextureSender =
             decltype(stdexec::then(std::declval<exec::task<RenderResult<TextureId>>>(), create_texture_response_));
 
@@ -52,12 +58,12 @@ namespace lux::render::detail
 
         CreateTextureSender createTexture(CreateTexture::Request&& input) noexcept
         {
-            return createTextureSource(std::move(input)) | stdexec::then(create_texture_response_);
+            return uploadTexture(std::move(input)) | stdexec::then(create_texture_response_);
         }
 
         CreatePatchedTextureSender createPatchedTexture(CreatePatchedTexture::Request&& input) noexcept
         {
-            return createPatchedTextureSource(std::move(input)) | stdexec::then(create_patched_texture_response_);
+            return uploadPatchedTexture(std::move(input)) | stdexec::then(create_patched_texture_response_);
         }
 
         void releaseTexture(const ReleaseTexture::Request&, ReleaseTexture::Response&) noexcept;
@@ -67,8 +73,8 @@ namespace lux::render::detail
             CommandMethod<ReleaseTexture, &SampledTexture2DCommandHandler::releaseTexture>>;
 
     private:
-        exec::task<RenderResult<TextureId>> createTextureSource(CreateTexture::Request&&) noexcept;
-        exec::task<RenderResult<TextureId>> createPatchedTextureSource(CreatePatchedTexture::Request&&) noexcept;
+        exec::task<RenderResult<TextureId>> uploadTexture(CreateTexture::Request&&) noexcept;
+        exec::task<RenderResult<TextureId>> uploadPatchedTexture(CreatePatchedTexture::Request&&) noexcept;
 
         ResourceRegistry& resources_;
     };

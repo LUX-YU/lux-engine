@@ -178,7 +178,6 @@ namespace lux::render
         FeatureId id;
         std::string name;
         std::string config_type;
-        std::size_t config_size = 0, config_alignment = 0;
         std::string description;
     };
 
@@ -218,11 +217,11 @@ namespace lux::render
 
     struct CommandInfo final
     {
-        // Cold directory values retain the provider of the canonical value operations.
+        // Names are owned; type names borrow the defining module, which must outlive clients and the Server.
         std::string name;
         CommandId id;
-        CppType request;
-        CppType response;
+        cxx::TypeToken request;
+        cxx::TypeToken response;
         bool bound = false;
 
         [[nodiscard]] CommandDescriptor descriptor() const noexcept

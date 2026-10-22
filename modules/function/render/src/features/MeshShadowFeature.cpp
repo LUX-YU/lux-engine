@@ -1,13 +1,13 @@
 #include <lux/engine/render/features/MeshShadowFeature.hpp>
 
 #include <cmath>
+#include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/RasterMesh.hpp>
-#include <lux/engine/render/runtime/Registration.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMeshCommandHandler.hpp>
-#include <lux/engine/render/storage/RasterMaterialTableCommandHandler.hpp>
-#include <lux/engine/render/storage/RasterMeshInstanceCommandHandler.hpp>
-#include <lux/engine/render/storage/SampledTexture2DCommandHandler.hpp>
+#include <lux/engine/render/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/storage/RasterMaterialTable.hpp>
+#include <lux/engine/render/storage/RasterMeshInstances.hpp>
+#include <lux/engine/render/storage/SampledTexture2D.hpp>
 
 namespace lux::render
 {
@@ -155,39 +155,14 @@ namespace lux::render
 
     const FeatureDescriptor MeshShadowFeatureDescriptor::descriptor{
         name,
-        cppType<Config>(),
+        cxx::typeToken<Config>(),
         "Shadow-purpose raster over explicit views and GPU-visible groups; owns only its depth output.",
         describeShadowRaster
     };
 
-    template <>
-    RenderResult<void> RenderServer::prepareFeature<MeshShadowFeatureDescriptor>(
-        RegistrationBatch& batch,
-        std::string_view
-    ) noexcept
+    const FeatureGraphOps& detail::MeshShadowFeature::graph(bool paged_instances) noexcept
     {
-        if (auto result = prepareStorage<SampledTexture2DStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
-        if (auto result = prepareStorage<IndexedTriangleMeshStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
-        if (auto result = prepareStorage<RasterMaterialTableStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
-        if (auto result = prepareStorage<RasterMeshInstanceStorageDescriptor>(batch, {}, true, {}); !result)
-        {
-            return result;
-        }
         static const FeatureGraphOps contiguous{buildShadowRaster<false>}, paged{buildShadowRaster<true>};
-        batch.addFeature({&MeshShadowFeatureDescriptor::descriptor, pagedInstances() ? &paged : &contiguous});
-        return {};
+        return paged_instances ? paged : contiguous;
     }
-
-    template LUX_RENDER_PUBLIC RenderResult<FeatureId> RenderServer::registerFeature<MeshShadowFeatureDescriptor>(
-        std::string_view
-    ) noexcept;
 } // namespace lux::render

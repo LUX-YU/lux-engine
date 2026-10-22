@@ -12,7 +12,6 @@
 
 namespace lux::render::detail
 {
-    [[nodiscard]] StorageFactory materialStorageFactory() noexcept;
 
     class RasterMaterialTableStorage final
     {
@@ -26,6 +25,9 @@ namespace lux::render::detail
         };
 
     public:
+        using Descriptor = RasterMaterialTableStorageDescriptor;
+        [[nodiscard]] static StorageFactory factory() noexcept;
+
         RasterMaterialTableStorage(StorageCreateContext&, StorageId) noexcept;
         ~RasterMaterialTableStorage() noexcept;
         RasterMaterialTableStorage(const RasterMaterialTableStorage&) = delete;
@@ -42,7 +44,6 @@ namespace lux::render::detail
         [[nodiscard]] std::size_t recordCount() const noexcept;
 
     private:
-        friend StorageFactory materialStorageFactory() noexcept;
         friend struct lux::render::StorageTraits<RasterMaterialTableStorage>;
         template <class Input>
         using WriteValue = std::conditional_t<std::same_as<Input, MaterialWrite>, MaterialId, Ack>;

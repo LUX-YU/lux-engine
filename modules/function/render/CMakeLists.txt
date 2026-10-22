@@ -1,6 +1,9 @@
 find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core)
+
 find_package(stdexec CONFIG REQUIRED GLOBAL)
+
 find_package(Eigen3 CONFIG REQUIRED)
+
 find_package(Vulkan 1.3 REQUIRED)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../core/error/cmake/Values.cmake")
@@ -85,7 +88,6 @@ set(render_sources
     src/storage/IndexedTriangleMeshCommandHandler.cpp
     src/runtime/RenderServer.cpp
     src/runtime/CommandRegistry.cpp
-    src/runtime/RegistrationBatch.cpp
     src/runtime/RenderServerImpl.cpp
     src/runtime/Scene.cpp
     src/runtime/EffectCompilation.cpp

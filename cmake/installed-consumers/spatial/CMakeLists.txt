@@ -15,7 +15,10 @@ target_link_libraries(query_consumer PRIVATE lux::engine::scene::scene_mesh_quer
 
 find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render)
 add_library(probe_feature SHARED Probe.cpp)
-target_include_directories(probe_feature PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(probe_feature
+    PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/function/render/sinclude"
+)
 target_compile_definitions(probe_feature PRIVATE PROBE_LIBRARY)
 target_link_libraries(probe_feature PUBLIC lux::engine::function::render)
 

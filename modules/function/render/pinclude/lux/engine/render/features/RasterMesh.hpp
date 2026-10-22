@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/features/FeatureDefinition.hpp>
+#include <lux/engine/render/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/RasterMeshParameters.hpp>
 
 namespace lux::render::detail

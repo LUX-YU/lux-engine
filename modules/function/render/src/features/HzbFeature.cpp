@@ -2,8 +2,7 @@
 
 #include "HzbDownsample.hpp"
 #include <bit>
-#include <lux/engine/render/features/FeatureDefinition.hpp>
-#include <lux/engine/render/runtime/Registration.hpp>
+#include <lux/engine/render/features/BuiltinFeatures.hpp>
 
 namespace lux::render
 {
@@ -76,23 +75,14 @@ namespace lux::render
 
     const FeatureDescriptor HzbFeatureDescriptor::descriptor{
         name,
-        cppType<Config>(),
+        cxx::typeToken<Config>(),
         "Forward-depth hierarchical maximum with instance-local history.",
         describeHzb
     };
 
-    template <>
-    RenderResult<void> RenderServer::prepareFeature<HzbFeatureDescriptor>(
-        RegistrationBatch& batch,
-        std::string_view
-    ) noexcept
+    const FeatureGraphOps& detail::HzbFeature::graph(bool) noexcept
     {
         static const FeatureGraphOps graph{buildHzb};
-        batch.addFeature({&HzbFeatureDescriptor::descriptor, &graph});
-        return {};
+        return graph;
     }
-
-    template LUX_RENDER_PUBLIC RenderResult<FeatureId> RenderServer::registerFeature<HzbFeatureDescriptor>(
-        std::string_view
-    ) noexcept;
 } // namespace lux::render

@@ -95,12 +95,12 @@ namespace lux::render::detail
         {
             stdexec::spawn(
                 queue.whenSubmittedWorkCompletes() | stdexec::then(
-                                       [release = std::move(release)](RenderResult<void> result) mutable noexcept
-                                       {
-                                           requireCleanupComplete(result);
-                                           std::invoke(release);
-                                       }
-                                   ),
+                    [release = std::move(release)](RenderResult<void> result) mutable noexcept
+                    {
+                        requireCleanupComplete(result);
+                        std::invoke(release);
+                    }
+                ),
                 cleanup_scope_.get_token()
             );
         }

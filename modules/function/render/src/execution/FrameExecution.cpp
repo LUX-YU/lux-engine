@@ -142,7 +142,7 @@ namespace lux::render::detail
     {
         if (uploads_)
         {
-            uploads_->completeFrameCopies(result);
+            uploads_->finishFrameCopySubmission(result);
         }
         const auto boundary = preparation_receivers_.size();
         const auto slot = next_frame_;

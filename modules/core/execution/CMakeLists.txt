@@ -1,4 +1,7 @@
 find_package(lux-cxx REQUIRED COMPONENTS compile_time container)
+
+# The complete export set must be visible to sibling modules and installed consumers.
+# stdexec 0.10 promotes only its main target itself, leaving system_context directory-local.
 find_package(stdexec CONFIG REQUIRED GLOBAL)
 
 generate_visibility_header(

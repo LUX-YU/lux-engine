@@ -14,12 +14,14 @@
 
 namespace lux::render::detail
 {
-    [[nodiscard]] StorageFactory textureStorageFactory() noexcept;
     struct CompiledResource;
 
     class SampledTexture2DStorage final
     {
     public:
+        using Descriptor = SampledTexture2DStorageDescriptor;
+        [[nodiscard]] static StorageFactory factory() noexcept;
+
         // Stable SlotMap values: actual GPU objects and shader input, no asset layout or parent control.
         class SampledImage final
         {
@@ -65,7 +67,6 @@ namespace lux::render::detail
         [[nodiscard]] const SampledImage* find(TextureId) const noexcept;
 
     private:
-        friend StorageFactory textureStorageFactory() noexcept;
         friend struct lux::render::StorageTraits<SampledTexture2DStorage>;
         using UploadResult = exec::task<RenderResult<TextureId>>;
         using ImagePreparation = std::pair<nri::Texture*, std::vector<ImageTransferRegion>>;

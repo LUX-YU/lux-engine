@@ -232,10 +232,11 @@ FIF replica preparation coalesces adjacent dirty words before splitting at physi
 windows. Submission acceptance acknowledges only copied records; failed windows remain dirty. CPU preparation
 and descriptor updates finish before `SubmissionQueue::recordAndSubmit` begins recording.
 
-The Runtime rebuilds its non-owning Storage preparation list when Attachment membership or Context identity
-changes. Project GPU consumers likewise call `FrameExecution::collectStorageUses` at those changes and supply
-the resulting span to `FrameExecution::render`. Preparation callbacks are synchronous: they do not submit, suspend or dispatch
-completion callbacks. Stable frames neither rebuild this list nor sort Storage relationships.
+The Runtime rebuilds its non-owning Storage preparation list when Attachment membership or RenderGraphInstance identity
+changes. Project GPU consumers collect the actual `StorageFrameUse` borrows at those changes and supply their span
+to `FrameExecution::render`; each entry names its storage and `StorageBindingOps`. Preparation callbacks are synchronous:
+they do not submit, suspend or dispatch completion callbacks. Stable frames neither rebuild this list nor sort
+Storage relationships.
 
 When GPU work prevents progress, the loop first waits on the conditions preventing the next frame slot's reuse,
 then rotates other in-flight physical Queues. IPC, ready work and stop are checked between waits. The default
@@ -348,7 +349,8 @@ and returns before recording begins. Graph passes perform GPU culling and render
 dependencies. Raster state is a prepared parameter input; the Executor applies its viewport, scissor and depth bias
 without knowing shadows. Every Attachment/FIF slice has independent writable shadow images. Unchanged CPU projections
 still redraw current depth; a cache hit is not a proof of valid GPU contents. Physical release uses the existing single
-Session cleanup scope. Clustered lighting, EVSM, HZB occlusion, deformation bounds and VSM/Nanite are separate capabilities.
+Session cleanup scope. Clustered lighting composes through the ports described below. EVSM, HZB occlusion,
+deformation bounds and VSM/Nanite remain separate capabilities.
 
 `render_deferred_scene` retains the CPU lighting reference. `render_shadow_scene` uses public Commands and independent
 Feature registration, then test-owned Graph Copies to check actual GPU visibility, shadow pixels, projection data and
@@ -388,3 +390,25 @@ independent CPU geometric/list oracle, and tests the production Scan with overfl
 --clustered` adds the same HDR comparison to shadows, multiple materials and lights,
 including an intentionally tiny list capacity. These checks use the full-light result as a correctness reference,
 not as a hidden replacement for the successful non-overflow Clustered path.
+
+## Scene composition and measurement boundaries
+
+`MeshInstanceDrawGroup::material` selects a material **program table** through a live material in that table;
+it is not a filter for just that MaterialId. A group selects its Mesh/submesh and all matching instances in that
+table. Each instance's GPU material index selects its own parameters. Configure one group for that Mesh/submesh/table,
+even when many MaterialIds share it. Listing those materials as separate groups repeats the same draws.
+
+Shadow visibility can supply external visible members, indirect commands and counts to MeshShadow. GBuffer currently
+uses its own all-candidate member stream; it does not yet expose the equivalent external visibility inputs. A passing
+shadow-culling test therefore does not establish a GPU-culling main-view path.
+
+Measure the actual composition: output extent, camera coverage, active and shadow-casting light counts, shadow slices,
+resolution/filtering, view count, FIF and update cadence. An offscreen Render measurement excludes presentation and the
+rest of the application. All-lights and Clustered modes can be compared with the same scene; no light-count threshold
+or automatic mode switch is implied. Overflow fallback must be distinguished from a successfully built list.
+
+Production progress counts accepted executions. Steady-state throughput over many bounded FIF cycles is useful, but
+it is not a measurement of individual GPU completion or display latency. CPU record/submit time, GPU timestamps,
+Client response observation and profiler sampling remain separate measurements. In particular, a test Client's reply
+polling or sleep time is not RenderThread work. A frame-driven Client can keep one borrowed update batch in flight and
+consume its response on later ticks before reusing that input.

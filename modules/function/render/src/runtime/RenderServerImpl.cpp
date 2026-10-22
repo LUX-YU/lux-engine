@@ -33,6 +33,11 @@ namespace lux::render
         bindFrameworkCommand<ListCommands, &Impl::listCommands>();
         bindFrameworkCommand<ListCommandBindings, &Impl::listCommandBindings>();
         bindFrameworkCommand<SelectCommandBinding, &Impl::selectCommandBinding>();
+        bindSubmitFrameCommand();
+        frame_inputs_.resize(static_cast<std::size_t>(config.max_frames_ahead) + 1);
+        submit_frame_command_ = *command_registry_.findCommand(commandDescriptor<SubmitFrame>());
+        stop_command_ = *command_registry_.findCommand(commandDescriptor<Stop>());
+        select_binding_command_ = *command_registry_.findCommand(commandDescriptor<SelectCommandBinding>());
     }
 
     void NRI_CALL RenderServer::Impl::diagnostic(
@@ -176,10 +181,6 @@ namespace lux::render
                         limit
                     );
                 }
-            ) |
-            stdexec::upon_error(
-                [](execution::EExecutionError error) noexcept -> RenderResult<RenderEffect>
-                { return cxx::unexpected(RenderError{kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}}); }
             ) |
             stdexec::continues_on(render_loop_.scheduler()) |
             stdexec::let_value(
@@ -944,13 +945,7 @@ namespace lux::render
         command_registry_.selectHandler(input, response, *resources);
     }
 
-    std::size_t RenderServer::Impl::executeReadyWork(std::size_t budget) noexcept
-    {
-        const auto consumed = render_loop_.executeReady(budget);
-        return consumed;
-    }
-
-    RenderResult<void> RenderServer::Impl::advanceRendering() noexcept
+    RenderResult<void> RenderServer::Impl::progressCompletions() noexcept
     {
         if (auto observed = device->pollQueues(); !observed)
         {
@@ -958,32 +953,44 @@ namespace lux::render
         }
         device->dispatchQueueCompletions();
         frames->dispatchWrites();
+        render_loop_.executeReady(128);
+        return {};
+    }
+
+    void RenderServer::Impl::progressUploads() noexcept
+    {
         if (uploads)
         {
             uploads->submitReadyTransfers();
         }
-        // GPU reuse notifications resume admitted writers on RenderThread. Consume this ready
-        // prefix before closing frame input, otherwise continuous drawing can starve retries.
-        executeReadyWork();
-        const auto& active = active_targets.keys();
-        frame_instances.clear();
-        for (std::size_t i = 0; i < active.size(); ++i)
-        {
-            const auto& target = *targets.find(active[(next_target + i) % active.size()]);
-            frame_instances.push_back(attachments.find(target.attachment)->instance.get());
-        }
+    }
+
+    RenderResult<void> RenderServer::Impl::submitCurrentFrame() noexcept
+    {
         if (frame_storages_dirty)
         {
+            // Semantic conflict order is stable. Fairness rotates ready physical queues, not
+            // the order of writers of one imported resource.
+            const auto keys = active_targets.keys();
+            std::vector<TargetId> active(keys.begin(), keys.end());
+            std::ranges::sort(active, {}, &TargetId::index);
+            frame_instances.clear();
             frame_storages.clear();
             frame_features.clear();
             for (auto id : active)
             {
                 auto& attachment = *attachments.find(targets.find(id)->attachment);
+                frame_instances.push_back(attachment.instance.get());
                 for (const auto& input : attachment.storage_inputs)
                 {
                     if (input.ops->prepareFrame)
                     {
-                        frame_storages.push_back({input.native, input.ops});
+                        frame_storages.push_back(
+                            {input.native,
+                             input.ops,
+                             input.storage_id,
+                             input.ops->preparationRevision ? input.ops->preparationRevision(input.native) : nullptr}
+                        );
                     }
                 }
                 for (auto& feature : attachment.feature_bindings)
@@ -1002,7 +1009,6 @@ namespace lux::render
             return cxx::unexpected(accepted.error());
         }
         submissions += *accepted;
-        next_target = active.empty() ? 0 : (next_target + 1) % active.size();
         return {};
     }
 
@@ -1038,7 +1044,13 @@ namespace lux::render
     void RenderServer::Impl::dispatchRequest(ipc::ReceivedRequest received) noexcept
     {
         const ResponseRoute route{received.requesterId(), RequestId{received.correlation()}};
-        const auto* entry = command_registry_.findCommand(commandIdFromTag(received.tag()));
+        const auto id = commandIdFromTag(received.tag());
+        const auto* entry = command_registry_.findCommand(id);
+        const bool has_active_frame =
+            frame_count_ != 0 && frame_inputs_[first_frame_].stage != FrameRecord::EStage::QUEUED;
+        const bool is_wrong_frame_source = id == submit_frame_command_ && route.requester_id != frame_source_;
+        const bool requires_frame_boundary =
+            (entry && entry->description->frame_scoped) || (id == select_binding_command_ && has_active_frame);
         if (!entry || route.request_id.isNull())
         {
             response_outbox_.emplaceResponse<AckResponse>(route, AckResponse{RenderError{kCommandContract}});
@@ -1051,6 +1063,14 @@ namespace lux::render
         {
             entry->make_error(response_outbox_.prepare(route), RenderError{kRuntimeUnsupported});
         }
+        else if (is_wrong_frame_source)
+        {
+            entry->make_error(response_outbox_.prepare(route), RenderError{kFrameSource});
+        }
+        else if (requires_frame_boundary)
+        {
+            entry->make_error(response_outbox_.prepare(route), RenderError{kFrameBoundary});
+        }
         else
         {
             CommandDispatchContext context{received.message(), route, response_outbox_, command_scope_, render_loop_};
@@ -1060,9 +1080,14 @@ namespace lux::render
         ++commands;
     }
 
-    void RenderServer::Impl::shutdown() noexcept
+    void RenderServer::Impl::shutdown(RenderError cause) noexcept
     {
         stop_requested.store(true);
+        if (frame_count_ != 0 && frame_inputs_[first_frame_].error.type == 0)
+        {
+            // A device/queue failure must reach the active frame; shutdown is not proof of cancellation.
+            frame_inputs_[first_frame_].error = cause;
+        }
         command_scope_.close();
         command_scope_.request_stop();
         if (frames)
@@ -1089,12 +1114,12 @@ namespace lux::render
 
         auto join = stdexec::connect(command_scope_.join(), Joined{&joined});
         stdexec::start(join);
-        response_outbox_.flushTo(responder, config.request_work_budget);
+        response_outbox_.flushTo(responder, 32);
         // Keep RenderThread and GPU completion paths advancing until every accepted Sender settles.
         while (!joined.load(std::memory_order_acquire) || !render_loop_.empty())
         {
-            executeReadyWork();
-            response_outbox_.flushTo(responder, config.request_work_budget);
+            render_loop_.executeReady(128);
+            response_outbox_.flushTo(responder, 32);
             if (device)
             {
                 auto collected = device->pollQueues();
@@ -1112,6 +1137,7 @@ namespace lux::render
                 {
                     std::terminate();
                 }
+                progressFrame();
             }
             if (!joined.load(std::memory_order_acquire))
             {
@@ -1179,8 +1205,9 @@ namespace lux::render
             // changes the epoch, so WaitOnAddress/futex cannot sleep through that publication.
             const auto observed = notifications.workEpoch();
             const auto submitted_before = s.submissions.load();
-            bool progressed = s.executeReadyWork() != 0;
-            for (std::uint32_t i = 0; i < s.config.request_work_budget && !s.stop_requested.load(); ++i)
+            bool progressed = s.render_loop_.executeReady(128) != 0;
+            // Service batching is independent of the sealed frame boundary.
+            for (std::uint32_t i = 0; i < 32 && !s.stop_requested.load(); ++i)
             {
                 ipc::ReceivedRequest request;
                 if (s.responder.tryReceive(request) == ipc::EIpcReceive::RECEIVED)
@@ -1193,19 +1220,23 @@ namespace lux::render
             {
                 break;
             }
-            progressed |= s.response_outbox_.flushTo(s.responder, s.config.request_work_budget) != 0;
-            if (auto rendered = s.advanceRendering(); !rendered)
+            progressed |= s.response_outbox_.flushTo(s.responder, 32) != 0;
+            if (auto observed_gpu = s.progressCompletions(); !observed_gpu)
             {
-                result = cxx::unexpected(rendered.error());
+                result = cxx::unexpected(observed_gpu.error());
                 break;
             }
-            progressed |= s.executeReadyWork() != 0;
-            progressed |= s.response_outbox_.flushTo(s.responder, s.config.request_work_budget) != 0;
+            s.progressUploads();
+            s.progressFrame();
+            progressed |= s.render_loop_.executeReady(128) != 0;
+            progressed |= s.response_outbox_.flushTo(s.responder, 32) != 0;
             progressed |= s.submissions.load() != submitted_before;
             ++s.ticks;
             if (!progressed && !s.stop_requested.load())
             {
-                if (notifications.workEpoch() != observed || !s.render_loop_.empty())
+                // A publisher may be counted before its node is visible. Its eventual wakeup
+                // changes this epoch; spinning on RunLoop::size() would delay other producers.
+                if (notifications.workEpoch() != observed)
                 {
                     continue;
                 }
@@ -1224,7 +1255,7 @@ namespace lux::render
                 }
             }
         }
-        s.shutdown();
+        s.shutdown(result ? RenderError{kCommandCancelled} : result.error());
         return result;
     }
 

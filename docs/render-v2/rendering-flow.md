@@ -85,9 +85,9 @@ ExecutionRuntime::create（应用已有）
 | `RenderServer` / `Impl` | 唯一运行对象；拥有目录、Scene/Target/Effect/Attachment、执行设施和回复出口 | `runtime/RenderServer{,Impl}.cpp` |
 | `CommandRegistry` | Command 描述、支持绑定及当前选择；稳定 Handler 对象独占拥有，调用项借用它 | [CommandRegistry.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/CommandRegistry.hpp) |
 | `BuiltinFeatures` | 私有编译期类型清单；Feature 用 tuple 声明 Storage 和 Command 依赖，不持有实例 | `pinclude/.../features/BuiltinFeatures.hpp` |
-| `HandlerRecord` | 保存构造入口和唯一实例；登记时对象为空，激活后供 Command 借用 | `sinclude/.../runtime/HandlerRecord.hpp` |
+| `HandlerRecord` | 保存构造入口和唯一实例；登记时对象为空，激活后供 Command 借用 | `include/.../runtime/detail/HandlerRecord.hpp` |
 | `FeatureEntry` | 稳定的 Feature 描述和构建函数；编译任务可借用已安装条目 | [EffectCompilation.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/EffectCompilation.hpp) |
-| `DeviceSession` | 设备能力、NRI 设施、唯一物理 Queue 集合、DescriptorTable、唯一物理清理 scope | [DeviceSession.hpp](../../modules/function/render/sinclude/lux/engine/render/device/DeviceSession.hpp) / [实现](../../modules/function/render/src/device/DeviceSession.cpp) |
+| `DeviceSession` | 设备能力、NRI 设施、唯一物理 Queue 集合、DescriptorTable、唯一物理清理 scope | [DeviceSession.hpp](../../modules/function/render/include/lux/engine/render/device/DeviceSession.hpp) / [实现](../../modules/function/render/src/device/DeviceSession.cpp) |
 | `DeviceBackend` | 选定后端的设备初始化及专属能力适配；不承担帧调度 | [DeviceBackend.cpp](../../modules/function/render/src/device/vulkan/DeviceBackend.cpp) |
 | `DescriptorTable` | 设备级 sampled-image/sampler 索引和 Native 描述符；不拥有材质业务依赖 | [DescriptorTable.cpp](../../modules/function/render/src/device/DescriptorTable.cpp) |
 
@@ -112,7 +112,8 @@ DeviceSession 不创建 CPU 线程池、不拥有 Scene、不默认安装 Textur
 
 ## 4. 请求与回复：业务状态和执行状态分开
 
-Client 直接使用 `IpcRequester/IpcMessage`。当前不存在旧 `RenderClient/TypedRenderCompletion`。
+Client 可直接使用 `IpcRequester/IpcMessage`；Engine 的 `RenderRequester` 在其上保存有限输入载体、请求关联及类型化 Sender。
+它不拥有 GPU 对象或 connected OperationState。当前不存在旧 `RenderClient/TypedRenderCompletion`。
 Command 声明是稳定名称、Request 和 Response；目录查询得到当前 Server 的生成式 CommandId。
 RequestId 属于 Requester，本身不承担跨 Link 唯一性。
 当前应用在冷态用 `server.commandId<ListCommands>()` 取得 bootstrap ID，再通过 IPC 获取完整目录；
@@ -133,16 +134,16 @@ Client 构造真实 C++ Request → IpcMessage → IpcRequester::trySend
 | `CommandBinding` | 编译期约束 Handler；生成同步或异步调用 thunk | 冷绑定后按函数指针调用 |
 | `CommandDispatchContext` | 当前请求、来源路由、Outbox、Scope、RunLoop 的短期借用 | 仅派发使用 |
 | `command_scope_` | `counting_scope + spawn` 管已接纳异步 Command 的 OperationState | Server 停服时请求停止并异步 join |
-| `ResponseDelivery` | 仅拥有来源路由和已完成 Response，是 RunLoop 节点 | RenderThread 交给 Outbox 后销毁 |
+| stdexec 组合 OperationState | 保存异步 Response、原路由和调度操作 | 由 counting_scope + spawn 管理，交付终态后结束 |
 | `ResponseOutbox` | 唯一回复出口；维持背压下的待发送值，不重跑 Handler | 发送、连接失效或关闭结算 |
 
 同步 Handler 为 `const Request& + Response&`，在回复位置构造/填写结果，不创建 Pending/Sender。
 异步 Handler 消费 Request，返回 Sender；`CommandBinding` 规约错误/停止通道，再 `spawn`。
-完成可发生在 Worker；`publishCompletion → RunLoop::post → ResponseDelivery::deliver` 将结果转交
+完成可发生在 Worker；错误与停止先归一化为 Response，再由 `continues_on(renderScheduler)` 将结果转交
 RenderThread，随后 `ResponseOutbox::flushTo(responder, budget)` 发布。
 
 源码：[CommandBinding.hpp](../../modules/function/render/include/lux/engine/render/runtime/CommandBinding.hpp)、
-[ResponseDelivery.cpp](../../modules/function/render/src/runtime/ResponseDelivery.cpp)、
+[CommandDispatchContext.cpp](../../modules/function/render/src/runtime/CommandDispatchContext.cpp)、
 [ResponseOutbox.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/ResponseOutbox.hpp)。
 
 Response 使用显式 `RenderError error` 和业务字段，内部函数可以使用 `RenderResult`。没有“自动带回原 Request”
@@ -153,7 +154,7 @@ Response 使用显式 `RenderError error` 和业务字段，内部函数可以�
 ### 5.1 实例归属
 
 [StorageSet](../../modules/function/render/sinclude/lux/engine/render/resource/StorageSet.hpp) 独占实际 Storage；
-[ResourceRegistry](../../modules/function/render/sinclude/lux/engine/render/resource/ResourceRegistry.hpp) 拥有类型目录、
+[ResourceRegistry](../../modules/function/render/include/lux/engine/render/resource/ResourceRegistry.hpp) 拥有类型目录、
 生成式 StorageId 和非拥有实例定位。Global StorageSet 在 Runtime；Scene/View/Attachment 各有自己的集合。
 `PrepareStorage` 可先创建并取得 ID；Attach 也可按声明创建缺少的实例并返回逻辑资源到 StorageId 的对应。
 
@@ -192,10 +193,10 @@ typed CommandHandler
       → BatchSender/submitReadyTransfers；Copy 和必要 Acquire 批处理
       → 或 recordFrameCopies 合入帧准备提交
     → 回到 RenderThread 采用候选/提交 revision
-  → ResponseDelivery → ResponseOutbox
+  → continues_on(RenderThread Scheduler) → ResponseOutbox
 ```
 
-[ResourceUploader](../../modules/function/render/sinclude/lux/engine/render/upload/ResourceUploader.hpp) 拥有 Staging 和
+[ResourceUploader](../../modules/function/render/include/lux/engine/render/upload/ResourceUploader.hpp) 拥有 Staging 和
 上传设施，不拥有专业 Storage 候选，也不拥有另一套 running-task 表。`BufferWrite/BufferCopy` 只是借用范围记录。
 `StagingArena` 以真实 Queue 完成复用页；`BufferArena` 管几何区间，最终物理释放仍走 Session。
 
@@ -346,21 +347,26 @@ Detach 先断开 Feature/Storage 借用，再移交 Instance 物理资源清理�
 
 ```text
 Impl::run
-  → executeReadyWork（RunLoop）
+  → RunLoop::executeReady
   → 有限请求接纳/dispatch → Outbox.flushTo
-  → advanceRendering
+  → progressCompletions
     → DeviceSession::pollQueues / dispatchQueueCompletions
     → FrameExecution::dispatchWrites
-    → ResourceUploader::submitReadyTransfers
-    → executeReadyWork（先让已获资格写者继续，避免绘制抢槽）
-    → 收集活动 Instance；关系变化时重建并去重 Storage/Feature 准备列表
-    → FrameExecution::render
-  → executeReadyWork / Outbox.flushTo
+    → RunLoop::executeReady
+  → progressUploads → ResourceUploader::submitReadyTransfers
+  → progressFrame（只推进最早的完整 SubmitFrame）
+    → beginFrame 取得可复用 FIF 槽
+    → 分组派发子 Command，全部必需更新终态后冻结输入
+    → submitCurrentFrame：活动 Instance、Storage/Feature 准备列表 → FrameExecution::render
+    → 提交结果明确后 FrameCompletion；GPU 完成仍独立决定物理复用
+  → RunLoop::executeReady / Outbox.flushTo
   → 无进展时：GPU 有工作则有界 waitForProgress，否则 IPC epoch 可唤醒等待
 ```
 
 没有无条件每帧 sleep。当前 GPU 等待上限可配置至 1ms；无 GPU 工作的 IPC 等待也有有限复查期限，
 不能把这段调度等待记为单次 IPC 队列操作成本。
+请求领取批量仅用于服务公平性，不再定义帧边界。没有 SubmitFrame 不重复绘制旧状态；
+主帧来源、输入借用与 `max_frames_ahead + 1` 载体和物理 FIF 分开。详见公开 `commands/Frame.hpp`。
 
 ### 9.2 FrameExecution 的职责链
 
@@ -372,12 +378,12 @@ Impl::run
 FrameExecution::render
   → 若已有 SUBMITTING 窗口，继续 advanceSubmissions，不重取输入
   → 选择可复用 slot；pending CPU writes 必须已结束
-  → StorageBindingOps::prepareFrame（修复该 slice 的脏数据）
-  → FeatureBinding::prepare（参数/派生列表及复制范围）
+  → 检查实际来源的 revision；仅对未应用的 slice 调 StorageBindingOps::prepareFrame
+  → FeatureBinding::prepare（按 revision 更新；真实逐帧来源继续执行）
   → RenderGraphInstance::prepareFrame（描述符、参数、条件、History 冻结）
-  → prepareSubmissions + buildImportedDependencies
+  → prepareSubmissions：实例顺序/绑定版本改变时重建该 slot 的依赖索引
   → advanceSubmissions
-    → collectBatchWaits
+    → 从每物理 Queue 的就绪堆取得批次及已累计的等待前沿
     → 同物理 Queue 且等待条件相同的可就绪批次合并
     → SubmissionQueue::recordAndSubmit
       → recordFrameCopies / Feature copies（首准备提交）
@@ -389,9 +395,14 @@ FrameExecution::render
 如果资源准备尚不齐但有可提交 Copy，可以只提交准备批；这不意味着整图已执行，也不推进 History。
 Queue 满时保留冻结窗口及逐批实际 serial，不重新执行已接受批次。
 
-`buildImportedDependencies()` 使用冷态去重的 imported 访问摘要，运行期按真实物理资源和范围判断冲突；
-只读输入不制造写冲突。`overlaps` 无临时分配，但准备中的排序和冲突比较仍是真实成本，不应写成 O(1)。
-就绪批次仍有扫描；没有证明它在任意规模无成本。
+ImportedAccess 保留消费批次与状态恢复边界。FrameSlot 按实例顺序及每 slice 的物理绑定 revision 复用依赖索引；
+内容更新不重新排序或相交。绑定变化时重建这个 slot 的索引，冷态同资源组仍可能有平方级冲突比较，
+并未实现只修改一个资源组的局部增量编辑。不同句柄的外部 Memory Alias 没有声明关系，当前不支持该跨实例用法。
+就绪批次按实际物理 Queue 与等待条件维护；Submit 接纳只推动后继边，不从头扫描所有批次。
+
+每个实际 CommandBuffer 共享一份 BindingState，跳过相同 Layout/BindPoint/DescriptorSet 的重复绑定。
+参数是每 FIF 一份连续区；变化源按预编译反向索引标脏。没有 revision 承诺的借用参数仍逐帧读取。
+Storage/Feature 的来源版本检查仍为线性遍历；相应 callback 可以跳过，不等于准备阶段完全没有循环或间接调用。
 
 ### 9.3 FIF 的物理含义
 
@@ -405,7 +416,7 @@ Graphics/Compute/Transfer 是角色，可能映射同一物理 Queue，不能按
 
 ## 10. GPU 完成与释放
 
-[SubmissionQueue](../../modules/function/render/sinclude/lux/engine/render/device/SubmissionQueue.hpp) 拥有 Native Queue 的
+[SubmissionQueue](../../modules/function/render/include/lux/engine/render/device/SubmissionQueue.hpp) 拥有 Native Queue 的
 提交槽、serial、完成前沿和就绪回调；`poll()` 观察，`dispatchCompleted()` 在 RenderThread 分发。
 回调节点先摘除再执行，执行后不读取可能已销毁的节点。
 
@@ -445,17 +456,19 @@ Scope join 不替代外部 Producer 退栈或代码模块寿命证明。
 
 ### 一个首次渲染场景的实际顺序
 
-1. 应用创建 ExecutionRuntime、诊断目标和 RenderServer；自动登记内置 Feature 及依赖，按需登记外部扩展。
-2. 取得 bootstrap CommandId，建立 IpcRequester，再启动唯一 RenderThread。
-3. `ListCommands/ListStorages/ListFeatures` 取得需要的目录；`CreateScene`，随后按用途 `PrepareStorage`。
-4. `CreateTexture/CreateMesh/CreateMaterial` 上传资源；收到成功后保存真实返回 ID。
-5. `CreateMeshInstances/CreateDirectLights` 创建 Scene 数据。材质程序组和端口连线使用实际已发布的资源身份。
-6. 用 Cooked 程序、Feature 配置和连接构造 `CreateEffectRequest`；CPU 编译，RenderThread 采用后返回 EffectId。
-7. `CreateView/CreateTarget`，然后 `Attach` 指定 Scene/View/Effect/Target、参数和 viewport；返回 AttachmentId。
-8. Server 自动把该 Target 纳入活动集合，每轮尝试推进可用帧；不是 Client 逐帧发送一条“执行整图”请求。
-9. Client 用 `UpdateTransforms/UpdateMaterial/UpdateDirectLights/UpdateAttachmentInputs` 发布变化，保留未完成批次的输入。
-10. 测试消费者通过显式图 Copy 检验 GPU 输出；产品窗口呈现仍待实现。
-11. Client 停止未来使用后 Detach/释放关联资源；Server 清偿 GPU 物理使用，应用最后 stop/join。
+1. 应用创建唯一 ExecutionRuntime、诊断目标和 RenderServer；登记内置声明及需要的外部扩展。
+2. 建立主帧与 Asset 的独立 IpcRequester，冷态 setFrameSource；再启动唯一 RenderThread。
+3. 查询目录；CreateScene/View/Target、PrepareStorage 处理不改变已有可见状态的冷准备。
+4. Asset Client 可独立 CreateTexture/CreateMesh；收到成功后才使用其返回 ID。
+5. CreateMaterial、CreateMeshInstances、CreateDirectLights 等共享表更新放进主来源 SubmitFrame。
+   初始化可以先提交 NO_DRAW 帧；需要前一条请求返回的新 ID 时，在后续完整载体中使用，不能中途改写已借出的数组。
+6. CreateEffect 使用 Cooked 程序、Feature 配置及端口连接；CPU 编译，RenderThread 采用后返回 EffectId。
+7. 后续 SubmitFrame 内 Attach 指定 Scene/View/Effect/Target；同一载体中的组显式表达已知数据依赖。
+8. Client 先取得有限载体，再准备本帧数据和变化命令。Server 等最早完整帧的组全部结算，再冻结/录制/提交。
+   活动 Target 本身不自动制造新帧；无变化也用一个空 SubmitFrame 明确请求渲染。
+9. FrameCompletion 归还 CPU 输入借用；GPU 前沿独立决定 FIF 复用。失败要求重同步时，由 Client 提交恢复帧。
+10. 测试消费者用显式图 Copy 检验输出；窗口呈现仍待实现，图像 index 不等于 FrameSlot index。
+11. Detach/可见资源释放同样通过完整帧；随后清偿所有请求、Scope、Producer 和 GPU，最后关闭共享 ExecutionRuntime。
 
 这些命令的失败由 Response 显式报告，不能跳过失败后继续使用默认空 ID。不同独立资源上传可以并发；
 依赖关系由 Client 保持，不能拿上述顺序中的一次成功替代另一项资源的实际发布。

@@ -196,7 +196,7 @@ namespace lux::flowforge
             case EBaseType::FLOAT:
             case EBaseType::DOUBLE:
                 return true;
-            case EBaseType::VOID:
+            case EBaseType::VOID_TYPE:
                 return as_return;
             default:
                 return false;

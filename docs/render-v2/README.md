@@ -6,7 +6,7 @@ Render 作为一个共享库提供逻辑图、Feature、资源和执行能力，
 当前 API 和运行合同见 [Render README](../../modules/function/render/README.md)。
 
 - [从请求到图像的完整流程](rendering-flow.md)：当前类的职责、调用链、线程和释放顺序，供源码审查。
-- [Engine/Editor 接线设计](engine-editor-integration.md)：尚未实施的执行资源、对象体系、Scene、窗口与 UI 接线。
+- [Engine/Editor 接线设计](engine-editor-integration.md)：共享执行资源与 Client 运输，以及尚未实施的完整 Scene、窗口与 UI 接线。
 
 ## 目录与职责
 
@@ -50,7 +50,8 @@ FrameExecution 负责帧准备、批次依赖和提交合并，RenderExecutor �
 具体内置实现不公开，不需要应用构造 Provider 或包含专业 Storage 实现头。
 
 Client 直接使用 `IpcRequester` 和 `IpcMessage`，自行生成 RequestId，通过普通目录请求取得 CommandId。
-没有单独的 RenderClient 包装。两个 Client 的 RequestId 数值可以相同，回复仍沿原 Link 返回。
+Render 库没有 RenderClient 包装。Engine 可使用 `engine/rendering/RenderRequester` 复用有限帧载体、
+类型化 Sender、RequestId 关联和回复消费；它不拥有 connected OperationState 或 GPU 对象。两个 Client 的 RequestId 数值可以相同，回复仍沿原 Link 返回。
 发送成功转移消息值；发送失败保留原消息。Response 包含显式 `RenderError error` 和业务字段，
 业务字段只在成功时消费。回复不自动返还原 Request。
 断连只说明结果无法送达，不保证已接纳的业务被撤销。

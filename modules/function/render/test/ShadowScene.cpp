@@ -100,6 +100,7 @@ static void verifySamplers(RenderServer& server, const RenderServerConfig& confi
     bootstrap.commands.push_back({std::string(ListCommands::name), take(server.commandId<ListCommands>())});
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
+    CHECK(server.setFrameSource(client->id()));
     std::thread thread([&] { CHECK(server.run()); });
     const auto commands = call<ListCommands>(*client, bootstrap, {});
     CapturedPixels pixels;
@@ -117,6 +118,7 @@ static void verifySamplers(RenderServer& server, const RenderServerConfig& confi
     const auto deadline = Clock::now() + 10s;
     while (call<QueryExecutionProgress>(*client, commands, attachment).progress.count(EExecutionOutcome::EXECUTED) < 4)
     {
+        renderFrame(*client, commands);
         CHECK(Clock::now() < deadline);
         std::this_thread::yield();
     }
@@ -225,7 +227,7 @@ int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     const auto fif = argc > 1 ? unsigned(std::atoi(argv[1])) : 3u;
-    auto runtime = lux::execution::ExecutionRuntime::create({2, 128, 128, {128}});
+    auto runtime = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(runtime);
     RenderServerConfig config{"test.shadow", true};
     config.frames_in_flight = fif;
@@ -284,6 +286,7 @@ int main(int argc, char** argv)
     bootstrap.commands.push_back({std::string(ListCommands::name), take(server->commandId<ListCommands>())});
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
+    CHECK(server->setFrameSource(client->id()));
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = call<ListCommands>(*client, bootstrap, {});
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
@@ -618,6 +621,7 @@ int main(int argc, char** argv)
             while (call<QueryExecutionProgress>(*client, commands, attachment)
                        .progress.count(EExecutionOutcome::EXECUTED) < moved_before + 2)
             {
+                renderFrame(*client, commands);
                 CHECK(Clock::now() < moved_deadline);
                 std::this_thread::yield();
             }
@@ -634,6 +638,7 @@ int main(int argc, char** argv)
                call<QueryExecutionProgress>(*client, commands, second).progress.count(EExecutionOutcome::EXECUTED) <
                    second_before + fif + 2)
         {
+            renderFrame(*client, commands);
             CHECK(Clock::now() < deadline);
             std::this_thread::sleep_for(1ms);
         }

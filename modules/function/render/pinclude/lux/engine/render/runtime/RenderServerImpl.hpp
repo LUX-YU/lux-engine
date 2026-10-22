@@ -15,11 +15,13 @@
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/resource/StorageCreateContext.hpp>
-#include <lux/engine/render/runtime/CommandDispatchContext.hpp>
 #include <lux/engine/render/runtime/CommandRegistry.hpp>
 #include <lux/engine/render/runtime/EffectCompilation.hpp>
+#include <lux/engine/render/runtime/FrameSubmission.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
+#include <lux/engine/render/runtime/ResponseOutbox.hpp>
 #include <lux/engine/render/runtime/Scene.hpp>
+#include <lux/engine/render/runtime/detail/CommandDispatchContext.hpp>
 #include <thread>
 
 namespace lux::render
@@ -75,7 +77,15 @@ namespace lux::render
         ResponseOutbox response_outbox_;
         stdexec::counting_scope command_scope_;
         execution::RunLoop render_loop_;
-        std::size_t next_target = 0;
+        ipc::RequesterId frame_source_;
+        CommandId submit_frame_command_;
+        CommandId stop_command_;
+        CommandId select_binding_command_;
+        std::vector<FrameRecord> frame_inputs_;
+        std::size_t first_frame_ = 0;
+        std::size_t frame_count_ = 0;
+        std::uint64_t last_frame_sequence_ = 0;
+        bool frame_resynchronization_ = false;
         std::vector<detail::RenderGraphInstance*> frame_instances;
         std::vector<detail::StorageFrameUse> frame_storages;
         std::vector<std::pair<detail::RenderGraphInstance*, detail::FeatureBinding*>> frame_features;
@@ -112,7 +122,16 @@ namespace lux::render
 
         RenderResult<void> resizeTargetResources(RenderTarget& target, const TargetDesc& description) noexcept;
 
-        RenderResult<void> advanceRendering() noexcept;
+        RenderResult<void> submitCurrentFrame() noexcept;
+        RenderResult<void> progressCompletions() noexcept;
+        void progressUploads() noexcept;
+        void progressFrame() noexcept;
+
+        auto submitFrame(SubmitFrame::Request&&) noexcept;
+        void bindSubmitFrameCommand() noexcept;
+        void admitFrame(FrameSubmission, void*, void (*)(void*, FrameCompletion) noexcept) noexcept;
+        void finishFrame(FrameRecord&, FrameCompletion) noexcept;
+        void skipFrameCommands(FrameRecord&, RenderError) noexcept;
 
         static void NRI_CALL
         diagnostic(nri::Message severity, const char*, std::uint32_t, const char*, void* user) noexcept;
@@ -134,8 +153,6 @@ namespace lux::render
         auto createEffect(CreateEffect::Request&&) noexcept;
         void bindCreateEffectCommand() noexcept;
 
-        std::size_t executeReadyWork(std::size_t budget = 128) noexcept;
-
         void removeEffect(const RemoveEffect::Request&, RemoveEffect::Response&) noexcept;
 
         void detachEffect(const Detach::Request&, Detach::Response&) noexcept;
@@ -154,6 +171,6 @@ namespace lux::render
 
         void dispatchRequest(ipc::ReceivedRequest received) noexcept;
 
-        void shutdown() noexcept;
+        void shutdown(RenderError cause = RenderError{kCommandCancelled}) noexcept;
     };
 } // namespace lux::render

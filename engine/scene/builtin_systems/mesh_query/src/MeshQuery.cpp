@@ -244,11 +244,11 @@ namespace lux::scene
             const Eigen::AlignedBox3d& bounds,
             const math::Ray3d& ray,
             double maximum,
-            double& near
+            double& near_distance
         ) noexcept
         {
-            near = 0.0;
-            double far = maximum;
+            near_distance = 0.0;
+            double far_distance = maximum;
             for (Eigen::Index axis = 0; axis < 3; ++axis)
             {
                 const double direction = ray.direction[axis];
@@ -262,9 +262,9 @@ namespace lux::scene
                 }
                 const double first = (bounds.min()[axis] - ray.origin[axis]) / direction;
                 const double second = (bounds.max()[axis] - ray.origin[axis]) / direction;
-                near = std::max(near, std::min(first, second));
-                far = std::min(far, std::max(first, second));
-                if (near > far)
+                near_distance = std::max(near_distance, std::min(first, second));
+                far_distance = std::min(far_distance, std::max(first, second));
+                if (near_distance > far_distance)
                 {
                     return false;
                 }
@@ -277,8 +277,8 @@ namespace lux::scene
         {
             ++work.tree_nodes;
             const auto& node = nodes[node_index];
-            double near{};
-            if (!intersects(node.bounds, ray, best.distance, near))
+            double near_distance{};
+            if (!intersects(node.bounds, ray, best.distance, near_distance))
             {
                 return;
             }

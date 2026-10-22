@@ -391,9 +391,20 @@ static void indirectCounts(Validation& validation)
     );
     CHECK(instance->initialize());
     const std::array instances{instance.get()};
-    for (std::uint32_t requested : {0u, 1u, 3u})
+    std::uint64_t parameter_revision = 0;
+    for (std::uint32_t requested : {0u, 1u, 3u, 0u, 1u, 3u, 0u, 1u, 3u})
     {
         requested_value = requested;
+        if (++parameter_revision > 3)
+        {
+            // The first three frames exercise an unversioned live borrow. Later frames wrap
+            // every FIF slice with explicit parameter revisions and verify the actual GPU count.
+            instance->setResource(
+                parameter.index,
+                UINT32_MAX,
+                {nullptr, 0, 0, std::as_bytes(std::span(&requested_value, 1)), &parameter_layout, parameter_revision}
+            );
+        }
         CHECK(take(frames->render(instances, {})) == 1);
         CHECK(session->drain());
         checkPixels(

@@ -126,6 +126,56 @@ namespace mesh_sample
         }
 
         template <RenderCommand C>
+        typename C::Response frameCall(
+            ipc::IpcRequester& client,
+            std::uint64_t& next,
+            CommandId id,
+            typename C::Request input,
+            CommandId frame_id
+        )
+        {
+            FrameCommand command{id, RequestId{next++}, {}};
+            command.request.emplace<typename C::Request>(std::move(input));
+            const FrameCommandGroup group{std::span(&command, 1)};
+            const RequestId frame_request{next++};
+            ipc::IpcMessage message;
+            message.emplace<FrameSubmission>(FrameSubmission{frame_request.value, std::span(&group, 1)});
+            check(bool(client.trySend(commandTag(frame_id), frame_request.value, message)));
+            typename C::Response result{};
+            bool received_result = false;
+            bool received_frame = false;
+            auto& notifications = ipc::IpcCore::instance();
+            const auto deadline = Clock::now() + 20s;
+            while (!received_result || !received_frame)
+            {
+                const auto observed = notifications.workEpoch();
+                std::uint64_t correlation = 0;
+                const auto status = client.tryReceive(correlation, message);
+                check(status != ipc::EIpcReceive::CLOSED && Clock::now() < deadline);
+                if (status != ipc::EIpcReceive::RECEIVED)
+                {
+                    notifications.waitUntil(observed, deadline);
+                    continue;
+                }
+                if (correlation == command.request_id.value)
+                {
+                    result = std::move(message.get<typename C::Response>());
+                    check(result.error.type == 0);
+                    received_result = true;
+                }
+                else
+                {
+                    check(correlation == frame_request.value);
+                    const auto& completed = message.get<FrameCompletion>();
+                    check(completed.sequence == frame_request.value && completed.error.type == 0);
+                    received_frame = true;
+                }
+                message.reset();
+            }
+            return result;
+        }
+
+        template <RenderCommand C>
         typename C::Response coldCall(
             ipc::IpcRequester& client,
             const CommandList& directory,
@@ -133,7 +183,20 @@ namespace mesh_sample
             typename C::Request input
         )
         {
-            return call<C>(client, next, command<C>(directory), std::move(input));
+            if constexpr (C::frame_scoped)
+            {
+                return frameCall<C>(
+                    client,
+                    next,
+                    command<C>(directory),
+                    std::move(input),
+                    command<SubmitFrame>(directory)
+                );
+            }
+            else
+            {
+                return call<C>(client, next, command<C>(directory), std::move(input));
+            }
         }
 
         ipc::IpcRequester connect(std::string_view channel)
@@ -233,19 +296,27 @@ namespace mesh_sample
             MeshId mesh;
             MaterialId material;
             TextureId texture;
+            TextureId old_texture;
+            StorageId mesh_storage;
+            StorageId texture_storage;
+            StorageId material_storage;
             MeshDescription description;
             rdesc::MaterialProgramSet program;
         };
 
     } // namespace
 
-    void runClients(std::string_view channel, CommandId list_commands, const char* cooked_fragment)
+    void runClients(
+        ipc::IpcRequester& main,
+        std::string_view channel,
+        CommandId list_commands,
+        const char* cooked_fragment
+    )
     {
-        auto main = connect(channel);
         std::uint64_t main_next = 1;
         const auto main_commands = call<ListCommands>(main, main_next, list_commands, {});
         Assets assets;
-        std::latch loaded(1), replace_texture(1), texture_ready(1), publish_material(1), material_ready(1), release(1);
+        std::latch loaded(1), replace_texture(1), texture_ready(1), release(1);
         // One long-lived application Asset thread/Client. No per-request thread, Future or extra Render queue.
         std::thread asset_thread(
             [&]
@@ -256,8 +327,10 @@ namespace mesh_sample
                 const auto mesh_storage = prepare(client, commands, next, kMeshStorageType, "meshes");
                 const auto material_storage = prepare(client, commands, next, kMaterialStorageType, "materials");
                 const auto texture_storage = prepare(client, commands, next, kTextureStorageType, "textures");
+                assets.mesh_storage = mesh_storage;
+                assets.texture_storage = texture_storage;
+                assets.material_storage = material_storage;
                 const auto set_texture = command<CreateTexture>(commands);
-                const auto set_material = command<CreateMaterial>(commands);
                 const std::array<float, 20> vertices{-.22f, -.2f, .3f, 0,   0, .22f, -.2f, .3f, 1,   0,
                                                      0,     .23f, .3f, .5f, 1, 0,    0,    .8f, .5f, .5f};
                 const std::array<std::uint32_t, 12> indices{0, 1, 2, 1, 0, 3, 2, 1, 3, 0, 2, 3};
@@ -279,39 +352,24 @@ namespace mesh_sample
                 assets.texture =
                     call<CreateTexture>(client, next, set_texture, textureInput(texture_storage, 0, bytes)).texture;
                 assets.program = materialProgram(cooked_fragment);
-                MaterialWrite material{material_storage, assets.program};
-                material.parameters = {{1, 1, 1, 1}};
-                material.textures = {assets.texture};
-                assets.material = call<CreateMaterial>(client, next, set_material, material).material;
                 loaded.count_down();
 
                 replace_texture.wait();
                 auto changed = textureInput(texture_storage, 255, bytes);
-                const auto old_texture = assets.texture;
+                assets.old_texture = assets.texture;
                 assets.texture = call<CreateTexture>(client, next, set_texture, std::move(changed)).texture;
                 texture_ready.count_down();
-                publish_material.wait();
-                (void)coldCall<UpdateMaterial>(
-                    client,
-                    commands,
-                    next,
-                    {assets.material, material.parameters, {assets.texture}}
-                );
-                // The Client explicitly replaces all references before releasing the previous resource.
-                (void)coldCall<ReleaseTexture>(client, commands, next, old_texture);
-                material_ready.count_down();
                 release.wait();
-                (void)coldCall<ReleaseMaterial>(client, commands, next, assets.material);
-                (void)coldCall<ReleaseTexture>(client, commands, next, assets.texture);
-                (void)coldCall<ReleaseMesh>(client, commands, next, assets.mesh);
-                for (const auto id : {material_storage, texture_storage, mesh_storage})
-                {
-                    (void)coldCall<RemoveStorage>(client, commands, next, id);
-                }
             }
         );
 
         loaded.wait();
+        assets.material = coldCall<CreateMaterial>(
+                              main,
+                              main_commands,
+                              main_next,
+                              {assets.material_storage, assets.program, {{1, 1, 1, 1}}, {assets.texture}}
+        ).material;
         check(!assets.mesh.isNull() && !assets.material.isNull() && !assets.texture.isNull());
         const auto scene = coldCall<CreateScene>(main, main_commands, main_next, {}).scene;
         const auto instance_storage =
@@ -396,13 +454,8 @@ namespace mesh_sample
         }
         const auto await_frame = [&]
         {
-            const auto before = coldCall<QueryRenderStats>(main, main_commands, main_next, {}).submissions;
-            const auto deadline = Clock::now() + 10s;
-            while (coldCall<QueryRenderStats>(main, main_commands, main_next, {}).submissions <= before)
-            {
-                check(Clock::now() < deadline);
-                std::this_thread::yield();
-            }
+            const auto result = coldCall<SubmitFrame>(main, main_commands, main_next, {main_next, {}});
+            check(result.outcome == EFrameOutcome::SUBMITTED);
         };
         await_frame();
         const auto original_compiles = coldCall<QueryRenderStats>(main, main_commands, main_next, {}).compiled_graphs;
@@ -416,10 +469,10 @@ namespace mesh_sample
         matrix[12] = -.2f;
         changed_instances.push_back(left.local);
         changed_transforms.push_back(matrix);
-        auto applied = call<UpdateTransforms>(
+        auto applied = coldCall<UpdateTransforms>(
             main,
+            main_commands,
             main_next,
-            command<UpdateTransforms>(main_commands),
             {instance_storage, 7, changed_instances, changed_transforms}
         );
         changed_instances.clear();
@@ -427,14 +480,74 @@ namespace mesh_sample
         check(applied.sequence == 7 && applied.changed == 1);
         await_frame();
 
+        // Two Client input carriers can be in flight while GPU FIF is independently occupied.
+        // Each packet borrows its own matrix until both its child and frame terminal arrive.
+        const std::array keys{left.local};
+        std::array<TransformMatrix, 2> matrices{matrix, matrix};
+        matrices[0][12] = -.1f;
+        matrices[1][12] = -.3f;
+        std::array<FrameCommand, 2> frame_commands;
+        std::array<FrameCommandGroup, 2> groups;
+        std::array<RequestId, 2> frame_requests;
+        for (std::size_t i = 0; i < frame_commands.size(); ++i)
+        {
+            auto& frame_command = frame_commands[i];
+            frame_command.command = command<UpdateTransforms>(main_commands);
+            frame_command.request_id = {main_next++};
+            frame_command.request.emplace<TransformBatch>(
+                TransformBatch{instance_storage, 8 + i, keys, std::span(&matrices[i], 1)}
+            );
+            groups[i] = {std::span(&frame_command, 1)};
+            frame_requests[i] = {main_next++};
+            ipc::IpcMessage packet;
+            packet.emplace<FrameSubmission>(FrameSubmission{frame_requests[i].value, std::span(&groups[i], 1)});
+            check(bool(main.trySend(commandTag(command<SubmitFrame>(main_commands)), frame_requests[i].value, packet)));
+        }
+        const auto pair_deadline = Clock::now() + 20s;
+        unsigned frame_completions = 0;
+        unsigned transform_completions = 0;
+        while (frame_completions != 2 || transform_completions != 2)
+        {
+            auto& notifications = ipc::IpcCore::instance();
+            const auto observed = notifications.workEpoch();
+            ipc::IpcMessage response;
+            std::uint64_t correlation = 0;
+            const auto status = main.tryReceive(correlation, response);
+            check(status != ipc::EIpcReceive::CLOSED && Clock::now() < pair_deadline);
+            if (status != ipc::EIpcReceive::RECEIVED)
+            {
+                notifications.waitUntil(observed, pair_deadline);
+                continue;
+            }
+            const bool is_frame = correlation == frame_requests[0].value || correlation == frame_requests[1].value;
+            if (is_frame)
+            {
+                const auto& result = response.get<FrameCompletion>();
+                check(result.error.type == 0 && result.outcome == EFrameOutcome::SUBMITTED);
+                check(result.submitted_batches != 0);
+                ++frame_completions;
+            }
+            else
+            {
+                check(
+                    correlation == frame_commands[0].request_id.value ||
+                    correlation == frame_commands[1].request_id.value
+                );
+                const auto& result = response.get<UpdateTransforms::Response>();
+                check(result.error.type == 0 && result.changed == 1 && (result.sequence == 8 || result.sequence == 9));
+                ++transform_completions;
+            }
+        }
+
         // The installed-consumer extension verifies A/B routing with distinct Handler implementations.
         // This scene keeps exercising the real built-in Texture upload and explicit Material update.
         replace_texture.count_down();
         texture_ready.wait();
         check(!assets.texture.isNull());
         await_frame(); // Material still uses the old Texture until the explicit update below.
-        publish_material.count_down();
-        material_ready.wait();
+        (void
+        )coldCall<UpdateMaterial>(main, main_commands, main_next, {assets.material, {{1, 1, 1, 1}}, {assets.texture}});
+        (void)coldCall<ReleaseTexture>(main, main_commands, main_next, assets.old_texture);
         await_frame();
         check(coldCall<QueryRenderStats>(main, main_commands, main_next, {}).compiled_graphs == original_compiles);
 
@@ -446,6 +559,13 @@ namespace mesh_sample
         (void)coldCall<RemoveEffect>(main, main_commands, main_next, {first_effect});
         (void)coldCall<RemoveEffect>(main, main_commands, main_next, {second_effect});
         (void)coldCall<RemoveScene>(main, main_commands, main_next, {scene});
+        (void)coldCall<ReleaseMaterial>(main, main_commands, main_next, assets.material);
+        (void)coldCall<ReleaseTexture>(main, main_commands, main_next, assets.texture);
+        (void)coldCall<ReleaseMesh>(main, main_commands, main_next, assets.mesh);
+        for (const auto id : {assets.material_storage, assets.texture_storage, assets.mesh_storage})
+        {
+            (void)coldCall<RemoveStorage>(main, main_commands, main_next, id);
+        }
         release.count_down();
         asset_thread.join();
     }

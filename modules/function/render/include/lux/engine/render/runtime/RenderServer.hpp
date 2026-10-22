@@ -20,6 +20,11 @@ namespace lux::execution
     class ExecutionRuntime;
 }
 
+namespace lux::platform::ipc
+{
+    class RequesterId;
+}
+
 namespace lux::render
 {
     struct StorageFactory;
@@ -35,7 +40,9 @@ namespace lux::render
     {
         std::string channel_name;
         bool validation = false;
-        std::uint32_t request_work_budget = 8;
+        // In addition to the frame currently consumed by Render, Game may prepare/queue this many.
+        // The Client reserves one of max_frames_ahead + 1 input carriers before preparing a frame.
+        std::uint32_t max_frames_ahead = 1;
         std::size_t max_config_bytes = 1024 * 1024;
         // Scheduler availability does not imply a persistent staging allocation.
         std::optional<TransferOptions> uploads;
@@ -60,8 +67,7 @@ namespace lux::render
 
         // Creates the device, IPC responder and supported built-in declarations, but starts no thread.
         // Registration stores factories only. run() constructs selected Handlers; PrepareStorage/Attach create Storage.
-        [[nodiscard]] static CreateResult
-        create(
+        [[nodiscard]] static CreateResult create(
             RenderServerConfig config,
             execution::ExecutionRuntime& execution,
             DeviceOptions device_options = {}
@@ -85,16 +91,18 @@ namespace lux::render
 
         // Project extensions include runtime/FeatureRegistration.hpp for these template definitions.
         // Metadata and callback code must outlive the Server and all accepted work. Register before
-        // run() or at a RenderThread safe point. Failed validation leaves all directories unchanged.
+        // run() or at a frame-boundary RenderThread safe point. Validation failure changes no directory.
         template <class Feature> [[nodiscard]] RenderResult<FeatureId> registerFeature() noexcept;
 
         // Only installs the Storage factory/default. Commands are declared by the enclosing Feature.
-        template <class Storage> requires(!std::is_void_v<typename Storage::Descriptor::Config>)
+        template <class Storage>
+            requires(!std::is_void_v<typename Storage::Descriptor::Config>)
         [[nodiscard]] RenderResult<StorageTypeId> registerStorage(
             const typename Storage::Descriptor::Config& config = {}
         ) noexcept;
 
-        template <class Storage> requires std::is_void_v<typename Storage::Descriptor::Config>
+        template <class Storage>
+            requires std::is_void_v<typename Storage::Descriptor::Config>
         [[nodiscard]] RenderResult<StorageTypeId> registerStorage() noexcept;
 
         // Registers a Handler factory and its typed methods, without constructing the Handler.
@@ -105,6 +113,10 @@ namespace lux::render
         // Runs once, blocking the calling thread. Drains accepted work and replies before returning.
         [[nodiscard]] RenderResult<void> run() noexcept;
 
+        // Cold, before run(). Only this physical IPC Link may submit frames. Other Clients may
+        // query and prepare unreferenced assets, but cannot mutate visible state outside a frame.
+        [[nodiscard]] RenderResult<void> setFrameSource(platform::ipc::RequesterId requester) noexcept;
+
         // Thread-safe stop request. It does not join the rendering thread or cancel accepted GPU work.
         void stop() noexcept;
 
@@ -113,17 +125,11 @@ namespace lux::render
 
     private:
         [[nodiscard]] RenderResult<FeatureId>
-        registerFeature(
-            const FeatureDescriptor&,
-            const FeatureGraphOps&,
-            std::span<const StorageFactory>,
-            std::span<runtime_detail::HandlerRecord>,
-            std::span<const CommandBinding>
-        ) noexcept;
+        registerFeature(const FeatureDescriptor&, const FeatureGraphOps&, std::span<const StorageFactory>, std::span<runtime_detail::HandlerRecord>, std::span<const CommandBinding>) noexcept;
 
         [[nodiscard]] RenderResult<StorageTypeId> registerStorage(StorageFactory, ConfigValue) noexcept;
-        [[nodiscard]] RenderResult<HandlerId>
-        registerHandler(runtime_detail::HandlerRecord, std::span<const CommandBinding>) noexcept;
+        [[nodiscard]] RenderResult<
+            HandlerId> registerHandler(runtime_detail::HandlerRecord, std::span<const CommandBinding>) noexcept;
 
         [[nodiscard]] bool pagedInstances() const noexcept;
         [[nodiscard]] RenderResult<FeatureId> findFeature(const FeatureDescriptor&) const noexcept;

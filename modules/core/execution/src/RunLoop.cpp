@@ -1,5 +1,7 @@
-#include <lux/engine/core/execution/RunLoop.hpp>
+#include <algorithm>
+#include <array>
 #include <exception>
+#include <lux/engine/core/execution/RunLoop.hpp>
 
 namespace lux::execution
 {
@@ -9,50 +11,52 @@ namespace lux::execution
 
     RunLoop::~RunLoop()
     {
-        if (!empty() || activePublishers() != 0) std::terminate();
+        if (!empty() || activePublishers() != 0)
+        {
+            std::terminate();
+        }
     }
 
     void RunLoop::post(Work& work) noexcept
     {
         active_publishers_.fetch_add(1, std::memory_order_acq_rel);
+        pending_.fetch_add(1, std::memory_order_release);
+        if (!ready_.enqueue(&work))
         {
-            std::lock_guard lock(mutex_);
-            work.next_ = nullptr;
-            if (tail_) tail_->next_ = &work;
-            else head_ = &work;
-            tail_ = &work;
-            ++size_;
+            // An accepted operation must deliver its terminal result. Ordinary heap OOM is fatal.
+            std::terminate();
         }
-        // The consumer may already have destroyed work. Only the host-owned loop is accessed here.
+        // The consumer may already have destroyed work. Only the loop is accessed after enqueue.
         wakeup_(wakeup_context_);
         active_publishers_.fetch_sub(1, std::memory_order_acq_rel);
     }
 
-    std::size_t RunLoop::executeReady(std::size_t budget) noexcept
+    std::size_t RunLoop::executeReady(std::size_t limit) noexcept
     {
+        std::array<Work*, 32> batch;
         std::size_t consumed = 0;
-        while (consumed < budget)
+        while (consumed < limit)
         {
-            Work* work;
+            const auto count =
+                ready_.try_dequeue_bulk(consumer_, batch.begin(), std::min(batch.size(), limit - consumed));
+            if (count == 0)
             {
-                std::lock_guard lock(mutex_);
-                work = head_;
-                if (!work) break;
-                head_ = work->next_;
-                if (!head_) tail_ = nullptr;
-                work->next_ = nullptr;
-                --size_;
+                break;
             }
-            ++consumed;
-            work->execute_(*work);
-            // No node access after execution: callbacks may repost or destroy their own node.
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                auto* work = batch[i];
+                work->execute(*work);
+                // The callback may destroy its operation. No node access after execution.
+            }
+            pending_.fetch_sub(count, std::memory_order_acq_rel);
+            consumed += count;
         }
         return consumed;
     }
 
     std::size_t RunLoop::size() const noexcept
     {
-        std::lock_guard lock(mutex_);
-        return size_;
+        return pending_.load(std::memory_order_acquire);
     }
 } // namespace lux::execution

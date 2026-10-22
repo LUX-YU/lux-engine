@@ -88,6 +88,7 @@ namespace lux::render
     struct CreateMeshInstance final
     {
         static constexpr std::string_view name = "lux.render.CreateMeshInstance";
+        static constexpr bool frame_scoped = true;
         using Request = MeshInstanceCreate;
 
         struct Response final
@@ -100,6 +101,7 @@ namespace lux::render
     struct CreateMeshInstances final
     {
         static constexpr std::string_view name = "lux.render.CreateMeshInstances";
+        static constexpr bool frame_scoped = true;
         using Request = MeshInstancesCreate;
 
         struct Response final
@@ -112,6 +114,7 @@ namespace lux::render
     struct UpdateTransforms final
     {
         static constexpr std::string_view name = "lux.render.UpdateTransforms";
+        static constexpr bool frame_scoped = true;
         using Request = TransformBatch;
 
         struct Response final
@@ -138,6 +141,7 @@ namespace lux::render
     struct UpdateMeshInstances final
     {
         static constexpr std::string_view name = "lux.render.UpdateMeshInstances";
+        static constexpr bool frame_scoped = true;
         // Client supplies unique changed instances and keeps referenced Mesh/Material identities valid.
         // The entire batch validates before uploads; one CPU adoption follows accepted finite windows.
         using Request = MeshInstanceBatch;
@@ -153,6 +157,7 @@ namespace lux::render
     struct ReleaseMeshInstance final
     {
         static constexpr std::string_view name = "lux.render.ReleaseMeshInstance";
+        static constexpr bool frame_scoped = true;
         using Request = MeshInstanceId;
         using Response = AckResponse;
     };

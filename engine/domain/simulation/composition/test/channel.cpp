@@ -1,3 +1,4 @@
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/simulation/HookChannel.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -193,12 +194,13 @@ namespace
         auto simulation =
             Simulation::create(registry, std::make_shared<SimulationDescription>(std::move(*description)), types);
         assert(simulation && simulation->seal());
-        auto executor = task::TaskExecutor::create({2, 32});
-        assert(executor);
+        auto execution = execution::ExecutionRuntime::create({2, 32, {32}});
+        assert(execution);
+        task::TaskExecutor executor{execution->cpu(), 32};
         using namespace std::chrono_literals;
         for (std::uint64_t i = 1; i <= 3; ++i)
         {
-            assert(simulation->execute(*executor, {i * 1ms, 1ms, i}));
+            assert(simulation->execute(executor, {i * 1ms, 1ms, i}));
         }
         assert(Probe::deliveries == 3);
     }

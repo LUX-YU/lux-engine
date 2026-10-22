@@ -48,6 +48,7 @@ namespace lux::render
     struct CreateTexture final
     {
         static constexpr std::string_view name = "lux.render.CreateTexture";
+        static constexpr bool frame_scoped = false;
         // Success certifies Copy, required Acquire and publication; the generic protocol has no GPU category.
         using Request = TextureWrite;
 
@@ -70,6 +71,7 @@ namespace lux::render
     struct CreatePatchedTexture final
     {
         static constexpr std::string_view name = "lux.render.CreatePatchedTexture";
+        static constexpr bool frame_scoped = false;
         // Success certifies Copy, required Acquire and publication; the generic protocol has no GPU category.
         using Request = TextureRegionWrite;
 
@@ -83,6 +85,7 @@ namespace lux::render
     struct ReleaseTexture final
     {
         static constexpr std::string_view name = "lux.render.ReleaseTexture";
+        static constexpr bool frame_scoped = true;
         // Client ends all Material/Attachment references first. Release does not update other Storage.
         // Success revokes the identity and hands accepted GPU use to Session cleanup, without a GPU wait.
         using Request = TextureId;

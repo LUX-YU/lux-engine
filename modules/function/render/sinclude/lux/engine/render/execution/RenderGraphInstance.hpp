@@ -118,6 +118,9 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> prepareFrameBindings(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> prepareDescriptors() noexcept;
         [[nodiscard]] RenderResult<void> rebind(std::uint32_t slot) noexcept;
+        void markParameters(std::uint32_t pass, std::uint32_t slot, bool defaults = false) noexcept;
+        void markInstanceParameters() noexcept;
+        [[nodiscard]] RenderResult<void> prepareParameters(std::uint32_t slot) noexcept;
 
         struct Binding final
         {
@@ -127,6 +130,7 @@ namespace lux::render::detail
             std::uint64_t buffer_offset = 0, buffer_size = 0;
             std::span<const std::byte> parameters;
             const rdesc::ShaderBlock* parameter_layout = nullptr;
+            std::uint64_t parameter_revision = 0;
             bool dirty = false;
         };
 
@@ -158,7 +162,7 @@ namespace lux::render::detail
             std::vector<nri::TextureDataLayoutDesc> copy_layouts;
             std::vector<nri::Descriptor*> clear_views;
             std::array<std::uint32_t, 3> dispatch_groups{};
-            std::vector<std::byte> parameters;
+            std::span<std::byte> parameters;
             RasterState raster_state;
         };
 
@@ -184,8 +188,11 @@ namespace lux::render::detail
         };
 
         std::vector<SamplerInput> samplers_;
-        std::vector<std::vector<std::byte>> pass_parameters_;
+        std::vector<std::byte> parameter_defaults_;
         std::vector<std::vector<ParameterCopy>> parameter_copies_;
+        std::vector<std::vector<std::uint32_t>> parameter_uses_;
+        std::vector<std::uint32_t> instance_parameter_uses_;
+        std::vector<std::uint32_t> parameter_resources_;
         std::vector<std::byte> instance_values_;
         std::vector<std::uint8_t> condition_values_;
         ExecutionProgress progress_;

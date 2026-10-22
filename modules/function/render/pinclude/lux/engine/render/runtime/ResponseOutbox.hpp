@@ -1,18 +1,11 @@
 #pragma once
 
 #include <algorithm>
-#include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/runtime/detail/ResponseRoute.hpp>
 #include <vector>
 
 namespace lux::render::runtime_detail
 {
-
-    struct ResponseRoute final
-    {
-        platform::ipc::RequesterId requester_id;
-        RequestId request_id;
-    };
 
     struct PendingResponse final
     {
@@ -99,6 +92,12 @@ namespace lux::render::runtime_detail
                 free_ = index;
                 --size_;
                 ++delivered;
+            }
+            if (delivered != 0)
+            {
+                // One wakeup for this publication batch lets frame-input producers block on the
+                // existing IPC epoch without polling replies or introducing a separate event.
+                platform::ipc::IpcCore::instance().notifyWork();
             }
             return delivered;
         }

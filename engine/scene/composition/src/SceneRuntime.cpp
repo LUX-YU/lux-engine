@@ -902,7 +902,7 @@ namespace lux::scene
 
     SceneRuntime::CreateResult SceneRuntime::create(
         execution::ExecutionRuntime& execution,
-        task::TaskExecutorConfig config
+        std::size_t initial_task_capacity
     ) noexcept
     {
         if (auto registered = registerSceneErrors(); !registered)
@@ -921,13 +921,9 @@ namespace lux::scene
         {
             return rejected(ESceneRuntimeError::IDENTITY_EXHAUSTED);
         }
-        auto executor = task::TaskExecutor::create(config);
-        if (!executor)
-        {
-            return rejected(executor.error());
-        }
+        task::TaskExecutor executor{execution.cpu(), initial_task_capacity};
         return std::unique_ptr<SceneRuntime>(
-            new SceneRuntime(std::make_unique<Impl>(execution, std::move(*executor), domain))
+            new SceneRuntime(std::make_unique<Impl>(execution, std::move(executor), domain))
         );
     }
 

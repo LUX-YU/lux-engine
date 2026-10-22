@@ -3,7 +3,7 @@
 #include <limits>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/runtime/CommandBinding.hpp>
-#include <lux/engine/render/runtime/HandlerRecord.hpp>
+#include <lux/engine/render/runtime/detail/HandlerRecord.hpp>
 #include <map>
 
 namespace lux::render::runtime_detail

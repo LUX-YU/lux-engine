@@ -420,6 +420,7 @@ namespace lux::render::detail
 
         std::vector<PipelineIdentity> identities;
         plan.pass_indices_.resize(graph.passes().size(), kGraphInvalidIndex);
+        std::size_t parameter_bytes = 0;
         for (const auto id : analysis.execution_order)
         {
             const auto& source = graph.passes()[id.index];
@@ -429,6 +430,9 @@ namespace lux::render::detail
             }
             CompiledPass pass;
             pass.source_pass = id.index;
+            pass.parameter_offset = parameter_bytes;
+            pass.parameter_size = plan.descriptor_plan_->passes[id.index].initial_parameters.size();
+            parameter_bytes += pass.parameter_size;
             if (source.condition && source.condition->source == EConditionSource::HISTORY_VALID &&
                 plan.resources_[source.condition->input].history == kGraphInvalidIndex)
             {
@@ -717,7 +721,15 @@ namespace lux::render::detail
                 }
             }
         }
-        planSubmissions(graph, analysis, plan.resources_, plan.recording_, plan.submissions_, plan.imported_accesses_);
+        planSubmissions(
+            graph,
+            analysis,
+            plan.resources_,
+            plan.recording_,
+            queues,
+            plan.submissions_,
+            plan.imported_accesses_
+        );
         plan.physical_resources_ =
             planPhysicalResources(graph, plan.resources_, plan.recording_, plan.submissions_, queues, allocation);
         if (std::ranges::find(plan.physical_resources_.reasons, EResourceReuse::REUSED) !=

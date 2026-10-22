@@ -191,30 +191,30 @@ namespace
             assert(settled == 1 && calls == 2);
         }
 
-        auto small = ExecutionRuntime::create({1, 4, 1, {4}, {}, 1});
-        assert(small);
-        auto first = small->submit(
+        auto limited_execution = ExecutionRuntime::create({1, 1, {4}, {}, 1});
+        assert(limited_execution);
+        auto first = limited_execution->submit(
             {"first", "test"},
             [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
             [](TTaskResult<void, EFailure>&&) noexcept {}
         );
         assert(first);
         const auto first_id = first->id();
-        auto full = small->submit(
+        auto full = limited_execution->submit(
             {},
             [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
             [](TTaskResult<void, EFailure>&&) noexcept {}
         );
         assert(!full && full.error() == EExecutionError::CAPACITY_EXCEEDED);
         *first = {};
-        auto reused = small->submit(
+        auto reused = limited_execution->submit(
             {"second", "test"},
             [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
             [](TTaskResult<void, EFailure>&&) noexcept {}
         );
         assert(reused && reused->id().slot.index == first_id.slot.index && reused->id() != first_id);
         *reused = {};
-        assert(!small->taskInfo(first_id) && small->taskInfos().size() == 1);
+        assert(!limited_execution->taskInfo(first_id) && limited_execution->taskInfos().size() == 1);
     }
 
     void taskMeasurements(lux::execution::ExecutionRuntime& runtime)
@@ -486,7 +486,7 @@ int main(int argc, char** argv)
 {
     using namespace lux;
     assert(argc == 3);
-    auto engine = engine::EngineContext::create({1, 32, 32, {16}, execution::BlockingSchedulerConfig{1, 32}}, {1, 1024});
+    auto engine = engine::EngineContext::create({1, 32, {16}, execution::BlockingSchedulerConfig{1, 32}}, 1024);
     assert(engine && !(*engine)->renderContext());
     executionChecks((*engine)->execution());
     taskChecks((*engine)->execution());

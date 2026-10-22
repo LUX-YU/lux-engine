@@ -497,14 +497,14 @@ int main(int argc, char** argv)
     auto opaque = fixture(root / "opaque.wvol", *schemas, 1, false, true);
     materialization(valid, bad, *schemas);
 
-    auto runtime = execution::ExecutionRuntime::create({2, 64, 64, {64}, execution::BlockingSchedulerConfig{2, 64}});
+    auto runtime = execution::ExecutionRuntime::create({2, 64, {64}, execution::BlockingSchedulerConfig{2, 64}});
     assert(runtime && runtime->blocking());
     execution::TaskScope tasks{*runtime};
     auto disk = std::make_shared<Disk>(valid.path, *runtime->blocking(), tasks);
     auto source =
         loading::WorldStorageSource::create(valid.world, async::TOperationPort<loading::ReadWorldStorageRange>{disk});
     assert(source);
-    auto scenes = scene::SceneRuntime::create(*runtime, {0, 1024});
+    auto scenes = scene::SceneRuntime::create(*runtime, 1024);
     assert(scenes);
     const lux::simulation::ecs::ComponentSchemaSet task_components{*schemas};
     const lux::simulation::SimulationSystemRegistry task_system_types;

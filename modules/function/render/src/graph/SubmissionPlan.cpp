@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/graph/SubmissionPlan.hpp>
 #include <tuple>
 
@@ -12,6 +13,10 @@ namespace lux::render::detail
                 accesses,
                 [](const auto& a, const auto& b)
                 {
+                    if (a.batch != b.batch)
+                    {
+                        return a.batch < b.batch;
+                    }
                     if (a.resource != b.resource)
                     {
                         return a.resource.index < b.resource.index;
@@ -38,7 +43,8 @@ namespace lux::render::detail
             std::size_t count = 0;
             for (const auto& access : accesses)
             {
-                const bool is_duplicate = count != 0 && accesses[count - 1].resource == access.resource &&
+                const bool is_duplicate = count != 0 && accesses[count - 1].batch == access.batch &&
+                                          accesses[count - 1].resource == access.resource &&
                                           accesses[count - 1].range == access.range;
                 if (is_duplicate)
                 {
@@ -107,6 +113,7 @@ namespace lux::render::detail
         const RenderGraphAnalysis& analysis,
         std::span<const CompiledResource> resources,
         const RecordingProgram& recording,
+        std::array<const QueueProperties*, 3> queues,
         std::vector<SubmissionBatch>& batches,
         std::vector<ImportedAccess>& imports
     ) noexcept
@@ -136,7 +143,7 @@ namespace lux::render::detail
                     if (resources[resource.index].origin == EGraphOrigin::IMPORTED &&
                         !resources[resource.index].shared_table)
                     {
-                        imports.push_back({resource, use.range, write});
+                        imports.push_back({resource, use.range, write, batch, batch});
                     }
                 };
                 add(use.version.resource, use.access != EGraphAccess::READ);
@@ -146,8 +153,8 @@ namespace lux::render::detail
                 }
             }
         }
-        // Cross-instance ordering needs each exact range once, with all pass writes folded in.
-        // Distinct ranges and logical resources remain separate until their physical bindings are known.
+        // Retain the batch which actually touches the range. Folding the entire instance into one
+        // write would prevent unrelated prefixes and branches in another instance from progressing.
         compactImportedAccesses(imports);
 
         // Canonical imported/history/export states are restored on Graphics, outside rendering scopes.
@@ -212,6 +219,56 @@ namespace lux::render::detail
             depend(b, 0);
             depend(last, b);
         }
+        // Object reuse and memory alias proofs include physical-Queue FIFO. Make it an explicit
+        // edge before runtime is allowed to select ready batches out of recording-vector order.
+        std::array<std::uint32_t, 3> previous_queue_batch{kGraphInvalidIndex, kGraphInvalidIndex, kGraphInvalidIndex};
+        for (std::uint32_t b = 0; b < batches.size(); ++b)
+        {
+            auto q = static_cast<std::size_t>(batches[b].queue);
+            for (std::size_t previous = 0; previous < q; ++previous)
+            {
+                if (queues[previous] == queues[q])
+                {
+                    q = previous;
+                    break;
+                }
+            }
+            if (previous_queue_batch[q] != kGraphInvalidIndex)
+            {
+                depend(b, previous_queue_batch[q]);
+            }
+            previous_queue_batch[q] = b;
+        }
+
+        for (auto& access : imports)
+        {
+            const auto& resource = resources[access.resource.index];
+            if (!resource.final_barrier_uses.empty())
+            {
+                access.release_batch = last;
+            }
+            if (std::holds_alternative<GraphImageDesc>(resource.description))
+            {
+                const auto changesLayout = [&](const ImageTransition& transition)
+                {
+                    const auto& barrier = transition.native;
+                    const auto aspects = barrier.planes == nri::PlaneBits::COLOR   ? 1u
+                                         : barrier.planes == nri::PlaneBits::DEPTH ? 2u
+                                                                                   : 4u;
+                    const GraphImageRange
+                        range{aspects, barrier.mipOffset, barrier.mipNum, barrier.layerOffset, barrier.layerNum};
+                    return transition.resource == access.resource.index &&
+                           barrier.before.layout != barrier.after.layout && overlaps(access.range, range);
+                };
+                const auto& batch = batches[access.batch];
+                for (auto p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
+                {
+                    access.write |= std::ranges::any_of(recording.passes[p].before.images, changesLayout);
+                }
+                // A layout transition is exclusive even when the shader only reads the image.
+                access.write |= std::ranges::any_of(recording.after.images, changesLayout);
+            }
+        }
         for (auto& batch : batches)
         {
             std::ranges::sort(batch.dependencies, {}, &SubmissionDependency::producer);
@@ -225,6 +282,13 @@ namespace lux::render::detail
             );
             std::ranges::sort(batch.histories, {}, &GraphResourceId::index);
             batch.histories.erase(std::unique(batch.histories.begin(), batch.histories.end()), batch.histories.end());
+        }
+        for (std::uint32_t consumer = 0; consumer < batches.size(); ++consumer)
+        {
+            for (const auto& dependency : batches[consumer].dependencies)
+            {
+                batches[dependency.producer].successors.push_back({consumer, dependency.stages});
+            }
         }
     }
 } // namespace lux::render::detail

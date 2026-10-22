@@ -162,7 +162,7 @@ int main(int argc, char** argv)
     assert(encoded);
     auto owner = std::make_shared<const std::vector<std::byte>>(std::move(*encoded));
     auto image = cxx::SharedBytes<>::fromOwner(owner, std::span<const std::byte>{*owner});
-    auto execution = execution::ExecutionRuntime::create({1, 64, 64, {32}, execution::BlockingSchedulerConfig{1, 64}});
+    auto execution = execution::ExecutionRuntime::create({1, 64, {32}, execution::BlockingSchedulerConfig{1, 64}});
     require(execution, "execution");
     execution::TaskScope files{*execution};
     asset::AssetVfs vfs;

@@ -98,7 +98,7 @@ namespace
 
 int main()
 {
-    auto runtime = execution::ExecutionRuntime::create({1, 64, 64, {16}});
+    auto runtime = execution::ExecutionRuntime::create({1, 64, {16}});
     assert(runtime);
     execution::TaskScope unrelated{*runtime};
 
@@ -195,7 +195,7 @@ int main()
 
     // Actual timer capacity and cancellation preserve distinct script-domain outcomes.
     {
-        auto limited = execution::ExecutionRuntime::create({1, 8, 8, {1}});
+        auto limited = execution::ExecutionRuntime::create({1, 8, {1}});
         assert(limited);
         auto owner = ScriptRealDelayProvider::create(*limited, limited->timer(), 2);
         assert(owner);

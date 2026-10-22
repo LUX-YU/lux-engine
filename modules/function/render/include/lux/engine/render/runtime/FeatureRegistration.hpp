@@ -2,10 +2,11 @@
 
 #include <array>
 #include <lux/cxx/compile_time/tuple_traits.hpp>
+#include <lux/engine/render/features/FeatureGraphOps.hpp>
 #include <lux/engine/render/resource/StorageFactory.hpp>
 #include <lux/engine/render/runtime/CommandBinding.hpp>
-#include <lux/engine/render/runtime/HandlerRecord.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
+#include <lux/engine/render/runtime/detail/HandlerRecord.hpp>
 
 namespace lux::render::runtime_detail
 {
@@ -35,8 +36,8 @@ namespace lux::render::runtime_detail
         return []<class... Types>(std::tuple<Types...>) noexcept
         {
             return std::array<CommandBinding, sizeof...(Types)>{
-                CommandBinding::declare<typename Types::type::Command, Types::type::method,
-                    typename Types::type::Handler>()...
+                CommandBinding::
+                    declare<typename Types::type::Command, Types::type::method, typename Types::type::Handler>()...
             };
         }(uniqueTypes(static_cast<std::tuple<Methods...>*>(nullptr)));
     }
@@ -88,9 +89,10 @@ namespace lux::render
         );
     }
 
-    template <class Storage> requires(!std::is_void_v<typename Storage::Descriptor::Config>)
-    RenderResult<StorageTypeId>
-    RenderServer::registerStorage(const typename Storage::Descriptor::Config& config) noexcept
+    template <class Storage>
+        requires(!std::is_void_v<typename Storage::Descriptor::Config>)
+    RenderResult<StorageTypeId> RenderServer::registerStorage(const typename Storage::Descriptor::Config& config
+    ) noexcept
     {
         auto value = ConfigValue::make(config);
         if (!value)
@@ -100,7 +102,8 @@ namespace lux::render
         return registerStorage(Storage::factory(), std::move(*value));
     }
 
-    template <class Storage> requires std::is_void_v<typename Storage::Descriptor::Config>
+    template <class Storage>
+        requires std::is_void_v<typename Storage::Descriptor::Config>
     RenderResult<StorageTypeId> RenderServer::registerStorage() noexcept
     {
         return registerStorage(Storage::factory(), {});

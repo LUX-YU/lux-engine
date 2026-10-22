@@ -51,7 +51,7 @@ namespace lux::render::runtime_detail
         std::array<detail::ResourceInput, 3> slices;
         auto resolved = ops.resolve(
             use.native,
-            instance->plan().resources()[resource],
+            instance->plan().resources()[resource].description,
             argument,
             use.subscription,
             std::span(slices).first(frame_count)

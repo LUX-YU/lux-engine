@@ -51,7 +51,7 @@ namespace lux::render::detail
         [[nodiscard]] exec::task<RenderResult<MaterialId>> upload(MaterialWrite) noexcept;
         [[nodiscard]] exec::task<RenderResult<Ack>> upload(MaterialUpdate) noexcept;
         [[nodiscard]] RenderResult<void>
-        resolve(const CompiledResource&, const MaterialBinding&, StorageSubscription&, std::span<ResourceInput>) noexcept;
+        resolve(const VGraphResourceDesc&, const MaterialBinding&, StorageSubscription&, std::span<ResourceInput>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
         void finishFramePreparation(std::uint32_t frame, RenderResult<void>) noexcept;
         void markDirty(Table&, std::uint32_t frame, std::uint32_t record) noexcept;
@@ -66,6 +66,7 @@ namespace lux::render::detail
         ResourceRegistry& resources_;
 
         StorageId id_;
+        std::uint64_t preparation_revision_ = 1;
         cxx::StableSlotMap<Entry, MaterialTag> entries_;
         std::vector<std::unique_ptr<Table>> tables_;
         std::array<std::vector<Table*>, 3> dirty_tables_;

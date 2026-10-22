@@ -42,6 +42,8 @@ generate_visibility_header(
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/async_port" async-port)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/error" core-error)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/execution" core-execution)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/task" core-task)
+set_target_properties(task PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 
 if(BUILD_TESTING)
     # Real host scheduler consumers. These dependencies never enter Render production targets.
@@ -96,6 +98,8 @@ endif()
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render" render)
 
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../engine/rendering" engine-rendering)
+
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/ipc" ipc)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/gapi" gapi)
@@ -119,7 +123,7 @@ lux_engine_install_components(
     COMPONENTS ${platform_components}
 )
 
-set(core_components async_port error error_values)
+set(core_components async_port error error_values task)
 if(BUILD_TESTING)
     list(APPEND core_components object)
 endif()

@@ -91,8 +91,8 @@ set(render_sources
     src/runtime/RenderServerImpl.cpp
     src/runtime/Scene.cpp
     src/runtime/EffectCompilation.cpp
-    src/runtime/ResponseDelivery.cpp
     src/runtime/CommandDispatchContext.cpp
+    src/runtime/FrameSubmission.cpp
 )
 
 set(mesh_shader_headers)
@@ -255,6 +255,18 @@ component_include_directories(
     INSTALL_TIME include
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sinclude" "${CMAKE_CURRENT_SOURCE_DIR}/pinclude"
         "${CMAKE_CURRENT_BINARY_DIR}/shaders" "${LUX_NRI_VMA_HEADERS}" "${LUX_NRI_VULKAN_HEADERS}"
+)
+
+# Extension code uses the same versioned NRI declarations as this library, never a second NRI binary.
+# Neutral Command/Client headers do not include them or require a Vulkan SDK.
+target_include_directories(render PUBLIC
+    "$<BUILD_INTERFACE:${LUX_NRI_SOURCE_DIR}/Include>"
+    "$<INSTALL_INTERFACE:include/lux/engine/render/nri>"
+)
+
+install(DIRECTORY "${LUX_NRI_SOURCE_DIR}/Include/"
+    DESTINATION include/lux/engine/render/nri
+    FILES_MATCHING PATTERN "*.h"
 )
 
 target_compile_definitions(render PRIVATE LUX_RENDER_LIBRARY)

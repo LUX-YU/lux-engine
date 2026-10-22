@@ -95,7 +95,7 @@ namespace
 }
 int main()
 {
-    auto runtime = execution::ExecutionRuntime::create({1, 64, 64, {64}});
+    auto runtime = execution::ExecutionRuntime::create({1, 64, {64}});
     assert(runtime);
     execution::TaskScope tasks{*runtime};
     auto fallback = std::make_shared<Fallback>();
@@ -134,13 +134,14 @@ int main()
     assert(failure.code == EAssetLoadError::STORAGE_FAILURE);
     assert(failure.storage_error == asset::EAssetStorageError::LIMIT_EXCEEDED);
     assert(asset::DecodeProbe::decodes == before_failure);
-    auto no_scheduler = reject(loadAsset<asset::DecodeProbe>(AssetReadPort{fallback}, {}, identity(2), limits));
-    assert(no_scheduler && !std::get<0>(*no_scheduler));
-    assert(
-        failure.code == EAssetLoadError::EXECUTION_FAILURE &&
-        failure.execution_error == execution::EExecutionError::STOPPING
-    );
-    assert(asset::DecodeProbe::decodes == before_failure);
+    // CPU schedulers are nonempty borrows. Cancellation is checked before any read/CPU work,
+    // never by scheduling through a null or destroyed execution pool.
+    std::stop_source before_start;
+    before_start.request_stop();
+    auto cancelled = stdexec::sync_wait(loadAsset<asset::DecodeProbe>(
+        AssetReadPort{fallback}, runtime->cpu(), identity(2), limits, before_start.get_token()
+    ));
+    assert(!cancelled && asset::DecodeProbe::decodes == before_failure);
     fallback->bytes = image(std::byte{0xFF});
     auto invalid = reject(loadAsset<asset::DecodeProbe>(AssetReadPort{fallback}, runtime->cpu(), identity(2), limits));
     assert(invalid && !std::get<0>(*invalid));
@@ -154,7 +155,7 @@ int main()
         proceed.acquire();
     });
     assert(tasks.submit({"Block CPU", "test"}, [sender = std::move(blocker)](execution::TaskReporter) mutable noexcept {
-        return stdexec::upon_error(std::move(sender), [](execution::EExecutionError) noexcept { std::terminate(); });
+        return std::move(sender);
     }));
     assert(entered.try_acquire_for(std::chrono::seconds(5)));
     std::stop_source cancel;

@@ -1,3 +1,4 @@
+#include <lux/engine/render/resource/StorageSet.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <utility>
 

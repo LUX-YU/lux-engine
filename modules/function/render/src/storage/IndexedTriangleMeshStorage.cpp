@@ -227,14 +227,14 @@ namespace lux::render::detail
     }
 
     RenderResult<ResourceInput> IndexedTriangleMeshStorage::
-        resolve(const CompiledResource& plan, const MeshBinding& argument, StorageSubscription&) noexcept
+        resolve(const VGraphResourceDesc& plan, const MeshBinding& argument, StorageSubscription&) noexcept
     {
         auto* entry = argument.mesh.storage == id_ ? entries_.find(argument.mesh.local) : nullptr;
         if (!entry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
+        const auto* description = std::get_if<GraphBufferDesc>(&plan);
         const bool is_invalid_kind = argument.buffer > EMeshBuffer::BOUNDS;
         const bool is_mismatch = !description || is_invalid_kind;
         if (is_mismatch)
@@ -280,7 +280,7 @@ namespace lux::render::detail
     {
         static const StorageBindingOps binding{
             [](void* object,
-               const CompiledResource& plan,
+               const VGraphResourceDesc& plan,
                const void* argument,
                StorageSubscription& subscription,
                std::span<ResourceInput> output) noexcept -> RenderResult<void>

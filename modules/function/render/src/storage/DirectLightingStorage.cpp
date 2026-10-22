@@ -116,6 +116,7 @@ namespace lux::render::detail
             co_return cxx::unexpected(RenderError{kDeviceBusy});
         }
         updating_ = true;
+        ++preparation_revision_;
         cxx::scope_exit finish([&]() noexcept { updating_ = false; });
         if (input.values.size() > UINT32_MAX - entries_.size())
         {
@@ -169,6 +170,7 @@ namespace lux::render::detail
             co_return cxx::unexpected(RenderError{kDeviceBusy});
         }
         updating_ = true;
+        ++preparation_revision_;
         cxx::scope_exit finish([&]() noexcept { updating_ = false; });
         std::array<std::uint32_t, 3> counts;
         for (std::size_t k = 0; k < counts.size(); ++k)
@@ -210,6 +212,7 @@ namespace lux::render::detail
             co_return cxx::unexpected(RenderError{kDeviceBusy});
         }
         updating_ = true;
+        ++preparation_revision_;
         cxx::scope_exit finish([&]() noexcept { updating_ = false; });
         std::array<std::uint32_t, 3> counts;
         for (std::size_t k = 0; k < counts.size(); ++k)
@@ -455,14 +458,14 @@ namespace lux::render::detail
     }
 
     RenderResult<void> DirectLightingStorage::resolve(
-        const CompiledResource& resource,
+        const VGraphResourceDesc& resource,
         DirectLightingBinding binding,
         StorageSubscription& subscription,
         std::span<ResourceInput> output
     ) noexcept
     {
         const auto field = static_cast<std::size_t>(binding.field);
-        const auto* buffer = std::get_if<GraphBufferDesc>(&resource.description);
+        const auto* buffer = std::get_if<GraphBufferDesc>(&resource);
         if (field >= arrays_.size() || !buffer || buffer->size != strides[field])
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
@@ -586,7 +589,7 @@ namespace lux::render::detail
     {
         static const StorageBindingOps binding{
             [](void* value,
-               const CompiledResource& resource,
+               const VGraphResourceDesc& resource,
                const void* argument,
                StorageSubscription& node,
                std::span<ResourceInput> output) noexcept
@@ -595,7 +598,9 @@ namespace lux::render::detail
                     ->resolve(resource, *static_cast<const DirectLightingBinding*>(argument), node, output);
             },
             [](void* value, std::uint32_t frame, ResourceUploader& uploads) noexcept
-            { return static_cast<DirectLightingStorage*>(value)->prepareFrame(frame, uploads); }
+            { return static_cast<DirectLightingStorage*>(value)->prepareFrame(frame, uploads); },
+            [](const void* value) noexcept
+            { return &static_cast<const DirectLightingStorage*>(value)->preparation_revision_; }
         };
         static const auto create = +[](StorageCreateContext& dependencies,
                                        StorageId id) noexcept -> RenderResult<std::unique_ptr<DirectLightingStorage>>

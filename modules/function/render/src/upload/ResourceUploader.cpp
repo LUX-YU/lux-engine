@@ -145,7 +145,7 @@ namespace lux::render::detail
         execution::CpuScheduler cpu_scheduler_
     ) noexcept
     {
-        const bool invalid = cpu_scheduler_ == execution::CpuScheduler{} || options_.chunk_bytes < 256 ||
+        const bool invalid = options_.chunk_bytes < 256 ||
                              options_.chunk_bytes > 16 * 1024 * 1024 || options_.staging_pages == 0 ||
                              options_.staging_pages > 16 || options_.pending_bytes < options_.chunk_bytes ||
                              options_.batch_entries == 0 || options_.window_regions == 0;
@@ -610,7 +610,7 @@ namespace lux::render::detail
                 resolve_through = std::max(resolve_through, wait.value);
             }
             std::size_t query_index = 0;
-            const auto started = UploadClock::now();
+            const auto started = options_.measure_cpu ? UploadClock::now() : UploadClock::time_point{};
             if (accepted)
             {
                 accepted = queue.recordAndSubmit(
@@ -730,7 +730,10 @@ namespace lux::render::detail
                               : std::span<const nri::FenceSubmitDesc>{}
                 );
             }
-            statistics_.record_submit_ns += elapsed(started);
+            if (options_.measure_cpu)
+            {
+                statistics_.record_submit_ns += elapsed(started);
+            }
             const auto accepted_serial = accepted ? queue.submitted() : 0;
             if (!accepted && (accepted.error().type == kDeviceCapacity || accepted.error().type == kDeviceBusy))
             {
@@ -1154,81 +1157,89 @@ namespace lux::render::detail
             if (!copies.empty())
             {
                 ++statistics_.prepare_windows;
-                auto prepared = co_await (
-                    stdexec::schedule(cpu_scheduler_) |
-                    stdexec::then(
-                        [&copies, element_bytes, source_stride]() noexcept
+                const auto prepare_window =
+                    [&copies, element_bytes, source_stride, measure = options_.measure_cpu]() noexcept
+                {
+                    const auto started = measure ? UploadClock::now() : UploadClock::time_point{};
+                    for (auto& copy : copies)
+                    {
+                        auto target = copy.staging.bytes;
+                        if (copy.buffer)
                         {
-                            const auto started = UploadClock::now();
-                            for (auto& copy : copies)
+                            auto offset = copy.input_offset;
+                            std::size_t packed = 0;
+                            for (const auto& input : copy.inputs)
                             {
-                                auto target = copy.staging.bytes;
-                                if (copy.buffer)
+                                const auto count = std::min(
+                                    target.size() - packed,
+                                    bufferBytes(input, element_bytes, source_stride) - offset
+                                );
+                                if (!source_stride || source_stride == element_bytes)
                                 {
-                                    auto offset = copy.input_offset;
-                                    std::size_t packed = 0;
-                                    for (const auto& input : copy.inputs)
-                                    {
-                                        const auto count = std::min(
-                                            target.size() - packed,
-                                            bufferBytes(input, element_bytes, source_stride) - offset
-                                        );
-                                        if (!source_stride || source_stride == element_bytes)
-                                        {
-                                            std::memcpy(target.data() + packed, input.source.data() + offset, count);
-                                        }
-                                        else
-                                        {
-                                            auto local = offset % element_bytes;
-                                            auto source_offset = (offset / element_bytes) * source_stride + local;
-                                            auto* destination = target.data() + packed;
-                                            auto remaining = count;
-                                            while (remaining)
-                                            {
-                                                const auto bytes = std::min(remaining, element_bytes - local);
-                                                std::memcpy(destination, input.source.data() + source_offset, bytes);
-                                                destination += bytes;
-                                                source_offset += source_stride - local;
-                                                remaining -= bytes;
-                                                local = 0;
-                                            }
-                                        }
-                                        packed += count;
-                                        offset = 0;
-                                    }
+                                    std::memcpy(target.data() + packed, input.source.data() + offset, count);
                                 }
                                 else
                                 {
-                                    const auto row_bytes =
-                                        std::size_t((copy.region.texture.width - 1) / copy.region.block_extent + 1) *
-                                        copy.region.block_bytes;
-                                    const auto* input = copy.source.data() + copy.region.source_offset +
-                                                        copy.row * copy.region.source_row_pitch;
-                                    for (std::uint32_t r = 0; r < copy.rows; ++r)
+                                    auto local = offset % element_bytes;
+                                    auto source_offset = (offset / element_bytes) * source_stride + local;
+                                    auto* destination = target.data() + packed;
+                                    auto remaining = count;
+                                    while (remaining)
                                     {
-                                        std::memcpy(
-                                            target.data() + r * copy.row_pitch,
-                                            input + r * copy.region.source_row_pitch,
-                                            row_bytes
-                                        );
+                                        const auto bytes = std::min(remaining, element_bytes - local);
+                                        std::memcpy(destination, input.source.data() + source_offset, bytes);
+                                        destination += bytes;
+                                        source_offset += source_stride - local;
+                                        remaining -= bytes;
+                                        local = 0;
                                     }
                                 }
+                                packed += count;
+                                offset = 0;
                             }
-                            return RenderResult<std::uint64_t>{elapsed(started)};
                         }
-                    ) |
-                    stdexec::upon_error(
-                        [](execution::EExecutionError error) noexcept
+                        else
                         {
-                            return RenderResult<std::uint64_t>{
-                                cxx::unexpected(RenderError{kCpuScheduleFailure, {std::uint64_t(error)}})
-                            };
+                            const auto row_bytes =
+                                std::size_t((copy.region.texture.width - 1) / copy.region.block_extent + 1) *
+                                copy.region.block_bytes;
+                            const auto* input = copy.source.data() + copy.region.source_offset +
+                                                copy.row * copy.region.source_row_pitch;
+                            for (std::uint32_t r = 0; r < copy.rows; ++r)
+                            {
+                                std::memcpy(
+                                    target.data() + r * copy.row_pitch,
+                                    input + r * copy.region.source_row_pitch,
+                                    row_bytes
+                                );
+                            }
                         }
-                    ) |
-                    stdexec::upon_stopped(
-                        []() noexcept { return RenderResult<std::uint64_t>{cxx::unexpected(RenderError{kCpuStopped})}; }
-                    )
-                );
+                    }
+                    return RenderResult<std::uint64_t>{measure ? elapsed(started) : 0};
+                };
+                std::size_t window_bytes = 0;
+                for (const auto& copy : copies)
+                {
+                    window_bytes += copy.bytes;
+                }
+                const bool contiguous = !image && (!source_stride || source_stride == element_bytes);
+                const bool small_copy = contiguous && window_bytes <= options_.inline_copy_bytes;
+                RenderResult<std::uint64_t> prepared;
+                if (small_copy)
+                {
+                    ++statistics_.inline_windows;
+                    prepared = prepare_window();
+                }
+                else
+                {
+                    prepared = co_await (
+                        stdexec::schedule(cpu_scheduler_) | stdexec::then(prepare_window) |
+                        stdexec::upon_stopped(
+                            []() noexcept
+                            { return RenderResult<std::uint64_t>{cxx::unexpected(RenderError{kCpuStopped})}; }
+                        )
+                    );
+                }
                 if (!prepared)
                 {
                     co_return failure(prepared.error());

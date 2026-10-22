@@ -60,10 +60,10 @@ namespace lux::task
 
     enum class ETaskAffinity : std::uint8_t
     {
-        /** Executed by a background worker when workers are configured. */
+        /** Executed by the shared ExecutionRuntime CPU pool. */
         WORKER,
 
-        /** Executed only by the thread that calls TaskExecutor::execute(). */
+        /** Executed on the graph receiver scheduler; execute() uses the calling thread. */
         CALLER_THREAD,
     };
 

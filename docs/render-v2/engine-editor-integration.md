@@ -15,8 +15,8 @@
 |---|---|---|
 | EngineContext 创建一个 ExecutionRuntime，并把引用传给 SceneRuntime | [EngineContext.cpp](../../engine/context/src/EngineContext.cpp) | Render 使用该实例的 `cpu()`；不再调用第二次 ExecutionRuntime::create |
 | Render 创建函数已经接收 ExecutionRuntime& | [RenderServer.cpp](../../modules/function/render/src/runtime/RenderServer.cpp) | 无需新建调度抽象或把 Render 反向链接 Engine |
-| TaskExecutor 自带持久 workers | [TaskExecutorWorker.cpp](../../modules/core/task/src/TaskExecutorWorker.cpp) | Scene 配置非零 worker 时，会与 ExecutionRuntime 形成另一套 CPU 池 |
-| 当前 Editor 显式传 `{0, 2048}` 创建 TaskExecutor | [LuxEngine.cpp](../../editor/app/src/LuxEngine.cpp) | 当前这一路没有启动第二套 TaskExecutor workers，但 Simulation 在调用线程执行；不能宣传已实现共享并行池 |
+| TaskExecutor 借用 ExecutionRuntime CPU Scheduler | [TaskExecutor.hpp](../../modules/core/task/include/lux/engine/task/TaskExecutor.hpp) | 整图 Sender 保留后继 CSR 和 affinity；不再创建线程 |
+| Editor 配置 CPU 池一次，Scene 只指定节点预留量 | [LuxEngine.cpp](../../editor/app/src/LuxEngine.cpp) | 窗口/旧 Render 产品接线仍单列，不能由共享池推出产品闭包 |
 | Editor 的 `project_tasks_` 和 `EditorContext::tasks_` 都借用 EngineContext::execution() | [LuxEngine.cpp](../../editor/app/src/LuxEngine.cpp)、[EditorContext.cpp](../../editor/context/src/EditorContext.cpp) | 已有 stdexec/TaskScope 接线保留；不增加 Editor 专用 Runtime 或后台池 |
 | ObjectRuntime 是进程唯一对象线程与代际定位，不拥有业务对象 | [ObjectRuntime.hpp](../../modules/core/object/include/lux/engine/object/ObjectRuntime.hpp) | 用于 UI/业务结果采用；不搬进 RenderThread |
 | ObjectScheduler 已存在，封装对象目标和安全回调 | [ObjectScheduler.hpp](../../engine/process/object_execution/include/lux/engine/process/ObjectScheduler.hpp) | 复用，不新增 Render 专用 ObjectScheduler |
@@ -73,19 +73,19 @@ Thread 数只在 ExecutionRuntime 配置一次；不保留 TaskExecutor 私有�
 | `ExecutionRuntime` | 应用的 CPU/阻塞 IO/Timer 执行资源、Task 准入与应用关闭 | CPU 自制 Ring、workerLoop、唤醒/偷取算法，由现成 stdexec 线程池实现接手 |
 | `TaskGraphBuilder/TaskGraph` | 资源冲突、显式依赖、不可变 callable、root 与 successor CSR | 不增加线程池或运行期 TaskId |
 | `TaskExecutor` | 借用 CpuScheduler，复用 DAG 执行 scratch，提供整图 Sender 和同步调用入口 | workers、worker_count、每 worker ReadyStack、sleeping_workers、worker_event、round_robin、join |
-| `TaskGraphSender::Operation`（拟议） | 一次图的依赖计数、子 schedule operations 和一个最终 Receiver | 不创建独立队列线程、Registry、Future 或逐节点 Scope |
+| `TaskGraphSender::Operation` | 一次图的依赖计数、子 schedule operations 和一个最终 Receiver | 不创建独立队列线程、Registry、Future 或逐节点 Scope |
 
 TaskExecutor 的名字可以保留：它执行依赖图，并不意味着必须自己拥有线程。
 TaskGraph 仍是被执行的数据，不改成内部持有 Scheduler 并自行驱动全局资源的对象。
 
 ### 2.3 ExecutionRuntime 的 CPU 路径采用现成 stdexec pool
 
-建议在 ExecutionRuntime 内用锁定 stdexec 0.10.0 的 `exec::static_thread_pool` 替换现有 CPU 后端。
+ExecutionRuntime 使用锁定 stdexec 0.10.0 的 `exec::static_thread_pool` 替换现有 CPU 后端。
 这是 **NVIDIA stdexec 的库扩展**，不是 C++20 标准库已提供线程池。
 构造和最终 join 仍归 ExecutionRuntime；Render 和 TaskExecutor 只拿同一个具体 Scheduler。
 现有 BlockingScheduler/Timer/CompletionWork 和 Task 的业务元信息按各自责任保留，不随 CPU 池替换机械重写。
 
-源码依据：当前 `ExecutionRuntime.cpp::submitSchedule()` 对每次 CPU 入队可能返回 CAPACITY_EXCEEDED。
+旧 `ExecutionRuntime.cpp::submitSchedule()` 的 CPU Ring 对每次入队可能返回 CAPACITY_EXCEEDED。
 如果一个 DAG 的前半已经修改 ECS，而后继 schedule 被这个 Ring 拒绝，就无法把整次执行诚实地称作“未接纳”。
 在 TaskExecutor 增加重试 worker、备用队列或 caller-runs 都会引入新的调度政策或破坏亲和性。
 
@@ -105,7 +105,7 @@ OperationState 存储决定，不能用一个无界 vector 缓存未接受请求
 
 ### 2.4 整张 DAG 是一个 Sender，而不是每个节点一个顶层 Task
 
-拟议 API 形状（设计示意，尚未实现/编译）：
+实际 API：
 
 ```cpp
 task::TaskExecutor executor{engine.execution().cpu(), 2048};
@@ -120,7 +120,8 @@ auto result = executor.execute(graph); // 真实的同步 Simulation 边界
 
 1. 在启动副作用前取得该 Executor 的独占运行资格、准备全部节点空间并检查初始 stop。
 2. 初始化已有 prerequisite 计数；只发布 root，不逐轮扫描全部节点。
-3. WORKER 节点用 `schedule(cpu) | then(callable)`；CALLER_THREAD 节点用接收者环境提供的 caller scheduler。
+3. WORKER 节点连接 `schedule(cpu)`，节点 Receiver 执行 callable 并释放后继；CALLER_THREAD 使用接收者环境提供的 caller scheduler。
+   caller scheduler 必须在整图期间保证完成，不能直接接入会因 Object 销毁而拒绝已接受节点的 scheduler。
 4. 节点完成后遍历自己的 successor CSR；`fetch_sub(acq_rel)==1` 的最后前驱发布后继。
 5. 节点在所有后继发布、所有图状态访问结束后报告完成；整体只调用一次最终 Receiver。
 

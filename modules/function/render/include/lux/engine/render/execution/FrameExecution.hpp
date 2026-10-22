@@ -100,6 +100,12 @@ namespace lux::render::detail
         [[nodiscard]] bool tryBeginWrite(std::uint32_t& slot) noexcept;
         void finishWrite(std::uint32_t slot, const SubmissionFrontiers&) noexcept;
 
+        // Reserve a reusable physical slice before applying a sealed frame's visible mutations.
+        // No waiting or GPU submission. Standalone writers can still acquire a slice themselves.
+        [[nodiscard]] bool beginFrame(std::uint32_t& slot) noexcept;
+        [[nodiscard]] bool inputSubmitted(std::uint32_t slot) const noexcept;
+        [[nodiscard]] std::uint32_t submittedBatches(std::uint32_t slot) const noexcept;
+
         [[nodiscard]] WriteAdmissionSender whenWritable(std::size_t source_bytes) noexcept
         {
             return WriteAdmissionSender{*this, source_bytes};
@@ -136,10 +142,25 @@ namespace lux::render::detail
         struct InstanceExecution final
         {
             RenderGraphInstance* instance = nullptr;
-            std::uint32_t next_batch = 0;
-            std::vector<std::uint64_t> serials;
-            SubmissionFrontiers accepted;
-            std::vector<std::uint32_t> predecessors;
+            std::uint64_t binding_revision = 0;
+            std::uint32_t first_batch = 0;
+            std::uint32_t remaining_batches = 0;
+        };
+
+        struct BatchExecution final
+        {
+            std::uint32_t instance = 0, local_batch = 0, queue = 0;
+            std::uint32_t predecessor_count = 0, pending_predecessors = 0;
+            std::uint32_t first_successor = 0, successor_count = 0;
+            SubmissionFrontiers waits;
+            std::array<nri::StageBits, 3> stages{};
+            std::uint64_t serial = 0;
+        };
+
+        struct BatchDependency final
+        {
+            std::uint32_t producer = 0, consumer = 0;
+            nri::StageBits stages = nri::StageBits::ALL;
         };
 
         struct ImportedUse final
@@ -147,23 +168,38 @@ namespace lux::render::detail
             const void* physical = nullptr;
             VGraphRange range;
             std::uint32_t instance = 0;
+            std::uint32_t batch = 0, release_batch = 0;
             bool write = false;
         };
 
         struct FrameSlot final
         {
+            struct PreparedStorage final
+            {
+                StorageId identity;
+                const void* storage = nullptr;
+                std::uint64_t revision = 0;
+            };
+
             EFramePhase phase = EFramePhase::FREE;
             SubmissionFrontiers accepted;
             std::array<SubmissionCallback, 3> completions;
             std::uint32_t pending_writes = 0;
+            std::uint32_t submitted_batches = 0;
             std::uint8_t pending_queues = 0;
             std::uint32_t recorded_instances = 0, recorded_passes = 0;
             std::uint64_t graphics_serial = 0;
             std::uint64_t preparation_serial = 0;
             std::vector<InstanceExecution> instances;
+            std::vector<BatchExecution> batches;
+            std::vector<BatchDependency> dependencies;
+            std::array<std::vector<std::uint32_t>, 3> ready_batches;
             std::vector<ImportedUse> imported_uses;
-            std::vector<std::uint32_t> recording_instances;
+            std::vector<std::uint32_t> recording_batches;
             std::vector<ResourceUploader::BufferCopy> feature_copies;
+            std::vector<PreparedStorage> prepared_storages;
+            std::uint32_t remaining_batches = 0;
+            std::uint64_t dependency_rebuilds = 0, imported_comparisons = 0;
         };
 
         FrameExecution(DeviceSession&, ResourceUploader*, std::uint32_t) noexcept;
@@ -173,12 +209,12 @@ namespace lux::render::detail
         void acceptSubmission(std::uint32_t slot, const SubmissionQueue&) noexcept;
         void finishPreparation(RenderResult<void>) noexcept;
         void prepareSubmissions(std::span<RenderGraphInstance* const>) noexcept;
-        void buildImportedDependencies(std::span<RenderGraphInstance* const>) noexcept;
-        [[nodiscard]] bool collectBatchWaits(
-            const InstanceExecution& execution,
-            SubmissionFrontiers& waits,
-            std::array<nri::StageBits, 3>& stages
-        ) const noexcept;
+        void rebuildDependencies(std::span<RenderGraphInstance* const>) noexcept;
+        void appendImportedDependencies(std::span<RenderGraphInstance* const>) noexcept;
+        void enqueueReadyBatch(FrameSlot&, std::uint32_t batch) noexcept;
+        void selectReadyBatches(FrameSlot&, std::uint32_t queue) noexcept;
+        void acceptBatch(FrameSlot&, std::uint32_t batch, std::uint64_t serial) noexcept;
+        [[nodiscard]] static bool laterBatch(const FrameSlot&, std::uint32_t, std::uint32_t) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> advanceSubmissions() noexcept;
         [[nodiscard]] std::size_t queueIndex(const SubmissionQueue&) const noexcept;
 
@@ -187,6 +223,7 @@ namespace lux::render::detail
         std::array<FrameSlot, 3> frames_;
         std::uint32_t frame_count_;
         std::uint32_t next_frame_ = 0;
+        std::uint8_t submit_queue_cursor_ = 0;
         std::uint8_t wait_queue_cursor_ = 0;
         using PreparationCallback = void (*)(void*, std::uint32_t, RenderResult<void>) noexcept;
         std::vector<std::pair<void*, PreparationCallback>> preparation_receivers_;

@@ -233,7 +233,7 @@ namespace
 
     void blockingToOwner()
     {
-        execution::ExecutionRuntimeConfig config{1, 16, 16, {16}};
+        execution::ExecutionRuntimeConfig config{1, 16, {16}};
         config.blocking = execution::BlockingSchedulerConfig{1, 16};
         auto execution = execution::ExecutionRuntime::create(config);
         assert(execution);

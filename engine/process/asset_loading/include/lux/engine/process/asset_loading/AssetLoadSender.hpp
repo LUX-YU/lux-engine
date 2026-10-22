@@ -62,11 +62,6 @@ namespace lux::process::asset_loading
                 owner->readError(std::move(failure));
             }
 
-            void set_error(execution::EExecutionError failure) && noexcept
-            {
-                owner->executionError(failure);
-            }
-
             void set_stopped() && noexcept
             {
                 owner->readStopped();
@@ -197,13 +192,6 @@ namespace lux::process::asset_loading
                 void readStopped() noexcept
                 {
                     stdexec::set_stopped(std::move(receiver_));
-                }
-
-                void executionError(execution::EExecutionError error) noexcept
-                {
-                    AssetLoadFailure failure{EAssetLoadError::EXECUTION_FAILURE};
-                    failure.execution_error = error;
-                    stdexec::set_error(std::move(receiver_), std::move(failure));
                 }
 
             private:

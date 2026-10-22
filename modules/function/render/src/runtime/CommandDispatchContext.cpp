@@ -1,34 +1,25 @@
-#include <lux/engine/render/runtime/CommandDispatchContext.hpp>
+#include <lux/engine/render/runtime/FrameSubmission.hpp>
+#include <lux/engine/render/runtime/ResponseOutbox.hpp>
+#include <lux/engine/render/runtime/detail/CommandDispatchContext.hpp>
 
 namespace lux::render::runtime_detail
 {
-    platform::ipc::IpcMessage& requestMessage(CommandDispatchContext& context) noexcept
+    platform::ipc::IpcMessage& prepareResponse(ResponseOutbox& outbox, ResponseRoute route) noexcept
     {
-        return context.request_message_;
+        return outbox.prepare(route);
     }
 
-    platform::ipc::IpcMessage& prepareResponse(CommandDispatchContext& context) noexcept
+    void completeFrameCommand(FrameRecord* frame, RenderError error) noexcept
     {
-        return context.response_outbox_.prepare(context.response_route_);
+        if (frame)
+        {
+            --frame->group_pending;
+            const bool replaces_error =
+                frame->error.type == 0 || frame->error.type == kCommandCancelled || error.type == kOutcomeUnknown;
+            if (error.type != 0 && replaces_error)
+            {
+                frame->error = error;
+            }
+        }
     }
-
-    ResponseDelivery& prepareCompletion(CommandDispatchContext& context) noexcept
-    {
-        auto* record = new ResponseDelivery;
-        record->response_route_ = context.response_route_;
-        record->loop = &context.render_loop_;
-        record->outbox = &context.response_outbox_;
-        return *record;
-    }
-
-    stdexec::counting_scope& commandScope(CommandDispatchContext& context) noexcept
-    {
-        return context.scope_;
-    }
-
-    execution::RunLoop::Scheduler renderScheduler(CommandDispatchContext& context) noexcept
-    {
-        return context.render_loop_.scheduler();
-    }
-
 } // namespace lux::render::runtime_detail

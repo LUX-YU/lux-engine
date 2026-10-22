@@ -91,7 +91,7 @@ int main(int argc, char** argv)
         auto& registry = error::ErrorRegistry::instance();
         assert(registry.registerType({"lux.editor.recursive_service_factory", "Conflicting schema"}));
         auto& runtime = object::ObjectRuntime::instance();
-        auto engine = engine::EngineContext::create({1, 64, 64, {32}}, {0, 64});
+        auto engine = engine::EngineContext::create({1, 64, {32}}, 64);
         assert(engine && runtime.isCurrent());
         bool assembled{};
         auto assembly = [&](EditorComposition&) noexcept -> FrameworkResult<void>
@@ -123,7 +123,7 @@ int main(int argc, char** argv)
     static_assert(!std::is_move_constructible_v<EditorUiRegistry>);
     static_assert(!std::is_copy_constructible_v<SceneToolRegistry>);
     auto& queue = object::ObjectRuntime::instance();
-    auto engine = engine::EngineContext::create({1, 64, 64, {32}}, {0, 64});
+    auto engine = engine::EngineContext::create({1, 64, {32}}, 64);
     assert(queue.isCurrent() && engine);
     std::vector<int> destroyed;
     unsigned constructed{}, attempts{}, tools{};

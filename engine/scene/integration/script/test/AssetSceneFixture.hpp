@@ -125,7 +125,7 @@ namespace
     struct Fixture final
     {
         execution::ExecutionRuntime execution{take(execution::ExecutionRuntime::create(
-            {1, 64, 64, {32}, execution::BlockingSchedulerConfig{1, 64}}
+            {1, 64, {32}, execution::BlockingSchedulerConfig{1, 64}}
         ))};
         execution::TaskScope files{execution};
         asset::AssetVfs vfs;

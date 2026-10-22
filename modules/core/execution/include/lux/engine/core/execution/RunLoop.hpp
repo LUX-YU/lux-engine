@@ -1,32 +1,19 @@
 #pragma once
 
-#include <lux/engine/core/execution/visibility.h>
-#include <stdexec/execution.hpp>
 #include <atomic>
 #include <cstddef>
-#include <mutex>
+#include <lux/engine/core/execution/visibility.h>
+#include <moodycamel/concurrentqueue.h>
+#include <stdexec/execution.hpp>
 #include <utility>
 
 namespace lux::execution
 {
-    // A borrowed scheduling destination driven by one owner thread. Producers supply stable nodes;
-    // neither posting nor draining allocates. The host joins producers before destroying the loop.
+    // A scheduler driven by one existing thread. Producers schedule through stdexec; the driver
+    // interleaves ready continuations with its other events. Join producers before destroying it.
     class LUX_CORE_EXECUTION_PUBLIC RunLoop final
     {
     public:
-        class Work
-        {
-        public:
-            explicit Work(void (*execute)(Work&) noexcept) noexcept : execute_(execute) {}
-            Work(const Work&) = delete;
-            Work& operator=(const Work&) = delete;
-
-        private:
-            friend class RunLoop;
-            Work* next_ = nullptr;
-            void (*execute_)(Work&) noexcept;
-        };
-
         class Scheduler;
         class ScheduleSender;
 
@@ -38,10 +25,12 @@ namespace lux::execution
 
         [[nodiscard]] Scheduler scheduler() noexcept;
 
-        // A node may be reposted only after it has been removed for execution. Publication is the
-        // producer's last access to the node: its callback may immediately destroy it on the owner.
-        void post(Work& work) noexcept;
-        std::size_t executeReady(std::size_t budget) noexcept;
+        // Single consumer only. A batch limit yields to other events, not to a frame boundary.
+        // Callbacks may schedule more work, but must not recursively drive this loop.
+        std::size_t executeReady(std::size_t limit) noexcept;
+
+        // Includes publication in progress and callbacks executing in executeReady(). A nonzero
+        // count does not promise a currently dequeueable item; the producer will wake the driver.
         [[nodiscard]] std::size_t size() const noexcept;
         [[nodiscard]] bool empty() const noexcept { return size() == 0; }
 
@@ -52,10 +41,22 @@ namespace lux::execution
         }
 
     private:
-        mutable std::mutex mutex_;
-        Work* head_ = nullptr;
-        Work* tail_ = nullptr;
-        std::size_t size_ = 0;
+        // Embedded in a connected schedule operation; the queue never owns that operation.
+        struct Work
+        {
+            explicit Work(void (*execute)(Work&) noexcept) noexcept : execute(execute) {}
+
+            Work(const Work&) = delete;
+            Work& operator=(const Work&) = delete;
+
+            void (*execute)(Work&) noexcept;
+        };
+
+        void post(Work& work) noexcept;
+
+        moodycamel::ConcurrentQueue<Work*> ready_{256};
+        moodycamel::ConsumerToken consumer_{ready_};
+        std::atomic<std::size_t> pending_{0};
         void (*wakeup_)(void*) noexcept;
         void* wakeup_context_;
         std::atomic<std::size_t> active_publishers_{0};
@@ -64,8 +65,21 @@ namespace lux::execution
     class RunLoop::Scheduler final
     {
     public:
+        using scheduler_concept = stdexec::scheduler_t;
+
         [[nodiscard]] ScheduleSender schedule() const noexcept;
         [[nodiscard]] bool operator==(const Scheduler&) const noexcept = default;
+
+        [[nodiscard]] Scheduler query(stdexec::get_completion_scheduler_t<stdexec::set_value_t>) const noexcept
+        {
+            return *this;
+        }
+
+        [[nodiscard]] stdexec::default_domain query(stdexec::get_completion_domain_t<stdexec::set_value_t>)
+            const noexcept
+        {
+            return {};
+        }
 
         [[nodiscard]] stdexec::forward_progress_guarantee
         query(stdexec::get_forward_progress_guarantee_t) const noexcept
@@ -87,11 +101,9 @@ namespace lux::execution
         // Cancellation belongs to the work itself; it must not swallow a result during delivery.
         using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t()>;
 
-        [[nodiscard]] auto get_env() const noexcept
+        [[nodiscard]] Scheduler get_env() const noexcept
         {
-            return stdexec::env{
-                stdexec::prop{stdexec::get_completion_scheduler<stdexec::set_value_t>, loop_->scheduler()}
-            };
+            return loop_->scheduler();
         }
 
         template <class Receiver> class Operation final : private Work
@@ -100,11 +112,14 @@ namespace lux::execution
             using operation_state_concept = stdexec::operation_state_t;
 
             Operation(RunLoop& loop, Receiver receiver) noexcept
-                : Work([](Work& work) noexcept {
-                      auto& self = static_cast<Operation&>(work);
-                      stdexec::set_value(std::move(self.receiver_));
-                      // Terminal delivery may destroy self. No further access.
-                  }),
+                : Work(
+                      [](Work& work) noexcept
+                      {
+                          auto& self = static_cast<Operation&>(work);
+                          stdexec::set_value(std::move(self.receiver_));
+                          // Terminal delivery may destroy self. No further access.
+                      }
+                  ),
                   loop_(loop), receiver_(std::move(receiver))
             {}
 

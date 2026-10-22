@@ -1,3 +1,4 @@
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/scene/detail/SceneDriver.hpp>
 #include <lux/engine/scene/Clock.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
@@ -69,11 +70,12 @@ namespace
             registrations
         );
         assert(rules && rules->seal());
-        auto executor = task::TaskExecutor::create({0, 1024});
-        assert(executor);
-        assert(!rules->execute(*executor, {16ms, 8ms, 1}));
+        auto execution = execution::ExecutionRuntime::create({1, 32, {32}});
+        assert(execution);
+        task::TaskExecutor executor{execution->cpu(), 1024};
+        assert(!rules->execute(executor, {16ms, 8ms, 1}));
         assert(rules->time().step_index == 0 && FailingRules::calls == 0);
-        const auto failed = rules->execute(*executor, {16ms, 16ms, 1});
+        const auto failed = rules->execute(executor, {16ms, 16ms, 1});
         assert(!failed && failed.error().code == simulation::ESimulationExecutionError::SYSTEM_TASK_FAILURE);
         assert(failed.error().system.value == 1 && FailingRules::calls == 1);
         assert(rules->time().elapsed == 16ms && rules->time().step_index == 1);
@@ -246,9 +248,10 @@ namespace
              {}}
         );
         assert(scene);
-        auto executor = task::TaskExecutor::create({0, 1024});
-        assert(executor);
-        SceneDriver driver(*executor);
+        auto execution = execution::ExecutionRuntime::create({1, 32, {32}});
+        assert(execution);
+        task::TaskExecutor executor{execution->cpu(), 1024};
+        SceneDriver driver(executor);
         auto& registry = (*scene)->registry();
         const auto entity = registry.create();
         registry.emplace<ecs::Transform3D>(entity);

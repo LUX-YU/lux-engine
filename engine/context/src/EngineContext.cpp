@@ -10,18 +10,18 @@ namespace lux::engine
     EngineContext::~EngineContext() = default;
 
     EngineContext::CreateResult EngineContext::create(
-        execution::ExecutionRuntimeConfig config,
-        task::TaskExecutorConfig scene_executor,
+        execution::ExecutionRuntimeConfig execution_config,
+        std::size_t scene_task_capacity,
         ContextExtensions::Composition extensions
     ) noexcept
     {
-        auto execution = execution::ExecutionRuntime::create(config);
+        auto execution = execution::ExecutionRuntime::create(execution_config);
         if (!execution)
         {
             return lux::cxx::unexpected(VCreateFailure{execution.error()});
         }
         auto context = std::unique_ptr<EngineContext>(new EngineContext(std::move(*execution), std::move(extensions)));
-        auto scenes = scene::SceneRuntime::create(context->execution_, scene_executor);
+        auto scenes = scene::SceneRuntime::create(context->execution_, scene_task_capacity);
         if (!scenes)
         {
             return lux::cxx::unexpected(VCreateFailure{scenes.error()});

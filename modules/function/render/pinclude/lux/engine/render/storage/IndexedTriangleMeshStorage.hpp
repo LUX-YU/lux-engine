@@ -47,7 +47,7 @@ namespace lux::render::detail
         [[nodiscard]] std::size_t recordCount() const noexcept;
 
         [[nodiscard]] RenderResult<ResourceInput>
-        resolve(const CompiledResource&, const MeshBinding&, StorageSubscription&) noexcept;
+        resolve(const VGraphResourceDesc&, const MeshBinding&, StorageSubscription&) noexcept;
 
     private:
         friend struct lux::render::StorageTraits<IndexedTriangleMeshStorage>;

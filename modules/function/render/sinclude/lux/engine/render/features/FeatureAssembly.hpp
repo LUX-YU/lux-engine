@@ -3,21 +3,15 @@
 #include <lux/engine/render/visibility.h>
 
 #include <lux/engine/render/features/EffectDefinition.hpp>
+#include <lux/engine/render/features/FeatureBinding.hpp>
 #include <lux/engine/render/features/FeatureBuildContext.hpp>
 #include <lux/engine/render/features/FeatureDescriptor.hpp>
+#include <lux/engine/render/features/FeatureGraphOps.hpp>
 #include <lux/engine/render/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/graph/RenderGraphBuilder.hpp>
 
 namespace lux::render
 {
-    // Synchronous cold contributions. Callbacks may append, never finish/move/retain the Builder.
-    struct FeatureGraphOps final
-    {
-        using Build = RenderResult<void> (*)(const void*, std::string_view, FeatureBuildContext&) noexcept;
-
-        Build build = nullptr;
-    };
-
     struct FeatureBuildInput final
     {
         const FeatureDescriptor* descriptor = nullptr;
@@ -60,12 +54,4 @@ namespace lux::render
         std::span<const FeatureInput> inputs = {}
     ) noexcept;
 
-    // Arguments: canonical feature index, resource/group index, related index.
-    inline constexpr auto kFeatureContract = error::errorId("lux.render.feature.contract");
-    inline constexpr auto kFeatureDuplicate = error::errorId("lux.render.feature.duplicate");
-    inline constexpr auto kFeatureMissingProvider = error::errorId("lux.render.feature.missing_provider");
-    inline constexpr auto kFeatureResourceMismatch = error::errorId("lux.render.feature.resource_mismatch");
-    inline constexpr auto kFeatureOwnership = error::errorId("lux.render.feature.ownership");
-    inline constexpr auto kFeatureVersion = error::errorId("lux.render.feature.version");
-    [[nodiscard]] LUX_RENDER_PUBLIC std::span<const error::ErrorDescriptor> renderFeatureErrorDescriptors() noexcept;
 } // namespace lux::render

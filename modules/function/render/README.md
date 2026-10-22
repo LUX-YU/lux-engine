@@ -5,20 +5,21 @@ Render is one shared library. Applications link `lux::engine::function::render` 
 device. Backend resources and implementation dependencies stay inside the library.
 
 The backend is pinned NRI v180 with Vulkan selected at build time. NRI owns the native device and physical
-allocations; Render owns its submission, upload and frame policies. NRI and Vulkan types appear only in project
-extension or private headers. Checked backend failures remain structured Render errors.
+allocations; Render owns its submission, upload and frame policies. Installed extension headers expose the pinned
+NRI declarations explicitly. Vulkan and VMA implementation dependencies remain private. Checked backend failures
+remain structured Render errors.
 
 ## Public and project contracts
 
-- `include/` contains installed values, Commands, graph declarations, descriptors and Server APIs.
-- `sinclude/` contains uninstalled project extension contracts for device access, uploads, Storage factories,
-  Feature tuple declarations and typed Handler factories. A GPU extension explicitly selects these dependencies.
+- `include/` contains installed values, Commands, graph declarations, Server APIs and typed extension contracts.
+  Device, upload and GPU binding headers deliberately opt into NRI and Execution dependencies.
+- `sinclude/` contains uninstalled graph compiler, execution-instance and built-in composition contracts.
 - `pinclude/` contains concrete built-in Storage/Handler implementations and private algorithms.
 - `src/` follows the same responsibilities. A single target compiles each production source once.
 
-Public headers contain no graphics API types. Neutral Command and resource declarations do not require stdexec;
-the Server's actual asynchronous Handler interface does. Project extension headers are a source integration
-contract for the selected backend and compiler ABI, not a separately installed graphics SDK.
+Neutral Command and resource declarations require neither NRI nor stdexec. Asynchronous Handler contracts use
+stdexec; GPU extension contracts use the NRI declarations installed with this SDK. Extensions compile against the
+same selected backend and C++ ABI and use the existing device through these contracts, without linking a second NRI.
 
 Server creation registers the supported built-in Features and their dependencies. Applications discover their IDs:
 
@@ -45,7 +46,7 @@ never objects, and writes factories/call thunks directly into the existing Resou
 Feature directory. Known built-ins do not use external validation or rollback. Required capabilities still select
 which declarations are usable; automatic registration never enables unrequested device features.
 
-Project extensions include `runtime/FeatureRegistration.hpp`. A Feature supplies `Descriptor`, `Storages`,
+Installed SDK extensions include `runtime/FeatureRegistration.hpp`. A Feature supplies `Descriptor`, `Storages`,
 `Commands` and `graph(bool paged_instances)`. A command-only Feature can return empty FeatureGraphOps; no dummy
 graph callback is required. Each Storage supplies its typed `factory()`. Each CommandMethod names
 one Command and Handler method; the Handler supplies an explicit `create(ResourceRegistry&) noexcept` factory
@@ -91,9 +92,26 @@ Request and consume the corresponding Response. Responses contain `RenderError e
 zero `error.type` means success. Internal fallible functions use `RenderResult<T>` where an error is recoverable.
 The library returns structured diagnostics and never chooses a terminal or logging destination.
 
+Before `run()`, the application selects one IPC Link with `setFrameSource()`. That Client sends a sealed
+`SubmitFrame`: borrowed command arrays grouped by explicit dependencies. `frame_scoped` commands mutate
+visible state only inside this packet; queries and preparation of unreferenced assets remain independent.
+Groups execute in order and independent members may prepare asynchronously. Only after all required updates
+settle does the Server prepare and submit a frame. An empty packet explicitly renders unchanged state;
+the Server does not generate frames merely because its IPC queue is empty.
+
+The Client reserves one of `max_frames_ahead + 1` stable input carriers before preparing a game frame.
+`FrameCompletion` ends the input borrow and describes accepted rendering submissions, not GPU or presentation
+completion. Physical FIF slices are reused only after all their real Queue frontiers complete. A failed frame
+can have accepted updates; the Client must provide an explicit resynchronization frame before normal frames
+resume. Asset Clients do not bypass this visible-state boundary, and disconnect does not end source borrows.
+
 Synchronous Handlers fill the Response directly in the Outbox message. Asynchronous Handlers return a concrete
-Sender. `counting_scope + spawn` owns connected operation states; a `ResponseDelivery` only carries the completed
-result and routing through the existing RunLoop to `ResponseOutbox`. The RenderThread publishes IPC replies.
+Sender. `counting_scope + spawn` owns connected operation states. Errors and stopped completions become typed
+Responses, and `continues_on` delivers them to the RenderThread's `ResponseOutbox`. The schedule operation
+guarantees this final handoff even during shutdown, preserving failures and unknown outcomes. No separate
+result record or hand-written completion callback owns the Response. The RenderThread publishes IPC replies.
+Each asynchronous Command, including SubmitFrame, still has stdexec's operation-state allocation. Allocation-free
+steady recording is a narrower claim than allocation-free Client-to-Server frame submission.
 The CommandRegistry owns one Command directory, stable Handler objects and one selected binding index per
 Command. External installation validates its entries before publishing. Selection affects future dispatch, never
 an operation already started with another Handler.
@@ -178,6 +196,20 @@ preserve instance order. NRI concurrent graph resources use semaphore memory dep
 layout transitions. First and final Graphics boundaries cover preparation copies, History initialization and
 canonical resource states.
 
+Each FIF slot reuses its dependency indexes while the ordered instance set and imported physical bindings stay
+unchanged. Content-only updates do not sort or intersect imported ranges. Binding replacement, range changes,
+Resize or a different instance invalidate that slot's index; rebuilding still has a cold worst-case quadratic
+conflict enumeration inside a shared physical-resource group. This is not a second Graph or a GraphAnalysis run.
+`dumpSubmissions` reports the rebuild and comparison counts separately from accepted submissions.
+
+Imported accesses retain their consuming batch and required canonical-state release boundary. Ready batches
+are indexed per physical Queue by their actual wait conditions; accepted submission advances only their
+successors. The compiled plan explicitly preserves physical-Queue FIFO used by object reuse and memory alias
+proofs. Queue selection can rotate without redefining the order of two writers of one imported range.
+The existing imported binding API identifies actual Buffer/Texture objects; independently supplied aliased
+objects with different native handles have no declared allocation relationship and are not supported by this
+cross-instance contract. Graph-owned Memory Alias retains its existing allocation and dependency proof.
+
 Preparation-copy completion and complete-instance publication are separate. Accepted copies can settle their
 upload Senders before the graph finishes submitting. History publishes only after the instance's required batches
 are accepted; partial failure stops that instance until replacement. FIF reuse waits for every accepted physical
@@ -238,6 +270,11 @@ Storage upload Senders use the existing CPU scheduler and RenderThread resumptio
 staging windows and batches Copy work. Frame preparation contributes missing ranges before compatible graph
 recordings enter the shared submission. Dirty-word batching and contiguous Transform input avoid per-element Copy
 construction. There is no per-frame Sender for unchanged drawing and no unconditional sleep in the event loop.
+Within that same Task, a contiguous Buffer window of at most `TransferOptions::inline_copy_bytes` is prepared
+directly on RenderThread (initial default 16 KiB). Larger copies, strided packing and image rows use the shared
+CPU scheduler. The threshold is configurable, including zero to disable it; it is not a measured universal optimum.
+CPU upload clock sampling is disabled unless `measure_cpu` is set. `TransferStats::cpu_timing_enabled` distinguishes
+unmeasured zero counters from measurements; GPU query sampling remains independently controlled.
 
 TransformBatch borrows separate key and matrix spans with equal lengths and unique, current keys. The Client
 retains both spans through Response and supplies finite matrices. Create/Update instance arrays follow the same
@@ -257,6 +294,21 @@ changes. Project GPU consumers collect the actual `StorageFrameUse` borrows at t
 to `FrameExecution::render`; each entry names its storage and `StorageBindingOps`. Preparation callbacks are synchronous:
 they do not submit, suspend or dispatch completion callbacks. Stable frames neither rebuild this list nor sort
 Storage relationships.
+Qualified entries can supply their existing StorageId and a borrowed preparation revision. Each FIF slice then
+skips an unchanged, successfully prepared source; failed preparation/Submit does not acknowledge the revision.
+An entry without that explicit qualification retains per-frame preparation. Feature-derived data can likewise
+provide a revision, while camera/light projection and other true per-frame inputs retain their preparation callback.
+The source-list walk is still linear in active sources; skipping callbacks does not make it a new event queue.
+
+The compiled Pass offsets select one contiguous parameter region per FIF slice. Instance/default changes mark
+only their compiled consumers. `ResourceInput::parameter_revision` is zero for a live external borrow, which
+continues to be read each frame. A nonzero value promises unchanged bytes until `setResource` publishes a new
+revision; immutable texture references and shadow-projection outputs use that contract. Address equality alone
+never proves parameter contents unchanged. Default bytes are not recopied for a mapped-input-only change.
+
+One `BindingState` belongs to each actual CommandBuffer recording, including merged instance batches. Compatible
+physical descriptor sets can be retained across Passes; a new Layout/BindPoint, clear helper or CommandBuffer
+invalidates that cache. Logical vertex-resource indices remain local to an instance and are not shared by this cache.
 
 When GPU work prevents progress, the loop first waits on the conditions preventing the next frame slot's reuse,
 then rotates other in-flight physical Queues. IPC, ready work and stop are checked between waits. The default

@@ -22,6 +22,7 @@ namespace probe
     struct SetValues final
     {
         static constexpr std::string_view name = "test.external.probe.set_values";
+        static constexpr bool frame_scoped = false; // CPU-only extension, no visible render state.
 
         struct Request final
         {

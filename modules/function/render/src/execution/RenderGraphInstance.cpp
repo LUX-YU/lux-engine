@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
@@ -16,10 +17,29 @@
 
 namespace lux::render::detail
 {
+    namespace
+    {
+        // Cache revisions, not resource IDs. A new instance cannot accidentally match cached
+        // bindings of an older instance allocated at the same address. No registry or owner.
+        std::atomic<std::uint64_t> imported_revision{1};
+
+        std::uint64_t nextImportedRevision() noexcept
+        {
+            return imported_revision.fetch_add(1, std::memory_order_relaxed);
+        }
+    } // namespace
+
     ResourceInput RenderGraphInstance::resourceInput(GraphResourceId resource, std::uint32_t slot) const noexcept
     {
         const auto& input = frames_[slot].bindings[resource.index];
-        return {input.buffer, input.buffer_offset, input.buffer_size, input.parameters, input.parameter_layout};
+        return {
+            input.buffer,
+            input.buffer_offset,
+            input.buffer_size,
+            input.parameters,
+            input.parameter_layout,
+            input.parameter_revision
+        };
     }
 
     RenderGraphInstance::RenderGraphInstance(
@@ -34,9 +54,16 @@ namespace lux::render::detail
         instance_values_.resize(std::max(plan.descriptor_plan_->instance_parameters.size, parameter_bytes));
         condition_values_.resize(plan.condition_count_);
         parameter_copies_.resize(plan.passes().size());
+        parameter_uses_.resize(plan.resources().size());
+        if (!plan.passes().empty())
+        {
+            const auto& last = plan.passes().back();
+            parameter_defaults_.resize(last.parameter_offset + last.parameter_size);
+        }
         for (const auto& pass : plan.passes())
         {
-            pass_parameters_.push_back(plan.descriptor_plan_->passes[pass.source_pass].initial_parameters);
+            const auto& initial = plan.descriptor_plan_->passes[pass.source_pass].initial_parameters;
+            std::ranges::copy(initial, parameter_defaults_.begin() + pass.parameter_offset);
         }
         for (const auto& program : plan.descriptor_plan_->passes)
         {
@@ -57,6 +84,10 @@ namespace lux::render::detail
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
             auto& frame = frames_[slot];
+            frame.imported_revision = nextImportedRevision();
+            frame.parameters = parameter_defaults_;
+            frame.parameter_dirty.resize(plan.passes().size());
+            frame.parameter_updates.reserve(plan.passes().size());
             frame.bindings.resize(plan.resources().size());
             frame.enabled_regions.resize(plan.recording_.conditions.size(), 1);
             frame.history_valid.resize(plan.histories_.size(), 0);
@@ -102,6 +133,10 @@ namespace lux::render::detail
     void RenderGraphInstance::bindImage(GraphResourceId resource, std::uint32_t slot, nri::Texture& image) noexcept
     {
         auto& binding = frames_[slot].bindings[resource.index];
+        if (binding.image != &image)
+        {
+            frames_[slot].imported_revision = nextImportedRevision();
+        }
         binding.image = &image;
     }
 
@@ -1075,7 +1110,8 @@ namespace lux::render::detail
                     }
                 }
             }
-            pass.parameters.resize(pass_parameters_[frame.passes.size()].size());
+            pass.parameters =
+                std::span(frame.parameters).subspan(compiled_pass.parameter_offset, compiled_pass.parameter_size);
             frame.passes.push_back(std::move(pass));
         }
         return {};
@@ -1097,6 +1133,7 @@ namespace lux::render::detail
                 {
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 }
+                parameter_uses_[input.resource.index].push_back(p);
             }
             if (std::holds_alternative<TransferWork>(compiled_pass.work))
             {
@@ -1132,7 +1169,7 @@ namespace lux::render::detail
                                    (field->columns ? std::uint64_t(field->columns - 1) * field->matrix_stride : 0);
                 const bool invalid = !bytes || bytes > UINT32_MAX ||
                                      std::uint64_t(field->offset) + bytes > source.parameters.size() ||
-                                     std::uint64_t(destination.offset) + bytes > pass_parameters_[p].size();
+                                     std::uint64_t(destination.offset) + bytes > compiled_pass.parameter_size;
                 if (mismatch || invalid)
                 {
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
@@ -1140,6 +1177,35 @@ namespace lux::render::detail
                 parameter_copies_[p].push_back(
                     {mapping.resource, field->offset, destination.offset, std::uint32_t(bytes)}
                 );
+                auto& consumers = mapping.resource == kGraphInvalidIndex ? instance_parameter_uses_
+                                                                         : parameter_uses_[mapping.resource];
+                consumers.push_back(p);
+            }
+        }
+        const auto deduplicate = [](auto& indices)
+        {
+            std::ranges::sort(indices);
+            indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+        };
+        deduplicate(instance_parameter_uses_);
+        for (std::uint32_t resource = 0; resource < parameter_uses_.size(); ++resource)
+        {
+            auto& consumers = parameter_uses_[resource];
+            deduplicate(consumers);
+            if (!consumers.empty())
+            {
+                parameter_resources_.push_back(resource);
+            }
+        }
+        for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
+        {
+            for (std::uint32_t pass = 0; pass < plan_->passes().size(); ++pass)
+            {
+                const auto* raster = std::get_if<RasterCommands>(&plan_->passes()[pass].work);
+                if (!parameter_copies_[pass].empty() || (raster && raster->state_input))
+                {
+                    markParameters(pass, slot);
+                }
             }
         }
         nri::DescriptorPoolDesc pool{};
@@ -1361,6 +1427,12 @@ namespace lux::render::detail
         {
             auto& frame = frames_[current];
             auto& binding = frame.bindings[resource];
+            const bool changed_physical = binding.buffer != value.buffer || binding.buffer_offset != value.offset ||
+                                          binding.buffer_size != value.size;
+            if (changed_physical && plan_->resources()[resource].origin == EGraphOrigin::IMPORTED)
+            {
+                frame.imported_revision = nextImportedRevision();
+            }
             if (plan_->resources()[resource].memory_used &&
                 std::holds_alternative<GraphBufferDesc>(plan_->resources()[resource].description))
             {
@@ -1376,9 +1448,22 @@ namespace lux::render::detail
             binding.buffer = value.buffer;
             binding.buffer_offset = value.offset;
             binding.buffer_size = value.size;
+            const bool changed_parameters = value.parameter_revision == 0 ||
+                                            binding.parameter_revision != value.parameter_revision ||
+                                            binding.parameters.data() != value.parameters.data() ||
+                                            binding.parameters.size() != value.parameters.size() ||
+                                            binding.parameter_layout != value.parameter_layout;
             binding.parameters = value.parameters;
             binding.parameter_layout = value.parameter_layout;
-            if (!binding.dirty)
+            binding.parameter_revision = value.parameter_revision;
+            if (changed_parameters)
+            {
+                for (auto pass : parameter_uses_[resource])
+                {
+                    markParameters(pass, current);
+                }
+            }
+            if (changed_physical && !binding.dirty)
             {
                 binding.dirty = true;
                 frame.changed_resources.push_back(resource);
@@ -1519,6 +1604,7 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
         std::ranges::copy(bytes, instance_values_.begin());
+        markInstanceParameters();
         return {};
     }
 
@@ -1536,6 +1622,7 @@ namespace lux::render::detail
             return accepted;
         }
         std::ranges::copy(parameters, instance_values_.begin());
+        markInstanceParameters();
         return {};
     }
 
@@ -1553,18 +1640,25 @@ namespace lux::render::detail
     RenderResult<void> RenderGraphInstance::setParameters(GraphPassId id, std::span<const std::byte> bytes) noexcept
     {
         const auto index = id.index < plan_->pass_indices_.size() ? plan_->pass_indices_[id.index] : kGraphInvalidIndex;
-        if (index == kGraphInvalidIndex || bytes.size() != pass_parameters_[index].size())
+        if (index == kGraphInvalidIndex || bytes.size() != plan_->passes()[index].parameter_size)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        std::ranges::copy(bytes, pass_parameters_[index].begin());
+        std::ranges::copy(bytes, parameter_defaults_.begin() + plan_->passes()[index].parameter_offset);
+        for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
+        {
+            markParameters(index, slot, true);
+        }
         return {};
     }
 
     std::span<const std::byte> RenderGraphInstance::parameters(GraphPassId id) const noexcept
     {
         const auto index = id.index < plan_->pass_indices_.size() ? plan_->pass_indices_[id.index] : kGraphInvalidIndex;
-        return index == kGraphInvalidIndex ? std::span<const std::byte>{} : pass_parameters_[index];
+        return index == kGraphInvalidIndex
+                   ? std::span<const std::byte>{}
+                   : std::span(parameter_defaults_)
+                         .subspan(plan_->passes()[index].parameter_offset, plan_->passes()[index].parameter_size);
     }
 
     RenderResult<bool> RenderGraphInstance::prepareFrame(std::uint32_t slot) noexcept
@@ -1606,7 +1700,50 @@ namespace lux::render::detail
         }
         updateHistoryViews(slot);
         frame.viewport = viewport_;
-        for (std::size_t p = 0; p < frame.passes.size(); ++p)
+        if (auto parameters = prepareParameters(slot); !parameters)
+        {
+            return cxx::unexpected(parameters.error());
+        }
+        return true;
+    }
+
+    void RenderGraphInstance::markParameters(std::uint32_t pass, std::uint32_t slot, bool defaults) noexcept
+    {
+        auto& frame = frames_[slot];
+        if (frame.parameter_dirty[pass] == 0)
+        {
+            frame.parameter_updates.push_back(pass);
+        }
+        frame.parameter_dirty[pass] |= defaults ? 3 : 2;
+    }
+
+    void RenderGraphInstance::markInstanceParameters() noexcept
+    {
+        for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
+        {
+            for (auto pass : instance_parameter_uses_)
+            {
+                markParameters(pass, slot);
+            }
+        }
+    }
+
+    RenderResult<void> RenderGraphInstance::prepareParameters(std::uint32_t slot) noexcept
+    {
+        auto& frame = frames_[slot];
+        // Unversioned external borrows retain their prior live semantics. Versioned inputs and
+        // owned instance defaults are copied only into the FIF slices they actually invalidated.
+        for (auto resource : parameter_resources_)
+        {
+            if (frame.bindings[resource].parameter_revision == 0)
+            {
+                for (auto pass : parameter_uses_[resource])
+                {
+                    markParameters(pass, slot);
+                }
+            }
+        }
+        for (auto p : frame.parameter_updates)
         {
             if (const auto* raster = std::get_if<RasterCommands>(&frame.passes[p].compiled_pass->work);
                 raster && raster->state_input)
@@ -1626,7 +1763,14 @@ namespace lux::render::detail
                 }
             }
             auto& parameters = frame.passes[p].parameters;
-            std::ranges::copy(pass_parameters_[p], parameters.begin());
+            const auto& compiled = plan_->passes()[p];
+            if ((frame.parameter_dirty[p] & 1) != 0)
+            {
+                std::ranges::copy(
+                    std::span(parameter_defaults_).subspan(compiled.parameter_offset, compiled.parameter_size),
+                    parameters.begin()
+                );
+            }
             for (const auto& copy : parameter_copies_[p])
             {
                 const auto* source = copy.resource == kGraphInvalidIndex
@@ -1635,7 +1779,13 @@ namespace lux::render::detail
                 std::memcpy(parameters.data() + copy.destination_offset, source + copy.source_offset, copy.bytes);
             }
         }
-        return true;
+
+        for (auto pass : frame.parameter_updates)
+        {
+            frame.parameter_dirty[pass] = 0;
+        }
+        frame.parameter_updates.clear();
+        return {};
     }
 
     void RenderGraphInstance::acceptedBatch(std::uint32_t batch, std::size_t queue, std::uint64_t serial) noexcept

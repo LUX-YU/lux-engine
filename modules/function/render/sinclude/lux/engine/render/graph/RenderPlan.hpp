@@ -110,6 +110,8 @@ namespace lux::render::detail
         ERenderingBoundary rendering_boundary = ERenderingBoundary::NON_RASTER;
         std::uint32_t condition_region = kGraphInvalidIndex;
         EQueueRole queue = EQueueRole::GRAPHICS;
+        std::size_t parameter_offset = 0;
+        std::size_t parameter_size = 0;
     };
 
     // A linear, non-nested interval. Both paths execute its compiled transitions;
@@ -150,12 +152,19 @@ namespace lux::render::detail
         nri::StageBits stages = nri::StageBits::ALL;
     };
 
+    struct SubmissionSuccessor final
+    {
+        std::uint32_t consumer;
+        nri::StageBits stages = nri::StageBits::ALL;
+    };
+
     struct SubmissionBatch final
     {
         EQueueRole queue = EQueueRole::GRAPHICS;
         std::uint32_t first_pass = 0;
         std::uint32_t pass_count = 0;
         std::vector<SubmissionDependency> dependencies;
+        std::vector<SubmissionSuccessor> successors;
         std::vector<GraphResourceId> histories;
     };
 
@@ -164,6 +173,9 @@ namespace lux::render::detail
         GraphResourceId resource;
         VGraphRange range;
         bool write = false;
+        std::uint32_t batch = 0;
+        // A later canonical-state restoration belongs to the same physical access interval.
+        std::uint32_t release_batch = 0;
     };
 
     enum class ETransientAllocation : std::uint8_t

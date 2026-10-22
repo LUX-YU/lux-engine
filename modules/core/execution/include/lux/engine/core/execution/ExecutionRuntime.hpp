@@ -2,8 +2,8 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
-#include <lux/engine/core/execution/Timer.hpp>
 #include <lux/engine/core/execution/Task.hpp>
+#include <lux/engine/core/execution/Timer.hpp>
 #include <lux/engine/core/execution/visibility.h>
 
 #include <stdexec/execution.hpp>
@@ -30,7 +30,6 @@ namespace lux::execution
     struct ExecutionRuntimeConfig final
     {
         std::size_t cpu_concurrency{};
-        std::size_t cpu_queue_capacity{};
         std::size_t task_capacity{1024};
         TimerQueueConfig timer{};
         std::optional<BlockingSchedulerConfig> blocking;
@@ -50,6 +49,7 @@ namespace lux::execution
         ExecutionRuntime(const ExecutionRuntime&) = delete;
         ExecutionRuntime& operator=(const ExecutionRuntime&) = delete;
 
+        // Borrowed CPU pool; stop/join all external users before join(). Not callable after join.
         [[nodiscard]] CpuScheduler cpu() const noexcept;
         // Owner-thread admission fact, before shutdown/join mutates worker storage.
         [[nodiscard]] std::size_t cpuConcurrency() const noexcept;
@@ -68,7 +68,9 @@ namespace lux::execution
             static_assert(std::is_nothrow_invocable_v<Factory, TaskReporter>);
             auto admitted = detail::admitTask(*tasks_, std::move(options));
             if (!admitted)
+            {
                 return lux::cxx::unexpected(admitted.error());
+            }
             Task task{*admitted};
             TaskReporter reporter{*admitted};
             auto sender = std::invoke(std::forward<Factory>(make_sender), reporter);
@@ -110,9 +112,10 @@ namespace lux::execution
         template <class Predicate>
         [[nodiscard]] lux::cxx::expected<void, EExecutionError> waitUntil(Predicate&& ready) noexcept
         {
-            return waitUntil(std::addressof(ready), [](void* value) noexcept {
-                return (*static_cast<std::remove_reference_t<Predicate>*>(value))();
-            });
+            return waitUntil(
+                std::addressof(ready),
+                [](void* value) noexcept { return (*static_cast<std::remove_reference_t<Predicate>*>(value))(); }
+            );
         }
 
         void requestStop() noexcept;

@@ -94,13 +94,14 @@ namespace lux::render::detail
         template <class Release> void deferRelease(SubmissionQueue& queue, Release release) noexcept
         {
             stdexec::spawn(
-                queue.whenSubmittedWorkCompletes() | stdexec::then(
-                    [release = std::move(release)](RenderResult<void> result) mutable noexcept
-                    {
-                        requireCleanupComplete(result);
-                        std::invoke(release);
-                    }
-                ),
+                queue.whenSubmittedWorkCompletes() |
+                    stdexec::then(
+                        [release = std::move(release)](RenderResult<void> result) mutable noexcept
+                        {
+                            requireCleanupComplete(result);
+                            std::invoke(release);
+                        }
+                    ),
                 cleanup_scope_.get_token()
             );
         }

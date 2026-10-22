@@ -4,12 +4,13 @@
 
 #include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/render/core/Error.hpp>
+#include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/execution/ResourceInput.hpp>
+#include <lux/engine/render/graph/GraphResource.hpp>
 #include <utility>
 
 namespace lux::render::detail
 {
-    struct CompiledResource;
     class ResourceUploader;
 
     // Intrusive, non-owning change relationship. The consumer embeds this node in its actual
@@ -115,15 +116,13 @@ namespace lux::render::detail
 
     struct StorageBindingOps final
     {
-        using Resolve = RenderResult<void> (*)(
-            void*,
-            const CompiledResource&,
-            const void*,
-            StorageSubscription&,
-            std::span<ResourceInput>
-        ) noexcept;
+        using Resolve = RenderResult<
+            void> (*)(void*, const VGraphResourceDesc&, const void*, StorageSubscription&, std::span<ResourceInput>) noexcept;
         Resolve resolve;
         RenderResult<bool> (*prepareFrame)(void*, std::uint32_t slot, ResourceUploader&) noexcept = nullptr;
+        // Cold borrow. The producer advances it before any attempt that may dirty a replica,
+        // including a failed upload which leaves repair work. No callback is needed to read it.
+        const std::uint64_t* (*preparationRevision)(const void*) noexcept = nullptr;
     };
 
     // A cold-qualified preparation borrow. The active execution list owns its lifetime.
@@ -131,5 +130,7 @@ namespace lux::render::detail
     {
         void* storage;
         const StorageBindingOps* ops;
+        StorageId identity;
+        const std::uint64_t* preparation_revision = nullptr;
     };
 } // namespace lux::render::detail

@@ -19,11 +19,13 @@ namespace lux::render::detail
     {
         std::uint64_t copied_bytes = 0, copy_regions = 0, prepare_ns = 0, record_submit_ns = 0;
         std::uint64_t prepare_windows = 0, copy_submissions = 0, acquire_submissions = 0;
+        std::uint64_t inline_windows = 0;
         std::uint64_t staging_bytes = 0, pending_bytes = 0, pending_peak = 0;
         std::uint64_t gpu_ns = 0, gpu_samples = 0, gpu_query_errors = 0;
         // Optional sampling never backpressures uploads. A Copy pair stays reserved until an
         // existing Graphics submission resolves it; later batches may therefore be unsampled.
         std::uint64_t gpu_samples_skipped = 0;
+        bool cpu_timing_enabled = false;
     };
 
     struct ImageTransferRegion final
@@ -135,7 +137,9 @@ namespace lux::render::detail
 
         [[nodiscard]] TransferStats statistics() const noexcept
         {
-            return statistics_;
+            auto result = statistics_;
+            result.cpu_timing_enabled = options_.measure_cpu;
+            return result;
         }
 
     private:
@@ -162,24 +166,25 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> collectUploadTimestamps(std::size_t page, std::uint32_t bits) noexcept;
 
         std::unique_ptr<StagingArena> staging_arena_;
-        bool background_allowed_ = true;
-        bool reserve_frame_staging_ = false;
-        DeviceSession& device_;
-        SubmissionQueue* copy_queue_ = nullptr;
-        TransferOptions options_;
-        execution::CpuScheduler cpu_scheduler_;
-        TransferStats statistics_;
-        BatchEntry* ready_head_ = nullptr;
-        BatchEntry* ready_tail_ = nullptr;
-        BatchEntry* range_waiters_ = nullptr;
-        BatchEntry* range_waiters_tail_ = nullptr;
-        std::vector<BatchEntry*> batch_entries_;
-        std::unique_ptr<Measurement[]> measurements_;
-        std::size_t graphics_measurement_base_ = 0;
-        std::uint64_t query_result_stride_ = 16;
-        std::array<nri::QueryPool*, 2> timestamps_{};
-        nri::Buffer* timestamp_results_ = nullptr;
-        std::uint64_t* mapped_timestamps_ = nullptr;
-        std::uint32_t copy_timestamp_bits_ = 0, graphics_timestamp_bits_ = 0;
+        bool                            background_allowed_ = true;
+        bool                            reserve_frame_staging_ = false;
+        DeviceSession&                  device_;
+        SubmissionQueue*                copy_queue_ = nullptr;
+        TransferOptions                 options_;
+        execution::CpuScheduler         cpu_scheduler_;
+        TransferStats                   statistics_;
+        BatchEntry*                     ready_head_ = nullptr;
+        BatchEntry*                     ready_tail_ = nullptr;
+        BatchEntry*                     range_waiters_ = nullptr;
+        BatchEntry*                     range_waiters_tail_ = nullptr;
+        std::vector<BatchEntry*>        batch_entries_;
+        std::unique_ptr<Measurement[]>  measurements_;
+        std::size_t                     graphics_measurement_base_ = 0;
+        std::uint64_t                   query_result_stride_ = 16;
+        std::array<nri::QueryPool*, 2>  timestamps_{};
+        nri::Buffer*                    timestamp_results_ = nullptr;
+        std::uint64_t*                  mapped_timestamps_ = nullptr;
+        std::uint32_t                   copy_timestamp_bits_ = 0;
+        std::uint32_t                   graphics_timestamp_bits_ = 0;
     };
 } // namespace lux::render::detail

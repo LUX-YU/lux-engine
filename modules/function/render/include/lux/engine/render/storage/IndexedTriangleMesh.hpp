@@ -89,6 +89,7 @@ namespace lux::render
     struct CreateMesh final
     {
         static constexpr std::string_view name = "lux.render.CreateMesh";
+        static constexpr bool frame_scoped = false;
         using Request = MeshWrite;
 
         struct Response final
@@ -101,6 +102,7 @@ namespace lux::render
     struct ReleaseMesh final
     {
         static constexpr std::string_view name = "lux.render.ReleaseMesh";
+        static constexpr bool frame_scoped = true;
         using Request = MeshId;
         using Response = AckResponse;
     };

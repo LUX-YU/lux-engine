@@ -76,7 +76,7 @@ int main(int argc, char** argv)
     static_assert(!api_contract::PublicFreeze<SceneProfileRegistry>);
     auto& object_runtime = object::ObjectRuntime::instance();
     assert(object_runtime.isCurrent());
-    auto engine = engine::EngineContext::create({1, 64, 64, {32}}, {0, 64});
+    auto engine = engine::EngineContext::create({1, 64, {32}}, 64);
     assert(engine && (*engine)->sceneRuntime().instanceCount() == 0);
     std::weak_ptr<int> provider;
     auto assembly = [&](EditorComposition& composition) noexcept -> FrameworkResult<void>

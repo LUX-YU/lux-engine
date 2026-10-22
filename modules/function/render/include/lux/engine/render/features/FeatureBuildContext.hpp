@@ -1,9 +1,14 @@
 #pragma once
 
-#include <lux/engine/render/features/FeatureBinding.hpp>
 #include <lux/engine/render/features/FeaturePorts.hpp>
 #include <lux/engine/render/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/graph/Sampler.hpp>
+#include <lux/engine/render/resource/Binding.hpp>
+
+namespace lux::render::detail
+{
+    struct FeatureFrameContribution;
+}
 
 namespace lux::render
 {

@@ -273,7 +273,7 @@ int main(int argc, char** argv)
 {
     const auto fif = argc > 1 ? unsigned(std::atoi(argv[1])) : 3u;
     auto unlit = cook(false), pbr = cook(true), masked = cook(false, true), normal_mapped = cook(true, false, true);
-    auto runtime = lux::execution::ExecutionRuntime::create({2, 128, 128, {128}});
+    auto runtime = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(runtime);
     std::atomic<unsigned> diagnostic_count{0};
     RenderServerConfig config{"test.deferred", true};
@@ -335,6 +335,7 @@ int main(int argc, char** argv)
     bootstrap.commands.push_back({std::string(ListCommands::name), take(server->commandId<ListCommands>())});
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
+    CHECK(server->setFrameSource(client->id()));
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = call<ListCommands>(*client, bootstrap, {});
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
@@ -490,6 +491,7 @@ int main(int argc, char** argv)
                 while (call<QueryExecutionProgress>(*client, commands, attachment)
                            .progress.count(EExecutionOutcome::EXECUTED) < before + fif + 2)
                 {
+                    renderFrame(*client, commands);
                     CHECK(Clock::now() < deadline);
                     std::this_thread::sleep_for(1ms);
                 }
@@ -558,10 +560,27 @@ int main(int argc, char** argv)
     const std::array invalid_light{DirectLightUpdate{stale, lights.front()}};
     auto rejected = call<UpdateDirectLights>(*client, commands, {light_storage, 8, invalid_light}, false);
     CHECK(rejected.error.type && rejected.sequence == 8);
+    // A failed sealed frame requires an explicit Client resynchronization, even when this
+    // particular stale identity was rejected before mutation. Supply the full authoritative light set.
+    std::vector<DirectLightUpdate> restored_lights;
+    for (std::size_t i = 0; i < light_ids.size(); ++i)
+    {
+        restored_lights.push_back({light_ids[i], lights[i]});
+    }
+    const auto update_light_command =
+        std::ranges::find(commands.commands, UpdateDirectLights::name, &CommandInfo::name);
+    CHECK(update_light_command != commands.commands.end());
+    FrameCommand recovery{update_light_command->id, {nextSceneRequest()}, {}};
+    recovery.request.emplace<UpdateDirectLights::Request>(UpdateDirectLights::Request{light_storage, 2, restored_lights}
+    );
+    const FrameCommandGroup recovery_group{std::span(&recovery, 1)};
+    const auto light_recovery =
+        call<SubmitFrame>(*client, commands, {nextSceneRequest(), std::span(&recovery_group, 1), true});
+    CHECK(!light_recovery.requires_resynchronization);
     // Update only one light, preserve identities and repair all FIF replicas before subsequent Draws.
     std::get<PointLightGpu>(lights[1]).position_range = {0, 0, 30, .2F};
     const std::array changes{DirectLightUpdate{light_ids[1], lights[1]}};
-    CHECK(call<UpdateDirectLights>(*client, commands, {light_storage, 2, changes}).changed == 1);
+    CHECK(call<UpdateDirectLights>(*client, commands, {light_storage, 3, changes}).changed == 1);
     run(1);
     const auto texture_storage = prepare(*client, commands, kTextureStorageType, "textures");
     rdesc::TextureInfo texture_info{};
@@ -691,6 +710,7 @@ int main(int argc, char** argv)
         auto deadline = Clock::now() + 10s;
         while (call<QueryRenderStats>(*client, commands, {}).submissions < before + 20)
         {
+            renderFrame(*client, commands);
             CHECK(Clock::now() < deadline);
             std::this_thread::sleep_for(1ms);
         }

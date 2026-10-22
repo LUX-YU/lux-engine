@@ -54,7 +54,7 @@ int main()
             !duplicate && duplicate.error() == engine::EContextExtensionError::DUPLICATE_TYPE,
             "duplicate does not replace original binding"
         );
-        auto context = engine::EngineContext::create({1, 16, 16, {8}}, {0, 16}, std::move(composition));
+        auto context = engine::EngineContext::create({1, 16, {8}}, 16, std::move(composition));
         require(context.has_value(), "real headless EngineContext");
         for (unsigned index{}; index < 10000; ++index)
         {
@@ -68,7 +68,7 @@ int main()
         require(destroyed == 0, "Context cannot delete a borrowed surface");
     }
     require(destroyed == 1, "original owner releases once after Context");
-    auto empty = engine::EngineContext::create({1, 16, 16, {8}}, {0, 16});
+    auto empty = engine::EngineContext::create({1, 16, {8}}, 16);
     require(empty.has_value() && !(*empty)->extensions().find<CountingSurface>(), "independent empty Context");
     std::puts("PASS: composition-only bindings, actual domain lookup, const access, no service construction/ownership");
 }

@@ -46,6 +46,7 @@ namespace lux::render
     struct CreateMaterial final
     {
         static constexpr std::string_view name = "lux.render.CreateMaterial";
+        static constexpr bool frame_scoped = true;
         using Request = MaterialWrite;
 
         struct Response final
@@ -65,6 +66,7 @@ namespace lux::render
     struct UpdateMaterial final
     {
         static constexpr std::string_view name = "lux.render.UpdateMaterial";
+        static constexpr bool frame_scoped = true;
         // Related writes and releases are ordered by the Client, including across Client connections.
         // Program and table slot remain fixed. A different program requires a new Material identity.
         using Request = MaterialUpdate;
@@ -74,6 +76,7 @@ namespace lux::render
     struct ReleaseMaterial final
     {
         static constexpr std::string_view name = "lux.render.ReleaseMaterial";
+        static constexpr bool frame_scoped = true;
         using Request = MaterialId;
         using Response = AckResponse;
     };

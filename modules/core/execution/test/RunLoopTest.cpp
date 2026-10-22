@@ -1,44 +1,52 @@
-#include <lux/engine/core/execution/RunLoop.hpp>
 #include <array>
 #include <atomic>
-#include <cstdlib>
 #include <cstdio>
-#include <memory>
+#include <cstdlib>
 #include <latch>
+#include <lux/engine/core/execution/RunLoop.hpp>
+#include <memory>
 #include <thread>
-#include <vector>
 
 using lux::execution::RunLoop;
 
 static void check(bool condition) noexcept
 {
-    if (!condition) std::abort();
+    if (!condition)
+    {
+        std::abort();
+    }
 }
 
-struct CountingWork final : RunLoop::Work
+static void scheduleAgain(RunLoop& loop, stdexec::counting_scope& scope, unsigned& count, bool& repeat)
 {
-    unsigned& count;
-    RunLoop* repost;
+    stdexec::spawn(
+        stdexec::schedule(loop.scheduler()) | stdexec::then(
+                                                  [&]() noexcept
+                                                  {
+                                                      ++count;
+                                                      if (repeat)
+                                                      {
+                                                          scheduleAgain(loop, scope, count, repeat);
+                                                      }
+                                                  }
+                                              ),
+        scope.get_token()
+    );
+}
 
-    CountingWork(unsigned& output, RunLoop* loop = nullptr) noexcept
-        : Work([](Work& value) noexcept {
-              auto& self = static_cast<CountingWork&>(value);
-              ++self.count;
-              if (self.repost) self.repost->post(self);
-          }), count(output), repost(loop)
-    {}
-};
-
-static void budgetAndRepost()
+static void limitedConsumption()
 {
     RunLoop loop;
+    stdexec::counting_scope scope;
     unsigned count = 0;
-    CountingWork work{count, &loop};
-    loop.post(work);
+    bool repeat = true;
+    scheduleAgain(loop, scope, count, repeat);
     check(loop.executeReady(0) == 0 && count == 0);
     check(loop.executeReady(17) == 17 && count == 17 && loop.size() == 1);
-    work.repost = nullptr;
+    repeat = false;
     check(loop.executeReady(17) == 1 && count == 18 && loop.empty());
+    scope.close();
+    check(stdexec::sync_wait(scope.join()).has_value());
 }
 
 static void publisherTail()
@@ -49,35 +57,56 @@ static void publisherTail()
         std::latch finish_wakeup{1};
         unsigned destroyed = 0;
     } state;
-    RunLoop loop{[](void* value) noexcept {
-        auto& state = *static_cast<State*>(value);
-        state.published.count_down();
-        state.finish_wakeup.wait();
-    }, &state};
-    struct OwnedWork final : RunLoop::Work
+
+    RunLoop loop{
+        [](void* value) noexcept
+        {
+            auto& state = *static_cast<State*>(value);
+            state.published.count_down();
+            state.finish_wakeup.wait();
+        },
+        &state
+    };
+
+    struct Lifetime final
     {
         unsigned& destroyed;
-        explicit OwnedWork(unsigned& count) noexcept
-            : Work([](Work& work) noexcept { delete &static_cast<OwnedWork&>(work); }), destroyed(count)
-        {}
-        ~OwnedWork() { ++destroyed; }
+
+        explicit Lifetime(unsigned& count) noexcept : destroyed(count) {}
+
+        ~Lifetime()
+        {
+            ++destroyed;
+        }
     };
-    auto* work = new OwnedWork{state.destroyed};
-    std::thread producer([&] { loop.post(*work); });
+
+    stdexec::counting_scope scope;
+    std::thread producer(
+        [&]
+        {
+            stdexec::spawn(
+                stdexec::schedule(loop.scheduler()) |
+                    stdexec::then([lifetime = std::make_unique<Lifetime>(state.destroyed)]() noexcept {}),
+                scope.get_token()
+            );
+        }
+    );
     state.published.wait();
     check(loop.activePublishers() == 1);
     check(loop.executeReady(1) == 1 && state.destroyed == 1 && loop.empty());
-    check(loop.activePublishers() == 1); // Empty work is not the end of the publisher's callback stack.
+    check(loop.activePublishers() == 1);
     state.finish_wakeup.count_down();
     producer.join();
     check(loop.activePublishers() == 0);
+    scope.close();
+    check(stdexec::sync_wait(scope.join()).has_value());
 }
 
 struct Receiver final
 {
     using receiver_concept = stdexec::receiver_t;
     unsigned* completed;
-    std::thread::id owner;
+    std::thread::id thread;
     stdexec::inplace_stop_token stop;
 
     auto get_env() const noexcept
@@ -87,7 +116,7 @@ struct Receiver final
 
     void set_value() && noexcept
     {
-        check(std::this_thread::get_id() == owner);
+        check(std::this_thread::get_id() == thread);
         ++*completed;
     }
 };
@@ -106,7 +135,7 @@ static void standardSchedule()
     check(completed == 0 && loop.size() == 1);
     check(loop.executeReady(1) == 1 && completed == 1);
 
-    // A completed error must survive the owner handoff even when the consumer's stop was requested.
+    // A completed error survives the handoff even when the consumer's stop was requested.
     auto result = stdexec::just_error(37)
         | stdexec::continues_on(loop.scheduler())
         | stdexec::upon_error([&](int error) noexcept { check(error == 37); });
@@ -116,64 +145,75 @@ static void standardSchedule()
     stdexec::start(failure);
     check(completed == 1 && loop.executeReady(1) == 1 && completed == 2);
 
-    // Scope owns and destroys the connected scheduler node during terminal delivery.
-    stdexec::counting_scope scope;
-    stdexec::spawn(
-        stdexec::schedule(loop.scheduler()) | stdexec::then([&]() noexcept { ++completed; }), scope.get_token()
+    // Stop between result production and consumption must preserve that result too.
+    stdexec::inplace_stop_source late_stop;
+    auto late = stdexec::connect(
+        stdexec::just(71) | stdexec::continues_on(loop.scheduler()) |
+            stdexec::then([](int value) noexcept { check(value == 71); }),
+        Receiver{&completed, std::this_thread::get_id(), late_stop.get_token()}
     );
-    check(loop.executeReady(1) == 1 && completed == 3);
-    scope.close();
-    check(stdexec::sync_wait(scope.join()).has_value());
+    stdexec::start(late);
+    late_stop.request_stop();
+    check(completed == 2 && loop.executeReady(1) == 1 && completed == 3);
 }
 
 static void concurrentPublication()
 {
-    constexpr unsigned threads = 8, per_thread = 128;
+    constexpr unsigned threads = 8;
+    constexpr unsigned per_thread = 128;
     RunLoop loop;
+    stdexec::counting_scope scope;
     std::array<unsigned, threads> completed{};
-    struct OrderedWork final : RunLoop::Work
-    {
-        unsigned& consumed;
-        unsigned index;
-        OrderedWork(unsigned& count, unsigned value) noexcept
-            : Work([](Work& work) noexcept {
-                  auto& self = static_cast<OrderedWork&>(work);
-                  check(self.consumed++ == self.index);
-              }), consumed(count), index(value)
-        {}
-    };
-    std::array<std::vector<std::unique_ptr<OrderedWork>>, threads> work;
-    for (unsigned t = 0; t < threads; ++t)
-        for (unsigned i = 0; i < per_thread; ++i)
-            work[t].push_back(std::make_unique<OrderedWork>(completed[t], i));
     std::latch start{threads};
     std::array<std::thread, threads> producers;
     for (unsigned t = 0; t < threads; ++t)
-        producers[t] = std::thread([&, t] {
-            start.count_down();
-            start.wait();
-            for (auto& item : work[t]) loop.post(*item);
-        });
+    {
+        producers[t] = std::thread(
+            [&, t]
+            {
+                start.count_down();
+                start.wait();
+                for (unsigned i = 0; i < per_thread; ++i)
+                {
+                    stdexec::spawn(
+                        stdexec::schedule(loop.scheduler()) |
+                            stdexec::then([&, t, i]() noexcept { check(completed[t]++ == i); }),
+                        scope.get_token()
+                    );
+                }
+            }
+        );
+    }
     unsigned consumed = 0;
     while (consumed != threads * per_thread)
     {
         consumed += static_cast<unsigned>(loop.executeReady(7));
         std::this_thread::yield();
     }
-    for (auto& producer : producers) producer.join();
-    for (const auto count : completed) check(count == per_thread);
+    for (auto& producer : producers)
+    {
+        producer.join();
+    }
+    for (const auto count : completed)
+    {
+        check(count == per_thread);
+    }
     check(loop.empty() && loop.activePublishers() == 0);
+    scope.close();
+    check(stdexec::sync_wait(scope.join()).has_value());
 }
 
 int main()
 {
-    budgetAndRepost();
+    limitedConsumption();
     publisherTail();
     standardSchedule();
     concurrentPublication();
     std::printf(
-        "RunLoop=%zu Work=%zu Scheduler=%zu ScheduleSender=%zu; "
-        "FIFO, budget, owner affinity, stop delivery and publisher tail passed\n",
-        sizeof(RunLoop), sizeof(RunLoop::Work), sizeof(RunLoop::Scheduler), sizeof(RunLoop::ScheduleSender)
+        "RunLoop=%zu Scheduler=%zu ScheduleSender=%zu; "
+        "per-producer order, limited consumption, thread affinity, stop delivery and publisher tail passed\n",
+        sizeof(RunLoop),
+        sizeof(RunLoop::Scheduler),
+        sizeof(RunLoop::ScheduleSender)
     );
 }

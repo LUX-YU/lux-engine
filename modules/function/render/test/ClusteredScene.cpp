@@ -327,7 +327,7 @@ static void verifyLists(
 int main(int argc, char** argv)
 {
     const unsigned fif = argc > 1 ? unsigned(std::atoi(argv[1])) : 3;
-    auto execution = lux::execution::ExecutionRuntime::create({2, 128, 128, {128}});
+    auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(execution);
     RenderServerConfig config{"test.clustered", true};
     config.frames_in_flight = fif;
@@ -360,6 +360,7 @@ int main(int argc, char** argv)
     bootstrap.commands.push_back({std::string(ListCommands::name), take(server->commandId<ListCommands>())});
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
+    CHECK(server->setFrameSource(client->id()));
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = call<ListCommands>(*client, bootstrap, {});
     const auto meshes = prepare(*client, commands, kMeshStorageType, "meshes");
@@ -539,6 +540,7 @@ int main(int argc, char** argv)
             while (call<QueryExecutionProgress>(*client, commands, attachment)
                        .progress.count(EExecutionOutcome::EXECUTED) < fif + 2)
             {
+                renderFrame(*client, commands);
                 CHECK(Clock::now() < deadline);
                 std::this_thread::yield();
             }
@@ -575,6 +577,7 @@ int main(int argc, char** argv)
     while (call<QueryExecutionProgress>(*client, commands, attachment).progress.count(EExecutionOutcome::EXECUTED) <
            fif + 2)
     {
+        renderFrame(*client, commands);
         CHECK(Clock::now() < deadline);
         std::this_thread::yield();
     }

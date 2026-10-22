@@ -140,7 +140,7 @@ namespace
 
     void blockedOwner(bool typed, bool destroy_access, bool source_blocked)
     {
-        auto runtime = execution::ExecutionRuntime::create({1, 32, 32, {16}, execution::BlockingSchedulerConfig{1, 16}});
+        auto runtime = execution::ExecutionRuntime::create({1, 32, {16}, execution::BlockingSchedulerConfig{1, 16}});
         assert(runtime);
         execution::TaskScope files{*runtime}, blocker{*runtime};
         asset::AssetVfs vfs;
@@ -253,7 +253,7 @@ namespace
 
     void callbacks()
     {
-        auto runtime = execution::ExecutionRuntime::create({1, 32, 32, {16}});
+        auto runtime = execution::ExecutionRuntime::create({1, 32, {16}});
         assert(runtime);
         auto memory = process::asset_loading::makeAssetReadOverlay({{Id, {image()}}}, {});
         assert(memory);

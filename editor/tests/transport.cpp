@@ -72,7 +72,7 @@ namespace
     }
     void offscreen()
     {
-        auto created_engine = engine::EngineContext::create({1, 64, 64, {64}}, {0, 128});
+        auto created_engine = engine::EngineContext::create({1, 64, {64}}, 128);
         assert(created_engine);
         auto engine = std::move(*created_engine);
         assert(engine::initializeRendering(*engine, {}));

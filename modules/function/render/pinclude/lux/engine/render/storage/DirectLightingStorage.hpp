@@ -23,7 +23,7 @@ namespace lux::render::detail
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>> update(UpdateDirectLights::Request) noexcept;
         [[nodiscard]] exec::task<RenderResult<Ack>> remove(LightId) noexcept;
         [[nodiscard]] RenderResult<void>
-        resolve(const CompiledResource&, DirectLightingBinding, StorageSubscription&, std::span<ResourceInput>) noexcept;
+        resolve(const VGraphResourceDesc&, DirectLightingBinding, StorageSubscription&, std::span<ResourceInput>) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
         [[nodiscard]] bool read(LightId, VDirectLight&, std::uint32_t& dense_index) const noexcept;
         [[nodiscard]] std::array<std::uint32_t, 3> counts() const noexcept;
@@ -72,6 +72,7 @@ namespace lux::render::detail
         ResourceUploader& uploads_;
         FrameExecution& frames_;
         StorageId id_;
+        std::uint64_t preparation_revision_ = 1;
         cxx::StableSlotMap<Entry, DirectLightTag> entries_;
         std::array<LightArray, 4> arrays_;
         bool updating_ = false;

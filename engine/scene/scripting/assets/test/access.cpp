@@ -100,7 +100,7 @@ int main()
     assert(encoded);
     auto encoded_owner = std::make_shared<const std::vector<std::byte>>(std::move(*encoded));
     auto image = cxx::SharedBytes<>::fromOwner(encoded_owner, std::span<const std::byte>{*encoded_owner});
-    auto execution = execution::ExecutionRuntime::create({1, 64, 64, {32}, execution::BlockingSchedulerConfig{1, 64}});
+    auto execution = execution::ExecutionRuntime::create({1, 64, {32}, execution::BlockingSchedulerConfig{1, 64}});
     assert(execution);
     execution::TaskScope file_tasks{*execution};
     asset::AssetVfs vfs;
@@ -280,9 +280,9 @@ int main()
         auto broken = std::make_shared<Reply>();
         assert((*scope)->readTyped<asset::SkeletonAsset>(id, broken->completion())); settle(*execution);
         assert(broken->value && broken->value->errorDomain() == EScriptAssetFailureDomain::DECODE);
-        auto small = ScriptAssetAccess::create(*execution, *reads, {1, 1, 8193, {1, 8192, 8}});
-        assert(small);
-        auto small_scope = (*small)->prepare({10, 2}); assert(small_scope);
+        auto limited_access = ScriptAssetAccess::create(*execution, *reads, {1, 1, 8193, {1, 8192, 8}});
+        assert(limited_access);
+        auto small_scope = (*limited_access)->prepare({10, 2}); assert(small_scope);
         auto oversized = std::make_shared<Reply>();
         assert((*small_scope)->readAsset(id, oversized->completion())); settle(*execution);
         assert(oversized->value && oversized->value->errorDomain() == EScriptAssetFailureDomain::STORAGE);

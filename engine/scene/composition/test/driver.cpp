@@ -1,3 +1,4 @@
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
@@ -218,9 +219,10 @@ int main(int argc, char** argv)
     assert(rejected.error().scene_system.cause.args[0] == 719);
     assert(Probe::destructions == 1);
     Probe::reject_install = false;
-    auto executor = task::TaskExecutor::create({0, 1024});
-    assert(executor);
-    SceneDriver driver(*executor);
+    auto execution = execution::ExecutionRuntime::create({1, 32, {32}});
+        assert(execution);
+        task::TaskExecutor executor{execution->cpu(), 1024};
+    SceneDriver driver(executor);
     auto& instance = **first;
     auto& probe = *instance.findSceneSystem<Probe>();
     auto* capability = instance.findSceneSystem<Capability>();

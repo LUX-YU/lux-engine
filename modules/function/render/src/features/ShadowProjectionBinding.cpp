@@ -186,6 +186,8 @@ namespace lux::render::detail
             updates_[i].input = {buffer, 0, sources[i].size(), sources[i]};
         }
         updates_[0].input.parameter_layout = &view_layout_;
+        updates_[0].input.parameter_revision = revision_;
+        updates_[3].input.parameter_revision = revision_;
         const auto prepared = [&](FeatureBinding::EPreparation state) noexcept
         {
             const auto updates = std::exchange(slice.binding_changed, false) ? std::span<const ResourceUpdate>(updates_)

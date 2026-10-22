@@ -33,7 +33,6 @@ namespace lux::render
     {
         static constexpr std::array descriptors{
             error::ErrorDescriptor{"lux.render.resource.cpu_stopped", "CPU preparation stopped"},
-            error::ErrorDescriptor{"lux.render.resource.cpu_schedule_failure", "CPU scheduler rejected work"},
             error::ErrorDescriptor{"lux.render.resource.contract", "Invalid storage contract"},
             error::ErrorDescriptor{"lux.render.resource.mismatch", "Incompatible storage contract"},
             error::ErrorDescriptor{"lux.render.resource.factory", "Missing or conflicting storage factory"},

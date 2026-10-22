@@ -13,7 +13,12 @@ namespace lux::render::detail
         void release(const nri::CoreInterface&) noexcept;
 
         std::vector<Binding> bindings;
+        // Changes only when an imported physical identity or range changes, never for its contents.
+        std::uint64_t imported_revision = 0;
         std::vector<Pass> passes;
+        std::vector<std::byte> parameters;
+        std::vector<std::uint8_t> parameter_dirty;
+        std::vector<std::uint32_t> parameter_updates;
         std::vector<std::uint8_t> enabled_regions;
         std::vector<std::uint8_t> history_valid;
         std::uint32_t enabled_pass_count = 0;

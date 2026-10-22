@@ -29,7 +29,12 @@ namespace lux::render::runtime_detail
             const auto& entry = *commands_.find(id);
             const auto& description = *entry.description;
             result.commands.push_back(
-                {std::string(name), id, description.request, description.response, entry.selectedBinding() != nullptr}
+                {std::string(name),
+                 id,
+                 description.request,
+                 description.response,
+                 entry.selectedBinding() != nullptr,
+                 description.frame_scoped}
             );
         }
         return result;

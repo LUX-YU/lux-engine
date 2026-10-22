@@ -25,7 +25,7 @@ int main(int argc, char** argv)
     asset::AssetVfs vfs;
     auto mount = vfs.mount({"/Game", *provider});
     assert(mount);
-    auto runtime = execution::ExecutionRuntime::create({1, 64, 64, {32}, execution::BlockingSchedulerConfig{1, 64}});
+    auto runtime = execution::ExecutionRuntime::create({1, 64, {32}, execution::BlockingSchedulerConfig{1, 64}});
     assert(runtime);
     execution::TaskScope tasks{*runtime};
     auto blocking = runtime->blocking();

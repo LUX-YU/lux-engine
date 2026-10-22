@@ -21,7 +21,7 @@ int main()
 {
     using namespace lux::render;
     namespace ipc = lux::platform::ipc;
-    auto execution = lux::execution::ExecutionRuntime::create({1, 64, 64, {64}});
+    auto execution = lux::execution::ExecutionRuntime::create({1, 64, {64}});
     check(bool(execution));
     auto server = RenderServer::create({"spatial.external"}, *execution);
     check(bool(server));

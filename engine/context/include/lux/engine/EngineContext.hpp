@@ -21,9 +21,9 @@ namespace lux::engine
         using VCreateFailure = std::variant<execution::EExecutionError, scene::SceneRuntimeFailure>;
         using CreateResult = lux::cxx::expected<std::unique_ptr<EngineContext>, VCreateFailure>;
         [[nodiscard]] static CreateResult create(
-            execution::ExecutionRuntimeConfig,
-            task::TaskExecutorConfig,
-            ContextExtensions::Composition = {}
+            execution::ExecutionRuntimeConfig execution_config,
+            std::size_t scene_task_capacity,
+            ContextExtensions::Composition extensions = {}
         ) noexcept;
         ~EngineContext();
         EngineContext(const EngineContext&) = delete;

@@ -181,8 +181,8 @@ namespace lux::editor
             }
 
             auto engine = engine::EngineContext::create(
-                {2, 512, 512, {256}, execution::BlockingSchedulerConfig{2, 128}},
-                {0, 2048}
+                {2, 512, {256}, execution::BlockingSchedulerConfig{2, 128}},
+                2048
             );
             if (!engine)
             {

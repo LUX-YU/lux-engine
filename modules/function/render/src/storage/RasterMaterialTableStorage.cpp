@@ -1,3 +1,4 @@
+#include <lux/engine/render/resource/StorageSet.hpp>
 #include <algorithm>
 #include <bit>
 #include <cstring>
@@ -265,6 +266,7 @@ namespace lux::render::detail
             co_return cxx::unexpected(RenderError{kDeviceBusy});
         }
         table.updating = true;
+        ++preparation_revision_;
         nri::Buffer* candidate = nullptr;
         cxx::scope_exit rollback(
             [&]() noexcept
@@ -487,6 +489,7 @@ namespace lux::render::detail
         StorageSubscription::disconnect(entry->bindings);
         table.entries[entry->slot] = nullptr;
         table.free_slots.push_back(entry->slot);
+        ++preparation_revision_;
         entries_.erase(id.local);
         if (table.free_slots.size() == table.entries.size())
         {
@@ -498,7 +501,7 @@ namespace lux::render::detail
     }
 
     RenderResult<void> RasterMaterialTableStorage::resolve(
-        const CompiledResource& plan,
+        const VGraphResourceDesc& plan,
         const MaterialBinding& argument,
         StorageSubscription& subscription,
         std::span<ResourceInput> output
@@ -513,7 +516,7 @@ namespace lux::render::detail
         if (argument.texture_slot != UINT32_MAX)
         {
             const bool invalid_slot = argument.texture_slot >= table.texture_offsets.size();
-            if (!std::holds_alternative<GraphImageDesc>(plan.description) || invalid_slot)
+            if (!std::holds_alternative<GraphImageDesc>(plan) || invalid_slot)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
@@ -526,7 +529,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
+        const auto* description = std::get_if<GraphBufferDesc>(&plan);
         if (!description || description->size < table.stride || description->size > table.records.size())
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
@@ -713,7 +716,7 @@ namespace lux::render::detail
     {
         static const StorageBindingOps binding{
             [](void* object,
-               const CompiledResource& plan,
+               const VGraphResourceDesc& plan,
                const void* argument,
                StorageSubscription& subscription,
                std::span<ResourceInput> output) noexcept
@@ -722,7 +725,9 @@ namespace lux::render::detail
                     ->resolve(plan, *static_cast<const MaterialBinding*>(argument), subscription, output);
             },
             [](void* object, std::uint32_t slot, ResourceUploader& uploads) noexcept
-            { return static_cast<RasterMaterialTableStorage*>(object)->prepareFrame(slot, uploads); }
+            { return static_cast<RasterMaterialTableStorage*>(object)->prepareFrame(slot, uploads); },
+            [](const void* value) noexcept
+            { return &static_cast<const RasterMaterialTableStorage*>(value)->preparation_revision_; }
         };
         static const auto create = +[](StorageCreateContext& dependencies, StorageId id
                                     ) noexcept -> RenderResult<std::unique_ptr<RasterMaterialTableStorage>>

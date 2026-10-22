@@ -61,6 +61,7 @@ namespace lux::render
     struct CreateDirectLights final
     {
         static constexpr std::string_view name = "lux.render.CreateDirectLights";
+        static constexpr bool frame_scoped = true;
 
         struct Request final
         {
@@ -80,6 +81,7 @@ namespace lux::render
     struct UpdateDirectLights final
     {
         static constexpr std::string_view name = "lux.render.UpdateDirectLights";
+        static constexpr bool frame_scoped = true;
 
         struct Request final
         {
@@ -99,6 +101,7 @@ namespace lux::render
     struct RemoveDirectLight final
     {
         static constexpr std::string_view name = "lux.render.RemoveDirectLight";
+        static constexpr bool frame_scoped = true;
 
         struct Request final
         {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
@@ -53,6 +55,10 @@ namespace lux::render::detail
         std::vector<ResourceInput> resolved_inputs;
         std::span<const ResourceUploader::BufferCopy> prepared_copies;
         std::span<const ResourceUpdate> initial_resources;
+        // Null preserves true per-frame preparation (camera/light-derived values, for example).
+        // A producer revision allows each physical slice to skip already prepared derived data.
+        const std::uint64_t* preparation_revision = nullptr;
+        std::array<std::uint64_t, 3> applied_preparation{};
     };
 
     // Native-only cold factory contributed by a Feature. The existing GraphResourceId identifies

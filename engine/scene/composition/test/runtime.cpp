@@ -168,10 +168,10 @@ int main()
     };
     assert(lux::error::ErrorRegistry::instance().registerTypes(fixture_errors));
 
-    auto execution = execution::ExecutionRuntime::create({1, 32, 32, {16}});
+    auto execution = execution::ExecutionRuntime::create({1, 32, {16}});
     assert(execution);
-    auto runtime = SceneRuntime::create(*execution, {0, 1024});
-    auto other = SceneRuntime::create(*execution, {1, 1024});
+    auto runtime = SceneRuntime::create(*execution, 1024);
+    auto other = SceneRuntime::create(*execution, 1024);
     assert(runtime && other);
     const ecs::ComponentSchemaSet components;
     const simulation::SimulationSystemRegistry simulation_systems;

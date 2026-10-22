@@ -295,7 +295,7 @@ namespace lux::scene
             {
                 PENDING,
                 VALUE,
-                ERROR,
+                FAILED,
                 CANCELLED
             };
             std::atomic<EState> state{EState::PENDING};
@@ -538,7 +538,7 @@ namespace lux::scene
                 if (state != Read::EState::VALUE)
                 {
                     fail(
-                        state == Read::EState::ERROR
+                        state == Read::EState::FAILED
                             ? WorldLoadingFailure{EWorldLoadingError::READ_FAILURE, read->partition, read->error}
                             : WorldLoadingFailure{EWorldLoadingError::CANCELLED, read->partition}
                     );
@@ -687,7 +687,7 @@ namespace lux::scene
                             else if (const auto* failure = completed.error().domainFailure())
                             {
                                 read->error = *failure;
-                                read->state.store(Read::EState::ERROR, std::memory_order_release);
+                                read->state.store(Read::EState::FAILED, std::memory_order_release);
                             }
                             else
                             {

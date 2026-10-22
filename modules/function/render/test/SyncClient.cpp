@@ -24,6 +24,7 @@ namespace ipc = lux::platform::ipc;
 struct ExternalCommand final
 {
     static constexpr std::string_view name = "installed.client.external";
+    static constexpr bool frame_scoped = false;
     using Request = std::vector<unsigned>;
 
     struct Response final

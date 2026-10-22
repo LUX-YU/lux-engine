@@ -16,7 +16,7 @@ int main()
     if (ready != 0 || loop.executeReady(1) != 1 || ready != 1) std::abort();
     scope.close();
     if (!stdexec::sync_wait(scope.join())) std::abort();
-    auto runtime = ExecutionRuntime::create({1, 16, 16, {16}});
+    auto runtime = ExecutionRuntime::create({1, 16, {16}});
     if (!runtime) std::abort();
     struct State final
     {

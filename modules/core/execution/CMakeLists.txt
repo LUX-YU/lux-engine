@@ -4,6 +4,8 @@ find_package(lux-cxx REQUIRED COMPONENTS compile_time container)
 # stdexec 0.10 promotes only its main target itself, leaving system_context directory-local.
 find_package(stdexec CONFIG REQUIRED GLOBAL)
 
+find_package(concurrentqueue CONFIG REQUIRED GLOBAL)
+
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_CORE_EXECUTION_LIBRARY
     PUBLIC_MACRO_NAME       LUX_CORE_EXECUTION_PUBLIC
@@ -43,6 +45,7 @@ target_link_libraries(
         lux::cxx::compile_time
         lux::cxx::container
         STDEXEC::stdexec
+        concurrentqueue::concurrentqueue
 )
 
 component_add_transitive_commands(
@@ -50,6 +53,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS async_port error)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time container)"
     "find_package(stdexec CONFIG REQUIRED GLOBAL)"
+    "find_package(concurrentqueue CONFIG REQUIRED GLOBAL)"
 )
 
 lux_engine_install_components(
@@ -84,6 +88,7 @@ if(BUILD_TESTING)
             "-DTOOLSET_DIR=${lux-cmake-toolset_DIR}"
             "-DDEPENDENCY_DIR=${lux-cxx_DIR}"
             "-DSTDEXEC_DIR=${stdexec_DIR}"
+            "-DCONCURRENTQUEUE_DIR=${concurrentqueue_DIR}"
             "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}"
             "-DMAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
             "-DCXX_FLAGS=${CMAKE_CXX_FLAGS}"

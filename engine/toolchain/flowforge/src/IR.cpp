@@ -203,7 +203,7 @@ namespace lux::flowforge
             return b.getF32Type();
         case EBaseType::DOUBLE:
             return b.getF64Type();
-        case EBaseType::VOID:
+        case EBaseType::VOID_TYPE:
         case EBaseType::RECORD:
         case EBaseType::UNKNOWN:
         default:
@@ -2346,7 +2346,7 @@ namespace lux::flowforge
         auto ptr_ty = mlir::LLVM::LLVMPointerType::get(bc_.ctx);
 
         const bool returns_void =
-            static_cast<lux::meta::EBaseType>(info.return_type.qtype.base) == lux::meta::EBaseType::VOID &&
+            static_cast<lux::meta::EBaseType>(info.return_type.qtype.base) == lux::meta::EBaseType::VOID_TYPE &&
             !isPointerQual(info.return_type);
 
         // Collect + coerce operands from data input pins (shared by both

@@ -62,6 +62,8 @@ namespace lux::render
         CommandName name;
         cxx::TypeToken request;
         cxx::TypeToken response;
+        // Visible-state mutations are admitted only inside the configured source's sealed frame.
+        bool frame_scoped = false;
     };
 
     template <typename C>
@@ -70,6 +72,7 @@ namespace lux::render
             typename C::Request;
             typename C::Response;
             std::string_view{C::name};
+            std::bool_constant<C::frame_scoped>{};
             { response.error } -> std::same_as<RenderError&>;
         } && std::is_nothrow_default_constructible_v<typename C::Response> &&
         std::is_nothrow_move_constructible_v<typename C::Request> &&
@@ -81,7 +84,8 @@ namespace lux::render
     inline constexpr CommandDescriptor kCommandDescriptor{
         CommandName(C::name),
         cxx::typeToken<typename C::Request>(),
-        cxx::typeToken<typename C::Response>()
+        cxx::typeToken<typename C::Response>(),
+        C::frame_scoped
     };
 
     template <RenderCommand C> [[nodiscard]] constexpr const CommandDescriptor& commandDescriptor() noexcept

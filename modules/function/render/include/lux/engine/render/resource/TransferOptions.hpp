@@ -12,6 +12,8 @@ namespace lux::render
         bool measure_gpu = false;         // optional bounded timestamp pairs, never a wait in advance()
         std::size_t window_regions = 256; // Copy regions per finite preparation window.
         std::size_t batch_entries = 128;  // Maximum ready request windows in one submission.
+        bool measure_cpu = false;         // CPU clock reads are opt-in, independent of GPU timestamps.
+        std::size_t inline_copy_bytes = 16 * 1024; // Maximum contiguous Buffer bytes prepared on RenderThread.
     };
 
 } // namespace lux::render

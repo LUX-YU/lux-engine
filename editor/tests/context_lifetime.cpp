@@ -17,7 +17,7 @@ using namespace std::chrono_literals;
 int main()
 {
     auto& owner = object::ObjectRuntime::instance();
-    auto engine = engine::EngineContext::create({1, 64, 64, {32}, execution::BlockingSchedulerConfig{1, 32}}, {0, 64});
+    auto engine = engine::EngineContext::create({1, 64, {32}, execution::BlockingSchedulerConfig{1, 32}}, 64);
     assert(engine && owner.isCurrent());
     uuids::uuid_name_generator ids{*uuids::uuid::from_string("20d09a0e-ac42-4280-be98-6e31f51c0cfe")};
     const ProjectDescription description{"Complete", std::filesystem::current_path()};

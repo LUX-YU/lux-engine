@@ -22,7 +22,7 @@ namespace lux::semantic
 
     enum class EAbiKind : std::uint8_t
     {
-        VOID = 0U,
+        VOID_TYPE = 0U,
         BOOL = 1U,
         I32 = 2U,
         U32 = 3U,
@@ -63,7 +63,7 @@ namespace lux::semantic
     {
         TypeId type_id{};
         std::string_view canonical_name;
-        std::uint8_t abi_kind{static_cast<std::uint8_t>(EAbiKind::VOID)};
+        std::uint8_t abi_kind{static_cast<std::uint8_t>(EAbiKind::VOID_TYPE)};
         std::uint32_t size{};
         std::uint32_t alignment{};
     };

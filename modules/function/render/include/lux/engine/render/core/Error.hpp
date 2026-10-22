@@ -26,7 +26,6 @@ namespace lux::render
     inline constexpr auto kOutcomeUnknown = error::errorId("lux.render.runtime.outcome_unknown");
 
     inline constexpr auto kCpuStopped = error::errorId("lux.render.resource.cpu_stopped");
-    inline constexpr auto kCpuScheduleFailure = error::errorId("lux.render.resource.cpu_schedule_failure");
 
     inline constexpr auto kInvalidTargetExtent = error::errorId("lux.render.core.invalid_target_extent");
     inline constexpr auto kInvalidTargetFormat = error::errorId("lux.render.core.invalid_target_format");

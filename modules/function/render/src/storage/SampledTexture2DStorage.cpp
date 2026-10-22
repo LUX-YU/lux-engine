@@ -397,12 +397,12 @@ namespace lux::render::detail
     }
 
     RenderResult<ResourceInput> SampledTexture2DStorage::
-        resolve(const CompiledResource& plan, const TextureBinding& argument, StorageSubscription&) noexcept
+        resolve(const VGraphResourceDesc& plan, const TextureBinding& argument, StorageSubscription&) noexcept
     {
         const auto* backing = find(argument.texture);
         if (backing)
         {
-            const auto* expected = std::get_if<GraphImageDesc>(&plan.description);
+            const auto* expected = std::get_if<GraphImageDesc>(&plan);
             if (!expected)
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
@@ -434,14 +434,14 @@ namespace lux::render::detail
         // Texture identities are immutable. The Client ends bindings before release; there is no update subscription.
         static constexpr TextureGpuRef default_reference{};
         const auto& reference = backing ? backing->reference_ : default_reference;
-        return ResourceInput{nullptr, 0, 0, std::as_bytes(std::span(&reference, 1)), &layout};
+        return ResourceInput{nullptr, 0, 0, std::as_bytes(std::span(&reference, 1)), &layout, 1};
     }
 
     StorageFactory SampledTexture2DStorage::factory() noexcept
     {
         static const StorageBindingOps bindings{
             [](void* storage,
-               const CompiledResource& plan,
+               const VGraphResourceDesc& plan,
                const void* argument,
                StorageSubscription& subscription,
                std::span<ResourceInput> output) noexcept -> RenderResult<void>

@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/features/HzbFeature.hpp>
 #include <lux/engine/render/features/MaterialMeshRaster.hpp>
@@ -36,7 +37,7 @@ int main(int argc, char** argv)
         );
         return 2;
     }
-    auto created = lux::execution::ExecutionRuntime::create({2, 128, 128, {128}});
+    auto created = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     if (!created)
     {
         return 3;
@@ -77,6 +78,11 @@ int main(int argc, char** argv)
     (void)require(server->featureId<HzbFeatureDescriptor>());
 
     const auto directory_id = require(server->commandId<lux::render::ListCommands>());
+    auto main_client = lux::platform::ipc::IpcCore::instance().createRequester(config.channel_name);
+    if (!main_client || !server->setFrameSource(main_client->id()))
+    {
+        return 4;
+    }
     bool ran = false;
     std::thread render(
         [&]
@@ -94,7 +100,7 @@ int main(int argc, char** argv)
             }
         }
     );
-    mesh_sample::runClients(config.channel_name, directory_id, argv[1]);
+    mesh_sample::runClients(*main_client, config.channel_name, directory_id, argv[1]);
     server->stop();
     render.join();
     const auto stats = server->stats();
@@ -110,7 +116,7 @@ int main(int argc, char** argv)
     }
     std::printf(
         "3D sample: two Clients, one ExecutionRuntime, one Mesh/Material shared, typed Camera parameters and "
-        "continuous rendering; "
+        "sealed frame rendering; "
         "graphs=%llu submissions=%llu validation=%llu warnings=%llu\n",
         static_cast<unsigned long long>(stats.compiled_graphs),
         static_cast<unsigned long long>(stats.submissions),

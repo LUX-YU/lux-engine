@@ -1,3 +1,4 @@
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <box2d/box2d.h>
 #include <cassert>
 #include <cmath>
@@ -170,13 +171,14 @@ int main()
         auto simulation = Simulation::create(registry, valid, types);
         assert(simulation && simulation->taskCount() == 1 && !simulation->scriptApiCapabilities().empty());
         assert(simulation->seal());
-        auto executor = task::TaskExecutor::create({0, 1024});
-        assert(executor);
+        auto execution = execution::ExecutionRuntime::create({1, 32, {32}});
+        assert(execution);
+        task::TaskExecutor executor{execution->cpu(), 1024};
         const auto bad_time =
-            simulation->execute(*executor, {.delta = SimulationDuration{16'666'667}, .step_index = 1});
+            simulation->execute(executor, {.delta = SimulationDuration{16'666'667}, .step_index = 1});
         assert(!bad_time && bad_time.error().code == ESimulationExecutionError::INVALID_STEP_TIME);
         const SimulationTime next{SimulationDuration{16'666'667}, SimulationDuration{16'666'667}, 1};
-        assert(simulation->execute(*executor, next));
+        assert(simulation->execute(executor, next));
     }
     assert(availableWorlds() == capacity);
     std::cout << "physics2d: invalid input owns no backend, real capacity failure/recovery, stepping, queries, "

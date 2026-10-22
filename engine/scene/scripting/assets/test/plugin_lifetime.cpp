@@ -52,7 +52,7 @@ namespace
 int main(int argc, char** argv)
 {
     assert(argc == 2);
-    auto execution = take(execution::ExecutionRuntime::create({1, 64, 64, {32}, execution::BlockingSchedulerConfig{1, 64}}));
+    auto execution = take(execution::ExecutionRuntime::create({1, 64, {32}, execution::BlockingSchedulerConfig{1, 64}}));
     execution::TaskScope files{execution};
     asset::AssetVfs vfs;
     auto endpoint = take(process::asset_loading::VfsAssetReadEndpoint::create(

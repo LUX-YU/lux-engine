@@ -1,3 +1,4 @@
+#include <lux/engine/render/resource/StorageSet.hpp>
 #include <algorithm>
 #include <bit>
 #include <cstddef>
@@ -547,6 +548,7 @@ namespace lux::render::detail
             co_return CreateValue<Input>{};
         }
         updating_ = true;
+        ++preparation_revision_;
         std::size_t reserved = 0;
         const auto old_pages = pages_.size();
         cxx::scope_exit rollback(
@@ -759,6 +761,7 @@ namespace lux::render::detail
             co_return TransformApplied{input.sequence, 0};
         }
         updating_ = true;
+        ++preparation_revision_;
         auto& data = *frames_;
         cxx::scope_exit cleanup(
             [&]() noexcept
@@ -920,6 +923,7 @@ namespace lux::render::detail
             co_return TransformApplied{input.sequence, 0};
         }
         updating_ = true;
+        ++preparation_revision_;
         cxx::scope_exit cleanup(
             [&]() noexcept
             {
@@ -1012,6 +1016,7 @@ namespace lux::render::detail
             co_return cxx::unexpected(RenderError{kStorageIdentity});
         }
         updating_ = true;
+        ++preparation_revision_;
         cxx::scope_exit cleanup([&]() noexcept { updating_ = false; });
         std::uint32_t frame = 0;
         while (!frame_execution_.tryBeginWrite(frame))
@@ -1278,13 +1283,13 @@ namespace lux::render::detail
     }
 
     RenderResult<void> RasterMeshInstanceStorage::resolve(
-        const CompiledResource& plan,
+        const VGraphResourceDesc& plan,
         const MeshInstanceBinding& input,
         StorageSubscription& subscription,
         std::span<ResourceInput> output
     ) noexcept
     {
-        const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
+        const auto* description = std::get_if<GraphBufferDesc>(&plan);
         if (!description || input.role > EMeshInstanceBinding::ALIVE)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
@@ -1310,7 +1315,7 @@ namespace lux::render::detail
     {
         static const StorageBindingOps binding{
             [](void* value,
-               const CompiledResource& plan,
+               const VGraphResourceDesc& plan,
                const void* argument,
                StorageSubscription& subscription,
                std::span<ResourceInput> output) noexcept
@@ -1319,7 +1324,9 @@ namespace lux::render::detail
                     ->resolve(plan, *static_cast<const MeshInstanceBinding*>(argument), subscription, output);
             },
             [](void* value, std::uint32_t frame, ResourceUploader& uploads) noexcept
-            { return static_cast<RasterMeshInstanceStorage*>(value)->prepareFrame(frame, uploads); }
+            { return static_cast<RasterMeshInstanceStorage*>(value)->prepareFrame(frame, uploads); },
+            [](const void* value) noexcept
+            { return &static_cast<const RasterMeshInstanceStorage*>(value)->preparation_revision_; }
         };
         static const auto create = +[](StorageCreateContext& dependencies, StorageId id
                                     ) noexcept -> RenderResult<std::unique_ptr<RasterMeshInstanceStorage>>

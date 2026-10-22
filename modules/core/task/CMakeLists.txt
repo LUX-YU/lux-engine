@@ -1,4 +1,4 @@
-## core::task — generic immutable task DAG + completion-driven worker executor.
+## core::task — immutable task DAG on the shared ExecutionRuntime CPU scheduler.
 
 find_package(lux-cxx REQUIRED COMPONENTS compile_time)
 
@@ -17,8 +17,6 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskCallable.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskGraphBuilder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskExecutor.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskExecutorFailureInjection.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskExecutorWorker.cpp
 )
 
 component_include_directories(
@@ -37,9 +35,11 @@ target_link_libraries(
     task
     PUBLIC
         lux::cxx::compile_time
+        lux::engine::core::core_execution
 )
 
 component_add_transitive_commands(
     task
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
+    "find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)"
 )

@@ -95,7 +95,7 @@ namespace
 
     void ownerDeath(bool destroy_in_completion)
     {
-        auto runtime = execution::ExecutionRuntime::create({1, 16, 16, {16}, execution::BlockingSchedulerConfig{1, 16}});
+        auto runtime = execution::ExecutionRuntime::create({1, 16, {16}, execution::BlockingSchedulerConfig{1, 16}});
         assert(runtime);
         execution::TaskScope tasks{*runtime};
         auto blocking = runtime->blocking();
@@ -142,7 +142,7 @@ namespace
 
     void cancelledQueuedRead()
     {
-        auto runtime = execution::ExecutionRuntime::create({1, 16, 16, {16}, execution::BlockingSchedulerConfig{1, 16}});
+        auto runtime = execution::ExecutionRuntime::create({1, 16, {16}, execution::BlockingSchedulerConfig{1, 16}});
         assert(runtime);
         execution::TaskScope blocker{*runtime};
         auto scope = std::make_unique<execution::TaskScope>(*runtime);
@@ -192,7 +192,7 @@ namespace
 
     void cleanupAndCapacity()
     {
-        auto runtime = execution::ExecutionRuntime::create({1, 16, 16, {16}, execution::BlockingSchedulerConfig{1, 16}});
+        auto runtime = execution::ExecutionRuntime::create({1, 16, {16}, execution::BlockingSchedulerConfig{1, 16}});
         assert(runtime);
         execution::TaskScope tasks{*runtime};
         auto blocking = runtime->blocking();
@@ -248,7 +248,7 @@ namespace
 
     void wakeReentry()
     {
-        auto runtime = execution::ExecutionRuntime::create({1, 16, 16, {16}, execution::BlockingSchedulerConfig{1, 16}});
+        auto runtime = execution::ExecutionRuntime::create({1, 16, {16}, execution::BlockingSchedulerConfig{1, 16}});
         assert(runtime);
         execution::TaskScope tasks{*runtime};
         asset::AssetVfs vfs;

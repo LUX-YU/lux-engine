@@ -1,5 +1,6 @@
 #include <exception>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/StorageSet.hpp>
 
 namespace lux::render
 {

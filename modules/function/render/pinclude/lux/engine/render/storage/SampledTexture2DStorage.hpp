@@ -14,7 +14,6 @@
 
 namespace lux::render::detail
 {
-    struct CompiledResource;
 
     class SampledTexture2DStorage final
     {
@@ -80,7 +79,7 @@ namespace lux::render::detail
         preparePatched(const SampledImage&, const TextureRegion&, std::span<const std::byte>) noexcept;
         [[nodiscard]] RenderResult<SampledImage> sampledImage(nri::Texture*, std::uint32_t color_space) noexcept;
         [[nodiscard]] RenderResult<ResourceInput>
-        resolve(const CompiledResource&, const TextureBinding&, StorageSubscription&) noexcept;
+        resolve(const VGraphResourceDesc&, const TextureBinding&, StorageSubscription&) noexcept;
         static void releaseImage(const nri::CoreInterface&, DescriptorTable&, SampledImage&) noexcept;
         void retire(SampledImage&) noexcept;
         DeviceSession& session_;

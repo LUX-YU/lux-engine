@@ -46,6 +46,7 @@ namespace lux::render::detail
         if (id.isNull())
         {
             available_ = false;
+            ++revision_;
             return;
         }
         const auto index = id.local.index;
@@ -218,11 +219,7 @@ namespace lux::render::detail
         auto value = std::unique_ptr<RasterMeshDraws>(new RasterMeshDraws(session, frames, registry, group));
         value->update_.resource = configuration.members;
         value->capacity_ = configuration.capacity;
-        const CompiledResource section_plan{
-            "sections",
-            GraphBufferDesc{description->submeshes.size() * sizeof(MeshGpuSection)},
-            EGraphOrigin::IMPORTED
-        };
+        const VGraphResourceDesc section_plan = GraphBufferDesc{description->submeshes.size() * sizeof(MeshGpuSection)};
         StorageSubscription unused;
         auto sections = (*mesh)->resolve(
             section_plan,
@@ -245,10 +242,13 @@ namespace lux::render::detail
             self.update(id, description);
         };
         (*instances)->observe(value->observer_);
-        return FeatureBinding{
+        const auto* preparation_revision = &value->revision_;
+        auto binding = FeatureBinding{
             {value.release(), [](void* pointer) noexcept { delete static_cast<RasterMeshDraws*>(pointer); }},
             [](void* pointer, const FeatureFrameInput& input, ResourceUploader& uploads) noexcept
             { return static_cast<RasterMeshDraws*>(pointer)->prepare(input.slot, uploads); }
         };
+        binding.preparation_revision = preparation_revision;
+        return binding;
     }
 } // namespace lux::render::detail

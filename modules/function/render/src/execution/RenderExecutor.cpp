@@ -121,7 +121,8 @@ namespace lux::render::detail
         RenderGraphInstance& instance,
         nri::CommandBuffer& command,
         std::uint32_t slot,
-        std::uint32_t batch_index
+        std::uint32_t batch_index,
+        BindingState& binding_state
     ) noexcept
     {
         const auto& core = instance.session_->nriCore();
@@ -139,10 +140,16 @@ namespace lux::render::detail
             }
             return bindings[resource];
         };
-        BindingState binding_state;
+        // Logical vertex-resource indices are instance-local. Pipeline and descriptor state
+        // use physical identities and may be retained across the whole merged recording.
+        binding_state.vertices = {};
         if (batch_index == 0)
         {
             recordHistoryInitialization(instance, command);
+            if (!instance.histories_.empty())
+            {
+                binding_state = {};
+            }
         }
         auto region = [&](const ResourceAccess& access, const std::optional<ImageCopyRegion>& rectangle = {})
         {
@@ -206,6 +213,7 @@ namespace lux::render::detail
                     core.CmdSetPipelineLayout(command, point, *program.layout);
                     binding_state.layout = program.layout;
                     binding_state.point = point;
+                    binding_state.descriptors = {};
                 }
                 if (compiled.pipeline && binding_state.pipeline != compiled.pipeline)
                 {
@@ -215,8 +223,14 @@ namespace lux::render::detail
                 }
                 for (std::uint32_t set = 0; set < pass.descriptors.size(); ++set)
                 {
-                    core.CmdSetDescriptorSet(command, {set, pass.descriptors[set], point});
+                    const bool changed_set = set >= binding_state.descriptors.size() ||
+                                             binding_state.descriptors[set] != pass.descriptors[set];
+                    if (changed_set)
+                    {
+                        core.CmdSetDescriptorSet(command, {set, pass.descriptors[set], point});
+                    }
                 }
+                binding_state.descriptors = pass.descriptors;
                 if (!parameters.empty())
                 {
                     core.CmdSetRootConstants(
@@ -393,8 +407,9 @@ namespace lux::render::detail
             }
             else
             {
-                binding_state.vertices = {};
-                binding_state.index = nullptr;
+                // Clear helpers may use backend-private compute state. Do not carry a cached
+                // application binding across those operations.
+                binding_state = {};
                 const auto& transfer = std::get<TransferWork>(compiled.work);
                 std::uint32_t fill_binding = 0;
                 for (std::size_t i = 0; i < transfer.operations.size(); ++i)

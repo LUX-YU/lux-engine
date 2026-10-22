@@ -20,7 +20,7 @@ namespace
         std::weak_ptr<int> operation_owner;
         const auto owner_thread = std::this_thread::get_id();
         {
-            auto runtime = ExecutionRuntime::create({1, 16, 16, {16}});
+            auto runtime = ExecutionRuntime::create({1, 16, {16}});
             assert(runtime);
             auto scope = std::make_unique<TaskScope>(*runtime);
             auto pin = std::make_shared<int>(42);
@@ -101,7 +101,7 @@ namespace
 
     void explicitJoin()
     {
-        auto runtime = ExecutionRuntime::create({1, 16, 16, {16}});
+        auto runtime = ExecutionRuntime::create({1, 16, {16}});
         assert(runtime);
         TaskScope scope{*runtime};
         std::binary_semaphore entered{0}, release{0};

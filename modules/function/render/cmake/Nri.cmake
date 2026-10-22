@@ -64,7 +64,8 @@ set(NRI_ENABLE_IMGUI_EXTENSION OFF CACHE BOOL "" FORCE)
 
 add_subdirectory("${LUX_NRI_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/nri")
 
-# Dependency headers are implementation-only. The virtual allocator is already implemented by NRI.
+# Vulkan/VMA implementation headers stay private. Only locked NRI declarations are installed
+# for Render extensions; the virtual allocator is already implemented by the single NRI library.
 set(LUX_NRI_VULKAN_HEADERS "${FETCHCONTENT_BASE_DIR}/vulkan_headers-src/include")
 set(LUX_NRI_VMA_HEADERS "${FETCHCONTENT_BASE_DIR}/vma-src/include")
 install(FILES "${LUX_NRI_SOURCE_DIR}/LICENSE.txt" DESTINATION share/lux-engine-render/licenses RENAME NRI.txt)

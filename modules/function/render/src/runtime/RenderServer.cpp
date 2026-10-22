@@ -37,7 +37,7 @@ namespace lux::render
     ) noexcept
     {
         const bool invalid = config.frames_in_flight == 0 || config.frames_in_flight > 3 ||
-                             config.request_work_budget == 0 || config.max_config_bytes == 0 ||
+                             config.max_frames_ahead == UINT32_MAX || config.max_config_bytes == 0 ||
                              config.gpu_wait_ns > 1'000'000;
         if (invalid)
         {
@@ -55,6 +55,16 @@ namespace lux::render
         }
         state->registerBuiltinFeatures();
         return std::unique_ptr<RenderServer>(new RenderServer(std::move(state)));
+    }
+
+    RenderResult<void> RenderServer::setFrameSource(ipc::RequesterId requester) noexcept
+    {
+        if (impl_->started.load() || requester.isNull())
+        {
+            return cxx::unexpected(RenderError{kRuntimeState});
+        }
+        impl_->frame_source_ = requester;
+        return {};
     }
 
     void RenderServer::Impl::registerBuiltinFeatures() noexcept
@@ -125,8 +135,7 @@ namespace lux::render
         const FeatureGraphOps& graph
     ) const noexcept
     {
-        const bool is_invalid_declaration =
-            descriptor.type.name().empty() || !descriptor.describe_ports;
+        const bool is_invalid_declaration = descriptor.type.name().empty() || !descriptor.describe_ports;
         if (is_invalid_declaration)
         {
             return cxx::unexpected(RenderError{kFeatureContract});

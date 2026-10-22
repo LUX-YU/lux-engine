@@ -3,10 +3,16 @@
 #include <lux/engine/render/visibility.h>
 
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/render/resource/StorageSet.hpp>
+#include <lux/engine/render/core/ConfigValue.hpp>
+#include <lux/engine/render/resource/StorageFactory.hpp>
+#include <map>
+#include <optional>
 
 namespace lux::render
 {
+    class StorageSet;
+    class RenderServer;
+
     class LUX_RENDER_PUBLIC ResourceRegistry final
     {
     public:
@@ -31,12 +37,6 @@ namespace lux::render
             }
             return installFactory(std::move(factory), std::move(*value));
         }
-
-        // Internal registration primitives: built-ins publish known declarations directly;
-        // external registration validates the complete closure before calling publishFactory().
-        [[nodiscard]] RenderResult<void> validateFactory(const StorageFactory&) const noexcept;
-        [[nodiscard]] RenderResult<void> validateFactory(const StorageFactory&, const ConfigValue&) const noexcept;
-        StorageTypeId publishFactory(StorageFactory, ConfigValue = {}) noexcept;
 
         [[nodiscard]] std::uint32_t capabilities() const noexcept
         {
@@ -106,6 +106,16 @@ namespace lux::render
             return creations_;
         }
 
+    private:
+        friend class StorageSet;
+        friend class RenderServer;
+
+        // Internal registration primitives: built-ins publish known declarations directly;
+        // external registration validates the complete closure before calling publishFactory().
+        [[nodiscard]] RenderResult<void> validateFactory(const StorageFactory&) const noexcept;
+        [[nodiscard]] RenderResult<void> validateFactory(const StorageFactory&, const ConfigValue&) const noexcept;
+        StorageTypeId publishFactory(StorageFactory, ConfigValue = {}) noexcept;
+
         // StorageSet owns instances; this index alone mutates their identities and borrowed locations.
         [[nodiscard]] StorageId reserve(StorageSet&, StorageTypeId) noexcept;
         [[nodiscard]] RenderResult<StorageInstance> create(
@@ -118,7 +128,6 @@ namespace lux::render
         void revoke(StorageId) noexcept;
         [[nodiscard]] std::optional<std::size_t> position(StorageId, const StorageSet&) const noexcept;
 
-    private:
         struct Type final
         {
             StorageTypeId id;

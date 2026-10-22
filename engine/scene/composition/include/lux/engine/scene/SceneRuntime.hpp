@@ -197,7 +197,8 @@ namespace lux::scene
 
         using CreateResult = SceneRuntimeResult<std::unique_ptr<SceneRuntime>>;
         using DriveResult = SceneRuntimeResult<std::span<const SceneRuntimeFailure>>;
-        [[nodiscard]] static CreateResult create(execution::ExecutionRuntime&, task::TaskExecutorConfig) noexcept;
+        [[nodiscard]] static CreateResult
+        create(execution::ExecutionRuntime& execution, std::size_t initial_task_capacity) noexcept;
         ~SceneRuntime() noexcept;
         SceneRuntime(const SceneRuntime&) = delete;
         SceneRuntime& operator=(const SceneRuntime&) = delete;

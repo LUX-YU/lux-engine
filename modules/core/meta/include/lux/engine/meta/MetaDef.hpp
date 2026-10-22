@@ -29,7 +29,7 @@ namespace lux::meta
      */
     enum class EBaseType : std::uint8_t // total 14 element, actually 4 bits
     {
-        VOID,
+        VOID_TYPE,
         // Fundamental start
         BOOL = 1,
 
@@ -106,7 +106,7 @@ namespace lux::meta
     {
         using B = std::remove_cvref_t<std::remove_pointer_t<U>>;
         if constexpr (std::is_void_v<B>)
-            return EBaseType::VOID;
+            return EBaseType::VOID_TYPE;
         else if constexpr (std::same_as<B, bool>)
             return EBaseType::BOOL;
         else if constexpr (std::same_as<B, std::int8_t>)

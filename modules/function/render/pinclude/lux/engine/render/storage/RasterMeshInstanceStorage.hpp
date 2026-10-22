@@ -96,7 +96,7 @@ namespace lux::render::detail
             conditional_t<std::same_as<Input, MeshInstanceDescription>, MeshInstanceId, std::vector<MeshInstanceId>>;
         template <class Input> [[nodiscard]] exec::task<RenderResult<CreateValue<Input>>> createBatch(Input) noexcept;
         [[nodiscard]] RenderResult<void>
-        resolve(const CompiledResource&, const MeshInstanceBinding&, StorageSubscription&, std::span<ResourceInput>) noexcept;
+        resolve(const VGraphResourceDesc&, const MeshInstanceBinding&, StorageSubscription&, std::span<ResourceInput>) noexcept;
         [[nodiscard]] RenderResult<void> allocate(GpuPage&, std::size_t slots) noexcept;
         [[nodiscard]] RenderResult<void> ensureFrame(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t slot, ResourceUploader&) noexcept;
@@ -118,6 +118,7 @@ namespace lux::render::detail
         ResourceRegistry& resources_;
 
         StorageId id_;
+        std::uint64_t preparation_revision_ = 1;
         const bool paged_;
         bool updating_ = false;
         std::uint32_t live_records_ = 0;

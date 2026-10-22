@@ -1493,6 +1493,7 @@ namespace lux::simulation
         {
             return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::INVALID_STEP_TIME});
         }
+        const auto previous_time = impl_->time;
         impl_->time = time;
         impl_->execution.system_failure.store(0U, std::memory_order_release);
         impl_->execution.command_failure.reset();
@@ -1501,6 +1502,7 @@ namespace lux::simulation
         impl_->executing = false;
         if (!executed)
         {
+            impl_->time = previous_time;
             return lux::cxx::unexpected(
                 SimulationExecutionFailure{ESimulationExecutionError::TASK_EXECUTOR_FAILURE, {}, executed.error(), {}}
             );

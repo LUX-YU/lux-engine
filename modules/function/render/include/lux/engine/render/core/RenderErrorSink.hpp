@@ -5,16 +5,16 @@
 
 namespace lux::render
 {
-    enum class ERenderDiagnostic : std::uint8_t
+    enum class ERenderDiagnosticSeverity : std::uint8_t
     {
         INFORMATION,
         WARNING,
-        ERROR
+        ERROR_MESSAGE
     };
 
     struct RenderDiagnostic final
     {
-        ERenderDiagnostic severity;
+        ERenderDiagnosticSeverity severity;
         RenderError error;
         std::string_view message;
         std::string_view file;

@@ -285,7 +285,7 @@ int main(int argc, char** argv)
             CHECK(!diagnostic.message.empty());
             CHECK(!diagnostic.file.empty() && diagnostic.line != 0);
             ++*static_cast<std::atomic<unsigned>*>(context);
-            if (diagnostic.severity == ERenderDiagnostic::ERROR)
+            if (diagnostic.severity == ERenderDiagnosticSeverity::ERROR_MESSAGE)
             {
                 std::fprintf(
                     stderr,

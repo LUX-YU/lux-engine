@@ -55,9 +55,9 @@ namespace lux::render
         const auto& sink = state.config.diagnostics;
         if (sink.report)
         {
-            const auto level = severity == nri::Message::ERROR     ? ERenderDiagnostic::ERROR
-                               : severity == nri::Message::WARNING ? ERenderDiagnostic::WARNING
-                                                                   : ERenderDiagnostic::INFORMATION;
+            const auto level = severity == nri::Message::ERROR     ? ERenderDiagnosticSeverity::ERROR_MESSAGE
+                               : severity == nri::Message::WARNING ? ERenderDiagnosticSeverity::WARNING
+                                                                   : ERenderDiagnosticSeverity::INFORMATION;
             sink.report(
                 sink.context,
                 {level,

@@ -393,14 +393,33 @@ not as a hidden replacement for the successful non-overflow Clustered path.
 
 ## Scene composition and measurement boundaries
 
-`MeshInstanceDrawGroup::material` selects a material **program table** through a live material in that table;
+`MeshInstanceDrawGroup::material_table_source` selects a material **program table** through a live material in that table;
 it is not a filter for just that MaterialId. A group selects its Mesh/submesh and all matching instances in that
 table. Each instance's GPU material index selects its own parameters. Configure one group for that Mesh/submesh/table,
 even when many MaterialIds share it. Listing those materials as separate groups repeats the same draws.
 
-Shadow visibility can supply external visible members, indirect commands and counts to MeshShadow. GBuffer currently
-uses its own all-candidate member stream; it does not yet expose the equivalent external visibility inputs. A passing
-shadow-culling test therefore does not establish a GPU-culling main-view path.
+Set `GBufferFeatureConfig::visible_capacity` to the capacity of the connected visibility producer. Connect its
+`gN.visible/commands/counts` outputs to GBuffer's `groupN.members/commands/counts` inputs. GBuffer does not instantiate
+or query another Feature. With capacity zero it retains the all-candidate reference path.
+
+`MeshVisibilityFeatureConfig::view_parameters` optionally supplies the Attachment parameter layout containing
+`view` and `projection`. In that mode one Compute pass produces the geometric view and six homogeneous clip planes;
+each Attachment/FIF slot has its own ordinary Graph buffers. Without this layout, the composition connects the
+`views` input explicitly, as for shadow slices. No Camera owner, CPU readback or extra synchronization service exists.
+
+Visible members, commands and counts contain two streams per view: positive transform determinant, then negative.
+Raster Features use the corresponding front-face state, including for double-sided material normal orientation.
+`front_counter_clockwise` describes the base geometry/projection, before instance mirroring; callers must not invert
+it again for a mirrored instance. Zero-determinant instances are not drawable. The all-candidate path uses two vertex
+variants to reject the other orientation without a CPU transform scan; the GPU visibility path partitions members
+before drawing. This increases the number of raster orientations/Pipelines relative to a uniform-sign-only path;
+it is a correctness change, not a performance claim.
+
+`RenderServerConfig::diagnostics` borrows a `RenderErrorSink` through initialization, compilation and device teardown.
+It receives backend severity, a static error identity, message, file and line. Text is valid only during the callback;
+the application owns the destination and any retained copies, and handles concurrent calls without reentering the
+Server. Error/warning counters remain available even when no sink is installed. Render does not select a terminal,
+link a logging library or create a diagnostic queue.
 
 Measure the actual composition: output extent, camera coverage, active and shadow-casting light counts, shadow slices,
 resolution/filtering, view count, FIF and update cadence. An offscreen Render measurement excludes presentation and the

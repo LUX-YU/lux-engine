@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/features/MeshVisibilityInputs.hpp>
 #include <lux/engine/render/features/RasterMeshParameters.hpp>
+#include <optional>
 
 namespace lux::render
 {
@@ -11,6 +12,9 @@ namespace lux::render
         std::string instance_storage = "instances", mesh_storage = "meshes";
         std::uint32_t view_count = 1, candidate_capacity = 1024;
         bool frustum_culling = true;
+        // When present, build one view from the Attachment's view/projection fields on the GPU.
+        // Otherwise the composition must connect the geometric views input (e.g. shadow slices).
+        std::optional<rdesc::ShaderBlock> view_parameters;
         bool operator==(const MeshVisibilityFeatureConfig&) const noexcept = default;
     };
 

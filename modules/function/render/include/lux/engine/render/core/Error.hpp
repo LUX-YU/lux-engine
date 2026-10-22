@@ -13,6 +13,7 @@ namespace lux::render
     template <typename T> using RenderResult = cxx::expected<T, RenderError>;
 
     inline constexpr auto kDeviceFailure = error::errorId("lux.render.device.native_failure");
+    inline constexpr auto kDeviceDiagnostic = error::errorId("lux.render.device.diagnostic");
     inline constexpr auto kDeviceArgument = error::errorId("lux.render.device.invalid_argument");
     inline constexpr auto kDeviceUnsupported = error::errorId("lux.render.device.unsupported");
     inline constexpr auto kDeviceCapacity = error::errorId("lux.render.device.capacity");

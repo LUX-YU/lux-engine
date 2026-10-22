@@ -26,8 +26,8 @@ layout(set = 0, binding = 4, std430) readonly buffer Bounds { vec4 center; vec4 
 layout(set = 0, binding = 5, std430) buffer Visible { uint words[]; } visible;
 layout(push_constant) uniform Parameters { uint capacity; uint view_count; uint frustum_culling; } parameters;
 
-shared uint prefix[64];
-shared uint first;
+shared uvec2 prefix[64];
+shared uvec2 first;
 
 void main()
 {
@@ -35,6 +35,7 @@ void main()
     uint candidate = gl_GlobalInvocationID.x;
     uint lane = gl_LocalInvocationIndex;
     uint instance = 0;
+    uint winding = 0;
     bool included = candidate < candidates.words[1] && views.records[view].flags.x != 0;
     if (included)
     {
@@ -49,7 +50,9 @@ void main()
         mat4 model = transforms.records[instance].model;
         uint present = alive.records[instance].value;
 #endif
-        included = present != 0;
+        float determinant = dot(model[0].xyz, cross(model[1].xyz, model[2].xyz));
+        winding = determinant < 0 ? 1 : 0;
+        included = present != 0 && determinant != 0;
         if (included && parameters.frustum_culling != 0 && bounds.center.w != 0)
         {
             // Legacy frustumCull half-space test. The support radius uses the transformed AABB axes,
@@ -65,20 +68,24 @@ void main()
             }
         }
     }
-    prefix[lane] = included ? 1 : 0;
+    prefix[lane] = uvec2(included && winding == 0 ? 1 : 0, included && winding == 1 ? 1 : 0);
     barrier();
     // One contiguous reservation per workgroup, as in Legacy's shadow cull. All lanes reach every barrier.
     for (uint stride = 1; stride < 64; stride <<= 1)
     {
-        uint before = lane >= stride ? prefix[lane - stride] : 0;
+        uvec2 before = lane >= stride ? prefix[lane - stride] : uvec2(0);
         barrier();
         prefix[lane] += before;
         barrier();
     }
-    uint offset = view * ((parameters.capacity + 68) & ~63u);
+    uint stride = (parameters.capacity + 68) & ~63u;
+    uint offset = view * 2 * stride;
     if (lane == 63)
-        first = atomicAdd(visible.words[offset + 1], prefix[lane]);
+    {
+        first.x = atomicAdd(visible.words[offset + 1], prefix[lane].x);
+        first.y = atomicAdd(visible.words[offset + stride + 1], prefix[lane].y);
+    }
     barrier();
     if (included)
-        visible.words[offset + 5 + first + prefix[lane] - 1] = instance;
+        visible.words[offset + winding * stride + 5 + first[winding] + prefix[lane][winding] - 1] = instance;
 }

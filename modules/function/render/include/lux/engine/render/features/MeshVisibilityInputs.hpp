@@ -16,7 +16,10 @@ namespace lux::render
 
     static_assert(sizeof(MeshVisibilityView) == 176);
     inline constexpr std::string_view kMeshVisibilityViews = "lux.mesh.visibility.views.forward-z.v1";
-    inline constexpr std::string_view kMeshVisibleMembers = "lux.mesh.visibility.members.v1";
+    // Each view has two streams: positive determinant first, reflected second. Consumers use the
+    // matching raster front face. Singular transforms do not produce drawable surfaces.
+    inline constexpr std::uint32_t kMeshWindingCount = 2;
+    inline constexpr std::string_view kMeshVisibleMembers = "lux.mesh.visibility.members.winding.v2";
 
     [[nodiscard]] constexpr std::uint64_t meshVisibleStride(std::uint32_t capacity) noexcept
     {

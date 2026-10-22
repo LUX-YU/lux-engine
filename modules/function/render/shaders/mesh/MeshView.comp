@@ -1,0 +1,21 @@
+#version 450
+layout(local_size_x = 1) in;
+struct View { mat4 world_to_clip; vec4 planes[6]; uvec4 flags; };
+layout(set = 0, binding = 0, std430) writeonly buffer Views { View records[]; } views;
+layout(push_constant) uniform Parameters { mat4 view; mat4 projection; } parameters;
+
+void main()
+{
+    mat4 clip = parameters.projection * parameters.view;
+    mat4 rows = transpose(clip);
+    views.records[0].world_to_clip = clip;
+    // Homogeneous clip inequalities, forward depth [0, w]. Normalization is unnecessary for
+    // the AABB support test; it would also divide by zero for an infinite-far projection.
+    views.records[0].planes[0] = rows[3] + rows[0];
+    views.records[0].planes[1] = rows[3] - rows[0];
+    views.records[0].planes[2] = rows[3] + rows[1];
+    views.records[0].planes[3] = rows[3] - rows[1];
+    views.records[0].planes[4] = rows[2];
+    views.records[0].planes[5] = rows[3] - rows[2];
+    views.records[0].flags = uvec4(1, 0, 0, 0);
+}

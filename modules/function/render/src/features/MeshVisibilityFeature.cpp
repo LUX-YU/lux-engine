@@ -3,8 +3,10 @@
 #include "MeshCompact.hpp"
 #include "MeshFrustumCull.hpp"
 #include "MeshFrustumCullPaged.hpp"
+#include "MeshView.hpp"
 #include <lux/engine/render/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/FeatureDefinition.hpp>
+#include <lux/engine/render/features/ParameterLayout.hpp>
 #include <lux/engine/render/features/RasterMeshDraws.hpp>
 #include <lux/engine/render/runtime/Registration.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshCommandHandler.hpp>
@@ -22,14 +24,16 @@ namespace lux::render
                                  config.candidate_capacity > UINT32_MAX - 68 || config.instance_storage.empty() ||
                                  config.mesh_storage.empty();
             const bool oversized_stream =
-                meshVisibleStride(config.candidate_capacity) / 4 * config.view_count > UINT32_MAX;
-            if (invalid || oversized_stream)
+                !invalid && meshVisibleStride(config.candidate_capacity) / 4 >
+                                UINT32_MAX / (std::uint64_t(config.view_count) * kMeshWindingCount);
+            const bool invalid_view_source = config.view_parameters && config.view_count != 1;
+            if (invalid || oversized_stream || invalid_view_source)
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
             FeaturePort views{
                 "views",
-                EFeaturePort::INPUT,
+                config.view_parameters ? EFeaturePort::OUTPUT : EFeaturePort::INPUT,
                 GraphBufferDesc{std::uint64_t(config.view_count) * sizeof(MeshVisibilityView)}
             };
             views.semantic = kMeshVisibilityViews;
@@ -83,15 +87,21 @@ namespace lux::render
                 FeaturePort visible{
                     prefix + "visible",
                     EFeaturePort::OUTPUT,
-                    GraphBufferDesc{meshVisibleStride(config.candidate_capacity) * config.view_count}
+                    GraphBufferDesc{
+                        meshVisibleStride(config.candidate_capacity) * config.view_count * kMeshWindingCount
+                    }
                 };
                 visible.semantic = kMeshVisibleMembers;
                 ports.resources.push_back(std::move(visible));
                 ports.resources.push_back(
-                    {prefix + "commands", EFeaturePort::OUTPUT, GraphBufferDesc{std::uint64_t(config.view_count) * 20}}
+                    {prefix + "commands",
+                     EFeaturePort::OUTPUT,
+                     GraphBufferDesc{std::uint64_t(config.view_count) * kMeshWindingCount * 20}}
                 );
                 ports.resources.push_back(
-                    {prefix + "counts", EFeaturePort::OUTPUT, GraphBufferDesc{std::uint64_t(config.view_count) * 4}}
+                    {prefix + "counts",
+                     EFeaturePort::OUTPUT,
+                     GraphBufferDesc{std::uint64_t(config.view_count) * kMeshWindingCount * 4}}
                 );
             }
             return {};
@@ -126,6 +136,36 @@ namespace lux::render
             if (!cull_program || !compact_program)
             {
                 return cxx::unexpected(!cull_program ? cull_program.error() : compact_program.error());
+            }
+            auto views = context.resource("views");
+            if (config.view_parameters)
+            {
+                auto program = computeProgram(context, kMeshView, kMeshViewReflection);
+                if (!program)
+                {
+                    return cxx::unexpected(program.error());
+                }
+                ComputeWork work;
+                work.interface.program = *program;
+                work.interface.resources = {{"views", {views, {}, EGraphAccess::WRITE}}};
+                work.interface.parameters.instance_layout = *config.view_parameters;
+                work.interface.parameters.values.resize(sizeof(MeshViewParameters));
+                work.interface.parameters.fields = {{"view", {}, "view"}, {"projection", {}, "projection"}};
+                work.dispatch = DispatchArguments{{1, 1, 1}};
+                work.allow_async_compute = true;
+                auto built = context.graph.addComputePass(
+                    featureKey(MeshVisibilityFeatureDescriptor::name, key, "view"),
+                    std::move(work)
+                );
+                if (!built)
+                {
+                    return cxx::unexpected(built.error());
+                }
+                views = built->written.front();
+                if (auto published = context.publish("views", views); !published)
+                {
+                    return published;
+                }
             }
             context.arguments.push_back(StorageArgument::make(
                 context.resource("transforms").resource,
@@ -176,7 +216,7 @@ namespace lux::render
                 cull.interface.resources = {
                     {"transforms", {context.resource("transforms")}},
                     {"alive", {context.resource("alive")}},
-                    {"views", {context.resource("views")}},
+                    {"views", {views}},
                     {"candidates", {candidates}},
                     {"bounds", {resource("bounds")}},
                     {"visible", {visible, {}, EGraphAccess::READ_WRITE}}
@@ -208,7 +248,7 @@ namespace lux::render
                     {"counts", {resource("counts"), {}, EGraphAccess::WRITE}}
                 };
                 compact.interface.parameters.values.assign(bytes.begin(), bytes.begin() + 8);
-                compact.dispatch = DispatchArguments{{(config.view_count + 63) / 64, 1, 1}};
+                compact.dispatch = DispatchArguments{{(config.view_count * kMeshWindingCount + 63) / 64, 1, 1}};
                 compact.allow_async_compute = true;
                 auto completed = context.graph.addComputePass(
                     featureKey(MeshVisibilityFeatureDescriptor::name, key, prefix + "compact"),
@@ -240,7 +280,8 @@ namespace lux::render
     ) noexcept
     {
         return sizeof(value) + value.groups.capacity() * sizeof(MeshInstanceDrawGroup) +
-               value.instance_storage.capacity() + value.mesh_storage.capacity() + 2;
+               value.instance_storage.capacity() + value.mesh_storage.capacity() + 2 +
+               (value.view_parameters ? detail::parameterLayoutBytes(*value.view_parameters) : 0);
     }
 
     const FeatureDescriptor MeshVisibilityFeatureDescriptor::descriptor{

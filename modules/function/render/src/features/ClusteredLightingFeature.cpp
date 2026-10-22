@@ -1,4 +1,5 @@
 #include <lux/engine/render/features/ClusteredLightingFeature.hpp>
+#include <lux/engine/render/features/ParameterLayout.hpp>
 
 #include "ClusterBuild.hpp"
 #include "ClusterCount.hpp"
@@ -7,7 +8,6 @@
 #include <cstring>
 #include <lux/engine/render/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/FeatureDefinition.hpp>
-#include <lux/engine/render/features/FullscreenRaster.hpp>
 #include <lux/engine/render/runtime/Registration.hpp>
 #include <lux/engine/render/storage/DirectLightingCommandHandler.hpp>
 

@@ -9,8 +9,8 @@ layout(push_constant) uniform Parameters { uint capacity; uint view_count; } par
 void main()
 {
     uint view = gl_GlobalInvocationID.x;
-    if (view >= parameters.view_count) return;
-    // Legacy mdc_compact: one indexed command per material/geometry group and view.
+    if (view >= parameters.view_count * 2) return;
+    // One indexed command per material/geometry group, view and transform winding.
     // Capacity was qualified before preparation; no clamp that could hide lost visible instances.
     uint instances = visible.words[view * ((parameters.capacity + 68) & ~63u) + 1];
     uint offset = view * 5;

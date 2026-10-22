@@ -7,6 +7,7 @@
 #include <lux/engine/render/features/ClusteredLightingFeature.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
+#include <lux/engine/render/features/MeshVisibilityFeature.hpp>
 #include <lux/engine/render/storage/DirectLighting.hpp>
 
 struct ClusterCaptureConfig
@@ -341,6 +342,7 @@ int main(int argc, char** argv)
     }
     auto server = take(createRenderServer(config, *execution, device));
     auto gbuffer = take(server->registerFeature<GBufferFeatureDescriptor>());
+    auto visibility = take(server->registerFeature<MeshVisibilityFeatureDescriptor>());
     auto lighting = take(server->registerFeature<DeferredLightingFeatureDescriptor>());
     auto cluster = take(server->registerFeature<ClusteredLightingFeatureDescriptor>());
     auto capture = take(server->registerFeature<CaptureFeature>());
@@ -440,6 +442,7 @@ int main(int argc, char** argv)
         GBufferFeatureConfig surface{target};
         surface.groups = {group};
         surface.input_layout = block;
+        surface.visible_capacity = 8;
         DeferredLightingFeatureConfig reference;
         reference.extent = {64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
         reference.extent.extent.target_relative = true;
@@ -483,6 +486,25 @@ int main(int argc, char** argv)
         connections.push_back({{3, "hdr_color"}, {4, "candidate"}});
         connections.push_back({{4, "differences"}, {5, "color"}});
         request.definition.outputs = {{{5, "pixels"}, {}}, {{6, "pixels"}, {}}};
+        MeshVisibilityFeatureConfig main_visibility;
+        for (const auto& group : surface.groups)
+        {
+            main_visibility.groups.push_back(group.group);
+        }
+        main_visibility.candidate_capacity = surface.visible_capacity;
+        main_visibility.view_parameters = block;
+        const auto visibility_index = static_cast<std::uint32_t>(request.definition.features.size());
+        request.definition.features.push_back({visibility, "main_visibility", take(ConfigValue::make(main_visibility))}
+        );
+        for (unsigned g = 0; g < surface.groups.size(); ++g)
+        {
+            const auto source = "g" + std::to_string(g) + ".";
+            const auto destination = "group" + std::to_string(g) + ".";
+            for (auto [from, to] : {std::pair{"visible", "members"}, {"commands", "commands"}, {"counts", "counts"}})
+            {
+                connections.push_back({{visibility_index, source + from}, {0, destination + to}});
+            }
+        }
         auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
         std::array<AttachmentId, 2> attachments;
         for (unsigned i = 0; i < 2; ++i)

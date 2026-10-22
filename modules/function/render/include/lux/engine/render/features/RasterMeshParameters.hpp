@@ -45,7 +45,8 @@ namespace lux::render
     struct MeshInstanceDrawGroup final
     {
         MeshId mesh;
-        MaterialId material;
+        // Selects all instances using this material's cooked program table, not this one MaterialId.
+        MaterialId material_table_source;
         std::uint32_t submesh = 0;
         bool operator==(const MeshInstanceDrawGroup&) const noexcept = default;
 
@@ -58,10 +59,10 @@ namespace lux::render
                     group.mesh.storage.gen,
                     group.mesh.local.index,
                     group.mesh.local.gen,
-                    group.material.storage.index,
-                    group.material.storage.gen,
-                    group.material.local.index,
-                    group.material.local.gen,
+                    group.material_table_source.storage.index,
+                    group.material_table_source.storage.gen,
+                    group.material_table_source.local.index,
+                    group.material_table_source.local.gen,
                     group.submesh
                 };
             };
@@ -79,6 +80,8 @@ namespace lux::render
         std::string material_storage = "materials";
         std::string instance_storage = "instances";
         std::vector<GraphImageDesc> textures;
+        // Base geometry/projection winding before the instance transform. Negative determinants
+        // are partitioned by the Feature and invert this state; callers must not compensate twice.
         bool front_counter_clockwise = true;
         bool operator==(const RasterMeshGroup&) const noexcept = default;
     };

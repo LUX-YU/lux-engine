@@ -5,21 +5,36 @@
 #include <algorithm>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/engine/render/features/FeatureAssembly.hpp>
+#include <lux/engine/render/features/MeshVisibilityInputs.hpp>
 #include <lux/engine/render/features/RasterMeshDraws.hpp>
 
+#include "BasicMeshNoUvPagedReflectedVertex.hpp"
 #include "BasicMeshNoUvPagedVertex.hpp"
+#include "BasicMeshNoUvReflectedVertex.hpp"
 #include "BasicMeshNoUvVertex.hpp"
+#include "BasicMeshPagedReflectedVertex.hpp"
 #include "BasicMeshPagedVertex.hpp"
+#include "BasicMeshReflectedVertex.hpp"
 #include "BasicMeshVertex.hpp"
+#include "DepthOnlyPagedReflectedVertex.hpp"
 #include "DepthOnlyPagedVertex.hpp"
+#include "DepthOnlyReflectedVertex.hpp"
 #include "DepthOnlyVertex.hpp"
+#include "SurfaceMeshNoUvPagedReflectedVertex.hpp"
 #include "SurfaceMeshNoUvPagedVertex.hpp"
+#include "SurfaceMeshNoUvReflectedVertex.hpp"
 #include "SurfaceMeshNoUvVertex.hpp"
+#include "SurfaceMeshPagedReflectedVertex.hpp"
 #include "SurfaceMeshPagedVertex.hpp"
+#include "SurfaceMeshReflectedVertex.hpp"
 #include "SurfaceMeshVertex.hpp"
+#include "TangentMeshNoUvPagedReflectedVertex.hpp"
 #include "TangentMeshNoUvPagedVertex.hpp"
+#include "TangentMeshNoUvReflectedVertex.hpp"
 #include "TangentMeshNoUvVertex.hpp"
+#include "TangentMeshPagedReflectedVertex.hpp"
 #include "TangentMeshPagedVertex.hpp"
+#include "TangentMeshReflectedVertex.hpp"
 #include "TangentMeshVertex.hpp"
 
 namespace lux::render::detail
@@ -47,14 +62,16 @@ namespace lux::render::detail
         const RasterMeshGroup& config,
         std::string_view prefix,
         rdesc::EMaterialPurpose purpose,
-        FeaturePorts& claims
+        FeaturePorts& claims,
+        std::uint32_t visible_capacity,
+        std::uint32_t view_count
     ) noexcept
     {
         const auto& mesh = config.geometry;
         const auto* program = config.program.find(purpose);
         const bool invalid_program =
             !program && (purpose != rdesc::EMaterialPurpose::SHADOW || !config.program.programs.empty());
-        const bool invalid_group = config.group.mesh.isNull() || config.group.material.isNull() ||
+        const bool invalid_group = config.group.mesh.isNull() || config.group.material_table_source.isNull() ||
                                    config.group.submesh >= mesh.submeshes.size();
         const bool invalid_storage =
             config.mesh_storage.empty() || config.material_storage.empty() || config.instance_storage.empty();
@@ -123,13 +140,37 @@ namespace lux::render::detail
             config.instance_storage
         );
         buffer(claims.storage.scene, "alive", sizeof(std::uint64_t), kMeshInstanceStorageType, config.instance_storage);
-        claims.resources.push_back(
-            {key("members"),
-             EFeaturePort::OUTPUT,
-             GraphBufferDesc{24},
-             EGraphOrigin::IMPORTED,
-             {GraphBufferRange{0, 24}}}
-        );
+        if (visible_capacity)
+        {
+            const bool invalid_capacity = visible_capacity > UINT32_MAX - 68 || !view_count;
+            const bool oversized =
+                !invalid_capacity &&
+                meshVisibleStride(visible_capacity) / 4 > UINT32_MAX / (std::uint64_t(view_count) * kMeshWindingCount);
+            if (invalid_capacity || oversized)
+            {
+                return cxx::unexpected(RenderError{kFeatureContract});
+            }
+            const auto stream_count = std::uint64_t(view_count) * kMeshWindingCount;
+            FeaturePort members{
+                key("members"),
+                EFeaturePort::INPUT,
+                GraphBufferDesc{meshVisibleStride(visible_capacity) * stream_count}
+            };
+            members.semantic = kMeshVisibleMembers;
+            claims.resources.push_back(std::move(members));
+            claims.resources.push_back({key("commands"), EFeaturePort::INPUT, GraphBufferDesc{stream_count * 20}});
+            claims.resources.push_back({key("counts"), EFeaturePort::INPUT, GraphBufferDesc{stream_count * 4}});
+        }
+        else
+        {
+            claims.resources.push_back(
+                {key("members"),
+                 EFeaturePort::OUTPUT,
+                 GraphBufferDesc{24},
+                 EGraphOrigin::IMPORTED,
+                 {GraphBufferRange{0, 24}}}
+            );
+        }
         if (const auto* layout = config.program.parameterLayout())
         {
             buffer(claims.storage.global, "material", layout->size, kMaterialStorageType, config.material_storage);
@@ -149,98 +190,208 @@ namespace lux::render::detail
         return {};
     }
 
+    void bindVisibleMeshDraw(
+        RasterWork& work,
+        FeatureBuildContext& context,
+        std::string_view prefix,
+        std::uint32_t capacity,
+        std::uint32_t view,
+        std::uint32_t winding
+    ) noexcept
+    {
+        const auto stream = std::uint64_t(view) * kMeshWindingCount + winding;
+        auto& members = *std::ranges::find(work.interface.resources, "members", &ResourceParameter::shader_name);
+        const auto size = meshVisibleStride(capacity);
+        members.access.range = GraphBufferRange{size * stream, size};
+        auto& draw = std::get<DrawIndexedIndirect>(work.draw);
+        draw.commands_resource = context.resource(std::string(prefix) + "commands");
+        draw.commands_offset = stream * 20;
+        draw.count_resource = context.resource(std::string(prefix) + "counts");
+        draw.count_offset = stream * 4;
+    }
+
+    namespace
+    {
+        RenderResult<rdesc::SpirvArtifact> buildMeshVertexShader(
+            const rdesc::MaterialShader* use,
+            bool paged,
+            bool reflected
+        ) noexcept
+        {
+            const bool tangents = readsLocation(use, 5) || readsLocation(use, 6);
+            const bool normals = readsLocation(use, 1) || tangents;
+            const bool depth_only = !use;
+            const bool uv = readsLocation(use, 3);
+            rdesc::SpirvArtifact shader;
+            std::span<const std::uint32_t> vertex;
+            std::span<const std::byte> reflection;
+            const auto select = [&](auto& words, auto& info, auto& reflected_words, auto& reflected_info)
+            {
+                vertex =
+                    reflected ? std::span<const std::uint32_t>(reflected_words) : std::span<const std::uint32_t>(words);
+                reflection = reflected ? std::span<const std::byte>(reflected_info) : std::span<const std::byte>(info);
+            };
+            if (paged)
+            {
+                if (depth_only)
+                {
+                    select(
+                        kDepthOnlyPagedVertex,
+                        kDepthOnlyPagedVertexReflection,
+                        kDepthOnlyPagedReflectedVertex,
+                        kDepthOnlyPagedReflectedVertexReflection
+                    );
+                }
+                else if (!uv && tangents)
+                {
+                    select(
+                        kTangentMeshNoUvPagedVertex,
+                        kTangentMeshNoUvPagedVertexReflection,
+                        kTangentMeshNoUvPagedReflectedVertex,
+                        kTangentMeshNoUvPagedReflectedVertexReflection
+                    );
+                }
+                else if (!uv && normals)
+                {
+                    select(
+                        kSurfaceMeshNoUvPagedVertex,
+                        kSurfaceMeshNoUvPagedVertexReflection,
+                        kSurfaceMeshNoUvPagedReflectedVertex,
+                        kSurfaceMeshNoUvPagedReflectedVertexReflection
+                    );
+                }
+                else if (!uv)
+                {
+                    select(
+                        kBasicMeshNoUvPagedVertex,
+                        kBasicMeshNoUvPagedVertexReflection,
+                        kBasicMeshNoUvPagedReflectedVertex,
+                        kBasicMeshNoUvPagedReflectedVertexReflection
+                    );
+                }
+                else if (tangents)
+                {
+                    select(
+                        kTangentMeshPagedVertex,
+                        kTangentMeshPagedVertexReflection,
+                        kTangentMeshPagedReflectedVertex,
+                        kTangentMeshPagedReflectedVertexReflection
+                    );
+                }
+                else if (normals)
+                {
+                    select(
+                        kSurfaceMeshPagedVertex,
+                        kSurfaceMeshPagedVertexReflection,
+                        kSurfaceMeshPagedReflectedVertex,
+                        kSurfaceMeshPagedReflectedVertexReflection
+                    );
+                }
+                else
+                {
+                    select(
+                        kBasicMeshPagedVertex,
+                        kBasicMeshPagedVertexReflection,
+                        kBasicMeshPagedReflectedVertex,
+                        kBasicMeshPagedReflectedVertexReflection
+                    );
+                }
+            }
+            else
+            {
+                if (depth_only)
+                {
+                    select(
+                        kDepthOnlyVertex,
+                        kDepthOnlyVertexReflection,
+                        kDepthOnlyReflectedVertex,
+                        kDepthOnlyReflectedVertexReflection
+                    );
+                }
+                else if (!uv && tangents)
+                {
+                    select(
+                        kTangentMeshNoUvVertex,
+                        kTangentMeshNoUvVertexReflection,
+                        kTangentMeshNoUvReflectedVertex,
+                        kTangentMeshNoUvReflectedVertexReflection
+                    );
+                }
+                else if (!uv && normals)
+                {
+                    select(
+                        kSurfaceMeshNoUvVertex,
+                        kSurfaceMeshNoUvVertexReflection,
+                        kSurfaceMeshNoUvReflectedVertex,
+                        kSurfaceMeshNoUvReflectedVertexReflection
+                    );
+                }
+                else if (!uv)
+                {
+                    select(
+                        kBasicMeshNoUvVertex,
+                        kBasicMeshNoUvVertexReflection,
+                        kBasicMeshNoUvReflectedVertex,
+                        kBasicMeshNoUvReflectedVertexReflection
+                    );
+                }
+                else if (tangents)
+                {
+                    select(
+                        kTangentMeshVertex,
+                        kTangentMeshVertexReflection,
+                        kTangentMeshReflectedVertex,
+                        kTangentMeshReflectedVertexReflection
+                    );
+                }
+                else if (normals)
+                {
+                    select(
+                        kSurfaceMeshVertex,
+                        kSurfaceMeshVertexReflection,
+                        kSurfaceMeshReflectedVertex,
+                        kSurfaceMeshReflectedVertexReflection
+                    );
+                }
+                else
+                {
+                    select(
+                        kBasicMeshVertex,
+                        kBasicMeshVertexReflection,
+                        kBasicMeshReflectedVertex,
+                        kBasicMeshReflectedVertexReflection
+                    );
+                }
+            }
+            shader.stages.push_back({rdesc::EShaderType::VERTEX, "main", {vertex.begin(), vertex.end()}});
+            if (!rdesc::ShaderInfo::deserialize(reflection, shader.interface))
+            {
+                return cxx::unexpected(RenderError{kFeatureContract});
+            }
+            return shader;
+        }
+    } // namespace
+
     RenderResult<RasterWork> buildMeshGroup(
         const RasterMeshGroup& config,
         std::string_view prefix,
         rdesc::EMaterialPurpose purpose,
         bool paged,
         FeatureBuildContext& context,
-        bool derive_members
+        bool derive_members,
+        bool reflected
     ) noexcept
     {
         const auto resource = [&](std::string_view local)
         { return context.resource(std::string(prefix) + std::string(local)); };
         const auto* use = config.program.find(purpose);
-        const bool tangents = readsLocation(use, 5) || readsLocation(use, 6);
-        const bool normals = readsLocation(use, 1) || tangents;
-        const bool depth_only = !use;
-        const bool uv = readsLocation(use, 3);
+        auto vertex_shader = buildMeshVertexShader(use, paged, reflected);
+        if (!vertex_shader)
+        {
+            return cxx::unexpected(vertex_shader.error());
+        }
+        auto shader = std::move(*vertex_shader);
         RasterWork draw;
-        rdesc::SpirvArtifact shader;
-        std::span<const std::uint32_t> vertex;
-        std::span<const std::byte> reflection;
-        const auto select = [&](auto& words, auto& info)
-        {
-            vertex = words;
-            reflection = info;
-        };
-        if (paged)
-        {
-            if (depth_only)
-            {
-                select(kDepthOnlyPagedVertex, kDepthOnlyPagedVertexReflection);
-            }
-            else if (!uv && tangents)
-            {
-                select(kTangentMeshNoUvPagedVertex, kTangentMeshNoUvPagedVertexReflection);
-            }
-            else if (!uv && normals)
-            {
-                select(kSurfaceMeshNoUvPagedVertex, kSurfaceMeshNoUvPagedVertexReflection);
-            }
-            else if (!uv)
-            {
-                select(kBasicMeshNoUvPagedVertex, kBasicMeshNoUvPagedVertexReflection);
-            }
-            else if (tangents)
-            {
-                select(kTangentMeshPagedVertex, kTangentMeshPagedVertexReflection);
-            }
-            else if (normals)
-            {
-                select(kSurfaceMeshPagedVertex, kSurfaceMeshPagedVertexReflection);
-            }
-            else
-            {
-                select(kBasicMeshPagedVertex, kBasicMeshPagedVertexReflection);
-            }
-        }
-        else
-        {
-            if (depth_only)
-            {
-                select(kDepthOnlyVertex, kDepthOnlyVertexReflection);
-            }
-            else if (!uv && tangents)
-            {
-                select(kTangentMeshNoUvVertex, kTangentMeshNoUvVertexReflection);
-            }
-            else if (!uv && normals)
-            {
-                select(kSurfaceMeshNoUvVertex, kSurfaceMeshNoUvVertexReflection);
-            }
-            else if (!uv)
-            {
-                select(kBasicMeshNoUvVertex, kBasicMeshNoUvVertexReflection);
-            }
-            else if (tangents)
-            {
-                select(kTangentMeshVertex, kTangentMeshVertexReflection);
-            }
-            else if (normals)
-            {
-                select(kSurfaceMeshVertex, kSurfaceMeshVertexReflection);
-            }
-            else
-            {
-                select(kBasicMeshVertex, kBasicMeshVertexReflection);
-            }
-        }
-        shader.stages.push_back({rdesc::EShaderType::VERTEX, "main", {vertex.begin(), vertex.end()}});
-        if (!rdesc::ShaderInfo::deserialize(reflection, shader.interface))
-        {
-            return cxx::unexpected(RenderError{kFeatureContract});
-        }
         draw.interface.parameters.instance_layout = meshViewParameterBlock();
         draw.interface.parameters.values.resize(sizeof(MeshViewParameters));
         draw.interface.parameters.fields = {{"view", {}, "view"}, {"projection", {}, "projection"}};
@@ -259,7 +410,7 @@ namespace lux::render::detail
         }
         draw.graphics.depth_test = draw.graphics.depth_write = true;
         draw.graphics.cull_mode = config.program.double_sided ? ECullMode::NONE : ECullMode::BACK;
-        draw.graphics.front_counter_clockwise = config.front_counter_clockwise;
+        draw.graphics.front_counter_clockwise = config.front_counter_clockwise != reflected;
         draw.vertex_buffers = {{resource("vertices"), 0, 0}};
         draw.draw = DrawIndexedIndirect{
             resource("indices"),
@@ -268,7 +419,12 @@ namespace lux::render::detail
             resource("members")
         };
         const auto argument = [&](std::string_view local, auto binding)
-        { context.arguments.push_back(StorageArgument::make(resource(local).resource, std::move(binding))); };
+        {
+            if (!reflected)
+            {
+                context.arguments.push_back(StorageArgument::make(resource(local).resource, std::move(binding)));
+            }
+        };
         argument(
             "vertices",
             MeshBinding{
@@ -282,7 +438,7 @@ namespace lux::render::detail
         argument("matrices", MeshInstanceBinding{EMeshInstanceBinding::TRANSFORMS});
         argument("properties", MeshInstanceBinding{EMeshInstanceBinding::PROPERTIES});
         argument("alive", MeshInstanceBinding{EMeshInstanceBinding::ALIVE});
-        if (derive_members)
+        if (derive_members && !reflected)
         {
             auto configuration = ConfigValue::make(
                 MeshDrawConfiguration{resource("matrices").resource, config.group, resource("members").resource}
@@ -328,11 +484,11 @@ namespace lux::render::detail
             }
             if (const auto* layout = config.program.parameterLayout())
             {
-                argument("material", MaterialBinding{config.group.material, *layout});
+                argument("material", MaterialBinding{config.group.material_table_source, *layout});
             }
             for (std::uint32_t i = 0; i < config.textures.size(); ++i)
             {
-                argument("texture" + std::to_string(i), MaterialBinding{config.group.material, {}, i});
+                argument("texture" + std::to_string(i), MaterialBinding{config.group.material_table_source, {}, i});
             }
         }
         auto program = context.graph.addProgram(std::move(shader));
@@ -380,23 +536,35 @@ namespace lux::render::detail
     {
         const auto& config = *static_cast<const MeshFeatureConfig*>(value);
         const auto purpose = Depth ? rdesc::EMaterialPurpose::SHADOW : rdesc::EMaterialPurpose::FORWARD;
-        auto draw = buildMeshGroup(config.mesh, {}, purpose, Paged, context);
-        if (!draw)
-        {
-            return cxx::unexpected(draw.error());
-        }
-        draw->depth = RasterAttachment{{context.resource("depth")}};
-        if constexpr (!Depth)
-        {
-            draw->colors.push_back({{context.resource("color")}});
-        }
+        auto depth = context.resource("depth");
+        auto color = context.resource("color");
         const auto name = Depth ? MeshDepthRasterDescriptor::name : MaterialMeshRasterDescriptor::name;
-        auto pass = context.graph.addRasterPass(featureKey(name, key, "draw"), std::move(*draw));
-        if (!pass)
+        for (unsigned winding = 0; winding < 2; ++winding)
         {
-            return cxx::unexpected(pass.error());
+            auto draw = buildMeshGroup(config.mesh, {}, purpose, Paged, context, true, winding != 0);
+            if (!draw)
+            {
+                return cxx::unexpected(draw.error());
+            }
+            const auto load = winding == 0 ? EAttachmentLoad::CLEAR : EAttachmentLoad::LOAD;
+            draw->depth = RasterAttachment{{depth}, load};
+            if constexpr (!Depth)
+            {
+                draw->colors.push_back({{color}, load});
+            }
+            auto pass =
+                context.graph.addRasterPass(featureKey(name, key, "draw" + std::to_string(winding)), std::move(*draw));
+            if (!pass)
+            {
+                return cxx::unexpected(pass.error());
+            }
+            depth = pass->written.back();
+            if constexpr (!Depth)
+            {
+                color = pass->written.front();
+            }
         }
-        if (auto result = context.publish("depth", pass->written.back()); !result)
+        if (auto result = context.publish("depth", depth); !result)
         {
             return result;
         }
@@ -414,7 +582,7 @@ namespace lux::render::detail
         }
         else
         {
-            return context.publish("color", pass->written.front());
+            return context.publish("color", color);
         }
     }
 

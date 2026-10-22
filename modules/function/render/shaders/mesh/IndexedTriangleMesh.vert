@@ -56,7 +56,16 @@ void main()
     Property property = properties.records[slot];
     uint present = alive.records[slot].value;
 #endif
-    gl_Position = present != 0 ? camera.projection * camera.view * model * vec4(position, 1) : vec4(2, 2, 2, 1);
+    float orientation = dot(model[0].xyz, cross(model[1].xyz, model[2].xyz));
+#ifdef REFLECTED_INSTANCES
+    bool selected = orientation < 0;
+#else
+    bool selected = orientation > 0;
+#endif
+    // The all-candidate path uses the same two raster orientations without a CPU transform scan.
+    // GPU visibility already supplies a matching stream; discarded instances produce no primitives.
+    gl_Position = present != 0 && selected ? camera.projection * camera.view * model * vec4(position, 1)
+                                         : vec4(2, 2, 2, 1);
 #ifndef DEPTH_ONLY
 #ifndef VERTEX_NO_UV
     vUV = uv;
@@ -72,9 +81,9 @@ void main()
 #ifdef VERTEX_TANGENTS
     vec3 t = linear * tangent.xyz;
     t = normalize(t - n * dot(n, t));
-    float orientation = tangent.w * handedness;
-    vWorldTangent = vec4(t, orientation);
-    vWorldBitangent = cross(n, t) * orientation;
+    float tangent_orientation = tangent.w * handedness;
+    vWorldTangent = vec4(t, tangent_orientation);
+    vWorldBitangent = cross(n, t) * tangent_orientation;
 #endif
 #endif
     vMatIndex = property.material_index;

@@ -451,6 +451,7 @@ int main(int argc, char** argv)
         GBufferFeatureConfig surface{target};
         surface.groups = {receiver_group, group, unlit_group};
         surface.input_layout = layout;
+        surface.visible_capacity = 8;
         DeferredLightingFeatureConfig light_config;
         light_config.extent = {64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
         light_config.extent.extent.target_relative = true;
@@ -471,7 +472,7 @@ int main(int argc, char** argv)
         view_capture.bytes = shape.view_count * sizeof(MeshVisibilityView);
         request.definition.features.push_back({capture, "views", take(ConfigValue::make(view_capture))});
         CaptureConfig count_capture{&counts};
-        count_capture.bytes = shape.view_count * 4;
+        count_capture.bytes = shape.view_count * kMeshWindingCount * 4;
         request.definition.features.push_back({capture, "counts", take(ConfigValue::make(count_capture))});
         request.definition.features.push_back(
             {capture, "surface", take(ConfigValue::make(CaptureConfig{&surface_pixels}))}
@@ -480,7 +481,7 @@ int main(int argc, char** argv)
             {capture, "depth", take(ConfigValue::make(CaptureConfig{&depth_pixels, rdesc::ETextureFormat::D32_SFLOAT}))}
         );
         CaptureConfig indirect_capture{&indirect};
-        indirect_capture.bytes = shape.view_count * 20;
+        indirect_capture.bytes = shape.view_count * kMeshWindingCount * 20;
         request.definition.features.push_back({capture, "indirect", take(ConfigValue::make(indirect_capture))});
         auto& connections = request.definition.connections;
         for (auto name : {"albedo_metallic", "normal_roughness", "emissive_ao", "depth"})
@@ -558,6 +559,25 @@ int main(int argc, char** argv)
             connections.push_back({{12, "status"}, {16, "color"}});
             request.definition.outputs.push_back({{15, "pixels"}, {}});
             request.definition.outputs.push_back({{16, "pixels"}, {}});
+        }
+        MeshVisibilityFeatureConfig main_visibility;
+        for (const auto& group : surface.groups)
+        {
+            main_visibility.groups.push_back(group.group);
+        }
+        main_visibility.candidate_capacity = surface.visible_capacity;
+        main_visibility.view_parameters = layout;
+        const auto visibility_index = static_cast<std::uint32_t>(request.definition.features.size());
+        request.definition.features.push_back({visibility, "main_visibility", take(ConfigValue::make(main_visibility))}
+        );
+        for (unsigned g = 0; g < surface.groups.size(); ++g)
+        {
+            const auto source = "g" + std::to_string(g) + ".";
+            const auto destination = "group" + std::to_string(g) + ".";
+            for (auto [from, to] : {std::pair{"visible", "members"}, {"commands", "commands"}, {"counts", "counts"}})
+            {
+                connections.push_back({{visibility_index, source + from}, {0, destination + to}});
+            }
         }
         auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
         const auto view = call<CreateView>(*client, commands, {scene}).view;
@@ -778,7 +798,7 @@ int main(int argc, char** argv)
         bool have_count = false;
         for (const auto& frame : counts.frames)
         {
-            for (unsigned v = 0; v < shape.view_count; ++v)
+            for (unsigned v = 0; v < shape.view_count * kMeshWindingCount; ++v)
             {
                 std::uint32_t count = 0;
                 std::memcpy(&count, frame.data() + v * 4, 4);
@@ -792,16 +812,26 @@ int main(int argc, char** argv)
         {
             for (unsigned v = 0; v < shape.view_count; ++v)
             {
-                std::array<std::uint32_t, 5> draw{};
-                std::memcpy(draw.data(), frame.data() + v * 20, 20);
-                if (!draw[0])
+                unsigned instances = 0;
+                bool initialized = false;
+                for (unsigned winding = 0; winding < kMeshWindingCount; ++winding)
                 {
-                    continue;
+                    std::array<std::uint32_t, 5> draw{};
+                    std::memcpy(draw.data(), frame.data() + (v * kMeshWindingCount + winding) * 20, 20);
+                    if (!draw[0])
+                    {
+                        continue;
+                    }
+                    initialized = true;
+                    CHECK(draw[0] == 6 && draw[2] == 0 && draw[3] == 0 && draw[4] == 0);
+                    instances += draw[1];
                 }
-                CHECK(draw[0] == 6 && draw[2] == 0 && draw[3] == 0 && draw[4] == 0);
-                CHECK(draw[1] <= (cast ? cull ? 1u : 2u : 0u));
-                observed_draw |= draw[1] != 0;
-                observed_empty |= draw[1] == 0;
+                if (initialized)
+                {
+                    CHECK(instances <= (cast ? cull ? 1u : 2u : 0u));
+                    observed_draw |= instances != 0;
+                    observed_empty |= instances == 0;
+                }
             }
         }
         CHECK(observed_draw == cast);
@@ -835,7 +865,7 @@ int main(int argc, char** argv)
     group.program = material(true);
     const auto masked_material =
         call<CreateMaterial>(*client, commands, {materials, group.program, material_values}).material;
-    group.group.material = masked_material;
+    group.group.material_table_source = masked_material;
     descriptions[1].material = descriptions[2].material = masked_material;
     const std::array replacements{
         MeshInstanceUpdate{instance_ids[1], descriptions[1]},

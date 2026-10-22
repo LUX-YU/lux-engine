@@ -31,13 +31,14 @@ namespace lux::render::detail
 
     bool RasterMeshDraws::selected(const RasterMeshInstanceStorage::Selection& input) const noexcept
     {
-        if (input.mesh != selection_.mesh || input.submesh != selection_.submesh ||
-            input.material.storage != selection_.material.storage)
+        const bool different_geometry = input.mesh != selection_.mesh || input.submesh != selection_.submesh;
+        const bool different_material_storage = input.material.storage != selection_.material_table_source.storage;
+        if (different_geometry || different_material_storage)
         {
             return false;
         }
-        auto material = resources_.borrow<RasterMaterialTableStorage>(selection_.material.storage);
-        return material && (*material)->sameTable(input.material, selection_.material);
+        auto material = resources_.borrow<RasterMaterialTableStorage>(selection_.material_table_source.storage);
+        return material && (*material)->sameTable(input.material, selection_.material_table_source);
     }
 
     void RasterMeshDraws::update(MeshInstanceId id, const RasterMeshInstanceStorage::Selection* description) noexcept
@@ -203,13 +204,14 @@ namespace lux::render::detail
         const auto& group = configuration.selection;
         auto instances = registry.borrow<RasterMeshInstanceStorage>(storages[configuration.instances.index]);
         auto mesh = registry.borrow<IndexedTriangleMeshStorage>(group.mesh.storage);
-        auto material = registry.borrow<RasterMaterialTableStorage>(group.material.storage);
+        auto material = registry.borrow<RasterMaterialTableStorage>(group.material_table_source.storage);
         if (!instances || !mesh || !material)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
         const auto* description = (*mesh)->find(group.mesh);
-        if (!description || group.submesh >= description->submeshes.size() || !(*material)->gpuIndex(group.material))
+        if (!description || group.submesh >= description->submeshes.size() ||
+            !(*material)->gpuIndex(group.material_table_source))
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }

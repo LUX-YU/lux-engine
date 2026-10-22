@@ -9,5 +9,4 @@ namespace lux::render::detail
         std::span<const std::uint32_t> fragment,
         std::span<const std::byte> reflection
     ) noexcept;
-    [[nodiscard]] std::size_t parameterLayoutBytes(const rdesc::ShaderBlock&) noexcept;
 } // namespace lux::render::detail

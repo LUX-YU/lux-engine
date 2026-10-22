@@ -46,6 +46,7 @@ set(render_sources
     src/features/MeshShadowFeature.cpp
     src/features/TonemapFeature.cpp
     src/features/FullscreenRaster.cpp
+    src/features/ParameterLayout.cpp
     src/storage/DirectLightingStorage.cpp
     src/storage/DirectLightingCommandHandler.cpp
     src/features/RasterMeshDraws.cpp
@@ -99,35 +100,44 @@ foreach(shader
     BasicMeshNoUv SurfaceMeshNoUv TangentMeshNoUv
     BasicMeshNoUvPaged SurfaceMeshNoUvPaged TangentMeshNoUvPaged
 )
-    set(defines)
-    if(shader MATCHES "^DepthOnly")
-        list(APPEND defines -DDEPTH_ONLY=1)
-    endif()
-    if(shader MATCHES "^(SurfaceMesh|TangentMesh)")
-        list(APPEND defines -DVERTEX_NORMALS=1)
-    endif()
-    if(shader MATCHES "^TangentMesh")
-        list(APPEND defines -DVERTEX_TANGENTS=1)
-    endif()
-    if(shader MATCHES "NoUv")
-        list(APPEND defines -DVERTEX_NO_UV=1)
-    endif()
-    if(shader MATCHES "Paged$")
-        list(APPEND defines -DPAGED_INSTANCES=1)
-    endif()
-    set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}Vertex.hpp")
-    set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}Vertex.spv")
-    add_custom_command(
-        OUTPUT "${header}"
-        BYPRODUCTS "${binary}"
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
-        COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -S vert
-            ${defines} "${CMAKE_CURRENT_SOURCE_DIR}/shaders/mesh/IndexedTriangleMesh.vert" -o "${binary}"
-        COMMAND lux_shader_metadata "${binary}" "${header}" k${shader}Vertex
-        DEPENDS shaders/mesh/IndexedTriangleMesh.vert lux_shader_metadata
-        VERBATIM
-    )
-    list(APPEND mesh_shader_headers "${header}")
+    foreach(reflected 0 1)
+        set(defines)
+        if(reflected)
+            list(APPEND defines -DREFLECTED_INSTANCES=1)
+        endif()
+        if(shader MATCHES "^DepthOnly")
+            list(APPEND defines -DDEPTH_ONLY=1)
+        endif()
+        if(shader MATCHES "^(SurfaceMesh|TangentMesh)")
+            list(APPEND defines -DVERTEX_NORMALS=1)
+        endif()
+        if(shader MATCHES "^TangentMesh")
+            list(APPEND defines -DVERTEX_TANGENTS=1)
+        endif()
+        if(shader MATCHES "NoUv")
+            list(APPEND defines -DVERTEX_NO_UV=1)
+        endif()
+        if(shader MATCHES "Paged$")
+            list(APPEND defines -DPAGED_INSTANCES=1)
+        endif()
+        set(variant "${shader}")
+        if(reflected)
+            string(APPEND variant "Reflected")
+        endif()
+        set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${variant}Vertex.hpp")
+        set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${variant}Vertex.spv")
+        add_custom_command(
+            OUTPUT "${header}"
+            BYPRODUCTS "${binary}"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+            COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -S vert
+                ${defines} "${CMAKE_CURRENT_SOURCE_DIR}/shaders/mesh/IndexedTriangleMesh.vert" -o "${binary}"
+            COMMAND lux_shader_metadata "${binary}" "${header}" k${variant}Vertex
+            DEPENDS shaders/mesh/IndexedTriangleMesh.vert lux_shader_metadata
+            VERBATIM
+        )
+        list(APPEND mesh_shader_headers "${header}")
+    endforeach()
 endforeach()
 
 set(hzb_header "${CMAKE_CURRENT_BINARY_DIR}/shaders/HzbDownsample.hpp")
@@ -188,7 +198,7 @@ foreach(shader
     list(APPEND feature_shader_headers "${header}")
 endforeach()
 
-foreach(shader MeshFrustumCull MeshFrustumCullPaged MeshCompact)
+foreach(shader MeshFrustumCull MeshFrustumCullPaged MeshCompact MeshView)
     set(defines)
     if(shader STREQUAL "MeshFrustumCullPaged")
         set(source shaders/mesh/MeshFrustumCull.comp)

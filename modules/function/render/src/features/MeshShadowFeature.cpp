@@ -19,7 +19,8 @@ namespace lux::render
             const bool invalid_shape = !config.shape.resolution || !config.shape.view_count ||
                                        !config.candidate_capacity || config.candidate_capacity > UINT32_MAX - 68;
             const bool oversized_stream =
-                meshVisibleStride(config.candidate_capacity) / 4 * config.shape.view_count > UINT32_MAX;
+                !invalid_shape && meshVisibleStride(config.candidate_capacity) / 4 >
+                                      UINT32_MAX / (std::uint64_t(config.shape.view_count) * kMeshWindingCount);
             if (invalid_shape || oversized_stream)
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
@@ -44,28 +45,18 @@ namespace lux::render
             for (std::size_t g = 0; g < config.groups.size(); ++g)
             {
                 const auto prefix = "g" + std::to_string(g) + ".";
-                if (auto result =
-                        detail::describeMeshGroup(config.groups[g], prefix, rdesc::EMaterialPurpose::SHADOW, ports);
+                if (auto result = detail::describeMeshGroup(
+                        config.groups[g],
+                        prefix,
+                        rdesc::EMaterialPurpose::SHADOW,
+                        ports,
+                        config.candidate_capacity,
+                        config.shape.view_count
+                    );
                     !result)
                 {
                     return result;
                 }
-                auto& members = *std::ranges::find(ports.resources, prefix + "members", &FeaturePort::key);
-                members.direction = EFeaturePort::INPUT;
-                members.description =
-                    GraphBufferDesc{meshVisibleStride(config.candidate_capacity) * config.shape.view_count};
-                members.origin = EGraphOrigin::TRANSIENT;
-                members.initial_ranges.clear();
-                members.semantic = kMeshVisibleMembers;
-                ports.resources.push_back(
-                    {prefix + "commands",
-                     EFeaturePort::INPUT,
-                     GraphBufferDesc{std::uint64_t(config.shape.view_count) * 20}}
-                );
-                ports.resources.push_back(
-                    {prefix + "counts", EFeaturePort::INPUT, GraphBufferDesc{std::uint64_t(config.shape.view_count) * 4}
-                    }
-                );
             }
             return {};
         }
@@ -92,52 +83,53 @@ namespace lux::render
             for (std::size_t g = 0; g < config.groups.size(); ++g)
             {
                 const auto prefix = "g" + std::to_string(g) + ".";
-                auto base = detail::buildMeshGroup(
-                    config.groups[g],
-                    prefix,
-                    rdesc::EMaterialPurpose::SHADOW,
-                    Paged,
-                    context,
-                    false
-                );
-                if (!base)
+                for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
                 {
-                    return cxx::unexpected(base.error());
-                }
-                base->interface.parameters.instance_layout = {};
-                const MeshViewParameters identity;
-                auto bytes = meshViewParameterBytes(identity);
-                base->interface.parameters.values.assign(bytes.begin(), bytes.end());
-                base->viewport = RasterViewport{};
-                for (std::uint32_t view = 0; view < config.shape.view_count; ++view)
-                {
-                    auto work = *base;
-                    work.state_input = RasterStateInput{
-                        context.resource("raster_states").resource,
-                        view * static_cast<std::uint32_t>(sizeof(RasterState))
-                    };
-                    work.interface.parameters.fields = {
-                        {"projection", context.resource("views").resource, "view" + std::to_string(view)}
-                    };
-                    auto& members =
-                        *std::ranges::find(work.interface.resources, "members", &ResourceParameter::shader_name);
-                    const auto size = meshVisibleStride(config.candidate_capacity);
-                    members.access.range = GraphBufferRange{size * view, size};
-                    auto& draw = std::get<DrawIndexedIndirect>(work.draw);
-                    draw.commands_resource = context.resource(prefix + "commands");
-                    draw.commands_offset = std::uint64_t(view) * 20;
-                    draw.count_resource = context.resource(prefix + "counts");
-                    draw.count_offset = std::uint64_t(view) * 4;
-                    work.depth = RasterAttachment{{depth, GraphImageRange{2, 0, 1, view, 1}}, EAttachmentLoad::LOAD};
-                    auto pass = context.graph.addRasterPass(
-                        featureKey(MeshShadowFeatureDescriptor::name, key, prefix + "slice" + std::to_string(view)),
-                        std::move(work)
+                    auto base = detail::buildMeshGroup(
+                        config.groups[g],
+                        prefix,
+                        rdesc::EMaterialPurpose::SHADOW,
+                        Paged,
+                        context,
+                        false,
+                        winding != 0
                     );
-                    if (!pass)
+                    if (!base)
                     {
-                        return cxx::unexpected(pass.error());
+                        return cxx::unexpected(base.error());
                     }
-                    depth = pass->written.front();
+                    base->interface.parameters.instance_layout = {};
+                    const MeshViewParameters identity;
+                    auto bytes = meshViewParameterBytes(identity);
+                    base->interface.parameters.values.assign(bytes.begin(), bytes.end());
+                    base->viewport = RasterViewport{};
+                    for (std::uint32_t view = 0; view < config.shape.view_count; ++view)
+                    {
+                        auto work = *base;
+                        work.state_input = RasterStateInput{
+                            context.resource("raster_states").resource,
+                            view * static_cast<std::uint32_t>(sizeof(RasterState))
+                        };
+                        work.interface.parameters.fields = {
+                            {"projection", context.resource("views").resource, "view" + std::to_string(view)}
+                        };
+                        detail::bindVisibleMeshDraw(work, context, prefix, config.candidate_capacity, view, winding);
+                        work.depth =
+                            RasterAttachment{{depth, GraphImageRange{2, 0, 1, view, 1}}, EAttachmentLoad::LOAD};
+                        auto pass = context.graph.addRasterPass(
+                            featureKey(
+                                MeshShadowFeatureDescriptor::name,
+                                key,
+                                prefix + "slice" + std::to_string(view) + ".winding" + std::to_string(winding)
+                            ),
+                            std::move(work)
+                        );
+                        if (!pass)
+                        {
+                            return cxx::unexpected(pass.error());
+                        }
+                        depth = pass->written.front();
+                    }
                 }
             }
             return context.publish("depth", depth);

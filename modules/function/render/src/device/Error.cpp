@@ -8,6 +8,12 @@ namespace lux::render
     {
         static constexpr std::array descriptors{
             error::ErrorDescriptor{
+                "lux.render.device.diagnostic",
+                "Backend diagnostic (severity, source line); text is borrowed by RenderErrorSink",
+                error::ERecovery::PERMANENT,
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
+            },
+            error::ErrorDescriptor{
                 "lux.render.device.native_failure",
                 "Native failure (backend result, operation; Vulkan image qualification=1)",
                 error::ERecovery::PERMANENT,

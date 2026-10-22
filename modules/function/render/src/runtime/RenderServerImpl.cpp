@@ -35,8 +35,13 @@ namespace lux::render
         addBuiltin<SelectCommandBinding, &Impl::selectCommandBinding>();
     }
 
-    void NRI_CALL
-    RenderServer::Impl::diagnostic(nri::Message severity, const char*, std::uint32_t, const char*, void* user) noexcept
+    void NRI_CALL RenderServer::Impl::diagnostic(
+        nri::Message severity,
+        const char* file,
+        std::uint32_t line,
+        const char* message,
+        void* user
+    ) noexcept
     {
         auto& state = *static_cast<Impl*>(user);
         if (severity == nri::Message::ERROR)
@@ -46,6 +51,21 @@ namespace lux::render
         if (severity == nri::Message::WARNING)
         {
             ++state.validation_warnings;
+        }
+        const auto& sink = state.config.diagnostics;
+        if (sink.report)
+        {
+            const auto level = severity == nri::Message::ERROR     ? ERenderDiagnostic::ERROR
+                               : severity == nri::Message::WARNING ? ERenderDiagnostic::WARNING
+                                                                   : ERenderDiagnostic::INFORMATION;
+            sink.report(
+                sink.context,
+                {level,
+                 RenderError{kDeviceDiagnostic, {static_cast<std::uint64_t>(level), line}},
+                 message ? std::string_view(message) : std::string_view{},
+                 file ? std::string_view(file) : std::string_view{},
+                 line}
+            );
         }
     }
 

@@ -3,6 +3,7 @@
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/core/RenderErrorSink.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/runtime/CommandBinding.hpp>
 #include <lux/engine/render/runtime/DeviceOptions.hpp>
@@ -40,6 +41,7 @@ namespace lux::render
         std::optional<TransferOptions> uploads;
         std::uint32_t frames_in_flight = 2;
         std::uint64_t gpu_wait_ns = 1'000'000; // 0..1ms; IPC/CPU/stop are checked between waits.
+        RenderErrorSink diagnostics;
     };
 
     struct RenderServerStats final

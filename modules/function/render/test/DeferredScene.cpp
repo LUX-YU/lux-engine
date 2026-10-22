@@ -12,6 +12,7 @@
 #include <lux/engine/render/features/FeatureDefinition.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
 #include <lux/engine/render/features/MeshDepthRaster.hpp>
+#include <lux/engine/render/features/MeshVisibilityFeature.hpp>
 #include <lux/engine/render/features/TonemapFeature.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
@@ -56,12 +57,18 @@ static std::vector<std::byte> parameterBytes(const SceneParameters& values)
     return {view.begin(), view.end()};
 }
 
-static rdesc::MaterialProgramSet cook(bool lit, bool mask = false, bool normal_map = false, bool shadow_only = false)
+static rdesc::MaterialProgramSet cook(
+    bool lit,
+    bool mask = false,
+    bool normal_map = false,
+    bool shadow_only = false,
+    bool double_sided = true
+)
 {
     using namespace lux::material;
     MaterialGraph graph;
     graph.shading_model = lit ? rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS : rdesc::ELightingTechnique::UNLIT;
-    graph.render_state.double_sided = true;
+    graph.render_state.double_sided = double_sided;
     graph.render_state.alpha_mode = mask ? rdesc::EAlphaMode::MASK : rdesc::EAlphaMode::OPAQUE_SURFACE;
     graph.param_slots = {
         {"albedo", EValueType::VEC4, {0.3F, 0.5F, 0.7F, 1}},
@@ -126,7 +133,8 @@ static std::array<float, 3> referencePbr(
     float x,
     float y,
     std::span<const VDirectLight> lights,
-    std::array<float, 3> normal
+    std::array<float, 3> normal,
+    float depth = .5F
 )
 {
     using V = std::array<double, 3>;
@@ -141,8 +149,8 @@ static std::array<float, 3> referencePbr(
         return a;
     };
     const V n = unit({normal[0], normal[1], normal[2]});
-    const V position{x, y, .5};
-    const V eye = unit({-x, -y, .5});
+    const V position{x, y, depth};
+    const V eye = unit({-x, -y, 1 - depth});
     V result{};
     for (const auto& variant : lights)
     {
@@ -267,7 +275,30 @@ int main(int argc, char** argv)
     auto unlit = cook(false), pbr = cook(true), masked = cook(false, true), normal_mapped = cook(true, false, true);
     auto runtime = lux::execution::ExecutionRuntime::create({2, 128, 128, {128}});
     CHECK(runtime);
+    std::atomic<unsigned> diagnostic_count{0};
     RenderServerConfig config{"test.deferred", true};
+    config.diagnostics = {
+        &diagnostic_count,
+        [](void* context, const RenderDiagnostic& diagnostic) noexcept
+        {
+            CHECK(diagnostic.error.type == kDeviceDiagnostic);
+            CHECK(!diagnostic.message.empty());
+            CHECK(!diagnostic.file.empty() && diagnostic.line != 0);
+            ++*static_cast<std::atomic<unsigned>*>(context);
+            if (diagnostic.severity == ERenderDiagnostic::ERROR)
+            {
+                std::fprintf(
+                    stderr,
+                    "%.*s:%u %.*s\n",
+                    int(diagnostic.file.size()),
+                    diagnostic.file.data(),
+                    diagnostic.line,
+                    int(diagnostic.message.size()),
+                    diagnostic.message.data()
+                );
+            }
+        }
+    };
     config.frames_in_flight = fif;
     config.uploads = TransferOptions{65536, 2, 2 * 1024 * 1024};
     DeviceOptions device{};
@@ -294,6 +325,7 @@ int main(int argc, char** argv)
         }
     }
     auto server = take(createRenderServer(config, *runtime, device));
+    const auto visibility = take(server->registerFeature<MeshVisibilityFeatureDescriptor>());
     const auto gbuffer = take(server->registerFeature<GBufferFeatureDescriptor>());
     const auto lighting = take(server->registerFeature<DeferredLightingFeatureDescriptor>());
     const auto tone = take(server->registerFeature<TonemapFeatureDescriptor>());
@@ -341,6 +373,7 @@ int main(int argc, char** argv)
          {3, 32, rdesc::ETextureFormat::RGBA32_SFLOAT}},
         {{0, 6, 0}}
     };
+    geometry.bounds = {{0, 0, .5F, 1}, {.48F, .8F, 0, 0}};
     const auto left_mesh = call<CreateMesh>(*client, commands, {meshes, geometry, source}).mesh;
     const auto right_mesh = call<CreateMesh>(*client, commands, {meshes, geometry, source}).mesh;
     const MaterialParameters left_values{{.2F, .4F, .6F, 1}, {0, 0, 0, 0}, {1, 0, 0, 0}};
@@ -363,12 +396,22 @@ int main(int argc, char** argv)
     std::vector<GraphImageDesc> normal_textures;
     std::vector<MaterialId> all_materials{left_material, unused, right_material};
     const auto layout = parameterLayout();
-    const auto run = [&](float exposure)
+    bool mixed_winding = false;
+    std::vector<MeshInstanceId> extra_instances;
+    std::span<const MeshInstanceUpdate> in_frame_updates;
+    const auto run = [&](float exposure, bool gpu_visibility = true, bool oracle = true)
     {
-        CapturedPixels pixels;
+        CapturedPixels pixels, visible_commands;
         GBufferFeatureConfig surface{target};
         surface.input_layout = layout;
+        surface.visible_capacity = gpu_visibility ? 16 : 0;
         surface.groups = {{geometry, unlit, {left_mesh, left_material}}, {geometry, pbr, {right_mesh, right_material}}};
+        // The base quad is CCW in world XY, clockwise after this forward-Z viewport projection.
+        // Instance mirroring is handled by the Feature, not baked into this base winding.
+        for (auto& group : surface.groups)
+        {
+            group.front_counter_clockwise = false;
+        }
         surface.groups[1].textures = normal_textures;
         DeferredLightingFeatureConfig light_config;
         light_config.extent = {64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
@@ -388,6 +431,29 @@ int main(int argc, char** argv)
         request.definition.connections.push_back({{2, "color"}, {3, "color"}});
         request.definition.outputs.push_back({{2, "color"}, GraphOutputRequirements{target.format, 1}});
         request.definition.outputs.push_back({{3, "pixels"}, {}});
+        if (gpu_visibility)
+        {
+            MeshVisibilityFeatureConfig selection;
+            selection.groups = {surface.groups[0].group, surface.groups[1].group};
+            selection.candidate_capacity = surface.visible_capacity;
+            selection.view_parameters = layout;
+            request.definition.features.push_back({visibility, "main_visibility", take(ConfigValue::make(selection))});
+            for (unsigned g = 0; g < 2; ++g)
+            {
+                const auto source = "g" + std::to_string(g) + ".";
+                const auto destination = "group" + std::to_string(g) + ".";
+                for (auto [from, to] :
+                     {std::pair{"visible", "members"}, {"commands", "commands"}, {"counts", "counts"}})
+                {
+                    request.definition.connections.push_back({{4, source + from}, {0, destination + to}});
+                }
+            }
+            CaptureConfig indirect_capture{&visible_commands};
+            indirect_capture.bytes = kMeshWindingCount * 20;
+            request.definition.features.push_back({capture, "indirect", take(ConfigValue::make(indirect_capture))});
+            request.definition.connections.push_back({{4, "g1.commands"}, {5, "color"}});
+            request.definition.outputs.push_back({{5, "pixels"}, {}});
+        }
         const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
         const auto view = call<CreateView>(*client, commands, {scene}).view;
         const auto output = call<CreateTarget>(*client, commands, {target}).target;
@@ -396,36 +462,97 @@ int main(int argc, char** argv)
             call<Attach>(*client, commands, {scene, view, output, effect, parameterBytes(parameters)}).attachment;
         const auto second_view = call<CreateView>(*client, commands, {scene}).view;
         const auto second_output = call<CreateTarget>(*client, commands, {target}).target;
-        const auto second =
-            call<Attach>(*client, commands, {scene, second_view, second_output, effect, parameterBytes(parameters)})
-                .attachment;
+        auto second_parameters = parameters;
+        if (mixed_winding)
+        {
+            second_parameters.mesh.view[12] = 4; // Same Effect, independently empty view.
+        }
+        const auto second = call<Attach>(
+                                *client,
+                                commands,
+                                {scene, second_view, second_output, effect, parameterBytes(second_parameters)}
+        )
+                                .attachment;
         const auto compiles = call<QueryRenderStats>(*client, commands, {}).compiled_graphs;
         // Dynamic attachment values must not cause a new Graph/Pipeline compilation.
-        auto temporary = parameters;
+        auto temporary = second_parameters;
         temporary.tone.exposure = exposure - 1;
         call<UpdateAttachmentInputs>(*client, commands, {second, parameterBytes(temporary)});
-        call<UpdateAttachmentInputs>(*client, commands, {second, parameterBytes(parameters)});
+        call<UpdateAttachmentInputs>(*client, commands, {second, parameterBytes(second_parameters)});
         CHECK(call<QueryRenderStats>(*client, commands, {}).compiled_graphs == compiles);
-        const auto before = call<QueryRenderStats>(*client, commands, {}).submissions;
         const auto deadline = Clock::now() + 10s;
-        while (call<QueryRenderStats>(*client, commands, {}).submissions < before + 20)
+        const auto advance = [&]
         {
-            CHECK(Clock::now() < deadline);
-            std::this_thread::sleep_for(1ms);
+            for (auto attachment : {attached, second})
+            {
+                const auto before = call<QueryExecutionProgress>(*client, commands, attachment)
+                                        .progress.count(EExecutionOutcome::EXECUTED);
+                while (call<QueryExecutionProgress>(*client, commands, attachment)
+                           .progress.count(EExecutionOutcome::EXECUTED) < before + fif + 2)
+                {
+                    CHECK(Clock::now() < deadline);
+                    std::this_thread::sleep_for(1ms);
+                }
+            }
+        };
+        advance();
+        if (!in_frame_updates.empty())
+        {
+            call<UpdateMeshInstances>(*client, commands, {instances, 20, in_frame_updates});
+            advance();
         }
         detach(*client, commands, attached);
         detach(*client, commands, second);
-        while (pixels.ready.load(std::memory_order_acquire) != 2)
+        while (pixels.ready.load(std::memory_order_acquire) != 2 ||
+               (gpu_visibility && visible_commands.ready.load(std::memory_order_acquire) != 2))
         {
             CHECK(Clock::now() < deadline);
             std::this_thread::yield();
         }
-        verify(pixels, expected_left, {.3F, .5F, .7F}, lights, exposure, expected_normal);
+        if (oracle)
+        {
+            verify(pixels, expected_left, {.3F, .5F, .7F}, lights, exposure, expected_normal);
+        }
+        if (gpu_visibility && mixed_winding)
+        {
+            unsigned observed = 0, empty_views = 0;
+            for (const auto& frame : visible_commands.frames)
+            {
+                std::array<std::uint32_t, 10> commands{};
+                std::memcpy(commands.data(), frame.data(), sizeof(commands));
+                if (!commands[0])
+                {
+                    continue;
+                }
+                // One positive and two reflected, all in one geometry/program-table group.
+                // Two additional live candidates lie outside the view and must not reach Draw.
+                if (commands[1] == 0 && commands[6] == 0)
+                {
+                    ++empty_views;
+                }
+                else
+                {
+                    CHECK(commands[1] == 1 && commands[6] == 2);
+                    ++observed;
+                }
+            }
+            CHECK(observed != 0 && empty_views != 0);
+        }
         call<RemoveEffect>(*client, commands, {effect});
         call<RemoveView>(*client, commands, {scene, view});
         call<RemoveView>(*client, commands, {scene, second_view});
+        for (const auto& frame : pixels.frames)
+        {
+            if (frame[32 * pixels.pitch + 16 * 4 + (mixed_winding ? 0 : 3)] != std::byte{})
+            {
+                return frame;
+            }
+        }
+        CHECK(false);
+        return std::vector<std::byte>{};
     };
-    run(0);
+    const auto all_candidates = run(0, false);
+    CHECK(all_candidates == run(0));
     auto stale = light_ids.front();
     ++stale.local.gen;
     const std::array invalid_light{DirectLightUpdate{stale, lights.front()}};
@@ -454,6 +581,76 @@ int main(int argc, char** argv)
     normal_textures = {{1, 1, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}};
     expected_normal = {-(204 / 255.0F * 2 - 1), 128 / 255.0F * 2 - 1, 230 / 255.0F * 2 - 1};
     run(0);
+    // Both face modes must support mixed signs within one group and nonuniform normal-mapped transforms.
+    for (bool two_sided : {false, true})
+    {
+        pbr = cook(true, false, true, false, two_sided);
+        right_material =
+            call<CreateMaterial>(*client, commands, {materials, pbr, right_values, {normal_texture}}).material;
+        const auto other_material =
+            call<CreateMaterial>(*client, commands, {materials, pbr, left_values, {normal_texture}}).material;
+        all_materials.insert(all_materials.end(), {right_material, other_material});
+        values[1].material = right_material;
+        const std::array changed{MeshInstanceUpdate{ids[1], values[1]}};
+        call<UpdateMeshInstances>(*client, commands, {instances, 10, changed});
+        std::array<MeshInstanceDescription, 4> additions;
+        for (unsigned i = 0; i < additions.size(); ++i)
+        {
+            additions[i] = {right_mesh, other_material};
+            additions[i].transform[0] = i == 1 ? -.3F : .3F;
+            additions[i].transform[5] = .25F;
+            additions[i].transform[12] = .5F;
+            additions[i].transform[13] = i == 0 ? .5F : -.5F;
+            additions[i].transform[14] = -.1F;
+        }
+        additions[2].transform[12] = 4;
+        additions[3].transform[14] = 2;
+        extra_instances = call<CreateMeshInstances>(*client, commands, {instances, additions}).instances;
+        mixed_winding = true;
+        const auto reference = run(0, false, false);
+        const auto culled = run(0, true, false);
+        CHECK(reference == culled);
+        // Independent interior-pixel oracle: both orientations survive hardware culling, use the
+        // second material's parameters and preserve the mirrored tangent-space normal.
+        for (auto [y, normal_sign] : {std::pair{48u, 1.F}, {16u, -1.F}})
+        {
+            const auto color = referencePbr(
+                {.2F, .4F, .6F},
+                48.5F / 32 - 1,
+                (y + .5F) / 32 - 1,
+                lights,
+                {normal_sign * (204 / 255.F * 2 - 1), 128 / 255.F * 2 - 1, 230 / 255.F * 2 - 1},
+                .4F
+            );
+            for (unsigned c = 0; c < 3; ++c)
+            {
+                const auto expected = int(std::lround(tonemap(color[c], 0) * 255));
+                CHECK(std::abs(std::to_integer<int>(reference[(y * 64 + 48) * 4 + c]) - expected) <= 3);
+            }
+        }
+        additions[0].transform[0] *= -1;
+        additions[1].transform[0] *= -1;
+        const std::array flips{
+            MeshInstanceUpdate{extra_instances[0], additions[0]},
+            MeshInstanceUpdate{extra_instances[1], additions[1]}
+        };
+        in_frame_updates = flips;
+        const auto changed_pixels = run(0, true, false);
+        in_frame_updates = {};
+        CHECK(changed_pixels == run(0, false, false));
+        CHECK(changed_pixels != culled);
+        for (auto instance : extra_instances)
+        {
+            call<ReleaseMeshInstance>(*client, commands, instance);
+        }
+        mixed_winding = false;
+    }
+    pbr = normal_mapped;
+    right_material = call<CreateMaterial>(*client, commands, {materials, pbr, right_values, {normal_texture}}).material;
+    all_materials.push_back(right_material);
+    values[1].material = right_material;
+    const std::array restored{MeshInstanceUpdate{ids[1], values[1]}};
+    call<UpdateMeshInstances>(*client, commands, {instances, 12, restored});
     // Invalid normal/tangent input is rejected by the author contract before compiling a Pipeline.
     GBufferFeatureConfig invalid{target};
     invalid.groups = {{geometry, pbr, {right_mesh, right_material}}};
@@ -475,6 +672,7 @@ int main(int argc, char** argv)
     {
         CapturedPixels pixels;
         MeshFeatureConfig depth_config{target, {geometry, unlit, {left_mesh, left_material}}};
+        depth_config.mesh.front_counter_clockwise = false;
         CreateEffectRequest request{target};
         request.definition.features.push_back({shadow, "coverage", take(ConfigValue::make(depth_config))});
         request.definition.features.push_back(
@@ -557,6 +755,7 @@ int main(int argc, char** argv)
     const auto stats = server->stats();
     CHECK(stats.validation_errors == 0);
     server.reset();
+    CHECK(diagnostic_count.load() != 0);
     runtime->requestStop();
     CHECK(runtime->join());
     std::printf(

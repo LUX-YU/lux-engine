@@ -1,6 +1,6 @@
 #include <lux/engine/render/features/FeatureAssembly.hpp>
-#include <lux/engine/render/features/FullscreenRaster.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
+#include <lux/engine/render/features/ParameterLayout.hpp>
 #include <lux/engine/render/features/RasterMesh.hpp>
 #include <lux/engine/render/runtime/Registration.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshCommandHandler.hpp>
@@ -40,7 +40,8 @@ namespace lux::render
                         group,
                         "group" + std::to_string(i) + ".",
                         rdesc::EMaterialPurpose::GBUFFER,
-                        result
+                        result,
+                        config.visible_capacity
                     );
                     !valid)
                 {
@@ -88,33 +89,43 @@ namespace lux::render
             }
             for (std::size_t i = 0; i < config.groups.size(); ++i)
             {
-                auto draw = detail::buildMeshGroup(
-                    config.groups[i],
-                    "group" + std::to_string(i) + ".",
-                    rdesc::EMaterialPurpose::GBUFFER,
-                    Paged,
-                    context
-                );
-                if (!draw)
+                const auto prefix = "group" + std::to_string(i) + ".";
+                for (std::uint32_t winding = 0; winding < kMeshWindingCount; ++winding)
                 {
-                    return cxx::unexpected(draw.error());
+                    auto draw = detail::buildMeshGroup(
+                        config.groups[i],
+                        prefix,
+                        rdesc::EMaterialPurpose::GBUFFER,
+                        Paged,
+                        context,
+                        config.visible_capacity == 0,
+                        winding != 0
+                    );
+                    if (!draw)
+                    {
+                        return cxx::unexpected(draw.error());
+                    }
+                    if (config.visible_capacity)
+                    {
+                        detail::bindVisibleMeshDraw(*draw, context, prefix, config.visible_capacity, 0, winding);
+                    }
+                    draw->interface.parameters.instance_layout = config.input_layout;
+                    const auto load = i == 0 && winding == 0 ? EAttachmentLoad::CLEAR : EAttachmentLoad::LOAD;
+                    for (std::size_t color = 0; color < 3; ++color)
+                    {
+                        draw->colors.push_back({{versions[color]}, load});
+                    }
+                    draw->depth = RasterAttachment{{versions[3]}, load};
+                    auto pass = context.graph.addRasterPass(
+                        featureKey(GBufferFeatureDescriptor::name, key, prefix + "winding" + std::to_string(winding)),
+                        std::move(*draw)
+                    );
+                    if (!pass)
+                    {
+                        return cxx::unexpected(pass.error());
+                    }
+                    std::ranges::copy(pass->written, versions.begin());
                 }
-                draw->interface.parameters.instance_layout = config.input_layout;
-                const auto load = i == 0 ? EAttachmentLoad::CLEAR : EAttachmentLoad::LOAD;
-                for (std::size_t color = 0; color < 3; ++color)
-                {
-                    draw->colors.push_back({{versions[color]}, load});
-                }
-                draw->depth = RasterAttachment{{versions[3]}, load};
-                auto pass = context.graph.addRasterPass(
-                    featureKey(GBufferFeatureDescriptor::name, key, "group" + std::to_string(i)),
-                    std::move(*draw)
-                );
-                if (!pass)
-                {
-                    return cxx::unexpected(pass.error());
-                }
-                std::ranges::copy(pass->written, versions.begin());
             }
             for (std::size_t i = 0; i < ports.size(); ++i)
             {

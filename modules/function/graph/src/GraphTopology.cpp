@@ -317,7 +317,8 @@ namespace lux::graph
                 return lux::cxx::unexpected(failure(EGraphTopologyError::UNKNOWN_PIN, {}, link.from, link.to));
             if (from->direction != EPinDirection::OUTPUT || to->direction != EPinDirection::INPUT)
                 return lux::cxx::unexpected(failure(EGraphTopologyError::DIRECTION_MISMATCH, {}, link.from, link.to));
-            if (std::ranges::find(links.subspan(index + 1U), link) != links.end())
+            const auto remaining_links = links.subspan(index + 1U);
+            if (std::ranges::find(remaining_links, link) != remaining_links.end())
                 return lux::cxx::unexpected(failure(EGraphTopologyError::DUPLICATE_LINK, {}, link.from, link.to));
             const auto from_count = std::ranges::count_if(links, [&](const LinkRecord& value) {
                 return value.from == link.from || value.to == link.from;

@@ -30,11 +30,17 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     add_subdirectory(script)
 else()
     add_subdirectory(animation)
-    add_subdirectory(input)
+    if(LUX_BUILD_WINDOW)
+        add_subdirectory(input)
+    endif()
     add_subdirectory(navigation)
-    add_subdirectory(render)
+    if(LUX_BUILD_RENDER)
+        add_subdirectory(render)
+    endif()
     add_subdirectory(script)
-    add_subdirectory(ui)
+    if(LUX_BUILD_UI)
+        add_subdirectory(ui)
+    endif()
 endif()
 
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
@@ -57,7 +63,6 @@ else()
         graph
         navigation
         navigation_detour3d
-        input
         animation
         script_artifact
         script_core
@@ -67,7 +72,12 @@ else()
     if(TARGET script_lua)
         list(APPEND LUX_FUNCTION_COMPONENTS script_lua)
     endif()
-    list(APPEND LUX_FUNCTION_COMPONENTS ui ui_input)
+    if(TARGET input)
+        list(APPEND LUX_FUNCTION_COMPONENTS input)
+    endif()
+    if(TARGET ui)
+        list(APPEND LUX_FUNCTION_COMPONENTS ui ui_input)
+    endif()
 endif()
 
 if(TARGET material_graph)

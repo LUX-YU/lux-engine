@@ -50,12 +50,17 @@ namespace lux::scene
     class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderSystem final
     {
     public:
-        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
+        inline static constexpr system::SystemDataContract DataInputs[]{
+            {"lux.ecs.Transform3D"},
+            {"lux.ecs.Mesh3D"},
+            {"lux.scene.Camera"},
+            {"lux.transform.world3d.ready", 1, system::ESystemDataKind::PREPARED_DATA, system::ESystemDataPhase::STABLE}
+        };
         inline static constexpr system::SystemTypeDescription Description{
             .canonical_name = "lux.scene.render",
             .version = 1,
             .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER,
-            .supported_world_types = SupportedWorldTypes
+            .data_inputs = DataInputs
         };
 
         RenderSystem(simulation::ecs::Registry&, const RenderSystemDependencies&);

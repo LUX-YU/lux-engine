@@ -120,7 +120,15 @@ namespace lux::project
         std::optional<MetadataIdentity> configuration;
         std::vector<MetadataRequirement> requirements;
         std::vector<MetadataAccess> access;
-        std::vector<std::string> supported_world_types;
+
+        struct DataContract final
+        {
+            MetadataIdentity identity;
+            bool prepared{};
+            std::uint8_t phase{};
+        };
+
+        std::vector<DataContract> data_inputs, data_outputs;
     };
 
     struct MetadataFeatureDependency final
@@ -187,22 +195,20 @@ namespace lux::project
         // Validate the entire addition before publishing; existing record addresses remain stable.
         [[nodiscard]] PluginResult<void> append(PluginCatalog addition) noexcept;
         [[nodiscard]] const PluginDescription* find(std::string_view id) const noexcept;
+
         [[nodiscard]] const std::deque<PluginDescription>& plugins() const noexcept
         {
             return plugins_;
         }
+
         [[nodiscard]] PluginResult<std::vector<const PluginDescription*>> loadOrder(std::string_view id) const noexcept;
         [[nodiscard]] std::span<const MetadataImplementation* const> implementations(std::string_view ability
         ) const noexcept;
-        [[nodiscard]] std::span<const MetadataSystem* const> systemsForWorld(
-            EMetadataSystemDomain,
-            std::string_view partitioner
-        ) const noexcept;
+        // Cold catalog traversal; actual compatibility is resolved from selected data and services.
+        [[nodiscard]] std::vector<const MetadataSystem*> systems(EMetadataSystemDomain) const;
 
     private:
         std::deque<PluginDescription> plugins_;
         std::map<std::string, std::vector<const MetadataImplementation*>, std::less<>> implementations_;
-        using WorldSystems = std::map<std::string, std::vector<const MetadataSystem*>, std::less<>>;
-        std::array<WorldSystems, 2> world_systems_;
     };
 } // namespace lux::project

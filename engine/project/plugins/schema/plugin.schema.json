@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:lux:engine:plugin:2",
-  "title": "LUX plugin descriptor v2",
+  "$id": "urn:lux:engine:plugin:3",
+  "title": "LUX plugin descriptor v3",
   "type": "object",
   "properties": {
     "format": {
       "const": "lux.engine.plugin"
     },
     "version": {
-      "const": 2
+      "const": 3
     },
     "plugin": {
       "$ref": "#/$defs/plugin"
@@ -344,26 +344,17 @@
         "access": {
           "$ref": "#/$defs/access"
         },
-        "supported_world_types": {
+        "data_inputs": {
           "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
           "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "allOf": [
-            {
-              "if": {
-                "contains": {
-                  "const": "*"
-                }
-              },
-              "then": {
-                "maxItems": 1
-              }
-            }
-          ]
+            "$ref": "#/$defs/data_contract"
+          }
+        },
+        "data_outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/data_contract"
+          }
         }
       },
       "required": [
@@ -371,7 +362,8 @@
         "version",
         "domain",
         "requirements",
-        "supported_world_types"
+        "data_inputs",
+        "data_outputs"
       ],
       "additionalProperties": false
     },
@@ -736,6 +728,38 @@
         "description",
         "runtime_library",
         "dependencies"
+      ],
+      "additionalProperties": false
+    },
+    "data_contract": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "kind": {
+          "enum": [
+            "schema",
+            "prepared_data"
+          ]
+        },
+        "phase": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "kind",
+        "phase"
       ],
       "additionalProperties": false
     }

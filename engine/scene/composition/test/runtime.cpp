@@ -46,11 +46,10 @@ namespace
 
     struct Probe final
     {
-        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
+
         inline static constexpr system::SystemTypeDescription Description{
             .canonical_name = "test.runtime.probe",
-            .version = 1,
-            .supported_world_types = SupportedWorldTypes
+            .version = 1
         };
         inline static bool reject{};
         inline static unsigned destroyed{};

@@ -1,3 +1,4 @@
+#include "SystemDataJson.hpp"
 // Native build tool: serialize the same typed export tables linked into the plugin.
 #include <algorithm>
 #include <filesystem>
@@ -18,7 +19,7 @@ int main(int argc, char** argv)
         return 2;
     }
     using Json = nlohmann::json;
-    Json value{{"format", "lux.engine.plugin"}, {"version", 2}};
+    Json value{{"format", "lux.engine.plugin"}, {"version", 3}};
     value["plugin"] = {
         {"id", argc >= 4 ? argv[2] : "lux.builtin.runtime"},
         {"version", 2},
@@ -89,7 +90,8 @@ int main(int argc, char** argv)
             {"version", type.version},
             {"domain", domain},
             {"requirements", Json::array()},
-            {"supported_world_types", type.supported_world_types}
+            {"data_inputs", systemDataJson(type.data_inputs)},
+            {"data_outputs", systemDataJson(type.data_outputs)}
         };
         if (!type.configuration_schema_name.empty())
         {

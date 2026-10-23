@@ -1,30 +1,29 @@
 message("-------- Plaform Layer --------")
 add_subdirectory(process)
 add_subdirectory(ipc)
-if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
-    # Offline tools do not configure interactive platform domains.
-    add_subdirectory(dynamic_library)
-else()
+if(LUX_BUILD_RENDER OR LUX_BUILD_WINDOW)
     add_subdirectory(gapi)
-    add_subdirectory(window)
-    add_subdirectory(dynamic_library)
-    if(NOT ANDROID)
-        add_subdirectory(filewatch)
-    endif()
 endif()
 
-# filewatch 只在非 Android 构建(见其 CMakeLists 头注释)——安装列表跟着条件。
-if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
-    set(LUX_PLATFORM_COMPONENTS dynamic_library)
-else()
-    set(LUX_PLATFORM_COMPONENTS
-        gapi
-        window
-        dynamic_library
-    )
-    if(NOT ANDROID)
-        list(APPEND LUX_PLATFORM_COMPONENTS filewatch)
-    endif()
+if(LUX_BUILD_WINDOW)
+    add_subdirectory(window)
+endif()
+
+add_subdirectory(dynamic_library)
+
+set(LUX_PLATFORM_COMPONENTS dynamic_library)
+
+if(TARGET gapi)
+    list(APPEND LUX_PLATFORM_COMPONENTS gapi)
+endif()
+
+if(TARGET window)
+    list(APPEND LUX_PLATFORM_COMPONENTS window)
+endif()
+
+if(NOT ANDROID AND NOT LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
+    add_subdirectory(filewatch)
+    list(APPEND LUX_PLATFORM_COMPONENTS filewatch)
 endif()
 
 if(LUX_PLATFORM_COMPONENTS)

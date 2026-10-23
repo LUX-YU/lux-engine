@@ -93,13 +93,11 @@ namespace lux::scene
     {
     public:
         inline static constexpr std::array<std::string_view, 1U> Capabilities{"lux.script.runtime"};
-        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
         inline static constexpr system::SystemTypeDescription Description{
             .canonical_name = "lux.scene.ScriptRuntimeSystem",
             .version = 1U,
             .capabilities = Capabilities,
             .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER,
-            .supported_world_types = SupportedWorldTypes
         };
 
         ScriptRuntimeSystem(

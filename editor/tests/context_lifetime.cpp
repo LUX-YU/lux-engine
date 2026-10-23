@@ -32,11 +32,10 @@ namespace
 
     struct ProjectScene final
     {
-        inline static constexpr std::string_view Worlds[]{"*"};
+
         inline static constexpr system::SystemTypeDescription Description{
             .canonical_name = "test.editor.retirement",
-            .version = 1,
-            .supported_world_types = Worlds
+            .version = 1
         };
         inline static RetirementState* input;
         RetirementState& state = *input;

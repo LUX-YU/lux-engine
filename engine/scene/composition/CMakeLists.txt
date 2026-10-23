@@ -11,6 +11,7 @@ add_component(
     OUTPUT_NAME    lux_engine_scene_composition
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneInstance.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneCompatibility.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRuntime.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneError.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneSystemInstaller.cpp

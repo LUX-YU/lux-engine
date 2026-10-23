@@ -63,7 +63,11 @@ namespace lux::physics2d
             lux::simulation::TComponentRead<BoxCollider2D>,
             lux::simulation::TComponentWrite<RigidBody2D>,
             lux::simulation::TComponentWrite<lux::simulation::ecs::Transform2D>>();
-        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
+        inline static constexpr system::SystemDataContract DataInputs[]{
+            {"lux.ecs.Transform2D"},
+            {"lux.physics2d.BoxCollider"},
+            {"lux.physics2d.RigidBody"}
+        };
         inline static constexpr lux::simulation::SimulationSystemDescription Description{
             .type =
                 {.canonical_name = "lux.physics2d.System",
@@ -71,7 +75,7 @@ namespace lux::physics2d
                  .configuration_schema_name = "lux.physics2d.Configuration",
                  .configuration_schema_version = 1U,
                  .capabilities = Capabilities,
-                 .supported_world_types = SupportedWorldTypes}
+                 .data_inputs = DataInputs}
         };
 
         using CreateResult = lux::cxx::expected<std::unique_ptr<Physics2DSystem>, EPhysics2DSystemError>;

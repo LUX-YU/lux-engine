@@ -1,8 +1,8 @@
 #pragma once
 
-#include <lux/engine/simulation/SimulationTime.hpp>
 #include <lux/engine/simulation/SimulationDescription.hpp>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
+#include <lux/engine/simulation/SimulationTime.hpp>
 #include <lux/engine/simulation/composition/visibility.h>
 #include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
@@ -61,9 +61,12 @@ namespace lux::simulation
         SimulationHookConnection() noexcept = default;
         SimulationHookConnection(const SimulationHookConnection&) = delete;
         SimulationHookConnection& operator=(const SimulationHookConnection&) = delete;
+
         SimulationHookConnection(SimulationHookConnection&& other) noexcept
             : context_(std::exchange(other.context_, nullptr)), disconnect_(other.disconnect_)
-        {}
+        {
+        }
+
         SimulationHookConnection& operator=(SimulationHookConnection&& other) noexcept
         {
             if (this != &other)
@@ -74,10 +77,12 @@ namespace lux::simulation
             }
             return *this;
         }
+
         ~SimulationHookConnection() noexcept
         {
             reset();
         }
+
         void reset() noexcept
         {
             if (context_ != nullptr)
@@ -89,7 +94,9 @@ namespace lux::simulation
     private:
         SimulationHookConnection(void* context, void (*disconnect)(void*) noexcept) noexcept
             : context_(context), disconnect_(disconnect)
-        {}
+        {
+        }
+
         void* context_{};
         void (*disconnect_)(void*) noexcept {};
         friend class Simulation;
@@ -108,7 +115,8 @@ namespace lux::simulation
         [[nodiscard]] static lux::cxx::expected<Simulation, SimulationSystemBuildFailure> create(
             ecs::Registry& registry,
             std::shared_ptr<const SimulationDescription> description,
-            const SimulationSystemRegistry& system_types
+            const SimulationSystemRegistry& system_types,
+            std::span<const SimulationExecutionDependency> data_dependencies = {}
         ) noexcept;
 
         [[nodiscard]] const SimulationDescription& description() const noexcept;
@@ -135,6 +143,7 @@ namespace lux::simulation
             task::TaskExecutor& executor,
             const SimulationTime& time
         ) noexcept;
+
     private:
         struct Impl;
         explicit Simulation(std::unique_ptr<Impl> impl) noexcept;

@@ -97,6 +97,24 @@ option(
 option(LUX_BUILD_PACKED_RENDER_CONTENT "Compile and embed built-in render content" OFF)
 set(LUX_ASSET_PACKER_EXECUTABLE "" CACHE FILEPATH "Optional explicit host lux_asset_packer executable")
 
+# Product composition controls real dependencies. A CPU-only player configures no graphics SDK.
+set(_lux_graphics_default ON)
+if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
+    set(_lux_graphics_default OFF)
+endif()
+
+option(LUX_BUILD_RENDER "Build the rendering library and Engine render projection" ${_lux_graphics_default})
+option(LUX_BUILD_WINDOW "Build native window integration" ${_lux_graphics_default})
+option(LUX_BUILD_UI "Build the UI library" ${_lux_graphics_default})
+
+if(LUX_PROFILE_HAS_EDITOR AND (NOT LUX_BUILD_RENDER OR NOT LUX_BUILD_WINDOW OR NOT LUX_BUILD_UI))
+    message(FATAL_ERROR "The Editor requires Render, window and UI. Headless game scenes do not disable Editor UI.")
+endif()
+
+if(LUX_BUILD_UI AND NOT LUX_BUILD_WINDOW)
+    message(FATAL_ERROR "The current UI implementation requires the native window module.")
+endif()
+
 option(BUILD_TESTING "Build and register component tests" OFF)
 if(BUILD_TESTING)
     enable_testing()

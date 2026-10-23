@@ -19,7 +19,8 @@ directory or a dependency on the editor product.
 
 ## Build and install
 
-Use CMake 3.22 or newer, Ninja, and a C++20 compiler. Install the sibling
+Use CMake 3.25 or newer, Ninja, and a C++20 compiler. For CMake 3.28, use at least
+3.28.2: earlier 3.28 releases export incorrect module-map arguments for metadata parsing. Install the sibling
 `lux-cmake-toolset` and `lux-cxx` packages first, together with the dependencies
 required by the selected components. On Windows, run from an x64 Visual Studio
 developer shell and supply the vcpkg toolchain if using vcpkg.
@@ -43,6 +44,16 @@ cmake --install ../build/lux-engine --config RelWithDebInfo
 `DEVELOPER` and `PLAYER` build the runtime libraries. `TOOLCHAIN` also builds
 offline tools; `EDITOR` builds the editor and its required tools. `PLAYER` is a
 library configuration, not a generated game executable.
+
+For a CPU-only player, set `LUX_BUILD_RENDER=OFF`, `LUX_BUILD_WINDOW=OFF` and
+`LUX_BUILD_UI=OFF`. This omits the graphics/window targets and their SDK discovery;
+it does not install an empty renderer. The Editor requires these three features
+for its own UI even when the edited game's Scene has no RenderSystem.
+
+Headless applications use `find_package(lux-engine-context CONFIG REQUIRED COMPONENTS engine_context)`
+and link `lux::engine::engine_context`. See the
+[installed Headless consumer](cmake/installed-consumers/headless-engine/CMakeLists.txt).
+Game compilation, rendering/program optimization and release packaging remain separate product work.
 
 Optional features include `LUX_BUILD_PHYSICS2D`, `LUX_SCRIPT_HAS_LUA`, and
 `LUX_BUILD_PACKED_RENDER_CONTENT`. Cross-compilation uses a target toolchain and

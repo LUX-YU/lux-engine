@@ -18,7 +18,7 @@ int main(int argc, char** argv)
     {
         Json module{{"id", name}, {"version", 1}, {"dependencies", Json::array()}};
         Json digest_input{{"module", module}};
-        Json description{{"format", "lux.engine.plugin"}, {"version", 2}};
+        Json description{{"format", "lux.engine.plugin"}, {"version", 3}};
         for (const auto* field :
              {"abilities",
               "implementations",

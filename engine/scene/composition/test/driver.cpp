@@ -18,28 +18,23 @@ namespace
 {
     using namespace lux;
     using namespace lux::scene;
+
     struct Padding
     {
         std::uint64_t prefix[3]{};
     };
+
     struct Capability
     {
-        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
-        static constexpr system::SystemTypeDescription Description{
-            .canonical_name = "test.capability",
-            .version = 1,
-            .supported_world_types = SupportedWorldTypes
-        };
+
+        static constexpr system::SystemTypeDescription Description{.canonical_name = "test.capability", .version = 1};
         std::uint64_t marker{42};
     };
+
     struct Probe final : Padding, Capability
     {
-        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
-        static constexpr system::SystemTypeDescription Description{
-            .canonical_name = "test.driver.probe",
-            .version = 1,
-            .supported_world_types = SupportedWorldTypes
-        };
+
+        static constexpr system::SystemTypeDescription Description{.canonical_name = "test.driver.probe", .version = 1};
         std::size_t maintenance{}, synchronization{}, stable{}, publication{};
         bool changed{};
         bool gate{}, failure{}, maintenance_waiting{};
@@ -47,13 +42,16 @@ namespace
         simulation::ecs::Entity entity;
         static inline std::size_t destructions{};
         static inline bool reject_install{};
+
         Probe(simulation::ecs::Registry& value) : registry(value), entity(value.create()) {}
+
         ~Probe() noexcept
         {
             assert(registry.valid(entity)); // System dies before the Registry.
             ++destructions;
         }
     };
+
     SceneSystemRegistration registration()
     {
         static constexpr std::array projections{sceneSystemCapabilityProjection<Probe, Capability>()};
@@ -134,16 +132,17 @@ namespace
             .projections = projections
         };
     }
+
     struct IndependentProbe final
     {
-        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
+
         static constexpr system::SystemTypeDescription Description{
             .canonical_name = "test.driver.independent",
-            .version = 1,
-            .supported_world_types = SupportedWorldTypes
+            .version = 1
         };
         std::size_t maintenance{};
     };
+
     SceneSystemRegistration independentRegistration()
     {
         return {
@@ -220,8 +219,8 @@ int main(int argc, char** argv)
     assert(Probe::destructions == 1);
     Probe::reject_install = false;
     auto execution = execution::ExecutionRuntime::create({1, 32, {32}});
-        assert(execution);
-        task::TaskExecutor executor{execution->cpu(), 1024};
+    assert(execution);
+    task::TaskExecutor executor{execution->cpu(), 1024};
     SceneDriver driver(executor);
     auto& instance = **first;
     auto& probe = *instance.findSceneSystem<Probe>();

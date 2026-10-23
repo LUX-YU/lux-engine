@@ -8,13 +8,17 @@ namespace lux::scene
     {
     public:
         inline static constexpr std::array Capabilities{std::string_view{"lux.scene.mesh_query.3d"}};
-        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
+        inline static constexpr system::SystemDataContract DataInputs[]{
+            {"lux.ecs.Transform3D"},
+            {"lux.ecs.Mesh3D"},
+            {"lux.transform.world3d.ready", 1, system::ESystemDataKind::PREPARED_DATA, system::ESystemDataPhase::STABLE}
+        };
         inline static constexpr system::SystemTypeDescription Description{
             .canonical_name = "lux.builtin.system.mesh_query.3d",
             .version = 1U,
             .capabilities = Capabilities,
             .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER,
-            .supported_world_types = SupportedWorldTypes
+            .data_inputs = DataInputs
         };
 
         explicit MeshQuerySystem(simulation::ecs::Registry& registry);

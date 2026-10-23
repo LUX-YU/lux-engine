@@ -93,13 +93,13 @@ namespace
 
     struct Probe final
     {
-        inline static constexpr std::string_view Worlds[]{"*"};
+
         inline static constexpr auto Access = makeSystemAccessSpec<>();
         inline static constexpr std::array Hooks{makeHookPointSpec<void()>({1}, "deliver", true, false)};
         inline static constexpr std::array Events{makeEventPointSpec<
             std::int32_t>({1}, "records", {1}, EEventRoute::SIMULATION_BROADCAST, "lux.lr07.channel.record", 1, true)};
         inline static constexpr SimulationSystemDescription Description{
-            {.canonical_name = "lux.lr07.ChannelProbe", .version = 1, .supported_world_types = Worlds},
+            {.canonical_name = "lux.lr07.ChannelProbe", .version = 1},
             Hooks,
             Events
         };

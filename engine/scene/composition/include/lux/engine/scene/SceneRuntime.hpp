@@ -3,6 +3,7 @@
 #include <lux/engine/core/execution/Timer.hpp>
 #include <lux/engine/scene/Clock.hpp>
 #include <lux/engine/scene/SceneCapabilityProvider.hpp>
+#include <lux/engine/scene/SceneCompatibility.hpp>
 #include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/scene/SceneInstanceId.hpp>
 #include <lux/engine/scene/SceneInstanceLease.hpp>
@@ -14,6 +15,7 @@
 #include <lux/engine/world/WorldDescription.hpp>
 
 #include <functional>
+#include <optional>
 #include <utility>
 
 namespace lux::execution
@@ -33,7 +35,7 @@ namespace lux::scene
         SCENE_SYSTEM_BUILD_FAILURE,
         ALLOCATION_FAILURE,
         IDENTITY_EXHAUSTED,
-        UNSUPPORTED_WORLD_TYPE,
+        INCOMPATIBLE_DATA,
     };
 
     struct SceneBuildFailure final
@@ -42,6 +44,7 @@ namespace lux::scene
         simulation::SimulationSystemBuildFailure simulation{};
         SceneSystemBuildFailure scene_system{};
         std::uint64_t subject_hash{};
+        std::optional<SceneCompatibilityFailure> compatibility;
     };
 
     enum class ESceneDrivePhase : std::uint8_t

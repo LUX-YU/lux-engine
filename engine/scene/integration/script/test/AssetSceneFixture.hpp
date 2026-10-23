@@ -39,11 +39,11 @@ namespace
 
     struct Probe final
     {
-        inline static constexpr std::string_view WorldTypes[]{"*"};
+
         inline static constexpr auto Access = makeSystemAccessSpec<TComponentWrite<std::int32_t>>();
         inline static constexpr std::array Hooks{makeHookPointSpec<void()>({1}, "tick", true, true)};
         inline static constexpr SimulationSystemDescription Description{
-            {.canonical_name = "lux.ec2.AssetSceneProbe", .version = 1, .supported_world_types = WorldTypes},
+            {.canonical_name = "lux.ec2.AssetSceneProbe", .version = 1},
             Hooks
         };
         THookPoint<void()> hook{2};

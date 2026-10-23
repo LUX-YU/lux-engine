@@ -1,15 +1,15 @@
 #pragma once
 
-#include <lux/engine/simulation/SystemAccessSpec.hpp>
-#include <lux/engine/simulation/SimulationTime.hpp>
+#include <lux/engine/simulation/ScriptRuntimeInput.hpp>
 #include <lux/engine/simulation/SimulationSystemDescription.hpp>
+#include <lux/engine/simulation/SimulationTime.hpp>
+#include <lux/engine/simulation/SystemAccessSpec.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
-#include <lux/engine/simulation/scripting/ScriptBackend.hpp>
+#include <lux/engine/simulation/script_system/visibility.h>
 #include <lux/engine/simulation/scripting/ScriptApiCapability.hpp>
+#include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/ScriptEndpointBridge.hpp>
 #include <lux/engine/simulation/scripting/ScriptTimeEndpoint.hpp>
-#include <lux/engine/simulation/ScriptRuntimeInput.hpp>
-#include <lux/engine/simulation/script_system/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -109,7 +109,7 @@ namespace lux::simulation::script
         {
             std::uint32_t mount_slot{};
         };
-    }
+    } // namespace detail
 
     enum class EScriptSystemError : std::uint8_t
     {
@@ -223,7 +223,9 @@ namespace lux::simulation::script
 
         private:
             friend class ScriptSystem;
+
             explicit ExecutionRegion(ScriptSystem& owner) noexcept : owner_(&owner) {}
+
             ScriptSystem* owner_{};
         };
 
@@ -234,12 +236,12 @@ namespace lux::simulation::script
         inline static constexpr auto Access = makeSystemAccessSpec<TComponentWrite<detail::ScriptAttachment>>();
         inline static constexpr std::array<HookPointSpec, 0U> Hooks{};
         inline static constexpr std::array<EventPointSpec, 0U> Events{};
-        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
         inline static constexpr SimulationSystemDescription Description{
             .type =
-                {.canonical_name = "lux.simulation.ScriptSystem",
-                 .version = 1U,
-                 .supported_world_types = SupportedWorldTypes},
+                {
+                    .canonical_name = "lux.simulation.ScriptSystem",
+                    .version = 1U,
+                },
             .hooks = Hooks,
             .events = Events
         };
@@ -312,4 +314,4 @@ namespace lux::simulation::script
         explicit ScriptSystem(std::unique_ptr<State> state) noexcept;
         std::unique_ptr<State> state_;
     };
-}
+} // namespace lux::simulation::script

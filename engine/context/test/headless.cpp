@@ -22,6 +22,52 @@
 
 namespace
 {
+    void dataContractChecks()
+    {
+        using namespace lux;
+        using namespace lux::system;
+        using namespace lux::scene;
+        const SystemDataContract schema{"test.Transform"};
+        const SystemDataContract
+            ready{"test.world_transform", 1, ESystemDataKind::PREPARED_DATA, ESystemDataPhase::SYNCHRONIZATION};
+        const SystemDataContract inputs[]{
+            schema,
+            {ready.name, 1, ESystemDataKind::PREPARED_DATA, ESystemDataPhase::STABLE}
+        };
+        SystemTypeDescription producer{"test.producer", 1};
+        producer.data_outputs = std::span(&ready, 1);
+        SystemTypeDescription consumer{"test.consumer", 1};
+        consumer.data_inputs = inputs;
+        SceneSystemContract selected[]{{{1}, &producer}, {{2}, &consumer}, {{3}, &producer}};
+        const auto schemas = std::span(&schema, 1);
+        auto missing_schema = resolveSceneData(std::span(selected, 2), {});
+        assert(!missing_schema && missing_schema.error().code == ESceneCompatibilityError::MISSING_SCHEMA);
+        auto missing_producer = resolveSceneData(std::span(selected + 1, 1), schemas);
+        assert(!missing_producer && missing_producer.error().code == ESceneCompatibilityError::MISSING_PRODUCER);
+        auto complete = resolveSceneData(std::span(selected, 2), schemas);
+        assert(complete && complete->size() == 1 && complete->front().before == 0 && complete->front().after == 1);
+        auto ambiguous = resolveSceneData(selected, schemas);
+        assert(!ambiguous && ambiguous.error().code == ESceneCompatibilityError::AMBIGUOUS_PRODUCER);
+        const system::detail::SystemDependencyOrdinalEdge chosen{2, 1};
+        auto explicit_source = resolveSceneData(selected, schemas, std::span(&chosen, 1));
+        assert(explicit_source && explicit_source->size() == 1 && explicit_source->front().before == 2);
+        auto late = ready;
+        late.phase = ESystemDataPhase::PUBLICATION;
+        producer.data_outputs = std::span(&late, 1);
+        auto inversion = resolveSceneData(std::span(selected, 2), schemas);
+        assert(!inversion && inversion.error().code == ESceneCompatibilityError::PHASE_INVERSION);
+        late.version = 2;
+        auto version = resolveSceneData(std::span(selected, 2), schemas);
+        assert(!version && version.error().code == ESceneCompatibilityError::VERSION_MISMATCH);
+        producer.data_outputs = std::span(&ready, 1);
+        const system::detail::SystemDependencyOrdinalEdge backwards{1, 0};
+        auto cycle = resolveSceneData(std::span(selected, 2), schemas, std::span(&backwards, 1));
+        assert(!cycle && cycle.error().code == ESceneCompatibilityError::DEPENDENCY_CYCLE);
+        selected[0].is_simulation = true;
+        auto invalid_phase = resolveSceneData(std::span(selected, 2), schemas);
+        assert(!invalid_phase && invalid_phase.error().code == ESceneCompatibilityError::INVALID_DECLARATION);
+    }
+
     struct PublicationPause final
     {
         std::thread::id main = std::this_thread::get_id();
@@ -763,6 +809,7 @@ namespace
 int main(int argc, char** argv)
 {
     using namespace lux;
+    dataContractChecks();
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     assert(argc == 3);
     auto engine = engine::EngineContext::create({1, 32, {16}, execution::BlockingSchedulerConfig{1, 32}}, 1024);
@@ -783,20 +830,21 @@ int main(int argc, char** argv)
     assert(catalog.read(argv[1], argv[2]));
     const auto* description = catalog.find("lux.builtin.runtime");
     assert(description && description->identity.version == 2 && description->dependencies.empty());
-    const auto single = catalog.systemsForWorld(project::EMetadataSystemDomain::SCENE, "lux.spatial.builtin.single");
-    const auto custom = catalog.systemsForWorld(project::EMetadataSystemDomain::SCENE, "example.custom.partitioner");
-    assert(!single.empty() && single.size() == custom.size());
-    constexpr std::string_view empty[]{""}, repeated[]{"single", "single"}, mixed[]{"*", "single"};
-    system::SystemTypeDescription invalid{"test", 1};
+    const auto scene_types = catalog.systems(project::EMetadataSystemDomain::SCENE);
+    assert(!scene_types.empty());
+    constexpr system::SystemDataContract empty[]{{""}};
+    constexpr system::SystemDataContract repeated[]{{"data"}, {"data"}};
+    constexpr system::SystemDataContract unversioned[]{{"data", 0}};
+    system::SystemTypeDescription invalid{"test", 0};
     assert(!system::validSystemTypeDescription(invalid));
-    for (auto names :
-         {std::span<const std::string_view>{empty},
-          std::span<const std::string_view>{repeated},
-          std::span<const std::string_view>{mixed}})
+    invalid.version = 1;
+    for (auto contracts : {std::span{empty}, std::span{unversioned}})
     {
-        invalid.supported_world_types = names;
+        invalid.data_inputs = contracts;
         assert(!system::validSystemTypeDescription(invalid));
     }
+    invalid.data_inputs = repeated;
+    assert(!system::validSystemTypeDescription(invalid));
     auto plugin = project::PluginLibrary::load(*description);
     assert(plugin);
     auto schemas =
@@ -841,8 +889,8 @@ int main(int argc, char** argv)
         scene::makeSceneCapabilityProvider<scene::WorldLoadingServices>("storage", "lux.world.loading", services);
     auto restricted = loading;
     auto restricted_type = *loading.description;
-    constexpr std::string_view supported[]{"example.other.partitioner"};
-    restricted_type.supported_world_types = supported;
+    constexpr system::SystemDataContract missing_data[]{{"example.required.schema"}};
+    restricted_type.data_inputs = missing_data;
     restricted.description = &restricted_type;
     auto& scenes = (*engine)->sceneRuntime();
     auto scene_builder = scenes.builder();
@@ -854,8 +902,10 @@ int main(int argc, char** argv)
     const auto rejected = scene_builder.build();
     assert(!rejected);
     const auto& build_error = std::get<scene::SceneBuildFailure>(rejected.error().cause);
-    assert(build_error.code == scene::ESceneBuildError::UNSUPPORTED_WORLD_TYPE);
-    assert(build_error.scene_system.system == system::SystemInstanceId{1});
+    assert(build_error.code == scene::ESceneBuildError::INCOMPATIBLE_DATA);
+    assert(build_error.compatibility);
+    assert(build_error.compatibility->consumer == system::SystemInstanceId{1});
+    assert(build_error.compatibility->code == scene::ESceneCompatibilityError::MISSING_SCHEMA);
     scene_builder.setRegistrations(*schemas, registrations, (*plugin)->sceneSystems());
     const auto instance = scene_builder.build();
     assert(instance && scenes.pauseSimulation(instance->id()));

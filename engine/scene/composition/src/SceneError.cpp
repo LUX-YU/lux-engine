@@ -22,6 +22,13 @@ namespace lux::scene
                 {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::HEX}
             };
             constexpr error::ErrorId SceneBuild = error::errorId(SceneBuildDescriptor.name);
+            constexpr error::ErrorDescriptor SceneCompatibilityDescriptor{
+                "lux.scene.data_contract",
+                "Scene data contract code {0}, consumer {1}, data {2}",
+                error::ERecovery::NEEDS_INPUT,
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::HEX}
+            };
+            constexpr error::ErrorId SceneCompatibility = error::errorId(SceneCompatibilityDescriptor.name);
             constexpr error::ErrorDescriptor SceneExecutionDescriptor{
                 "lux.scene.execution",
                 "Scene execution code {0}, system {1}, phase {2}",
@@ -75,6 +82,7 @@ namespace lux::scene
         constexpr error::ErrorDescriptor ErrorDescriptors[]{
             Errors::SceneSystemBuildDescriptor,
             Errors::SceneBuildDescriptor,
+            Errors::SceneCompatibilityDescriptor,
             Errors::SceneExecutionDescriptor,
             Errors::SimulationCommandsDescriptor,
             Errors::SimulationExecutionDescriptor,
@@ -142,6 +150,12 @@ namespace lux::scene
         }
         error::Error buildError(const SceneBuildFailure& failure) noexcept
         {
+            if (failure.compatibility)
+            {
+                const auto& data = *failure.compatibility;
+                return {Errors::SceneCompatibility,
+                        {static_cast<std::uint64_t>(data.code), data.consumer.value, failure.subject_hash}};
+            }
             if (failure.code == ESceneBuildError::SCENE_SYSTEM_BUILD_FAILURE)
             {
                 const auto& system = failure.scene_system;

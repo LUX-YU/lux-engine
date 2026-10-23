@@ -8,6 +8,11 @@
 [Editor Framework v2](../editor-framework-v2.md) 和 [Editor 质量规则](../editor-quality.md)。
 Render 当前链路见 [源码阅读说明](rendering-flow.md)。
 
+Scene/Camera/View 关系、System 兼容、项目编辑闭环与 Headless 产品边界，统一见
+[Scene 编辑与产品装配设计](../scene-editor-architecture.md)。这些事项以该设计为准；本文保留执行、
+传输、FIF 和物理清理合同。下文基线事实和阶段目标不表示当前 Editor 已有完整场景工具。
+正式游戏编译、优化与发布另行实施，Editor 运行预览不能替代其资格。
+
 ## 1. 目标与设计裁决
 
 终态是一个应用执行体系：Engine、Editor、资产解码、世界加载和 Render 的 CPU 工作共用一个

@@ -1,23 +1,29 @@
 // Build-time projection of the same declarations used by the runtime registration.
-#include <lux/engine/physics2d/Physics2DSystem.type_static_info.hpp>
-#include <lux/engine/physics2d/Physics2DComponents.type_static_info.hpp>
+#include "SystemDataJson.hpp"
+#include <fstream>
 #include <lux/engine/physics2d/Physics2DComponents.ecs_schema.hpp>
+#include <lux/engine/physics2d/Physics2DComponents.type_static_info.hpp>
+#include <lux/engine/physics2d/Physics2DSystem.type_static_info.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
 #include <nlohmann/json.hpp>
-#include <fstream>
 
 using Json = nlohmann::json;
+
 template <class T> Json fields()
 {
     Json result = Json::array();
     T defaults;
     std::apply(
-        [&](const auto&... field) {
-            const auto append = [&](const auto& f) {
+        [&](const auto&... field)
+        {
+            const auto append = [&](const auto& f)
+            {
                 using Value = std::remove_cvref_t<decltype(defaults.*f.pointer)>;
                 Json value{{"id", f.name}, {"type", lux::cxx::type_name<Value>()}, {"display_name", f.name}};
                 if constexpr (std::is_arithmetic_v<Value>)
+                {
                     value["default_display"] = defaults.*f.pointer;
+                }
                 result.push_back(std::move(value));
             };
             (append(field), ...);
@@ -30,10 +36,13 @@ template <class T> Json fields()
 int main(int argc, char** argv)
 {
     if (argc != 3)
+    {
         return 2;
+    }
     using namespace lux;
     std::ifstream source(argv[1]);
     Json value = Json::parse(source);
+    value["version"] = 3;
     for (const auto* key :
          {"abilities",
           "implementations",
@@ -42,7 +51,9 @@ int main(int argc, char** argv)
           "configurations",
           "render_features",
           "render_scene_bindings"})
+    {
         value[key] = Json::array();
+    }
     const auto& type = physics2d::Physics2DSystem::Description.type;
     for (const auto capability : type.capabilities)
     {
@@ -56,24 +67,34 @@ int main(int argc, char** argv)
         {"version", type.version},
         {"domain", "simulation"},
         {"requirements", Json::array()},
-        {"supported_world_types", type.supported_world_types},
+        {"data_inputs", systemDataJson(type.data_inputs)},
+        {"data_outputs", systemDataJson(type.data_outputs)},
         {"configuration", {{"id", type.configuration_schema_name}, {"version", type.configuration_schema_version}}},
         {"access", {{"components", Json::array()}, {"external", Json::array()}}}
     };
     const auto components = simulation::ecs::generated::physics2dComponentSchemas();
     const auto transforms = simulation::ecs::transformComponentSchemas();
-    const auto componentName = [&](cxx::TypeToken token) -> std::string_view {
+    const auto componentName = [&](cxx::TypeToken token) -> std::string_view
+    {
         for (const auto range : {components, transforms})
+        {
             for (const auto& entry : range)
+            {
                 if (entry.cpp_type == token)
+                {
                     return entry.id.name;
+                }
+            }
+        }
         return {};
     };
     for (const auto& access : physics2d::Physics2DSystem::Access.spec().components)
     {
         const auto name = componentName(access.type);
         if (name.empty())
+        {
             return 3;
+        }
         system["access"]["components"].push_back(
             {{"component", name}, {"mode", access.mode == simulation::ESystemAccessMode::WRITE ? "write" : "read"}}
         );
@@ -100,7 +121,9 @@ int main(int argc, char** argv)
     const auto output = value.dump(2) + "\n";
     std::ifstream previous(argv[2], std::ios::binary);
     if (std::string(std::istreambuf_iterator<char>(previous), {}) == output)
+    {
         return 0;
+    }
     std::ofstream file(argv[2], std::ios::binary | std::ios::trunc);
     file << output;
     return file.good() ? 0 : 4;

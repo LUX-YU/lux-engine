@@ -1,10 +1,10 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/scene/detail/SceneDriver.hpp>
 #include <lux/engine/scene/Clock.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
-#include <lux/engine/scene/detail/SceneInstance.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>
+#include <lux/engine/scene/detail/SceneDriver.hpp>
+#include <lux/engine/scene/detail/SceneInstance.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/SimulationSystemInstaller.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
@@ -22,6 +22,7 @@ namespace
     struct Notifications final
     {
         std::size_t count{};
+
         void changed(ecs::Registry&, ecs::Entity) noexcept
         {
             ++count;
@@ -31,9 +32,9 @@ namespace
     struct FailingRules final
     {
         inline static constexpr auto Access = simulation::makeSystemAccessSpec<>();
-        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
+
         inline static constexpr simulation::SimulationSystemDescription Description{
-            .type = {.canonical_name = "test.failing-rules", .version = 1, .supported_world_types = SupportedWorldTypes}
+            .type = {.canonical_name = "test.failing-rules", .version = 1}
         };
         inline static unsigned calls{};
     };
@@ -47,14 +48,21 @@ namespace
             .description = &FailingRules::Description,
             .access = FailingRules::Access.spec(),
             .install = +[](simulation::SimulationSystemInstaller& installer, simulation::SimulationSystemView input
-                        ) noexcept -> cxx::expected<void, simulation::SimulationSystemBuildFailure> {
+                        ) noexcept -> cxx::expected<void, simulation::SimulationSystemBuildFailure>
+            {
                 auto rules = installer.emplaceSystem<FailingRules>(input.instanceId());
                 if (!rules)
+                {
                     return cxx::unexpected(rules.error());
-                return installer.addSystemTask<FailingRules>(input.instanceId(), [](auto&) noexcept {
-                    ++FailingRules::calls;
-                    return false;
-                });
+                }
+                return installer.addSystemTask<FailingRules>(
+                    input.instanceId(),
+                    [](auto&) noexcept
+                    {
+                        ++FailingRules::calls;
+                        return false;
+                    }
+                );
             }
         };
         simulation::SimulationSystemRegistry registrations;
@@ -83,11 +91,10 @@ namespace
 
     struct CacheReader final
     {
-        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
+
         inline static constexpr system::SystemTypeDescription Description{
             .canonical_name = "test.cache-reader",
-            .version = 1,
-            .supported_world_types = SupportedWorldTypes
+            .version = 1
         };
         ecs::Registry& registry;
         std::size_t calls{};
@@ -99,24 +106,32 @@ namespace
             .type = system::systemTypeId(CacheReader::Description.canonical_name),
             .cpp_type = cxx::typeToken<CacheReader>(),
             .description = &CacheReader::Description,
-            .install = +[](SceneSystemInstaller& installer, SceneSystemDescription description
-                        ) noexcept -> cxx::expected<void, SceneSystemBuildFailure> {
+            .install = +[](SceneSystemInstaller& installer,
+                           SceneSystemDescription description) noexcept -> cxx::expected<void, SceneSystemBuildFailure>
+            {
                 auto reader = installer.emplaceSystem<CacheReader>(description.instanceId(), installer.registry());
                 if (!reader)
+                {
                     return cxx::unexpected(reader.error());
-                return installer.addStablePointTask<CacheReader>(description.instanceId(), [](auto& value) noexcept {
-                    ++value.calls;
-                    for (auto entity : value.registry.template view<const ecs::Transform3D>())
+                }
+                return installer.addStablePointTask<CacheReader>(
+                    description.instanceId(),
+                    [](auto& value) noexcept
                     {
-                        const auto fresh = ecs::computeWorldTransform3D(value.registry, entity);
-                        assert(
-                            fresh && value.registry.template get<ecs::WorldTransform3D>(entity).value.matrix().isApprox(
-                                         fresh->matrix()
-                                     )
-                        );
+                        ++value.calls;
+                        for (auto entity : value.registry.template view<const ecs::Transform3D>())
+                        {
+                            const auto fresh = ecs::computeWorldTransform3D(value.registry, entity);
+                            assert(
+                                fresh &&
+                                value.registry.template get<ecs::WorldTransform3D>(entity).value.matrix().isApprox(
+                                    fresh->matrix()
+                                )
+                            );
+                        }
+                        return SceneStageResult{ESceneProgress::COMPLETE};
                     }
-                    return SceneStageResult{ESceneProgress::COMPLETE};
-                });
+                );
             }
         };
     }
@@ -129,7 +144,8 @@ namespace
         assert(!FixedStepClock::create(-1ns));
         VSimulationClock clocks;
         std::visit(
-            [&](auto& clock) {
+            [&](auto& clock)
+            {
                 static_assert(Clock<std::remove_cvref_t<decltype(clock)>>);
                 const auto first = clock.sample(now);
                 assert(first && **first == 16ms);
@@ -177,7 +193,9 @@ namespace
             registry.on_update<ecs::WorldTransform3D>().connect<&Notifications::changed>(notices);
 
         for (int index = 0; index < 100; ++index)
+        {
             registry.patch<ecs::Transform3D>(parent, [index](auto& value) { value.translation.x() = index; });
+        }
         assert(notices.count == 0); // Observers queue; they never walk descendants.
         const auto current = ecs::computeWorldTransform3D(registry, child);
         assert(current && current->translation().x() == 101);
@@ -271,7 +289,7 @@ namespace
         }
         assert(observed.calls == 2); // Idle polling never recomputes stable consumers.
     }
-}
+} // namespace
 
 void runTransformChecks()
 {

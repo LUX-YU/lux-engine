@@ -109,6 +109,7 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${LUX_GENERATE_HEADER_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}/type_info
+    ${PROJECT_SOURCE_DIR}/cmake
 )
 
 target_link_libraries(

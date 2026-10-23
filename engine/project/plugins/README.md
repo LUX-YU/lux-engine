@@ -13,8 +13,8 @@
   渲染的 SceneSystem 与组件走同一接点；应用通过 RenderSystemDependencies 提供自己的 RenderExecution 和资产设施。
   Render Feature/Storage 的外部登记直接使用 Render SDK，不再经过额外的项目渲染接纳层。
 
-系统类内 SupportedWorldTypes 进入插件描述 v2；只允许精确分区名称或单独的 `*`。
-2D/3D 内容预设不改变分区名称。PluginLibrary 核对二进制登记与目录声明一致性。
+系统数据输入/输出进入插件描述 v3，区分允许的 schema 与阶段完成的数据。
+System 不声明 World 分区器名称；Scene 冷态组合检查真实供给与顺序，PluginLibrary 核对二进制登记和目录声明。
 内置 lux.builtin.runtime v2 不依赖图形；lux.builtin.scene_render v1 依赖 runtime v2，
 其动态库链接当前 scene_render 实现，不再要求旧 render 插件目录条目。
 
@@ -26,7 +26,7 @@
 | 路径 | 内容 |
 | --- | --- |
 | `share/lux-engine/plugins/catalog.json` | 已安装插件描述集合；格式仍是 lux.engine.capabilities v1 |
-| `share/lux-engine/plugins/<module>.json` | v2 单个插件描述（与 catalog 根版本独立） |
+| `share/lux-engine/plugins/<module>.json` | v3 单个插件描述（与 catalog 根版本独立） |
 | `share/lux-engine/plugins/schema/plugin.schema.json` | 插件描述 schema |
 | `share/lux-engine/plugins/LuxPlugins.cmake` | 外部插件身份生成与安装接点 |
 | `include/lux/engine/project/` | 共享公开接口 |

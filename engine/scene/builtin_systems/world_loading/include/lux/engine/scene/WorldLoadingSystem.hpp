@@ -4,8 +4,8 @@
 #include <lux/engine/scene/Observer.hpp>
 #include <lux/engine/scene/SceneSystem.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
-#include <lux/engine/scene/WorldResidency.hpp>
 #include <lux/engine/scene/WorldLoadingConfiguration.hpp>
+#include <lux/engine/scene/WorldResidency.hpp>
 #include <lux/engine/scene/world_loading/visibility.h>
 
 #include <memory>
@@ -33,6 +33,7 @@ namespace lux::scene
         MATERIALIZE_FAILURE,
         TASK_REJECTED
     };
+
     struct WorldLoadingFailure final
     {
         EWorldLoadingError code{};
@@ -45,6 +46,7 @@ namespace lux::scene
             execution::EExecutionError>
             cause;
     };
+
     // Compact cross-system classification. status() retains the complete storage/materialization diagnostics.
     [[nodiscard]] LUX_ENGINE_SCENE_WORLD_LOADING_PUBLIC error::Error toError(const WorldLoadingFailure&) noexcept;
     template <class T> using WorldLoadingResult = lux::cxx::expected<T, WorldLoadingFailure>;
@@ -67,14 +69,12 @@ namespace lux::scene
     class LUX_ENGINE_SCENE_WORLD_LOADING_PUBLIC WorldLoadingSystem final
     {
     public:
-        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
         static constexpr system::SystemTypeDescription Description{
             .canonical_name = "lux.scene.world_loading",
             .version = 1,
             .configuration_schema_name = "lux.scene.WorldLoadingConfiguration",
             .configuration_schema_version = 1,
             .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER,
-            .supported_world_types = SupportedWorldTypes
         };
         WorldLoadingSystem(simulation::ecs::Registry&, simulation::ecs::ComponentSchemaSet, WorldLoadingServices);
         ~WorldLoadingSystem() noexcept;
@@ -91,6 +91,7 @@ namespace lux::scene
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
+
     [[nodiscard]] LUX_ENGINE_SCENE_WORLD_LOADING_PUBLIC SceneSystemRegistration
     worldLoadingSystemRegistration() noexcept;
 } // namespace lux::scene

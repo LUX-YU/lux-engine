@@ -52,8 +52,7 @@ namespace lux::editor
                     return found->configuration.type != cxx::typeToken<Configuration>();
                 }
             }();
-            const bool supported_world = system::supportsWorldType(description, "lux.spatial.builtin.single");
-            if (wrong_version || wrong_codec || !supported_world)
+            if (wrong_version || wrong_codec)
             {
                 return cxx::unexpected(missing("3d profile incompatible system", expected.canonical_name));
             }

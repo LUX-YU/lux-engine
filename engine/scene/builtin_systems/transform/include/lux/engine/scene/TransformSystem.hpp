@@ -34,7 +34,18 @@ namespace lux::scene
             std::string_view{"transform.2d"},
             std::string_view{"transform.3d"}
         };
-        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
+        inline static constexpr system::SystemDataContract DataOutputs[]{
+            {"lux.ecs.WorldTransform2D", 1, system::ESystemDataKind::SCHEMA},
+            {"lux.ecs.WorldTransform3D", 1, system::ESystemDataKind::SCHEMA},
+            {"lux.transform.world2d.ready",
+             1,
+             system::ESystemDataKind::PREPARED_DATA,
+             system::ESystemDataPhase::SYNCHRONIZATION},
+            {"lux.transform.world3d.ready",
+             1,
+             system::ESystemDataKind::PREPARED_DATA,
+             system::ESystemDataPhase::SYNCHRONIZATION}
+        };
         inline static constexpr system::SystemTypeDescription Description{
             .canonical_name = "lux.scene.transform",
             .version = 1,
@@ -42,7 +53,7 @@ namespace lux::scene
             .configuration_schema_version = 1,
             .capabilities = Capabilities,
             .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER,
-            .supported_world_types = SupportedWorldTypes
+            .data_outputs = DataOutputs
         };
 
         explicit TransformSystem(simulation::ecs::Registry& registry);
@@ -64,4 +75,4 @@ namespace lux::scene
         std::size_t entity_capacity,
         simulation::ecs::EcsCommandProducerCapacity command_capacity
     ) noexcept;
-}
+} // namespace lux::scene

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <limits>
+#include <map>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -55,9 +56,11 @@ namespace lux::scene
             std::string_view name
         ) noexcept
         {
-            const auto found = std::find_if(providers.begin(), providers.end(), [name](const auto& provider) noexcept {
-                return provider.name == name;
-            });
+            const auto found = std::find_if(
+                providers.begin(),
+                providers.end(),
+                [name](const auto& provider) noexcept { return provider.name == name; }
+            );
             return found != providers.end() ? std::addressof(*found) : nullptr;
         }
 
@@ -66,10 +69,124 @@ namespace lux::scene
             system::SystemInstanceId instance
         ) noexcept
         {
-            const auto found = std::find_if(systems.begin(), systems.end(), [instance](const auto& record) noexcept {
-                return record.instance == instance;
-            });
+            const auto found = std::find_if(
+                systems.begin(),
+                systems.end(),
+                [instance](const auto& record) noexcept { return record.instance == instance; }
+            );
             return found != systems.end() ? std::addressof(*found) : nullptr;
+        }
+
+        struct SceneDataPreparation final
+        {
+            SceneDataDependencies scene;
+            std::vector<simulation::SimulationExecutionDependency> simulation;
+        };
+
+        cxx::expected<SceneDataPreparation, SceneBuildFailure> prepareDataDependencies(const SceneCreateInfo& info
+        ) noexcept
+        {
+            const auto simulation_count = info.simulation->systemCount();
+            std::vector<SceneSystemContract> systems;
+            systems.reserve(simulation_count + info.scene->systemCount());
+            std::map<system::SystemInstanceId, std::size_t> scene_ordinals;
+            for (std::size_t i{}; i < simulation_count; ++i)
+            {
+                const auto selected = info.simulation->systemAt(i);
+                const auto* registration = info.simulation_systems.find(selected.type());
+                if (!registration)
+                {
+                    auto error = buildFailure(ESceneBuildError::SIMULATION_BUILD_FAILURE);
+                    error.simulation = {
+                        simulation::ESimulationSystemBuildError::UNKNOWN_SYSTEM_TYPE,
+                        selected.instanceId()
+                    };
+                    return cxx::unexpected(error);
+                }
+                systems.push_back({selected.instanceId(), &registration->description->type, true});
+            }
+            for (std::size_t i{}; i < info.scene->systemCount(); ++i)
+            {
+                const auto selected = info.scene->systemAt(i);
+                const auto registration =
+                    std::ranges::find(info.scene_systems, selected.type(), &SceneSystemRegistration::type);
+                if (registration == info.scene_systems.end())
+                {
+                    return cxx::unexpected(
+                        systemFailure({ESceneSystemBuildError::UNKNOWN_SYSTEM_TYPE, selected.instanceId()})
+                    );
+                }
+                scene_ordinals.emplace(selected.instanceId(), systems.size());
+                systems.push_back({selected.instanceId(), registration->description, false});
+            }
+            std::vector<system::SystemDataContract> schemas;
+            schemas.reserve(info.world->schemas().size());
+            for (const auto& selected : info.world->schemas())
+            {
+                const auto* schema = info.components.find(simulation::ecs::componentSchemaId(selected.name));
+                if (schema)
+                {
+                    schemas.push_back({selected.name, schema->version});
+                }
+            }
+            SceneDataDependencies explicit_edges;
+            for (std::size_t i{}; i < info.scene->dependencyCount(); ++i)
+            {
+                const auto edge = info.scene->dependencyAt(i);
+                const auto before = scene_ordinals.find(edge.before());
+                const auto after = scene_ordinals.find(edge.after());
+                if (before == scene_ordinals.end() || after == scene_ordinals.end())
+                {
+                    return cxx::unexpected(systemFailure({ESceneSystemBuildError::INVALID_DESCRIPTION}));
+                }
+                explicit_edges.push_back({before->second, after->second});
+            }
+            auto resolved = resolveSceneData(systems, schemas, explicit_edges);
+            if (!resolved)
+            {
+                auto error = buildFailure(ESceneBuildError::INCOMPATIBLE_DATA);
+                error.subject_hash = cxx::Fnv1a64::hash(resolved.error().data);
+                error.compatibility = std::move(resolved.error());
+                return cxx::unexpected(std::move(error));
+            }
+            const auto points = [&](std::size_t ordinal)
+            {
+                const auto selected = info.simulation->systemAt(ordinal);
+                std::vector<simulation::SimulationExecutionPoint> result;
+                for (const auto& task : selected.tasks())
+                {
+                    result.push_back(simulation::SimulationExecutionPoint::task(selected.instanceId(), task.id));
+                }
+                for (std::size_t i{}; i < selected.hookPointCount(); ++i)
+                {
+                    result.push_back(
+                        simulation::SimulationExecutionPoint::hook(selected.instanceId(), selected.hookPointAt(i).id())
+                    );
+                }
+                return result;
+            };
+            SceneDataPreparation result;
+            for (const auto edge : *resolved)
+            {
+                if (edge.before >= simulation_count && edge.after >= simulation_count)
+                {
+                    result.scene.push_back({edge.before - simulation_count, edge.after - simulation_count});
+                }
+                else if (edge.before < simulation_count && edge.after < simulation_count)
+                {
+                    const auto before = points(edge.before);
+                    const auto after = points(edge.after);
+                    for (const auto source : before)
+                    {
+                        for (const auto destination : after)
+                        {
+                            result.simulation.push_back({source, destination});
+                        }
+                    }
+                }
+                // Simulation completion already precedes Scene synchronization and publication.
+            }
+            return result;
         }
     } // namespace
 
@@ -105,7 +222,9 @@ namespace lux::scene
         do
         {
             if (next == std::numeric_limits<std::uint64_t>::max())
+            {
                 return 0;
+            }
         } while (!next_domain.compare_exchange_weak(next, next + 1, std::memory_order_relaxed));
         return next;
     }
@@ -115,10 +234,14 @@ namespace lux::scene
     {
         const auto domain = allocateDomain();
         if (!domain)
+        {
             return lux::cxx::unexpected(buildFailure(ESceneBuildError::IDENTITY_EXHAUSTED));
+        }
         auto prepared = prepare(std::move(info), {domain, 0, 1});
         if (!prepared)
+        {
             return lux::cxx::unexpected(prepared.error());
+        }
         return std::unique_ptr<SceneInstance>(new SceneInstance(std::move(*prepared)));
     }
 
@@ -143,46 +266,30 @@ namespace lux::scene
         {
             const auto& registration = info.scene_systems[index];
             const bool invalid = !validSceneSystemRegistration(registration);
-            const bool duplicate = std::ranges::any_of(info.scene_systems.first(index), [&](const auto& previous) {
-                return previous.type.hash == registration.type.hash;
-            });
+            const bool duplicate = std::ranges::any_of(
+                info.scene_systems.first(index),
+                [&](const auto& previous) { return previous.type.hash == registration.type.hash; }
+            );
             if (invalid || duplicate)
+            {
                 return lux::cxx::unexpected(
                     systemFailure({ESceneSystemBuildError::INVALID_DESCRIPTION, {}, {}, registration.type.hash})
                 );
-        }
-        const auto& world_type = info.world->partitioner().id.name;
-        for (std::size_t index{}; index < info.simulation->systemCount(); ++index)
-        {
-            const auto selected = info.simulation->systemAt(index);
-            const auto* registration = info.simulation_systems.find(selected.type());
-            if (registration && !system::supportsWorldType(registration->description->type, world_type))
-            {
-                auto error = buildFailure(ESceneBuildError::UNSUPPORTED_WORLD_TYPE, selected.type().hash);
-                error.simulation.system = selected.instanceId();
-                return lux::cxx::unexpected(error);
             }
         }
-        for (std::size_t index{}; index < info.scene->systemCount(); ++index)
+        auto data_dependencies = prepareDataDependencies(info);
+        if (!data_dependencies)
         {
-            const auto selected = info.scene->systemAt(index);
-            const auto registration =
-                std::ranges::find(info.scene_systems, selected.type(), &SceneSystemRegistration::type);
-            if (registration != info.scene_systems.end() &&
-                !system::supportsWorldType(*registration->description, world_type))
-            {
-                auto error = buildFailure(ESceneBuildError::UNSUPPORTED_WORLD_TYPE, selected.type().hash);
-                error.scene_system.system = selected.instanceId();
-                return lux::cxx::unexpected(error);
-            }
+            return cxx::unexpected(std::move(data_dependencies.error()));
         }
         for (std::size_t index{}; index < info.providers.size(); ++index)
         {
             const auto& provider = info.providers[index];
-            const bool duplicate =
-                std::any_of(info.providers.begin(), info.providers.begin() + index, [&](const auto& previous) noexcept {
-                    return previous.name == provider.name;
-                });
+            const bool duplicate = std::any_of(
+                info.providers.begin(),
+                info.providers.begin() + index,
+                [&](const auto& previous) noexcept { return previous.name == provider.name; }
+            );
             if (provider.name.empty() || provider.capability.empty() || !provider.type.isValid() ||
                 provider.value == nullptr || duplicate)
             {
@@ -199,8 +306,12 @@ namespace lux::scene
             impl->id = id;
             impl->description = std::move(info.scene);
             impl->world = std::move(info.world);
-            auto simulation =
-                simulation::Simulation::create(impl->registry, std::move(info.simulation), info.simulation_systems);
+            auto simulation = simulation::Simulation::create(
+                impl->registry,
+                std::move(info.simulation),
+                info.simulation_systems,
+                data_dependencies->simulation
+            );
             if (!simulation)
             {
                 SceneBuildFailure result = buildFailure(ESceneBuildError::SIMULATION_BUILD_FAILURE);
@@ -262,9 +373,10 @@ namespace lux::scene
                     const auto& projection = registration->projections[index];
                     if (!projection.type.isValid() || !projection.project ||
                         projection.type == registration->cpp_type ||
-                        std::ranges::any_of(registration->projections.first(index), [&](const auto& previous) {
-                            return previous.type == projection.type;
-                        }))
+                        std::ranges::any_of(
+                            registration->projections.first(index),
+                            [&](const auto& previous) { return previous.type == projection.type; }
+                        ))
                     {
                         return lux::cxx::unexpected(
                             systemFailure({ESceneSystemBuildError::INVALID_DESCRIPTION, system.instanceId()})
@@ -276,30 +388,11 @@ namespace lux::scene
                 instances.push_back(system.instanceId());
             }
 
-            std::vector<system::detail::SystemDependencyOrdinalEdge> edges;
+            auto edges = std::move(data_dependencies->scene);
             std::vector<std::vector<std::size_t>> predecessors(count);
-            edges.reserve(impl->description->dependencyCount());
-            for (std::size_t dependency{}; dependency < impl->description->dependencyCount(); ++dependency)
+            for (const auto edge : edges)
             {
-                const auto edge = impl->description->dependencyAt(dependency);
-                std::size_t before{count}, after{count};
-                for (std::size_t ordinal{}; ordinal < count; ++ordinal)
-                {
-                    if (instances[ordinal] == edge.before())
-                    {
-                        before = ordinal;
-                    }
-                    if (instances[ordinal] == edge.after())
-                    {
-                        after = ordinal;
-                    }
-                }
-                if (before == count || after == count || before == after)
-                {
-                    return lux::cxx::unexpected(systemFailure({ESceneSystemBuildError::INVALID_DESCRIPTION}));
-                }
-                edges.push_back({before, after});
-                predecessors[after].push_back(before);
+                predecessors[edge.after].push_back(edge.before);
             }
             auto order = system::detail::deterministicSystemOrder(instances, edges);
             if (!order)

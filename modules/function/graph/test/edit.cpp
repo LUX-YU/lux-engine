@@ -1,3 +1,4 @@
+#include <ProcessDiagnostics.hpp>
 #include <lux/engine/function/graph/GraphEdit.hpp>
 
 #include <cmath>
@@ -124,6 +125,7 @@ namespace
 
 int main()
 {
+    lux::test::configureProcessDiagnostics();
     static_assert(!std::is_copy_constructible_v<GraphEdit>);
     static_assert(std::is_nothrow_move_constructible_v<GraphEdit>);
     static_assert(!std::is_move_assignable_v<GraphEdit>);

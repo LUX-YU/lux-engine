@@ -42,6 +42,9 @@ if(BUILD_TESTING)
     add_library(object_ownership_plugin MODULE test/ownership_plugin.cpp)
     target_link_libraries(object_ownership_plugin PRIVATE object)
     add_executable(object_ownership_test test/ownership.cpp)
+
+    target_include_directories(object_ownership_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/test-support")
+
     target_link_libraries(object_ownership_test PRIVATE object lux::engine::platform::dynamic_library)
     if(MSVC)
         target_compile_options(object_ownership_test PRIVATE /UNDEBUG)
@@ -82,6 +85,9 @@ endif()
 
 if(BUILD_TESTING)
     add_executable(object_target_test test/target.cpp)
+
+    target_include_directories(object_target_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/test-support")
+
     target_link_libraries(object_target_test PRIVATE object)
     if(MSVC)
         target_compile_options(object_target_test PRIVATE /UNDEBUG)

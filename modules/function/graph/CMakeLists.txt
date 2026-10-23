@@ -35,6 +35,8 @@ component_add_transitive_commands(
 if(BUILD_TESTING)
     add_executable(graph_edit_test test/edit.cpp)
 
+    target_include_directories(graph_edit_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/test-support")
+
     target_link_libraries(graph_edit_test PRIVATE lux::engine::function::graph)
 
     add_test(NAME graph.edit COMMAND graph_edit_test)

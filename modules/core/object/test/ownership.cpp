@@ -1,3 +1,4 @@
+#include <ProcessDiagnostics.hpp>
 #include <cassert>
 #include <cstdio>
 #include <functional>
@@ -532,6 +533,7 @@ namespace
 
 int main(int argc, char** argv)
 {
+    lux::test::configureProcessDiagnostics();
     if (argc == 2 && std::string_view(argv[1]).starts_with("--reject-"))
         return rejectFinalSafePoint(argv[1]);
     objectIdentities();

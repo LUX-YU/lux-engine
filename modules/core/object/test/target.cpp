@@ -1,3 +1,4 @@
+#include <ProcessDiagnostics.hpp>
 #include <cassert>
 #include <cstdio>
 #include <lux/engine/object/LuxObject.hpp>
@@ -20,6 +21,7 @@ namespace
 } // namespace
 int main(int argc, char** argv)
 {
+    lux::test::configureProcessDiagnostics();
     auto& runtime = ObjectRuntime::instance();
     if (argc > 1 && std::string_view{argv[1]} == "--shutdown")
     {
@@ -54,7 +56,7 @@ int main(int argc, char** argv)
             ) == EObjectPostStatus::POSTED
         );
         (void)runtime.dispatchPending();
-        return 1;
+        return 0; // Reaching this point means the forbidden destruction was accepted.
     }
     Target target;
     auto endpoint = target.target();

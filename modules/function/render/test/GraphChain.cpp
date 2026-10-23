@@ -86,6 +86,25 @@ static ResourceVersion written(const PassResult& pass, GraphResourceId resource)
     return *found;
 }
 
+static std::uint32_t finishSubmissions(DeviceSession& session, FrameExecution& frames)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    std::uint32_t submitted = 0;
+    // Poll counts depend on CPU speed and do not bound actual GPU progress.
+    while (frames.submitting() && std::chrono::steady_clock::now() < deadline)
+    {
+        CHECK(session.pollQueues());
+        session.dispatchQueueCompletions();
+        submitted += take(frames.render({}, {})); // Continue the frozen window, not a fresh preparation.
+        if (frames.submitting())
+        {
+            take(frames.waitForProgress(1'000'000));
+        }
+    }
+    CHECK(!frames.submitting());
+    return submitted;
+}
+
 static void checkPixels(
     DeviceSession& session,
     nri::Buffer& input,
@@ -274,14 +293,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     const auto submit = [&](std::span<RenderGraphInstance* const> selected)
     {
         auto submitted = take(frames->render(selected, {}));
-        for (unsigned attempts = 0; frames->submitting() && attempts < 10000; ++attempts)
-        {
-            CHECK(session->pollQueues());
-            session->dispatchQueueCompletions();
-            submitted += take(frames->render({}, {}));
-            std::this_thread::yield();
-        }
-        CHECK(!frames->submitting());
+        submitted += finishSubmissions(*session, *frames);
         return submitted;
     };
     for (std::uint32_t slot = 0; slot < fif; ++slot)
@@ -861,14 +873,7 @@ static void sharedImportedBuffer(Validation& validation, bool write_back, bool s
     const std::array instances{first.get(), second.get()};
     const auto before = session->queue(EQueueRole::COMPUTE).submitted();
     CHECK(take(frames->render(instances, {})) > 0);
-    for (unsigned attempt = 0; frames->submitting() && attempt < 10000; ++attempt)
-    {
-        CHECK(session->pollQueues());
-        session->dispatchQueueCompletions();
-        take(frames->render({}, {}));
-        std::this_thread::yield();
-    }
-    CHECK(!frames->submitting());
+    finishSubmissions(*session, *frames);
     if (&session->queue() != &session->queue(EQueueRole::COMPUTE))
     {
         const bool has_shared_writes = write_back && !separate_ranges;
@@ -942,14 +947,7 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
             {
                 CHECK(first->invalidateHistory());
             }
-            for (unsigned progress = 0; frames->submitting() && progress < 10000; ++progress)
-            {
-                CHECK(session->pollQueues());
-                session->dispatchQueueCompletions();
-                take(frames->render({}, {})); // Continue the frozen window, not a fresh preparation.
-                std::this_thread::yield();
-            }
-            CHECK(!frames->submitting());
+            finishSubmissions(*session, *frames);
             CHECK(session->queue().submitted() - before_graphics == 4);
             CHECK(session->queue(EQueueRole::COMPUTE).submitted() - before_compute == 3);
         }
@@ -1167,12 +1165,7 @@ static void physicalReuse(
     CHECK(std::ranges::all_of(left, [](auto value) { return value == 4; }));
     CHECK(std::ranges::all_of(right, [](auto value) { return value == 8; }));
     take(frames->render(instances, {}));
-    while (frames->submitting())
-    {
-        CHECK(session->pollQueues());
-        session->dispatchQueueCompletions();
-        take(frames->render({}, {}));
-    }
+    finishSubmissions(*session, *frames);
     instance.reset(); // Accepted GPU work retains the unique physical collection through cleanup_scope_.
     CHECK(session->drain());
 }

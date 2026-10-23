@@ -176,6 +176,8 @@ namespace lux::render
 
         void dispatchRequest(ipc::ReceivedRequest received) noexcept;
 
+        std::size_t publishResponses(std::size_t limit) noexcept;
+
         void shutdown(RenderError cause = RenderError{kCommandCancelled}) noexcept;
     };
 } // namespace lux::render

@@ -1,9 +1,12 @@
 #pragma once
 
+#include <cstring>
+#include <lux/engine/core/execution/RunLoop.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <memory>
+#include <memory_resource>
 #include <optional>
 #include <stdexec/execution.hpp>
 #include <vector>
@@ -43,6 +46,43 @@ namespace lux::rendering
         std::vector<platform::ipc::IpcMessage> responses;
         bool resynchronize = false;
 
+        // Trivial arrays can be filled directly while building this carrier. Their lifetime ends
+        // only at releaseFrame; no Scene-owned intermediate vector is required.
+        template <class T>
+            requires std::is_trivially_copyable_v<T>
+        [[nodiscard]] std::span<T> allocate(std::size_t count) noexcept
+        {
+            if (count == 0)
+            {
+                return {};
+            }
+            auto* values = static_cast<T*>(payloads_.allocate(count * sizeof(T), alignof(T)));
+            std::uninitialized_default_construct_n(values, count);
+            return {values, count};
+        }
+
+        // Optional application-owned snapshots. Scene/Pane destruction cannot invalidate these spans.
+        // Allocate only while building; releaseFrame returns the blocks after the real frame completion.
+        template <class T, std::size_t Extent>
+            requires std::is_trivially_copyable_v<std::remove_cv_t<T>>
+        [[nodiscard]] std::span<const std::remove_cv_t<T>> freeze(std::span<T, Extent> source) noexcept
+        {
+            using Value = std::remove_cv_t<T>;
+            if (source.empty())
+            {
+                return {};
+            }
+            auto copy = allocate<Value>(source.size());
+            std::memcpy(copy.data(), source.data(), source.size_bytes());
+            return copy;
+        }
+
+        // For direct UI capture into trivial frame arrays, avoiding a second intermediate snapshot.
+        [[nodiscard]] std::pmr::memory_resource& memory() noexcept
+        {
+            return payloads_;
+        }
+
         [[nodiscard]] std::uint32_t carrierIndex() const noexcept
         {
             return slot_;
@@ -50,6 +90,10 @@ namespace lux::rendering
 
     private:
         friend class RenderRequester;
+
+        explicit FrameInput(std::pmr::memory_resource& upstream) noexcept : payloads_(&upstream) {}
+
+        std::pmr::monotonic_buffer_resource payloads_;
         std::uint32_t slot_ = 0;
     };
 
@@ -61,13 +105,15 @@ namespace lux::rendering
         {
             using Deliver = void (*)(ResponseNode&, platform::ipc::IpcMessage&&, render::RenderError) noexcept;
 
-            ResponseNode(Deliver deliver) noexcept : deliver(deliver)
+            ResponseNode(Deliver deliver, std::shared_ptr<const void> code) noexcept
+                : deliver(deliver), code(std::move(code))
             {
             }
 
             ResponseNode(const ResponseNode&) = delete;
             ResponseNode& operator=(const ResponseNode&) = delete;
             Deliver deliver;
+            std::shared_ptr<const void> code;
         };
 
     public:
@@ -114,11 +160,8 @@ namespace lux::rendering
                     typename C::Request& input,
                     Receiver receiver
                 ) noexcept
-                    : ResponseNode{&finish<Operation, C>},
-                      requester(requester),
-                      command(command),
-                      input(input),
-                      receiver(std::move(receiver))
+                    : ResponseNode{&finish<Operation, C>, execution::detail::getCompletionCode(stdexec::get_env(receiver))},
+                      requester(requester), command(command), input(input), receiver(std::move(receiver))
                 {
                 }
 
@@ -126,7 +169,7 @@ namespace lux::rendering
                 {
                     if (stdexec::get_stop_token(stdexec::get_env(receiver)).stop_requested())
                     {
-                        finish<Operation, C>(*this, {}, render::RenderError{render::kCommandCancelled});
+                        deliverResponse(*this, {}, render::RenderError{render::kCommandCancelled});
                         return;
                     }
                     requester.send<C>(command, input, *this);
@@ -151,10 +194,13 @@ namespace lux::rendering
             typename C::Request& input_;
         };
 
-        // Lazy. Failed admission/send leaves input intact. After send, cancellation cannot prove
-        // that the Server stopped reading a borrowed payload: the actual Response still settles it.
+        // Lazy. Frame-scoped requests join the next beginFrame on this Main Client; Asset Clients
+        // reject them. This is command input, not a second completion/operation owner. The application
+        // must keep producing maintenance frames while these requests are pending, including on close.
+        // Failed admission/send leaves input intact. Once accepted, actual Response (or joined Server
+        // shutdown) ends borrowed payload lifetime; requesting cancellation alone does not.
         template <render::RenderCommand C>
-            requires(!C::frame_scoped && !std::same_as<C, render::SubmitFrame>)
+            requires(!std::same_as<C, render::SubmitFrame>)
         [[nodiscard]] RequestSender<C> request(BoundCommand<C> command, typename C::Request& input) noexcept
         {
             return {*this, command, input};
@@ -174,10 +220,8 @@ namespace lux::rendering
                 Receiver receiver;
 
                 Operation(RenderRequester& requester, FrameInput& input, Receiver receiver) noexcept
-                    : ResponseNode{&finish<Operation, render::SubmitFrame>},
-                      requester(requester),
-                      input(input),
-                      receiver(std::move(receiver))
+                    : ResponseNode{&finish<Operation, render::SubmitFrame>, execution::detail::getCompletionCode(stdexec::get_env(receiver))},
+                      requester(requester), input(input), receiver(std::move(receiver))
                 {
                 }
 
@@ -185,11 +229,7 @@ namespace lux::rendering
                 {
                     if (stdexec::get_stop_token(stdexec::get_env(receiver)).stop_requested())
                     {
-                        finish<Operation, render::SubmitFrame>(
-                            *this,
-                            {},
-                            render::RenderError{render::kCommandCancelled}
-                        );
+                        deliverResponse(*this, {}, render::RenderError{render::kCommandCancelled});
                         return;
                     }
                     requester.sendFrame(input, *this);
@@ -245,6 +285,7 @@ namespace lux::rendering
         std::size_t consumeResponses(std::size_t limit = 128) noexcept;
         [[nodiscard]] bool closed() const noexcept;
         [[nodiscard]] std::size_t pendingRequests() const noexcept;
+        [[nodiscard]] bool hasQueuedFrameCommands() const noexcept;
 
         // The caller must first stop/join the Server and its producers. Delivers Unknown for missing
         // terminal replies, then closes this Link. This is not GPU cancellation or an implicit wait.
@@ -253,14 +294,17 @@ namespace lux::rendering
     private:
         struct Impl;
         explicit RenderRequester(std::unique_ptr<Impl>) noexcept;
-        [[nodiscard]] render::RenderResult<render::CommandId>
-        findCommand(const render::CommandDescriptor&) const noexcept;
+        [[nodiscard]] render::RenderResult<render::CommandId> findCommand(const render::CommandDescriptor&)
+            const noexcept;
         [[nodiscard]] bool isBuildingInput(const FrameInput&, platform::ipc::RequesterId) const noexcept;
         [[nodiscard]] render::RenderResult<render::RequestId> admit(ResponseNode&, platform::ipc::RequesterId) noexcept;
         [[nodiscard]] render::RenderResult<void>
         sendMessage(render::CommandId, render::RequestId, platform::ipc::IpcMessage&) noexcept;
         void revoke(render::RequestId) noexcept;
+        [[nodiscard]] render::RenderResult<void>
+        queueFrameCommand(render::CommandId, render::RequestId, platform::ipc::IpcMessage&) noexcept;
         void sendFrame(FrameInput&, ResponseNode&) noexcept;
+        static void deliverResponse(ResponseNode&, platform::ipc::IpcMessage&&, render::RenderError) noexcept;
 
         template <class Operation, render::RenderCommand C>
         static void finish(ResponseNode& node, platform::ipc::IpcMessage&& message, render::RenderError error) noexcept
@@ -286,19 +330,29 @@ namespace lux::rendering
             auto admitted = admit(node, command.source_);
             if (!admitted)
             {
-                node.deliver(node, {}, admitted.error());
+                deliverResponse(node, {}, admitted.error());
                 return;
             }
             platform::ipc::IpcMessage message;
             message.emplace<typename C::Request>(std::move(input));
-            auto sent = sendMessage(command.command_, *admitted, message);
+            auto sent = [&]() noexcept
+            {
+                if constexpr (C::frame_scoped)
+                {
+                    return queueFrameCommand(command.command_, *admitted, message);
+                }
+                else
+                {
+                    return sendMessage(command.command_, *admitted, message);
+                }
+            }();
             if (!sent)
             {
                 // Restore the same complete Request object, including non-assignable move-only values.
                 std::destroy_at(&input);
                 std::construct_at(&input, std::move(message.get<typename C::Request>()));
                 revoke(*admitted);
-                node.deliver(node, {}, sent.error());
+                deliverResponse(node, {}, sent.error());
             }
         }
 

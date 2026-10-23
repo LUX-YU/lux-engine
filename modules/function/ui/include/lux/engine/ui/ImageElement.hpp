@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
+#include <lux/engine/description/UiDraw.hpp>
 #include <lux/engine/ui/DragDrop.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/Geometry.hpp>
@@ -26,22 +26,27 @@ namespace lux::ui
     public:
         ImageElement();
 
-        void setImage(render::RTextureHandle image) noexcept;
-        [[nodiscard]] render::RTextureHandle image() const noexcept
+        void setImage(rdesc::UiImageToken image) noexcept;
+
+        [[nodiscard]] rdesc::UiImageToken image() const noexcept
         {
             return image_;
         }
+
         void setUv(Vec2 minimum, Vec2 maximum) noexcept;
         // Preferred size for layout. Zero uses the default hint; arrangement owns the displayed extent.
         void setSize(Size size) noexcept;
+
         [[nodiscard]] Size displayedSize() const noexcept
         {
             return interaction_.size;
         }
+
         [[nodiscard]] Point contentOrigin() const noexcept
         {
             return interaction_.content_origin;
         }
+
         // Geometry is from the most recent draw; drop bytes remain frame-borrowed.
         [[nodiscard]] const ImageInteraction& interaction() const noexcept
         {
@@ -53,7 +58,7 @@ namespace lux::ui
         void draw() noexcept override;
 
     private:
-        render::RTextureHandle image_;
+        rdesc::UiImageToken image_;
         Vec2 uv_min_{};
         Vec2 uv_max_{1.0F, 1.0F};
         Size size_{};

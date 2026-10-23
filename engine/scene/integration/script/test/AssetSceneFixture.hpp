@@ -163,7 +163,7 @@ namespace
         };
         ecs::ComponentSchemaSet schemas{take(ecs::ComponentSchemaSet::build({}))};
         lux::scene::ScenePackage package;
-        std::unique_ptr<lux::scene::SceneRuntime> runtime{take(lux::scene::SceneRuntime::create(execution, {0, 1024}))};
+        std::unique_ptr<lux::scene::SceneRuntime> runtime{take(lux::scene::SceneRuntime::create(execution, 1024))};
 
         Fixture(const std::filesystem::path& script_file, const std::filesystem::path& pak_file)
         {

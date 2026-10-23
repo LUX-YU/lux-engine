@@ -20,7 +20,7 @@ foreach(tool IN ITEMS spirv-cross-c-shared SPIRV-Tools-shared)
             HINTS "${tool_library_directory}/../Include" "$ENV{VULKAN_SDK}/Include"
             NO_DEFAULT_PATH REQUIRED
         )
-        add_library(lux_render_${name} UNKNOWN IMPORTED GLOBAL)
+        add_library(lux_render_${name} SHARED IMPORTED GLOBAL)
         set_target_properties(lux_render_${name} PROPERTIES
             IMPORTED_LOCATION "${LUX_RENDER_${name}_LIBRARY}"
             INTERFACE_INCLUDE_DIRECTORIES "${LUX_RENDER_${name}_INCLUDE}"
@@ -29,6 +29,10 @@ foreach(tool IN ITEMS spirv-cross-c-shared SPIRV-Tools-shared)
             find_file(LUX_RENDER_${name}_RUNTIME NAMES "${tool}.dll"
                 HINTS "${tool_library_directory}/../Bin" "$ENV{VULKAN_SDK}/Bin"
                 NO_DEFAULT_PATH REQUIRED
+            )
+            set_target_properties(lux_render_${name} PROPERTIES
+                IMPORTED_IMPLIB "${LUX_RENDER_${name}_LIBRARY}"
+                IMPORTED_LOCATION "${LUX_RENDER_${name}_RUNTIME}"
             )
             install(FILES "${LUX_RENDER_${name}_RUNTIME}" DESTINATION bin)
         endif()

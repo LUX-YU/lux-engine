@@ -9,8 +9,8 @@
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/project/PluginManager.hpp>
-#include <lux/engine/project/PluginRendering.hpp>
-#include <lux/engine/scene/RenderSystemConfiguration.hpp>
+#include <lux/engine/project/SceneRegistrations.hpp>
+#include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>
 #include <lux/engine/scene/WorldLoadingConfiguration.hpp>
 #include <thread>
@@ -62,12 +62,9 @@ namespace
         );
         assert(world_config.bootstrap.size() == 1 && world_config.bootstrap[0].value == 0);
         const auto render = description.findSystem("render");
-        scene::RenderSystemConfiguration render_config;
-        assert(render && scene::renderSystemConfigurationCodec().decode(render.configurationPayload(), &render_config));
-        assert(render_config.features.size() == 5);
-        assert(render_config.features[0].type == render::featureId("lux.render.material.v1"));
-        assert(render_config.features[1].type == render::featureId("lux.render.mesh_stack.v1"));
-        assert(render_config.features[4].type == render::featureId("lux.render.forward_mesh.v1"));
+        assert(render && render.type().name == scene::RenderSystem::Description.canonical_name);
+        assert(render.configurationSchemaName().empty() && render.configurationPayload().empty());
+
     }
 } // namespace
 int main(int argc, char** argv)
@@ -118,7 +115,7 @@ int main(int argc, char** argv)
     {
         project::PluginCatalog catalog;
         assert(catalog.read(argv[1], argv[2]));
-        const project::MetadataIdentity selected{"lux.builtin.scene_render", 1};
+        const project::MetadataIdentity selected{"lux.builtin.scene_render", 2};
         auto plugins = project::PluginManager::create(std::move(catalog), std::span{&selected, 1});
         assert(plugins);
         auto read = project::readSceneRegistrations({}, plugins->libraries());
@@ -140,25 +137,21 @@ int main(int argc, char** argv)
     }
     assert(package);
     inspect3D(*package, scene_id);
-    assert((*engine)->sceneRuntime().instanceCount() == 0 && !(*engine)->renderContext());
+    assert((*engine)->sceneRuntime().instanceCount() == 0);
 
     project::SceneRegistrations missing;
     auto rejected = three.create({scene_id, "3D", missing, {}});
     assert(!rejected && rejected.error().stage == "3d profile schema");
     auto incomplete = registrations;
-    incomplete.features.pop_back();
-    const auto mesh = render::featureId("lux.render.mesh_stack.v1");
-    std::erase_if(incomplete.features, [&](const auto& entry) { return entry.factory.descriptor.type == mesh; });
+    std::erase_if(incomplete.scene_systems, [](const auto& entry) {
+        return entry.type.name == scene::RenderSystem::Description.canonical_name;
+    });
     rejected = three.create({scene_id, "3D", incomplete, {}});
-    assert(!rejected && rejected.error().stage == "3d profile feature");
+    assert(!rejected && rejected.error().stage == "3d profile system");
     incomplete = registrations;
     incomplete.scene_systems.clear();
     rejected = three.create({scene_id, "3D", incomplete, {}});
     assert(!rejected && rejected.error().stage == "3d profile system");
-    incomplete = registrations;
-    incomplete.render_bindings.clear();
-    rejected = three.create({scene_id, "3D", incomplete, {}});
-    assert(!rejected && rejected.error().stage == "3d profile render binding");
     std::stop_source stopped;
     stopped.request_stop();
     rejected = three.create({scene_id, "3D", registrations, stopped.get_token()});

@@ -7,7 +7,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 # The architecture walk runs at the root; preserve this imported target's real identity and edges there.
 set_property(TARGET nlohmann_json::nlohmann_json PROPERTY IMPORTED_GLOBAL TRUE)
 add_component(COMPONENT_NAME project_plugins NAMESPACE lux::engine::project STATIC
-    SOURCE_FILES src/PluginCatalog.cpp src/PluginLibrary.cpp src/PluginManager.cpp)
+    SOURCE_FILES src/PluginCatalog.cpp src/PluginLibrary.cpp src/PluginManager.cpp src/SceneRegistrations.cpp)
 lux_classify_target(TARGET project_plugins LAYER SCENE PRODUCT SHARED ROLE LIBRARY)
 component_include_directories(project_plugins
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude INSTALL_TIME include)
@@ -29,9 +29,6 @@ lux_engine_install_components(PROJECT_NAME lux-engine-project-plugins VERSION ${
     NAMESPACE lux::engine::project COMPONENTS project_identity project_plugins)
 
 install(DIRECTORY schema/ DESTINATION share/lux-engine/plugins/schema)
-if(TARGET scene_render)
-    add_subdirectory(rendering)
-endif()
 if(BUILD_TESTING)
     add_executable(engine_headless_test ${PROJECT_SOURCE_DIR}/engine/context/test/headless.cpp)
     target_link_libraries(engine_headless_test PRIVATE lux::engine::engine_context project_plugins

@@ -32,10 +32,11 @@ namespace lux::render::runtime_detail
         return record.payload;
     }
 
-    std::size_t ResponseOutbox::flushTo(platform::ipc::IpcResponder& responder, std::size_t limit) noexcept
+    ResponseOutbox::FlushResult
+    ResponseOutbox::flushTo(platform::ipc::IpcResponder& responder, std::size_t limit) noexcept
     {
         const auto count = std::min(limit, size_);
-        std::size_t settled = 0;
+        FlushResult flushed;
         for (std::size_t i = 0; i < count; ++i)
         {
             const auto index = head_;
@@ -66,15 +67,16 @@ namespace lux::render::runtime_detail
             record.next = free_;
             free_ = index;
             --size_;
-            ++settled;
+            ++flushed.settled;
+            flushed.published += result.has_value();
         }
-        if (settled != 0)
+        if (flushed.settled != 0)
         {
             // One wakeup for this publication batch lets frame-input producers block on the
             // existing IPC epoch without polling replies or introducing a separate event.
             platform::ipc::IpcCore::instance().notifyWork();
         }
-        return settled;
+        return flushed;
     }
 
     void ResponseOutbox::clear() noexcept

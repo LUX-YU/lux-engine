@@ -500,7 +500,7 @@ int main(int argc, char** argv)
         assert(layout.addElement(two));
         one.setStretch({0, 0});
         two.setStretch({0, 0});
-        const render::RTextureHandle shared{0, 0};
+        const rdesc::UiImageToken shared{1};
         one.setImage(shared);
         two.setImage(shared);
         one.setSize({32, 24});
@@ -532,10 +532,7 @@ int main(int argc, char** argv)
 
         const auto has_image = [&]
         {
-            return std::ranges::any_of(
-                slot.textures(),
-                [](auto texture) { return texture == render::RTextureHandle{0, 0}; }
-            );
+            return std::ranges::any_of(slot.textures(), [](auto texture) { return texture == rdesc::UiImageToken{1}; });
         };
         assert(has_image()); // Slot zero/generation zero must not become the font token.
         one.setImage({});

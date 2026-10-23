@@ -13,7 +13,7 @@
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/core/execution/TaskScope.hpp>
-#include <lux/engine/project/PluginRendering.hpp>
+#include <lux/engine/project/SceneRegistrations.hpp>
 #include <lux/engine/render/RenderRuntime.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
@@ -293,7 +293,7 @@ namespace
         ));
         until([&] { return started.load(); });
         auto b = manifest("B");
-        b.plugins = {{"lux.builtin.scene_render", 1}};
+        b.plugins = {{"lux.builtin.scene_render", 2}};
         assert(fixture::open(*engine, write(b)));
         until([&] { return engine->project() && engine->project()->project().name == "B"; });
         assert(!delivered && (deaths == std::vector<int>{1, 1, 2}));

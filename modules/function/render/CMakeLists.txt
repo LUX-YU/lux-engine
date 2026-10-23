@@ -282,6 +282,18 @@ target_link_libraries(render
         lux::engine::platform::platform_process
 )
 
+if(WIN32)
+    # Build-tree consumers use the same real compiler DLLs as the install; no SDK PATH fallback.
+    add_custom_command(
+        TARGET render POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "$<TARGET_FILE:lux_render_spirv_cross_c_shared>"
+            "$<TARGET_FILE:lux_render_SPIRV_Tools_shared>"
+            "$<TARGET_FILE_DIR:render>"
+        VERBATIM
+    )
+endif()
+
 component_add_transitive_commands(render
     "find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core)"
     "find_package(stdexec CONFIG REQUIRED GLOBAL)"

@@ -704,7 +704,7 @@ int main(int argc, char** argv)
     using namespace lux;
     assert(argc == 3);
     auto engine = engine::EngineContext::create({1, 32, {16}, execution::BlockingSchedulerConfig{1, 32}}, 1024);
-    assert(engine && !(*engine)->renderContext());
+    assert(engine);
     executionChecks((*engine)->execution());
     taskChecks((*engine)->execution());
     taskMeasurements((*engine)->execution());

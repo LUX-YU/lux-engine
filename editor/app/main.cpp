@@ -194,7 +194,7 @@ int main(int argc, char** argv)
         std::seed_seq seed{entropy(), entropy(), entropy(), entropy(), entropy(), entropy(), entropy(), entropy()};
         std::mt19937 random{seed};
         uuids::uuid_random_generator generate(random);
-        lux::editor::ProjectManifest manifest{1, generate(), args[3], {{"lux.builtin.scene_render", 1}}};
+        lux::editor::ProjectManifest manifest{1, generate(), args[3], {{"lux.builtin.scene_render", 2}}};
         lux::editor::CreateProjectRequest request{requested_path, std::move(manifest)};
         static_cast<void>(lux::object::sendEvent(**engine, request));
         rejection = request.rejection;

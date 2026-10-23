@@ -1,17 +1,17 @@
 #pragma once
 
-#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
+#include <lux/engine/description/UiDraw.hpp>
 #include <lux/engine/function/visibility.h>
 
 #include <cstdint>
 #include <memory>
+#include <memory_resource>
 #include <span>
 
 namespace lux::ui
 {
     namespace detail
     {
-        class VulkanRenderer;
         class Context;
     } // namespace detail
 
@@ -31,6 +31,9 @@ namespace lux::ui
     {
     public:
         DrawData() noexcept;
+        // Capture directly into a complete-frame arena. These trivial arrays live until the caller
+        // resets that arena, even if DrawData itself leaves scope. No intermediate ImDrawList copy.
+        void setFrameMemory(std::pmr::memory_resource&) noexcept;
         ~DrawData() noexcept;
         DrawData(DrawData&&) noexcept;
         DrawData& operator=(DrawData&&) noexcept;
@@ -38,13 +41,12 @@ namespace lux::ui
         DrawData& operator=(const DrawData&) = delete;
 
         [[nodiscard]] bool valid() const noexcept;
-        [[nodiscard]] std::span<const render::RTextureHandle> textures() const noexcept;
+        [[nodiscard]] std::span<const rdesc::UiImageToken> textures() const noexcept;
+        [[nodiscard]] const rdesc::UiDrawData& data() const noexcept;
 
     private:
         friend class detail::Context;
-        friend class detail::VulkanRenderer;
         [[nodiscard]] ECaptureError captureCurrent() noexcept;
-        [[nodiscard]] const void* nativeDrawData() const noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

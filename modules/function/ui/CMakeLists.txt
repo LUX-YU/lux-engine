@@ -48,7 +48,7 @@ target_link_libraries(
         lux::cxx::core
         lux::cxx::compile_time
         lux::engine::core::object
-        render_client
+        lux::engine::resource::description_types
         lux::engine::platform::window
 )
 
@@ -80,7 +80,7 @@ target_link_libraries(
         lux::cxx::core
         lux::cxx::compile_time
         lux::engine::core::object
-        render_client
+        lux::engine::resource::description_types
 )
 
 add_custom_command(
@@ -95,14 +95,8 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS ui_input)"
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object)"
-    "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS description_types)"
 )
-
-if(TARGET render_vulkan)
-    find_package(imgui REQUIRED COMPONENTS vulkan)
-    find_package(Vulkan REQUIRED)
-    add_subdirectory(rendering)
-endif()
 
 if(BUILD_TESTING)
     add_executable(ui_transaction_test test/transaction.cpp)

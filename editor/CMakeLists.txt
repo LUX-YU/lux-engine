@@ -178,10 +178,9 @@ target_link_libraries(
     lux_editor_app
     PRIVATE
         lux::engine::process::object_execution
-        lux::engine::engine_context_render
+        lux::engine::project::project_plugins
+        lux::engine::engine_rendering
         lux::engine::scene::scene_render
-        lux::engine::function::ui_rendering
-        lux::engine::project::project_plugin_rendering
 )
 
 component_add_internal_dependencies(lux_editor_app lux_editor_context lux_editor_ui)
@@ -189,10 +188,8 @@ component_add_internal_dependencies(lux_editor_app lux_editor_context lux_editor
 component_add_transitive_commands(
     lux_editor_app
     "find_package(lux-engine-process-object-execution REQUIRED COMPONENTS object_execution)"
-    "find_package(lux-engine-context-render REQUIRED COMPONENTS engine_context_render)"
+    "find_package(lux-engine-rendering REQUIRED COMPONENTS engine_rendering)"
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
-    "find_package(lux-engine-function REQUIRED COMPONENTS ui_rendering)"
-    "find_package(lux-engine-project-plugin-rendering REQUIRED COMPONENTS project_plugin_rendering)"
 )
 
 lux_classify_target(TARGET lux_editor_app LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
@@ -238,8 +235,8 @@ component_include_directories(
 target_link_libraries(
     lux_editor_scene_profiles
     PRIVATE
-        lux::engine::project::project_plugin_rendering
         lux::engine::scene::scene_render
+        lux::engine::project::project_plugins
         lux::engine::scene::scene_transform
         lux::engine::scene::scene_world_loading
 )
@@ -248,7 +245,6 @@ component_add_internal_dependencies(lux_editor_scene_profiles lux_editor_context
 
 component_add_transitive_commands(
     lux_editor_scene_profiles
-    "find_package(lux-engine-project-plugin-rendering REQUIRED COMPONENTS project_plugin_rendering)"
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
     "find_package(lux-engine-scene-transform REQUIRED COMPONENTS scene_transform)"
     "find_package(lux-engine-scene-world-loading REQUIRED COMPONENTS scene_world_loading)"
@@ -325,8 +321,8 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
             lux_editor_scene
             lux_editor_scene_profiles
             lux::engine::engine_context
-            lux::engine::project::project_plugin_rendering
             lux::engine::scene::scene_render
+            lux::engine::project::project_plugins
             lux::engine::scene::scene_transform
             lux::engine::scene::scene_world_loading
     )
@@ -416,7 +412,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
         PRIVATE
             lux_editor_context
             lux::engine::engine_context
-            lux::engine::project::project_plugin_rendering
+            lux::engine::project::project_plugins
     )
 
     target_include_directories(editor_framework_context_test PRIVATE context/sinclude)
@@ -436,7 +432,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
         PRIVATE
             lux_editor_context
             lux::engine::engine_context
-            lux::engine::project::project_plugin_rendering
+            lux::engine::project::project_plugins
     )
 
     target_include_directories(editor_context_lifetime_test PRIVATE context/sinclude)
@@ -485,8 +481,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
         editor_framework_transport_test
         PRIVATE
             lux_editor_app
-            lux::engine::engine_context_render
-            lux::engine::function::ui_rendering
+            lux::engine::engine_rendering
     )
 
     lux_editor_test_options(editor_framework_transport_test)
@@ -497,8 +492,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
         editor_framework_gpu_test
         PRIVATE
             lux_editor_app
-            lux::engine::engine_context_render
-            lux::engine::project::project_plugin_rendering
+            lux::engine::engine_rendering
     )
 
     target_include_directories(editor_framework_gpu_test PRIVATE app/pinclude)
@@ -527,7 +521,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         add_executable(editor_public_host_test tests/installed/host.cpp)
 
-        target_link_libraries(editor_public_host_test PRIVATE lux_editor_app lux::engine::engine_context_render)
+        target_link_libraries(editor_public_host_test PRIVATE lux_editor_app lux::engine::engine_rendering)
 
         lux_editor_test_options(editor_public_host_test)
 
@@ -537,7 +531,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         add_executable(editor_project_requests_test tests/project_requests.cpp)
 
-        target_link_libraries(editor_project_requests_test PRIVATE lux_editor_app lux::engine::engine_context_render)
+        target_link_libraries(editor_project_requests_test PRIVATE lux_editor_app lux::engine::engine_rendering)
 
         target_include_directories(editor_project_requests_test PRIVATE app/pinclude)
 
@@ -554,7 +548,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         add_executable(editor_project_lifecycle_test tests/project_lifecycle.cpp)
 
-        target_link_libraries(editor_project_lifecycle_test PRIVATE lux_editor_app lux::engine::engine_context_render)
+        target_link_libraries(editor_project_lifecycle_test PRIVATE lux_editor_app lux::engine::engine_rendering)
 
         target_include_directories(editor_project_lifecycle_test PRIVATE app/pinclude)
 
@@ -574,7 +568,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         add_executable(editor_framework_pacing_test tests/pacing.cpp)
 
-        target_link_libraries(editor_framework_pacing_test PRIVATE lux_editor_app lux::engine::engine_context_render)
+        target_link_libraries(editor_framework_pacing_test PRIVATE lux_editor_app lux::engine::engine_rendering)
 
         lux_editor_test_options(editor_framework_pacing_test)
 

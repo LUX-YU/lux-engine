@@ -35,10 +35,6 @@ lux_engine_install_components(
     COMPONENTS engine_context
 )
 
-if(TARGET render_runtime)
-    add_subdirectory(rendering)
-endif()
-
 if(BUILD_TESTING)
     add_executable(context_extensions_test test/extensions.cpp)
 

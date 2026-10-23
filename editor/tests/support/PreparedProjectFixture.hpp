@@ -5,7 +5,7 @@
 #include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/detail/PreparedProject.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
-#include <lux/engine/project/PluginRendering.hpp>
+#include <lux/engine/project/SceneRegistrations.hpp>
 
 namespace fixture
 {

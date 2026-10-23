@@ -5,12 +5,12 @@
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/detail/Contract.hpp>
 #include <lux/engine/ui/detail/DragDropEncoding.hpp>
-#include <lux/engine/ui/detail/ImageEncoding.hpp>
 
 namespace lux::ui
 {
     ImageElement::ImageElement() : Element() {}
-    void ImageElement::setImage(render::RTextureHandle image) noexcept
+
+    void ImageElement::setImage(rdesc::UiImageToken image) noexcept
     {
         if (!isOnAffinityThread())
         {
@@ -63,10 +63,10 @@ namespace lux::ui
             return;
         }
         const ImVec2 extent{interaction_.size.width, interaction_.size.height};
-        if (image_.isValid())
+        if (image_.value != 0)
         {
             ImGui::Image(
-                static_cast<ImTextureID>(detail::encodeImage(image_)),
+                static_cast<ImTextureID>(image_.value),
                 extent,
                 {uv_min_.x, uv_min_.y},
                 {uv_max_.x, uv_max_.y}

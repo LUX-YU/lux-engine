@@ -7,13 +7,6 @@
 
 namespace lux::engine
 {
-    class RenderContext;
-
-    namespace detail
-    {
-        struct EngineRenderAccess;
-    }
-
     // Application facilities. Hosts decide execution, scene time and explicit shutdown order.
     class EngineContext final
     {
@@ -49,11 +42,6 @@ namespace lux::engine
             return assets_;
         }
 
-        [[nodiscard]] RenderContext* renderContext() noexcept
-        {
-            return rendering_.get();
-        }
-
         [[nodiscard]] ContextExtensions& extensions() noexcept
         {
             return extensions_;
@@ -65,12 +53,9 @@ namespace lux::engine
         }
 
     private:
-        friend struct detail::EngineRenderAccess;
         EngineContext(execution::ExecutionRuntime&&, ContextExtensions::Composition&&);
-        using RenderOwner = std::unique_ptr<RenderContext, void (*)(RenderContext*) noexcept>;
         asset::AssetVfs assets_;
         execution::ExecutionRuntime execution_;
-        RenderOwner rendering_{nullptr, nullptr};
         std::unique_ptr<scene::SceneRuntime> scenes_;
         ContextExtensions extensions_;
     };

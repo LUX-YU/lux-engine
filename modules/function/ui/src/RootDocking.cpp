@@ -159,6 +159,7 @@ namespace lux::ui
         impl_->dock_state.pending = std::move(prepared);
         return {};
     }
+
     DockTree Root::captureDockTree() const
     {
         requireOwner();
@@ -175,7 +176,7 @@ namespace lux::ui
                     output.panes.push_back(PaneHandle{objectId(), id});
                 }
             }
-            std::unordered_set<PaneId> included;
+            std::unordered_set<PaneId, PaneId::Hash> included;
             for (const auto& node : impl_->dock_state.pending->nodes)
             {
                 for (const auto& name : node.panes)

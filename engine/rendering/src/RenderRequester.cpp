@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <deque>
 #include <limits>
 #include <lux/engine/rendering/RenderRequester.hpp>
 #include <map>
@@ -31,6 +32,8 @@ namespace lux::rendering
 
         struct FrameCarrier final
         {
+            explicit FrameCarrier(std::pmr::memory_resource& memory) noexcept : input(memory) {}
+
             FrameInput input;
             std::vector<FrameCommandGroup> groups;
             ResponseNode* terminal = nullptr;
@@ -45,7 +48,11 @@ namespace lux::rendering
         std::size_t capacity;
         cxx::SlotMap<PendingResponse, CorrelationTag> pending;
         std::map<std::string, CommandInfo, std::less<>> commands;
-        std::vector<FrameCarrier> frame_inputs;
+        std::vector<FrameCommand> queued_frame_commands;
+        // Cache normal frame payload blocks across carrier reuse; this is not an admission limit.
+        // Larger payloads remain supported by the standard upstream allocator.
+        std::pmr::unsynchronized_pool_resource frame_memory{{1, 1024 * 1024}};
+        std::deque<FrameCarrier> frame_inputs;
         CommandId submit_frame;
         std::uint64_t next_frame = 1;
         bool closed = false;
@@ -56,7 +63,10 @@ namespace lux::rendering
             pending.reserve(capacity);
             if (config.max_frames_ahead)
             {
-                frame_inputs.resize(std::size_t(*config.max_frames_ahead) + 1);
+                for (std::size_t i = 0; i <= *config.max_frames_ahead; ++i)
+                {
+                    frame_inputs.emplace_back(frame_memory);
+                }
             }
             for (std::uint32_t i = 0; i < frame_inputs.size(); ++i)
             {
@@ -90,10 +100,43 @@ namespace lux::rendering
             auto* node = std::exchange(frame.terminal, nullptr);
             auto result = std::move(frame.result);
             frame.state = EInputState::COMPLETE;
-            node->deliver(*node, std::move(result), {});
+            deliverResponse(*node, std::move(result), {});
             // The receiver can release/reuse this carrier. Do not read frame afterwards.
         }
+
+        void rejectCommands(FrameCarrier& frame, RenderError error) noexcept
+        {
+            if (error.type == 0)
+            {
+                error = RenderError{kCommandContract};
+            }
+            for (auto& command : frame.input.commands)
+            {
+                const auto* found = pending.find(key(command.request_id));
+                if (!found)
+                {
+                    continue;
+                }
+                auto* node = found->node;
+                pending.erase(found->key);
+                command.request_id = {};
+                command.request.reset();
+                if (node)
+                {
+                    deliverResponse(*node, {}, error);
+                }
+            }
+            frame.remaining_responses = 0;
+        }
     };
+
+    void RenderRequester::deliverResponse(ResponseNode& node, ipc::IpcMessage&& message, RenderError error) noexcept
+    {
+        // The final receiver may destroy its stdexec state and task metadata. Callback code must
+        // remain loaded until control returns to this protocol driver, including error delivery.
+        auto code = std::move(node.code);
+        node.deliver(node, std::move(message), error);
+    }
 
     RenderRequester::RenderRequester(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
@@ -177,7 +220,9 @@ namespace lux::rendering
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
-        if (impl_->pending.size() == impl_->capacity)
+        // Keep one correlation for the enclosing SubmitFrame. Deferred input must not consume it.
+        const auto request_limit = impl_->capacity - !impl_->frame_inputs.empty();
+        if (impl_->pending.size() >= request_limit)
         {
             return cxx::unexpected(RenderError{kRuntimeCapacity});
         }
@@ -206,6 +251,20 @@ namespace lux::rendering
         impl_->pending.erase(Impl::key(id));
     }
 
+    RenderResult<void> RenderRequester::queueFrameCommand(
+        CommandId command,
+        RequestId request,
+        ipc::IpcMessage& message
+    ) noexcept
+    {
+        if (impl_->frame_inputs.empty())
+        {
+            return cxx::unexpected(RenderError{kCommandContract});
+        }
+        impl_->queued_frame_commands.push_back({command, request, std::move(message)});
+        return {};
+    }
+
     RenderResult<FrameInput*> RenderRequester::beginFrame() noexcept
     {
         if (impl_->closed)
@@ -217,6 +276,22 @@ namespace lux::rendering
             if (frame.state == Impl::EInputState::FREE)
             {
                 frame.state = Impl::EInputState::BUILDING;
+                frame.input.commands.swap(impl_->queued_frame_commands);
+                for (std::uint32_t i = 0; i < frame.input.commands.size(); ++i)
+                {
+                    auto& pending = *impl_->pending.find(Impl::key(frame.input.commands[i].request_id));
+                    pending.frame = frame.input.slot_;
+                    pending.command = i;
+                }
+                if (!frame.input.commands.empty())
+                {
+                    // Arbitrary queued control commands may depend on their predecessor. Explicit
+                    // parallel groups remain available for the application's ordinary frame inputs.
+                    for (std::size_t i = 1; i <= frame.input.commands.size(); ++i)
+                    {
+                        frame.input.group_ends.push_back(i);
+                    }
+                }
                 return &frame.input;
             }
         }
@@ -242,9 +317,14 @@ namespace lux::rendering
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
+        if (frame.state == Impl::EInputState::BUILDING)
+        {
+            impl_->rejectCommands(frame, RenderError{kCommandCancelled});
+        }
         input.commands.clear();
         input.group_ends.clear();
         input.responses.clear();
+        input.payloads_.release();
         input.resynchronize = false;
         frame.groups.clear();
         frame.result.reset();
@@ -254,7 +334,7 @@ namespace lux::rendering
 
     void RenderRequester::sendFrame(FrameInput& input, ResponseNode& terminal) noexcept
     {
-        const auto reject = [&](RenderError error) noexcept { terminal.deliver(terminal, {}, error); };
+        const auto reject = [&](RenderError error) noexcept { deliverResponse(terminal, {}, error); };
         if (!isBuildingInput(input, id()))
         {
             reject(RenderError{kRuntimeState});
@@ -265,7 +345,12 @@ namespace lux::rendering
             reject(RenderError{kRuntimeUnsupported});
             return;
         }
-        if (input.commands.size() >= impl_->capacity - impl_->pending.size())
+        const auto additional = std::count_if(
+            input.commands.begin(),
+            input.commands.end(),
+            [](const FrameCommand& command) noexcept { return command.request_id.value == 0; }
+        );
+        if (static_cast<std::size_t>(additional) >= impl_->capacity - impl_->pending.size())
         {
             reject(RenderError{kRuntimeCapacity});
             return;
@@ -291,7 +376,10 @@ namespace lux::rendering
         input.responses.resize(input.commands.size());
         for (std::uint32_t i = 0; i < input.commands.size(); ++i)
         {
-            input.commands[i].request_id = impl_->add(nullptr, input.slot_, i);
+            if (input.commands[i].request_id.value == 0)
+            {
+                input.commands[i].request_id = impl_->add(nullptr, input.slot_, i);
+            }
         }
         const auto root = impl_->add(&terminal, input.slot_);
         frame.sequence = impl_->next_frame;
@@ -301,7 +389,18 @@ namespace lux::rendering
         {
             for (const auto& command : input.commands)
             {
-                revoke(command.request_id);
+                const auto* pending = impl_->pending.find(Impl::key(command.request_id));
+                if (pending && !pending->node)
+                {
+                    revoke(command.request_id);
+                }
+            }
+            for (auto& command : input.commands)
+            {
+                if (!impl_->pending.find(Impl::key(command.request_id)))
+                {
+                    command.request_id = {};
+                }
             }
             revoke(root);
             reject(sent.error());
@@ -347,25 +446,28 @@ namespace lux::rendering
             impl_->pending.erase(key);
             if (entry.frame == UINT32_MAX)
             {
-                entry.node->deliver(*entry.node, std::move(message), {});
+                deliverResponse(*entry.node, std::move(message), {});
                 continue;
             }
             auto& frame = impl_->frame_inputs[entry.frame];
             if (entry.command != UINT32_MAX)
             {
-                frame.input.responses[entry.command] = std::move(message);
                 --frame.remaining_responses;
+                if (entry.node)
+                {
+                    deliverResponse(*entry.node, std::move(message), {});
+                }
+                else
+                {
+                    frame.input.responses[entry.command] = std::move(message);
+                }
             }
             else
             {
                 if (message.get<FrameCompletion>().outcome == EFrameOutcome::REJECTED)
                 {
                     // Rejected admission never dispatched children; their original Requests remain here.
-                    for (const auto& command : frame.input.commands)
-                    {
-                        revoke(command.request_id);
-                    }
-                    frame.remaining_responses = 0;
+                    impl_->rejectCommands(frame, message.get<FrameCompletion>().error);
                 }
                 frame.result = std::move(message);
                 frame.frame_response_received = true;
@@ -385,24 +487,46 @@ namespace lux::rendering
         return impl_->pending.size();
     }
 
+    bool RenderRequester::hasQueuedFrameCommands() const noexcept
+    {
+        return !impl_->queued_frame_commands.empty();
+    }
+
     void RenderRequester::settleClosed() noexcept
     {
         consumeResponses(SIZE_MAX);
         impl_->closed = true;
         impl_->requester.reset();
+        for (auto& command : impl_->queued_frame_commands)
+        {
+            const auto entry = *impl_->pending.find(Impl::key(command.request_id));
+            impl_->pending.erase(entry.key);
+            command.request.reset();
+            deliverResponse(*entry.node, {}, RenderError{kCommandCancelled});
+        }
+        impl_->queued_frame_commands.clear();
         while (!impl_->pending.empty())
         {
             const auto entry = *impl_->pending.begin();
             impl_->pending.erase(entry.key);
             if (entry.frame == UINT32_MAX)
             {
-                entry.node->deliver(*entry.node, {}, RenderError{kOutcomeUnknown});
+                deliverResponse(*entry.node, {}, RenderError{kOutcomeUnknown});
                 continue;
             }
             auto& frame = impl_->frame_inputs[entry.frame];
             if (entry.command != UINT32_MAX)
             {
-                --frame.remaining_responses;
+                if (frame.state == Impl::EInputState::AWAITING_RESPONSE)
+                {
+                    --frame.remaining_responses;
+                }
+                if (entry.node)
+                {
+                    const bool submitted = frame.state == Impl::EInputState::AWAITING_RESPONSE;
+                    frame.input.commands[entry.command].request.reset();
+                    deliverResponse(*entry.node, {}, RenderError{submitted ? kOutcomeUnknown : kCommandCancelled});
+                }
             }
             else
             {
@@ -413,7 +537,10 @@ namespace lux::rendering
                 result.requires_resynchronization = true;
                 frame.frame_response_received = true;
             }
-            impl_->completeFrame(frame);
+            if (frame.state == Impl::EInputState::AWAITING_RESPONSE)
+            {
+                impl_->completeFrame(frame);
+            }
         }
     }
 } // namespace lux::rendering

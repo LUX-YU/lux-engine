@@ -587,10 +587,21 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        if (!target->attachment.isNull())
+        const bool target_mismatch = target->attachment != _request.replaces;
+        if (target_mismatch)
         {
             output_response.error = RenderError{kRuntimeState};
             return;
+        }
+        if (!_request.replaces.isNull())
+        {
+            const auto& previous = *attachments.find(_request.replaces);
+            const bool different_view = previous.scene != scene_id || previous.view != view_id;
+            if (different_view || frames->submitting(*previous.instance))
+            {
+                output_response.error = RenderError{different_view ? kRuntimeIdentity : kDeviceBusy};
+                return;
+            }
         }
         if (auto valid = _request.viewport.validate(); !valid)
         {
@@ -620,6 +631,10 @@ namespace lux::render
         prepared->view = view_id;
         prepared->target = target_id;
         prepared->storages = std::move(local_storages);
+        if (!_request.replaces.isNull())
+        {
+            detachAttachment(_request.replaces);
+        }
         const auto id = attachments.emplace(std::move(*prepared));
         auto& attachment = *attachments.find(id);
         attachment.view_position = view->attachments.size();
@@ -1119,13 +1134,13 @@ namespace lux::render
 
         auto join = stdexec::connect(command_scope_.join(), Joined{&joined});
         stdexec::start(join);
-        response_outbox_.flushTo(responder, 32);
+        publishResponses(32);
         // Keep RenderThread and GPU completion paths advancing until every accepted Sender settles.
         while (!joined.load(std::memory_order_acquire) || !render_loop_.empty())
         {
             // Adopt published CPU results while the Scope is draining.
             render_loop_.executeReady(128);
-            response_outbox_.flushTo(responder, 32);
+            publishResponses(32);
             if (device)
             {
                 auto collected = device->pollQueues();
@@ -1146,7 +1161,7 @@ namespace lux::render
             }
             // Settle frame terminals before testing Scope completion again.
             render_loop_.executeReady(128);
-            response_outbox_.flushTo(responder, 32);
+            publishResponses(32);
             if (!joined.load(std::memory_order_acquire))
             {
                 std::this_thread::yield();
@@ -1156,7 +1171,7 @@ namespace lux::render
         {
             std::this_thread::yield();
         }
-        response_outbox_.flushTo(responder, SIZE_MAX);
+        publishResponses(SIZE_MAX);
         response_outbox_.clear(); // Connection closes after safe operations; caller owns any unknown outcomes.
         responder.reset();
         while (!active_targets.empty())
@@ -1189,6 +1204,16 @@ namespace lux::render
         uploads.reset();
         device.reset();
         running.store(false);
+    }
+
+    std::size_t RenderServer::Impl::publishResponses(std::size_t limit) noexcept
+    {
+        const auto result = response_outbox_.flushTo(responder, limit);
+        if (result.published != 0 && config.responses_available)
+        {
+            config.responses_available(config.response_context);
+        }
+        return result.settled;
     }
 
     RenderResult<void> RenderServer::Impl::run() noexcept
@@ -1229,7 +1254,7 @@ namespace lux::render
             {
                 break;
             }
-            progressed |= s.response_outbox_.flushTo(s.responder, 32) != 0;
+            progressed |= s.publishResponses(32) != 0;
             if (auto observed_gpu = s.progressGpuCompletions(); !observed_gpu)
             {
                 result = cxx::unexpected(observed_gpu.error());
@@ -1243,7 +1268,7 @@ namespace lux::render
             s.progressFrame();
             // Safe point 3: publish terminal frame/command results produced by this iteration.
             progressed |= s.render_loop_.executeReady(128) != 0;
-            progressed |= s.response_outbox_.flushTo(s.responder, 32) != 0;
+            progressed |= s.publishResponses(32) != 0;
             progressed |= s.submissions.load() != submitted_before;
             ++s.ticks;
             if (!progressed && !s.stop_requested.load())

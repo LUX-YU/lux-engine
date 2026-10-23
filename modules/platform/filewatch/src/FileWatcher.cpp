@@ -13,18 +13,19 @@ namespace lux::platform
     // 任何更聪明的处理(去抖/匹配资产)都属于主线程消费者。
     struct FileWatcher::Impl final : public efsw::FileWatchListener
     {
-        efsw::FileWatcher watcher;
         std::mutex mtx;
         std::vector<FileEvent> queue;
         std::vector<efsw::WatchID> watch_ids;
         std::vector<std::filesystem::path> watched_dirs;
+        // Stop and join the native producer before destroying its callback destination.
+        efsw::FileWatcher watcher;
 
         void handleFileAction(
             efsw::WatchID /*watch_id*/,
             const std::string& dir,
             const std::string& filename,
             efsw::Action action,
-            std::string old_filename = {}
+            const std::string& old_filename
         ) override
         {
             FileEvent ev;

@@ -355,8 +355,8 @@ Request 所有权恢复不属于当前 IPC 合同。不要恢复已删除的 Typ
 | Scene 阶段 | RenderSystem 动作 |
 |---|---|
 | MAINTENANCE | 采用已到达结果，核对 Entity generation、Scene/revision；结构改变在现有 EcsCommandBuffer 安全点执行 |
-| SYNCHRONIZATION | 借用原 TransformSystem 完成的世界矩阵，不再计算第二份 |
-| STABLE | 形成必要专业派生输入，不改模拟业务 |
+| SYNCHRONIZATION | 原 TransformSystem 更新世界矩阵及结构命令 |
+| STABLE | RenderSystem 在所有同步系统完成后借用矩阵，准备变化身份和 Camera 参数，不再计算第二份 Transform |
 | PUBLICATION | 向共同 FrameInput 追加本 Scene 的 K 项变化及 Attachment 参数；不自行 SubmitFrame |
 
 观察者只记意图/脏项，连接时折入存量；on_update 写入走 patch/replace；
@@ -387,10 +387,23 @@ L+1 CPU 载体、GPU FIF slot、SwapChain image index 是三种身份，不能�
 FrameCompletion 表示输入消费和提交结果，不证明 GPU 完成或已经显示。
 GPU slice/descriptor/command allocator 仍按真实 Queue 前沿复用。
 
-CPU 数据的权威保持清楚：Scene 拥有活动世界；FrameInput 冻结本批 K 项；
+CPU 数据的权威保持清楚：Scene 拥有活动世界；FrameInput 冻结本批 K 项，Transform 可直接在载体内由 double 转成 GPU float；
 Render 的已发布数据与逐 slot 脏状态用于修复尚未更新的 FIF slice。
 不为了减少一次必要快照而借用下一次 Simulation 会改写的内存，也不复制完整世界。
 revision n 仅确认 n，等待期间的新变化不能被旧回复清掉。
+
+结构性帧内控制也可用现有 RequestSender：Requester 暂存真实命令输入，下一次 beginFrame 纳入完整帧，
+Response 仍交给原 stdexec Operation。它不创建第二套结果队列或操作 Owner。
+创建、移除和替换可以在项目关闭时由维护帧清偿；普通热帧批量数据仍直接 append，避免逐项 Task。
+Attach 可携带同 Scene/View/Target 的待替换 AttachmentId，候选全部准备成功后才替换；
+失败保留旧实例，不能先 detach 再赌新 attach 成功。
+
+FrameInput 可以把平凡数组冻结到自身的分配区，直到真实 FrameCompletion 后再释放；
+Scene 或 Pane 提前销毁不会使这些 span 悬空。L+1 载体共用标准 PMR 块复用，
+每个载体只有自己的临时数据范围，不增加 Scope、资源身份或任务 Owner。
+已有应用级稳定数组仍可直接借用；不强制多复制一次。
+UI 捕获可直接写入该分配区，避免先复制 ImDrawList，再复制中立数组。
+块缓存只影响内存复用，不是帧数据总量限制；大于缓存阈值的工作量必须单独记录分配成本。
 
 ### 7.3 渲染资产的完整流程
 
@@ -529,8 +542,12 @@ clip clamp、IdxOffset/VtxOffset、Alpha Blend 等成熟算法。
 
 ### 10.2 项目关闭
 
-先撤销该项目的业务采用和新请求，再请求其有限任务停止。
-Pane/EditorContext 可先离开，但已经发送的上传输入、文件 provider、代码 pin 和结果清偿不能随它们销毁。
+先撤销该项目的新业务并请求 SceneRuntime 退休。Scene 系统的析构把必要的 Render 关闭事务
+登记到已有项目 TaskScope 后，再关闭该 Scope 的新准入并请求停止；不能先关准入再要求析构补发释放。
+已接纳的 Render 事务保持真实 Response/句柄清偿，不因项目停止而跳过清理。
+Scene 退休完成加项目 TaskScope.settled() 才允许移除其输出 Target 和销毁相关能力提供者。
+这仍是现有项目任务组，不是新增 GPU 清理 Scope。
+Pane/EditorContext 可先撤销 UI 采用，但已经发送的上传输入、文件 provider、代码 pin 和结果清偿不能随它们销毁。
 项目关闭不停止整个 ExecutionRuntime，不 join RenderThread，不卸载仍有回调/Handler 的 DLL。
 
 成功创建但已经无人采用的资源走真实释放命令；该清偿属于应用仍存活的 RenderAssets/协议流水线。

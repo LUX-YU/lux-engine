@@ -19,6 +19,12 @@ namespace lux::render::runtime_detail
     class ResponseOutbox final
     {
     public:
+        struct FlushResult final
+        {
+            std::size_t settled = 0;
+            std::size_t published = 0;
+        };
+
         platform::ipc::IpcMessage& prepare(ResponseRoute route) noexcept;
 
         template <class Response, class... Args> Response& emplaceResponse(ResponseRoute route, Args&&... args) noexcept
@@ -28,7 +34,7 @@ namespace lux::render::runtime_detail
 
         // Returns settled records, including replies discarded because their destination closed.
         // limit bounds this service pass; it does not bound a frame or the number of accepted requests.
-        std::size_t flushTo(platform::ipc::IpcResponder& responder, std::size_t limit) noexcept;
+        FlushResult flushTo(platform::ipc::IpcResponder& responder, std::size_t limit) noexcept;
 
         [[nodiscard]] bool empty() const noexcept
         {

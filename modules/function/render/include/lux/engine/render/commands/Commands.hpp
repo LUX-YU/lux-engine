@@ -64,6 +64,9 @@ namespace lux::render
         std::vector<std::byte> parameters; // Exact bytes of the compiled context parameter block.
         RasterViewport viewport;
         std::vector<std::uint8_t> conditions;
+        // Optional current writer of the same Scene/View/Target. The new instance is fully prepared
+        // before replacing it at this frame safe point; failure preserves the previous attachment.
+        AttachmentId replaces;
     };
 
     struct AttachmentInputs final

@@ -49,6 +49,10 @@ namespace lux::render
         std::uint32_t frames_in_flight = 2;
         std::uint64_t gpu_wait_ns = 1'000'000; // 0..1ms; IPC/CPU/stop are checked between waits.
         RenderErrorSink diagnostics;
+        // Borrowed application wake hint, called on RenderThread after real reply publication.
+        // It must not reenter RenderServer; its context remains valid until the rendering thread joins.
+        void* response_context = nullptr;
+        void (*responses_available)(void*) noexcept = nullptr;
     };
 
     struct RenderServerStats final

@@ -1,17 +1,14 @@
-# 应用共用设施
+# EngineContext
 
-EngineContext 拥有 ExecutionRuntime、SceneRuntime 与资产 AssetVfs，可选拥有 RenderContext。
-SceneRuntime 统一拥有实例、逐实例 Clock/Driver 和共享执行器；Context 不保存项目选择、窗口或播放意图。
-宿主通过 sceneRuntime().tick() 维护和推进场景，Context 不提供通用服务查找。
-各业务继续接收需要的窄依赖并管理自己的操作和 TaskScope。
+EngineContext 拥有应用共用的 ExecutionRuntime、SceneRuntime 和 AssetVfs。Headless 程序不依赖 Render。
+CPU 任务和阻塞 IO 使用同一执行设施中不同的调度资源，Scene TaskExecutor 不创建私有线程池。
 
-`engine_context` 为不链接图形库的 STATIC 组件。无图形游戏只需此核心。
-图形宿主另链接 `engine_context_render`，通过 initializeRendering 一次构造 RenderContext 和统一日志出口。
-RenderContext 拥有 RenderRuntime、资源 TaskScope、RenderResources 及运输完成接线；
-registerFeatures 冷装配沿 Runtime 的候选/回滚协议执行。EditorApplication 和 Launcher 只借用资源设施。
-Editor 和 Launcher 必须具备 Renderer，不能把空指针当成启动成功。
+图形应用组合根另外构造 RenderExecution 与 RenderAssets，借用 `engine.execution()`；
+通过 SceneCapabilityProvider 向具体 Scene 提供窄依赖。ContextExtensions 仅用于冷态装配，
+发布后不补写 Render 服务，也不通过查询偷偷创建对象。
 
-宿主先释放业务、视口和项目 owner，再销毁 EngineContext。各 owner 的析构等待自身已接纳工作；
-Context 依次销毁 SceneRuntime（取消并收取集中 timer）、RenderContext（Resources 退役、任务收取、Runtime join），再 join 执行设施。等待只推进完成设施，不运行 UI 或 Simulation。
-图形完成适配既采用回执，也转交已接纳上传和释放命令，因此析构不依赖外层 exec 再跑一帧。
-资产 VFS 仅承载资产；项目清单、插件描述、journal 和外部导入路径仍使用原生文件 IO。
+关闭必须先撤销新业务并清偿 Scene、Render、文件提供者和插件回调，然后销毁这些借用者，
+最后销毁 EngineContext。Scope 完成不等于外部 Producer 的调用栈已经退出。
+等待期间推进实际完成通路，不运行新的 Simulation 或 UI 业务。
+
+完整图形应用接线合同见 [统一接线设计](../../docs/render-v2/engine-editor-integration.md)。

@@ -4,7 +4,10 @@
 #include <lux/engine/world/WorldPartition.hpp>
 #include <lux/engine/world/description/visibility.h>
 
+// Contain the Windows COM spelling introduced by the UUID system generator.
+#pragma push_macro("interface")
 #include <uuid.h>
+#pragma pop_macro("interface")
 
 #include <cstddef>
 #include <cstdint>

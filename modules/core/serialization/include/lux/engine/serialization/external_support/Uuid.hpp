@@ -3,7 +3,10 @@
 #include <lux/engine/serialization/Serialization.hpp>
 #include <lux/engine/serialization/Traits.hpp>
 
+// Contain the Windows COM spelling introduced by the UUID system generator.
+#pragma push_macro("interface")
 #include <uuid.h>
+#pragma pop_macro("interface")
 
 #include <array>
 #include <cstddef>

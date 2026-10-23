@@ -2,7 +2,6 @@
 add_executable(render_sync_client SyncClient.cpp)
 target_link_libraries(render_sync_client PRIVATE render lux::engine::platform::platform_ipc)
 add_test(NAME render.client.sync_source COMMAND render_sync_client)
-set_target_properties(render_sync_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 
 
 add_executable(render_output_test Output.cpp)
@@ -37,15 +36,9 @@ add_dependencies(render_basic_mesh render_sample_assets)
 add_test(NAME render.sample.basic_mesh COMMAND render_basic_mesh "${shader}.spv")
 set_tests_properties(render.sample.basic_mesh PROPERTIES TIMEOUT 90)
 
-# Real consumer DLLs, not SDK include overlays.
-foreach(target render_sync_client render_output_test render_material_asset_tool render_basic_mesh)
-    set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
-endforeach()
-
 # Explicit project GPU diagnostic surface, never inherited by an installed application.
 target_include_directories(render_output_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
 target_link_libraries(render_output_test PRIVATE NRI)
-set_target_properties(render PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 
 set(graph_shader_headers)
 foreach(spec GraphFill.comp GraphTriangle.vert GraphMrt.frag GraphPresent.frag GraphCount.comp GraphRed.frag
@@ -74,7 +67,6 @@ target_include_directories(render_graph_chain PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/../shaders"
 )
 target_link_libraries(render_graph_chain PRIVATE render NRI)
-set_target_properties(render_graph_chain PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 add_test(NAME render.graph.chain COMMAND render_graph_chain)
 # The combined matrix creates 74 independent devices. ASan + validation exceeds 90 seconds;
 # per-scenario progress assertions remain unchanged by this outer process budget.
@@ -84,7 +76,6 @@ add_executable(render_deferred_scene DeferredScene.cpp)
 target_include_directories(render_deferred_scene PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
 target_link_libraries(render_deferred_scene PRIVATE render NRI lux::engine::core::core_execution
     lux::engine::toolchain::toolchain_material_compiler)
-set_target_properties(render_deferred_scene PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 add_test(NAME render.sample.deferred COMMAND render_deferred_scene)
 set_tests_properties(render.sample.deferred PROPERTIES TIMEOUT 90)
 
@@ -100,7 +91,6 @@ target_link_libraries(render_shadow_scene PRIVATE
     lux::engine::toolchain::toolchain_material_compiler
 )
 
-set_target_properties(render_shadow_scene PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 add_test(NAME render.sample.shadow COMMAND render_shadow_scene)
 set_tests_properties(render.sample.shadow PROPERTIES TIMEOUT 120)
 
@@ -119,6 +109,5 @@ target_link_libraries(render_clustered_scene PRIVATE
     lux::engine::toolchain::toolchain_material_compiler
 )
 
-set_target_properties(render_clustered_scene PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 add_test(NAME render.sample.clustered COMMAND render_clustered_scene)
 set_tests_properties(render.sample.clustered PROPERTIES TIMEOUT 120)

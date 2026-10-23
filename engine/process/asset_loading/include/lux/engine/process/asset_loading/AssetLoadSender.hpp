@@ -4,6 +4,7 @@
 #include <lux/engine/core/async/OperationPort.hpp>
 #include <lux/engine/core/execution/PortSender.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
+#include <lux/engine/process/asset_loading/AssetRead.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/AssetStorageError.hpp>
@@ -18,17 +19,6 @@
 
 namespace lux::process::asset_loading
 {
-    struct ReadAssetImage final
-    {
-        using Value = lux::asset::AssetBlob;
-        using Error = lux::asset::EAssetStorageError;
-
-        lux::asset::AssetId id;
-        std::size_t max_bytes{SIZE_MAX};
-    };
-
-    using AssetReadPort = lux::async::TOperationPort<ReadAssetImage>;
-
     enum class EAssetLoadError : std::uint8_t
     {
         INVALID_ASSET_ID,

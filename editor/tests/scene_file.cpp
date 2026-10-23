@@ -27,8 +27,8 @@ int main(int argc, char** argv)
     auto read = readScenePackageFile(file, limit);
     assert(read);
     assert(scene::encodeScenePackage(*read, limit).value() == scene::encodeScenePackage(*package, limit).value());
-    auto small = readScenePackageFile(file, 1);
-    assert(!small && std::get<SceneFileFailure>(small.error()).code == ESceneFileError::LIMIT);
+    auto size_limited = readScenePackageFile(file, 1);
+    assert(!size_limited && std::get<SceneFileFailure>(size_limited.error()).code == ESceneFileError::LIMIT);
     std::stop_source stop;
     stop.request_stop();
     auto cancelled = writeScenePackageAtomic(file, *package, ESceneWrite::REPLACE, limit, stop.get_token());

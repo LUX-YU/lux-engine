@@ -551,12 +551,30 @@ namespace lux::render
         using error::EArgument;
         static constexpr auto args = std::array{EArgument::UNSIGNED, EArgument::UNSIGNED, EArgument::UNSIGNED};
         static constexpr error::ErrorDescriptor descriptors[]{
-            {"lux.render.feature.contract", "Invalid feature contract", error::ERecovery::PERMANENT, args},
-            {"lux.render.feature.duplicate", "Duplicate feature declaration", error::ERecovery::PERMANENT, args},
-            {"lux.render.feature.missing_provider", "Required provider missing", error::ERecovery::PERMANENT, args},
-            {"lux.render.feature.resource_mismatch", "Resource contracts differ", error::ERecovery::PERMANENT, args},
-            {"lux.render.feature.ownership", "Unauthorized graph contribution", error::ERecovery::PERMANENT, args},
-            {"lux.render.feature.version", "Unsupported shared version", error::ERecovery::PERMANENT, args}
+            {"lux.render.feature.contract",
+             "Invalid feature contract (details {0}, {1}, {2})",
+             error::ERecovery::PERMANENT,
+             args},
+            {"lux.render.feature.duplicate",
+             "Duplicate feature declaration (details {0}, {1}, {2})",
+             error::ERecovery::PERMANENT,
+             args},
+            {"lux.render.feature.missing_provider",
+             "Required provider missing (details {0}, {1}, {2})",
+             error::ERecovery::PERMANENT,
+             args},
+            {"lux.render.feature.resource_mismatch",
+             "Resource contracts differ (details {0}, {1}, {2})",
+             error::ERecovery::PERMANENT,
+             args},
+            {"lux.render.feature.ownership",
+             "Unauthorized graph contribution (details {0}, {1}, {2})",
+             error::ERecovery::PERMANENT,
+             args},
+            {"lux.render.feature.version",
+             "Unsupported shared version (details {0}, {1}, {2})",
+             error::ERecovery::PERMANENT,
+             args}
         };
         return descriptors;
     }

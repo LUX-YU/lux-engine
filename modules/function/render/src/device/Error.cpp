@@ -9,13 +9,13 @@ namespace lux::render
         static constexpr std::array descriptors{
             error::ErrorDescriptor{
                 "lux.render.device.diagnostic",
-                "Backend diagnostic (severity, source line); text is borrowed by RenderErrorSink",
+                "Backend diagnostic severity {0}, source line {1}; text is borrowed by RenderErrorSink",
                 error::ERecovery::PERMANENT,
                 {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
             },
             error::ErrorDescriptor{
                 "lux.render.device.native_failure",
-                "Native failure (backend result, operation; Vulkan image qualification=1)",
+                "Native failure {0}, operation {1} (Vulkan image qualification=1)",
                 error::ERecovery::PERMANENT,
                 {error::EArgument::HEX, error::EArgument::UNSIGNED}
             },
@@ -27,7 +27,7 @@ namespace lux::render
             },
             error::ErrorDescriptor{
                 "lux.render.device.unsupported",
-                "Required native capability is unavailable (NRI Result)",
+                "Required native capability is unavailable, NRI result {0}",
                 error::ERecovery::PERMANENT,
                 {error::EArgument::HEX}
             },

@@ -42,6 +42,32 @@ and input borrows. Only after stopping/joining Render and its accepted producers
 Unreceived child responses remain empty. No response or cancellation is invented before this shutdown proof.
 Destroying a requester with outstanding correlations is a contract violation.
 
-This module implements transport and frame-input control only. Window presentation, asset residency, Scene/LuxObject
-adoption and Engine/Editor product wiring remain separate work. It uses the installed Render contracts and neither
-includes NRI nor creates another ExecutionRuntime.
+`RenderExecution` assembles one Server, one RenderThread and one fixed Asset protocol thread. Both Clients
+reuse this Requester; all CPU/IO work borrows the application's `ExecutionRuntime`. `create()` is synchronous
+startup on Main, outside a dispatched callback. It discovers commands and prepares the two actual Links.
+`consumeResponses()` runs at Main's normal safe point; the Asset thread drives its own Link and RunLoop.
+
+Frame-scoped `request()` inputs join the next `beginFrame()` in ordered groups. Their original standard Sender
+receives the typed child Response. This permits finite create/remove transactions without a second operation
+owner or a second frame source. Hot Transform/data batches still use direct `append`, not one Task per item.
+Continue maintenance frames when `hasQueuedFrameCommands()` is true, including when Simulation is paused.
+The application owns FrameCompletion handling: errors/resynchronization require refreshing authoritative inputs.
+A carrier released before submission cancels its queued commands; a lost response after submission stays Unknown.
+
+`FrameInput::allocate<T>()` allows writing actual frame arrays directly. `freeze()` is the optional copying path;
+`memory()` supports direct UI capture. Each carrier owns its data interval, backed by reusable standard PMR blocks.
+No live Scene/Pane buffer is borrowed after that object closes.
+
+`RenderAssets` owns only the Main asset/version-to-handle directory and actual Client use counts. VFS reads,
+CPU decode, Asset upload and Main adoption form finite standard Sender pipelines. Mesh conversion produces the
+actual static GPU vertex layout once; Texture/Mesh source bytes are released on real Response, before Main adoption.
+The first Scene projection consumes LOD0; animation/LOD selection is not fabricated by uploading all LOD indices.
+Different source revisions can coexist. `maintain()` visits pending release changes, not every live asset.
+
+Close Scenes before closing their project task admission, drive their pending frame commands, then release asset
+references. After `RenderAssets::close()`, continue Main completion and maintenance frames until `settled()`.
+Only then call `RenderExecution::shutdown()` to drain/join Render, settle missing responses and join Asset.
+ExecutionRuntime, file providers, native windows and callback code outlive their respective accepted producers.
+Render diagnostics use the single Engine log bridge; this module never selects a console/output target.
+
+Window presentation and Editor UI assembly are separate consumers of these facilities. No new CPU pool is created.

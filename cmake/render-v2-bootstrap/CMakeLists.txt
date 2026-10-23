@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 
 if(MSVC)
     add_compile_options(/utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /GR- /we4541)
@@ -41,6 +42,7 @@ generate_visibility_header(
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/async_port" async-port)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/error" core-error)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/log" core-log)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/execution" core-execution)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/task" core-task)
 set_target_properties(task PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
@@ -88,25 +90,36 @@ if(BUILD_TESTING)
         set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
     endforeach()
 
-    lux_engine_install_components(
-        PROJECT_NAME lux-engine-function
-        VERSION ${PROJECT_VERSION}
-        NAMESPACE lux::engine::function
-        COMPONENTS graph material_graph
-    )
 endif()
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render" render)
 
+# Real application asset transport consumers, with their source dependency closure.
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/math" core-math)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/type_info" core-type-info)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/serialization" core-serialization)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/semantic" core-semantic)
+generate_visibility_header(
+    ENABLE_MACRO_NAME LUX_FUNCTION_LIBRARY
+    PUBLIC_MACRO_NAME LUX_FUNCTION_PUBLIC
+    GENERATE_FILE_PATH lux/engine/function/visibility.h
+)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/script/core" script-core)
+if(NOT TARGET identity)
+    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/identity" resource-identity)
+endif()
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/description" resource-description)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/resource/asset" resource-asset)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../engine/process/asset_loading" process-asset-loading)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../engine/rendering" engine-rendering)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/ipc" ipc)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/gapi" gapi)
 
-set(resource_components description_types shader_metadata)
+set(resource_components description_types shader_metadata description asset identity)
 if(BUILD_TESTING)
-    list(APPEND resource_components identity)
+    # identity is also an Engine asset transport dependency.
 endif()
 
 lux_engine_install_components(
@@ -123,7 +136,7 @@ lux_engine_install_components(
     COMPONENTS ${platform_components}
 )
 
-set(core_components async_port error error_values task)
+set(core_components async_port error error_values log task math type_info serialization semantic)
 if(BUILD_TESTING)
     list(APPEND core_components object)
 endif()
@@ -133,4 +146,16 @@ lux_engine_install_components(
     VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::core
     COMPONENTS ${core_components}
+)
+
+set(function_components script_core)
+if(BUILD_TESTING)
+    list(APPEND function_components graph material_graph)
+endif()
+
+lux_engine_install_components(
+    PROJECT_NAME lux-engine-function
+    VERSION ${PROJECT_VERSION}
+    NAMESPACE lux::engine::function
+    COMPONENTS ${function_components}
 )

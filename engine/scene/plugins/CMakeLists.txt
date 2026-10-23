@@ -28,7 +28,25 @@ if(TARGET scene_render)
     add_library(builtin_scene_render_plugin SHARED $<TARGET_OBJECTS:builtin_scene_render_exports>)
     target_link_libraries(builtin_scene_render_plugin PRIVATE lux::engine::scene::scene_render)
     lux_classify_target(TARGET builtin_scene_render_plugin LAYER SCENE PRODUCT RUNTIME ROLE PLUGIN)
-    # The old Render export-table description generator was removed. A future scene bridge
-    # must describe the typed Commands it actually installs; it cannot link the retired Feature API.
+    add_executable(
+        builtin_scene_render_description
+        $<TARGET_OBJECTS:builtin_scene_render_exports>
+        ${PROJECT_SOURCE_DIR}/cmake/runtime_plugin_description.cpp
+    )
+    target_link_libraries(
+        builtin_scene_render_description
+        PRIVATE lux::engine::scene::scene_render nlohmann_json::nlohmann_json
+    )
+    lux_classify_target(TARGET builtin_scene_render_description LAYER TOOLCHAIN PRODUCT SDK ROLE BUILD_TOOL)
+    set(render_description "${CMAKE_CURRENT_BINARY_DIR}/scene-render.declaration.json")
+    add_custom_command(
+        OUTPUT "${render_description}"
+        COMMAND "$<TARGET_FILE:builtin_scene_render_description>" "${render_description}"
+            lux.builtin.scene_render "Asset-backed Scene projection through typed Render commands."
+            lux.builtin.runtime 2
+        DEPENDS builtin_scene_render_description
+        VERBATIM
+    )
+    add_custom_target(builtin_scene_render_declaration DEPENDS "${render_description}")
     install(TARGETS builtin_scene_render_plugin RUNTIME DESTINATION bin LIBRARY DESTINATION lib)
 endif()

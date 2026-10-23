@@ -1,112 +1,154 @@
-#include <algorithm>
-#include <lux/engine/ui/detail/ImageEncoding.hpp>
 #include <lux/engine/ui/DrawData.hpp>
-#include <imgui.h>
+
+#include <algorithm>
 #include <cstring>
+#include <imgui.h>
 #include <vector>
 
 namespace lux::ui
 {
     struct DrawData::Impl final
     {
-        ImDrawData data;
-        std::vector<ImDrawList*> lists;
-        std::vector<render::RTextureHandle> textures;
+        rdesc::UiDrawData data;
+        std::vector<rdesc::UiVertex> vertices;
+        std::vector<std::byte> indices;
+        std::vector<rdesc::UiDrawCommand> commands;
+        std::vector<rdesc::UiImageToken> textures;
+        std::pmr::memory_resource* frame_memory = nullptr;
+        bool valid = false;
 
-        ~Impl()
+        template <class T> std::span<T> allocate(std::vector<T>& reusable, std::size_t count) noexcept
         {
-            for (auto* list : lists)
-                IM_DELETE(list);
+            if (frame_memory)
+            {
+                return count
+                           ? std::span<T>{static_cast<T*>(frame_memory->allocate(count * sizeof(T), alignof(T))), count}
+                           : std::span<T>{};
+            }
+            reusable.resize(count);
+            return reusable;
         }
     };
 
     DrawData::DrawData() noexcept = default;
+
+    void DrawData::setFrameMemory(std::pmr::memory_resource& memory) noexcept
+    {
+        if (!impl_)
+        {
+            impl_ = std::make_unique<Impl>();
+        }
+        impl_->frame_memory = &memory;
+    }
+
     DrawData::~DrawData() noexcept = default;
+
     DrawData::DrawData(DrawData&&) noexcept = default;
+
     DrawData& DrawData::operator=(DrawData&&) noexcept = default;
 
     bool DrawData::valid() const noexcept
     {
-        return impl_ && impl_->data.Valid;
+        return impl_ && impl_->valid;
     }
 
-    std::span<const render::RTextureHandle> DrawData::textures() const noexcept
+    std::span<const rdesc::UiImageToken> DrawData::textures() const noexcept
     {
-        return impl_ ? std::span<const render::RTextureHandle>{impl_->textures}
-                     : std::span<const render::RTextureHandle>{};
+        return impl_ ? std::span<const rdesc::UiImageToken>{impl_->textures} : std::span<const rdesc::UiImageToken>{};
+    }
+
+    const rdesc::UiDrawData& DrawData::data() const noexcept
+    {
+        static const rdesc::UiDrawData empty;
+        return impl_ ? impl_->data : empty;
     }
 
     ECaptureError DrawData::captureCurrent() noexcept
     {
         const auto* input = ImGui::GetDrawData();
         if (!input || !input->Valid)
+        {
             return ECaptureError::NO_FRAME;
-        std::size_t command_count{};
-        // Reject borrowed callback state before changing a reusable output.
+        }
+        std::size_t command_count = 0;
+        // Validate callback policy before changing a reusable snapshot. Reset is redundant because
+        // the renderer executes only these typed draws; arbitrary callbacks never leave Main.
         for (const auto* list : input->CmdLists)
         {
-            command_count += static_cast<std::size_t>(list->CmdBuffer.Size);
             for (const auto& command : list->CmdBuffer)
             {
                 if (command.UserCallback && command.UserCallback != ImDrawCallback_ResetRenderState)
-                    return ECaptureError::UNSUPPORTED_CALLBACK;
-                const auto encoded = static_cast<std::uint64_t>(command.GetTexID());
-                if (encoded && !detail::decodeImage(encoded).isValid())
-                    return ECaptureError::INVALID_INPUT;
-            }
-        }
-        {
-            if (!impl_)
-                impl_ = std::make_unique<Impl>();
-            auto& output = *impl_;
-            output.textures.reserve(command_count);
-            output.lists.reserve(static_cast<std::size_t>(input->CmdListsCount));
-            while (output.lists.size() < static_cast<std::size_t>(input->CmdListsCount))
-                output.lists.push_back(IM_NEW(ImDrawList)(nullptr));
-            const auto copy = []<class T>(ImVector<T>& target, const ImVector<T>& source) {
-                target.resize(source.Size);
-                if (source.Size)
-                    std::memcpy(target.Data, source.Data, static_cast<std::size_t>(source.Size) * sizeof(T));
-            };
-            output.textures.clear();
-            output.data.CmdLists.resize(input->CmdListsCount);
-            for (int index{}; index != input->CmdListsCount; ++index)
-            {
-                auto& list = *output.lists[index];
-                const auto& source = *input->CmdLists[index];
-                copy(list.CmdBuffer, source.CmdBuffer);
-                copy(list.VtxBuffer, source.VtxBuffer);
-                copy(list.IdxBuffer, source.IdxBuffer);
-                list.Flags = source.Flags;
-                for (auto& command : list.CmdBuffer)
                 {
-                    command.UserCallbackData = nullptr;
-                    command.UserCallbackDataSize = 0;
-                    command.UserCallbackDataOffset = 0;
-                    const auto texture = detail::decodeImage(static_cast<std::uint64_t>(command.GetTexID()));
-                    if (texture.isValid())
-                        output.textures.push_back(texture);
+                    return ECaptureError::UNSUPPORTED_CALLBACK;
                 }
-                output.data.CmdLists[index] = &list;
+                command_count += !command.UserCallback;
             }
-            std::sort(output.textures.begin(), output.textures.end(), [](auto a, auto b) noexcept {
-                return a.index != b.index ? a.index < b.index : a.gen < b.gen;
-            });
-            output.textures.erase(std::unique(output.textures.begin(), output.textures.end()), output.textures.end());
-            output.data.CmdListsCount = input->CmdListsCount;
-            output.data.TotalIdxCount = input->TotalIdxCount;
-            output.data.TotalVtxCount = input->TotalVtxCount;
-            output.data.DisplayPos = input->DisplayPos;
-            output.data.DisplaySize = input->DisplaySize;
-            output.data.FramebufferScale = input->FramebufferScale;
-            output.data.OwnerViewport = nullptr;
-            output.data.Valid = true;
-            return ECaptureError::NONE;
         }
-    }
-
-    const void* DrawData::nativeDrawData() const noexcept
-    {
-        return impl_ ? &impl_->data : nullptr;
+        if (!impl_)
+        {
+            impl_ = std::make_unique<Impl>();
+        }
+        auto& output = *impl_;
+        auto vertices = output.allocate(output.vertices, static_cast<std::size_t>(input->TotalVtxCount));
+        auto indices =
+            output.allocate(output.indices, static_cast<std::size_t>(input->TotalIdxCount) * sizeof(ImDrawIdx));
+        auto commands = output.allocate(output.commands, command_count);
+        output.textures.clear();
+        output.textures.reserve(command_count);
+        static_assert(sizeof(rdesc::UiVertex) == sizeof(ImDrawVert));
+        static_assert(offsetof(rdesc::UiVertex, position) == offsetof(ImDrawVert, pos));
+        static_assert(offsetof(rdesc::UiVertex, uv) == offsetof(ImDrawVert, uv));
+        static_assert(offsetof(rdesc::UiVertex, color) == offsetof(ImDrawVert, col));
+        std::uint32_t first_vertex = 0, first_index = 0;
+        std::size_t draw = 0;
+        for (const auto* list : input->CmdLists)
+        {
+            if (list->VtxBuffer.Size)
+            {
+                std::memcpy(vertices.data() + first_vertex, list->VtxBuffer.Data, list->VtxBuffer.size_in_bytes());
+            }
+            if (list->IdxBuffer.Size)
+            {
+                std::memcpy(
+                    indices.data() + first_index * sizeof(ImDrawIdx),
+                    list->IdxBuffer.Data,
+                    list->IdxBuffer.size_in_bytes()
+                );
+            }
+            for (const auto& command : list->CmdBuffer)
+            {
+                if (command.UserCallback)
+                {
+                    continue;
+                }
+                const rdesc::UiImageToken image{static_cast<std::uint64_t>(command.GetTexID())};
+                commands[draw++] = {
+                    first_index + command.IdxOffset,
+                    command.ElemCount,
+                    static_cast<std::int32_t>(first_vertex + command.VtxOffset),
+                    {command.ClipRect.x, command.ClipRect.y, command.ClipRect.z, command.ClipRect.w},
+                    image
+                };
+                if (image.value != 0)
+                {
+                    output.textures.push_back(image);
+                }
+            }
+            first_vertex += list->VtxBuffer.Size;
+            first_index += list->IdxBuffer.Size;
+        }
+        std::ranges::sort(output.textures);
+        output.textures.erase(std::unique(output.textures.begin(), output.textures.end()), output.textures.end());
+        output.data = {
+            vertices,
+            indices,
+            commands,
+            {input->DisplayPos.x, input->DisplayPos.y},
+            {input->DisplaySize.x, input->DisplaySize.y},
+            {input->FramebufferScale.x, input->FramebufferScale.y},
+            sizeof(ImDrawIdx)
+        };
+        output.valid = true;
+        return ECaptureError::NONE;
     }
 } // namespace lux::ui

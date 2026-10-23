@@ -45,6 +45,7 @@ namespace lux::scene
         [[nodiscard]] std::size_t componentBytes(const simulation::ecs::Registry&, simulation::ecs::Entity) const;
         void entityDestroyed(simulation::ecs::Entity) noexcept;
         void updateAccounting(simulation::ecs::Registry&, simulation::ecs::ComponentOperations::MembershipChanges&);
+        void updateAccounting(const simulation::ecs::Registry&, simulation::ecs::Entity) noexcept;
         [[nodiscard]] std::size_t unload(simulation::ecs::Registry&, const std::map<std::uint32_t, bool>&);
         [[nodiscard]] WorldResidencyResult<void>
         adopt(simulation::ecs::Registry&, std::span<const std::shared_ptr<const world::WorldPartitionData>>);
@@ -61,7 +62,7 @@ namespace lux::scene
         [[nodiscard]] WorldResidencyResult<PreparedChange>
         prepareErase(simulation::ecs::Registry&, std::span<const world::WorldObjectId>) noexcept;
 
-        const simulation::ecs::Registry* owner_registry; // Identity check only; never accessed in destruction.
+        const simulation::ecs::Registry* owner_registry; // Borrowed during structural operations; never accessed in destruction.
         std::shared_ptr<const world::WorldDescription> world;
         simulation::ecs::ComponentSchemaSet schemas;
         WorldResidencyLimits limits;

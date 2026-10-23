@@ -10,15 +10,19 @@ namespace lux::simulation::ecs
         void* value,
         Destroy destroy,
         Install install,
+        Install replace,
         std::shared_ptr<const void> code
     ) noexcept
-        : type_(type), bytes_(bytes), value_(value), destroy_(destroy), install_(install), code_(std::move(code))
-    {}
+        : type_(type), bytes_(bytes), value_(value), destroy_(destroy), install_(install), replace_(replace),
+          code_(std::move(code))
+    {
+    }
 
     DecodedComponent::DecodedComponent(DecodedComponent&& other) noexcept
         : type_(other.type_), bytes_(other.bytes_), value_(std::exchange(other.value_, nullptr)),
-          destroy_(other.destroy_), install_(other.install_), code_(std::move(other.code_))
-    {}
+          destroy_(other.destroy_), install_(other.install_), replace_(other.replace_), code_(std::move(other.code_))
+    {
+    }
 
     DecodedComponent& DecodedComponent::operator=(DecodedComponent&& other) noexcept
     {
@@ -30,6 +34,7 @@ namespace lux::simulation::ecs
             value_ = std::exchange(other.value_, nullptr);
             destroy_ = other.destroy_;
             install_ = other.install_;
+            replace_ = other.replace_;
             code_ = std::move(other.code_);
         }
         return *this;
@@ -70,6 +75,26 @@ namespace lux::simulation::ecs
             std::terminate();
         }
         install_(registry, entity, value_);
+        reset();
+    }
+
+    bool DecodedComponent::canReplace() const noexcept
+    {
+        return replace_ != nullptr;
+    }
+
+    const void* DecodedComponent::data() const noexcept
+    {
+        return value_;
+    }
+
+    void DecodedComponent::replaceInto(Registry& registry, Entity entity) &&
+    {
+        if (!value_ || !replace_ || !registry.valid(entity))
+        {
+            std::terminate();
+        }
+        replace_(registry, entity, value_);
         reset();
     }
 } // namespace lux::simulation::ecs

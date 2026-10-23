@@ -70,18 +70,32 @@ namespace lux::scene
     {
         for (const auto [entity, changed] : component_changes.each())
         {
-            const auto found = membership.find(entity);
-            if (found != membership.end())
-            {
-                const auto bytes = componentBytes(registry, entity);
-                auto& member = found->second;
-                auto* resident = find(member.partition);
-                resident->component_bytes -= member.component_bytes;
-                resident->component_bytes += bytes;
-                member.component_bytes = bytes;
-            }
+            updateAccounting(registry, entity);
         }
         component_changes.clear();
+    }
+
+    void WorldResidency::Impl::updateAccounting(const ecs::Registry& registry, ecs::Entity entity) noexcept
+    {
+        const auto found = membership.find(entity);
+        if (found == membership.end())
+        {
+            return;
+        }
+        const auto bytes = componentBytes(registry, entity);
+        auto& member = found->second;
+        auto* resident = find(member.partition);
+        resident->component_bytes -= member.component_bytes;
+        resident->component_bytes += bytes;
+        member.component_bytes = bytes;
+    }
+
+    void WorldResidency::synchronizeComponents(std::span<const ecs::Entity> entities) noexcept
+    {
+        for (const auto entity : entities)
+        {
+            impl_->updateAccounting(*impl_->owner_registry, entity);
+        }
     }
     std::size_t WorldResidency::Impl::unload(ecs::Registry& registry, const std::map<std::uint32_t, bool>& wanted)
     {

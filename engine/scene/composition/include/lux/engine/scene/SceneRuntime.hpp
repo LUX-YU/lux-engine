@@ -15,6 +15,7 @@
 #include <lux/engine/world/WorldDescription.hpp>
 
 #include <functional>
+#include <lux/cxx/core/function_ref.hpp>
 #include <optional>
 #include <utility>
 
@@ -225,6 +226,12 @@ namespace lux::scene
         [[nodiscard]] SceneRuntimeResult<std::reference_wrapper<const simulation::ecs::Registry>> borrowInstance(
             SceneInstanceId
         ) const noexcept;
+        // Main-only synchronous edit. Rejects in-flight Simulation work and nested drive/structural calls.
+        // Registry references and prepared edits must not escape this callback.
+        [[nodiscard]] SceneRuntimeResult<void> editInstance(
+            SceneInstanceId,
+            cxx::function_ref<void(simulation::ecs::Registry&)> edit
+        ) noexcept;
         [[nodiscard]] SceneRuntimeResult<std::reference_wrapper<const VSimulationClock>> borrowClock(SceneInstanceId
         ) const noexcept;
         [[nodiscard]] SceneRuntimeResult<void> pauseSimulation(SceneInstanceId) noexcept;

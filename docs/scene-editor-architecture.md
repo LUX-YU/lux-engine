@@ -245,12 +245,12 @@ ProjectScenes 与 EditorContext 的冷态装配沿现有项目操作完成；文
 
 ### 5.3 统一编辑入口
 
-拟新增 `SceneEdit` 值请求描述创建/删除对象、组件增删/替换、关系修改；`SceneDocument::applyEdit()`
+`SceneEdit` 值请求描述创建/删除对象、组件增删/替换、关系修改；`SceneDocument::apply()`
 完成一次事务。Inspector、拖放和 Gizmo 使用这一入口，不各自发 Render Command。
 
 1. 捕获 `based_on` 文档 revision、稳定对象身份及草稿值。
 2. 使用现有 ComponentSchema、Decoder、引用遍历完成整次操作的身份/范围/关系校验。
-3. 在 SceneRuntime 安全点取得短期修改资格。拟扩展 `SceneRuntime::editInstance()`，沿现有 BUSY/
+3. 在 SceneRuntime 安全点取得短期修改资格。使用 `SceneRuntime::editInstance()`，沿现有 BUSY/
    借用规则同步执行，不创建长期编辑队列或与模拟并发写 Registry。
 4. 预备全部可恢复失败；提交段只采用已验证值。普通堆 OOM 仍 fatal，不假承诺跨任意回调回滚。
 5. 替换现有组件经 `replace/patch` 或已存在的 `notifyUpdated` 发出正常通知；结构观察者只记录意图。
@@ -262,6 +262,20 @@ ProjectScenes 与 EditorContext 的冷态装配沿现有项目操作完成；文
 
 撤销重做也走同一采用路径，产生新的单调 revision；保存基线不会因 Undo 数值回退而错误匹配。
 未知扩展数据保留为不透明数据，缺少引用重写能力时禁止危险的删除/Save As，而不是猜测身份。
+
+### 5.4 编辑与文件 IO 的依赖边界
+
+`editor/scene/document` 的 `lux_editor_scene_document` 提供文档、事务和打开文档集合；依赖真实
+SceneRuntime 与 WorldResidency。`lux_editor_scene` 只提供 ScenePackage 文件 IO，仍不链接
+ExecutionRuntime、Context 或 Render。纯持久化工具不因编辑器新增能力而被迫加载运行系统。
+
+组件替换由 `DecodedComponent::replaceInto()` 发出 on_update；构造、删除仍使用原有 WorldResidency
+准备/提交算法。组件成员增删在事务尾部同步驻留统计，下一次编辑不依赖下一帧才能正确检查容量。
+历史需要的分区使用已有 PartitionRetention；不再维护另一份实体表或作者数据树。
+
+`SceneRuntime::editInstance()` 拒绝重入和非结构安全点；只读借用仍允许在等待发布时查询稳定数据。
+当前 Simulation 的 execute 在返回前已等待其 TaskGraph 完成，Runtime 的驱动标记阻止执行中的借用。
+不能把“待发布”误认成“Worker 仍在写 Registry”，也不能让可写借用跳过结构安全点。
 
 ## 6 资产导入与拖放
 

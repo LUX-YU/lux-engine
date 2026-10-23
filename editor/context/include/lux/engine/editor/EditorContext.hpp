@@ -125,6 +125,8 @@ namespace lux::editor
         // Adopt a Scene built with this project's service borrows. The existing SceneRuntime owns
         // its systems; this Context owns only the retirement responsibility. No second Scene table.
         [[nodiscard]] FrameworkResult<scene::SceneInstanceId> adoptScene(scene::SceneInstanceLease&&) noexcept;
+        // Revoke this Context's adopted instance, retaining the receipt through project close.
+        [[nodiscard]] FrameworkResult<scene::InstanceRetirement> retireScene(scene::SceneInstanceId) noexcept;
         // Main-only, nonblocking: revoke Scene production first. Continue SceneRuntime driving and
         // maintenance frames, then call finishClose until providers can be destroyed.
         void close() noexcept;

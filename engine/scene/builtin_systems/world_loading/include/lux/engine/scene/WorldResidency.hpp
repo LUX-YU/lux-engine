@@ -117,6 +117,8 @@ namespace lux::scene
         void clearDirty() noexcept;
         [[nodiscard]] WorldResidencyResult<void> validateAdditional(std::size_t entities, std::size_t bytes)
             const noexcept;
+        // Structural safe point: account committed component membership before admitting another edit.
+        void synchronizeComponents(std::span<const simulation::ecs::Entity>) noexcept;
         [[nodiscard]] WorldResidencyResult<PreparedChange>
         prepareCreate(simulation::ecs::Registry&, std::span<const ObjectInput>) noexcept;
         [[nodiscard]] WorldResidencyResult<PreparedChange>

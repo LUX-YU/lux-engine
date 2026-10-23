@@ -23,7 +23,7 @@ for config in model['configurations']:
                      if any(s['path'].replace('\\', '/') == path for s in t.get('sources', []))]
         assert providers == [owner], ('error catalog provider', path, providers, owner)
     for name in ('ui', 'lux_editor_project', 'lux_editor_context', 'lux_editor_ui', 'lux_editor_app',
-                 'lux_editor_scene', 'lux_editor_file_io', 'lux_editor_scene_profiles', 'lux_editor'):
+                 'lux_editor_scene', 'lux_editor_scene_document', 'lux_editor_file_io', 'lux_editor_scene_profiles', 'lux_editor'):
         seen, pending = set(), [names[name]]
         while pending:
             key = pending.pop()
@@ -47,6 +47,9 @@ for config in model['configurations']:
             assert 'lux_editor_scene_profiles' not in closure, (name, 'product profile in framework')
         if name == 'lux_editor_scene':
             assert 'lux_editor_project' not in closure and 'lux_editor_context' not in closure
+        if name == 'lux_editor_scene_document':
+            for forbidden in ('render', 'scene_render', 'ui', 'window', 'lux_editor_scene_profiles'):
+                assert forbidden not in closure, (name, forbidden)
         if name == 'lux_editor_file_io':
             assert 'lux_editor_scene' not in closure and 'lux_editor_project' not in closure
         if name == 'lux_editor_context':

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/editor/ContextErrors.hpp>
@@ -140,6 +141,24 @@ namespace lux::editor
         scenes_.clear();
     }
 
+    FrameworkResult<scene::InstanceRetirement> EditorContext::retireScene(scene::SceneInstanceId id) noexcept
+    {
+        const auto found = std::ranges::find(scenes_, id, &scene::SceneInstanceLease::id);
+        if (found == scenes_.end())
+        {
+            const auto retired = std::ranges::find(scene_retirements_, id, &scene::InstanceRetirement::id);
+            if (retired != scene_retirements_.end())
+            {
+                return *retired;
+            }
+            return cxx::unexpected(error::Error{Errors::EditorServiceUseOutsideProjectLifetime});
+        }
+        auto receipt = found->retire();
+        scenes_.erase(found);
+        scene_retirements_.push_back(receipt);
+        return receipt;
+    }
+
     bool EditorContext::finishClose() noexcept
     {
         if (close_stage_ == ECloseStage::OPEN)
@@ -160,6 +179,7 @@ namespace lux::editor
             asset_reads_.reset();
             close_stage_ = ECloseStage::TASKS;
         }
+        // Without Scene borrows, accepted tasks already own their inputs/code independently of this Context.
         return scene_retirements_.empty() || tasks_.settled();
     }
 

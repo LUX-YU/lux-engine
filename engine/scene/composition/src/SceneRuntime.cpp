@@ -888,6 +888,8 @@ namespace lux::scene
             {
                 return rejected(ESceneRuntimeError::STOPPED, id);
             }
+            // find() excludes a live drive call. Simulation execute joins its tasks before returning;
+            // a pending publication blocks mutation, but does not prohibit reading stable author values.
             return std::cref((**record).scene->registry());
         }
 
@@ -1017,6 +1019,21 @@ namespace lux::scene
     ) const noexcept
     {
         return impl_->borrowClock(id);
+    }
+
+    SceneRuntimeResult<void> SceneRuntime::editInstance(
+        SceneInstanceId id,
+        cxx::function_ref<void(simulation::ecs::Registry&)> edit
+    ) noexcept
+    {
+        auto registry = impl_->borrowInstance(id);
+        if (!registry)
+        {
+            return cxx::unexpected(registry.error());
+        }
+        BusyScope editing(impl_->busy_);
+        edit(registry->get());
+        return {};
     }
 
     SceneRuntimeResult<void> SceneRuntime::pauseSimulation(SceneInstanceId id) noexcept

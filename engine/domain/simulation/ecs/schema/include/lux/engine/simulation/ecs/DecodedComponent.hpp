@@ -32,6 +32,10 @@ namespace lux::simulation::ecs
         // Accounts for the inline component allocation, not provider-owned dynamic storage.
         [[nodiscard]] std::size_t accountedBytes() const noexcept;
         void installInto(Registry& registry, Entity entity) &&;
+        // Replacement uses EnTT's update signal, never erase + emplace. The caller validates presence first.
+        [[nodiscard]] bool canReplace() const noexcept;
+        [[nodiscard]] const void* data() const noexcept;
+        void replaceInto(Registry& registry, Entity entity) &&;
 
         template <class Component>
             requires componentInstallHasNoBusinessFailure<Component> && std::is_move_constructible_v<Component> &&
@@ -43,9 +47,9 @@ namespace lux::simulation::ecs
                 sizeof(Component),
                 new Component(std::move(value)),
                 [](void* value) noexcept { delete static_cast<Component*>(value); },
-                [](Registry& registry, Entity entity, void* value) {
-                    registry.emplace<Component>(entity, std::move(*static_cast<Component*>(value)));
-                },
+                [](Registry& registry, Entity entity, void* value)
+                { registry.emplace<Component>(entity, std::move(*static_cast<Component*>(value))); },
+                replacement<Component>(),
                 std::move(code)
             );
         }
@@ -53,12 +57,27 @@ namespace lux::simulation::ecs
     private:
         using Destroy = void (*)(void*) noexcept;
         using Install = void (*)(Registry&, Entity, void*);
+
+        template <class Component> static constexpr Install replacement() noexcept
+        {
+            if constexpr (std::is_nothrow_move_assignable_v<Component>)
+            {
+                return +[](Registry& registry, Entity entity, void* value)
+                { registry.replace<Component>(entity, std::move(*static_cast<Component*>(value))); };
+            }
+            else
+            {
+                return nullptr;
+            }
+        }
+
         DecodedComponent(
             lux::cxx::TypeToken type,
             std::size_t bytes,
             void* value,
             Destroy destroy,
             Install install,
+            Install replace,
             std::shared_ptr<const void> code
         ) noexcept;
         void reset() noexcept;
@@ -68,6 +87,7 @@ namespace lux::simulation::ecs
         void* value_;
         Destroy destroy_;
         Install install_;
+        Install replace_;
         std::shared_ptr<const void> code_;
     };
 } // namespace lux::simulation::ecs

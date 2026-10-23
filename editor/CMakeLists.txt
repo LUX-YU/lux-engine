@@ -197,7 +197,7 @@ component_add_transitive_commands(
 
 lux_classify_target(TARGET lux_editor_app LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
-# Generic persistence is independent of the concrete 3D authoring profile and Project IO.
+# Pure package IO remains usable without an execution context or a live document.
 add_component(
     COMPONENT_NAME lux_editor_scene
     NAMESPACE lux::engine::editor
@@ -220,6 +220,46 @@ component_add_transitive_commands(
 )
 
 lux_classify_target(TARGET lux_editor_scene LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+
+add_component(
+    COMPONENT_NAME lux_editor_scene_document
+    NAMESPACE lux::engine::editor
+    STATIC
+    SOURCE_FILES
+        scene/document/src/SceneDocument.cpp
+        scene/document/src/SceneEditing.cpp
+        scene/document/src/ProjectScenes.cpp
+)
+
+component_include_directories(
+    lux_editor_scene_document
+    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/scene/document/include
+    INSTALL_TIME include
+)
+
+target_include_directories(lux_editor_scene_document PRIVATE scene/document/pinclude)
+
+component_add_internal_dependencies(lux_editor_scene_document lux_editor_context)
+
+target_link_libraries(lux_editor_scene_document
+    PUBLIC
+        lux::engine::scene::scene_asset
+        lux::engine::scene::scene_composition
+        lux::engine::scene::scene_world_loading
+        lux::engine::simulation::ecs::hierarchy
+        lux::engine::core::object
+)
+
+component_add_transitive_commands(
+    lux_editor_scene_document
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
+    "find_package(lux-engine-scene-world-loading REQUIRED COMPONENTS scene_world_loading)"
+    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS hierarchy)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS object)"
+    "find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)"
+)
+
+lux_classify_target(TARGET lux_editor_scene_document LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
 # Concrete authoring preset; the host/context and generic scene provider do not reference it.
 add_component(
@@ -280,6 +320,7 @@ lux_engine_install_components(
     COMPONENTS
         lux_editor_file_io
         lux_editor_scene
+        lux_editor_scene_document
         lux_editor_project
         lux_editor_context
         lux_editor_ui
@@ -315,6 +356,21 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     lux_editor_test_options(editor_project_ui_mount_test)
 
     add_test(NAME framework.project_ui_mount COMMAND editor_project_ui_mount_test)
+
+    add_executable(editor_scene_document_test tests/scene_document.cpp)
+
+    target_link_libraries(editor_scene_document_test PRIVATE
+        lux_editor_scene_document
+        lux_editor_context
+        lux::engine::project::project_plugins
+        lux::engine::simulation::ecs::transform
+    )
+
+    target_include_directories(editor_scene_document_test PRIVATE context/sinclude)
+
+    lux_editor_test_options(editor_scene_document_test)
+
+    add_test(NAME framework.scene_document COMMAND editor_scene_document_test)
 
     add_executable(editor_scene_profiles_test tests/scene_profiles.cpp)
 

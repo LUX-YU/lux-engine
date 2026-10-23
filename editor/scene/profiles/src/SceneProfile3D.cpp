@@ -153,8 +153,9 @@ namespace lux::editor
             {
                 return cxx::unexpected(std::move(result.error()));
             }
-            if (auto result = addSystem<
-                    void>(builder, info.registrations, scene::RenderSystem::Description, {3}, "render", nullptr);
+            const scene::RenderSystemConfiguration rendering;
+            if (auto result =
+                    addSystem(builder, info.registrations, scene::RenderSystem::Description, {3}, "render", &rendering);
                 !result)
             {
                 return cxx::unexpected(std::move(result.error()));

@@ -49,7 +49,7 @@ namespace lux::scene
         MULTIPLE_PRIMARY_CAMERAS
     };
 
-    // Right-handed camera: local -Z is forward, +Y is up. Vulkan depth is
+    // Right-handed camera: local -Z is forward, +Y is up. Projection depth is
     // [0, 1], and NDC Y follows image coordinates (top to bottom).
     [[nodiscard]] lux::cxx::expected<Eigen::Matrix4d, ECameraError> cameraProjection(
         const Camera& camera,

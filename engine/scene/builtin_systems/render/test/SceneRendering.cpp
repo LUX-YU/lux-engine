@@ -3,10 +3,11 @@
 #include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/material/Compiler.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
+#include <lux/engine/render/features/RasterMeshParameters.hpp>
+#include <lux/engine/render/storage/RasterMeshInstances.hpp>
 #include <lux/engine/rendering/RenderAssets.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
-#include <lux/engine/render/storage/RasterMeshInstances.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 #include <lux/engine/scene/Camera.hpp>
@@ -211,8 +212,10 @@ int main()
     ));
 
     scene::SceneRenderInputs inputs;
-    inputs.description = {64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1};
-    inputs.target = call<CreateTarget>(*rendering, {inputs.description}).target;
+    scene::SceneViewRequest view_request;
+    view_request.description = {64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1};
+    view_request.target = call<CreateTarget>(*rendering, {view_request.description}).target;
+    const auto first_view = inputs.addView(view_request);
     scene::RenderSystemDependencies dependencies{rendering->mainClient(), execution, *assets, inputs};
     simulation::ecs::Registry registry;
     const auto camera = registry.create();
@@ -226,15 +229,38 @@ int main()
         registry.emplace<simulation::ecs::Mesh3D>(entity, rdesc::MeshVisualDescription{mesh_id, material_id});
         registry.emplace<simulation::ecs::WorldTransform3D>(entity, Eigen::Affine3d::Identity());
     }
-    registry.emplace<simulation::ecs::Light3D>(light);
+    rdesc::LightDescription sunlight;
+    sunlight.type = rdesc::ELightType::DIRECTIONAL;
+    sunlight.cast_shadow = true;
+    sunlight.cascade_count = 2;
+    sunlight.cascade_splits = {.25F, 1.F};
+    registry.emplace<simulation::ecs::Light3D>(light, sunlight);
     registry.emplace<simulation::ecs::WorldTransform3D>(light, camera_transform);
-    auto scene = std::make_unique<scene::RenderSystem>(registry, dependencies);
+    scene::RenderSystemConfiguration scene_configuration;
+    scene_configuration.shadow_resolution = 64;
+    scene_configuration.shadow_distance = 20;
+    auto codec = scene::renderConfigurationCodec();
+    std::vector<std::byte> encoded_configuration;
+    CHECK(codec.encode(&scene_configuration, encoded_configuration));
+    scene::RenderSystemConfiguration decoded_configuration;
+    CHECK(codec.decode(encoded_configuration, &decoded_configuration));
+    CHECK(decoded_configuration.shadow_resolution == 64 && scene::validRenderConfiguration(decoded_configuration));
+    auto scene = std::make_unique<scene::RenderSystem>(registry, dependencies, scene_configuration);
+    std::vector<std::pair<AttachmentId, MeshViewParameters>> published_views;
     std::uint64_t completed_frames = 0;
     std::stop_source scene_stop;
     bool scene_retired = false;
     bool compilation_held = false, projected_during_compile = false;
     const auto transform_command_id =
         std::ranges::find(catalog.commands, UpdateTransforms::name, &CommandInfo::name)->id;
+    const auto inputs_command_id =
+        std::ranges::find(catalog.commands, UpdateAttachmentInputs::name, &CommandInfo::name)->id;
+    const auto published = [&](AttachmentId attachment) -> const MeshViewParameters*
+    {
+        auto found =
+            std::ranges::find(published_views, attachment, &std::pair<AttachmentId, MeshViewParameters>::first);
+        return found == published_views.end() ? nullptr : &found->second;
+    };
     const auto drive = [&](bool draw) noexcept
     {
         rendering->consumeResponses();
@@ -265,6 +291,30 @@ int main()
             CHECK(scene->maintain(context));
             CHECK(scene->prepareInputs(context));
             CHECK(scene->publish(context));
+            for (const auto& command : frame.commands)
+            {
+                if (command.command != inputs_command_id)
+                {
+                    continue;
+                }
+                const auto& input = command.request.get<AttachmentInputs>();
+                CHECK(input.parameters.size() >= sizeof(MeshViewParameters));
+                MeshViewParameters value;
+                std::memcpy(&value, input.parameters.data(), sizeof(value));
+                auto found = std::ranges::find(
+                    published_views,
+                    input.attachment,
+                    &std::pair<AttachmentId, MeshViewParameters>::first
+                );
+                if (found == published_views.end())
+                {
+                    published_views.push_back({input.attachment, value});
+                }
+                else
+                {
+                    found->second = value;
+                }
+            }
             if (compilation_held)
             {
                 projected_during_compile |= std::ranges::any_of(
@@ -306,11 +356,65 @@ int main()
             }
         ));
     };
-    while (scene->attachment().isNull() || completed_frames < 12)
+    while (scene->attachment(first_view).isNull() || !published(scene->attachment(first_view)) || completed_frames < 12)
     {
         CHECK(std::chrono::steady_clock::now() < deadline);
         drive(true);
     }
+    const auto* initial_parameters = published(scene->attachment(first_view));
+    CHECK(initial_parameters != nullptr);
+    CHECK(std::abs(initial_parameters->view[14] + 3.F) < .0001F);
+    const auto first_matrix = initial_parameters->view;
+    registry.patch<simulation::ecs::WorldTransform3D>(
+        camera,
+        [](auto& pose) noexcept { pose.value.translation().x() = 1; }
+    );
+    while (published(scene->attachment(first_view))->view == first_matrix)
+    {
+        drive(true);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    CHECK(std::abs(published(scene->attachment(first_view))->view[12] + 1.F) < .0001F);
+    // An Editor observation works without a primary ECS Camera and uses its own aspect ratio.
+    scene::SceneCameraInput free_camera;
+    free_camera.transform = camera_transform;
+    scene::SceneViewRequest editor_view = view_request;
+    editor_view.camera = free_camera;
+    editor_view.description.width = 128;
+    editor_view.target = call<CreateTarget>(*rendering, {editor_view.description}).target;
+    const auto second_view = inputs.addView(editor_view);
+    while (scene->attachment(second_view).isNull() || !published(scene->attachment(second_view)))
+    {
+        drive(true);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    CHECK(
+        std::abs(
+            published(scene->attachment(first_view))->projection[0] /
+                published(scene->attachment(second_view))->projection[0] -
+            2.F
+        ) < .0001F
+    );
+    CHECK(std::abs(published(scene->attachment(second_view))->view[12]) < .0001F);
+    const auto first_attachment = scene->attachment(first_view);
+    const auto second_attachment = scene->attachment(second_view);
+    registry.patch<scene::Camera>(camera, [](auto& value) noexcept { value.primary = false; });
+    while (!scene->attachment(first_view).isNull())
+    {
+        drive(true);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    CHECK(scene->viewError(first_view).type != 0);
+    CHECK(scene->attachment(second_view) == second_attachment);
+    view_request.camera = scene::SceneEntityCamera{camera};
+    CHECK(inputs.updateView(first_view, view_request));
+    while (scene->attachment(first_view).isNull() || !published(scene->attachment(first_view)))
+    {
+        drive(true);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    CHECK(scene->attachment(first_view) != first_attachment);
+    CHECK(scene->viewError(first_view).type == 0);
     const auto submission_start = rendering->stats().submissions;
     for (unsigned frame = 0; frame < 12; ++frame)
     {
@@ -329,7 +433,7 @@ int main()
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
-    const auto previous_target = inputs.target;
+    const auto previous_target = view_request.target;
     std::latch cpu_entered{2};
     std::counting_semaphore<2> release_cpu{0};
     for (unsigned i = 0; i < 2; ++i)
@@ -346,9 +450,9 @@ int main()
     }
     cpu_entered.wait();
     compilation_held = true;
-    const auto previous_attachment = scene->attachment();
-    inputs.target = call<CreateTarget>(*rendering, {inputs.description}).target;
-    ++inputs.revision;
+    const auto previous_attachment = scene->attachment(first_view);
+    view_request.target = call<CreateTarget>(*rendering, {view_request.description}).target;
+    CHECK(inputs.updateView(first_view, view_request));
     while (!projected_during_compile)
     {
         CHECK(std::chrono::steady_clock::now() < deadline);
@@ -361,7 +465,7 @@ int main()
     CHECK(projected_during_compile);
     compilation_held = false;
     release_cpu.release(2);
-    while (scene->attachment() == previous_attachment)
+    while (scene->attachment(first_view) == previous_attachment)
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
@@ -398,6 +502,32 @@ int main()
         drive(true);
     }
     CHECK(rendering->stats().compiled_graphs == compiled_before_removal);
+    CHECK(inputs.removeView(second_view));
+    while (!scene->viewRetired(second_view))
+    {
+        drive(true);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    bool second_target_released = false;
+    auto second_removal = take(execution.submit(
+        {},
+        [&](execution::TaskReporter) noexcept
+        {
+            return stdexec::then(
+                rendering->mainClient().request(remove_target, editor_view.target),
+                [&](AckResponse response) noexcept
+                {
+                    CHECK(response.error.type == 0);
+                    second_target_released = true;
+                }
+            );
+        }
+    ));
+    while (!second_target_released)
+    {
+        drive(false);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
     project_tasks.requestStop(); // Scene cleanup no longer depends on fresh monitored-task admission.
     scene_stop.request_stop();
     while (!scene_retired)

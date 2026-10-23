@@ -74,7 +74,7 @@ Editor 类型。无须新增 CompatibilityManager、SceneManager、TaskManager �
 
 自由相机使用相同投影/姿态数据合同，通过 `SceneViewRequest` 的明确值来源提交；它不必成为作者
 ECS 中的假实体。Scene Camera 来源使用实体身份，Editor Camera 来源使用视口实际拥有的参数值。
-拟使用 `VSceneCameraSource` 区分这两种真实来源，不增加第二套相机服务。相机与矩阵解释只在
+使用 `VSceneCameraSource` 区分这两种真实来源，不增加第二套相机服务。相机与矩阵解释只在
 Engine 渲染投影中完成，Render 仍只接收普通参数。
 
 自由相机不写入场景文件，不改变游戏主相机；“从当前视口创建 Camera”是显式编辑事务。
@@ -95,6 +95,22 @@ Target Resize 在现有 Owner 安全点准备并采用完整候选：更新实�
 删除 Target。旧帧物理引用仍由真实 FIF、Queue 前沿和唯一 `DeviceSession::cleanup_scope_` 保护。
 Pane 从 Root 移除不允许提前销毁尚被清理过程借用的状态。项目持有的 SceneDocument 在清偿期间
 保有必要的关闭记录；这不是新的 GPU 清理 Scope。
+
+### 2.4 观察输入 API
+
+`SceneRenderInputs::addView/updateView/removeView` 在 Main 修改观察意图，`SceneViewId` 只属于该集合。
+`RenderSystem::attachment(id)` 返回实际已采用的 Attachment；`viewError(id)` 报告该观察的错误。
+移除请求后，调用者等 `viewRetired(id)` 再释放 Target。观察集合的借用不得跨修改或异步挂起。
+
+`PrimarySceneCamera` 选择唯一 primary；`SceneEntityCamera` 选择具体 ECS 身份；`SceneCameraInput`
+携带视口自己的相机值。多观察共享 Scene 资源，但不共享输出和相机参数。
+参数发布比较实际数组字段，不比较 C++ padding。Target/extent 或阴影投影结构变化走冷态候选；
+普通姿态、viewport 和曝光更新只发布参数。编译返回时重新核对观察身份和输入修订。
+
+内置配方为 `lux.scene.deferred` 与 `lux.scene.clustered`，版本 1。阴影采用统一数组分辨率，
+由 Scene 的 `shadow_resolution` 指定；Light 的 `cast_shadow`、级联划分和偏移参与实际投影。
+当前配方不实现每灯混合分辨率，不把 Light 的旧 `shadow_map_size` 当成已生效。
+阴影可见性读取 ShadowMapFeature 的 views 端口，主视图可见性读取观察参数；二者不是同一种输入。
 
 ## 3 不反向依赖的兼容约束
 
@@ -121,8 +137,8 @@ System 的 READ/WRITE 访问声明用于竞争分析；可选组件查询也会�
 
 ### 3.3 推荐的最小声明扩展
 
-保留现有 `SystemTypeDescription` 的身份、版本、配置和 multiplicity。新增两组只读数据声明：
-`data_inputs` 与 `data_outputs`，元素为拟新增的中立值 `SystemDataContract`：
+保留现有 `SystemTypeDescription` 的身份、版本、配置和 multiplicity。提供两组只读数据声明：
+`data_inputs` 与 `data_outputs`，元素为中立值 `SystemDataContract`：
 
 - 稳定语义名称和显式合同版本；持久数据不保存 C++ 函数地址或 `TypeToken`。
 - 区分 `SCHEMA` 与 `PREPARED_DATA` 两种实际语义，不引入任意条件表达式语言。
@@ -136,7 +152,7 @@ System 的 READ/WRITE 访问声明用于竞争分析；可选组件查询也会�
 ECS 组件或 Editor。具体 schema 身份到中立声明的投影由现有 schema/插件生成器完成。
 拥有声明的组件和算法域定义版本，不能由 Editor 随意编造一个同名 capability 使检查通过。
 
-`SceneCompatibility.hpp/.cpp` 拟作为 `engine/scene/composition` 的纯解析算法，复用已选系统表、
+`SceneCompatibility.hpp/.cpp` 作为 `engine/scene/composition` 的纯解析算法，复用已选系统表、
 ComponentSchemaSet、阶段与依赖图；没有长期实例、线程、注册目录或运行期轮询。
 输出是一次构建所需的已解析顺序和结构化诊断。随后沿现有 Installer 构造对象，不在每帧重新解析。
 
@@ -187,8 +203,7 @@ Engine 同一解析算法做权威检查。不能让 UI 与运行时各维护一
 保留为预设生成函数，移除其“只能 single World、固定空 Simulation、固定三个 SceneSystem”的限制。
 新增 2D/headless 预设前，必须有对应真实消费者；无 Sprite/Tile 等渲染实现时不展示可用的完整 2D 渲染。
 
-拟新增 `RenderSystemConfiguration` 与 `SceneRenderRecipe` 值合同：保存支持的配方语义身份、版本、
-配置和必需输入，不保存运行期 FeatureId。Engine 渲染装配通过当前 Render 目录解析 FeatureId，
+`RenderSystemConfiguration` 保存配方语义身份、版本与实际参数，不另建同义的 Recipe Owner，也不保存运行期 FeatureId。Engine 渲染装配通过当前 Render 目录解析 FeatureId，
 沿现有 Feature 端口生成 Effect。内置延迟配方接入现有 GBuffer、主视图剔除、光照、阴影、Clustered
 和 Tonemap；这些 Feature 继续独立，不互相调用。
 

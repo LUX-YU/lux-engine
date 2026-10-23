@@ -17,9 +17,11 @@
 
 using namespace lux;
 using namespace lux::editor;
+
 namespace
 {
     uuids::uuid_name_generator identity{*uuids::uuid::from_string("55677517-5438-46d1-967e-2977ad66961b")};
+
     SceneCreateResult create2D(const SceneCreateInfo& info) noexcept
     {
         return scene::createScenePackage(
@@ -63,10 +65,13 @@ namespace
         assert(world_config.bootstrap.size() == 1 && world_config.bootstrap[0].value == 0);
         const auto render = description.findSystem("render");
         assert(render && render.type().name == scene::RenderSystem::Description.canonical_name);
-        assert(render.configurationSchemaName().empty() && render.configurationPayload().empty());
-
+        assert(render.configurationSchemaName() == scene::RenderSystem::Description.configuration_schema_name);
+        scene::RenderSystemConfiguration render_config;
+        assert(scene::renderConfigurationCodec().decode(render.configurationPayload(), &render_config));
+        assert(scene::validRenderConfiguration(render_config) && render_config.recipe == "lux.scene.clustered");
     }
 } // namespace
+
 int main(int argc, char** argv)
 {
     assert(argc == 4);
@@ -143,9 +148,10 @@ int main(int argc, char** argv)
     auto rejected = three.create({scene_id, "3D", missing, {}});
     assert(!rejected && rejected.error().stage == "3d profile schema");
     auto incomplete = registrations;
-    std::erase_if(incomplete.scene_systems, [](const auto& entry) {
-        return entry.type.name == scene::RenderSystem::Description.canonical_name;
-    });
+    std::erase_if(
+        incomplete.scene_systems,
+        [](const auto& entry) { return entry.type.name == scene::RenderSystem::Description.canonical_name; }
+    );
     rejected = three.create({scene_id, "3D", incomplete, {}});
     assert(!rejected && rejected.error().stage == "3d profile system");
     incomplete = registrations;

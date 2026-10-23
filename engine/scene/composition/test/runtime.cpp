@@ -1,5 +1,5 @@
-#include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
@@ -215,6 +215,10 @@ int main()
     registry->get().emplace<ecs::Transform3D>(parent).translation.x() = 10;
     registry->get().emplace<ecs::Transform3D>(child).translation.x() = 2;
     registry->get().emplace<ecs::Parent>(child, parent);
+    const auto second_before_maintenance = time(**runtime, second->id()).step_index;
+    assert((*runtime)->driveFrame(ESceneDriveMode::MAINTENANCE));
+    assert(time(**runtime, second->id()).step_index == second_before_maintenance);
+    assert((*runtime)->borrowInstance(second->id())->get().ctx().get<State>().maintained != 0);
     auto tick = (*runtime)->driveFrame();
     assert(tick && tick->empty() && time(**runtime, first->id()).step_index == 0);
     assert(time(**runtime, second->id()).step_index == 1);
@@ -349,7 +353,6 @@ int main()
         }
         assert(execution->taskInfos().empty());
     }
-
 
     auto callback_owned = builder.build();
     assert(callback_owned);

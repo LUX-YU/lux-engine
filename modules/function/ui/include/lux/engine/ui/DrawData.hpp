@@ -41,6 +41,7 @@ namespace lux::ui
         DrawData& operator=(const DrawData&) = delete;
 
         [[nodiscard]] bool valid() const noexcept;
+        // On-demand unique-token inspection; rendering consumes data().commands directly. May allocate on first query.
         [[nodiscard]] std::span<const rdesc::UiImageToken> textures() const noexcept;
         [[nodiscard]] const rdesc::UiDrawData& data() const noexcept;
 

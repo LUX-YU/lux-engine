@@ -41,7 +41,7 @@ namespace lux::editor
         {
         }
 
-        RenderResult<void> launch(Transaction work) noexcept
+        RenderResult<void> startTransaction(Transaction work) noexcept
         {
             transaction_pending = true;
             const bool cleanup = closing;
@@ -197,30 +197,40 @@ namespace lux::editor
             {
                 co_return cxx::unexpected(compiled.error);
             }
+            effect_to_release = compiled.effect;
             binding.effect = compiled.effect;
             binding.replaces = attachment;
             const auto attached = co_await request<Attach>(client, std::move(binding));
             if (attached.error.type != 0)
             {
-                static_cast<void>(co_await request<RemoveEffect>(client, {compiled.effect}));
+                const auto removed = co_await request<RemoveEffect>(client, {effect_to_release});
+                if (removed.error.type == 0)
+                {
+                    effect_to_release = {};
+                }
+                else
+                {
+                    reportRenderFailure(removed.error, "Discard UI Effect");
+                }
                 co_return cxx::unexpected(attached.error);
             }
             if (attached.draw_lists.size() != 1)
             {
                 std::terminate(); // Built-in UiRasterFeature has exactly one list.
             }
-            const auto previous = std::exchange(effect, compiled.effect);
+            std::swap(effect, effect_to_release);
             attachment = attached.attachment;
             draw_pass = attached.draw_lists[0].second;
             image_selections = std::move(selections);
             applied_image_revision = revision;
-            if (!previous.isNull())
+            if (!effect_to_release.isNull())
             {
-                const auto removed = co_await request<RemoveEffect>(client, {previous});
+                const auto removed = co_await request<RemoveEffect>(client, {effect_to_release});
                 if (removed.error.type != 0)
                 {
                     co_return cxx::unexpected(removed.error);
                 }
+                effect_to_release = {};
             }
             co_return RenderResult<void>{};
         }
@@ -279,14 +289,18 @@ namespace lux::editor
                 view = {};
                 attachment = {};
             }
-            if (!effect.isNull())
+            for (auto* handle : {&effect_to_release, &effect})
             {
-                const auto result = co_await request<RemoveEffect>(client, {effect});
+                if (handle->isNull())
+                {
+                    continue;
+                }
+                const auto result = co_await request<RemoveEffect>(client, {*handle});
                 if (result.error.type != 0)
                 {
                     co_return cxx::unexpected(result.error);
                 }
-                effect = {};
+                *handle = {};
             }
             if (!target.isNull())
             {
@@ -316,7 +330,7 @@ namespace lux::editor
         SceneId scene;
         ViewId view;
         TargetId target;
-        EffectId effect;
+        EffectId effect, effect_to_release;
         AttachmentId attachment;
         GraphPassId draw_pass;
         TextureId font;
@@ -348,7 +362,7 @@ namespace lux::editor
             return cxx::unexpected(command.error());
         }
         impl->update_draws = *command;
-        if (auto started = impl->launch(impl->initialize(std::move(atlas))); !started)
+        if (auto started = impl->startTransaction(impl->initialize(std::move(atlas))); !started)
         {
             return cxx::unexpected(started.error());
         }
@@ -358,7 +372,7 @@ namespace lux::editor
     EditorUiScene::~EditorUiScene() noexcept
     {
         if (impl_->transaction_pending || !impl_->scene.isNull() || !impl_->effect.isNull() ||
-            !impl_->target.isNull() || !impl_->font.isNull())
+            !impl_->effect_to_release.isNull() || !impl_->target.isNull() || !impl_->font.isNull())
         {
             std::terminate();
         }
@@ -414,9 +428,10 @@ namespace lux::editor
             {
                 return cxx::unexpected(state.failure);
             }
-            if (!state.scene.isNull() || !state.target.isNull() || !state.effect.isNull() || !state.font.isNull())
+            if (!state.scene.isNull() || !state.target.isNull() || !state.effect.isNull() ||
+                !state.effect_to_release.isNull() || !state.font.isNull())
             {
-                return state.launch(state.close());
+                return state.startTransaction(state.close());
             }
             return {};
         }
@@ -431,7 +446,7 @@ namespace lux::editor
         const bool resize = state.desired_active && (state.target.isNull() || state.resize_required ||
                                                      state.description != state.desired_description);
         const bool changed = resize || state.desired_active != state.applied_active || !imagesApplied();
-        return changed ? state.launch(state.reconfigure()) : FrameworkResult<void>{};
+        return changed ? state.startTransaction(state.reconfigure()) : FrameworkResult<void>{};
     }
 
     FrameworkResult<bool> EditorUiScene::outputReady() const noexcept
@@ -482,6 +497,6 @@ namespace lux::editor
     {
         const auto& state = *impl_;
         return state.closing && !state.transaction_pending && state.scene.isNull() && state.target.isNull() &&
-               state.effect.isNull() && state.font.isNull();
+               state.effect.isNull() && state.effect_to_release.isNull() && state.font.isNull();
     }
 } // namespace lux::editor

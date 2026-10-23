@@ -252,9 +252,9 @@ namespace lux::scene
                 SteadyClock::time_point deadline
             ) noexcept
                 : deadline(deadline), operation(stdexec::connect(
-                      execution.timer().after(deadline - SteadyClock::now()),
-                      TimerReceiver{stop.get_token(), std::move(wake), &completed, &error}
-                  ))
+                                          execution.timer().after(deadline - SteadyClock::now()),
+                                          TimerReceiver{stop.get_token(), std::move(wake), &completed, &error}
+                                      ))
             {
             }
 
@@ -696,23 +696,8 @@ namespace lux::scene
             }
         }
 
-        [[nodiscard]] DriveResult driveFrame() noexcept
+        void advanceSimulations(SteadyClock::time_point now) noexcept
         {
-            const auto allowed = access();
-            if (!allowed)
-            {
-                return lux::cxx::unexpected(allowed.error());
-            }
-            BusyScope ticking(busy_);
-            const auto now = SteadyClock::now();
-            failures_.clear();
-            failure_code_owners_.clear();
-            beginRetirements();
-            for (auto& record : active_records_)
-            {
-                static_cast<void>(record->driver.maintain(*record->scene));
-            }
-            maintainRetired();
             for (auto& record : active_records_)
             {
                 auto* step = record->pendingStep();
@@ -757,6 +742,13 @@ namespace lux::scene
                     record->clock
                 );
             }
+        }
+
+        std::optional<SteadyClock::time_point> publishActiveScenes(
+            SteadyClock::time_point now,
+            ESceneDriveMode mode
+        ) noexcept
+        {
             std::optional<SteadyClock::time_point> deadline;
             for (auto& record : active_records_)
             {
@@ -797,9 +789,9 @@ namespace lux::scene
                 {
                     failures_.push_back({record->scene->id(), *record->clock_error});
                 }
-                const bool may_tick = !record->lifetime->requested.load(std::memory_order_acquire) &&
-                                      (record->enabled || record->pendingStep()) && !record->clock_error &&
-                                      record->scene->canTick();
+                const bool may_tick =
+                    mode == ESceneDriveMode::ADVANCE && !record->lifetime->requested.load(std::memory_order_acquire) &&
+                    (record->enabled || record->pendingStep()) && !record->clock_error && record->scene->canTick();
                 if (may_tick)
                 {
                     const auto next =
@@ -810,6 +802,11 @@ namespace lux::scene
                     }
                 }
             }
+            return deadline;
+        }
+
+        void publishRetiredScenes() noexcept
+        {
             // Retiring systems still receive their original completion/publish
             // stages, but no clock, simulation tick or ordinary ID lookup.
             SceneDriver retirement_driver(executor_);
@@ -826,6 +823,31 @@ namespace lux::scene
                     failures_.push_back({record.scene->id(), *record.clock_error});
                 }
             }
+        }
+
+        [[nodiscard]] DriveResult driveFrame(ESceneDriveMode mode) noexcept
+        {
+            const auto allowed = access();
+            if (!allowed)
+            {
+                return lux::cxx::unexpected(allowed.error());
+            }
+            BusyScope ticking(busy_);
+            const auto now = SteadyClock::now();
+            failures_.clear();
+            failure_code_owners_.clear();
+            beginRetirements();
+            for (auto& record : active_records_)
+            {
+                static_cast<void>(record->driver.maintain(*record->scene));
+            }
+            maintainRetired();
+            if (mode == ESceneDriveMode::ADVANCE)
+            {
+                advanceSimulations(now);
+            }
+            const auto deadline = publishActiveScenes(now, mode);
+            publishRetiredScenes();
             collectRetired();
             const auto armed = armTimer(deadline);
             if (!armed)
@@ -1060,8 +1082,8 @@ namespace lux::scene
         return impl_->active_records_.size();
     }
 
-    SceneRuntime::DriveResult SceneRuntime::driveFrame() noexcept
+    SceneRuntime::DriveResult SceneRuntime::driveFrame(ESceneDriveMode mode) noexcept
     {
-        return impl_->driveFrame();
+        return impl_->driveFrame(mode);
     }
 } // namespace lux::scene

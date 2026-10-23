@@ -1907,7 +1907,12 @@ namespace lux::render::detail
             if (binding.image != output.image)
             {
                 binding.image = output.image;
-                frame.imported_revision = nextImportedRevision();
+                // A presentation image has one writer and cannot be sampled by another instance.
+                // Rotation changes this binding and its barriers, not the cross-instance dependency graph.
+                if (output_.description.kind != ETargetKind::SURFACE)
+                {
+                    frame.imported_revision = nextImportedRevision();
+                }
                 if (!binding.dirty)
                 {
                     binding.dirty = true;

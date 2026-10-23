@@ -5,6 +5,7 @@
  */
 
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/core/execution/ExecutionConfig.hpp>
 #include <lux/engine/core/execution/visibility.h>
 
 #include <stdexec/execution.hpp>
@@ -28,11 +29,6 @@ namespace lux::execution
         ALLOCATION_FAILURE,
         WORKER_CREATION_FAILURE,
         BACKEND_FAILURE
-    };
-
-    struct TimerQueueConfig final
-    {
-        std::size_t capacity{};
     };
 
     namespace detail
@@ -65,7 +61,7 @@ namespace lux::execution
 
         LUX_CORE_EXECUTION_PUBLIC void cancelTimer(TimerState* state, TimerRequest& request) noexcept;
         void stopTimerState(const std::shared_ptr<TimerState>& state) noexcept;
-    }
+    } // namespace detail
 
     class TimerSender final
     {
@@ -91,7 +87,9 @@ namespace lux::execution
                     operation->cancel_requested.store(true, std::memory_order_release);
                     auto* state = operation->state_.load(std::memory_order_acquire);
                     if (state != nullptr)
+                    {
                         detail::cancelTimer(state, static_cast<detail::TimerRequest&>(*operation));
+                    }
                 }
             };
 
@@ -135,11 +133,17 @@ namespace lux::execution
                 const auto now = detail::TimerRequest::Clock::now();
                 const auto maximum_delay = detail::TimerRequest::Clock::time_point::max() - now;
                 if (this->delay <= detail::TimerRequest::Clock::duration::zero())
+                {
                     this->deadline = now;
+                }
                 else if (this->delay >= maximum_delay)
+                {
                     this->deadline = detail::TimerRequest::Clock::time_point::max();
+                }
                 else
+                {
                     this->deadline = now + this->delay;
+                }
 
                 const auto submitted = detail::submitTimer(state, static_cast<detail::TimerRequest&>(*this));
                 if (!submitted)
@@ -164,9 +168,13 @@ namespace lux::execution
                 self.stop_callback_.reset();
                 self.state_.store(nullptr, std::memory_order_release);
                 if (stopped)
+                {
                     stdexec::set_stopped(std::move(self.receiver_));
+                }
                 else
+                {
                     stdexec::set_value(std::move(self.receiver_));
+                }
             }
 
             std::weak_ptr<detail::TimerState> state_weak_;
@@ -190,7 +198,8 @@ namespace lux::execution
 
         TimerSender(std::weak_ptr<detail::TimerState> state, std::chrono::steady_clock::duration delay) noexcept
             : state_(std::move(state)), delay_(delay)
-        {}
+        {
+        }
 
         std::weak_ptr<detail::TimerState> state_;
         std::chrono::steady_clock::duration delay_{};
@@ -247,4 +256,4 @@ namespace lux::execution
 
         std::shared_ptr<detail::TimerState> state_;
     };
-}
+} // namespace lux::execution

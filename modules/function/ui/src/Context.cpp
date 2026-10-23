@@ -212,16 +212,19 @@ namespace lux::ui::detail
                     return lux::cxx::unexpected(valid.error());
                 }
             }
+
             // The partial owner releases a newly-created context on every business
             // failure, before restoring the caller's still-live context.
             struct Restore final
             {
                 ImGuiContext* previous{ImGui::GetCurrentContext()};
+
                 ~Restore()
                 {
                     ImGui::SetCurrentContext(previous);
                 }
             } restore;
+
             auto data = std::unique_ptr<Context>(new Context());
             data->theme_ = config.theme;
             data->scale_ = config.scale;
@@ -311,6 +314,7 @@ namespace lux::ui::detail
             return result;
         }
     }
+
     lux::cxx::expected<void, EInputError> Context::feedInput(const VInputEvent& event, std::uint64_t sequence) noexcept
     {
         detail::ContextActivation context{native_};
@@ -542,7 +546,6 @@ namespace lux::ui::detail
                 statistics.draw_commands += list->CmdBuffer.Size;
             }
         }
-        statistics.textures = output.textures().size();
         return {};
     }
 

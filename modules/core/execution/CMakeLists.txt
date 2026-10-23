@@ -67,7 +67,7 @@ lux_engine_install_components(
 
 if(BUILD_TESTING)
     foreach(header
-        CompletionWork ExecutionError ExecutionRuntime PortSender RunLoop
+        CompletionWork ExecutionConfig ExecutionError ExecutionRuntime PortSender RunLoop
         Scheduler Task TaskInfo TaskScope Timer
     )
         file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${header}.cpp" CONTENT

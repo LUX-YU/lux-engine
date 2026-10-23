@@ -16,6 +16,7 @@ namespace lux::ui
         std::vector<rdesc::UiImageToken> textures;
         std::pmr::memory_resource* frame_memory = nullptr;
         bool valid = false;
+        bool textures_ready = false;
 
         template <class T> std::span<T> allocate(std::vector<T>& reusable, std::size_t count) noexcept
         {
@@ -54,7 +55,26 @@ namespace lux::ui
 
     std::span<const rdesc::UiImageToken> DrawData::textures() const noexcept
     {
-        return impl_ ? std::span<const rdesc::UiImageToken>{impl_->textures} : std::span<const rdesc::UiImageToken>{};
+        if (!impl_)
+        {
+            return {};
+        }
+        if (!impl_->textures_ready)
+        {
+            auto& textures = impl_->textures;
+            textures.clear();
+            for (const auto& command : impl_->data.commands)
+            {
+                if (command.image.value != 0)
+                {
+                    textures.push_back(command.image);
+                }
+            }
+            std::ranges::sort(textures);
+            textures.erase(std::unique(textures.begin(), textures.end()), textures.end());
+            impl_->textures_ready = true;
+        }
+        return impl_->textures;
     }
 
     const rdesc::UiDrawData& DrawData::data() const noexcept
@@ -93,8 +113,7 @@ namespace lux::ui
         auto indices =
             output.allocate(output.indices, static_cast<std::size_t>(input->TotalIdxCount) * sizeof(ImDrawIdx));
         auto commands = output.allocate(output.commands, command_count);
-        output.textures.clear();
-        output.textures.reserve(command_count);
+        output.textures_ready = false;
         static_assert(sizeof(rdesc::UiVertex) == sizeof(ImDrawVert));
         static_assert(offsetof(rdesc::UiVertex, position) == offsetof(ImDrawVert, pos));
         static_assert(offsetof(rdesc::UiVertex, uv) == offsetof(ImDrawVert, uv));
@@ -132,16 +151,10 @@ namespace lux::ui
                         image
                     }
                 );
-                if (image.value != 0)
-                {
-                    output.textures.push_back(image);
-                }
             }
             first_vertex += list->VtxBuffer.Size;
             first_index += list->IdxBuffer.Size;
         }
-        std::ranges::sort(output.textures);
-        output.textures.erase(std::unique(output.textures.begin(), output.textures.end()), output.textures.end());
         output.data = {
             vertices,
             indices,

@@ -153,6 +153,12 @@ namespace lux::scene
         SceneRuntimeResult<void> result;
     };
 
+    enum class ESceneDriveMode : std::uint8_t
+    {
+        ADVANCE,
+        MAINTENANCE
+    };
+
     // Owner-thread scene composition. Registry/clock borrows end before driveFrame,
     // structure changes or owner waits. A lease's runtime must outlive the lease.
     class LUX_ENGINE_SCENE_PUBLIC SceneRuntime final
@@ -197,8 +203,10 @@ namespace lux::scene
 
         using CreateResult = SceneRuntimeResult<std::unique_ptr<SceneRuntime>>;
         using DriveResult = SceneRuntimeResult<std::span<const SceneRuntimeFailure>>;
-        [[nodiscard]] static CreateResult
-        create(execution::ExecutionRuntime& execution, std::size_t initial_task_capacity) noexcept;
+        [[nodiscard]] static CreateResult create(
+            execution::ExecutionRuntime& execution,
+            std::size_t initial_task_capacity
+        ) noexcept;
         ~SceneRuntime() noexcept;
         SceneRuntime(const SceneRuntime&) = delete;
         SceneRuntime& operator=(const SceneRuntime&) = delete;
@@ -232,7 +240,9 @@ namespace lux::scene
         // At the next driving safe point the active ID is revoked, before physical
         // completion. Retained step results then require the matching receipt.
         [[nodiscard]] SceneRuntimeResult<InstanceRetirement> retireInstance(SceneInstanceId) noexcept;
-        [[nodiscard]] DriveResult driveFrame() noexcept;
+        // MAINTENANCE still adopts completions and retires systems, but never starts a simulation step.
+        // A rendering application selects ADVANCE only after acquiring its complete-frame carrier.
+        [[nodiscard]] DriveResult driveFrame(ESceneDriveMode mode = ESceneDriveMode::ADVANCE) noexcept;
         // Active lookup entries only; retirement completion is proved by its receipt.
         [[nodiscard]] std::size_t instanceCount() const noexcept;
 

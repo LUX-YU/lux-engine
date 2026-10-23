@@ -1,5 +1,6 @@
 #pragma once
 #include <filesystem>
+#include <lux/engine/core/execution/ExecutionConfig.hpp>
 #include <lux/engine/editor/EditorLayout.hpp>
 
 namespace lux::editor
@@ -20,6 +21,8 @@ namespace lux::editor
         bool enable_vsync{true};
         EditorLayout layout;
         std::vector<ProjectPluginLocation> plugin_locations;
+        // One application's shared CPU pool and bounded blocking IO resource. No subsystem creates a second pool.
+        execution::ExecutionRuntimeConfig execution{2, 512, {256}, execution::BlockingSchedulerConfig{2, 128}};
         bool enable_validation{false}; // Development diagnostics, independent of display pacing.
     };
 } // namespace lux::editor

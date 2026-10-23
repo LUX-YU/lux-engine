@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/core/execution/ExecutionConfig.hpp>
 #include <lux/engine/core/execution/RunLoop.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/engine/core/execution/Task.hpp>
@@ -57,21 +58,6 @@ namespace lux::execution
             }
         };
     } // namespace detail
-
-    struct BlockingSchedulerConfig final
-    {
-        std::size_t concurrency{};
-        std::size_t queue_capacity{};
-    };
-
-    struct ExecutionRuntimeConfig final
-    {
-        std::size_t cpu_concurrency{};
-        std::size_t task_capacity{1024};
-        TimerQueueConfig timer{};
-        std::optional<BlockingSchedulerConfig> blocking;
-        std::size_t task_history_capacity{256};
-    };
 
     class LUX_CORE_EXECUTION_PUBLIC ExecutionRuntime final
     {
@@ -161,6 +147,7 @@ namespace lux::execution
         // awaiting work do not make this true.
         [[nodiscard]] bool hasReadyWork() const noexcept;
         void wake() noexcept;
+        // Notification only: the callback must not join/wait or recursively dispatch this Runtime.
         void setWake(void (*wake)() noexcept) noexcept;
         void waitForWork(
             std::uint64_t observed,

@@ -793,3 +793,22 @@ Main 等待还必须覆盖 RunLoop 发布尾部：节点已被消费而 post 尚
 hasReadyWork 仍为真。发布返回的序号与活跃计数位于同一原子字，wakeEpoch 包含这次返回，
 防止在“已消费、尚未 settled”与进入等待之间丢失最后一次变化；等待方在检查业务条件前取得 epoch。
 没有第二套完成队列或新的 operation Owner。
+
+## 实际执行与帧阶段
+
+ExecutionRuntime::spawn 接纳内部有限操作，submit/TaskScope 保留可监控业务任务；两者共用同一个
+stdexec 执行 Scope。读取端点接受 ExecutionRuntime 和可选项目停止 token，不逐范围登记 TaskRecord。
+运行期配置声明在轻量 ExecutionConfig.hpp，EditorConfig.execution 在组合根选择实际 CPU/IO 资源。
+
+应用循环明确执行完成领取、项目采用、呈现维护、帧载体准入、UI 捕获、Scene 推进和帧发布。
+未取得完整载体时调用 SceneRuntime 的 MAINTENANCE 模式，继续采用及退休但不产生新模拟步；
+独立无渲染应用继续使用默认 ADVANCE 模式。维护帧只清偿已有控制命令，不增加第二份领先帧计数。
+
+RenderSystem 直接拥有实际 Scene 关联，构造时借用 Requester、ExecutionRuntime、RenderAssets 和视图输入。
+结构事务与现有实例的增量帧投影分开；等待资产只遍历待建立集合。SceneEffect 是纯冷态配方构造，
+按实际 Mesh/完整 Cooked Program 分组，并且仅在分组、容量或输出合同变化时重建 Effect。
+Scene 和 UI 的释放只在成功回执后清空句柄，退休 maintenance 结束后才析构。
+
+Surface 输出不能被其它实例采样，轮转只更新实际图像/View/Barrier，不使共享资源依赖缓存失效。
+共享 Offscreen 输出更换仍更新跨实例依赖。UI 唯一图片列表由 DrawData::textures() 显式查询，
+正常捕获不再为了 UpdateStatistics 做额外排序；顶点/索引的一次冻结仍由完整帧载体保活。

@@ -626,6 +626,12 @@ namespace lux::render::detail
             const auto base = frame.instances[i].first_batch;
             for (const auto& use : instances[i]->plan_->imported_accesses_)
             {
+                const bool presentation_output = use.resource.index == instances[i]->plan_->output() &&
+                                                 instances[i]->output_.description.kind == ETargetKind::SURFACE;
+                if (presentation_output)
+                {
+                    continue;
+                }
                 const auto& binding = bindings[use.resource.index];
                 auto range = use.range;
                 if (auto* buffer = std::get_if<GraphBufferRange>(&range))

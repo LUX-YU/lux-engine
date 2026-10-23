@@ -13,7 +13,8 @@ namespace lux::render::detail
         void release(const nri::CoreInterface&) noexcept;
 
         std::vector<Binding> bindings;
-        // Changes only when an imported physical identity or range changes, never for its contents.
+        // Changes when a potentially shared imported identity/range changes. Private presentation rotation
+        // updates bindings and barriers separately; resource contents do not invalidate dependencies.
         std::uint64_t imported_revision = 0;
         std::vector<Pass> passes;
 

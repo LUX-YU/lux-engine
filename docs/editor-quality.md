@@ -50,9 +50,11 @@ LuxObject 父链不拥有孩子。Root 通过唯一 SparseSet 拥有窗口；内
 
 编译、发布、保存基线采用、打开内容和显示视图分别报告自己的事实。命令 UI 可以汇总状态，但不能改写这些事实。
 
-### QR05 — 有限异步工作只走原 Process
+### QR05 — 有限异步工作复用共享执行资源
 
-复用 ExecutionRuntime、Task/TaskScope、已有 CPU/blocking scheduler、TaskReporter 和完成分发。不新增私有 thread pool、`std::async` 旁路、永久轮询线程或第二任务状态库。
+复用 ExecutionRuntime、Task/TaskScope、已有 CPU/blocking scheduler、TaskReporter 和完成分发。
+内部有限操作通过 Runtime 的同一 stdexec Scope 执行；只有需要取消、进度和历史的业务任务才建立 TaskRecord。
+普通帧提交与逐范围 IO 不以业务任务目录容量作为第二次准入条件。不新增私有 thread pool、`std::async` 旁路、永久轮询线程或第二任务状态库。
 
 计时、进度和取消继续使用既有设施。线程 ID 的使用或 test-only 线程不等于违规；禁止规则不能机械匹配 `<thread>`。
 

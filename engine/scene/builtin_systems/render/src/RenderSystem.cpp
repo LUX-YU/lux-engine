@@ -408,32 +408,37 @@ namespace lux::scene
             {
                 co_return cxx::unexpected(compiled.error);
             }
+            effect_to_release = compiled.effect;
             AttachmentRequest
                 attach{scene, view, target, compiled.effect, parameterBytes(parameters), viewport, {}, attachment};
             const auto adopted = co_await request<Attach>(client, attach);
             if (adopted.error.type != 0)
             {
-                EffectRequest discard{compiled.effect};
+                EffectRequest discard{effect_to_release};
                 const auto removed = co_await request<RemoveEffect>(client, discard);
                 if (removed.error.type != 0)
                 {
                     reportRenderFailure(removed.error, "Discard candidate Effect");
                 }
+                else
+                {
+                    effect_to_release = {};
+                }
                 co_return cxx::unexpected(adopted.error);
             }
-            const auto previous = effect;
-            effect = compiled.effect;
+            std::swap(effect, effect_to_release);
             attachment = adopted.attachment;
             published_groups = std::move(selection);
             visible_capacity = capacity;
-            if (!previous.isNull())
+            if (!effect_to_release.isNull())
             {
-                EffectRequest remove{previous};
+                EffectRequest remove{effect_to_release};
                 auto removed = co_await request<RemoveEffect>(client, remove);
                 if (removed.error.type != 0)
                 {
                     co_return cxx::unexpected(removed.error);
                 }
+                effect_to_release = {};
             }
             co_return RenderResult<void>{};
         }
@@ -617,15 +622,19 @@ namespace lux::scene
                 view = {};
                 attachment = {};
             }
-            if (!effect.isNull())
+            for (auto* handle : {&effect_to_release, &effect})
             {
-                EffectRequest remove{effect};
+                if (handle->isNull())
+                {
+                    continue;
+                }
+                EffectRequest remove{*handle};
                 auto result = co_await request<RemoveEffect>(client, remove);
                 if (result.error.type != 0)
                 {
                     co_return cxx::unexpected(result.error);
                 }
-                effect = {};
+                *handle = {};
             }
             while (!meshes.empty())
             {
@@ -660,7 +669,7 @@ namespace lux::scene
             co_return RenderResult<void>{};
         }
 
-        void launch(exec::task<RenderResult<void>> work) noexcept
+        void startTransaction(exec::task<RenderResult<void>> work) noexcept
         {
             transaction_pending = true;
             auto ready = execution::taskResult(stdexec::starts_on(execution.mainScheduler(), std::move(work)));
@@ -684,6 +693,181 @@ namespace lux::scene
                 error = RenderError{kRuntimeState};
                 reportRenderFailure(error, "Admit Render Scene operation");
             }
+        }
+
+        RenderResult<bool> collectMeshChanges() noexcept
+        {
+            bool changed = false;
+            processed.clear();
+            for (const auto entity : structure)
+            {
+                const auto bits = entityBits(entity);
+                const auto* mesh = registry.valid(entity) ? registry.try_get<const Mesh3D>(entity) : nullptr;
+                const bool visible = mesh && mesh->value.visible && registry.all_of<WorldTransform3D>(entity);
+                auto current = meshes.find(bits);
+                if (current != meshes.end())
+                {
+                    if (visible && current->second.present && current->second.visual == mesh->value &&
+                        current->second.revision == asset_revision)
+                    {
+                        processed.push_back(entity);
+                        continue;
+                    }
+                    current->second.present = false;
+                    changed = true;
+                    if (visible)
+                    {
+                        continue;
+                    } // Re-admit the new binding after the old one is retired.
+                }
+                else if (visible)
+                {
+                    const RenderAssetVersion mesh_key{mesh->value.mesh, asset_revision},
+                        material_key{mesh->value.material, asset_revision};
+                    auto mesh_acquired = assets.acquireMesh(mesh_key, source);
+                    if (!mesh_acquired && mesh_acquired.error().type == kRuntimeCapacity)
+                    {
+                        continue;
+                    }
+                    if (!mesh_acquired)
+                    {
+                        return cxx::unexpected(mesh_acquired.error());
+                    }
+                    auto material = materials.find(material_key);
+                    if (material == materials.end())
+                    {
+                        auto acquired = assets.acquireMaterial(material_key, source);
+                        if (!acquired)
+                        {
+                            assets.releaseMesh(mesh_key);
+                            if (acquired.error().type == kRuntimeCapacity)
+                            {
+                                continue;
+                            }
+                            return cxx::unexpected(acquired.error());
+                        }
+                        material = materials.emplace(material_key, MaterialEntry{}).first;
+                        pending_materials.insert(material_key);
+                    }
+                    ++material->second.references;
+                    meshes.emplace(bits, MeshEntry{mesh->value, asset_revision});
+                    pending_instances.insert(bits);
+                    changed = true;
+                }
+                processed.push_back(entity);
+            }
+            for (auto entity : processed)
+            {
+                structure.erase(entity);
+            }
+            return changed;
+        }
+
+        RenderResult<bool> collectLightChanges(std::vector<LightInput>& light_inputs) noexcept
+        {
+            bool changed = false;
+            for (const auto entity : light_changes)
+            {
+                const auto bits = entityBits(entity);
+                const auto* light = registry.valid(entity) ? registry.try_get<const Light3D>(entity) : nullptr;
+                const auto* pose = registry.valid(entity) ? registry.try_get<const WorldTransform3D>(entity) : nullptr;
+                auto found = lights.find(bits);
+                if (!light || !pose)
+                {
+                    if (found != lights.end())
+                    {
+                        found->second.present = false;
+                        changed = true;
+                    }
+                    continue;
+                }
+                if (found == lights.end())
+                {
+                    found = lights.emplace(bits, LightEntry{{}, light->value.type}).first;
+                }
+                if (found->second.type != light->value.type)
+                {
+                    found->second.present = false;
+                    changed = true;
+                    continue;
+                }
+                if (found->second.light.isNull())
+                {
+                    auto value = lightValue(light->value, pose->value);
+                    if (!value)
+                    {
+                        return cxx::unexpected(value.error());
+                    }
+                    light_inputs.push_back({bits, std::move(*value)});
+                    changed = true;
+                }
+            }
+            return changed;
+        }
+
+        SceneStageResult prepareViewParameters() noexcept
+        {
+            const auto& inputs = view_inputs;
+            if (!inputs.description.width || !inputs.description.height)
+            {
+                return ESceneProgress::COMPLETE;
+            }
+            if (!camera_dirty && view_revision == inputs.revision)
+            {
+                return ESceneProgress::COMPLETE;
+            }
+            Entity primary = NullEntity;
+            for (const auto entity : registry.view<const Camera, const WorldTransform3D>())
+            {
+                if (!registry.get<const Camera>(entity).primary)
+                {
+                    continue;
+                }
+                if (primary != NullEntity)
+                {
+                    return failure(RenderError{
+                        kCommandContract,
+                        {static_cast<std::uint64_t>(ECameraError::MULTIPLE_PRIMARY_CAMERAS)}
+                    });
+                }
+                primary = entity;
+            }
+            if (primary == NullEntity)
+            {
+                return failure(
+                    RenderError{kCommandContract, {static_cast<std::uint64_t>(ECameraError::NO_PRIMARY_CAMERA)}}
+                );
+            }
+            {
+                const auto entity = primary;
+                const auto& camera = registry.get<const Camera>(entity);
+                const auto& world = registry.get<const WorldTransform3D>(entity).value;
+                auto projection =
+                    cameraProjection(camera, double(inputs.description.width) / inputs.description.height);
+                auto view = cameraView(world, Eigen::Vector3d::Zero());
+                if (!projection || !view)
+                {
+                    return failure(RenderError{kCommandContract});
+                }
+                SceneParameters parameters;
+                const Eigen::Matrix4f v = view->cast<float>(), p = projection->cast<float>();
+                const Eigen::Matrix4f inverse = (p * v).inverse();
+                std::memcpy(parameters.mesh.view.data(), v.data(), sizeof(v));
+                std::memcpy(parameters.mesh.projection.data(), p.data(), sizeof(p));
+                std::memcpy(parameters.lighting.inverse_view_projection.data(), inverse.data(), sizeof(inverse));
+                const auto position = world.translation();
+                parameters.lighting
+                    .camera_position = {float(position.x()), float(position.y()), float(position.z()), 1};
+                parameters.lighting.background = inputs.background;
+                parameters.lighting
+                    .viewport = {inputs.viewport.x, inputs.viewport.y, inputs.viewport.width, inputs.viewport.height};
+                parameters.tone.exposure = inputs.exposure;
+                parameters_changed |= std::memcmp(&parameters, &parameters, sizeof(parameters)) != 0;
+                parameters = parameters;
+                camera_dirty = false;
+                view_revision = inputs.revision;
+            }
+            return ESceneProgress::COMPLETE;
         }
 
         Impl(Registry& registry, const RenderSystemDependencies& dependencies)
@@ -725,7 +909,8 @@ namespace lux::scene
 
         ~Impl() noexcept
         {
-            if (transaction_pending || !scene.isNull() || !effect.isNull() || !meshes.empty() || !materials.empty())
+            if (transaction_pending || !scene.isNull() || !effect.isNull() || !effect_to_release.isNull() ||
+                !meshes.empty() || !materials.empty())
             {
                 std::terminate(); // Retirement maintenance finishes before the System is destroyed.
             }
@@ -802,6 +987,8 @@ namespace lux::scene
         SceneId scene;
         ViewId view;
         EffectId effect;
+        // Known candidate/replaced Effect remains here until release is acknowledged, including failed Attach.
+        EffectId effect_to_release;
         AttachmentId attachment;
         StorageId instance_storage, material_storage, light_storage;
         detail::SceneEffectFeatures features;
@@ -861,13 +1048,14 @@ namespace lux::scene
             {
                 return failure(self.error);
             }
-            const bool has_resources =
-                !self.scene.isNull() || !self.effect.isNull() || !self.meshes.empty() || !self.materials.empty();
+            const bool has_resources = !self.scene.isNull() || !self.effect.isNull() ||
+                                       !self.effect_to_release.isNull() || !self.meshes.empty() ||
+                                       !self.materials.empty();
             if (!has_resources)
             {
                 return ESceneProgress::COMPLETE;
             }
-            self.launch(self.closeScene());
+            self.startTransaction(self.closeScene());
             return ESceneProgress::PENDING;
         }
         if (self.error.type != 0)
@@ -879,7 +1067,7 @@ namespace lux::scene
                                     self.resynchronization != self.client.resynchronization();
         context.publication_needed |= !self.structure.empty() || !self.transformed.empty() ||
                                       !self.light_changes.empty() || changed_inputs || self.transaction_pending;
-        if (self.transaction_pending || self.view_inputs.target.isNull())
+        if (self.transaction_pending || !context.allow_structure || self.view_inputs.target.isNull())
         {
             return ESceneProgress::COMPLETE;
         }
@@ -897,106 +1085,19 @@ namespace lux::scene
                 self.structureChanged(self.registry, entity);
             }
         }
-        self.processed.clear();
-        for (const auto entity : self.structure)
+        auto mesh_changes = self.collectMeshChanges();
+        if (!mesh_changes)
         {
-            const auto bits = entityBits(entity);
-            const auto* mesh = self.registry.valid(entity) ? self.registry.try_get<const Mesh3D>(entity) : nullptr;
-            const bool visible = mesh && mesh->value.visible && self.registry.all_of<WorldTransform3D>(entity);
-            auto current = self.meshes.find(bits);
-            if (current != self.meshes.end())
-            {
-                if (visible && current->second.present && current->second.visual == mesh->value &&
-                    current->second.revision == self.asset_revision)
-                {
-                    self.processed.push_back(entity);
-                    continue;
-                }
-                current->second.present = false;
-                changed = true;
-                if (visible)
-                {
-                    continue;
-                } // Re-admit the new binding after the old one is retired.
-            }
-            else if (visible)
-            {
-                const RenderAssetVersion mesh_key{mesh->value.mesh, self.asset_revision},
-                    material_key{mesh->value.material, self.asset_revision};
-                auto mesh_acquired = self.assets.acquireMesh(mesh_key, self.source);
-                if (!mesh_acquired && mesh_acquired.error().type == kRuntimeCapacity)
-                {
-                    continue;
-                }
-                if (!mesh_acquired)
-                {
-                    return failure(mesh_acquired.error());
-                }
-                auto material = self.materials.find(material_key);
-                if (material == self.materials.end())
-                {
-                    auto acquired = self.assets.acquireMaterial(material_key, self.source);
-                    if (!acquired)
-                    {
-                        self.assets.releaseMesh(mesh_key);
-                        if (acquired.error().type == kRuntimeCapacity)
-                        {
-                            continue;
-                        }
-                        return failure(acquired.error());
-                    }
-                    material = self.materials.emplace(material_key, MaterialEntry{}).first;
-                    self.pending_materials.insert(material_key);
-                }
-                ++material->second.references;
-                self.meshes.emplace(bits, MeshEntry{mesh->value, self.asset_revision});
-                self.pending_instances.insert(bits);
-                changed = true;
-            }
-            self.processed.push_back(entity);
+            return failure(mesh_changes.error());
         }
-        for (auto entity : self.processed)
-        {
-            self.structure.erase(entity);
-        }
+        changed |= *mesh_changes;
         std::vector<LightInput> light_inputs;
-        for (const auto entity : self.light_changes)
+        auto light_changes = self.collectLightChanges(light_inputs);
+        if (!light_changes)
         {
-            const auto bits = entityBits(entity);
-            const auto* light = self.registry.valid(entity) ? self.registry.try_get<const Light3D>(entity) : nullptr;
-            const auto* pose =
-                self.registry.valid(entity) ? self.registry.try_get<const WorldTransform3D>(entity) : nullptr;
-            auto found = self.lights.find(bits);
-            if (!light || !pose)
-            {
-                if (found != self.lights.end())
-                {
-                    found->second.present = false;
-                    changed = true;
-                }
-                continue;
-            }
-            if (found == self.lights.end())
-            {
-                found = self.lights.emplace(bits, LightEntry{{}, light->value.type}).first;
-            }
-            if (found->second.type != light->value.type)
-            {
-                found->second.present = false;
-                changed = true;
-                continue;
-            }
-            if (found->second.light.isNull())
-            {
-                auto value = lightValue(light->value, pose->value);
-                if (!value)
-                {
-                    return failure(value.error());
-                }
-                light_inputs.push_back({bits, std::move(*value)});
-                changed = true;
-            }
+            return failure(light_changes.error());
         }
+        changed |= *light_changes;
         changed |= !self.pending_instances.empty() && self.observed_assets != self.assets.revision();
         self.observed_assets = self.assets.revision();
         if (changed)
@@ -1018,7 +1119,7 @@ namespace lux::scene
                     inputs.push_back(value);
                 }
             }
-            self.launch(self.synchronizeStructure(std::move(inputs), std::move(light_inputs)));
+            self.startTransaction(self.synchronizeStructure(std::move(inputs), std::move(light_inputs)));
         }
         return ESceneProgress::COMPLETE;
     }
@@ -1104,63 +1205,7 @@ namespace lux::scene
         {
             self.light_changes.erase(entity);
         }
-        const auto& inputs = self.view_inputs;
-        if (!inputs.description.width || !inputs.description.height)
-        {
-            return ESceneProgress::COMPLETE;
-        }
-        if (!self.camera_dirty && self.view_revision == inputs.revision)
-        {
-            return ESceneProgress::COMPLETE;
-        }
-        Entity primary = NullEntity;
-        for (const auto entity : self.registry.view<const Camera, const WorldTransform3D>())
-        {
-            if (!self.registry.get<const Camera>(entity).primary)
-            {
-                continue;
-            }
-            if (primary != NullEntity)
-            {
-                return failure(
-                    RenderError{kCommandContract, {static_cast<std::uint64_t>(ECameraError::MULTIPLE_PRIMARY_CAMERAS)}}
-                );
-            }
-            primary = entity;
-        }
-        if (primary == NullEntity)
-        {
-            return failure(RenderError{kCommandContract, {static_cast<std::uint64_t>(ECameraError::NO_PRIMARY_CAMERA)}}
-            );
-        }
-        {
-            const auto entity = primary;
-            const auto& camera = self.registry.get<const Camera>(entity);
-            const auto& world = self.registry.get<const WorldTransform3D>(entity).value;
-            auto projection = cameraProjection(camera, double(inputs.description.width) / inputs.description.height);
-            auto view = cameraView(world, Eigen::Vector3d::Zero());
-            if (!projection || !view)
-            {
-                return failure(RenderError{kCommandContract});
-            }
-            SceneParameters parameters;
-            const Eigen::Matrix4f v = view->cast<float>(), p = projection->cast<float>();
-            const Eigen::Matrix4f inverse = (p * v).inverse();
-            std::memcpy(parameters.mesh.view.data(), v.data(), sizeof(v));
-            std::memcpy(parameters.mesh.projection.data(), p.data(), sizeof(p));
-            std::memcpy(parameters.lighting.inverse_view_projection.data(), inverse.data(), sizeof(inverse));
-            const auto position = world.translation();
-            parameters.lighting.camera_position = {float(position.x()), float(position.y()), float(position.z()), 1};
-            parameters.lighting.background = inputs.background;
-            parameters.lighting
-                .viewport = {inputs.viewport.x, inputs.viewport.y, inputs.viewport.width, inputs.viewport.height};
-            parameters.tone.exposure = inputs.exposure;
-            self.parameters_changed |= std::memcmp(&parameters, &self.parameters, sizeof(parameters)) != 0;
-            self.parameters = parameters;
-            self.camera_dirty = false;
-            self.view_revision = inputs.revision;
-        }
-        return ESceneProgress::COMPLETE;
+        return self.prepareViewParameters();
     }
 
     SceneStageResult RenderSystem::publish(SceneStageContext&) noexcept

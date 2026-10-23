@@ -62,7 +62,6 @@ namespace lux::editor
             std::unique_ptr<EditorWindow> window;
             std::unique_ptr<engine::EngineContext> engine;
             std::unique_ptr<rendering::RenderExecution> rendering;
-            std::optional<execution::TaskScope> asset_read_tasks;
             std::unique_ptr<process::asset_loading::VfsAssetReadEndpoint> source;
             std::unique_ptr<rendering::RenderAssets> assets;
             std::unique_ptr<EditorUiScene> ui_scene;
@@ -112,20 +111,28 @@ namespace lux::editor
                 }
             }
 
-            void consume() noexcept
+            FrameworkResult<void> dispatchCompletions() noexcept
             {
-                auto& execution = engine->execution();
                 if (rendering)
                 {
                     rendering->consumeResponses();
                 }
-                if (!execution.dispatchMainCompletions() || !execution.dispatchTaskEvents())
+                auto& execution = engine->execution();
+                auto completed = execution.dispatchMainCompletions();
+                if (!completed)
                 {
-                    std::terminate();
+                    return cxx::unexpected(execution::toError(completed.error()));
                 }
+                auto monitored = execution.dispatchTaskEvents();
+                if (!monitored)
+                {
+                    return cxx::unexpected(execution::toError(monitored.error()));
+                }
+                static_cast<void>(object::ObjectRuntime::instance().dispatchPending());
+                return {};
             }
 
-            FrameworkResult<void> submit(rendering::FrameInput& frame) noexcept
+            FrameworkResult<void> submitFrame(rendering::FrameInput& frame) noexcept
             {
                 ++frames_pending;
                 auto accepted = engine->execution().spawn(stdexec::then(
@@ -162,7 +169,7 @@ namespace lux::editor
                 auto input = client.beginFrame();
                 if (input)
                 {
-                    if (!submit(**input))
+                    if (!submitFrame(**input))
                     {
                         std::terminate();
                     }
@@ -187,10 +194,13 @@ namespace lux::editor
                 for (;;)
                 {
                     const auto epoch = execution.wakeEpoch();
-                    consume();
+                    if (!dispatchCompletions())
+                    {
+                        std::terminate();
+                    }
                     if (!closing_projects.empty())
                     {
-                        const auto driven = engine->sceneRuntime().driveFrame();
+                        const auto driven = engine->sceneRuntime().driveFrame(scene::ESceneDriveMode::MAINTENANCE);
                         if (!driven || !driven->empty())
                         {
                             std::terminate();
@@ -214,7 +224,6 @@ namespace lux::editor
                     {
                         maintenanceFrame();
                     }
-                    static_cast<void>(objects.dispatchPending());
                     static_cast<void>(objects.collectRetired());
                     const bool ui_closed = !ui_scene || ui_scene->settled();
                     const bool assets_closed = !assets || assets->settled();
@@ -238,13 +247,14 @@ namespace lux::editor
                 ui_scene.reset();
                 assets.reset();
                 source.reset();
-                asset_read_tasks.reset();
                 execution.requestStop();
                 for (;;)
                 {
                     const auto epoch = execution.wakeEpoch();
-                    consume();
-                    static_cast<void>(objects.dispatchPending());
+                    if (!dispatchCompletions())
+                    {
+                        std::terminate();
+                    }
                     static_cast<void>(objects.collectRetired());
                     if (execution.settled() && objects.statistics().pending == 0)
                     {
@@ -298,8 +308,7 @@ namespace lux::editor
                 return cxx::unexpected(window.error());
             }
             application.window = std::move(*window);
-            auto engine =
-                engine::EngineContext::create({2, 512, {256}, execution::BlockingSchedulerConfig{2, 128}}, 2048);
+            auto engine = engine::EngineContext::create(impl->config_.execution, 2048);
             if (!engine)
             {
                 return cxx::unexpected(creationError(engine.error()));
@@ -329,7 +338,6 @@ namespace lux::editor
             }
             application.rendering = std::move(*rendering);
             impl->project_tasks_.emplace(execution);
-            application.asset_read_tasks.emplace(execution);
             auto blocking = execution.blocking();
             if (!blocking)
             {
@@ -338,9 +346,8 @@ namespace lux::editor
             auto source = process::asset_loading::VfsAssetReadEndpoint::create(
                 application.engine->assets().view(),
                 *blocking,
-                (*application.asset_read_tasks).execution(),
-                {16},
-                (*application.asset_read_tasks).stopToken()
+                execution,
+                {16}
             );
             if (!source)
             {
@@ -702,14 +709,8 @@ namespace lux::editor
             return {};
         }
 
-        FrameworkResult<ELoopState> pumpOnce(LuxEngine& owner) noexcept
+        void updateSurfaceExtent() noexcept
         {
-            if (pumping_)
-            {
-                return cxx::unexpected(error::Error{Errors::EditorRecursiveHostFrame, {}});
-            }
-            pumping_ = true;
-            cxx::scope_exit finish([this]() noexcept { pumping_ = false; });
             window::LuxWindow::pollEvents();
             const auto& metrics = application_.window->metrics();
             if (metrics.revision != applied_metrics_revision_)
@@ -718,22 +719,82 @@ namespace lux::editor
                     ->setExtent(metrics.framebuffer_width, metrics.framebuffer_height, !metrics.minimized);
                 applied_metrics_revision_ = metrics.revision;
             }
-            application_.rendering->consumeResponses();
+        }
+
+        FrameworkResult<bool> maintainPresentation(bool closing) noexcept
+        {
+            if (auto maintained = application_.ui_scene->maintain(); !maintained)
+            {
+                return cxx::unexpected(maintained.error());
+            }
+            application_.assets->maintain();
+            auto output = application_.ui_scene->outputReady();
+            if (!output)
+            {
+                return cxx::unexpected(output.error());
+            }
+            const auto& metrics = application_.window->metrics();
+            const bool has_extent =
+                metrics.width && metrics.height && metrics.framebuffer_width && metrics.framebuffer_height;
+            return !closing && has_extent && !metrics.minimized && *output;
+        }
+
+        FrameworkResult<rendering::FrameInput*> acquireFrame(bool draw) noexcept
+        {
+            auto& client = application_.rendering->mainClient();
+            if ((!draw && !client.hasQueuedFrameCommands()) || !client.hasFrameCapacity())
+            {
+                return nullptr;
+            }
+            return client.beginFrame();
+        }
+
+        FrameworkResult<bool> captureUi(rendering::FrameInput* frame, bool draw) noexcept
+        {
+            auto& root = application_.window->uiRoot();
+            const auto& metrics = application_.window->metrics();
+            const auto now = std::chrono::steady_clock::now();
+            const float elapsed =
+                std::max(std::chrono::duration<float>(now - last_frame_).count(), std::numeric_limits<float>::min());
+            auto* data = draw && frame ? &application_.ui_scene->captureBuffer(*frame) : nullptr;
+            ui::FrameInfo info{
+                {float(metrics.width), float(metrics.height)},
+                elapsed,
+                {metrics.width ? float(metrics.framebuffer_width) / metrics.width : 1.F,
+                 metrics.height ? float(metrics.framebuffer_height) / metrics.height : 1.F}
+            };
+            auto captured = data ? root.update(info, *data) : root.update();
+            if (!captured)
+            {
+                return cxx::unexpected(error::Error{Errors::UiCapture, {static_cast<std::uint64_t>(captured.error())}});
+            }
+            if (data)
+            {
+                last_frame_ = now;
+            }
+            const auto consumed = root.inputSnapshot();
+            application_.window->input()
+                .evaluate(elapsed, data && !consumed.keyboard_captured, data && !consumed.pointer_captured);
+            return data != nullptr;
+        }
+
+        FrameworkResult<ELoopState> pumpOnce(LuxEngine& owner) noexcept
+        {
+            if (pumping_)
+            {
+                return cxx::unexpected(error::Error{Errors::EditorRecursiveHostFrame, {}});
+            }
+            pumping_ = true;
+            cxx::scope_exit finish([this]() noexcept { pumping_ = false; });
+            updateSurfaceExtent();
+            if (auto dispatched = application_.dispatchCompletions(); !dispatched)
+            {
+                return cxx::unexpected(dispatched.error());
+            }
             if (application_.rendering->mainClient().closed())
             {
                 return cxx::unexpected(render::RenderError{render::kOutcomeUnknown});
             }
-            auto collected = application_.engine->execution().dispatchMainCompletions();
-            if (!collected)
-            {
-                return cxx::unexpected(execution::toError(collected.error()));
-            }
-            auto dispatched = application_.engine->execution().dispatchTaskEvents();
-            if (!dispatched)
-            {
-                return cxx::unexpected(execution::toError(dispatched.error()));
-            }
-            static_cast<void>(object::ObjectRuntime::instance().dispatchPending());
             const bool closing = application_.window->shouldClose();
             if (closing)
             {
@@ -743,7 +804,6 @@ namespace lux::editor
             {
                 return cxx::unexpected(applied.error());
             }
-            auto& root = application_.window->uiRoot();
             if (closing)
             {
                 application_.ui_scene->stopFrames();
@@ -756,23 +816,19 @@ namespace lux::editor
                     return cxx::unexpected(std::move(input.error()));
                 }
             }
-            const auto width = metrics.width, height = metrics.height;
-            const auto pixels_x = metrics.framebuffer_width, pixels_y = metrics.framebuffer_height;
-            const auto now = std::chrono::steady_clock::now();
-            const bool has_extent = width && height && pixels_x && pixels_y;
-            if (auto maintained = application_.ui_scene->maintain(); !maintained)
+            auto presentation = maintainPresentation(closing);
+            if (!presentation)
             {
-                return cxx::unexpected(maintained.error());
+                return cxx::unexpected(presentation.error());
             }
-            auto output = application_.ui_scene->outputReady();
-            if (!output)
+            const bool can_draw = *presentation;
+            auto admitted = acquireFrame(can_draw);
+            if (!admitted)
             {
-                return cxx::unexpected(output.error());
+                return cxx::unexpected(admitted.error());
             }
-            const bool can_draw = !closing && has_extent && !metrics.minimized && *output;
-            application_.assets->maintain();
             auto& client = application_.rendering->mainClient();
-            rendering::FrameInput* frame = nullptr;
+            auto* frame = *admitted;
             cxx::scope_exit release_unsent(
                 [&]() noexcept
                 {
@@ -782,40 +838,13 @@ namespace lux::editor
                     }
                 }
             );
-            const bool needs_frame = can_draw || client.hasQueuedFrameCommands();
-            if (needs_frame && client.hasFrameCapacity())
+            auto captured = captureUi(frame, can_draw);
+            if (!captured)
             {
-                auto input = client.beginFrame();
-                if (!input)
-                {
-                    return cxx::unexpected(input.error());
-                }
-                frame = *input;
+                return cxx::unexpected(captured.error());
             }
-            auto* ui_draw_data = can_draw && frame ? &application_.ui_scene->captureBuffer(*frame) : nullptr;
-            const float elapsed =
-                std::max(std::chrono::duration<float>(now - last_frame_).count(), std::numeric_limits<float>::min());
-            ui::FrameInfo info{
-                {float(width), float(height)},
-                elapsed,
-                {width ? float(pixels_x) / width : 1.F, height ? float(pixels_y) / height : 1.F}
-            };
-            auto drawn = ui_draw_data ? root.update(info, *ui_draw_data) : root.update();
-            if (!drawn)
-            {
-                return cxx::unexpected(error::Error{Errors::UiCapture, {static_cast<std::uint64_t>(drawn.error())}});
-            }
-            if (ui_draw_data)
-            {
-                last_frame_ = now;
-            }
-            const auto consumed = root.inputSnapshot();
-            application_.window->input().evaluate(
-                elapsed,
-                ui_draw_data && !consumed.keyboard_captured,
-                ui_draw_data && !consumed.pointer_captured
-            );
-            auto driven = application_.engine->sceneRuntime().driveFrame();
+            const auto mode = frame && can_draw ? scene::ESceneDriveMode::ADVANCE : scene::ESceneDriveMode::MAINTENANCE;
+            auto driven = application_.engine->sceneRuntime().driveFrame(mode);
             if (!driven)
             {
                 return cxx::unexpected(scene::toError(driven.error()));
@@ -825,7 +854,7 @@ namespace lux::editor
                 return cxx::unexpected(scene::toError(driven->front()));
             }
             application_.collectProjects();
-            if (ui_draw_data)
+            if (*captured)
             {
                 auto appended = application_.ui_scene->appendFrameCommands(*frame);
                 if (!appended)
@@ -836,7 +865,7 @@ namespace lux::editor
             }
             if (frame)
             {
-                if (auto sent = application_.submit(*frame); !sent)
+                if (auto sent = application_.submitFrame(*frame); !sent)
                 {
                     return cxx::unexpected(sent.error());
                 }

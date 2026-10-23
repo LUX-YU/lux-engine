@@ -106,9 +106,9 @@ namespace
             sizeof(Batch), alignof(Batch), direct_allocations, allocations);
     }
 
-    void crossDll()
+    void crossDll(const wchar_t* plugin_path)
     {
-        auto module = LoadLibraryW(L"ipc_typed_plugin.dll");
+        auto module = LoadLibraryW(plugin_path);
         check(module != nullptr, "load compatible DLL");
         using Make = void (*)(IpcMessage*) noexcept;
         using Set = void (*)(std::uint64_t) noexcept;
@@ -204,10 +204,11 @@ namespace
     }
 }
 
-int main()
+int wmain(int argc, wchar_t** argv)
 {
+    check(argc == 2, "exact plugin path required");
     objects();
-    crossDll();
+    crossDll(argv[1]);
     twoClients();
     check(testing::counts().channels == 0 && testing::counts().links == 0, "role storage leaked");
 }

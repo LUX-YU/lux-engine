@@ -23,7 +23,7 @@ add_executable(platform_ipc_typed_test TypedMessage.cpp Allocation.cpp Allocatio
 target_link_libraries(platform_ipc_typed_test PRIVATE platform_ipc)
 target_include_directories(platform_ipc_typed_test PRIVATE ../pinclude)
 add_dependencies(platform_ipc_typed_test ipc_typed_plugin)
-add_test(NAME platform.ipc.typed COMMAND platform_ipc_typed_test)
+add_test(NAME platform.ipc.typed COMMAND platform_ipc_typed_test $<TARGET_FILE:ipc_typed_plugin>)
 set_tests_properties(platform.ipc.typed PROPERTIES TIMEOUT 30)
 
 foreach(plugin A B)

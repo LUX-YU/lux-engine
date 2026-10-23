@@ -57,6 +57,10 @@ int main()
     require(!moved && integer_copy->get<std::int64_t>() == 9, "move assignment");
     auto zero = RuntimeObject::defaultOf(lux::meta::ref_type_of_v<std::int64_t>);
     require(zero && zero->get<std::int64_t>() == 0, "trivial default");
+    const auto independent_metadata = lux::meta::ref_type_of_v<std::int32_t>;
+    auto independent = RuntimeObject::defaultOf(independent_metadata);
+    require(independent && independent->type() == &independent_metadata, "preserve the declaring metadata borrow");
+    require(independent->get<std::int32_t>() == 0, "equivalent metadata need not share an address");
     auto large = RuntimeObject::defaultOf(lux::meta::ref_type_of_v<LargeValue>);
     require(large.has_value(), "aligned heap default");
     require(reinterpret_cast<std::uintptr_t>(large->data()) % alignof(LargeValue) == 0, "heap alignment");

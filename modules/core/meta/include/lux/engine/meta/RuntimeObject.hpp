@@ -374,8 +374,13 @@ namespace lux::meta
 
         template <typename T> [[nodiscard]] bool match() const noexcept
         {
-            auto* type_ptr = getType();
-            return type_ptr && type_ptr->hash == lux::cxx::type_hash<T>() && type_ptr == builtin_ref_type_ptr<T>();
+            const auto* actual = getType();
+            const auto& expected = ref_type_of_v<T>;
+            // Inline metadata has a separate address in each DLL. Keep the original metadata
+            // borrow for destruction; typed access compares identity and layout, not its address.
+            const bool has_matching_identity = actual && actual->hash == expected.hash &&
+                                               actual->name == expected.name && actual->qtype == expected.qtype;
+            return has_matching_identity && actual->size == expected.size && actual->alignment == expected.alignment;
         }
     };
 

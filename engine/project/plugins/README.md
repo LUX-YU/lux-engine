@@ -10,7 +10,7 @@
 - `loadPluginLibrary()` 复用单个二进制的路径/ABI/声明校验；具体层解释自己的导出表。
   Editor 侧通过这一边界打开工具扩展，共享层不认识 EditorPluginExports。
 - `SceneRegistrations` 从已验证的 Runtime 导出构造实际 Scene 注册值。
-  渲染的 SceneSystem 与组件走同一接点；应用通过 SceneRenderServices 提供自己的 RenderExecution 和资产设施。
+  渲染的 SceneSystem 与组件走同一接点；应用通过 RenderSystemDependencies 提供自己的 RenderExecution 和资产设施。
   Render Feature/Storage 的外部登记直接使用 Render SDK，不再经过额外的项目渲染接纳层。
 
 系统类内 SupportedWorldTypes 进入插件描述 v2；只允许精确分区名称或单独的 `*`。

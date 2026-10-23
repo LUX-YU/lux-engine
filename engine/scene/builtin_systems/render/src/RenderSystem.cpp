@@ -1,9 +1,9 @@
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/SceneEffect.hpp>
 
 #include <exec/task.hpp>
 #include <exec/variant_sender.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/FeatureGraphOps.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
@@ -12,7 +12,7 @@
 #include <lux/engine/render/storage/DirectLighting.hpp>
 #include <lux/engine/rendering/RenderAssets.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/rendering/RenderRequester.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -22,39 +22,19 @@
 #include <cstring>
 #include <entt/entity/sparse_set.hpp>
 #include <map>
+#include <set>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace lux::scene
 {
     using namespace render;
     using namespace rendering;
     using namespace simulation::ecs;
+    using detail::SceneParameters;
 
     namespace
     {
-        struct SceneParameters final
-        {
-            MeshViewParameters mesh;
-            DeferredLightingParameters lighting;
-            TonemapParameters tone;
-            std::array<float, 3> padding{};
-        };
-
-        rdesc::ShaderBlock sceneParameterLayout() noexcept
-        {
-            auto layout = meshViewParameterBlock();
-            layout.size = sizeof(SceneParameters);
-            for (auto field : deferredLightingParameterBlock().fields)
-            {
-                field.offset += offsetof(SceneParameters, lighting);
-                layout.fields.push_back(std::move(field));
-            }
-            auto exposure = tonemapParameterBlock().fields.front();
-            exposure.offset += offsetof(SceneParameters, tone);
-            layout.fields.push_back(std::move(exposure));
-            return layout;
-        }
-
         std::vector<std::byte> parameterBytes(const SceneParameters& value)
         {
             const auto bytes = std::as_bytes(std::span(&value, 1));
@@ -77,11 +57,28 @@ namespace lux::scene
             return VRequest{client.request(*command, input)};
         }
 
+        std::uint64_t programHash(const rdesc::MaterialProgramSet& program) noexcept
+        {
+            std::uint64_t hash = 14695981039346656037ULL;
+            for (const auto& use : program.programs)
+            {
+                for (const auto& stage : use.shader.stages)
+                {
+                    for (const auto word : stage.words)
+                    {
+                        hash = (hash ^ word) * 1099511628211ULL;
+                    }
+                }
+            }
+            return hash;
+        }
+
         struct MaterialEntry final
         {
             MaterialId material;
             std::vector<RenderAssetVersion> textures;
             std::size_t references = 0;
+            std::uint64_t program_hash = 0;
         };
 
         struct MeshEntry final
@@ -149,606 +146,6 @@ namespace lux::scene
             }
         }
 
-        // This state may outlive the ECS system only while a finite protocol transaction settles.
-        // It contains no Registry/SceneSystem pointer, CPU transform mirror, thread or operation owner.
-        struct SceneRendering final
-        {
-            SceneRendering(
-                RenderExecution& rendering,
-                RenderAssets& assets,
-                execution::TaskScope& tasks,
-                process::asset_loading::AssetReadPort source
-            ) noexcept
-                : rendering(rendering), assets(assets), tasks(tasks), source(std::move(source))
-            {
-            }
-
-            exec::task<RenderResult<void>> initialize() noexcept
-            {
-                auto& client = rendering.mainClient();
-                EmptyRequest empty;
-                auto created = co_await request<CreateScene>(client, empty);
-                if (created.error.type != 0)
-                {
-                    co_return cxx::unexpected(created.error);
-                }
-                scene = created.scene;
-                CreateViewRequest view_request{scene};
-                auto created_view = co_await request<CreateView>(client, view_request);
-                if (created_view.error.type != 0)
-                {
-                    co_return cxx::unexpected(created_view.error);
-                }
-                view = created_view.view;
-                const auto storages = co_await request<ListStorages>(client, empty);
-                if (storages.error.type != 0)
-                {
-                    co_return cxx::unexpected(storages.error);
-                }
-                for (const auto& storage : storages.storages)
-                {
-                    const bool instances = storage.name == kMeshInstanceStorageType.name();
-                    const bool materials = storage.name == kMaterialStorageType.name();
-                    const bool lights = storage.name == kDirectLightingStorageType.name();
-                    if (!instances && !materials && !lights)
-                    {
-                        continue;
-                    }
-                    PrepareStorageRequest input{
-                        {materials ? VStorageLocation{GlobalStorageLocation{}} : VStorageLocation{scene},
-                         storage.id,
-                         instances   ? "instances"
-                         : materials ? "assets"
-                                     : "direct_lights"},
-                        {}
-                    };
-                    auto prepared = co_await request<PrepareStorage>(client, input);
-                    if (prepared.error.type != 0)
-                    {
-                        co_return cxx::unexpected(prepared.error);
-                    }
-                    (instances ? instance_storage : materials ? material_storage : light_storage) = prepared.storage;
-                }
-                const auto features = co_await request<ListFeatures>(client, empty);
-                if (features.error.type != 0)
-                {
-                    co_return cxx::unexpected(features.error);
-                }
-                for (const auto& feature : features.features)
-                {
-                    if (feature.name == GBufferFeatureDescriptor::name.name())
-                    {
-                        gbuffer = feature.id;
-                    }
-                    if (feature.name == DeferredLightingFeatureDescriptor::name.name())
-                    {
-                        lighting = feature.id;
-                    }
-                    if (feature.name == TonemapFeatureDescriptor::name.name())
-                    {
-                        tonemap = feature.id;
-                    }
-                    if (feature.name == MeshVisibilityFeatureDescriptor::name.name())
-                    {
-                        visibility = feature.id;
-                    }
-                }
-                const bool missing_storage =
-                    instance_storage.isNull() || material_storage.isNull() || light_storage.isNull();
-                const bool missing_feature =
-                    gbuffer.isNull() || lighting.isNull() || tonemap.isNull() || visibility.isNull();
-                if (missing_storage || missing_feature)
-                {
-                    co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
-                }
-                initialized = true;
-                co_return RenderResult<void>{};
-            }
-
-            exec::task<RenderResult<void>> prepareMaterials() noexcept
-            {
-                auto& client = rendering.mainClient();
-                for (auto& [key, entry] : materials)
-                {
-                    if (entry.references == 0 || !entry.material.isNull())
-                    {
-                        continue;
-                    }
-                    const auto* cooked = assets.material(key);
-                    if (!cooked)
-                    {
-                        const auto error = assets.failure(key);
-                        if (error.type != 0)
-                        {
-                            co_return cxx::unexpected(error);
-                        }
-                        continue;
-                    }
-                    // Incremental admission can stop at the actual Asset limit without reacquiring earlier slots.
-                    for (std::size_t i = entry.textures.size(); i < cooked->texture_slot_ids.size(); ++i)
-                    {
-                        const RenderAssetVersion texture{cooked->texture_slot_ids[i], key.revision};
-                        if (!texture.asset.isNull())
-                        {
-                            auto acquired = assets.acquireTexture(texture, source);
-                            if (!acquired && acquired.error().type == kRuntimeCapacity)
-                            {
-                                break;
-                            }
-                            if (!acquired)
-                            {
-                                co_return cxx::unexpected(acquired.error());
-                            }
-                        }
-                        entry.textures.push_back(texture);
-                    }
-                    if (entry.textures.size() != cooked->texture_slot_ids.size())
-                    {
-                        continue;
-                    }
-                    MaterialWrite input{material_storage, cooked->programs, cooked->programs.parameter_defaults};
-                    bool ready = true;
-                    for (auto texture : entry.textures)
-                    {
-                        if (texture.asset.isNull())
-                        {
-                            input.textures.push_back({});
-                            continue;
-                        }
-                        const auto* uploaded = assets.texture(texture);
-                        if (!uploaded)
-                        {
-                            const auto error = assets.failure(texture);
-                            if (error.type != 0)
-                            {
-                                co_return cxx::unexpected(error);
-                            }
-                            ready = false;
-                            break;
-                        }
-                        input.textures.push_back(uploaded->texture);
-                    }
-                    if (!ready)
-                    {
-                        continue;
-                    }
-                    auto created = co_await request<CreateMaterial>(client, input);
-                    if (created.error.type != 0)
-                    {
-                        co_return cxx::unexpected(created.error);
-                    }
-                    entry.material = created.material;
-                }
-                co_return RenderResult<void>{};
-            }
-
-            exec::task<RenderResult<void>> rebuildEffect() noexcept
-            {
-                const auto layout = sceneParameterLayout();
-                GBufferFeatureConfig surface{description};
-                surface.input_layout = layout;
-                surface.visible_capacity =
-                    std::bit_ceil(std::max<std::uint32_t>(128, static_cast<std::uint32_t>(meshes.size())));
-                for (const auto& [entity, entry] : meshes)
-                {
-                    if (!entry.present || entry.instance.isNull())
-                    {
-                        continue;
-                    }
-                    const auto& mesh = *assets.mesh({entry.visual.mesh, entry.revision});
-                    const auto& material = materials.find({entry.visual.material, entry.revision})->second;
-                    const auto& program = assets.material({entry.visual.material, entry.revision})->programs;
-                    const bool already_grouped = std::ranges::any_of(
-                        surface.groups,
-                        [&](const RasterMeshGroup& group)
-                        { return group.group.mesh == mesh.mesh && group.program == program; }
-                    );
-                    if (already_grouped)
-                    {
-                        continue;
-                    }
-                    RasterMeshGroup group{mesh.geometry, program, {mesh.mesh, material.material}};
-                    group.mesh_storage = "assets";
-                    group.material_storage = "assets";
-                    // Engine Camera uses a right-handed, image-down projection; compensate its Y flip once.
-                    group.front_counter_clockwise = false;
-                    for (const auto texture : material.textures)
-                    {
-                        const auto* value = texture.asset.isNull() ? nullptr : assets.texture(texture);
-                        group.textures.push_back(
-                            value ? value->description : GraphImageDesc{1, 1, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}
-                        );
-                    }
-                    surface.groups.push_back(std::move(group));
-                }
-                DeferredLightingFeatureConfig light;
-                light.extent = {description.width, description.height, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
-                light.extent.extent.source = EImageExtentSource::TARGET;
-                light.input_layout = layout;
-                const auto encoding = EColorEncoding::SRGB;
-                TonemapFeatureConfig tone{description, encoding, layout};
-                MeshVisibilityFeatureConfig selection;
-                selection.candidate_capacity = surface.visible_capacity;
-                selection.view_parameters = layout;
-                selection.mesh_storage = "assets";
-                for (const auto& group : surface.groups)
-                {
-                    selection.groups.push_back(group.group);
-                }
-                CreateEffectRequest input{description};
-                auto surface_config = ConfigValue::make(surface);
-                auto light_config = ConfigValue::make(light);
-                auto tone_config = ConfigValue::make(tone);
-                auto visibility_config = ConfigValue::make(selection);
-                if (!surface_config || !light_config || !tone_config || !visibility_config)
-                {
-                    co_return cxx::unexpected(RenderError{kFeatureContract});
-                }
-                input.definition.features.push_back({gbuffer, "surfaces", std::move(*surface_config)});
-                input.definition.features.push_back({lighting, "lighting", std::move(*light_config)});
-                input.definition.features.push_back({tonemap, "tonemap", std::move(*tone_config)});
-                for (auto name : {"albedo_metallic", "normal_roughness", "emissive_ao", "depth"})
-                {
-                    input.definition.connections.push_back({{0, name}, {1, name}});
-                }
-                input.definition.connections.push_back({{1, "hdr_color"}, {2, "hdr_color"}});
-                input.definition.outputs.push_back({{2, "color"}, GraphOutputRequirements{description.format, 1}});
-                if (!selection.groups.empty())
-                {
-                    input.definition.features.push_back({visibility, "visibility", std::move(*visibility_config)});
-                    for (std::size_t i = 0; i < selection.groups.size(); ++i)
-                    {
-                        const auto from = "g" + std::to_string(i) + ".";
-                        const auto to = "group" + std::to_string(i) + ".";
-                        for (auto [source, destination] :
-                             {std::pair{"visible", "members"}, {"commands", "commands"}, {"counts", "counts"}})
-                        {
-                            input.definition.connections.push_back({{3, from + source}, {0, to + destination}});
-                        }
-                    }
-                }
-                auto& client = rendering.mainClient();
-                auto compiled = co_await request<CreateEffect>(client, input);
-                if (compiled.error.type != 0)
-                {
-                    co_return cxx::unexpected(compiled.error);
-                }
-                AttachmentRequest
-                    attach{scene, view, target, compiled.effect, parameterBytes(parameters), viewport, {}, attachment};
-                const auto adopted = co_await request<Attach>(client, attach);
-                if (adopted.error.type != 0)
-                {
-                    EffectRequest discard{compiled.effect};
-                    const auto removed = co_await request<RemoveEffect>(client, discard);
-                    if (removed.error.type != 0)
-                    {
-                        reportRenderFailure(removed.error, "Discard candidate Effect");
-                    }
-                    co_return cxx::unexpected(adopted.error);
-                }
-                const auto previous = effect;
-                effect = compiled.effect;
-                attachment = adopted.attachment;
-                if (!previous.isNull())
-                {
-                    EffectRequest remove{previous};
-                    auto removed = co_await request<RemoveEffect>(client, remove);
-                    if (removed.error.type != 0)
-                    {
-                        co_return cxx::unexpected(removed.error);
-                    }
-                }
-                co_return RenderResult<void>{};
-            }
-
-            exec::task<RenderResult<void>> update(
-                std::vector<InstanceInput> inputs,
-                std::vector<LightInput> light_inputs
-            ) noexcept
-            {
-                if (!initialized)
-                {
-                    auto result = co_await initialize();
-                    if (!result)
-                    {
-                        co_return result;
-                    }
-                }
-                if (closing)
-                {
-                    co_return RenderResult<void>{};
-                }
-                auto& client = rendering.mainClient();
-                bool changed = attachment.isNull() || rebuild_requested;
-                for (auto& [entity, entry] : meshes)
-                {
-                    if (entry.present || entry.instance.isNull())
-                    {
-                        continue;
-                    }
-                    auto removed = co_await request<ReleaseMeshInstance>(client, entry.instance);
-                    if (removed.error.type != 0)
-                    {
-                        co_return cxx::unexpected(removed.error);
-                    }
-                    entry.instance = {};
-                    changed = true;
-                }
-                for (auto entry = lights.begin(); entry != lights.end();)
-                {
-                    if (entry->second.present)
-                    {
-                        ++entry;
-                        continue;
-                    }
-                    if (!entry->second.light.isNull())
-                    {
-                        RemoveDirectLight::Request remove{entry->second.light};
-                        auto removed = co_await request<RemoveDirectLight>(client, remove);
-                        if (removed.error.type != 0)
-                        {
-                            co_return cxx::unexpected(removed.error);
-                        }
-                    }
-                    entry = lights.erase(entry);
-                }
-                if (!light_inputs.empty())
-                {
-                    std::vector<VDirectLight> values;
-                    values.reserve(light_inputs.size());
-                    for (const auto& input : light_inputs)
-                    {
-                        values.push_back(input.value);
-                    }
-                    CreateDirectLights::Request create{light_storage, 0, values};
-                    auto result = co_await request<CreateDirectLights>(client, create);
-                    if (result.error.type != 0)
-                    {
-                        co_return cxx::unexpected(result.error);
-                    }
-                    for (std::size_t i = 0; i < light_inputs.size(); ++i)
-                    {
-                        lights.find(light_inputs[i].entity)->second.light = result.lights[i];
-                        new_lights.push_back(light_inputs[i].entity);
-                    }
-                }
-                auto prepared = co_await prepareMaterials();
-                if (!prepared)
-                {
-                    co_return prepared;
-                }
-                std::vector<MeshInstanceDescription> descriptions;
-                std::vector<std::uint64_t> entities;
-                for (auto& input : inputs)
-                {
-                    auto& entry = meshes.find(input.entity)->second;
-                    const auto* mesh = assets.mesh({entry.visual.mesh, entry.revision});
-                    if (!mesh)
-                    {
-                        const auto error = assets.failure({entry.visual.mesh, entry.revision});
-                        if (error.type != 0)
-                        {
-                            co_return cxx::unexpected(error);
-                        }
-                    }
-                    const auto material = materials.find({entry.visual.material, entry.revision});
-                    if (!entry.present || !entry.instance.isNull() || !mesh || material->second.material.isNull())
-                    {
-                        continue;
-                    }
-                    input.description.mesh = mesh->mesh;
-                    input.description.material = material->second.material;
-                    descriptions.push_back(input.description);
-                    entities.push_back(input.entity);
-                }
-                if (!descriptions.empty())
-                {
-                    MeshInstancesCreate create{instance_storage, descriptions};
-                    auto created = co_await request<CreateMeshInstances>(client, create);
-                    if (created.error.type != 0)
-                    {
-                        co_return cxx::unexpected(created.error);
-                    }
-                    for (std::size_t i = 0; i < entities.size(); ++i)
-                    {
-                        meshes.find(entities[i])->second.instance = created.instances[i];
-                        new_instances.push_back(entities[i]);
-                    }
-                    changed = true;
-                }
-                if (changed && !closing)
-                {
-                    auto rebuilt = co_await rebuildEffect();
-                    if (!rebuilt)
-                    {
-                        co_return rebuilt;
-                    }
-                    rebuild_requested = false;
-                }
-                for (auto entry = meshes.begin(); entry != meshes.end();)
-                {
-                    if (entry->second.present)
-                    {
-                        ++entry;
-                        continue;
-                    }
-                    assets.releaseMesh({entry->second.visual.mesh, entry->second.revision});
-                    --materials.find({entry->second.visual.material, entry->second.revision})->second.references;
-                    entry = meshes.erase(entry);
-                }
-                for (auto entry = materials.begin(); entry != materials.end();)
-                {
-                    if (entry->second.references != 0)
-                    {
-                        ++entry;
-                        continue;
-                    }
-                    if (!entry->second.material.isNull())
-                    {
-                        auto removed = co_await request<ReleaseMaterial>(client, entry->second.material);
-                        if (removed.error.type != 0)
-                        {
-                            co_return cxx::unexpected(removed.error);
-                        }
-                    }
-                    for (const auto texture : entry->second.textures)
-                    {
-                        if (!texture.asset.isNull())
-                        {
-                            assets.releaseTexture(texture);
-                        }
-                    }
-                    assets.releaseMaterial(entry->first);
-                    entry = materials.erase(entry);
-                }
-                co_return RenderResult<void>{};
-            }
-
-            exec::task<RenderResult<void>> close() noexcept
-            {
-                auto& client = rendering.mainClient();
-                if (!scene.isNull())
-                {
-                    SceneRequest remove{scene};
-                    auto result = co_await request<RemoveScene>(client, remove);
-                    if (result.error.type != 0)
-                    {
-                        co_return cxx::unexpected(result.error);
-                    }
-                    scene = {};
-                    attachment = {};
-                }
-                if (!effect.isNull())
-                {
-                    EffectRequest remove{effect};
-                    auto result = co_await request<RemoveEffect>(client, remove);
-                    if (result.error.type != 0)
-                    {
-                        co_return cxx::unexpected(result.error);
-                    }
-                    effect = {};
-                }
-                for (const auto& [entity, entry] : meshes)
-                {
-                    assets.releaseMesh({entry.visual.mesh, entry.revision});
-                }
-                for (const auto& [key, entry] : materials)
-                {
-                    if (!entry.material.isNull())
-                    {
-                        auto material = entry.material;
-                        auto removed = co_await request<ReleaseMaterial>(client, material);
-                        if (removed.error.type != 0)
-                        {
-                            co_return cxx::unexpected(removed.error);
-                        }
-                    }
-                    for (const auto texture : entry.textures)
-                    {
-                        if (!texture.asset.isNull())
-                        {
-                            assets.releaseTexture(texture);
-                        }
-                    }
-                    assets.releaseMaterial(key);
-                }
-                meshes.clear();
-                materials.clear();
-                lights.clear();
-                co_return RenderResult<void>{};
-            }
-
-            RenderExecution& rendering;
-            RenderAssets& assets;
-            process::asset_loading::AssetReadPort source;
-            execution::TaskScope& tasks;
-            std::unordered_map<std::uint64_t, MeshEntry> meshes;
-            std::vector<std::uint64_t> new_instances, new_lights;
-            std::unordered_map<std::uint64_t, LightEntry> lights;
-            std::map<RenderAssetVersion, MaterialEntry> materials;
-            SceneId scene;
-            ViewId view;
-            EffectId effect;
-            AttachmentId attachment;
-            StorageId instance_storage, material_storage, light_storage;
-            FeatureId gbuffer, lighting, tonemap, visibility;
-            TargetId target;
-            TargetDesc description;
-            RasterViewport viewport;
-            SceneParameters parameters;
-            RenderError error;
-            bool initialized = false, busy = false, closing = false;
-            bool rebuild_requested = false;
-        };
-
-        exec::task<RenderResult<void>> updateScene(
-            std::shared_ptr<SceneRendering> state,
-            std::vector<InstanceInput> inputs,
-            std::vector<LightInput> lights
-        ) noexcept
-        {
-            RenderResult<void> result;
-            if (!state->closing)
-            {
-                result = co_await state->update(std::move(inputs), std::move(lights));
-            }
-            if (state->closing)
-            {
-                auto closed = co_await state->close();
-                if (!closed)
-                {
-                    result = closed;
-                }
-            }
-            co_return result;
-        }
-
-        void startUpdate(
-            std::shared_ptr<SceneRendering> state,
-            std::vector<InstanceInput> inputs,
-            std::vector<LightInput> lights = {}
-        ) noexcept
-        {
-            state->busy = true;
-            auto task = state->tasks.submit(
-                {.name = "Synchronize Render Scene", .category = "render.scene"},
-                [state, inputs = std::move(inputs), lights = std::move(lights)](execution::TaskReporter
-                ) mutable noexcept
-                {
-                    auto operation = stdexec::starts_on(
-                        state->rendering.execution().mainScheduler(),
-                        updateScene(state, std::move(inputs), std::move(lights))
-                    );
-                    // Scene destruction cancels adoption, not the real created handles. This finite
-                    // protocol transaction must reach its cleanup path while Main frames continue.
-                    auto settled = execution::taskResult(stdexec::write_env(
-                        std::move(operation),
-                        stdexec::prop{stdexec::get_stop_token, stdexec::never_stop_token{}}
-                    ));
-                    return stdexec::then(
-                        std::move(settled),
-                        [state](auto result) noexcept
-                        {
-                            state->busy = false;
-                            if (!result)
-                            {
-                                state->error = result.error().domainFailure() ? *result.error().domainFailure()
-                                                                              : RenderError{kRuntimeState};
-                                reportRenderFailure(state->error, "Synchronize Render Scene");
-                            }
-                            return execution::taskState(result);
-                        }
-                    );
-                }
-            );
-            if (!task)
-            {
-                state->busy = false;
-                state->error = RenderError{kRuntimeCapacity};
-                reportRenderFailure(state->error, "Admit Render Scene transaction");
-            }
-        }
-
         SceneStageResult failure(RenderError error) noexcept
         {
             return cxx::unexpected(SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, error});
@@ -757,11 +154,541 @@ namespace lux::scene
 
     struct RenderSystem::Impl final
     {
-        Impl(Registry& registry, SceneRenderServices& services)
-            : registry(registry), services(services),
-              state(
-                  std::make_shared<SceneRendering>(services.rendering, services.assets, services.tasks, services.source)
-              ),
+        exec::task<RenderResult<void>> initialize() noexcept
+        {
+            EmptyRequest empty;
+            auto created = co_await request<CreateScene>(client, empty);
+            if (created.error.type != 0)
+            {
+                co_return cxx::unexpected(created.error);
+            }
+            scene = created.scene;
+            CreateViewRequest view_request{scene};
+            auto created_view = co_await request<CreateView>(client, view_request);
+            if (created_view.error.type != 0)
+            {
+                co_return cxx::unexpected(created_view.error);
+            }
+            view = created_view.view;
+            const auto storages = co_await request<ListStorages>(client, empty);
+            if (storages.error.type != 0)
+            {
+                co_return cxx::unexpected(storages.error);
+            }
+            for (const auto& storage : storages.storages)
+            {
+                const bool instances = storage.name == kMeshInstanceStorageType.name();
+                const bool materials = storage.name == kMaterialStorageType.name();
+                const bool lights = storage.name == kDirectLightingStorageType.name();
+                if (!instances && !materials && !lights)
+                {
+                    continue;
+                }
+                PrepareStorageRequest input{
+                    {materials ? VStorageLocation{GlobalStorageLocation{}} : VStorageLocation{scene},
+                     storage.id,
+                     instances   ? "instances"
+                     : materials ? "assets"
+                                 : "direct_lights"},
+                    {}
+                };
+                auto prepared = co_await request<PrepareStorage>(client, input);
+                if (prepared.error.type != 0)
+                {
+                    co_return cxx::unexpected(prepared.error);
+                }
+                (instances ? instance_storage : materials ? material_storage : light_storage) = prepared.storage;
+            }
+            const auto registered_features = co_await request<ListFeatures>(client, empty);
+            if (registered_features.error.type != 0)
+            {
+                co_return cxx::unexpected(registered_features.error);
+            }
+            for (const auto& feature : registered_features.features)
+            {
+                if (feature.name == GBufferFeatureDescriptor::name.name())
+                {
+                    features.gbuffer = feature.id;
+                }
+                if (feature.name == DeferredLightingFeatureDescriptor::name.name())
+                {
+                    features.lighting = feature.id;
+                }
+                if (feature.name == TonemapFeatureDescriptor::name.name())
+                {
+                    features.tonemap = feature.id;
+                }
+                if (feature.name == MeshVisibilityFeatureDescriptor::name.name())
+                {
+                    features.visibility = feature.id;
+                }
+            }
+            const bool missing_storage =
+                instance_storage.isNull() || material_storage.isNull() || light_storage.isNull();
+            const bool missing_feature = features.gbuffer.isNull() || features.lighting.isNull() ||
+                                         features.tonemap.isNull() || features.visibility.isNull();
+            if (missing_storage || missing_feature)
+            {
+                co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
+            }
+            initialized = true;
+            co_return RenderResult<void>{};
+        }
+
+        exec::task<RenderResult<void>> prepareMaterials() noexcept
+        {
+            for (auto pending = pending_materials.begin(); pending != pending_materials.end();)
+            {
+                const auto key = *pending++;
+                auto& entry = materials.find(key)->second;
+                if (entry.references == 0 || !entry.material.isNull())
+                {
+                    continue;
+                }
+                const auto* cooked = assets.material(key);
+                if (!cooked)
+                {
+                    const auto error = assets.failure(key);
+                    if (error.type != 0)
+                    {
+                        co_return cxx::unexpected(error);
+                    }
+                    continue;
+                }
+                // Incremental admission can stop at the actual Asset limit without reacquiring earlier slots.
+                for (std::size_t i = entry.textures.size(); i < cooked->texture_slot_ids.size(); ++i)
+                {
+                    const RenderAssetVersion texture{cooked->texture_slot_ids[i], key.revision};
+                    if (!texture.asset.isNull())
+                    {
+                        auto acquired = assets.acquireTexture(texture, source);
+                        if (!acquired && acquired.error().type == kRuntimeCapacity)
+                        {
+                            break;
+                        }
+                        if (!acquired)
+                        {
+                            co_return cxx::unexpected(acquired.error());
+                        }
+                    }
+                    entry.textures.push_back(texture);
+                }
+                if (entry.textures.size() != cooked->texture_slot_ids.size())
+                {
+                    continue;
+                }
+                MaterialWrite input{material_storage, cooked->programs, cooked->programs.parameter_defaults};
+                bool ready = true;
+                for (auto texture : entry.textures)
+                {
+                    if (texture.asset.isNull())
+                    {
+                        input.textures.push_back({});
+                        continue;
+                    }
+                    const auto* uploaded = assets.texture(texture);
+                    if (!uploaded)
+                    {
+                        const auto error = assets.failure(texture);
+                        if (error.type != 0)
+                        {
+                            co_return cxx::unexpected(error);
+                        }
+                        ready = false;
+                        break;
+                    }
+                    input.textures.push_back(uploaded->texture);
+                }
+                if (!ready)
+                {
+                    continue;
+                }
+                auto created = co_await request<CreateMaterial>(client, input);
+                if (created.error.type != 0)
+                {
+                    co_return cxx::unexpected(created.error);
+                }
+                entry.material = created.material;
+                entry.program_hash = programHash(cooked->programs);
+                pending_materials.erase(key);
+            }
+            co_return RenderResult<void>{};
+        }
+
+        exec::task<RenderResult<void>> rebuildEffect() noexcept
+        {
+            GBufferFeatureConfig surface{description};
+            surface.visible_capacity =
+                std::bit_ceil(std::max<std::uint32_t>(128, static_cast<std::uint32_t>(meshes.size())));
+            std::unordered_multimap<std::uint64_t, std::size_t> group_indices;
+            std::vector<const rdesc::MaterialProgramSet*> group_programs;
+            for (const auto& [entity, entry] : meshes)
+            {
+                if (!entry.present || entry.instance.isNull())
+                {
+                    continue;
+                }
+                const auto& mesh = *assets.mesh({entry.visual.mesh, entry.revision});
+                const auto& material = materials.find({entry.visual.material, entry.revision})->second;
+                const auto& program = assets.material({entry.visual.material, entry.revision})->programs;
+                const auto bucket = material.program_hash ^ (std::uint64_t(mesh.mesh.local.index) << 32) ^
+                                    mesh.mesh.local.gen ^ mesh.mesh.storage.index;
+                const auto [first, last] = group_indices.equal_range(bucket);
+                auto found = first;
+                for (; found != last; ++found)
+                {
+                    const auto& group = surface.groups[found->second];
+                    if (group.group.mesh == mesh.mesh &&
+                        (group_programs[found->second] == &program || *group_programs[found->second] == program))
+                    {
+                        break;
+                    }
+                }
+                if (found != last)
+                {
+                    auto& group = surface.groups[found->second];
+                    const MeshInstanceDrawGroup candidate{mesh.mesh, material.material};
+                    if (!(candidate < group.group))
+                    {
+                        continue;
+                    }
+                    // Deterministic table representative; instance iteration order is not a recipe change.
+                    group.group = candidate;
+                    group.textures.clear();
+                    for (const auto texture : material.textures)
+                    {
+                        const auto* value = texture.asset.isNull() ? nullptr : assets.texture(texture);
+                        group.textures.push_back(
+                            value ? value->description : GraphImageDesc{1, 1, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}
+                        );
+                    }
+                    continue;
+                }
+                group_indices.emplace(bucket, surface.groups.size());
+                group_programs.push_back(&program);
+                RasterMeshGroup group{mesh.geometry, program, {mesh.mesh, material.material}};
+                group.mesh_storage = "assets";
+                group.material_storage = "assets";
+                // Engine Camera uses a right-handed, image-down projection; compensate its Y flip once.
+                group.front_counter_clockwise = false;
+                for (const auto texture : material.textures)
+                {
+                    const auto* value = texture.asset.isNull() ? nullptr : assets.texture(texture);
+                    group.textures.push_back(
+                        value ? value->description : GraphImageDesc{1, 1, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}
+                    );
+                }
+                surface.groups.push_back(std::move(group));
+            }
+            std::ranges::sort(
+                surface.groups,
+                [](const auto& left, const auto& right) noexcept { return left.group < right.group; }
+            );
+            std::vector<MeshInstanceDrawGroup> selection;
+            selection.reserve(surface.groups.size());
+            for (const auto& group : surface.groups)
+            {
+                selection.push_back(group.group);
+            }
+            const bool unchanged_recipe = !rebuild_requested && !attachment.isNull() &&
+                                          surface.visible_capacity <= visible_capacity && selection == published_groups;
+            if (unchanged_recipe)
+            {
+                co_return RenderResult<void>{};
+            }
+            const auto capacity = std::max(surface.visible_capacity, visible_capacity);
+            auto recipe = detail::makeSceneEffect(description, std::move(surface.groups), capacity, features);
+            if (!recipe)
+            {
+                co_return cxx::unexpected(recipe.error());
+            }
+            auto input = std::move(*recipe);
+            auto compiled = co_await request<CreateEffect>(client, input);
+            if (compiled.error.type != 0)
+            {
+                co_return cxx::unexpected(compiled.error);
+            }
+            AttachmentRequest
+                attach{scene, view, target, compiled.effect, parameterBytes(parameters), viewport, {}, attachment};
+            const auto adopted = co_await request<Attach>(client, attach);
+            if (adopted.error.type != 0)
+            {
+                EffectRequest discard{compiled.effect};
+                const auto removed = co_await request<RemoveEffect>(client, discard);
+                if (removed.error.type != 0)
+                {
+                    reportRenderFailure(removed.error, "Discard candidate Effect");
+                }
+                co_return cxx::unexpected(adopted.error);
+            }
+            const auto previous = effect;
+            effect = compiled.effect;
+            attachment = adopted.attachment;
+            published_groups = std::move(selection);
+            visible_capacity = capacity;
+            if (!previous.isNull())
+            {
+                EffectRequest remove{previous};
+                auto removed = co_await request<RemoveEffect>(client, remove);
+                if (removed.error.type != 0)
+                {
+                    co_return cxx::unexpected(removed.error);
+                }
+            }
+            co_return RenderResult<void>{};
+        }
+
+        exec::task<RenderResult<void>> synchronizeStructure(
+            std::vector<InstanceInput> inputs,
+            std::vector<LightInput> light_inputs
+        ) noexcept
+        {
+            if (!initialized)
+            {
+                auto result = co_await initialize();
+                if (!result)
+                {
+                    co_return result;
+                }
+            }
+            if (closing)
+            {
+                co_return RenderResult<void>{};
+            }
+            bool changed = attachment.isNull() || rebuild_requested;
+            for (auto& [entity, entry] : meshes)
+            {
+                if (entry.present || entry.instance.isNull())
+                {
+                    continue;
+                }
+                auto removed = co_await request<ReleaseMeshInstance>(client, entry.instance);
+                if (removed.error.type != 0)
+                {
+                    co_return cxx::unexpected(removed.error);
+                }
+                entry.instance = {};
+                changed = true;
+            }
+            for (auto entry = lights.begin(); entry != lights.end();)
+            {
+                if (entry->second.present)
+                {
+                    ++entry;
+                    continue;
+                }
+                if (!entry->second.light.isNull())
+                {
+                    RemoveDirectLight::Request remove{entry->second.light};
+                    auto removed = co_await request<RemoveDirectLight>(client, remove);
+                    if (removed.error.type != 0)
+                    {
+                        co_return cxx::unexpected(removed.error);
+                    }
+                }
+                entry = lights.erase(entry);
+            }
+            if (!light_inputs.empty())
+            {
+                std::vector<VDirectLight> values;
+                values.reserve(light_inputs.size());
+                for (const auto& input : light_inputs)
+                {
+                    values.push_back(input.value);
+                }
+                CreateDirectLights::Request create{light_storage, 0, values};
+                auto result = co_await request<CreateDirectLights>(client, create);
+                if (result.error.type != 0)
+                {
+                    co_return cxx::unexpected(result.error);
+                }
+                for (std::size_t i = 0; i < light_inputs.size(); ++i)
+                {
+                    lights.find(light_inputs[i].entity)->second.light = result.lights[i];
+                    new_lights.push_back(light_inputs[i].entity);
+                }
+            }
+            auto prepared = co_await prepareMaterials();
+            if (!prepared)
+            {
+                co_return prepared;
+            }
+            std::vector<MeshInstanceDescription> descriptions;
+            std::vector<std::uint64_t> entities;
+            for (auto& input : inputs)
+            {
+                auto& entry = meshes.find(input.entity)->second;
+                const auto* mesh = assets.mesh({entry.visual.mesh, entry.revision});
+                if (!mesh)
+                {
+                    const auto error = assets.failure({entry.visual.mesh, entry.revision});
+                    if (error.type != 0)
+                    {
+                        co_return cxx::unexpected(error);
+                    }
+                }
+                const auto material = materials.find({entry.visual.material, entry.revision});
+                if (!entry.present || !entry.instance.isNull() || !mesh || material->second.material.isNull())
+                {
+                    continue;
+                }
+                input.description.mesh = mesh->mesh;
+                input.description.material = material->second.material;
+                descriptions.push_back(input.description);
+                entities.push_back(input.entity);
+            }
+            if (!descriptions.empty())
+            {
+                MeshInstancesCreate create{instance_storage, descriptions};
+                auto created = co_await request<CreateMeshInstances>(client, create);
+                if (created.error.type != 0)
+                {
+                    co_return cxx::unexpected(created.error);
+                }
+                for (std::size_t i = 0; i < entities.size(); ++i)
+                {
+                    meshes.find(entities[i])->second.instance = created.instances[i];
+                    new_instances.push_back(entities[i]);
+                    pending_instances.erase(entities[i]);
+                }
+                changed = true;
+            }
+            if (changed && !closing)
+            {
+                auto rebuilt = co_await rebuildEffect();
+                if (!rebuilt)
+                {
+                    co_return rebuilt;
+                }
+                rebuild_requested = false;
+            }
+            for (auto entry = meshes.begin(); entry != meshes.end();)
+            {
+                if (entry->second.present)
+                {
+                    ++entry;
+                    continue;
+                }
+                assets.releaseMesh({entry->second.visual.mesh, entry->second.revision});
+                --materials.find({entry->second.visual.material, entry->second.revision})->second.references;
+                pending_instances.erase(entry->first);
+                entry = meshes.erase(entry);
+            }
+            for (auto entry = materials.begin(); entry != materials.end();)
+            {
+                if (entry->second.references != 0)
+                {
+                    ++entry;
+                    continue;
+                }
+                if (!entry->second.material.isNull())
+                {
+                    auto removed = co_await request<ReleaseMaterial>(client, entry->second.material);
+                    if (removed.error.type != 0)
+                    {
+                        co_return cxx::unexpected(removed.error);
+                    }
+                }
+                for (const auto texture : entry->second.textures)
+                {
+                    if (!texture.asset.isNull())
+                    {
+                        assets.releaseTexture(texture);
+                    }
+                }
+                assets.releaseMaterial(entry->first);
+                pending_materials.erase(entry->first);
+                entry = materials.erase(entry);
+            }
+            co_return RenderResult<void>{};
+        }
+
+        exec::task<RenderResult<void>> closeScene() noexcept
+        {
+            if (!scene.isNull())
+            {
+                SceneRequest remove{scene};
+                auto result = co_await request<RemoveScene>(client, remove);
+                if (result.error.type != 0)
+                {
+                    co_return cxx::unexpected(result.error);
+                }
+                scene = {};
+                view = {};
+                attachment = {};
+            }
+            if (!effect.isNull())
+            {
+                EffectRequest remove{effect};
+                auto result = co_await request<RemoveEffect>(client, remove);
+                if (result.error.type != 0)
+                {
+                    co_return cxx::unexpected(result.error);
+                }
+                effect = {};
+            }
+            while (!meshes.empty())
+            {
+                const auto entry = meshes.begin();
+                assets.releaseMesh({entry->second.visual.mesh, entry->second.revision});
+                meshes.erase(entry);
+            }
+            while (!materials.empty())
+            {
+                const auto entry = materials.begin();
+                if (!entry->second.material.isNull())
+                {
+                    auto result = co_await request<ReleaseMaterial>(client, entry->second.material);
+                    if (result.error.type != 0)
+                    {
+                        co_return cxx::unexpected(result.error);
+                    }
+                }
+                for (const auto texture : entry->second.textures)
+                {
+                    if (!texture.asset.isNull())
+                    {
+                        assets.releaseTexture(texture);
+                    }
+                }
+                assets.releaseMaterial(entry->first);
+                materials.erase(entry);
+            }
+            pending_instances.clear();
+            pending_materials.clear();
+            lights.clear();
+            co_return RenderResult<void>{};
+        }
+
+        void launch(exec::task<RenderResult<void>> work) noexcept
+        {
+            transaction_pending = true;
+            auto ready = execution::taskResult(stdexec::starts_on(execution.mainScheduler(), std::move(work)));
+            auto accepted = execution.spawn(stdexec::then(
+                std::move(ready),
+                [this](auto result) noexcept
+                {
+                    error = result                           ? RenderError{}
+                            : result.error().domainFailure() ? *result.error().domainFailure()
+                                                             : RenderError{kRuntimeState};
+                    if (error.type != 0)
+                    {
+                        reportRenderFailure(error, closing ? "Close Render Scene" : "Synchronize Render Scene");
+                    }
+                    transaction_pending = false;
+                }
+            ));
+            if (!accepted)
+            {
+                transaction_pending = false;
+                error = RenderError{kRuntimeState};
+                reportRenderFailure(error, "Admit Render Scene operation");
+            }
+        }
+
+        Impl(Registry& registry, const RenderSystemDependencies& dependencies)
+            : registry(registry), view_inputs(dependencies.inputs), client(dependencies.client),
+              execution(dependencies.execution), assets(dependencies.assets), source(dependencies.source),
               mesh_added(registry.on_construct<Mesh3D>().connect<&Impl::structureChanged>(*this)),
               mesh_updated(registry.on_update<Mesh3D>().connect<&Impl::structureChanged>(*this)),
               mesh_removed(registry.on_destroy<Mesh3D>().connect<&Impl::structureChanged>(*this)),
@@ -783,12 +710,12 @@ namespace lux::scene
             {
                 light_changes.push(entity);
             }
-            auto transforms_command = services.rendering.mainClient().bind<UpdateTransforms>();
-            auto lighting_command = services.rendering.mainClient().bind<UpdateDirectLights>();
-            auto inputs_command = services.rendering.mainClient().bind<UpdateAttachmentInputs>();
+            auto transforms_command = dependencies.client.bind<UpdateTransforms>();
+            auto lighting_command = dependencies.client.bind<UpdateDirectLights>();
+            auto inputs_command = dependencies.client.bind<UpdateAttachmentInputs>();
             if (!transforms_command || !lighting_command || !inputs_command)
             {
-                state->error = RenderError{kRuntimeUnsupported};
+                error = RenderError{kRuntimeUnsupported};
                 return;
             }
             transforms = *transforms_command;
@@ -798,10 +725,9 @@ namespace lux::scene
 
         ~Impl() noexcept
         {
-            state->closing = true;
-            if (!state->busy)
+            if (transaction_pending || !scene.isNull() || !effect.isNull() || !meshes.empty() || !materials.empty())
             {
-                startUpdate(state, {});
+                std::terminate(); // Retirement maintenance finishes before the System is destroyed.
             }
         }
 
@@ -862,8 +788,33 @@ namespace lux::scene
         }
 
         Registry& registry;
-        SceneRenderServices& services;
-        std::shared_ptr<SceneRendering> state;
+        SceneRenderInputs& view_inputs;
+        RenderRequester& client;
+        execution::ExecutionRuntime& execution;
+        RenderAssets& assets;
+        process::asset_loading::AssetReadPort source;
+        std::unordered_map<std::uint64_t, MeshEntry> meshes;
+        std::vector<std::uint64_t> new_instances, new_lights;
+        std::unordered_set<std::uint64_t> pending_instances;
+        std::unordered_map<std::uint64_t, LightEntry> lights;
+        std::map<RenderAssetVersion, MaterialEntry> materials;
+        std::set<RenderAssetVersion> pending_materials;
+        SceneId scene;
+        ViewId view;
+        EffectId effect;
+        AttachmentId attachment;
+        StorageId instance_storage, material_storage, light_storage;
+        detail::SceneEffectFeatures features;
+        std::vector<MeshInstanceDrawGroup> published_groups;
+        std::uint32_t visible_capacity = 0;
+        TargetId target;
+        TargetDesc description;
+        RasterViewport viewport;
+        SceneParameters parameters;
+        RenderError error;
+        bool initialized = false, transaction_pending = false, closing = false;
+        bool rebuild_requested = false;
+
         entt::basic_sparse_set<Entity> structure, transformed, light_changes;
         std::vector<Entity> processed;
         std::vector<cxx::SlotKey<MeshInstanceTag>> transform_ids;
@@ -880,8 +831,8 @@ namespace lux::scene
         entt::scoped_connection light_added, light_updated, light_removed;
     };
 
-    RenderSystem::RenderSystem(Registry& registry, SceneRenderServices& services)
-        : impl_(std::make_unique<Impl>(registry, services))
+    RenderSystem::RenderSystem(Registry& registry, const RenderSystemDependencies& dependencies)
+        : impl_(std::make_unique<Impl>(registry, dependencies))
     {
     }
 
@@ -889,34 +840,58 @@ namespace lux::scene
 
     AttachmentId RenderSystem::attachment() const noexcept
     {
-        return impl_->state->attachment;
+        return impl_->attachment;
     }
 
     SceneStageResult RenderSystem::maintain(SceneStageContext& context) noexcept
     {
         auto& self = *impl_;
-        auto& state = *self.state;
-        if (state.error.type != 0)
+        if (context.stop.stop_requested())
         {
-            return failure(state.error);
+            if (self.transaction_pending)
+            {
+                return ESceneProgress::PENDING;
+            }
+            if (!self.closing)
+            {
+                self.closing = true;
+                self.error = {}; // Structural failure does not discharge its created handles.
+            }
+            if (self.error.type != 0 && self.error.type != kRuntimeCapacity)
+            {
+                return failure(self.error);
+            }
+            const bool has_resources =
+                !self.scene.isNull() || !self.effect.isNull() || !self.meshes.empty() || !self.materials.empty();
+            if (!has_resources)
+            {
+                return ESceneProgress::COMPLETE;
+            }
+            self.launch(self.closeScene());
+            return ESceneProgress::PENDING;
         }
-        const auto& inputs = self.services.inputs;
+        if (self.error.type != 0)
+        {
+            return failure(self.error);
+        }
+        const auto& inputs = self.view_inputs;
         const bool changed_inputs = self.camera_dirty || self.view_revision != inputs.revision ||
-                                    self.resynchronization != self.services.rendering.mainClient().resynchronization();
+                                    self.resynchronization != self.client.resynchronization();
         context.publication_needed |= !self.structure.empty() || !self.transformed.empty() ||
-                                      !self.light_changes.empty() || changed_inputs || state.busy;
-        if (state.busy || self.services.inputs.target.isNull())
+                                      !self.light_changes.empty() || changed_inputs || self.transaction_pending;
+        if (self.transaction_pending || self.view_inputs.target.isNull())
         {
             return ESceneProgress::COMPLETE;
         }
-        state.rebuild_requested |= state.initialized && state.target != self.services.inputs.target;
-        state.target = self.services.inputs.target;
-        state.description = self.services.inputs.description;
-        state.viewport = self.services.inputs.viewport;
-        bool changed = !state.initialized || state.rebuild_requested;
-        if (self.asset_revision != self.services.inputs.asset_revision)
+        self.rebuild_requested |= self.initialized && (self.target != self.view_inputs.target ||
+                                                       self.description != self.view_inputs.description);
+        self.target = self.view_inputs.target;
+        self.description = self.view_inputs.description;
+        self.viewport = self.view_inputs.viewport;
+        bool changed = !self.initialized || self.rebuild_requested;
+        if (self.asset_revision != self.view_inputs.asset_revision)
         {
-            self.asset_revision = self.services.inputs.asset_revision;
+            self.asset_revision = self.view_inputs.asset_revision;
             for (const auto entity : self.registry.view<const Mesh3D>())
             {
                 self.structureChanged(self.registry, entity);
@@ -928,8 +903,8 @@ namespace lux::scene
             const auto bits = entityBits(entity);
             const auto* mesh = self.registry.valid(entity) ? self.registry.try_get<const Mesh3D>(entity) : nullptr;
             const bool visible = mesh && mesh->value.visible && self.registry.all_of<WorldTransform3D>(entity);
-            auto current = state.meshes.find(bits);
-            if (current != state.meshes.end())
+            auto current = self.meshes.find(bits);
+            if (current != self.meshes.end())
             {
                 if (visible && current->second.present && current->second.visual == mesh->value &&
                     current->second.revision == self.asset_revision)
@@ -948,7 +923,7 @@ namespace lux::scene
             {
                 const RenderAssetVersion mesh_key{mesh->value.mesh, self.asset_revision},
                     material_key{mesh->value.material, self.asset_revision};
-                auto mesh_acquired = state.assets.acquireMesh(mesh_key, self.services.source);
+                auto mesh_acquired = self.assets.acquireMesh(mesh_key, self.source);
                 if (!mesh_acquired && mesh_acquired.error().type == kRuntimeCapacity)
                 {
                     continue;
@@ -957,23 +932,25 @@ namespace lux::scene
                 {
                     return failure(mesh_acquired.error());
                 }
-                auto material = state.materials.find(material_key);
-                if (material == state.materials.end())
+                auto material = self.materials.find(material_key);
+                if (material == self.materials.end())
                 {
-                    auto acquired = state.assets.acquireMaterial(material_key, self.services.source);
+                    auto acquired = self.assets.acquireMaterial(material_key, self.source);
                     if (!acquired)
                     {
-                        state.assets.releaseMesh(mesh_key);
+                        self.assets.releaseMesh(mesh_key);
                         if (acquired.error().type == kRuntimeCapacity)
                         {
                             continue;
                         }
                         return failure(acquired.error());
                     }
-                    material = state.materials.emplace(material_key, MaterialEntry{}).first;
+                    material = self.materials.emplace(material_key, MaterialEntry{}).first;
+                    self.pending_materials.insert(material_key);
                 }
                 ++material->second.references;
-                state.meshes.emplace(bits, MeshEntry{mesh->value, self.asset_revision});
+                self.meshes.emplace(bits, MeshEntry{mesh->value, self.asset_revision});
+                self.pending_instances.insert(bits);
                 changed = true;
             }
             self.processed.push_back(entity);
@@ -989,19 +966,19 @@ namespace lux::scene
             const auto* light = self.registry.valid(entity) ? self.registry.try_get<const Light3D>(entity) : nullptr;
             const auto* pose =
                 self.registry.valid(entity) ? self.registry.try_get<const WorldTransform3D>(entity) : nullptr;
-            auto found = state.lights.find(bits);
+            auto found = self.lights.find(bits);
             if (!light || !pose)
             {
-                if (found != state.lights.end())
+                if (found != self.lights.end())
                 {
                     found->second.present = false;
                     changed = true;
                 }
                 continue;
             }
-            if (found == state.lights.end())
+            if (found == self.lights.end())
             {
-                found = state.lights.emplace(bits, LightEntry{{}, light->value.type}).first;
+                found = self.lights.emplace(bits, LightEntry{{}, light->value.type}).first;
             }
             if (found->second.type != light->value.type)
             {
@@ -1020,13 +997,14 @@ namespace lux::scene
                 changed = true;
             }
         }
-        changed |= self.observed_assets != state.assets.revision();
-        self.observed_assets = state.assets.revision();
+        changed |= !self.pending_instances.empty() && self.observed_assets != self.assets.revision();
+        self.observed_assets = self.assets.revision();
         if (changed)
         {
             std::vector<InstanceInput> inputs;
-            for (const auto& [bits, entry] : state.meshes)
+            for (const auto bits : self.pending_instances)
             {
+                const auto& entry = self.meshes.find(bits)->second;
                 if (!entry.present || !entry.instance.isNull())
                 {
                     continue;
@@ -1040,7 +1018,7 @@ namespace lux::scene
                     inputs.push_back(value);
                 }
             }
-            startUpdate(self.state, std::move(inputs), std::move(light_inputs));
+            self.launch(self.synchronizeStructure(std::move(inputs), std::move(light_inputs)));
         }
         return ESceneProgress::COMPLETE;
     }
@@ -1048,26 +1026,26 @@ namespace lux::scene
     SceneStageResult RenderSystem::prepareInputs(SceneStageContext&) noexcept
     {
         auto& self = *impl_;
-        if (self.state->busy)
+        if (self.closing)
         {
             return ESceneProgress::COMPLETE;
         }
         self.transform_ids.clear();
         self.transform_entities.clear();
-        for (auto bits : self.state->new_instances)
+        for (auto bits : self.new_instances)
         {
             self.transformChanged(self.registry, static_cast<Entity>(bits));
         }
-        self.state->new_instances.clear();
-        if (self.resynchronization != self.services.rendering.mainClient().resynchronization())
+        self.new_instances.clear();
+        if (self.resynchronization != self.client.resynchronization())
         {
-            self.resynchronization = self.services.rendering.mainClient().resynchronization();
+            self.resynchronization = self.client.resynchronization();
             self.parameters_changed = true;
-            for (const auto& [bits, entry] : self.state->meshes)
+            for (const auto& [bits, entry] : self.meshes)
             {
                 self.transformChanged(self.registry, static_cast<Entity>(bits));
             }
-            for (const auto& [bits, entry] : self.state->lights)
+            for (const auto& [bits, entry] : self.lights)
             {
                 self.lightChanged(self.registry, static_cast<Entity>(bits));
             }
@@ -1075,8 +1053,8 @@ namespace lux::scene
         for (const auto entity : self.transformed)
         {
             const auto bits = entityBits(entity);
-            const auto entry = self.state->meshes.find(bits);
-            if (entry == self.state->meshes.end() || !entry->second.present || entry->second.instance.isNull())
+            const auto entry = self.meshes.find(bits);
+            if (entry == self.meshes.end() || !entry->second.present || entry->second.instance.isNull())
             {
                 continue;
             }
@@ -1089,22 +1067,22 @@ namespace lux::scene
             self.transform_entities.push_back(entity);
         }
         self.transformed.clear();
-        for (auto bits : self.state->new_lights)
+        for (auto bits : self.new_lights)
         {
             self.lightChanged(self.registry, static_cast<Entity>(bits));
         }
-        self.state->new_lights.clear();
+        self.new_lights.clear();
         self.light_updates.clear();
         self.processed.clear();
         for (const auto entity : self.light_changes)
         {
-            const auto found = self.state->lights.find(entityBits(entity));
+            const auto found = self.lights.find(entityBits(entity));
             const auto* light = self.registry.valid(entity) ? self.registry.try_get<const Light3D>(entity) : nullptr;
             const auto* world =
                 self.registry.valid(entity) ? self.registry.try_get<const WorldTransform3D>(entity) : nullptr;
-            if (found == self.state->lights.end() || !light || !world)
+            if (found == self.lights.end() || !light || !world)
             {
-                if (found == self.state->lights.end())
+                if (found == self.lights.end())
                 {
                     self.processed.push_back(entity);
                 }
@@ -1126,7 +1104,7 @@ namespace lux::scene
         {
             self.light_changes.erase(entity);
         }
-        const auto& inputs = self.services.inputs;
+        const auto& inputs = self.view_inputs;
         if (!inputs.description.width || !inputs.description.height)
         {
             return ESceneProgress::COMPLETE;
@@ -1177,8 +1155,8 @@ namespace lux::scene
             parameters.lighting
                 .viewport = {inputs.viewport.x, inputs.viewport.y, inputs.viewport.width, inputs.viewport.height};
             parameters.tone.exposure = inputs.exposure;
-            self.parameters_changed |= std::memcmp(&parameters, &self.state->parameters, sizeof(parameters)) != 0;
-            self.state->parameters = parameters;
+            self.parameters_changed |= std::memcmp(&parameters, &self.parameters, sizeof(parameters)) != 0;
+            self.parameters = parameters;
             self.camera_dirty = false;
             self.view_revision = inputs.revision;
         }
@@ -1188,16 +1166,16 @@ namespace lux::scene
     SceneStageResult RenderSystem::publish(SceneStageContext&) noexcept
     {
         auto& self = *impl_;
-        auto* frame = self.services.rendering.mainClient().buildingFrame();
+        auto* frame = self.client.buildingFrame();
         if (!frame)
         {
             return ESceneProgress::PENDING;
         }
-        if (self.state->busy)
+        if (self.closing)
         {
             return ESceneProgress::COMPLETE;
         }
-        auto& client = self.services.rendering.mainClient();
+        auto& client = self.client;
         if (!self.transform_ids.empty())
         {
             auto matrices = frame->allocate<TransformMatrix>(self.transform_entities.size());
@@ -1206,12 +1184,8 @@ namespace lux::scene
                 const auto& world = self.registry.get<const WorldTransform3D>(self.transform_entities[i]);
                 Eigen::Map<Eigen::Matrix4f>{matrices[i].data()} = world.value.matrix().cast<float>();
             }
-            const TransformBatch batch{
-                self.state->instance_storage,
-                ++self.sequence,
-                frame->freeze(std::span(self.transform_ids)),
-                matrices
-            };
+            const TransformBatch
+                batch{self.instance_storage, ++self.sequence, frame->freeze(std::span(self.transform_ids)), matrices};
             if (auto appended = client.append(*frame, *self.transforms, batch); !appended)
             {
                 return failure(appended.error());
@@ -1220,7 +1194,7 @@ namespace lux::scene
         if (!self.light_updates.empty())
         {
             UpdateDirectLights::Request request{
-                self.state->light_storage,
+                self.light_storage,
                 self.sequence,
                 frame->freeze(std::span(self.light_updates))
             };
@@ -1229,13 +1203,9 @@ namespace lux::scene
                 return failure(appended.error());
             }
         }
-        if (self.parameters_changed && !self.state->attachment.isNull())
+        if (self.parameters_changed && !self.attachment.isNull())
         {
-            AttachmentInputs inputs{
-                self.state->attachment,
-                parameterBytes(self.state->parameters),
-                self.services.inputs.viewport
-            };
+            AttachmentInputs inputs{self.attachment, parameterBytes(self.parameters), self.view_inputs.viewport};
             if (auto appended = client.append(*frame, *self.attachment_inputs, std::move(inputs)); !appended)
             {
                 return failure(appended.error());
@@ -1251,9 +1221,12 @@ namespace lux::scene
 
     SceneSystemRegistration renderSystemRegistration() noexcept
     {
-        static constexpr std::array requirements{
-            SceneSystemRequirementSpec{"rendering", "lux.scene.rendering", cxx::typeToken<SceneRenderServices>(), false}
-        };
+        static constexpr std::array requirements{SceneSystemRequirementSpec{
+            "rendering",
+            "lux.scene.rendering",
+            cxx::typeToken<RenderSystemDependencies>(),
+            false
+        }};
         return {
             .type = system::systemTypeId(RenderSystem::Description.canonical_name),
             .cpp_type = cxx::typeToken<RenderSystem>(),
@@ -1262,12 +1235,13 @@ namespace lux::scene
             .install = +[](SceneSystemInstaller& builder,
                            SceneSystemDescription input) noexcept -> cxx::expected<void, SceneSystemBuildFailure>
             {
-                auto* services = builder.require<SceneRenderServices>(input.instanceId(), "rendering");
-                if (!services)
+                auto* dependencies = builder.require<RenderSystemDependencies>(input.instanceId(), "rendering");
+                if (!dependencies)
                 {
                     return cxx::unexpected(SceneSystemBuildFailure{ESceneSystemBuildError::MISSING_REQUIREMENT});
                 }
-                auto instance = builder.emplaceSystem<RenderSystem>(input.instanceId(), builder.registry(), *services);
+                auto instance =
+                    builder.emplaceSystem<RenderSystem>(input.instanceId(), builder.registry(), *dependencies);
                 if (!instance)
                 {
                     return cxx::unexpected(instance.error());

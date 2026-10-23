@@ -44,38 +44,24 @@ namespace lux::editor
         RenderResult<void> launch(Transaction work) noexcept
         {
             transaction_pending = true;
-            auto accepted = rendering.execution().submit(
-                {.name = "Configure UI output", .category = "editor.ui"},
-                [this, work = std::move(work)](execution::TaskReporter) mutable noexcept
+            const bool cleanup = closing;
+            auto operation = stdexec::starts_on(rendering.execution().mainScheduler(), std::move(work));
+            auto result = execution::taskResult(std::move(operation));
+            auto accepted = rendering.execution().spawn(stdexec::then(
+                std::move(result),
+                [this, cleanup](auto result) noexcept
                 {
-                    auto operation = stdexec::starts_on(rendering.execution().mainScheduler(), std::move(work));
-                    // Revocation stops new UI frames, not cleanup of already accepted native objects.
-                    auto result = execution::taskResult(stdexec::write_env(
-                        std::move(operation),
-                        stdexec::prop{stdexec::get_stop_token, stdexec::never_stop_token{}}
-                    ));
-                    return stdexec::then(
-                        std::move(result),
-                        [this](auto result) noexcept
-                        {
-                            if (!result)
-                            {
-                                if (const auto* domain = result.error().domainFailure())
-                                {
-                                    failure = *domain;
-                                }
-                                else
-                                {
-                                    failure =
-                                        RenderError{result.error().isCancelled() ? kCommandCancelled : kRuntimeState};
-                                }
-                            }
-                            transaction_pending = false;
-                            return execution::taskState(result);
-                        }
-                    );
+                    failure = result                           ? RenderError{}
+                              : result.error().domainFailure() ? *result.error().domainFailure()
+                                                               : RenderError{kRuntimeState};
+                    if (closing && !cleanup && failure.type != 0)
+                    {
+                        reportRenderFailure(failure, "Configure closing UI output");
+                        failure = {}; // Still run cleanup of the handles created before this failure.
+                    }
+                    transaction_pending = false;
                 }
-            );
+            ));
             if (!accepted)
             {
                 transaction_pending = false;
@@ -282,32 +268,45 @@ namespace lux::editor
         Transaction close() noexcept
         {
             auto& client = rendering.mainClient();
-            RenderError first;
-            const auto remember = [&](RenderError error) noexcept
-            {
-                if (first.type == 0)
-                {
-                    first = error;
-                }
-            };
             if (!scene.isNull())
             {
-                remember((co_await request<RemoveScene>(client, {std::exchange(scene, {})})).error);
+                const auto result = co_await request<RemoveScene>(client, {scene});
+                if (result.error.type != 0)
+                {
+                    co_return cxx::unexpected(result.error);
+                }
+                scene = {};
+                view = {};
                 attachment = {};
             }
             if (!effect.isNull())
             {
-                remember((co_await request<RemoveEffect>(client, {std::exchange(effect, {})})).error);
+                const auto result = co_await request<RemoveEffect>(client, {effect});
+                if (result.error.type != 0)
+                {
+                    co_return cxx::unexpected(result.error);
+                }
+                effect = {};
             }
             if (!target.isNull())
             {
-                remember((co_await request<RemoveTarget>(client, std::exchange(target, {}))).error);
+                const auto result = co_await request<RemoveTarget>(client, target);
+                if (result.error.type != 0)
+                {
+                    co_return cxx::unexpected(result.error);
+                }
+                target = {};
             }
             if (!font.isNull())
             {
-                remember((co_await request<ReleaseTexture>(client, std::exchange(font, {}))).error);
+                const auto result = co_await request<ReleaseTexture>(client, font);
+                if (result.error.type != 0)
+                {
+                    co_return cxx::unexpected(result.error);
+                }
+                font = {};
             }
-            co_return first.type == 0 ? RenderResult<void>{} : RenderResult<void>{cxx::unexpected(first)};
+            co_return RenderResult<void>{};
         }
 
         RenderExecution& rendering;
@@ -358,7 +357,8 @@ namespace lux::editor
 
     EditorUiScene::~EditorUiScene() noexcept
     {
-        if (impl_->transaction_pending)
+        if (impl_->transaction_pending || !impl_->scene.isNull() || !impl_->effect.isNull() ||
+            !impl_->target.isNull() || !impl_->font.isNull())
         {
             std::terminate();
         }
@@ -410,6 +410,10 @@ namespace lux::editor
         }
         if (state.closing)
         {
+            if (state.failure.type != 0 && state.failure.type != kRuntimeCapacity)
+            {
+                return cxx::unexpected(state.failure);
+            }
             if (!state.scene.isNull() || !state.target.isNull() || !state.effect.isNull() || !state.font.isNull())
             {
                 return state.launch(state.close());
@@ -467,13 +471,17 @@ namespace lux::editor
 
     void EditorUiScene::stopFrames() noexcept
     {
-        impl_->closing = true;
+        if (!impl_->closing)
+        {
+            impl_->closing = true;
+            impl_->failure = {}; // A previous configuration failure does not discharge cleanup.
+        }
     }
 
     bool EditorUiScene::settled() const noexcept
     {
         const auto& state = *impl_;
         return state.closing && !state.transaction_pending && state.scene.isNull() && state.target.isNull() &&
-               state.font.isNull();
+               state.effect.isNull() && state.font.isNull();
     }
 } // namespace lux::editor

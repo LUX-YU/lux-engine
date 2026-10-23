@@ -11,14 +11,13 @@
 
 namespace lux::execution
 {
-    class TaskScope;
+    class ExecutionRuntime;
 }
 
 namespace lux::rendering
 {
-    class RenderExecution;
+    class RenderRequester;
     class RenderAssets;
-    struct FrameInput;
 } // namespace lux::rendering
 
 namespace lux::scene
@@ -36,20 +35,18 @@ namespace lux::scene
         std::array<float, 4> background{0, 0, 0, 1};
     };
 
-    struct SceneRenderServices final
+    struct RenderSystemDependencies final
     {
-        rendering::RenderExecution& rendering;
+        rendering::RenderRequester& client;
+        execution::ExecutionRuntime& execution;
         rendering::RenderAssets& assets;
-        // Existing project cancellation/monitoring group. Retire Scene systems before closing its
-        // admission; then settled() also proves their accepted protocol cleanup has returned.
-        execution::TaskScope& tasks;
         SceneRenderInputs& inputs;
         // Optional project VFS; copied into each accepted load, never selected globally by workers.
         process::asset_loading::AssetReadPort source;
     };
 
     // Main-thread Scene projection. Observers collect intent; the existing TransformSystem remains
-    // the sole world-matrix producer. Async work captures render data only, never the Registry.
+    // the sole world-matrix producer. Protocol continuations stay on Main; workers receive immutable inputs.
     class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderSystem final
     {
     public:
@@ -61,9 +58,9 @@ namespace lux::scene
             .supported_world_types = SupportedWorldTypes
         };
 
-        RenderSystem(simulation::ecs::Registry&, SceneRenderServices&);
-        // Revokes future projection. Pending protocol results still settle, remove the Render Scene,
-        // then return asset references on Main. Continue maintenance frames during project retirement.
+        RenderSystem(simulation::ecs::Registry&, const RenderSystemDependencies&);
+        // Retire through maintain(context.stop): continue Main maintenance frames until COMPLETE.
+        // Destruction never starts asynchronous work; Registry and dependencies remain alive until then.
         ~RenderSystem() noexcept;
         RenderSystem(const RenderSystem&) = delete;
         RenderSystem& operator=(const RenderSystem&) = delete;

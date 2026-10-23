@@ -190,7 +190,7 @@ An independent Render UI Scene presents the native window; it does not create an
 All Engine Scene commands and UI draw lists join the same Main `FrameInput` before one SubmitFrame.
 
 Project factories obtain RenderExecution/RenderAssets from ContextExtensions and their own typed read port
-from EditorContext::prepareAssetReads(). Supply that port to SceneRenderServices; use a distinct source revision when
+from EditorContext::prepareAssetReads(). Supply that port to RenderSystemDependencies; use a distinct source revision when
 opening another project generation. Build with the existing SceneRuntime, then transfer its SceneInstanceLease
 to EditorContext::adoptScene(). Keep the Scene providers and view inputs in project services.
 

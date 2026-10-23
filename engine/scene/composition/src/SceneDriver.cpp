@@ -20,6 +20,7 @@ namespace lux::scene
             {
                 advancing = true;
             }
+
             ~DriveCall()
             {
                 advancing = false;
@@ -44,24 +45,33 @@ namespace lux::scene
     SceneDriver::TickResult SceneDriver::tick(SceneInstance& instance, simulation::SimulationDuration elapsed) noexcept
     {
         auto& state = *instance.impl_;
-        const auto rejected = [](ESceneDriveError error) -> TickResult {
-            return lux::cxx::unexpected(SceneDriveFailure{ESceneDrivePhase::NONE, error});
-        };
+        const auto rejected = [](ESceneDriveError error) -> TickResult
+        { return lux::cxx::unexpected(SceneDriveFailure{ESceneDrivePhase::NONE, error}); };
         if (state.advancing)
+        {
             return rejected(ESceneDriveError::REENTRANT);
+        }
         if (!state.progress.result)
+        {
             return lux::cxx::unexpected(state.progress.result.error());
+        }
         if (state.stop.stop_requested())
+        {
             return rejected(ESceneDriveError::STOPPED);
+        }
         const auto before = state.simulation->time();
         const bool is_time_reversed = elapsed < before.elapsed;
         const bool is_step_overflow = before.step_index == std::numeric_limits<std::uint64_t>::max();
         const bool is_invalid_time = is_time_reversed || is_step_overflow;
         if (is_invalid_time)
+        {
             return rejected(ESceneDriveError::INVALID_TIME);
+        }
         const bool is_pending = !state.maintenance_ready || state.progress.phase != ESceneDrivePhase::NONE;
         if (is_pending)
+        {
             return ESceneTickResult::DEFERRED;
+        }
         DriveCall call(state.advancing, state.progress);
         state.progress.phase = ESceneDrivePhase::SIMULATION;
         const auto started = Clock::now();
@@ -84,7 +94,9 @@ namespace lux::scene
     {
         auto& state = *instance.impl_;
         if (state.advancing)
+        {
             return ESceneProgress::PENDING;
+        }
         DriveCall call(state.advancing, state.progress);
         const auto time = state.simulation->time();
         SceneStageContext context;
@@ -101,6 +113,7 @@ namespace lux::scene
             {
                 fail(state, {ESceneDrivePhase::MAINTENANCE, std::move(result.error())});
                 context.allow_structure = false;
+                maintenance_pending = true; // Failure is not proof that the System has finished retiring.
             }
             else
             {
@@ -122,10 +135,14 @@ namespace lux::scene
     {
         auto& state = *instance.impl_;
         if (state.advancing)
+        {
             return ESceneProgress::PENDING;
+        }
         DriveCall call(state.advancing, state.progress);
         if (state.stop.stop_requested())
+        {
             return state.maintenance_ready ? ESceneProgress::COMPLETE : ESceneProgress::PENDING;
+        }
         const auto time = state.simulation->time();
         SceneStageContext context;
         context.elapsed = time.elapsed;
@@ -138,7 +155,8 @@ namespace lux::scene
             state.stage_cursor = 0;
             state.progress.phase = ESceneDrivePhase::SYNCHRONIZATION;
         }
-        const auto advance_hooks = [&](auto& hooks, ESceneDrivePhase phase) {
+        const auto advance_hooks = [&](auto& hooks, ESceneDrivePhase phase)
+        {
             while (state.stage_cursor < hooks.size())
             {
                 auto result = hooks[state.stage_cursor].invoke(context);
@@ -149,7 +167,9 @@ namespace lux::scene
                     return ESceneProgress::PENDING;
                 }
                 if (state.stop.stop_requested() || *result == ESceneProgress::PENDING)
+                {
                     return ESceneProgress::PENDING;
+                }
                 ++state.stage_cursor;
             }
             state.stage_cursor = 0;
@@ -160,7 +180,9 @@ namespace lux::scene
             context.allow_structure = true;
             if (advance_hooks(state.synchronization_hooks, ESceneDrivePhase::SYNCHRONIZATION) ==
                 ESceneProgress::PENDING)
+            {
                 return ESceneProgress::PENDING;
+            }
             if (!state.publication_needed)
             {
                 state.progress.phase = ESceneDrivePhase::NONE;
@@ -174,16 +196,20 @@ namespace lux::scene
         if (state.progress.phase == ESceneDrivePhase::STABLE)
         {
             if (advance_hooks(state.stable_point_hooks, ESceneDrivePhase::STABLE) == ESceneProgress::PENDING)
+            {
                 return ESceneProgress::PENDING;
+            }
             state.progress.stable_completed = time.step_index;
             state.progress.phase = ESceneDrivePhase::PUBLICATION;
             state.waiting_since = Clock::now();
         }
         if (advance_hooks(state.publication_hooks, ESceneDrivePhase::PUBLICATION) == ESceneProgress::PENDING)
+        {
             return ESceneProgress::PENDING;
+        }
         state.progress.publication_wait += Clock::now() - state.waiting_since;
         state.progress.publication_completed = time.step_index;
         state.progress.phase = ESceneDrivePhase::NONE;
         return completion;
     }
-}
+} // namespace lux::scene

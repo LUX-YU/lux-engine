@@ -6,6 +6,7 @@
 #include <lux/engine/rendering/RenderAssets.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/render/storage/RasterMeshInstances.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 #include <lux/engine/scene/Camera.hpp>
@@ -16,7 +17,9 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <latch>
 #include <map>
+#include <semaphore>
 #include <thread>
 
 using namespace lux;
@@ -210,7 +213,7 @@ int main()
     scene::SceneRenderInputs inputs;
     inputs.description = {64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1};
     inputs.target = call<CreateTarget>(*rendering, {inputs.description}).target;
-    scene::SceneRenderServices services{*rendering, *assets, project_tasks, inputs};
+    scene::RenderSystemDependencies dependencies{rendering->mainClient(), execution, *assets, inputs};
     simulation::ecs::Registry registry;
     const auto camera = registry.create();
     registry.emplace<scene::Camera>(camera, scene::Camera{{scene::PerspectiveProjection{}}, true});
@@ -225,14 +228,25 @@ int main()
     }
     registry.emplace<simulation::ecs::Light3D>(light);
     registry.emplace<simulation::ecs::WorldTransform3D>(light, camera_transform);
-    auto scene = std::make_unique<scene::RenderSystem>(registry, services);
+    auto scene = std::make_unique<scene::RenderSystem>(registry, dependencies);
     std::uint64_t completed_frames = 0;
+    std::stop_source scene_stop;
+    bool scene_retired = false;
+    bool compilation_held = false, projected_during_compile = false;
+    const auto transform_command_id =
+        std::ranges::find(catalog.commands, UpdateTransforms::name, &CommandInfo::name)->id;
     const auto drive = [&](bool draw) noexcept
     {
         rendering->consumeResponses();
         CHECK(execution.dispatchMainCompletions());
         CHECK(execution.dispatchTaskEvents());
         assets->maintain();
+        if (scene && scene_stop.stop_requested())
+        {
+            scene::SceneStageContext context;
+            context.stop = scene_stop.get_token();
+            scene_retired = take(scene->maintain(context)) == scene::ESceneProgress::COMPLETE;
+        }
         if (!draw && !rendering->mainClient().hasQueuedFrameCommands())
         {
             return;
@@ -245,12 +259,19 @@ int main()
         }
         auto& frame = **available;
 
-        if (scene)
+        if (scene && !scene_stop.stop_requested())
         {
             scene::SceneStageContext context;
             CHECK(scene->maintain(context));
             CHECK(scene->prepareInputs(context));
             CHECK(scene->publish(context));
+            if (compilation_held)
+            {
+                projected_during_compile |= std::ranges::any_of(
+                    frame.commands,
+                    [&](const auto& command) noexcept { return command.command == transform_command_id; }
+                );
+            }
         }
 
         CHECK(frames.submit(
@@ -309,9 +330,37 @@ int main()
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
     const auto previous_target = inputs.target;
+    std::latch cpu_entered{2};
+    std::counting_semaphore<2> release_cpu{0};
+    for (unsigned i = 0; i < 2; ++i)
+    {
+        CHECK(execution.spawn(
+            stdexec::schedule(execution.cpu()) | stdexec::then(
+                                                     [&]() noexcept
+                                                     {
+                                                         cpu_entered.count_down();
+                                                         release_cpu.acquire();
+                                                     }
+                                                 )
+        ));
+    }
+    cpu_entered.wait();
+    compilation_held = true;
     const auto previous_attachment = scene->attachment();
     inputs.target = call<CreateTarget>(*rendering, {inputs.description}).target;
     ++inputs.revision;
+    while (!projected_during_compile)
+    {
+        CHECK(std::chrono::steady_clock::now() < deadline);
+        registry.patch<simulation::ecs::WorldTransform3D>(
+            first,
+            [](auto& pose) noexcept { pose.value.translation().x() += 0.01; }
+        );
+        drive(true);
+    }
+    CHECK(projected_during_compile);
+    compilation_held = false;
+    release_cpu.release(2);
     while (scene->attachment() == previous_attachment)
     {
         drive(true);
@@ -342,14 +391,21 @@ int main()
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
     CHECK(assets->mesh({mesh_id, inputs.asset_revision}) != nullptr);
+    const auto compiled_before_removal = rendering->stats().compiled_graphs;
     registry.destroy(first);
     for (unsigned i = 0; i < 8; ++i)
     {
         drive(true);
     }
+    CHECK(rendering->stats().compiled_graphs == compiled_before_removal);
+    project_tasks.requestStop(); // Scene cleanup no longer depends on fresh monitored-task admission.
+    scene_stop.request_stop();
+    while (!scene_retired)
+    {
+        drive(false);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
     scene.reset();
-    // Scene destruction admitted its real RemoveScene transaction before project admission closes.
-    project_tasks.requestStop();
     while (!project_tasks.settled() || !frames.settled())
     {
         drive(false);

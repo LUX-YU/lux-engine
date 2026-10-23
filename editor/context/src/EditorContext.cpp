@@ -155,7 +155,7 @@ namespace lux::editor
                     return false;
                 }
             }
-            // Scene system destructors have now registered their final cleanup transactions.
+            // Retirement receipts now prove Scene cleanup completed before system destruction.
             tasks_.requestStop();
             asset_reads_.reset();
             close_stage_ = ECloseStage::TASKS;

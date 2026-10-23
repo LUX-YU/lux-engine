@@ -9,7 +9,9 @@ add_component(
     COMPONENT_NAME scene_render
     NAMESPACE lux::engine::scene
     OUTPUT_NAME lux_engine_scene_render
-    SOURCE_FILES src/RenderSystem.cpp
+    SOURCE_FILES
+        src/RenderSystem.cpp
+        src/SceneEffect.cpp
 )
 
 component_include_directories(
@@ -17,6 +19,8 @@ component_include_directories(
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
 )
+
+target_include_directories(scene_render PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
 
 target_compile_definitions(scene_render PRIVATE LUX_ENGINE_SCENE_RENDER_LIBRARY)
 

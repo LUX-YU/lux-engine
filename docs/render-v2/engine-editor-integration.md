@@ -562,16 +562,14 @@ clip clamp、IdxOffset/VtxOffset、Alpha Blend 等成熟算法。
 
 ### 10.2 项目关闭
 
-先从 Root 撤销该项目 UI，再请求该项目实际拥有的 SceneRuntime 实例退休。Scene 系统的析构把必要的 Render 关闭事务
-登记到已有项目 TaskScope 后，再关闭该 Scope 的新准入并请求停止；不能先关准入再要求析构补发释放。
-已接纳的 Render 事务保持真实 Response/句柄清偿，不因项目停止而跳过清理。
-项目把实际 SceneInstanceLease 交给 `EditorContext::adoptScene()`。close 仅请求退休，
-应用保留有 Scene 借用的关闭 Context 并继续 SceneRuntime/维护帧；finishClose 在退休回执完成后
-关闭 TaskScope 准入，等待它的已接纳清偿结束。它只保存真实 lease/回执，不建立另一份 Scene 目录。
-Scene 退休完成加项目 TaskScope.settled() 才允许移除其输出 Target 和销毁相关能力提供者。
-这仍是现有项目任务组，不是新增 GPU 清理 Scope。
-Pane/EditorContext 可先撤销 UI 采用，但已经发送的上传输入、文件 provider、代码 pin 和结果清偿不能随它们销毁。
-没有 Scene 借用的 Context 保留原来的非阻塞销毁合同；已接纳任务自行拥有输入和代码。
+先从 Root 撤销该项目 UI，再请求其 SceneRuntime 实例退休。退休 maintenance 保留实际 SceneSystem，
+停止新的帧投影，清偿已接纳结构操作，发送关闭维护命令并归还资产引用；全部完成后才销毁系统并完成退休回执。
+析构不再申请任务资格，RenderSystem 不通过共享状态跨越系统寿命。
+
+应用保留关闭 Context 的原 lease/回执并继续驱动 maintenance 帧。finishClose 在退休回执完成后关闭业务
+TaskScope、撤销文件读取入口，再等待已接纳业务任务结束。读取结果的输入寿命由有限 Sender 和 ExecutionRuntime
+覆盖，不为每次文件范围读取建立 TaskRecord。UI Scene 仅在释放 Response 成功后清空对应句柄；失败不是 settled。
+
 项目关闭不停止整个 ExecutionRuntime，不 join RenderThread，不卸载仍有回调/Handler 的 DLL。
 
 成功创建但已经无人采用的资源走真实释放命令；该清偿属于应用仍存活的 RenderAssets/协议流水线。
@@ -775,7 +773,7 @@ Frame/Record/Submit、堆分配、切换次数和峰值；采样与正式时延�
   Editor 的 `LuxEngine::rendering()` 与 `renderAssets()` 借用同一设施。
 - EditorComposition 的 ContextExtensions 发布这两个现存对象；它们不变成 Context 的第二份 Owner。
   `EditorContext::prepareAssetReads()` 提供项目 VFS 端点，使用同一 ExecutionRuntime 的阻塞资源。
-  SceneRenderServices 的 source 显式传入此端点，RenderAssets 每次 acquire 捕获它，
+  RenderSystemDependencies 的 source 显式传入此端点，RenderAssets 每次 acquire 捕获它，
   不通过全局“当前项目”选择器路由。调用方用不同 asset_revision 区分来源代次。
 - SceneRenderInputs 只保存 Target/Viewport/Camera 相关输入，不拥有完整帧。
   Scene 在 Requester 正在构建的 carrier 中直接写 K 项变化；UI 随后捕获并追加，应用提交一次。

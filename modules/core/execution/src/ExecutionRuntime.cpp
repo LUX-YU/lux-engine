@@ -382,12 +382,12 @@ namespace lux::execution
 
     std::uint64_t ExecutionRuntime::wakeEpoch() const noexcept
     {
-        return state_->wake_epoch.load(std::memory_order_acquire);
+        return state_->wake_epoch.load(std::memory_order_acquire) + state_->main_loop.publicationEpoch();
     }
 
     bool ExecutionRuntime::hasReadyWork() const noexcept
     {
-        return tasks_->hasWork() || !state_->main_loop.empty();
+        return tasks_->hasWork() || !state_->main_loop.empty() || state_->main_loop.activePublishers() != 0;
     }
 
     void ExecutionRuntime::wake() noexcept
@@ -410,7 +410,11 @@ namespace lux::execution
         {
             std::terminate();
         }
-        while (wakeEpoch() == observed && state_->main_loop.empty())
+        // post() wakes before dropping its final publisher access. Main may have consumed the
+        // node in that interval. Do not sleep waiting for a second wake that the tail cannot emit.
+        // Check the count BEFORE the epoch. Observing zero acquires the return serial as well;
+        // it cannot disappear between a false settled() predicate and this sleep decision.
+        while (state_->main_loop.empty() && state_->main_loop.activePublishers() == 0 && wakeEpoch() == observed)
         {
             if (deadline == std::chrono::steady_clock::time_point::max())
             {

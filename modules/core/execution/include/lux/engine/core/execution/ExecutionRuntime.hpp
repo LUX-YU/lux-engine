@@ -95,7 +95,9 @@ namespace lux::execution
 
         // Observe before checking work, then pass the epoch to waitForWork to avoid a lost wake.
         [[nodiscard]] std::uint64_t wakeEpoch() const noexcept;
-        // Ready Main continuations or changed monitoring data, not tasks awaiting work elsewhere.
+        // Ready Main continuations, changed monitoring or a publication returning from its wake.
+        // A publisher tail must finish before sleeping for another event. Unrelated worker tasks
+        // awaiting work do not make this true.
         [[nodiscard]] bool hasReadyWork() const noexcept;
         void wake() noexcept;
         void setWake(void (*wake)() noexcept) noexcept;

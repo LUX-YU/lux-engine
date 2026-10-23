@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <lux/engine/core/execution/visibility.h>
 #include <memory>
 #include <moodycamel/concurrentqueue.h>
@@ -28,6 +29,7 @@ namespace lux::execution
                 }
             }
         };
+
         inline constexpr GetCompletionCode getCompletionCode{};
     } // namespace detail
 
@@ -54,21 +56,35 @@ namespace lux::execution
         // Includes publication in progress and callbacks executing in executeReady(). A nonzero
         // count does not promise a currently dequeueable item; the producer will wake the driver.
         [[nodiscard]] std::size_t size() const noexcept;
-        [[nodiscard]] bool empty() const noexcept { return size() == 0; }
+
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return size() == 0;
+        }
 
         // Empty/joined work does not imply that a producer has returned from the wakeup callback.
         [[nodiscard]] std::size_t activePublishers() const noexcept
         {
-            return active_publishers_.load(std::memory_order_acquire);
+            return static_cast<std::uint32_t>(publication_state_.load(std::memory_order_acquire));
         }
 
     private:
+        friend class ExecutionRuntime;
+
+        // Entry/return activity is part of Runtime's opaque wait epoch. Return changes the serial
+        // and drops the active count in ONE atomic update, after the wake callback has returned.
+        [[nodiscard]] std::uint64_t publicationEpoch() const noexcept
+        {
+            return publication_state_.load(std::memory_order_acquire);
+        }
+
         // Embedded in a connected schedule operation; the queue never owns that operation.
         struct Work
         {
             Work(void (*execute)(Work&) noexcept, std::shared_ptr<const void> code) noexcept
                 : execute(execute), code_lifetime(std::move(code))
-            {}
+            {
+            }
 
             Work(const Work&) = delete;
             Work& operator=(const Work&) = delete;
@@ -84,7 +100,9 @@ namespace lux::execution
         std::atomic<std::size_t> pending_{0};
         void (*wakeup_)(void*) noexcept;
         void* wakeup_context_;
-        std::atomic<std::size_t> active_publishers_{0};
+        // Low 32 bits: concurrently executing post calls. High 32 bits: returned publications.
+        // No loop/context access may follow the final update in post().
+        std::atomic<std::uint64_t> publication_state_{0};
     };
 
     class RunLoop::Scheduler final
@@ -106,15 +124,17 @@ namespace lux::execution
             return {};
         }
 
-        [[nodiscard]] stdexec::forward_progress_guarantee
-        query(stdexec::get_forward_progress_guarantee_t) const noexcept
+        [[nodiscard]] stdexec::forward_progress_guarantee query(stdexec::get_forward_progress_guarantee_t
+        ) const noexcept
         {
             return stdexec::forward_progress_guarantee::weakly_parallel;
         }
 
     private:
         friend class RunLoop;
+
         explicit Scheduler(RunLoop& loop) noexcept : loop_(&loop) {}
+
         RunLoop* loop_;
     };
 
@@ -147,9 +167,13 @@ namespace lux::execution
                       detail::getCompletionCode(stdexec::get_env(receiver))
                   ),
                   loop_(loop), receiver_(std::move(receiver))
-            {}
+            {
+            }
 
-            void start() & noexcept { loop_.post(*this); }
+            void start() & noexcept
+            {
+                loop_.post(*this);
+            }
 
         private:
             RunLoop& loop_;
@@ -163,11 +187,16 @@ namespace lux::execution
 
     private:
         friend class Scheduler;
+
         explicit ScheduleSender(RunLoop& loop) noexcept : loop_(&loop) {}
+
         RunLoop* loop_;
     };
 
-    inline RunLoop::Scheduler RunLoop::scheduler() noexcept { return Scheduler{*this}; }
+    inline RunLoop::Scheduler RunLoop::scheduler() noexcept
+    {
+        return Scheduler{*this};
+    }
 
     inline RunLoop::ScheduleSender RunLoop::Scheduler::schedule() const noexcept
     {

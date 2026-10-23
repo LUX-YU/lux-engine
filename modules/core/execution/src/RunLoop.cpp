@@ -7,7 +7,8 @@ namespace lux::execution
 {
     RunLoop::RunLoop(void (*wakeup)(void*) noexcept, void* context) noexcept
         : wakeup_(wakeup ? wakeup : [](void*) noexcept {}), wakeup_context_(context)
-    {}
+    {
+    }
 
     RunLoop::~RunLoop()
     {
@@ -19,7 +20,7 @@ namespace lux::execution
 
     void RunLoop::post(Work& work) noexcept
     {
-        active_publishers_.fetch_add(1, std::memory_order_acq_rel);
+        publication_state_.fetch_add(1, std::memory_order_acq_rel);
         pending_.fetch_add(1, std::memory_order_release);
         if (!ready_.enqueue(&work))
         {
@@ -28,7 +29,8 @@ namespace lux::execution
         }
         // The consumer may already have destroyed work. Only the loop is accessed after enqueue.
         wakeup_(wakeup_context_);
-        active_publishers_.fetch_sub(1, std::memory_order_acq_rel);
+        constexpr auto returned = (std::uint64_t{1} << 32) - 1;
+        publication_state_.fetch_add(returned, std::memory_order_acq_rel);
     }
 
     std::size_t RunLoop::executeReady(std::size_t limit) noexcept

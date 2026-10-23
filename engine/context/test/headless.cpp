@@ -11,6 +11,7 @@
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
+#include <semaphore>
 #if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -21,6 +22,53 @@
 
 namespace
 {
+    struct PublicationPause final
+    {
+        std::thread::id main = std::this_thread::get_id();
+        std::atomic<bool> claimed = false;
+        std::binary_semaphore entered{0}, release{0};
+    };
+
+    PublicationPause* publication_pause = nullptr;
+
+    void publicationTailCheck(lux::execution::ExecutionRuntime& runtime)
+    {
+        PublicationPause pause;
+        publication_pause = &pause;
+        runtime.setWake(+[]() noexcept
+                        {
+                            auto& pause = *publication_pause;
+                            if (std::this_thread::get_id() != pause.main && !pause.claimed.exchange(true))
+                            {
+                                pause.entered.release();
+                                pause.release.acquire();
+                            }
+                        });
+        bool completed = false;
+        auto work = runtime.submit(
+            {},
+            [&](lux::execution::TaskReporter) noexcept
+            {
+                return stdexec::then(
+                    stdexec::starts_on(runtime.cpu(), stdexec::schedule(runtime.mainScheduler())),
+                    [&]() noexcept { completed = true; }
+                );
+            }
+        );
+        assert(work && pause.entered.try_acquire_for(std::chrono::seconds(2)));
+        assert(runtime.dispatchMainCompletions() && runtime.dispatchTaskEvents());
+        assert(completed && !runtime.settled()); // The only remaining work is post()'s publication tail.
+        std::printf("publication tail: ready=%d settled=%d\n", runtime.hasReadyWork(), runtime.settled());
+        assert(runtime.hasReadyWork());
+        const auto before_return = runtime.wakeEpoch();
+        runtime.waitForWork(before_return); // Must return without waiting for a nonexistent second wake.
+        pause.release.release();
+        assert(runtime.waitUntil([&]() noexcept { return runtime.settled(); }));
+        assert(runtime.wakeEpoch() != before_return); // Also detects return between predicate and wait entry.
+        runtime.setWake(nullptr);
+        publication_pause = nullptr;
+    }
+
     void taskChecks(lux::execution::ExecutionRuntime& runtime)
     {
         using namespace lux::execution;
@@ -211,10 +259,12 @@ namespace
 
         unsigned destroyed{};
         auto pin = std::make_shared<int>(1);
+
         struct Capture final
         {
             std::weak_ptr<int> code;
             unsigned& destroyed;
+
             ~Capture()
             {
                 assert(!code.expired());
@@ -374,16 +424,21 @@ namespace
     {
         using namespace lux::execution;
         using Clock = std::chrono::steady_clock;
+
         struct Value final
         {
             unsigned* moves;
+
             explicit Value(unsigned& count) noexcept : moves(&count) {}
+
             Value(Value&& other) noexcept : moves(other.moves)
             {
                 ++*moves;
             }
+
             Value(const Value&) = delete;
         };
+
         using Result = lux::cxx::expected<Value, EExecutionError>;
         std::chrono::nanoseconds admission{}, collection{}, delivery{}, cold{};
         unsigned moves{};
@@ -445,6 +500,7 @@ namespace
     {
         long long blocks{}, bytes{};
     };
+
     HeapSample heapSample()
     {
         HeapSample sample;
@@ -464,6 +520,7 @@ namespace
         assert(error == ERROR_NO_MORE_ITEMS);
         return sample;
     }
+
     unsigned long long cpuTicks()
     {
         FILETIME created{}, exited{}, kernel{}, user{};
@@ -472,6 +529,7 @@ namespace
         { return (static_cast<unsigned long long>(time.dwHighDateTime) << 32) | time.dwLowDateTime; };
         return value(kernel) + value(user);
     }
+
     void taskMemoryAndWait(lux::execution::ExecutionRuntime& runtime)
     {
         using namespace lux::execution;
@@ -571,10 +629,12 @@ namespace
     void executionChecks(lux::execution::ExecutionRuntime& runtime)
     {
         using namespace lux::execution;
+
         struct Owner final
         {
             unsigned calls{};
             CompletionWork::Request next;
+
             static void run(void* pointer) noexcept
             {
                 auto& owner = *static_cast<Owner*>(pointer);
@@ -582,6 +642,7 @@ namespace
                 owner.next.request();
             }
         } a, b;
+
         CompletionWork first(runtime, &a, &Owner::run), second(runtime, &b, &Owner::run);
         a.next = second.requester();
         first.request();
@@ -702,16 +763,23 @@ namespace
 int main(int argc, char** argv)
 {
     using namespace lux;
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     assert(argc == 3);
     auto engine = engine::EngineContext::create({1, 32, {16}, execution::BlockingSchedulerConfig{1, 32}}, 1024);
     assert(engine);
+    std::puts("headless: publication tail");
+    publicationTailCheck((*engine)->execution());
+    std::puts("headless: execution checks");
     executionChecks((*engine)->execution());
+    std::puts("headless: tasks");
     taskChecks((*engine)->execution());
+    std::puts("headless: measurements");
     taskMeasurements((*engine)->execution());
 #if defined(_WIN32)
     taskMemoryAndWait((*engine)->execution());
 #endif
     project::PluginCatalog catalog;
+    std::puts("headless: scene integration");
     assert(catalog.read(argv[1], argv[2]));
     const auto* description = catalog.find("lux.builtin.runtime");
     assert(description && description->identity.version == 2 && description->dependencies.empty());

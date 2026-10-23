@@ -189,22 +189,53 @@ namespace
             endpoint = take(process::asset_loading::VfsAssetReadEndpoint::create(
                 vfs.view().capture(), take(execution.blocking()), files, {4}
             ));
-            auto loading = take(files.submit({"Load runtime script package", "EC2"},
-                [&](execution::TaskReporter report) noexcept {
-                    auto read = process::asset_loading::loadAsset<lux::script::ScriptArtifactAsset>(
-                        endpoint->port(), execution.cpu(), ScriptId, {65536, 262144, 8}, report.stopToken()
+            auto loading = take(files.submit(
+                {"Load runtime script package", "EC2"},
+                [&,
+                 make_work =
+                     [&](execution::TaskReporter report) noexcept
+                 {
+                     auto read = process::asset_loading::loadAsset<lux::script::ScriptArtifactAsset>(
+                         endpoint->port(),
+                         execution.cpu(),
+                         ScriptId,
+                         {65536, 262144, 8},
+                         report.stopToken()
+                     );
+                     using Value = cxx::expected<
+                         std::shared_ptr<const lux::script::ScriptArtifactAsset>,
+                         process::asset_loading::AssetLoadFailure>;
+                     auto value =
+                         stdexec::then(std::move(read), [](auto asset) noexcept { return Value{std::move(asset)}; });
+                     return stdexec::upon_error(
+                         std::move(value),
+                         [](auto failure) noexcept { return Value{cxx::unexpected{std::move(failure)}}; }
+                     );
+                 },
+                 consume_result =
+                     [&](execution::TTaskResult<
+                         std::shared_ptr<const lux::script::ScriptArtifactAsset>,
+                         process::asset_loading::AssetLoadFailure>&& result) noexcept
+                 {
+                     assert(result);
+                     artifact = std::move(*result);
+                 }](lux::execution::TaskReporter reporter) mutable noexcept
+                {
+                    auto ready = stdexec::continues_on(
+                        lux::execution::taskResult(make_work(reporter)),
+                        files.execution().mainScheduler()
                     );
-                    using Value = cxx::expected<std::shared_ptr<const lux::script::ScriptArtifactAsset>,
-                        process::asset_loading::AssetLoadFailure>;
-                    auto value = stdexec::then(std::move(read), [](auto asset) noexcept { return Value{std::move(asset)}; });
-                    return stdexec::upon_error(std::move(value), [](auto failure) noexcept {
-                        return Value{cxx::unexpected{std::move(failure)}};
-                    });
-                }, [&](execution::TTaskResult<std::shared_ptr<const lux::script::ScriptArtifactAsset>,
-                    process::asset_loading::AssetLoadFailure>&& result) noexcept {
-                    assert(result);
-                    artifact = std::move(*result);
-                }));
+                    return stdexec::then(
+                        std::move(ready),
+                        [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                        {
+                            const auto outcome = lux::execution::taskState(result);
+                            consume_result(std::move(result));
+                            return outcome;
+                        }
+                    );
+                }
+            ));
             assert(execution.waitUntil([&]() noexcept { return artifact != nullptr; }));
             assert(artifact->data().description().api_requirements.size() == 3);
             assert(systems->add(probeRegistration()));
@@ -252,7 +283,7 @@ namespace
 
         void collect()
         {
-            assert(execution.collectCompletions());
+            assert(execution.dispatchMainCompletions());
             assert(execution.dispatchTaskEvents());
         }
 

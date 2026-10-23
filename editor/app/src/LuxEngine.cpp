@@ -125,27 +125,13 @@ namespace lux::editor
                 for (;;)
                 {
                     static_cast<void>(objects.dispatchPending());
-                    if (!execution.collectCompletions() || !execution.dispatchTaskEvents())
+                    if (!execution.dispatchMainCompletions() || !execution.dispatchTaskEvents())
                     {
                         std::terminate();
                     }
                     static_cast<void>(objects.collectRetired());
-                    const auto tasks = execution.taskInfos(); // Cold final boundary; no duplicate task state.
-                    const bool outstanding = std::ranges::any_of(
-                        tasks,
-                        [](const execution::TaskInfo& task) noexcept
-                        {
-                            return task.state == execution::ETaskState::QUEUED ||
-                                   task.state == execution::ETaskState::RUNNING;
-                        }
-                    );
-                    if (!outstanding)
+                    if (execution.settled() && objects.statistics().pending == 0)
                     {
-                        // A worker can publish its final record between collection and the query.
-                        if (!execution.collectCompletions() || !execution.dispatchTaskEvents())
-                        {
-                            std::terminate();
-                        }
                         return;
                     }
                     const bool ready = execution.hasPendingWork() || objects.statistics().pending != 0;
@@ -353,8 +339,11 @@ namespace lux::editor
                                    detail::ProjectPreparation result
                                ) mutable noexcept
                                {
+                                   const auto outcome = result.result ? execution::ETaskState::SUCCEEDED
+                                                                      : execution::ETaskState::FAILED;
                                    detail::ProjectPrepared completion{serial, task, std::move(file), std::move(result)};
                                    static_cast<void>(object::sendEvent(*owner, completion));
+                                   return outcome;
                                }
                            );
                 }
@@ -535,7 +524,7 @@ namespace lux::editor
             }
             Operation guard{pumping_};
             window::LuxWindow::pollEvents();
-            auto collected = host_.engine->execution().collectCompletions();
+            auto collected = host_.engine->execution().dispatchMainCompletions();
             if (!collected)
             {
                 return cxx::unexpected(execution::toError(collected.error()));

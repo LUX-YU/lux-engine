@@ -390,37 +390,42 @@ namespace lux::scene
         using TimerResult = lux::cxx::expected<void, execution::ETimerError>;
         const auto started = impl->tasks.submit(
             {"Script delay", "script"},
-            [timer = impl->timer, duration](execution::TaskReporter) noexcept
+            [timer = impl->timer, duration, request](execution::TaskReporter) noexcept
             {
                 auto elapsed = stdexec::then(timer.after(duration), []() noexcept { return TimerResult{}; });
-                return stdexec::upon_error(
+                auto result = stdexec::upon_error(
                     std::move(elapsed),
                     [](execution::ETimerError error) noexcept -> TimerResult { return lux::cxx::unexpected(error); }
                 );
-            },
-            [request](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
-            {
-                if (result)
-                {
-                    request->terminal.store(Impl::ETerminal::READY, std::memory_order_release);
-                    return;
-                }
-                if (const auto* error = result.error().domainFailure())
-                {
-                    request->status.store(timerStatus(*error), std::memory_order_release);
-                    request->terminal.store(Impl::ETerminal::FAILED, std::memory_order_release);
-                    return;
-                }
-                const bool stopped = result.error().isCancelled();
-                request->status.store(
-                    static_cast<std::int32_t>(
-                        stopped ? EScriptDelayStatus::STOPPING : EScriptDelayStatus::TIMER_FAILURE
-                    ),
-                    std::memory_order_release
-                );
-                request->terminal.store(
-                    stopped ? Impl::ETerminal::STOPPED : Impl::ETerminal::FAILED,
-                    std::memory_order_release
+                return stdexec::then(
+                    execution::taskResult(std::move(result)),
+                    [request](execution::TTaskResult<void, execution::ETimerError> result) noexcept
+                    {
+                        const auto outcome = execution::taskState(result);
+                        if (result)
+                        {
+                            request->terminal.store(Impl::ETerminal::READY, std::memory_order_release);
+                            return outcome;
+                        }
+                        if (const auto* error = result.error().domainFailure())
+                        {
+                            request->status.store(timerStatus(*error), std::memory_order_release);
+                            request->terminal.store(Impl::ETerminal::FAILED, std::memory_order_release);
+                            return outcome;
+                        }
+                        const bool stopped = result.error().isCancelled();
+                        request->status.store(
+                            static_cast<std::int32_t>(
+                                stopped ? EScriptDelayStatus::STOPPING : EScriptDelayStatus::TIMER_FAILURE
+                            ),
+                            std::memory_order_release
+                        );
+                        request->terminal.store(
+                            stopped ? Impl::ETerminal::STOPPED : Impl::ETerminal::FAILED,
+                            std::memory_order_release
+                        );
+                        return outcome;
+                    }
                 );
             }
         );

@@ -71,23 +71,41 @@ int main()
     assert(scheduler);
     assert((*context)->tasks().submit(
         {"Context destruction", "test"},
-        [work, scheduler = *scheduler](execution::TaskReporter reporter) noexcept
+        [&,
+         make_work =
+             [work, scheduler = *scheduler](execution::TaskReporter reporter) noexcept
+         {
+             return stdexec::then(
+                 stdexec::schedule(scheduler),
+                 [work, reporter]() noexcept -> FrameworkResult<void>
+                 {
+                     work->started.release();
+                     work->release.acquire();
+                     assert(reporter.stopToken().stop_requested());
+                     return {};
+                 }
+             );
+         },
+         consume_result =
+             [work, thread = std::this_thread::get_id()](execution::TTaskResult<void, error::Error>&& result) noexcept
+         {
+             assert(result && thread == std::this_thread::get_id() && !work->delivered);
+             work->delivered = true;
+         }](lux::execution::TaskReporter reporter) mutable noexcept
         {
+            auto ready = stdexec::continues_on(
+                lux::execution::taskResult(make_work(reporter)),
+                (*engine)->execution().mainScheduler()
+            );
             return stdexec::then(
-                stdexec::schedule(scheduler),
-                [work, reporter]() noexcept -> FrameworkResult<void>
+                std::move(ready),
+                [consume_result = std::move(consume_result)](auto result) mutable noexcept
                 {
-                    work->started.release();
-                    work->release.acquire();
-                    assert(reporter.stopToken().stop_requested());
-                    return {};
+                    const auto outcome = lux::execution::taskState(result);
+                    consume_result(std::move(result));
+                    return outcome;
                 }
             );
-        },
-        [work, thread = std::this_thread::get_id()](execution::TTaskResult<void, error::Error>&& result) noexcept
-        {
-            assert(result && thread == std::this_thread::get_id() && !work->delivered);
-            work->delivered = true;
         }
     ));
     assert(work->started.try_acquire_for(5s));
@@ -112,7 +130,7 @@ int main()
     while (!work->delivered)
     {
         assert(std::chrono::steady_clock::now() < deadline);
-        static_cast<void>((*engine)->execution().collectCompletions());
+        static_cast<void>((*engine)->execution().dispatchMainCompletions());
         std::this_thread::yield();
     }
     std::puts("PASS complete Context, assembly refusal before construction, blocked task outlives Context without wait"

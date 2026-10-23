@@ -471,7 +471,7 @@ namespace lux::scene::script
         using Result = lux::cxx::expected<lux::asset::AssetBlob, AssetLoadFailure>;
         auto submitted = reserved->tasks.submit(
             {"Read script asset image", "script"},
-            [&reserved, id](lux::execution::TaskReporter) noexcept
+            [&reserved, id, state, handle, completion](lux::execution::TaskReporter) noexcept
             {
                 auto sender = stdexec::continues_on(
                     lux::execution::portSender(reserved->read, ReadAssetImage{id, reserved->limits.max_image_bytes}),
@@ -481,7 +481,7 @@ namespace lux::scene::script
                     std::move(sender),
                     [](lux::asset::AssetBlob image) noexcept -> Result { return std::move(image); }
                 );
-                return stdexec::upon_error(
+                auto normalized = stdexec::upon_error(
                     std::move(values),
                     [](auto error) noexcept -> Result
                     {
@@ -504,23 +504,33 @@ namespace lux::scene::script
                         return unexpected(failure);
                     }
                 );
-            },
-            [state, handle, completion](lux::execution::TTaskResult<lux::asset::AssetBlob, AssetLoadFailure>&& result
-            ) noexcept
-            {
-                if (!result)
-                {
-                    completeFailure(state, handle, completion, std::move(result.error()));
-                    return;
-                }
-                auto* record = state->find(handle);
-                if (record == nullptr)
-                {
-                    return;
-                }
-                record->result.emplace<lux::asset::AssetBlob>(std::move(*result));
-                record->pending.emplace(completion, ScriptAssetReadOutcome::success(handle));
-                state->deliver(handle);
+                auto ready = stdexec::continues_on(
+                    lux::execution::taskResult(std::move(normalized)),
+                    reserved->tasks.execution().mainScheduler()
+                );
+                return stdexec::then(
+                    std::move(ready),
+                    [state,
+                     handle,
+                     completion](lux::execution::TTaskResult<lux::asset::AssetBlob, AssetLoadFailure>&& result) noexcept
+                    {
+                        const auto outcome = lux::execution::taskState(result);
+                        if (!result)
+                        {
+                            completeFailure(state, handle, completion, std::move(result.error()));
+                            return outcome;
+                        }
+                        auto* record = state->find(handle);
+                        if (record == nullptr)
+                        {
+                            return outcome;
+                        }
+                        record->result.emplace<lux::asset::AssetBlob>(std::move(*result));
+                        record->pending.emplace(completion, ScriptAssetReadOutcome::success(handle));
+                        state->deliver(handle);
+                        return outcome;
+                    }
+                );
             }
         );
         return finishStart(state, handle, std::move(submitted));

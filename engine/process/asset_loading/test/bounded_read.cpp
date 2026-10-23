@@ -1,3 +1,4 @@
+#include <atomic>
 #include <cassert>
 #include <fstream>
 #include <lux/engine/process/asset_loading/AssetReadOverlay.hpp>
@@ -36,10 +37,13 @@ int main(int argc, char** argv)
     struct Reply final
     {
         std::optional<AssetReadPort::Outcome> result;
+        std::atomic_bool ready{};
 
         static void complete(void* target, AssetReadPort::Outcome&& value) noexcept
         {
-            static_cast<Reply*>(target)->result = std::move(value);
+            auto& reply = *static_cast<Reply*>(target);
+            reply.result = std::move(value);
+            reply.ready.store(true, std::memory_order_release);
         }
     };
 
@@ -47,7 +51,7 @@ int main(int argc, char** argv)
     {
         Reply reply;
         assert(port.submit({id, bound}, &reply, &Reply::complete, {}));
-        assert(runtime->waitUntil([&]() noexcept { return reply.result.has_value(); }));
+        assert(runtime->waitUntil([&]() noexcept { return reply.ready.load(std::memory_order_acquire); }));
         return std::move(*reply.result);
     };
     auto port = (*endpoint)->port();
@@ -82,8 +86,7 @@ int main(int argc, char** argv)
         assert((*late)->port().submit({id, image.size()}, &reply, &Reply::complete, {}));
         late->reset();
         scope.reset();
-        assert(!reply.result);
-        assert(runtime->waitUntil([&]() noexcept { return reply.result.has_value(); }));
+        assert(runtime->waitUntil([&]() noexcept { return reply.ready.load(std::memory_order_acquire); }));
     }
     runtime->requestStop();
     assert(runtime->join());

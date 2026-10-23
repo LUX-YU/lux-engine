@@ -6,7 +6,8 @@ Process 提供异步执行、资产读取和内容加载设施。它不成为所
 
 | 子模块 | 接点 |
 | --- | --- |
-| `execution` | ExecutionRuntime、Task、TaskScope、CompletionWork、计时设施 |
+| Core `execution` | 复用 ExecutionRuntime、Task、TaskScope、CompletionWork、计时设施 |
+| `object_execution` | ObjectScheduler：对象线程采用及目标代际保护 |
 | `asset_loading` | 资产读取端点与 AssetLoadSender |
 | `world_loading` | World 存储读取与 WorldPartitionLoadSender |
 
@@ -17,12 +18,12 @@ Process 提供异步执行、资产读取和内容加载设施。它不成为所
 资产读取／写入、模型解码、正式编译流程以及可以独立执行的有限计算。业务 owner 捕获明确输入，任务执行后将拥有型结果交回 owner 采用。
 
 ```text
-owner 验证并捕获请求
+调用方验证并捕获请求
   → sender 执行有限工作
-  → set_value / set_error / set_stopped
-  → collectCompletions 收取完成
-  → dispatchTaskEvents 移动交付结果
-  → 业务 owner 在安全点采用
+  → 运输结果直接交给下一步读取、CPU 解码或上传
+  → 需要业务采用时，显式切换到 Main/Object Scheduler
+  → 对应线程派发 continuation，在安全点采用
+  → Runtime 记录任务终态；dispatchTaskEvents 只通知监控
 ```
 
 “任务完成”不等于“业务已经采用”，更不等于 GPU 完成。停止结果不能当作成功结果，失败之前已经发生的文件效果也不能因错误返回而被抹掉。
@@ -65,12 +66,16 @@ Simulation 的系统并行使用现有 TaskGraph 和明确访问契约。资产�
 
 ## 统一任务接口
 
-`submit(TaskOptions, factory(TaskReporter), completed(TTaskResult<T,E>&&))` 接纳成功即启动。
-Task 只管理取消和寿命；结果交给回调，不提供 ready/take/acknowledge。
-析构撤销业务交付、请求停止，并仅通过 collectCompletions 等待真实完成。
-TaskScope 是准入与分组取消作用域，析构只请求停止，不等待、不收取 completion。
-每个已接受 TaskRecord 与作用域共享 TaskGroup；scope 消失后仍由原 Runtime 收取结果并释放最后 owner。
-服务结果只处理拥有型运输/存储事实，不得借用 Pane、EditorContext、SceneSession 或可变 Registry。
+`submit(TaskOptions, factory(TaskReporter))` 接纳成功即启动有限 Sender。
+流水线自己表达读取、CPU 计算、运输完成和 Main/Object 采用边界；Runtime 不保存通用结果回调。
+Task 只是非阻塞取消句柄，析构请求停止，不等待、不收取完成，也不撤销已经发生的副作用。
+TaskScope 是准入与分组取消域；析构后已接纳工作仍由原 Runtime 的 stdexec Scope 清偿。
+TaskRecord 保留任务身份、进度、取消和历史，不再拥有 connected OperationState。
+
+`dispatchMainCompletions()` 推进显式返回 Main 的 continuation；`dispatchTaskEvents()` 仅派发监控变化。
+IO 运输完成和解码推进不需要先到主线程。业务采用才借用真实对象/Scene 安全点，不能把可先销毁的 Pane、
+EditorContext 或可变 Registry 裸借用到 Worker。`taskResult()` 只归一化已有结果通道，不增加调度或结果 Owner。
+
 `TaskScope::join()` 是显式同步 barrier，仅用于 Runtime/application shutdown、同步启动/API 与测试，
-不得用于项目关闭/切换或 Context、Session、Pane、LuxObject 析构。它等待完整交付后才返回。
-Runtime 必须比其所有 Task/TaskScope 活得久。任务元信息有界，进度合并，端口用不透明 correlation 关联父任务。
+不得用于项目切换或 Context、Session、Pane、LuxObject 析构。Runtime 必须比 Task/TaskScope 和外部 Producer 活得久。
+任务元信息有界，监控可合并；执行状态销毁后归还额度，不等待 UI 刷新。端口继续用不透明 correlation 关联父任务。

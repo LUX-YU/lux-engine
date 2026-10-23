@@ -183,16 +183,23 @@ namespace lux::object::detail
     void MessageEnvelope::reset() noexcept
     {
         if (ops_)
+        {
             ops_->destroy(data_);
+        }
         data_ = nullptr;
         ops_ = nullptr;
         inline_ = false;
+        // The callable's destructor can itself belong to the pinned module.
+        code_lifetime_.reset();
     }
 
     void MessageEnvelope::moveFrom(MessageEnvelope&& other) noexcept
     {
         if (!other.ops_)
+        {
             return;
+        }
+        code_lifetime_ = std::move(other.code_lifetime_);
         ops_ = other.ops_;
         inline_ = other.inline_;
         if (inline_)

@@ -2,6 +2,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/core/execution/TaskInfo.hpp>
+#include <lux/engine/core/execution/RunLoop.hpp>
 #include <lux/engine/core/execution/visibility.h>
 
 #include <stdexec/execution.hpp>
@@ -29,6 +30,7 @@ namespace lux::execution
         struct TaskRuntime;
         struct TaskRecord;
         struct TaskGroup;
+        struct TaskEnvironment;
     } // namespace detail
 
     struct TaskCancelled final
@@ -98,6 +100,8 @@ namespace lux::execution
         friend class ExecutionRuntime;
         friend struct detail::TaskRuntime;
         friend class TaskScope;
+        friend struct detail::TaskEnvironment;
+
         explicit TaskReporter(detail::TaskRecord* record) noexcept : record_(record) {}
 
         detail::TaskRecord* record_{};
@@ -115,7 +119,7 @@ namespace lux::execution
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
-            return record_ != nullptr;
+            return tasks_ != nullptr;
         }
 
         [[nodiscard]] TaskId id() const noexcept;
@@ -123,9 +127,11 @@ namespace lux::execution
 
     private:
         friend class ExecutionRuntime;
-        explicit Task(detail::TaskRecord* record) noexcept : record_(record) {}
 
-        detail::TaskRecord* record_{};
+        Task(detail::TaskRuntime& tasks, TaskId id) noexcept : tasks_(&tasks), id_(id) {}
+
+        detail::TaskRuntime* tasks_{};
+        TaskId id_{};
     };
 
     namespace detail
@@ -144,11 +150,54 @@ namespace lux::execution
                 }
             }
         };
+
         inline constexpr GetTaskReporter getTaskReporter{};
+
+        [[nodiscard]] LUX_CORE_EXECUTION_PUBLIC lux::cxx::expected<TaskRecord*, EExecutionError> admitTask(
+            TaskRuntime&,
+            TaskOptions,
+            std::shared_ptr<TaskGroup> = {}
+        ) noexcept;
+        LUX_CORE_EXECUTION_PUBLIC void completeTask(TaskRecord&, ETaskState) noexcept;
+        LUX_CORE_EXECUTION_PUBLIC void releaseTaskAccess(TaskRecord&) noexcept;
+        [[nodiscard]] LUX_CORE_EXECUTION_PUBLIC TaskId taskId(const TaskRecord&) noexcept;
+        [[nodiscard]] LUX_CORE_EXECUTION_PUBLIC std::shared_ptr<const void> taskCodeLifetime(const TaskRecord&) noexcept;
+        [[nodiscard]] LUX_CORE_EXECUTION_PUBLIC stdexec::simple_counting_scope& taskScope(TaskRecord&) noexcept;
+
+        // stdexec still allocates, constructs and destroys the connected operation. The allocator
+        // only returns the admitted task's metadata after that destruction, including its captures.
+        template <class T> struct TaskAllocator final
+        {
+            using value_type = T;
+            TaskRecord* record{};
+
+            TaskAllocator() noexcept = default;
+
+            explicit TaskAllocator(TaskRecord& value) noexcept : record(&value) {}
+
+            template <class U> TaskAllocator(const TaskAllocator<U>& other) noexcept : record(other.record) {}
+
+            [[nodiscard]] T* allocate(std::size_t count)
+            {
+                return std::allocator<T>{}.allocate(count);
+            }
+
+            void deallocate(T* memory, std::size_t count) noexcept
+            {
+                std::allocator<T>{}.deallocate(memory, count);
+                releaseTaskAccess(*record);
+            }
+
+            template <class U> [[nodiscard]] bool operator==(const TaskAllocator<U>& other) const noexcept
+            {
+                return record == other.record;
+            }
+        };
 
         struct TaskEnvironment final
         {
             TaskReporter reporter;
+
             [[nodiscard]] std::stop_token query(stdexec::get_stop_token_t) const noexcept
             {
                 return reporter.stopToken();
@@ -158,31 +207,27 @@ namespace lux::execution
             {
                 return reporter;
             }
-        };
 
-        struct TaskOperation
-        {
-            virtual ~TaskOperation() = default;
-            virtual void start() noexcept = 0;
-            virtual void deliver() noexcept = 0;
-        };
+            [[nodiscard]] std::shared_ptr<const void> query(GetCompletionCode) const noexcept
+            {
+                return reporter.record_ ? taskCodeLifetime(*reporter.record_) : nullptr;
+            }
 
-        [[nodiscard]] LUX_CORE_EXECUTION_PUBLIC lux::cxx::expected<TaskRecord*, EExecutionError> admitTask(
-            TaskRuntime&,
-            TaskOptions,
-            std::shared_ptr<TaskGroup> = {}
-        ) noexcept;
-        LUX_CORE_EXECUTION_PUBLIC void startTask(TaskRecord&, std::unique_ptr<TaskOperation>) noexcept;
-        LUX_CORE_EXECUTION_PUBLIC void completeTask(TaskRecord&, ETaskState) noexcept;
-        [[nodiscard]] LUX_CORE_EXECUTION_PUBLIC TaskId taskId(const TaskRecord&) noexcept;
+            [[nodiscard]] std::allocator<std::byte> query(stdexec::get_allocator_t) const noexcept
+            {
+                return {};
+            }
+        };
 
         template <class... Values> struct TSingleTaskValue;
+
         template <class Value> struct TSingleTaskValue<Value>
         {
             using Type = Value;
         };
 
         template <class Tuple> struct TTaskValue;
+
         template <class T, class E> struct TTaskValue<std::tuple<lux::cxx::expected<T, E>>>
         {
             using Value = T;
@@ -195,85 +240,121 @@ namespace lux::execution
         using TTaskTypes =
             TTaskValue<typename stdexec::value_types_of_t<Sender, TaskEnvironment, std::tuple, TSingleTaskValue>::Type>;
 
-        template <class Sender, class Completion> class TTaskOperation final : public TaskOperation
+        template <class Sender> void spawnTask(TaskRecord& record, TaskReporter reporter, Sender sender) noexcept
         {
-            using Types = TTaskTypes<Sender>;
-            using Result = typename Types::Result;
-            using Error = TTaskError<typename Types::Error>;
-
-            struct Receiver final
-            {
-                using receiver_concept = stdexec::receiver_t;
-                TTaskOperation* owner;
-                [[nodiscard]] TaskEnvironment get_env() const noexcept
+            auto completed = stdexec::then(
+                std::move(sender),
+                [&record](auto&&... values) noexcept
                 {
-                    return {owner->reporter_};
+                    static_assert(sizeof...(values) <= 1, "Consume business values inside the task pipeline");
+                    ETaskState state = ETaskState::SUCCEEDED;
+                    (
+                        [&]
+                        {
+                            using Value = std::remove_cvref_t<decltype(values)>;
+                            if constexpr (std::same_as<Value, ETaskState>)
+                            {
+                                state = values;
+                            }
+                            else
+                            {
+                                static_assert(
+                                    std::is_void_v<typename Value::value_type>,
+                                    "Consume business values inside the task pipeline"
+                                );
+                                state = values ? ETaskState::SUCCEEDED : ETaskState::FAILED;
+                            }
+                        }(),
+                        ...
+                    );
+                    completeTask(record, state);
                 }
-
-                void set_value(typename Types::Input&& value) && noexcept
+            );
+            auto failed = stdexec::upon_error(
+                std::move(completed),
+                [&record](auto&& error) noexcept
                 {
-                    if (!value)
+                    if constexpr (std::same_as<std::remove_cvref_t<decltype(error)>, std::exception_ptr>)
                     {
-                        owner->result_.emplace(lux::cxx::unexpected(Error::domain(std::move(value.error()))));
-                        completeTask(*owner->record_, ETaskState::FAILED);
+                        std::terminate();
                     }
                     else
                     {
-                        if constexpr (std::is_void_v<typename Types::Value>)
-                        {
-                            owner->result_.emplace();
-                        }
-                        else
-                        {
-                            owner->result_.emplace(std::move(*value));
-                        }
-                        completeTask(*owner->record_, ETaskState::SUCCEEDED);
+                        completeTask(record, ETaskState::FAILED);
                     }
                 }
+            );
+            auto settled = stdexec::upon_stopped(
+                std::move(failed),
+                [&record]() noexcept { completeTask(record, ETaskState::CANCELLED); }
+            );
+            // Runtime admission closes first; the execution scope closes only after all admitted
+            // submissions have returned and all connected states have been destroyed.
+            // Only the outer spawn allocation returns task admission. Nested sender allocations
+            // use their ordinary allocator; they cannot release this task's metadata.
+            stdexec::spawn(
+                stdexec::write_env(std::move(settled), TaskEnvironment{reporter}),
+                taskScope(record).get_token(),
+                stdexec::env{stdexec::prop{stdexec::get_allocator, TaskAllocator<std::byte>{record}}}
+            );
+            releaseTaskAccess(record); // Submission tail; synchronous completion cannot invalidate it.
+        }
+    } // namespace detail
 
-                void set_error(EExecutionError error) && noexcept
+    // Materialize a task's typed result where the caller needs to inspect failure/cancellation.
+    // This is a sender composition: no scheduling, queue, result allocation or implicit callback.
+    template <class Sender> [[nodiscard]] auto taskResult(Sender sender) noexcept
+    {
+        using Types = detail::TTaskTypes<Sender>;
+        using Result = typename Types::Result;
+        using Error = TTaskError<typename Types::Error>;
+        auto value = stdexec::then(
+            std::move(sender),
+            [](typename Types::Input&& input) noexcept -> Result
+            {
+                if (!input)
                 {
-                    owner->result_.emplace(lux::cxx::unexpected(Error::execution(error)));
-                    completeTask(*owner->record_, ETaskState::FAILED);
+                    return lux::cxx::unexpected(Error::domain(std::move(input.error())));
                 }
-
-                // Lux failures use the typed channel. An exception escaping a sender is fatal.
-                void set_error(std::exception_ptr) && noexcept
+                if constexpr (std::is_void_v<typename Types::Value>)
+                {
+                    return {};
+                }
+                else
+                {
+                    return std::move(*input);
+                }
+            }
+        );
+        auto error = stdexec::upon_error(
+            std::move(value),
+            [](auto&& failure) noexcept -> Result
+            {
+                using Failure = std::remove_cvref_t<decltype(failure)>;
+                if constexpr (std::same_as<Failure, std::exception_ptr>)
                 {
                     std::terminate();
                 }
-
-                void set_stopped() && noexcept
+                else if constexpr (std::same_as<Failure, EExecutionError>)
                 {
-                    owner->result_.emplace(lux::cxx::unexpected(Error::cancelled()));
-                    completeTask(*owner->record_, ETaskState::CANCELLED);
+                    return lux::cxx::unexpected(Error::execution(failure));
                 }
-            };
-
-        public:
-            TTaskOperation(TaskRecord& record, TaskReporter reporter, Sender sender, Completion completed)
-                : record_(&record), reporter_(reporter), completed_(std::move(completed)),
-                  operation_(stdexec::connect(std::move(sender), Receiver{this}))
-            {
-                static_assert(std::is_nothrow_invocable_v<Completion&, Result&&>);
+                else
+                {
+                    return lux::cxx::unexpected(Error::domain(std::forward<decltype(failure)>(failure)));
+                }
             }
+        );
+        return stdexec::upon_stopped(
+            std::move(error),
+            []() noexcept -> Result { return lux::cxx::unexpected(Error::cancelled()); }
+        );
+    }
 
-            void start() noexcept override
-            {
-                stdexec::start(operation_);
-            }
-
-            void deliver() noexcept override
-            {
-                std::invoke(completed_, std::move(*result_));
-            }
-
-        private:
-            TaskRecord* record_;
-            TaskReporter reporter_;
-            Completion completed_;
-            std::optional<Result> result_;
-            stdexec::connect_result_t<Sender, Receiver> operation_;
-        };
-    } // namespace detail
+    template <class T, class E> [[nodiscard]] ETaskState taskState(const TTaskResult<T, E>& result) noexcept
+    {
+        return result                         ? ETaskState::SUCCEEDED
+               : result.error().isCancelled() ? ETaskState::CANCELLED
+                                              : ETaskState::FAILED;
+    }
 } // namespace lux::execution

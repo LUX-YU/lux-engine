@@ -675,25 +675,30 @@ namespace lux::scene
                     );
                     auto accepted = services.tasks.submit(
                         {"Load world partition", "world"},
-                        [sender = std::move(task)](execution::TaskReporter) mutable noexcept
-                        { return std::move(sender); },
-                        [read, execution = &services.tasks.execution()](auto&& completed) noexcept
+                        [sender = std::move(task), read](execution::TaskReporter) mutable noexcept
                         {
-                            if (completed)
-                            {
-                                read->data = std::move(*completed);
-                                read->state.store(Read::EState::VALUE, std::memory_order_release);
-                            }
-                            else if (const auto* failure = completed.error().domainFailure())
-                            {
-                                read->error = *failure;
-                                read->state.store(Read::EState::FAILED, std::memory_order_release);
-                            }
-                            else
-                            {
-                                read->state.store(Read::EState::CANCELLED, std::memory_order_release);
-                            }
-                            execution->wake();
+                            return stdexec::then(
+                                execution::taskResult(std::move(sender)),
+                                [read](auto completed) noexcept
+                                {
+                                    const auto outcome = execution::taskState(completed);
+                                    if (completed)
+                                    {
+                                        read->data = std::move(*completed);
+                                        read->state.store(Read::EState::VALUE, std::memory_order_release);
+                                    }
+                                    else if (const auto* failure = completed.error().domainFailure())
+                                    {
+                                        read->error = *failure;
+                                        read->state.store(Read::EState::FAILED, std::memory_order_release);
+                                    }
+                                    else
+                                    {
+                                        read->state.store(Read::EState::CANCELLED, std::memory_order_release);
+                                    }
+                                    return outcome;
+                                }
+                            );
                         }
                     );
                     if (!accepted)

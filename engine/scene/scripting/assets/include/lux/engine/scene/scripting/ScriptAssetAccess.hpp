@@ -58,7 +58,7 @@ namespace lux::scene::script
             const auto handle = reserved->handle;
             auto submitted = reserved->tasks.submit(
                 {"Read script CPU asset", "script", {}, code},
-                [&reserved, id](lux::execution::TaskReporter reporter) noexcept
+                [&reserved, id, state, handle, completion, code](lux::execution::TaskReporter reporter) noexcept
                 {
                     auto sender = lux::process::asset_loading::loadAsset<Asset>(
                         reserved->read,
@@ -72,7 +72,7 @@ namespace lux::scene::script
                         [](std::shared_ptr<const Asset> value) noexcept
                         { return lux::cxx::expected<std::shared_ptr<const Asset>, LoadFailure>{std::move(value)}; }
                     );
-                    return stdexec::upon_error(
+                    auto normalized = stdexec::upon_error(
                         std::move(values),
                         [](LoadFailure failure) noexcept
                         {
@@ -81,18 +81,27 @@ namespace lux::scene::script
                             };
                         }
                     );
-                },
-                [state, handle, completion, code](
-                    lux::execution::TTaskResult<std::shared_ptr<const Asset>, LoadFailure>&& result
-                ) noexcept
-                {
-                    if (!result)
-                    {
-                        completeFailure(state, handle, completion, std::move(result.error()));
-                        return;
-                    }
-                    auto held = holdAsset(std::move(code), std::move(*result));
-                    completeTyped(state, handle, completion, std::move(held));
+                    auto ready = stdexec::continues_on(
+                        lux::execution::taskResult(std::move(normalized)),
+                        reserved->tasks.execution().mainScheduler()
+                    );
+                    return stdexec::then(
+                        std::move(ready),
+                        [state, handle, completion, code](
+                            lux::execution::TTaskResult<std::shared_ptr<const Asset>, LoadFailure>&& result
+                        ) noexcept
+                        {
+                            const auto outcome = lux::execution::taskState(result);
+                            if (!result)
+                            {
+                                completeFailure(state, handle, completion, std::move(result.error()));
+                                return outcome;
+                            }
+                            auto held = holdAsset(std::move(code), std::move(*result));
+                            completeTyped(state, handle, completion, std::move(held));
+                            return outcome;
+                        }
+                    );
                 }
             );
             return finishStart(state, handle, std::move(submitted));

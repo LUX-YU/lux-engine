@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/core/execution/RunLoop.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/engine/core/execution/Task.hpp>
 #include <lux/engine/core/execution/Timer.hpp>
@@ -56,46 +57,43 @@ namespace lux::execution
         [[nodiscard]] TimerClient timer() const noexcept;
         [[nodiscard]] lux::cxx::expected<BlockingScheduler, EExecutionError> blocking() const noexcept;
 
-        template <class Factory, class Completion>
+        // The returned Task is a nonblocking cancellation handle, not an operation owner.
+        // Work and captured inputs remain in this Runtime until their real terminal completion.
+        template <class Factory>
         [[nodiscard]] lux::cxx::expected<Task, EExecutionError> submit(
             TaskOptions options,
-            Factory&& make_sender,
-            Completion&& completed
+            Factory&& make_sender
         ) noexcept
         {
-            using Sender = std::invoke_result_t<Factory, TaskReporter>;
-            using Operation = detail::TTaskOperation<Sender, std::decay_t<Completion>>;
             static_assert(std::is_nothrow_invocable_v<Factory, TaskReporter>);
             auto admitted = detail::admitTask(*tasks_, std::move(options));
             if (!admitted)
             {
                 return lux::cxx::unexpected(admitted.error());
             }
-            Task task{*admitted};
-            TaskReporter reporter{*admitted};
-            auto sender = std::invoke(std::forward<Factory>(make_sender), reporter);
-            detail::startTask(
-                **admitted,
-                std::make_unique<Operation>(
-                    **admitted,
-                    reporter,
-                    std::move(sender),
-                    std::forward<Completion>(completed)
-                )
-            );
+            auto& record = **admitted;
+            Task task{*tasks_, detail::taskId(record)};
+            TaskReporter reporter{&record};
+            detail::spawnTask(record, reporter, std::invoke(std::forward<Factory>(make_sender), reporter));
             return task;
         }
 
-        // Collection never calls a task's business completion. Dispatch is an explicit owner boundary.
-        [[nodiscard]] lux::cxx::expected<std::size_t, EExecutionError> collectCompletions() noexcept;
+        // Borrowed scheduler for this Runtime's application thread. It delivers determined
+        // results even after task cancellation; business adoption checks its own target/revision.
+        [[nodiscard]] RunLoop::Scheduler mainScheduler() noexcept;
+        // Runs a batch bounded by the entry count, outside queue locks. Returns consumed schedule
+        // nodes, including revoked coalesced notifications; concurrent publication can join the batch.
+        [[nodiscard]] lux::cxx::expected<std::size_t, EExecutionError> dispatchMainCompletions() noexcept;
+        // Tasks and Main work are quiescent; external producer tails still require their join.
+        [[nodiscard]] bool settled() const noexcept;
         [[nodiscard]] lux::cxx::expected<std::size_t, EExecutionError> dispatchTaskEvents() noexcept;
         [[nodiscard]] std::optional<TaskInfo> taskInfo(TaskId id) const noexcept;
         [[nodiscard]] std::vector<TaskInfo> taskInfos() const noexcept;
         [[nodiscard]] bool requestStop(TaskId id) noexcept;
         using TaskObserver = void (*)(void*, std::span<const TaskId>, bool resync) noexcept;
-        void setTaskObserver(void* owner, TaskObserver observer) noexcept;
+        void setTaskObserver(void* context, TaskObserver observer) noexcept;
 
-        // Runs the batch ready at entry, outside queue locks. New completions/work wait for the next call.
+        // Observe before checking work, then pass the epoch to waitForWork to avoid a lost wake.
         [[nodiscard]] std::uint64_t wakeEpoch() const noexcept;
         [[nodiscard]] bool hasPendingWork() const noexcept;
         void wake() noexcept;

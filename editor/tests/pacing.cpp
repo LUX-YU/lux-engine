@@ -76,17 +76,33 @@ namespace
         using Result = cxx::expected<void, execution::ETimerError>;
         return runtime.submit(
             {"Pacing completion", "qualification"},
-            [&](execution::TaskReporter) noexcept
+            [&,
+             make_work =
+                 [&](execution::TaskReporter) noexcept
+             {
+                 return stdexec::upon_error(
+                     stdexec::then(runtime.timer().after(700ms), []() noexcept { return Result{}; }),
+                     [](execution::ETimerError error) noexcept -> Result { return cxx::unexpected(error); }
+                 );
+             },
+             consume_result =
+                 [&](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
+             {
+                 assert(result);
+                 receiver.queue(); // Work from dispatch reaches the existing Object batch.
+             }](lux::execution::TaskReporter reporter) mutable noexcept
             {
-                return stdexec::upon_error(
-                    stdexec::then(runtime.timer().after(700ms), []() noexcept { return Result{}; }),
-                    [](execution::ETimerError error) noexcept -> Result { return cxx::unexpected(error); }
+                auto ready =
+                    stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime.mainScheduler());
+                return stdexec::then(
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                    {
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
+                    }
                 );
-            },
-            [&](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
-            {
-                assert(result);
-                receiver.queue(); // Work from dispatch reaches the existing Object batch.
             }
         );
     }
@@ -126,43 +142,59 @@ namespace
         auto& execution = host->engine().execution();
         auto warm = execution.submit(
             {"Pacing warmup", "qualification"},
-            [&](execution::TaskReporter) noexcept
-            {
-                return stdexec::upon_error(
-                    stdexec::then(
-                        execution.timer().after(250ms),
-                        []() noexcept { return cxx::expected<void, execution::ETimerError>{}; }
-                    ),
-                    [](execution::ETimerError error) noexcept -> cxx::expected<void, execution::ETimerError>
-                    { return cxx::unexpected(error); }
-                );
-            },
-            [&](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
-            {
-                assert(result && probe->changed);
-                warmed = true;
-                before_updates = probe->updates;
-                before_frames = host->engine().renderContext()->runtime().statistics().frames;
-                before_messages = object::ObjectRuntime::instance().statistics().posted;
-                started = std::chrono::steady_clock::now();
-                if (native_close)
-                {
+            [&,
+             make_work =
+                 [&](execution::TaskReporter) noexcept
+             {
+                 return stdexec::upon_error(
+                     stdexec::then(
+                         execution.timer().after(250ms),
+                         []() noexcept { return cxx::expected<void, execution::ETimerError>{}; }
+                     ),
+                     [](execution::ETimerError error) noexcept -> cxx::expected<void, execution::ETimerError>
+                     { return cxx::unexpected(error); }
+                 );
+             },
+             consume_result =
+                 [&](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
+             {
+                 assert(result && probe->changed);
+                 warmed = true;
+                 before_updates = probe->updates;
+                 before_frames = host->engine().renderContext()->runtime().statistics().frames;
+                 before_messages = object::ObjectRuntime::instance().statistics().posted;
+                 started = std::chrono::steady_clock::now();
+                 if (native_close)
+                 {
 #if defined(_WIN32)
-                    close = std::jthread(
-                        [hwnd]
-                        {
-                            std::this_thread::sleep_for(700ms);
-                            assert(PostMessageW(hwnd, WM_CLOSE, 0, 0));
-                        }
-                    );
+                     close = std::jthread(
+                         [hwnd]
+                         {
+                             std::this_thread::sleep_for(700ms);
+                             assert(PostMessageW(hwnd, WM_CLOSE, 0, 0));
+                         }
+                     );
 #endif
-                }
-                else
-                {
-                    auto accepted = timer(*host, receiver);
-                    assert(accepted);
-                    task = std::move(*accepted);
-                }
+                 }
+                 else
+                 {
+                     auto accepted = timer(*host, receiver);
+                     assert(accepted);
+                     task = std::move(*accepted);
+                 }
+             }](lux::execution::TaskReporter reporter) mutable noexcept
+            {
+                auto ready =
+                    stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), execution.mainScheduler());
+                return stdexec::then(
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                    {
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
+                    }
+                );
             }
         );
         assert(warm);

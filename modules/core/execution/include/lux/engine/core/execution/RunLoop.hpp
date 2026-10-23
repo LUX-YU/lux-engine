@@ -3,12 +3,34 @@
 #include <atomic>
 #include <cstddef>
 #include <lux/engine/core/execution/visibility.h>
+#include <memory>
 #include <moodycamel/concurrentqueue.h>
 #include <stdexec/execution.hpp>
 #include <utility>
 
 namespace lux::execution
 {
+    namespace detail
+    {
+        // Execution libraries do not know when a dynamically loaded completion callback returns.
+        // A driving loop borrows this environment value before entering that callback's module.
+        struct GetCompletionCode final : stdexec::forwarding_query_t
+        {
+            template <class Env> [[nodiscard]] std::shared_ptr<const void> operator()(const Env& env) const noexcept
+            {
+                if constexpr (requires { env.query(*this); })
+                {
+                    return env.query(*this);
+                }
+                else
+                {
+                    return {};
+                }
+            }
+        };
+        inline constexpr GetCompletionCode getCompletionCode{};
+    } // namespace detail
+
     // A scheduler driven by one existing thread. Producers schedule through stdexec; the driver
     // interleaves ready continuations with its other events. Join producers before destroying it.
     class LUX_CORE_EXECUTION_PUBLIC RunLoop final
@@ -44,12 +66,15 @@ namespace lux::execution
         // Embedded in a connected schedule operation; the queue never owns that operation.
         struct Work
         {
-            explicit Work(void (*execute)(Work&) noexcept) noexcept : execute(execute) {}
+            Work(void (*execute)(Work&) noexcept, std::shared_ptr<const void> code) noexcept
+                : execute(execute), code_lifetime(std::move(code))
+            {}
 
             Work(const Work&) = delete;
             Work& operator=(const Work&) = delete;
 
             void (*execute)(Work&) noexcept;
+            std::shared_ptr<const void> code_lifetime;
         };
 
         void post(Work& work) noexcept;
@@ -118,7 +143,8 @@ namespace lux::execution
                           auto& self = static_cast<Operation&>(work);
                           stdexec::set_value(std::move(self.receiver_));
                           // Terminal delivery may destroy self. No further access.
-                      }
+                      },
+                      detail::getCompletionCode(stdexec::get_env(receiver))
                   ),
                   loop_(loop), receiver_(std::move(receiver))
             {}

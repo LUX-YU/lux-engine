@@ -39,18 +39,20 @@ namespace lux::object
 
     EObjectPostStatus post(
         const ObjectTarget& target,
-        cxx::move_only_function<void(LuxObject*) noexcept> callback
+        cxx::move_only_function<void(LuxObject*) noexcept> callback,
+        std::shared_ptr<const void> code_lifetime
     ) noexcept
     {
-        if (!target.state_)
-        {
-            return EObjectPostStatus::CLOSED;
-        }
         if (!callback)
         {
             detail::failObjectContract();
         }
-        auto message = detail::makeCompletionMessage(TargetMessage{target.state_, std::move(callback)});
+        auto message =
+            detail::makeCompletionMessage(TargetMessage{target.state_, std::move(callback)}, std::move(code_lifetime));
+        if (!target.state_)
+        {
+            return EObjectPostStatus::CLOSED;
+        }
         switch (detail::post(std::move(message)))
         {
         case detail::EPostStatus::POSTED:

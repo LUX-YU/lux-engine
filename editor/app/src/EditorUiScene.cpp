@@ -34,7 +34,11 @@ namespace lux::editor
             std::optional<scene::ViewConfig> output
         )
             : scenes_(scenes), resources_(resources), output_(std::move(output)),
-              work_(execution, this, [](void* value) noexcept { static_cast<Impl*>(value)->collectCompletions(); }),
+              work_(
+                  execution,
+                  this,
+                  [](void* value) noexcept { static_cast<Impl*>(value)->dispatchMainCompletions(); }
+              ),
               completion_(std::make_shared<execution::CompletionWork::Request>(work_.requester()))
         {
             for (auto& slot : frames_)
@@ -210,7 +214,7 @@ namespace lux::editor
             return !frames_stopped_ && !failure_ && !pending_ && std::ranges::any_of(frames_, &Impl::reusable);
         }
 
-        void collectCompletions() noexcept
+        void dispatchMainCompletions() noexcept
         {
             for (auto& frame : frames_)
             {

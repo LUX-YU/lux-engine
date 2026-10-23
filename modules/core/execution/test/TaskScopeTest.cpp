@@ -1,5 +1,6 @@
 #include <lux/engine/core/execution/TaskScope.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <chrono>
@@ -27,26 +28,44 @@ namespace
             operation_owner = pin;
             const auto task = scope->submit(
                 {"Scope outlived by accepted task", "test"},
-                [&](TaskReporter reporter) noexcept
+                [&,
+                 make_work =
+                     [&](TaskReporter reporter) noexcept
+                 {
+                     return stdexec::then(
+                         stdexec::schedule(runtime->cpu()),
+                         [&, reporter, pin]() noexcept -> Value
+                         {
+                             entered.release();
+                             release.acquire();
+                             stopped.store(reporter.stopToken().stop_requested());
+                             reporter.setPhase("scope already destroyed");
+                             reporter.setProgress(1, 1);
+                             return *pin;
+                         }
+                     );
+                 },
+                 consume_result =
+                     [&, pin](TTaskResult<int, EExecutionError>&& value) noexcept
+                 {
+                     assert(std::this_thread::get_id() == owner_thread);
+                     assert(value && *value == *pin);
+                     ++delivered;
+                 }](lux::execution::TaskReporter reporter) mutable noexcept
                 {
+                    auto ready = stdexec::continues_on(
+                        lux::execution::taskResult(make_work(reporter)),
+                        runtime->mainScheduler()
+                    );
                     return stdexec::then(
-                        stdexec::schedule(runtime->cpu()),
-                        [&, reporter, pin]() noexcept -> Value
+                        std::move(ready),
+                        [consume_result = std::move(consume_result)](auto result) mutable noexcept
                         {
-                            entered.release();
-                            release.acquire();
-                            stopped.store(reporter.stopToken().stop_requested());
-                            reporter.setPhase("scope already destroyed");
-                            reporter.setProgress(1, 1);
-                            return *pin;
+                            const auto outcome = lux::execution::taskState(result);
+                            consume_result(std::move(result));
+                            return outcome;
                         }
                     );
-                },
-                [&, pin](TTaskResult<int, EExecutionError>&& value) noexcept
-                {
-                    assert(std::this_thread::get_id() == owner_thread);
-                    assert(value && *value == *pin);
-                    ++delivered;
                 }
             );
             assert(task);
@@ -88,7 +107,7 @@ namespace
                 assert(operation_owner.expired());
                 const auto completed = runtime->taskInfo(*task);
                 assert(completed && completed->state == ETaskState::SUCCEEDED);
-                assert(runtime->collectCompletions() && delivered == 1);
+                assert(runtime->dispatchMainCompletions() && delivered == 1);
             }
             // The other path exercises the original Runtime shutdown/drain, with no surviving scope.
         }
@@ -108,23 +127,39 @@ namespace
         bool delivered{};
         assert(scope.submit(
             {"Explicit join", "test"},
-            [&](TaskReporter) noexcept
+            [&,
+             make_work =
+                 [&](TaskReporter) noexcept
+             {
+                 return stdexec::then(
+                     stdexec::schedule(runtime->cpu()),
+                     [&]() noexcept -> Value
+                     {
+                         entered.release();
+                         release.acquire();
+                         return 7;
+                     }
+                 );
+             },
+             consume_result =
+                 [&](TTaskResult<int, EExecutionError>&& value) noexcept
+             {
+                 assert(value && *value == 7);
+                 delivered = true;
+                 assert(!scope.settled()); // Accounting ends only after synchronous delivery returns.
+             }](lux::execution::TaskReporter reporter) mutable noexcept
             {
+                auto ready =
+                    stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime->mainScheduler());
                 return stdexec::then(
-                    stdexec::schedule(runtime->cpu()),
-                    [&]() noexcept -> Value
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
                     {
-                        entered.release();
-                        release.acquire();
-                        return 7;
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
                     }
                 );
-            },
-            [&](TTaskResult<int, EExecutionError>&& value) noexcept
-            {
-                assert(value && *value == 7);
-                delivered = true;
-                assert(!scope.settled()); // Accounting ends only after synchronous delivery returns.
             }
         ));
         entered.acquire();
@@ -135,6 +170,71 @@ namespace
         assert(!rejected && rejected.error() == EExecutionError::STOPPING);
         std::puts("PASS T05 explicit join waits for delivery and closes admission");
     }
+
+    void terminalReleasesCapacity()
+    {
+        auto runtime = ExecutionRuntime::create({1, 1, {16}, {}, 2});
+        assert(runtime);
+        TaskScope tasks{*runtime};
+        std::atomic<unsigned> completed{};
+        for (unsigned i = 0; i != 128; ++i)
+        {
+            auto accepted = tasks.submit(
+                {"Finite CPU work", "test"},
+                [&](TaskReporter) noexcept
+                {
+                    return stdexec::schedule(runtime->cpu()) |
+                           stdexec::then([&]() noexcept { completed.fetch_add(1, std::memory_order_release); });
+                }
+            );
+            assert(accepted);
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+            while (!tasks.settled())
+            {
+                assert(std::chrono::steady_clock::now() < deadline);
+                std::this_thread::yield();
+            }
+            assert(completed.load(std::memory_order_acquire) == i + 1);
+        }
+        // No Main dispatch above: finished IO/CPU work must return its own admission capacity.
+        assert(runtime->taskInfos().size() == 2);
+        assert(tasks.submit({"Sync completion", "test"}, [](TaskReporter) noexcept { return stdexec::just(); }));
+        assert(tasks.submit(
+            {"Nested allocation", "test"},
+            [](TaskReporter reporter) noexcept
+            {
+                auto allocator = stdexec::read_env(stdexec::get_allocator);
+                return stdexec::then(
+                    std::move(allocator),
+                    [reporter](auto allocator) noexcept
+                    {
+                        auto* memory = allocator.allocate(16);
+                        allocator.deallocate(memory, 16);
+                        // A nested allocation cannot release the outer task's metadata.
+                        reporter.setProgress(1, 1);
+                    }
+                );
+            }
+        ));
+        assert(tasks.settled());
+        assert(tasks.submit(
+            {"Domain failure", "test"},
+            [](TaskReporter) noexcept
+            {
+                return stdexec::just(
+                    lux::cxx::expected<void, EExecutionError>{lux::cxx::unexpected(EExecutionError::BACKEND_FAILURE)}
+                );
+            }
+        ));
+        assert(
+            std::ranges::any_of(runtime->taskInfos(), [](const auto& info) { return info.state == ETaskState::FAILED; })
+        );
+        assert(tasks.submit({"Stopped", "test"}, [](TaskReporter) noexcept { return stdexec::just_stopped(); }));
+        const auto infos = runtime->taskInfos();
+        assert(std::ranges::any_of(infos, [](const auto& info) { return info.state == ETaskState::CANCELLED; }));
+        std::puts("PASS terminal capacity: no Main hop, bounded history, synchronous/error/stopped completion");
+    }
+
 } // namespace
 
 int main()
@@ -142,4 +242,5 @@ int main()
     destroyedScope(false);
     destroyedScope(true);
     explicitJoin();
+    terminalReleasesCapacity();
 }

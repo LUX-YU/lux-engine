@@ -10,6 +10,7 @@
 #include <thread>
 
 using namespace lux;
+
 namespace
 {
     struct Result final
@@ -17,24 +18,29 @@ namespace
         unsigned value{}, stopped{}, error{};
         execution::EExecutionError failure{};
         std::thread::id thread;
+
         unsigned count() const noexcept
         {
             return value + stopped + error;
         }
     };
+
     struct StopEnv final
     {
         std::stop_token token;
+
         std::stop_token query(stdexec::get_stop_token_t) const noexcept
         {
             return token;
         }
     };
+
     struct Receiver final
     {
         using receiver_concept = stdexec::receiver_t;
         Result* result{};
         std::stop_token token;
+
         StopEnv get_env() const noexcept
         {
             return {token};
@@ -65,6 +71,7 @@ namespace
             std::abort();
         }
     };
+
     class Target final : public object::LuxObject
     {
     public:
@@ -193,22 +200,38 @@ namespace
     {
         Target target;
         Result result;
+
+        struct CodeEnvironment final
+        {
+            std::shared_ptr<const void> code;
+
+            std::shared_ptr<const void> query(execution::detail::GetCompletionCode) const noexcept
+            {
+                return code;
+            }
+        };
+
         struct DeletingReceiver final
         {
             using receiver_concept = stdexec::receiver_t;
             Result* result;
             void** owner;
             void (*destroy)(void*) noexcept;
-            stdexec::empty_env get_env() const noexcept
+            std::shared_ptr<const void> code;
+
+            CodeEnvironment get_env() const noexcept
             {
-                return {};
+                return {code};
             }
 
             void set_value() && noexcept
             {
                 ++result->value;
+                std::weak_ptr<const void> callback_code = code;
                 auto* value = std::exchange(*owner, nullptr);
                 destroy(value);
+                // The connected operation is gone, but its completion callback has not returned yet.
+                assert(!callback_code.expired());
             }
 
             void set_error(execution::EExecutionError) && noexcept
@@ -221,14 +244,23 @@ namespace
                 std::abort();
             }
         };
+
         using Operation = decltype(stdexec::connect(stdexec::schedule(process::ObjectScheduler{}), DeletingReceiver{}));
+        auto code = std::make_shared<int>(0);
+        std::weak_ptr<const void> callback_code = code;
         void* owner{};
         owner = new Operation(stdexec::connect(
             stdexec::schedule(process::objectScheduler(target)),
-            DeletingReceiver{&result, &owner, [](void* p) noexcept { delete static_cast<Operation*>(p); }}
+            DeletingReceiver{
+                &result,
+                &owner,
+                [](void* p) noexcept { delete static_cast<Operation*>(p); },
+                std::move(code)
+            }
         ));
         stdexec::start(*static_cast<Operation*>(owner));
         assert(object::ObjectRuntime::instance().dispatchPending() == 1 && !owner && result.value == 1);
+        assert(callback_code.expired());
     }
 
     void blockingToOwner()
@@ -250,9 +282,7 @@ namespace
             worked.store(true, std::memory_order_release);
         };
         auto receive = [&target, &worked]() noexcept
-        {
-            assert(target.isOnAffinityThread() && worked.load(std::memory_order_acquire));
-        };
+        { assert(target.isOnAffinityThread() && worked.load(std::memory_order_acquire)); };
         auto sender = stdexec::schedule(*blocking) | stdexec::then(work) |
                       stdexec::continues_on(process::objectScheduler(target)) | stdexec::then(receive);
         auto op = stdexec::connect(std::move(sender), Receiver{&result});

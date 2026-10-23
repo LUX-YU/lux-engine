@@ -346,7 +346,7 @@ namespace
         const auto end = std::chrono::steady_clock::now() + 5s;
         while (std::chrono::steady_clock::now() < end)
         {
-            assert(execution.collectCompletions());
+            assert(execution.dispatchMainCompletions());
             poll();
             if (ready())
             {
@@ -382,8 +382,9 @@ namespace
                 start = loader.statistics();
                 disk_start = disk.completed();
             }
-            auto poll = [&](bool static_demand = false) {
-                assert(execution.collectCompletions());
+            auto poll = [&](bool static_demand = false)
+            {
+                assert(execution.dispatchMainCompletions());
 
                 const auto begin = Clock::now();
                 scene::SceneStageContext context;

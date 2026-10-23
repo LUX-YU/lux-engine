@@ -61,8 +61,8 @@ namespace
 
     struct Reply final
     {
-        std::size_t calls{};
-        std::thread::id owner;
+        std::atomic<std::size_t> calls{};
+        std::thread::id submission_thread;
         bool succeeded{};
         std::optional<async::ESubmitError> failure;
         std::function<void()> on_complete;
@@ -70,8 +70,9 @@ namespace
         static void complete(void* target, AssetReadPort::Outcome&& result) noexcept
         {
             auto& self = *static_cast<Reply*>(target);
-            assert(self.owner == std::this_thread::get_id());
-            ++self.calls;
+            // A successful finite blocking read delivers on its IO thread, without Main dispatch.
+            // Pre-start cancellation/failure may settle synchronously on the submitting thread.
+            assert(!result || self.submission_thread != std::this_thread::get_id());
             self.succeeded = result.has_value();
             if (!result && result.error().isRuntime())
             {
@@ -81,6 +82,7 @@ namespace
             {
                 self.on_complete();
             }
+            self.calls.fetch_add(1, std::memory_order_release);
         }
     };
 } // namespace
@@ -133,7 +135,7 @@ namespace
         }
         provider->proceed.store(true);
         provider->proceed.notify_one();
-        assert(runtime->waitUntil([&]() noexcept { return reply.calls != 0; }));
+        assert(runtime->waitUntil([&]() noexcept { return reply.calls.load(std::memory_order_acquire) != 0 && runtime->settled(); }));
         assert(reply.calls == 1 && reply.succeeded && rejected.calls == 0 && !endpoint);
         assert(tasks.join());
         runtime->requestStop();
@@ -182,7 +184,7 @@ namespace
         assert(port.submit({Asset, 1024}, &rejected, &Reply::complete, {}).error() == async::ESubmitError::STOPPING);
         proceed.store(true);
         proceed.notify_one();
-        assert(runtime->waitUntil([&]() noexcept { return reply.calls == 1; }));
+        assert(runtime->waitUntil([&]() noexcept { return reply.calls.load(std::memory_order_acquire) == 1 && runtime->settled(); }));
         assert(reply.failure == async::ESubmitError::STOPPING && !reply.succeeded);
         assert(!provider->entered.load() && rejected.calls == 0);
         assert(blocker.join());
@@ -213,7 +215,7 @@ namespace
         {
             Reply reply{0, std::this_thread::get_id(), false};
             assert(port.submit({Asset, 1024}, &reply, &Reply::complete, {}));
-            assert(runtime->waitUntil([&]() noexcept { return reply.calls == 1; }));
+            assert(runtime->waitUntil([&]() noexcept { return reply.calls.load(std::memory_order_acquire) == 1 && runtime->settled(); }));
             assert(reply.succeeded);
         }
         tasks.requestStop();
@@ -271,7 +273,7 @@ namespace
         assert(port.submit({Asset, 1024}, &reply, &Reply::complete, {}));
         assert(!*endpoint);
         runtime->setWake(nullptr);
-        assert(runtime->waitUntil([&]() noexcept { return reply.calls == 1; }));
+        assert(runtime->waitUntil([&]() noexcept { return reply.calls.load(std::memory_order_acquire) == 1 && runtime->settled(); }));
         assert(reply.succeeded);
         assert(tasks.join());
         runtime->requestStop();

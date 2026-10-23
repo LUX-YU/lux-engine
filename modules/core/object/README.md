@@ -25,6 +25,11 @@ pinCodeOwner 只接受真实 unique_ptr allocation，在首次共享时建立代
 普通 C++ 值在最后强引用释放的线程清理；LuxObject 的线程亲和回收仍使用 shareOnRuntime。
 共享准入失败不消费候选或代码 pin，deleter 移动期间仍受结构保护。
 
+`post(ObjectTarget, callback, code_lifetime)` 在现有消息中保存可选的回调代码 pin。
+它与目标对象的存活是两个条件：目标撤销时仍要执行完成取消，且回调和删除器可能来自另一个插件。
+消息先销毁 callable，再释放 pin，覆盖拒绝和正常交付；Engine ObjectScheduler 从任务环境传递这一借用。
+pin 不占用 callable 的 64B 内联空间，不新增队列或独立完成分配。非插件调用默认不提供 pin。
+
 ```cpp
 class Counter final : public lux::object::LuxObject
 {

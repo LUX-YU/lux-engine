@@ -159,18 +159,37 @@ int main(int argc, char** argv)
         auto& execution = engine_identity->execution();
         auto accepted = observation_tasks.submit(
             {"Public host observation", "test"},
-            [&, delay](execution::TaskReporter) noexcept
+            [&,
+             make_work =
+                 [&, delay](execution::TaskReporter) noexcept
+             {
+                 using Result = cxx::expected<void, execution::ETimerError>;
+                 return stdexec::upon_error(
+                     stdexec::then(execution.timer().after(delay), []() noexcept { return Result{}; }),
+                     [](execution::ETimerError error) noexcept -> Result { return cxx::unexpected(error); }
+                 );
+             },
+             consume_result =
+                 [callback =
+                      std::move(callback)](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
+             {
+                 assert(result);
+                 callback();
+             }](lux::execution::TaskReporter reporter) mutable noexcept
             {
-                using Result = cxx::expected<void, execution::ETimerError>;
-                return stdexec::upon_error(
-                    stdexec::then(execution.timer().after(delay), []() noexcept { return Result{}; }),
-                    [](execution::ETimerError error) noexcept -> Result { return cxx::unexpected(error); }
+                auto ready = stdexec::continues_on(
+                    lux::execution::taskResult(make_work(reporter)),
+                    engine_identity->execution().mainScheduler()
                 );
-            },
-            [callback = std::move(callback)](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
-            {
-                assert(result);
-                callback();
+                return stdexec::then(
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                    {
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
+                    }
+                );
             }
         );
         assert(accepted);
@@ -207,22 +226,40 @@ int main(int argc, char** argv)
                 assert(scheduler);
                 assert(project->tasks().submit(
                     {"Held project task", "test"},
-                    [&, scheduler = *scheduler](execution::TaskReporter reporter) noexcept
+                    [&,
+                     make_work =
+                         [&, scheduler = *scheduler](execution::TaskReporter reporter) noexcept
+                     {
+                         return stdexec::schedule(scheduler) | stdexec::then(
+                                                                   [&, reporter]() noexcept -> FrameworkResult<void>
+                                                                   {
+                                                                       started = true;
+                                                                       release.acquire();
+                                                                       assert(reporter.stopToken().stop_requested());
+                                                                       return {};
+                                                                   }
+                                                               );
+                     },
+                     consume_result =
+                         [&](execution::TTaskResult<void, error::Error>&& result) noexcept
+                     {
+                         assert(result && counts["A"].services == 1 && counts["A"].panes == 1);
+                         delivered = true;
+                     }](lux::execution::TaskReporter reporter) mutable noexcept
                     {
-                        return stdexec::schedule(scheduler) | stdexec::then(
-                                                                  [&, reporter]() noexcept -> FrameworkResult<void>
-                                                                  {
-                                                                      started = true;
-                                                                      release.acquire();
-                                                                      assert(reporter.stopToken().stop_requested());
-                                                                      return {};
-                                                                  }
-                                                              );
-                    },
-                    [&](execution::TTaskResult<void, error::Error>&& result) noexcept
-                    {
-                        assert(result && counts["A"].services == 1 && counts["A"].panes == 1);
-                        delivered = true;
+                        auto ready = stdexec::continues_on(
+                            lux::execution::taskResult(make_work(reporter)),
+                            engine_identity->execution().mainScheduler()
+                        );
+                        return stdexec::then(
+                            std::move(ready),
+                            [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                            {
+                                const auto outcome = lux::execution::taskState(result);
+                                consume_result(std::move(result));
+                                return outcome;
+                            }
+                        );
                     }
                 ));
             }

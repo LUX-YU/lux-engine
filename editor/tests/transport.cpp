@@ -95,9 +95,9 @@ namespace
         const auto pump = [&]
         {
             std::size_t controls = 8, programs = 4;
-            assert(runtime->collectCompletions(32));
+            assert(runtime->dispatchMainCompletions(32));
             assert(runtime->submitPending(controls, programs));
-            assert(execution->collectCompletions());
+            assert(execution->dispatchMainCompletions());
             if (ui_scene)
             {
                 assert(ui_scene->publishFrame());

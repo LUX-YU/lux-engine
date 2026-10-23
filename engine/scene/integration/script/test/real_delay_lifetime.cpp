@@ -113,9 +113,24 @@ int main()
         std::size_t deliveries{};
         assert(unrelated.submit(
             {"Unrelated completion", "LR05"},
-            [](execution::TaskReporter) noexcept
-            { return stdexec::just(cxx::expected<void, execution::EExecutionError>{}); },
-            [&](execution::TTaskResult<void, execution::EExecutionError>&&) noexcept { ++deliveries; }
+            [&,
+             make_work = [](execution::TaskReporter) noexcept
+             { return stdexec::just(cxx::expected<void, execution::EExecutionError>{}); },
+             consume_result = [&](execution::TTaskResult<void, execution::EExecutionError>&&) noexcept
+             { ++deliveries; }](lux::execution::TaskReporter reporter) mutable noexcept
+            {
+                auto ready =
+                    stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime->mainScheduler());
+                return stdexec::then(
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                    {
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
+                    }
+                );
+            }
         ));
         owner->reset();
         assert(deliveries == 0 && !retained.expired());
@@ -131,9 +146,24 @@ int main()
         assert((*owner)->endpoint().invoke(std::chrono::hours(1), reply->completion()));
         assert(unrelated.submit(
             {"Destroy delay owner", "LR05"},
-            [](execution::TaskReporter) noexcept
-            { return stdexec::just(cxx::expected<void, execution::EExecutionError>{}); },
-            [&](execution::TTaskResult<void, execution::EExecutionError>&&) noexcept { owner->reset(); }
+            [&,
+             make_work = [](execution::TaskReporter) noexcept
+             { return stdexec::just(cxx::expected<void, execution::EExecutionError>{}); },
+             consume_result = [&](execution::TTaskResult<void, execution::EExecutionError>&&) noexcept
+             { owner->reset(); }](lux::execution::TaskReporter reporter) mutable noexcept
+            {
+                auto ready =
+                    stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime->mainScheduler());
+                return stdexec::then(
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                    {
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
+                    }
+                );
+            }
         ));
         settle(*runtime);
         assert(!*owner && reply->calls == 0);
@@ -203,7 +233,7 @@ int main()
         auto full = std::make_shared<Reply>();
         assert((*owner)->endpoint().invoke(std::chrono::hours(1), first->completion()));
         assert((*owner)->endpoint().invoke(std::chrono::milliseconds(1), full->completion()));
-        assert(limited->collectCompletions());
+        assert(limited->dispatchMainCompletions());
         assert((*owner)->drainCompletions());
         assert(first->calls == 0 && full->calls == 1);
         assert(full->failure == static_cast<std::int32_t>(EScriptDelayStatus::CAPACITY_EXCEEDED));

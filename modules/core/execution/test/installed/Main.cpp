@@ -34,10 +34,16 @@ int main()
     std::thread producer([request] { request.request(); });
     producer.join();
     if (state.completed != 0) std::abort();
-    if (!runtime->collectCompletions() || state.completed != 1) std::abort();
+    if (!runtime->dispatchMainCompletions() || state.completed != 1)
+    {
+        std::abort();
+    }
     work.cancel();
     request.request();
-    if (!runtime->collectCompletions() || state.completed != 1) std::abort();
+    if (!runtime->dispatchMainCompletions() || state.completed != 1)
+    {
+        std::abort();
+    }
     runtime->requestStop();
     if (!runtime->join()) std::abort();
 }

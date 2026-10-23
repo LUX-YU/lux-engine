@@ -126,21 +126,13 @@ int main(int argc, char** argv)
                 -> script::ScriptAbilityErasedCompletion::CompletionResult { std::terminate(); },
             [](void*, auto, auto) noexcept { return true; }
         ));
-        const auto prior_tasks = execution.taskInfos();
         assert(start(*scope, id, std::move(completion), code, counts));
-        code.reset(); // Task and retained result, not this test, must now pin all plugin code.
+        code.reset(); // The pipeline retains the plugin while its decoded result awaits explicit Main adoption.
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
         bool finished{};
         while (!finished && std::chrono::steady_clock::now() < deadline)
         {
-            for (const auto& task : execution.taskInfos())
-            {
-                const bool is_prior = std::ranges::any_of(prior_tasks, [&](const auto& prior) {
-                    return prior.id == task.id;
-                });
-                if (!is_prior && task.state == execution::ETaskState::SUCCEEDED)
-                    finished = true;
-            }
+            finished = counts.decoded.load(std::memory_order_acquire) == 1;
             std::this_thread::yield();
         }
         assert(finished);
@@ -151,7 +143,7 @@ int main(int argc, char** argv)
             assert(system.processLifecycle(EScriptLifecycleAdmission::RETIRE_ONLY));
             assert(system.shutdown());
             access.reset();
-            // Only the already accepted TaskOperation still owns this real DLL result and its code.
+            // Only the accepted sender pipeline still retains this real DLL result and its code.
             assert(counts.destroyed == 0 && counts.unloaded == 0 && !weak.expired());
         }
         assert(execution.waitUntil([&]() noexcept {

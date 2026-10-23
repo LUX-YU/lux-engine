@@ -46,6 +46,9 @@ namespace lux::execution
             for (std::size_t i = 0; i < count; ++i)
             {
                 auto* work = batch[i];
+                // The operation may release its own last pin during terminal destruction. Keep
+                // its callback module loaded until control has returned to this Core function.
+                auto code_lifetime = std::move(work->code_lifetime);
                 work->execute(*work);
                 // The callback may destroy its operation. No node access after execution.
             }

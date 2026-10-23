@@ -12,7 +12,7 @@ namespace lux::execution::detail
     }
 
     TaskRuntime::TaskRuntime(ExecutionRuntime& execution, std::size_t limit, std::size_t history_limit)
-        : owner(&execution), identity(next_runtime.fetch_add(1, std::memory_order_relaxed)), capacity(limit),
+        : execution(&execution), identity(next_runtime.fetch_add(1, std::memory_order_relaxed)), capacity(limit),
           history_capacity(history_limit)
     {
         if (identity == 0)
@@ -20,10 +20,6 @@ namespace lux::execution::detail
             std::terminate();
         }
         records.reserve(capacity);
-        ready.reserve(capacity);
-        collect_batch.reserve(capacity);
-        deliveries.reserve(capacity);
-        delivery_batch.reserve(capacity);
         changes.reserve(capacity + history_capacity);
         change_batch.reserve(capacity + history_capacity);
         history.reserve(history_capacity);
@@ -38,9 +34,9 @@ namespace lux::execution::detail
         }
     }
 
-    void TaskRuntime::requireOwner() const noexcept
+    void TaskRuntime::requireMainThread() const noexcept
     {
-        if (owner_thread != std::this_thread::get_id())
+        if (main_thread != std::this_thread::get_id())
         {
             std::terminate();
         }
@@ -53,7 +49,7 @@ namespace lux::execution::detail
         {
             std::terminate();
         }
-        owner = &execution;
+        this->execution = &execution;
     }
 
     TaskRecord* TaskRuntime::find(TaskId id) const noexcept
@@ -74,7 +70,7 @@ namespace lux::execution::detail
         }
         if (changes.size() == changes.capacity())
         {
-            // Monitoring can coalesce to a refresh; terminal delivery has a separate reliable queue.
+            // Monitoring can coalesce; business results are delivered by their sender pipelines.
             resync = true;
             return;
         }
@@ -102,11 +98,12 @@ namespace lux::execution::detail
         record->info.category = std::move(options.category);
         record->info.parent = options.parent;
         record->info.submitted = std::chrono::steady_clock::now();
+        record->info.state = ETaskState::RUNNING;
+        record->info.started = record->info.submitted;
         record->code_lifetime = std::move(options.code_lifetime);
         record->group = group;
         auto* result = record.get();
         result->info.id = {runtime.identity, runtime.records.emplace(std::move(record))};
-        ++runtime.outstanding;
         if (group)
         {
             ++group->outstanding;
@@ -115,22 +112,35 @@ namespace lux::execution::detail
         return result;
     }
 
-    void startTask(TaskRecord& record, std::unique_ptr<TaskOperation> operation) noexcept
+    stdexec::simple_counting_scope& taskScope(TaskRecord& record) noexcept
     {
+        return record.runtime->execution_scope;
+    }
+
+    void releaseTaskAccess(TaskRecord& record) noexcept
+    {
+        auto& execution = *record.runtime->execution;
+        if (record.accesses.fetch_sub(1, std::memory_order_acq_rel) != 1)
+        {
+            // Admission itself changes monitoring. The wake may revoke the submitting scope;
+            // no scope or task access follows it on this submission tail.
+            execution.wake();
+            return;
+        }
         auto& runtime = *record.runtime;
+        std::shared_ptr<const void> pin;
         {
             std::lock_guard lock{runtime.mutex};
-            record.operation = std::move(operation);
-            record.info.state = ETaskState::RUNNING;
-            record.info.started = std::chrono::steady_clock::now();
-            runtime.changed(record);
+            if (record.group)
+            {
+                --record.group->outstanding;
+            }
+            pin = std::move(record.code_lifetime);
+            runtime.retire(record);
         }
-        record.operation->start();
-        {
-            std::lock_guard lock{runtime.mutex};
-            record.starting = false;
-        }
-        runtime.owner->wake();
+        // Scope association is released by stdexec after its allocation/deallocation call.
+        // Runtime join observes that independently; no TaskRecord access after retirement.
+        runtime.execution->wake();
     }
 
     void completeTask(TaskRecord& record, ETaskState state) noexcept
@@ -140,11 +150,10 @@ namespace lux::execution::detail
             std::lock_guard lock{runtime.mutex};
             record.info.state = state;
             record.info.finished = std::chrono::steady_clock::now();
-            runtime.ready.push_back(&record);
             runtime.changed(record);
         }
-        // No operation/record access after publication: an owner may now collect it.
-        runtime.owner->wake();
+        // Notify monitoring without transferring the result to a Main-thread result queue.
+        runtime.execution->wake();
     }
 
     TaskId taskId(const TaskRecord& record) noexcept
@@ -152,49 +161,9 @@ namespace lux::execution::detail
         return record.info.id;
     }
 
-    std::size_t TaskRuntime::collect() noexcept
+    std::shared_ptr<const void> taskCodeLifetime(const TaskRecord& record) noexcept
     {
-        requireOwner();
-        if (collecting)
-        {
-            std::terminate();
-        }
-        collecting = true;
-        {
-            std::lock_guard lock{mutex};
-            ready.swap(collect_batch);
-        }
-        std::size_t count{};
-        for (auto* record : collect_batch)
-        {
-            {
-                std::lock_guard lock{mutex};
-                if (record->starting)
-                {
-                    ready.push_back(record);
-                    continue;
-                }
-                record->collected = true;
-                --outstanding;
-                if (!record->group)
-                {
-                    deliveries.push_back(record->info.id);
-                }
-            }
-            if (record->group)
-            {
-                record->operation->deliver();
-                record->operation.reset();
-                record->code_lifetime.reset();
-                std::lock_guard lock{mutex};
-                --record->group->outstanding;
-                retire(*record);
-            }
-            ++count;
-        }
-        collect_batch.clear();
-        collecting = false;
-        return count;
+        return record.code_lifetime;
     }
 
     void TaskRuntime::retire(TaskRecord& record) noexcept
@@ -219,8 +188,8 @@ namespace lux::execution::detail
 
     std::size_t TaskRuntime::dispatch() noexcept
     {
-        requireOwner();
-        if (dispatching || collecting)
+        requireMainThread();
+        if (dispatching)
         {
             std::terminate();
         }
@@ -228,7 +197,6 @@ namespace lux::execution::detail
         bool refresh{};
         {
             std::lock_guard lock{mutex};
-            deliveries.swap(delivery_batch);
             changes.swap(change_batch);
             refresh = std::exchange(resync, false);
             if (refresh)
@@ -249,59 +217,14 @@ namespace lux::execution::detail
                 }
             }
         }
-        std::size_t delivered{};
-        for (auto id : delivery_batch)
-        {
-            std::shared_ptr<const void> pin;
-            std::unique_ptr<TaskOperation> operation;
-            {
-                std::lock_guard lock{mutex};
-                if (auto* record = find(id))
-                {
-                    pin = std::move(record->code_lifetime);
-                    operation = std::move(record->operation);
-                }
-            }
-            if (!operation)
-            {
-                continue; // The Task may have been destroyed by an earlier callback.
-            }
-            operation->deliver();
-            ++delivered;
-        }
         if (observer && (refresh || !change_batch.empty()))
         {
-            observer(observer_owner, change_batch, refresh);
+            observer(observer_context, change_batch, refresh);
         }
-        delivery_batch.clear();
+        const auto count = change_batch.size();
         change_batch.clear();
         dispatching = false;
-        return delivered;
-    }
-
-    void TaskRuntime::release(TaskRecord& record) noexcept
-    {
-        requireOwner();
-        const auto id = record.info.id;
-        static_cast<void>(requestStop(id));
-        while (!record.collected)
-        {
-            const auto epoch = owner->wakeEpoch();
-            if (!owner->collectCompletions())
-            {
-                std::terminate();
-            }
-            if (!record.collected)
-            {
-                owner->waitForWork(epoch);
-            }
-        }
-        record.operation.reset();
-        record.code_lifetime.reset();
-        std::lock_guard lock{mutex};
-        // Remove undelivered callbacks immediately so rapid RAII tasks cannot fill the delivery buffer.
-        std::erase(deliveries, id);
-        retire(record);
+        return count;
     }
 
     bool TaskRuntime::requestStop(TaskId id) noexcept
@@ -319,18 +242,18 @@ namespace lux::execution::detail
             changed(*record);
         }
         stop->request_stop();
-        owner->wake();
+        execution->wake();
         return true;
     }
 
     void TaskRuntime::stop() noexcept
     {
-        requireOwner();
+        requireMainThread();
         std::vector<std::stop_source> stops;
         {
             std::lock_guard lock{mutex};
             accepting = false;
-            stops.reserve(outstanding);
+            stops.reserve(records.size());
             for (auto& record : records)
             {
                 if (record->info.finished)
@@ -351,13 +274,13 @@ namespace lux::execution::detail
     bool TaskRuntime::settled() const noexcept
     {
         std::lock_guard lock{mutex};
-        return outstanding == 0;
+        return records.empty();
     }
 
     bool TaskRuntime::hasWork() const noexcept
     {
         std::lock_guard lock{mutex};
-        return !ready.empty() || !deliveries.empty() || !changes.empty() || resync;
+        return !changes.empty() || resync;
     }
 
     std::optional<TaskInfo> TaskRuntime::info(TaskId id) const noexcept
@@ -386,8 +309,8 @@ namespace lux::execution::detail
 
 namespace lux::execution
 {
-    TaskScope::TaskScope(ExecutionRuntime& runtime) noexcept
-        : runtime_(runtime), group_(std::make_shared<detail::TaskGroup>())
+    TaskScope::TaskScope(ExecutionRuntime& execution) noexcept
+        : execution_(execution), group_(std::make_shared<detail::TaskGroup>())
     {
     }
 
@@ -398,7 +321,7 @@ namespace lux::execution
 
     void TaskScope::requestStop() noexcept
     {
-        auto& tasks = *runtime_.tasks_;
+        auto& tasks = *execution_.tasks_;
         std::vector<std::stop_source> stops;
         {
             std::lock_guard lock{tasks.mutex};
@@ -423,24 +346,20 @@ namespace lux::execution
         {
             stop.request_stop();
         }
-        runtime_.wake();
+        execution_.wake();
     }
 
     bool TaskScope::settled() const noexcept
     {
-        auto& tasks = *runtime_.tasks_;
-        if (tasks.owner_thread != std::this_thread::get_id())
-        {
-            std::terminate();
-        }
+        auto& tasks = *execution_.tasks_;
         std::lock_guard lock{tasks.mutex};
         return group_->outstanding == 0;
     }
 
     lux::cxx::expected<void, EExecutionError> TaskScope::join() noexcept
     {
-        auto& tasks = *runtime_.tasks_;
-        if (tasks.owner_thread != std::this_thread::get_id())
+        auto& tasks = *execution_.tasks_;
+        if (tasks.main_thread != std::this_thread::get_id())
         {
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
         }
@@ -452,15 +371,15 @@ namespace lux::execution
                 return {};
             }
         }
-        const auto valid = runtime_.validateWait();
+        const auto valid = execution_.validateWait();
         if (!valid)
         {
             return lux::cxx::unexpected(valid.error());
         }
         for (;;)
         {
-            const auto epoch = runtime_.wakeEpoch();
-            if (!runtime_.collectCompletions())
+            const auto epoch = execution_.wakeEpoch();
+            if (!execution_.dispatchMainCompletions())
             {
                 std::terminate();
             }
@@ -471,43 +390,38 @@ namespace lux::execution
                     return {};
                 }
             }
-            runtime_.waitForWork(epoch);
+            execution_.waitForWork(epoch);
         }
     }
 
-    Task::Task(Task&& other) noexcept : record_(std::exchange(other.record_, nullptr)) {}
+    Task::Task(Task&& other) noexcept : tasks_(std::exchange(other.tasks_, nullptr)), id_(other.id_) {}
 
     Task& Task::operator=(Task&& other) noexcept
     {
         if (this != &other)
         {
-            if (record_)
-            {
-                record_->runtime->release(*record_);
-            }
-            record_ = std::exchange(other.record_, nullptr);
+            requestStop();
+            tasks_ = std::exchange(other.tasks_, nullptr);
+            id_ = other.id_;
         }
         return *this;
     }
 
     Task::~Task() noexcept
     {
-        if (record_)
-        {
-            record_->runtime->release(*record_);
-        }
+        requestStop();
     }
 
     TaskId Task::id() const noexcept
     {
-        return record_ ? record_->info.id : TaskId{};
+        return tasks_ ? id_ : TaskId{};
     }
 
     void Task::requestStop() noexcept
     {
-        if (record_)
+        if (tasks_)
         {
-            static_cast<void>(record_->runtime->requestStop(id()));
+            static_cast<void>(tasks_->requestStop(id_));
         }
     }
 
@@ -533,7 +447,7 @@ namespace lux::execution
             record_->info.phase = phase;
             runtime.changed(*record_);
         }
-        runtime.owner->wake();
+        runtime.execution->wake();
     }
 
     void TaskReporter::setProgress(std::uint64_t completed, std::uint64_t total) const noexcept
@@ -548,6 +462,6 @@ namespace lux::execution
             record_->info.progress = TaskProgress{completed, total};
             runtime.changed(*record_);
         }
-        runtime.owner->wake();
+        runtime.execution->wake();
     }
 } // namespace lux::execution

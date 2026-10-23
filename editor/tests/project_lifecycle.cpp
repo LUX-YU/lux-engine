@@ -132,26 +132,44 @@ int main(int argc, char** argv)
     assert(scheduler);
     assert(old->tasks().submit(
         {"Held project task", "test"},
-        [&](execution::TaskReporter reporter) noexcept
+        [&,
+         make_work =
+             [&](execution::TaskReporter reporter) noexcept
+         {
+             return stdexec::then(
+                 stdexec::schedule(*scheduler),
+                 [&, reporter]() noexcept -> FrameworkResult<void>
+                 {
+                     started = true;
+                     while (!release.load())
+                     {
+                         std::this_thread::yield();
+                     }
+                     assert(reporter.stopToken().stop_requested());
+                     return {};
+                 }
+             );
+         },
+         consume_result =
+             [&](execution::TTaskResult<void, error::Error>&& result) noexcept
+         {
+             assert(result && a.destroyed == 1);
+             delivered = true;
+         }](lux::execution::TaskReporter reporter) mutable noexcept
         {
+            auto ready = stdexec::continues_on(
+                lux::execution::taskResult(make_work(reporter)),
+                engine.engine().execution().mainScheduler()
+            );
             return stdexec::then(
-                stdexec::schedule(*scheduler),
-                [&, reporter]() noexcept -> FrameworkResult<void>
+                std::move(ready),
+                [consume_result = std::move(consume_result)](auto result) mutable noexcept
                 {
-                    started = true;
-                    while (!release.load())
-                    {
-                        std::this_thread::yield();
-                    }
-                    assert(reporter.stopToken().stop_requested());
-                    return {};
+                    const auto outcome = lux::execution::taskState(result);
+                    consume_result(std::move(result));
+                    return outcome;
                 }
             );
-        },
-        [&](execution::TTaskResult<void, error::Error>&& result) noexcept
-        {
-            assert(result && a.destroyed == 1);
-            delivered = true;
         }
     ));
     until([&] { return started.load(); });

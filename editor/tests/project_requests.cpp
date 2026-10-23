@@ -80,22 +80,40 @@ namespace
         assert(scheduler);
         assert(scope.submit(
             {"Held operation", "test"},
-            [held, scheduler = *scheduler](execution::TaskReporter reporter) noexcept
+            [&,
+             make_work =
+                 [held, scheduler = *scheduler](execution::TaskReporter reporter) noexcept
+             {
+                 return stdexec::schedule(scheduler) | stdexec::then(
+                                                           [held, reporter]() noexcept -> FrameworkResult<void>
+                                                           {
+                                                               ++held->started;
+                                                               held->release.acquire();
+                                                               held->stopped = reporter.stopToken().stop_requested();
+                                                               return {};
+                                                           }
+                                                       );
+             },
+             consume_result =
+                 [held](execution::TTaskResult<void, error::Error>&& result) noexcept
+             {
+                 assert(result);
+                 ++held->delivered;
+             }](lux::execution::TaskReporter reporter) mutable noexcept
             {
-                return stdexec::schedule(scheduler) | stdexec::then(
-                                                          [held, reporter]() noexcept -> FrameworkResult<void>
-                                                          {
-                                                              ++held->started;
-                                                              held->release.acquire();
-                                                              held->stopped = reporter.stopToken().stop_requested();
-                                                              return {};
-                                                          }
-                                                      );
-            },
-            [held](execution::TTaskResult<void, error::Error>&& result) noexcept
-            {
-                assert(result);
-                ++held->delivered;
+                auto ready = stdexec::continues_on(
+                    lux::execution::taskResult(make_work(reporter)),
+                    scope.execution().mainScheduler()
+                );
+                return stdexec::then(
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                    {
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
+                    }
+                );
             }
         ));
     }

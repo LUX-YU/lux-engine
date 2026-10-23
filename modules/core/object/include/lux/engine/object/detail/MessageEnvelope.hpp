@@ -16,6 +16,7 @@ namespace lux::object
     {
 
         struct ObjectRuntimeState;
+
         class LUX_CORE_PUBLIC MessageEnvelope final
         {
         public:
@@ -39,7 +40,11 @@ namespace lux::object
 
         private:
             template <class Callable> friend MessageEnvelope makeMessage(Callable&& callable);
-            template <class Callable> friend MessageEnvelope makeCompletionMessage(Callable&& callable);
+            template <class Callable>
+            friend MessageEnvelope makeCompletionMessage(
+                Callable&& callable,
+                std::shared_ptr<const void> code_lifetime
+            );
             friend class ::lux::object::ObjectRuntime;
             friend struct ObjectRuntimeState;
 
@@ -119,6 +124,8 @@ namespace lux::object
             void* data_{nullptr};
             const Ops* ops_{nullptr};
             bool inline_{false};
+            // Kept outside callable storage so a pinned completion keeps the same inline capacity.
+            std::shared_ptr<const void> code_lifetime_;
         };
 
         template <class Callable> MessageEnvelope makeMessage(Callable&& callable)
@@ -128,12 +135,15 @@ namespace lux::object
         }
 
         // Opt-in only: ordinary Signal messages still have no shutdown callback.
-        template <class Callable> MessageEnvelope makeCompletionMessage(Callable&& callable)
+        template <class Callable>
+        MessageEnvelope makeCompletionMessage(Callable&& callable, std::shared_ptr<const void> code_lifetime = {})
         {
             using Stored = std::remove_reference_t<Callable>;
             static_assert(std::is_nothrow_invocable_v<Stored&>);
             static_assert(noexcept(std::declval<Stored&>().cancel()));
-            return MessageEnvelope{std::forward<Callable>(callable), std::true_type{}};
+            MessageEnvelope message{std::forward<Callable>(callable), std::true_type{}};
+            message.code_lifetime_ = std::move(code_lifetime);
+            return message;
         }
     } // namespace detail
 } // namespace lux::object

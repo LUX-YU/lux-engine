@@ -34,36 +34,70 @@ namespace
         Task nested;
         auto task = runtime.submit(
             {"immediate", "test"},
-            [](TaskReporter reporter) noexcept
+            [&,
+             make_work =
+                 [](TaskReporter reporter) noexcept
+             {
+                 reporter.setPhase("ready");
+                 reporter.setProgress(1, 1);
+                 return stdexec::just(Value{std::make_unique<int>(73)});
+             },
+             consume_result =
+                 [&](Result&& result) noexcept
+             {
+                 assert(result && **result == 73);
+                 ++calls;
+                 auto created = runtime.submit(
+                     {"nested", "test"},
+                     [&,
+                      make_work = [](TaskReporter) noexcept
+                      { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
+                      consume_result =
+                          [&](TTaskResult<void, EFailure>&& value) noexcept
+                      {
+                          assert(value);
+                          ++calls;
+                      }](lux::execution::TaskReporter reporter) mutable noexcept
+                     {
+                         auto ready = stdexec::continues_on(
+                             lux::execution::taskResult(make_work(reporter)),
+                             runtime.mainScheduler()
+                         );
+                         return stdexec::then(
+                             std::move(ready),
+                             [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                             {
+                                 const auto outcome = lux::execution::taskState(result);
+                                 consume_result(std::move(result));
+                                 return outcome;
+                             }
+                         );
+                     }
+                 );
+                 assert(created);
+                 nested = std::move(*created);
+             }](lux::execution::TaskReporter reporter) mutable noexcept
             {
-                reporter.setPhase("ready");
-                reporter.setProgress(1, 1);
-                return stdexec::just(Value{std::make_unique<int>(73)});
-            },
-            [&](Result&& result) noexcept
-            {
-                assert(result && **result == 73);
-                ++calls;
-                auto created = runtime.submit(
-                    {"nested", "test"},
-                    [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
-                    [&](TTaskResult<void, EFailure>&& value) noexcept
+                auto ready =
+                    stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime.mainScheduler());
+                return stdexec::then(
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
                     {
-                        assert(value);
-                        ++calls;
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
                     }
                 );
-                assert(created);
-                nested = std::move(*created);
             }
         );
         assert(task && calls == 0);
         const auto old_id = task->id();
         assert(runtime.taskInfo(old_id)->progress->completed == 1);
-        assert(*runtime.collectCompletions() == 1 && calls == 0);
-        assert(*runtime.dispatchTaskEvents() == 1 && calls == 1);
-        assert(*runtime.collectCompletions() == 1);
-        assert(*runtime.dispatchTaskEvents() == 1 && calls == 2);
+        assert(*runtime.dispatchMainCompletions() == 1 && calls == 1);
+        assert(runtime.dispatchTaskEvents() && calls == 1); // Monitoring never adopts business results.
+        assert(*runtime.dispatchMainCompletions() == 1 && calls == 2);
+        assert(runtime.dispatchTaskEvents() && calls == 2);
         *task = {};
         nested = {};
 
@@ -72,22 +106,38 @@ namespace
         bool adopted{};
         auto cpu = runtime.submit(
             {"cpu", "test"},
-            [&](TaskReporter) noexcept
+            [&,
+             make_work =
+                 [&](TaskReporter) noexcept
+             {
+                 return stdexec::then(
+                     stdexec::schedule(runtime.cpu()),
+                     [&]() noexcept -> Value
+                     {
+                         on_worker = std::this_thread::get_id() != owner_thread;
+                         return lux::cxx::unexpected(EFailure::REJECTED);
+                     }
+                 );
+             },
+             consume_result =
+                 [&](Result&& result) noexcept
+             {
+                 assert(std::this_thread::get_id() == owner_thread && on_worker);
+                 assert(!result && *result.error().domainFailure() == EFailure::REJECTED);
+                 adopted = true;
+             }](lux::execution::TaskReporter reporter) mutable noexcept
             {
+                auto ready =
+                    stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime.mainScheduler());
                 return stdexec::then(
-                    stdexec::schedule(runtime.cpu()),
-                    [&]() noexcept -> Value
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
                     {
-                        on_worker = std::this_thread::get_id() != owner_thread;
-                        return lux::cxx::unexpected(EFailure::REJECTED);
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
                     }
                 );
-            },
-            [&](Result&& result) noexcept
-            {
-                assert(std::this_thread::get_id() == owner_thread && on_worker);
-                assert(!result && *result.error().domainFailure() == EFailure::REJECTED);
-                adopted = true;
             }
         );
         assert(cpu && cpu->id() != old_id);
@@ -95,7 +145,7 @@ namespace
         while (!adopted)
         {
             const auto epoch = runtime.wakeEpoch();
-            assert(runtime.collectCompletions());
+            assert(runtime.dispatchMainCompletions());
             assert(runtime.dispatchTaskEvents());
             if (!adopted)
             {
@@ -110,36 +160,54 @@ namespace
         {
             auto cancelled = runtime.submit(
                 {"cancel", "test"},
-                [&](TaskReporter reporter) noexcept
+                [&,
+                 make_work =
+                     [&](TaskReporter reporter) noexcept
+                 {
+                     return stdexec::then(
+                         stdexec::schedule(runtime.cpu()),
+                         [&, reporter]() noexcept
+                         {
+                             const auto stop = reporter.stopToken();
+                             std::atomic<bool> signalled{};
+                             std::stop_callback notify(
+                                 stop,
+                                 [&]() noexcept
+                                 {
+                                     signalled.store(true, std::memory_order_release);
+                                     signalled.notify_one();
+                                 }
+                             );
+                             entered.count_down();
+                             signalled.wait(false, std::memory_order_acquire);
+                             worker_exited = true;
+                             return lux::cxx::expected<void, EFailure>{};
+                         }
+                     );
+                 },
+                 consume_result = [&](TTaskResult<void, EFailure>&&) noexcept
+                 { ++calls; }](lux::execution::TaskReporter reporter) mutable noexcept
                 {
+                    auto ready =
+                        stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime.mainScheduler());
                     return stdexec::then(
-                        stdexec::schedule(runtime.cpu()),
-                        [&, reporter]() noexcept
+                        std::move(ready),
+                        [consume_result = std::move(consume_result)](auto result) mutable noexcept
                         {
-                            const auto stop = reporter.stopToken();
-                            std::atomic<bool> signalled{};
-                            std::stop_callback notify(
-                                stop,
-                                [&]() noexcept
-                                {
-                                    signalled.store(true, std::memory_order_release);
-                                    signalled.notify_one();
-                                }
-                            );
-                            entered.count_down();
-                            signalled.wait(false, std::memory_order_acquire);
-                            worker_exited = true;
-                            return lux::cxx::expected<void, EFailure>{};
+                            const auto outcome = lux::execution::taskState(result);
+                            consume_result(std::move(result));
+                            return outcome;
                         }
                     );
-                },
-                [&](TTaskResult<void, EFailure>&&) noexcept { ++calls; }
+                }
             );
             assert(cancelled);
             entered.wait();
         }
-        assert(worker_exited && calls == 2); // Destruction settled work without business reentry.
-        assert(runtime.dispatchTaskEvents() && calls == 2);
+        assert(calls == 2); // The cancellation handle's destructor never pumps Main or waits on CPU work.
+        assert(runtime.waitUntil([&]() noexcept { return runtime.settled(); }));
+        assert(worker_exited && calls == 3); // Explicit adoption still reports the actual completed work.
+        assert(runtime.dispatchTaskEvents() && calls == 3);
 
         unsigned destroyed{};
         auto pin = std::make_shared<int>(1);
@@ -153,16 +221,33 @@ namespace
                 ++destroyed;
             }
         };
+
         auto pinned = runtime.submit(
             {"code", "test", {}, pin},
-            [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
-            [capture =
-                 std::make_unique<Capture>(std::weak_ptr<int>{pin}, destroyed)](TTaskResult<void, EFailure>&& result
-            ) noexcept { assert(result); }
+            [&,
+             make_work = [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
+             consume_result = [capture = std::make_unique<Capture>(std::weak_ptr<int>{pin}, destroyed)](
+                                  TTaskResult<void, EFailure>&& result
+                              ) noexcept { assert(result); }](lux::execution::TaskReporter reporter) mutable noexcept
+            {
+                auto ready =
+                    stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime.mainScheduler());
+                return stdexec::then(
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                    {
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
+                    }
+                );
+            }
         );
         pin.reset();
         assert(pinned);
         *pinned = {};
+        assert(destroyed == 0);
+        assert(runtime.dispatchMainCompletions());
         assert(destroyed == 1);
         assert(runtime.dispatchTaskEvents());
 
@@ -173,46 +258,114 @@ namespace
             assert(services.settled());
             assert(services.submit(
                 {"settle storage", "test"},
-                [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
-                [&](TTaskResult<void, EFailure>&& result) noexcept
+                [&,
+                 make_work = [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
+                 consume_result =
+                     [&](TTaskResult<void, EFailure>&& result) noexcept
+                 {
+                     assert(result);
+                     ++settled;
+                 }](lux::execution::TaskReporter reporter) mutable noexcept
                 {
-                    assert(result);
-                    ++settled;
+                    auto ready =
+                        stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime.mainScheduler());
+                    return stdexec::then(
+                        std::move(ready),
+                        [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                        {
+                            const auto outcome = lux::execution::taskState(result);
+                            consume_result(std::move(result));
+                            return outcome;
+                        }
+                    );
                 }
             ));
             assert(settled == 0);
             assert(!services.settled());
             assert(settled == 0); // The query cannot deliver a finished result.
-            assert(runtime.collectCompletions());
+            assert(runtime.dispatchMainCompletions());
             assert(services.settled());
             assert(services.submit({}, [](TaskReporter) noexcept { return stdexec::just(); }));
-            assert(!services.settled()); // Querying settlement did not close admission.
+            assert(services.settled()); // Synchronous work has returned its capacity without Main dispatch.
             assert(services.join());
-            assert(settled == 1 && calls == 2);
+            assert(settled == 1 && calls == 3);
         }
 
         auto limited_execution = ExecutionRuntime::create({1, 1, {4}, {}, 1});
         assert(limited_execution);
         auto first = limited_execution->submit(
             {"first", "test"},
-            [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
-            [](TTaskResult<void, EFailure>&&) noexcept {}
+            [&,
+             make_work = [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
+             consume_result = [](TTaskResult<void, EFailure>&&) noexcept {}](lux::execution::TaskReporter reporter
+            ) mutable noexcept
+            {
+                auto ready = stdexec::continues_on(
+                    lux::execution::taskResult(make_work(reporter)),
+                    limited_execution->mainScheduler()
+                );
+                return stdexec::then(
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                    {
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
+                    }
+                );
+            }
         );
         assert(first);
         const auto first_id = first->id();
         auto full = limited_execution->submit(
             {},
-            [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
-            [](TTaskResult<void, EFailure>&&) noexcept {}
+            [&,
+             make_work = [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
+             consume_result = [](TTaskResult<void, EFailure>&&) noexcept {}](lux::execution::TaskReporter reporter
+            ) mutable noexcept
+            {
+                auto ready = stdexec::continues_on(
+                    lux::execution::taskResult(make_work(reporter)),
+                    limited_execution->mainScheduler()
+                );
+                return stdexec::then(
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                    {
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
+                    }
+                );
+            }
         );
         assert(!full && full.error() == EExecutionError::CAPACITY_EXCEEDED);
+        assert(limited_execution->dispatchMainCompletions());
         *first = {};
         auto reused = limited_execution->submit(
             {"second", "test"},
-            [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
-            [](TTaskResult<void, EFailure>&&) noexcept {}
+            [&,
+             make_work = [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
+             consume_result = [](TTaskResult<void, EFailure>&&) noexcept {}](lux::execution::TaskReporter reporter
+            ) mutable noexcept
+            {
+                auto ready = stdexec::continues_on(
+                    lux::execution::taskResult(make_work(reporter)),
+                    limited_execution->mainScheduler()
+                );
+                return stdexec::then(
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                    {
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
+                    }
+                );
+            }
         );
         assert(reused && reused->id().slot.index == first_id.slot.index && reused->id() != first_id);
+        assert(limited_execution->dispatchMainCompletions());
         *reused = {};
         assert(!limited_execution->taskInfo(first_id) && limited_execution->taskInfos().size() == 1);
     }
@@ -240,11 +393,26 @@ namespace
             const auto begin = Clock::now();
             auto task = runtime.submit(
                 {"measure", "test"},
-                [&](TaskReporter) noexcept { return stdexec::just(Result{Value{moves}}); },
-                [](TTaskResult<Value, EExecutionError>&& value) noexcept { assert(value); }
+                [&,
+                 make_work = [&](TaskReporter) noexcept { return stdexec::just(Result{Value{moves}}); },
+                 consume_result = [](TTaskResult<Value, EExecutionError>&& value) noexcept
+                 { assert(value); }](lux::execution::TaskReporter reporter) mutable noexcept
+                {
+                    auto ready =
+                        stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime.mainScheduler());
+                    return stdexec::then(
+                        std::move(ready),
+                        [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                        {
+                            const auto outcome = lux::execution::taskState(result);
+                            consume_result(std::move(result));
+                            return outcome;
+                        }
+                    );
+                }
             );
             const auto submitted = Clock::now();
-            assert(task && runtime.collectCompletions());
+            assert(task && runtime.dispatchMainCompletions());
             const auto collected = Clock::now();
             assert(runtime.dispatchTaskEvents());
             const auto delivered = Clock::now();
@@ -308,16 +476,32 @@ namespace
     {
         using namespace lux::execution;
         using Value = lux::cxx::expected<void, EExecutionError>;
-        assert(runtime.collectCompletions() && runtime.dispatchTaskEvents());
+        assert(runtime.dispatchMainCompletions() && runtime.dispatchTaskEvents());
         const auto before = heapSample();
         auto task = runtime.submit(
             {"heap", "test"},
-            [](TaskReporter) noexcept { return stdexec::just(Value{}); },
-            [](TTaskResult<void, EExecutionError>&&) noexcept {}
+            [&,
+             make_work = [](TaskReporter) noexcept { return stdexec::just(Value{}); },
+             consume_result = [](TTaskResult<void, EExecutionError>&&) noexcept {}](
+                lux::execution::TaskReporter reporter
+            ) mutable noexcept
+            {
+                auto ready =
+                    stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime.mainScheduler());
+                return stdexec::then(
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                    {
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
+                    }
+                );
+            }
         );
         assert(task);
         const auto admitted = heapSample();
-        assert(runtime.collectCompletions());
+        assert(runtime.dispatchMainCompletions());
         const auto collected = heapSample();
         assert(runtime.dispatchTaskEvents());
         const auto dispatched = heapSample();
@@ -340,20 +524,36 @@ namespace
         using TimerResult = lux::cxx::expected<void, ETimerError>;
         assert(timer.submit(
             {"idle wait", "test"},
-            [&](TaskReporter) noexcept
+            [&,
+             make_work =
+                 [&](TaskReporter) noexcept
+             {
+                 return stdexec::upon_error(
+                     stdexec::then(
+                         runtime.timer().after(std::chrono::milliseconds(50)),
+                         []() noexcept { return TimerResult{}; }
+                     ),
+                     [](ETimerError error) noexcept -> TimerResult { return lux::cxx::unexpected(error); }
+                 );
+             },
+             consume_result =
+                 [&](TTaskResult<void, ETimerError>&& result) noexcept
+             {
+                 assert(result);
+                 completed = true;
+             }](lux::execution::TaskReporter reporter) mutable noexcept
             {
-                return stdexec::upon_error(
-                    stdexec::then(
-                        runtime.timer().after(std::chrono::milliseconds(50)),
-                        []() noexcept { return TimerResult{}; }
-                    ),
-                    [](ETimerError error) noexcept -> TimerResult { return lux::cxx::unexpected(error); }
+                auto ready =
+                    stdexec::continues_on(lux::execution::taskResult(make_work(reporter)), runtime.mainScheduler());
+                return stdexec::then(
+                    std::move(ready),
+                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                    {
+                        const auto outcome = lux::execution::taskState(result);
+                        consume_result(std::move(result));
+                        return outcome;
+                    }
                 );
-            },
-            [&](TTaskResult<void, ETimerError>&& result) noexcept
-            {
-                assert(result);
-                completed = true;
             }
         ));
         const auto cpu = cpuTicks();
@@ -386,12 +586,12 @@ namespace
         a.next = second.requester();
         first.request();
         first.request();
-        assert(*runtime.collectCompletions() == 1 && a.calls == 1 && b.calls == 0);
+        assert(*runtime.dispatchMainCompletions() == 1 && a.calls == 1 && b.calls == 0);
         assert(runtime.hasPendingWork());
-        assert(*runtime.collectCompletions() == 1 && b.calls == 1);
+        assert(*runtime.dispatchMainCompletions() == 1 && b.calls == 1);
         second.request();
         second.cancel();
-        assert(*runtime.collectCompletions() == 0);
+        assert(*runtime.dispatchMainCompletions() == 1 && b.calls == 1); // Node consumed, callback revoked.
         CompletionWork::Request late;
         {
             CompletionWork temporary(runtime, &b, &Owner::run);
@@ -399,7 +599,7 @@ namespace
             temporary.request();
         }
         late.request();
-        assert(*runtime.collectCompletions() == 0 && b.calls == 1);
+        assert(*runtime.dispatchMainCompletions() == 1 && b.calls == 1);
         std::atomic<bool> stop{};
         std::atomic<bool> started{};
         std::jthread producer(
@@ -419,7 +619,7 @@ namespace
         first.cancel();
         stop.store(true, std::memory_order_release);
         producer.join();
-        assert(*runtime.collectCompletions() == 0);
+        assert(*runtime.dispatchMainCompletions() <= 1 && a.calls == 1);
 
         std::atomic<unsigned> stages{};
         TaskScope tasks(runtime);
@@ -459,9 +659,26 @@ namespace
                     {
                         const auto result = concurrent.submit(
                             {"concurrent", "test"},
-                            [](TaskReporter) noexcept
-                            { return stdexec::just(lux::cxx::expected<void, EExecutionError>{}); },
-                            [&](TTaskResult<void, EExecutionError>&&) noexcept { ++settled; }
+                            [&,
+                             make_work = [](TaskReporter) noexcept
+                             { return stdexec::just(lux::cxx::expected<void, EExecutionError>{}); },
+                             consume_result = [&](TTaskResult<void, EExecutionError>&&) noexcept
+                             { ++settled; }](lux::execution::TaskReporter reporter) mutable noexcept
+                            {
+                                auto ready = stdexec::continues_on(
+                                    lux::execution::taskResult(make_work(reporter)),
+                                    runtime.mainScheduler()
+                                );
+                                return stdexec::then(
+                                    std::move(ready),
+                                    [consume_result = std::move(consume_result)](auto result) mutable noexcept
+                                    {
+                                        const auto outcome = lux::execution::taskState(result);
+                                        consume_result(std::move(result));
+                                        return outcome;
+                                    }
+                                );
+                            }
                         );
                         if (result)
                         {
@@ -578,7 +795,7 @@ int main(int argc, char** argv)
     for (;;)
     {
         assert(std::chrono::steady_clock::now() < deadline);
-        assert((*engine)->execution().collectCompletions());
+        assert((*engine)->execution().dispatchMainCompletions());
         const auto tick = scenes.driveFrame();
         assert(tick && tick->empty());
         const auto registry = std::as_const(scenes).borrowInstance(instance->id());

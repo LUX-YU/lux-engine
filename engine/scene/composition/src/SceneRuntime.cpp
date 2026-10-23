@@ -412,7 +412,7 @@ namespace lux::scene
                 error.simulation = sealed.error();
                 return fail(error);
             }
-            const auto reserved = executor_.reserve((*prepared)->simulation->taskCount());
+            const auto reserved = executor_.setMinimumTaskCapacity((*prepared)->simulation->taskCount());
             if (!reserved)
             {
                 return fail(reserved.error());

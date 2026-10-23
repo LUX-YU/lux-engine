@@ -1,5 +1,5 @@
-#include <lux/engine/core/execution/CompletionWork.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/core/execution/detail/ExecutionState.hpp>
 #include <lux/engine/core/execution/detail/TaskState.hpp>
 
 #include <algorithm>
@@ -12,81 +12,50 @@ namespace lux::execution
 {
     namespace detail
     {
-        enum class EExecutionState : std::uint8_t
+        bool RequestQueue::push(ScheduleRequest* request) noexcept
         {
-            ACTIVE,
-            STOPPING,
-            JOINED,
-        };
-
-        struct RequestQueue final
-        {
-            explicit RequestQueue(std::size_t capacity) : values(capacity) {}
-
-            [[nodiscard]] bool push(ScheduleRequest* request) noexcept
+            if (count == values.size())
             {
-                if (count == values.size())
-                {
-                    return false;
-                }
-                values[tail] = request;
-                tail = (tail + 1U) % values.size();
-                ++count;
-                return true;
+                return false;
             }
+            values[tail] = request;
+            tail = (tail + 1U) % values.size();
+            ++count;
+            return true;
+        }
 
-            [[nodiscard]] ScheduleRequest* pop() noexcept
-            {
-                if (count == 0U)
-                {
-                    return nullptr;
-                }
-                auto* result = values[head];
-                values[head] = nullptr;
-                head = (head + 1U) % values.size();
-                --count;
-                return result;
-            }
-
-            std::vector<ScheduleRequest*> values;
-            std::size_t head{};
-            std::size_t tail{};
-            std::size_t count{};
-        };
-
-        struct CompletionWorkState final
+        ScheduleRequest* RequestQueue::pop() noexcept
         {
-            std::weak_ptr<ExecutionState> runtime;
-            void* owner{};
-            void (*run)(void*) noexcept {};
-            bool queued{}, cancelled{}, executing{};
-        };
-
-        struct ExecutionState final
-        {
-            ExecutionState(ExecutionRuntimeConfig config, std::thread::id owner)
-                : blocking_queue(config.blocking ? config.blocking->queue_capacity : 0U),
-                  blocking_enabled(config.blocking.has_value()), owner_thread(owner)
+            if (count == 0U)
             {
+                return nullptr;
             }
+            auto* result = values[head];
+            values[head] = nullptr;
+            head = (head + 1U) % values.size();
+            --count;
+            return result;
+        }
 
-            std::atomic<EExecutionState> phase{EExecutionState::ACTIVE};
-            std::unique_ptr<exec::static_thread_pool> cpu_pool;
-            std::mutex completion_mutex;
-            std::condition_variable completion_ready;
-            std::vector<std::shared_ptr<CompletionWorkState>> ready_completion, completion_batch;
-            std::size_t completion_count{};
-            bool collecting_completions{};
-            std::uint64_t wake_epoch{};
-            std::atomic<void (*)() noexcept> wake_callback{};
-            bool stop_requested{};
-            std::mutex blocking_mutex;
-            std::condition_variable blocking_ready;
-            RequestQueue blocking_queue;
-            std::vector<std::jthread> blocking_workers;
-            bool blocking_enabled{};
-            std::thread::id owner_thread;
-        };
+        ExecutionState::ExecutionState(ExecutionRuntimeConfig config, std::thread::id thread)
+            : main_loop([](void* state) noexcept { static_cast<ExecutionState*>(state)->wake(); }, this),
+              blocking_queue(config.blocking ? config.blocking->queue_capacity : 0U),
+              blocking_enabled(config.blocking.has_value()), main_thread(thread)
+        {
+        }
+
+        void ExecutionState::wake() noexcept
+        {
+            wake_epoch.fetch_add(1, std::memory_order_release);
+            if (!wake_pending.exchange(true, std::memory_order_acq_rel))
+            {
+                wake_signal.release();
+            }
+            if (const auto callback = wake_callback.load(std::memory_order_acquire))
+            {
+                callback();
+            }
+        }
 
         namespace
         {
@@ -252,7 +221,7 @@ namespace lux::execution
         {
             return;
         }
-        if (state_->owner_thread != std::this_thread::get_id())
+        if (state_->main_thread != std::this_thread::get_id())
         {
             std::terminate();
         }
@@ -269,7 +238,7 @@ namespace lux::execution
         while (true)
         {
             const auto epoch = wakeEpoch();
-            if (!collectCompletions())
+            if (!dispatchMainCompletions())
             {
                 std::terminate();
             }
@@ -303,7 +272,7 @@ namespace lux::execution
         }
         if (state_)
         {
-            if (state_->owner_thread != std::this_thread::get_id())
+            if (state_->main_thread != std::this_thread::get_id())
             {
                 std::terminate();
             }
@@ -329,51 +298,39 @@ namespace lux::execution
         return state_->cpu_pool->get_scheduler();
     }
 
-    lux::cxx::expected<std::size_t, EExecutionError> ExecutionRuntime::collectCompletions() noexcept
+    RunLoop::Scheduler ExecutionRuntime::mainScheduler() noexcept
     {
-        if (!tasks_ || state_->owner_thread != std::this_thread::get_id())
+        return state_->main_loop.scheduler();
+    }
+
+    bool ExecutionRuntime::settled() const noexcept
+    {
+        return tasks_->settled() && state_->main_loop.empty() && state_->main_loop.activePublishers() == 0;
+    }
+
+    lux::cxx::expected<std::size_t, EExecutionError> ExecutionRuntime::dispatchMainCompletions() noexcept
+    {
+        if (!tasks_ || state_->main_thread != std::this_thread::get_id())
         {
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
         }
-        if (state_->collecting_completions)
+        if (state_->dispatching_main)
         {
             return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
         }
-        state_->collecting_completions = true;
-        {
-            std::lock_guard lock{state_->completion_mutex};
-            state_->completion_batch.swap(state_->ready_completion);
-        }
-        auto count = tasks_->collect();
-        const auto size = state_->completion_batch.size();
-        for (std::size_t index{}; index < size; ++index)
-        {
-            const auto work = state_->completion_batch[index];
-            {
-                std::lock_guard lock{state_->completion_mutex};
-                work->queued = false;
-                if (work->cancelled)
-                {
-                    continue;
-                }
-                work->executing = true;
-            }
-            work->run(work->owner);
-            work->executing = false;
-            ++count;
-        }
-        state_->completion_batch.clear();
-        state_->collecting_completions = false;
+        state_->dispatching_main = true;
+        const auto count = state_->main_loop.executeReady(state_->main_loop.size());
+        state_->dispatching_main = false;
         return count;
     }
 
     lux::cxx::expected<std::size_t, EExecutionError> ExecutionRuntime::dispatchTaskEvents() noexcept
     {
-        if (!tasks_ || state_->owner_thread != std::this_thread::get_id())
+        if (!tasks_ || state_->main_thread != std::this_thread::get_id())
         {
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
         }
-        if (tasks_->collecting || tasks_->dispatching || state_->collecting_completions)
+        if (tasks_->dispatching || state_->dispatching_main)
         {
             return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
         }
@@ -395,17 +352,17 @@ namespace lux::execution
         return tasks_->requestStop(id);
     }
 
-    void ExecutionRuntime::setTaskObserver(void* owner, TaskObserver observer) noexcept
+    void ExecutionRuntime::setTaskObserver(void* context, TaskObserver observer) noexcept
     {
-        tasks_->requireOwner();
+        tasks_->requireMainThread();
         // Installation is an exclusive application responsibility, not last-writer-wins registration.
-        const bool is_partial_observer = (owner == nullptr) != (observer == nullptr);
-        const bool is_other_observer = observer && tasks_->observer && tasks_->observer_owner != owner;
+        const bool is_partial_observer = (context == nullptr) != (observer == nullptr);
+        const bool is_other_observer = observer && tasks_->observer && tasks_->observer_context != context;
         if (is_partial_observer || is_other_observer)
         {
             std::terminate();
         }
-        tasks_->observer_owner = owner;
+        tasks_->observer_context = context;
         tasks_->observer = observer;
     }
 
@@ -423,121 +380,24 @@ namespace lux::execution
         return BlockingScheduler{state_};
     }
 
-    CompletionWork::CompletionWork(ExecutionRuntime& runtime, void* owner, void (*run)(void*) noexcept)
-        : state_(std::make_shared<detail::CompletionWorkState>())
-    {
-        const auto& state = runtime.state_;
-        if (!state || state->owner_thread != std::this_thread::get_id() || !owner || !run)
-        {
-            std::terminate();
-        }
-        std::lock_guard lock{state->completion_mutex};
-        if (state->phase.load(std::memory_order_acquire) != detail::EExecutionState::ACTIVE)
-        {
-            std::terminate();
-        }
-        // Cancelled batch entries can still retain their node until the batch returns.
-        const auto count =
-            state->completion_count + state->ready_completion.size() + state->completion_batch.size() + 1;
-        state->ready_completion.reserve(count);
-        state->completion_batch.reserve(count);
-        state_->runtime = state;
-        state_->owner = owner;
-        state_->run = run;
-        ++state->completion_count;
-    }
-
-    CompletionWork::~CompletionWork() noexcept
-    {
-        cancel();
-    }
-
-    void CompletionWork::cancel() noexcept
-    {
-        const auto state = state_->runtime.lock();
-        if (!state)
-        {
-            return;
-        }
-        if (state->owner_thread != std::this_thread::get_id())
-        {
-            std::terminate();
-        }
-        std::lock_guard lock{state->completion_mutex};
-        if (state_->executing)
-        {
-            std::terminate();
-        }
-        if (!std::exchange(state_->cancelled, true))
-        {
-            --state->completion_count;
-        }
-        state_->owner = nullptr;
-    }
-
-    void CompletionWork::request() const noexcept
-    {
-        requester().request();
-    }
-
-    void CompletionWork::Request::request() const noexcept
-    {
-        const auto state = state_ ? state_->runtime.lock() : nullptr;
-        if (!state)
-        {
-            return;
-        }
-        {
-            std::lock_guard lock{state->completion_mutex};
-            const bool closed =
-                state_->cancelled || state->phase.load(std::memory_order_acquire) == detail::EExecutionState::JOINED;
-            if (closed || state_->queued)
-            {
-                return;
-            }
-            state_->queued = true;
-            state->ready_completion.push_back(state_);
-            ++state->wake_epoch;
-        }
-        state->completion_ready.notify_one();
-        if (const auto wake = state->wake_callback.load(std::memory_order_acquire))
-        {
-            wake();
-        }
-    }
-
     std::uint64_t ExecutionRuntime::wakeEpoch() const noexcept
     {
-        std::lock_guard lock{state_->completion_mutex};
-        return state_->wake_epoch;
+        return state_->wake_epoch.load(std::memory_order_acquire);
     }
 
     bool ExecutionRuntime::hasPendingWork() const noexcept
     {
-        if (tasks_->hasWork())
-        {
-            return true;
-        }
-        std::lock_guard lock{state_->completion_mutex};
-        return !state_->ready_completion.empty();
+        return tasks_->hasWork() || !state_->main_loop.empty();
     }
 
     void ExecutionRuntime::wake() noexcept
     {
-        {
-            std::lock_guard lock{state_->completion_mutex};
-            ++state_->wake_epoch;
-        }
-        state_->completion_ready.notify_one();
-        if (const auto wake = state_->wake_callback.load(std::memory_order_acquire))
-        {
-            wake();
-        }
+        state_->wake();
     }
 
     void ExecutionRuntime::setWake(void (*wake)() noexcept) noexcept
     {
-        if (state_->owner_thread != std::this_thread::get_id())
+        if (state_->main_thread != std::this_thread::get_id())
         {
             std::terminate();
         }
@@ -546,29 +406,32 @@ namespace lux::execution
 
     void ExecutionRuntime::waitForWork(std::uint64_t observed, std::chrono::steady_clock::time_point deadline) noexcept
     {
-        if (state_->owner_thread != std::this_thread::get_id() || state_->collecting_completions)
+        if (state_->main_thread != std::this_thread::get_id() || state_->dispatching_main)
         {
             std::terminate();
         }
-        std::unique_lock lock{state_->completion_mutex};
-        const auto ready = [&] { return state_->wake_epoch != observed || !state_->ready_completion.empty(); };
-        if (deadline == std::chrono::steady_clock::time_point::max())
+        while (wakeEpoch() == observed && state_->main_loop.empty())
         {
-            state_->completion_ready.wait(lock, ready);
-        }
-        else
-        {
-            state_->completion_ready.wait_until(lock, deadline, ready);
+            if (deadline == std::chrono::steady_clock::time_point::max())
+            {
+                state_->wake_signal.acquire();
+            }
+            else if (!state_->wake_signal.try_acquire_until(deadline))
+            {
+                return;
+            }
+            // Acquire a coalesced producer's epoch publication before checking for more work.
+            state_->wake_pending.exchange(false, std::memory_order_acq_rel);
         }
     }
 
     lux::cxx::expected<void, EExecutionError> ExecutionRuntime::validateWait() const noexcept
     {
-        if (!state_ || state_->owner_thread != std::this_thread::get_id())
+        if (!state_ || state_->main_thread != std::this_thread::get_id())
         {
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
         }
-        if (state_->collecting_completions)
+        if (state_->dispatching_main)
         {
             return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
         }
@@ -580,7 +443,7 @@ namespace lux::execution
         bool (*ready)(void*) noexcept
     ) noexcept
     {
-        if (!state_ || state_->owner_thread != std::this_thread::get_id())
+        if (!state_ || state_->main_thread != std::this_thread::get_id())
         {
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
         }
@@ -588,14 +451,14 @@ namespace lux::execution
         {
             return {};
         }
-        if (state_->collecting_completions)
+        if (state_->dispatching_main)
         {
             return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
         }
         while (!ready(context))
         {
             const auto epoch = wakeEpoch();
-            const auto dispatched = collectCompletions();
+            const auto dispatched = dispatchMainCompletions();
             if (!dispatched)
             {
                 return lux::cxx::unexpected(dispatched.error());
@@ -625,7 +488,7 @@ namespace lux::execution
         {
             return lux::cxx::unexpected(EExecutionError::ALREADY_JOINED);
         }
-        if (state_->owner_thread != std::this_thread::get_id())
+        if (state_->main_thread != std::this_thread::get_id())
         {
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
         }
@@ -639,17 +502,14 @@ namespace lux::execution
         {
             return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
         }
-        if (!tasks_->settled())
+        if (!settled())
         {
             return lux::cxx::unexpected(EExecutionError::WORK_PENDING);
         }
-        {
-            std::lock_guard lock{state_->completion_mutex};
-            if (!state_->ready_completion.empty())
-            {
-                return lux::cxx::unexpected(EExecutionError::WORK_PENDING);
-            }
-        }
+        // No admitted submission or Main continuation remains. Only stdexec's association
+        // release can still be returning from deallocation; joining cannot depend on this thread.
+        tasks_->execution_scope.close();
+        static_cast<void>(stdexec::sync_wait(tasks_->execution_scope.join()));
 
         timer_.requestStop();
         detail::stopState(state_);

@@ -1,8 +1,8 @@
 #pragma once
 
 #include <atomic>
-#include <lux/engine/object/ObjectTarget.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/object/ObjectTarget.hpp>
 #include <optional>
 
 namespace lux::process
@@ -27,6 +27,7 @@ namespace lux::process
         explicit ObjectScheduler(object::ObjectTarget target) noexcept;
         object::ObjectTarget target_;
     };
+
     [[nodiscard]] ObjectScheduler objectScheduler(object::LuxObject&) noexcept;
 
     namespace detail
@@ -54,6 +55,7 @@ namespace lux::process
             private:
                 ObjectScheduler scheduler_;
             };
+
             [[nodiscard]] Env get_env() const noexcept
             {
                 return Env{scheduler_};
@@ -64,14 +66,17 @@ namespace lux::process
             public:
                 using operation_state_concept = stdexec::operation_state_t;
                 using StopToken = stdexec::stop_token_of_t<stdexec::env_of_t<Receiver>>;
+
                 struct Cancel final
                 {
                     std::atomic_bool* requested{};
+
                     void operator()() noexcept
                     {
                         requested->store(true, std::memory_order_release);
                     }
                 };
+
                 using StopCallback = stdexec::stop_callback_for_t<StopToken, Cancel>;
 
                 TOperation(object::ObjectTarget target, Receiver receiver)
@@ -108,7 +113,8 @@ namespace lux::process
                             {
                                 stdexec::set_value(std::move(receiver_));
                             }
-                        }
+                        },
+                        execution::detail::getCompletionCode(stdexec::get_env(receiver_))
                     );
                     // POSTED may have completed concurrently. Never touch this again on that path.
                     if (status == object::EObjectPostStatus::POSTED)
@@ -132,6 +138,7 @@ namespace lux::process
                 std::atomic_bool cancel_requested_{};
                 std::optional<StopCallback> stop_callback_;
             };
+
             template <class Receiver>
             [[nodiscard]] TOperation<std::decay_t<Receiver>> connect(Receiver&& receiver) const
             {
@@ -140,6 +147,7 @@ namespace lux::process
 
         private:
             friend class ::lux::process::ObjectScheduler;
+
             explicit ObjectScheduleSender(ObjectScheduler scheduler) noexcept : scheduler_(std::move(scheduler)) {}
 
             ObjectScheduler scheduler_;

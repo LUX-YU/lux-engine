@@ -1,4 +1,4 @@
-# Owner-driven execution
+# Shared execution and explicit completion
 
 Source and installed consumers require CMake 3.25 or newer, as does the pinned stdexec package.
 Execution imports the complete stdexec export set with `find_package(stdexec CONFIG REQUIRED GLOBAL)`.
@@ -14,12 +14,12 @@ Publication and consumption use no RunLoop mutex. Queue storage and producer reg
 ordinary heap exhaustion is fatal rather than dropping an accepted operation's completion.
 
 ```cpp
-execution::RunLoop loop{notifyHost, host};
+execution::RunLoop loop{notifyApplication, application};
 auto work = stdexec::schedule(cpu)
     | stdexec::then(prepare)
     | stdexec::continues_on(loop.scheduler())
     | stdexec::then(adopt);
-// Connect/start or spawn in the host's existing counting_scope.
+// Connect/start or spawn in the application's existing counting_scope.
 loop.executeReady(128);
 ```
 
@@ -28,14 +28,18 @@ operation; the loop never touches that node afterwards. One thread executes read
 producers may schedule concurrently. Ordering is per producer, not a total order across threads.
 `size()` counts publishing, queued and executing operations; it is not a readiness predicate.
 
-Owner scheduling guarantees delivery even when the receiver has requested stop. Actual
+RunLoop scheduling guarantees delivery even when the receiver has requested stop. Actual
 work decides whether cancellation is still possible. This preserves errors and committed
 results rather than converting them to stopped during the final handoff.
 
 Shutdown must keep executing ready work until accepted scopes finish, then join external
 producers and wait for `activePublishers() == 0`. An empty queue alone does not establish
-that wakeup callbacks have returned. The loop, host callback and their code modules must
-outlive those tails; the loop does not own any of them.
+that wakeup callbacks have returned. The loop, application callback and their code modules must
+outlive those tails; the loop does not own the producers. For a dynamically loaded task continuation,
+the task environment supplies its existing code pin. RunLoop moves that pin off the node before invoking it
+and releases it only after control returns to Core. This prevents unloading the callback's DLL during
+stdexec's terminal state destruction. It adds no operation owner or per-notification heap allocation;
+unpinned operations carry an empty shared_ptr. Producer callback tails still require their own lifetime proof.
 
 ## Shared CPU pool
 
@@ -49,3 +53,45 @@ join their external producers. Pool destruction joins worker callback tails; a s
 TaskExecutor uses the same scheduler for worker-affine DAG nodes. BlockingScheduler retains its separate bounded
 IO queue and threads because blocking IO must not occupy all CPU workers. Timer and Object/CompletionWork contracts
 are unchanged. stdexec's pool may use locks when idle; only the Lux RunLoop publication path is lock-free.
+
+## Finite tasks
+
+`TaskScope::submit(options, factory)` admits one finite sender pipeline. The factory receives a borrowed
+TaskReporter for identity, progress and its real cancellation token. The pipeline chooses its own scheduling
+and consumes business values; its terminal value is void, expected<void, E>, or a terminal ETaskState.
+A typed error or stopped signal records failure/cancellation. An exception escaping a sender is fatal.
+
+ExecutionRuntime owns one `stdexec::simple_counting_scope` for these connected operations. TaskRecord stores
+monitoring and cancellation metadata, never an operation pointer or deleter. The existing per-task cancellation
+sources are authoritative; there is no additional scope stop source. Project TaskScope destruction requests
+stop without joining or destroying accepted operations.
+
+The outer spawn allocator uses ordinary allocation and reports destruction back to the admitted metadata.
+It is not a pool and owns no operation. Nested sender allocations use their ordinary allocator. One submission
+reference protects inline completion; the other ends after stdexec destroys its state. This returns admission
+capacity independently of Main dispatch, while retaining code/input captures through their destruction.
+External producers must still retain their callback code and finish their tails before Runtime shutdown.
+
+ExecutionRuntime::submit returns a nonblocking Task cancellation handle. Destroying the handle requests stop;
+it neither suppresses an already determined result nor waits/pumps Main. The Runtime must outlive its handles.
+Callers retain captured input through actual pipeline completion, not merely through the handle's lifetime.
+
+## Transport and business adoption
+
+A VFS read can complete on an IO worker and immediately schedule CPU decoding. Only code that changes
+Main-thread state uses `continues_on(execution.mainScheduler())`; object-affine adoption may instead use the
+Engine ObjectScheduler. Do not schedule through both unless they perform genuinely different actions.
+`taskResult(sender)` materializes existing typed expected/error/stopped channels for a caller that must inspect
+them. It is standard composition, without a queue or heap result envelope. Preserve the actual terminal state
+with `taskState(result)` when consuming the value, rather than marking a handled failure as success.
+
+`dispatchMainCompletions()` runs a bounded batch of ready continuations. `dispatchTaskEvents()` only notifies
+monitoring; it never invokes business adoption. `settled()` observes admitted task and Main work quiescence,
+not external producer callback tails. CompletionWork shares this same RunLoop with a cold-allocated,
+coalesced notification state and reusable schedule operation. It does not allocate on every request.
+
+Waits use the wake epoch and a coalesced semaphore; enqueueing a Main continuation takes no Runtime queue mutex.
+Task metadata/cancellation still use their existing mutex. This is not a claim that all scheduler or library
+internals are lock-free. Explicit shutdown continues Main dispatch until admitted pipelines settle, joins
+stdexec's scope, and only then joins CPU/IO workers. Never wait inside a Main callback on work that requires
+that same callback stack to return.

@@ -303,7 +303,7 @@ int main()
     while (time(**runtime, timed->id()).step_index < 3)
     {
         const auto epoch = execution->wakeEpoch();
-        assert(execution->collectCompletions());
+        assert(execution->dispatchMainCompletions());
         assert((*runtime)->driveFrame());
         assert(std::chrono::steady_clock::now() - start < 2s);
         if (time(**runtime, timed->id()).step_index < 3)
@@ -315,7 +315,7 @@ int main()
     assert((*runtime)->pauseSimulation(timed->id()));
     for (unsigned warmup{}; warmup < 8; ++warmup)
     {
-        assert(execution->collectCompletions());
+        assert(execution->dispatchMainCompletions());
         assert((*runtime)->driveFrame());
     }
     const auto measured = std::chrono::steady_clock::now();
@@ -332,14 +332,14 @@ int main()
     {
         assert((*runtime)->pauseSimulation(timed->id()));
         assert((*runtime)->driveFrame());
-        assert(execution->collectCompletions());
+        assert(execution->dispatchMainCompletions());
         const auto previous_step = time(**runtime, timed->id()).step_index;
         assert((*runtime)->resumeSimulation(timed->id()));
         const auto limit = std::chrono::steady_clock::now() + 2s;
         while (time(**runtime, timed->id()).step_index == previous_step)
         {
             const auto epoch = execution->wakeEpoch();
-            assert(execution->collectCompletions());
+            assert(execution->dispatchMainCompletions());
             assert((*runtime)->driveFrame());
             assert(std::chrono::steady_clock::now() < limit);
             if (time(**runtime, timed->id()).step_index == previous_step)
@@ -498,6 +498,6 @@ int main()
     std::cout << "PASS LR06 active ID revocation precedes drain; slot reuse, retired compaction and exact release\n";
     runtime->reset(); // Outstanding timer must be cancelled and joined before receiver storage is reclaimed.
     other->reset();
-    assert(execution->collectCompletions());
+    assert(execution->dispatchMainCompletions());
     std::cout << "PASS SceneRuntime: identity, sealed construction, multi-scene clocks, pause, failure, RAII timer\n";
 }

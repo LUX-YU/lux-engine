@@ -4,18 +4,13 @@
 
 #include <NRI.h>
 #include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/execution/TargetOutput.hpp>
 #include <memory>
 #include <vector>
 
 namespace lux::render::detail
 {
     class DeviceSession;
-
-    struct TargetFrame final
-    {
-        nri::Texture* image = nullptr;
-        nri::Descriptor* view = nullptr;
-    };
 
     // Owns the Target output slices. Contexts only borrow the matching frame slice.
     class LUX_RENDER_PUBLIC OffscreenTarget final
@@ -42,7 +37,12 @@ namespace lux::render::detail
 
         [[nodiscard]] TargetFrame frame(std::uint32_t slot) noexcept
         {
-            return {images_[slot], views_[slot]};
+            return frames_[slot];
+        }
+
+        [[nodiscard]] TargetOutput output() const noexcept
+        {
+            return {description_, frames_};
         }
 
     private:
@@ -51,5 +51,6 @@ namespace lux::render::detail
         TargetDesc description_;
         std::vector<nri::Texture*> images_;
         std::vector<nri::Descriptor*> views_;
+        std::vector<TargetFrame> frames_;
     };
 } // namespace lux::render::detail

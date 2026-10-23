@@ -83,7 +83,8 @@ namespace lux::render::detail
         template <class Record>
         [[nodiscard]] RenderResult<void> recordAndSubmit(
             Record&& record,
-            std::span<const nri::FenceSubmitDesc> waits = {}
+            std::span<const nri::FenceSubmitDesc> waits = {},
+            std::span<const nri::FenceSubmitDesc> signals = {}
         ) noexcept
         {
             static_assert(std::is_nothrow_invocable_r_v<
@@ -108,7 +109,7 @@ namespace lux::render::detail
             {
                 return recorded;
             }
-            return submit(waits);
+            return submit(waits, signals);
         }
 
         [[nodiscard]] RenderResult<void> poll() noexcept;
@@ -131,7 +132,10 @@ namespace lux::render::detail
         SubmissionQueue(DeviceSession&, nri::Queue&, QueueProperties, std::uint32_t capacity) noexcept;
         [[nodiscard]] RenderResult<nri::CommandBuffer*> begin(std::uint32_t& slot) noexcept;
         [[nodiscard]] RenderResult<void> finishRecording() noexcept;
-        [[nodiscard]] RenderResult<void> submit(std::span<const nri::FenceSubmitDesc>) noexcept;
+        [[nodiscard]] RenderResult<void> submit(
+            std::span<const nri::FenceSubmitDesc> waits,
+            std::span<const nri::FenceSubmitDesc> signals
+        ) noexcept;
 
     public:
         [[nodiscard]] RenderResult<nri::FenceSubmitDesc> dependency(std::uint64_t serial, nri::StageBits)
@@ -157,6 +161,7 @@ namespace lux::render::detail
         QueueProperties properties_;
         nri::Fence* fence_ = nullptr;
         std::vector<SubmittedBatch> batches_;
+        std::vector<nri::FenceSubmitDesc> submission_signals_;
         std::uint64_t submitted_ = 0, completed_ = 0;
         bool recording_ = false;
         std::optional<RenderError> terminal_;

@@ -224,7 +224,7 @@ namespace lux::render
 
     void RenderServer::Impl::submitFrameRendering(FrameRecord& frame) noexcept
     {
-        const auto submitted = submitCurrentFrame();
+        const auto submitted = submitCurrentFrame(frame.slot);
         if (!submitted)
         {
             frame.error = submitted.error();

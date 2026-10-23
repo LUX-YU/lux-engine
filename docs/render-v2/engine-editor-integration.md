@@ -50,9 +50,9 @@ Render 当前链路见 [源码阅读说明](rendering-flow.md)。
 | 世界解码的有限 coroutine 保持 CPU affinity | [WorldPartitionLoadSender.cpp](../../engine/process/world_loading/src/WorldPartitionLoadSender.cpp) | 每次读取后执行原 decoder.accept；Scene 采用单独进行 |
 | Editor 项目准备已用同一 Runtime + ObjectScheduler | [LuxEngine.cpp](../../editor/app/src/LuxEngine.cpp) | 保留项目序号和安全采用；删除完成回传的空绕行 |
 | WorldFileStorageSource 提供正式有限文件范围读取 | [WorldFileStorageSource.cpp](../../engine/process/world_loading/src/WorldFileStorageSource.cpp) | 测试只保留延迟控制；实际 IO 复用该 provider |
-| EngineContext/Scene/UI/Editor 仍有旧渲染依赖和缺失目录 | 各模块 CMake；EditorUiScene、UiRenderSyncStage | 迁真实消费者，不加空 target/兼容别名 |
-| Target 枚举有 SURFACE，但没有实际 SwapChain 路径 | [Target.hpp](../../modules/function/render/include/lux/engine/render/core/Target.hpp) | 新增真实 SurfaceTarget，不把枚举当能力 |
-| UI 仍依赖旧 RenderFrame/ResourceHandle/VulkanRenderer | [DrawData.hpp](../../modules/function/ui/include/lux/engine/ui/DrawData.hpp)、[EditorUiScene.cpp](../../editor/app/src/EditorUiScene.cpp) | 保留 CPU UI；替换 GPU 运输与 Feature |
+| EngineContext 与 Scene 已迁新运输；EditorUiScene/UiRenderSyncStage 仍为旧接线 | 各模块 CMake 与 Editor app | 完成真实 UI/产品消费者，不加空 target/兼容别名 |
+| SurfaceTarget 已使用 NRI SwapChain；Target 图像输入与 Resize 有实际消费者关系 | [SurfaceTarget.cpp](../../modules/function/render/src/execution/SurfaceTarget.cpp)、RenderServerImpl | 窗口与 Scene 输出接入现有 FIF，不创建呈现调度层 |
+| CPU UI 已使用中立 UiDrawData；Editor UI GPU 运输尚未迁移 | [DrawData.hpp](../../modules/function/ui/include/lux/engine/ui/DrawData.hpp)、[EditorUiScene.cpp](../../editor/app/src/EditorUiScene.cpp) | 保留必要的一次捕获；完成实际 Raster Feature |
 | Raster 尚无 ImGui 所需的绘制列表、逐 draw 裁剪和颜色混合合同 | [Draw.hpp](../../modules/function/render/include/lux/engine/render/graph/Draw.hpp)、[RenderExecutor.cpp](../../modules/function/render/src/execution/RenderExecutor.cpp) | 一次完成通用 Raster 能力与 UI 消费者 |
 
 旧文档中“Asset Client 回主线程发送”“TaskExecutor 尚有私有池”“新建 RenderRequester”均被本版取代。
@@ -467,6 +467,22 @@ UI 最后采样也是该 Target 的真实使用，不能只等 Scene 完成就�
 
 Resize/关闭先停止未来引用并更新关联；旧 image、descriptor 和相关帧物理数据走唯一 cleanup_scope_。
 不能用全局 Device idle 或新增 CPU Fence Wait 作为每次 UI 采样的常规接线。
+
+具体输入由 `AttachmentRequest::target_images` 指定图中的资源键和 `TargetId`。图中该资源必须是
+带 `SAMPLED` 初始状态的 imported image；动态尺寸使用 `ImageExtent::source = IMPORTED`，
+而不是把消费者窗口的尺寸误用为 Scene 输出尺寸。格式、Mip、Layer 和 Sample 数仍是编译合同。
+`FIXED` 和 `TARGET` 分别保持固定尺寸、按当前输出 Target 缩放的含义。
+
+Target 只保存非拥有的消费者 Attachment 索引。Attach 拒绝循环；执行列表仅在关系或启用状态改变时
+按生产者顺序整理，随后复用原有物理访问摘要建立批次依赖。生产者未附着或被停用时，本轮也不执行
+依赖它的消费者，不能悄悄采样未初始化内容或上一帧内容。Client 应先解除消费者，再删除输入 Target；
+仍有消费者时 RemoveTarget 明确失败。Resize 先准备所有受影响实例和 Descriptor，再统一采用，
+不会在旧 Descriptor 仍引用旧图像时提前销毁它。
+
+Surface 的 Acquire semaphore 按可复用 GPU slot 管理，Present semaphore 按交换链 image 管理。
+RemoveTarget 的 Response 才归还平台窗口借用。冷态关闭/同窗口重建在唯一 cleanup_scope_ 内等待
+已提交 Queue 前沿，再清偿实际 presentation queue；Acquire 后尚未提交便失败时，也先消费其信号。
+此处 QueueWaitIdle 只用于 WSI 生命周期边界，不进入稳定帧；普通帧仍是非阻塞完成推进和真实 FIF。
 
 ## 9. 独立 UI Scene 与 ImGui Feature
 

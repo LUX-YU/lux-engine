@@ -56,7 +56,7 @@ namespace lux::render
             {
                 return cxx::unexpected(graphError(kGraphInvalidRange));
             }
-            if (image.extent.target_relative && !copy.image_region)
+            if (image.extent.source != EImageExtentSource::FIXED && !copy.image_region)
             {
                 return std::vector<GraphBufferRange>{};
             }
@@ -128,7 +128,9 @@ namespace lux::render
                     !std::has_single_bit(image.samples) || image.samples > 64 || (image.samples > 1 && image.mips != 1);
                 const bool is_invalid_format = rdesc::textureAspectMask(image.format) == 0;
                 const bool invalid_expression =
-                    !image.extent.numerator || !image.extent.denominator || !image.extent.alignment;
+                    !image.extent.numerator || !image.extent.denominator || !image.extent.alignment ||
+                    image.extent.source > EImageExtentSource::IMPORTED ||
+                    (image.extent.source == EImageExtentSource::IMPORTED && resource.origin != EGraphOrigin::IMPORTED);
                 if (is_invalid_extent || is_invalid_mips || is_invalid_samples || is_invalid_format ||
                     invalid_expression)
                 {

@@ -2,6 +2,7 @@
 #include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
+#include <map>
 #include <ranges>
 
 namespace lux::render
@@ -18,6 +19,8 @@ namespace lux::render
         bindFrameworkCommand<RemoveView, &Impl::removeView>();
         bindFrameworkCommand<CreateTarget, &Impl::createTarget>();
         bindFrameworkCommand<ResizeTarget, &Impl::resizeTarget>();
+        bindFrameworkCommand<RemoveTarget, &Impl::removeTarget>();
+        bindFrameworkCommand<SetTargetActive, &Impl::setTargetActive>();
         bindCreateEffectCommand();
         bindFrameworkCommand<RemoveEffect, &Impl::removeEffect>();
         bindFrameworkCommand<Attach, &Impl::attachEffect>();
@@ -145,66 +148,65 @@ namespace lux::render
         const auto sampler_capacity = device->descriptors().samplerCapacity();
         // Workers receive only immutable feature entries, the request and actual device facts.
         // The final continuation is the sole place that adopts a candidate into the Effect table.
-        auto compiled =
-            stdexec::schedule(cpu_scheduler) |
-            stdexec::then(
-                [native = &device->device(),
-                 nri_core = &device->nriCore(),
-                 enabled = device->enabledFeatures(),
-                 formats = device->formatSupport(),
-                 vertex_limits = std::array{device->vertexStrideLimit(), device->vertexOffsetLimit()},
-                 queues =
-                     std::array{
-                         &device->queue(detail::EQueueRole::GRAPHICS).properties(),
-                         &device->queue(detail::EQueueRole::COMPUTE).properties(),
-                         &device->queue(detail::EQueueRole::TRANSFER).properties()
-                     },
-                 sampled_image_capacity,
-                 sampler_capacity,
-                 storage_types = std::move(storage_types),
-                 request = std::move(input),
-                 entries = std::move(registrations),
-                 limit = config.max_config_bytes]() noexcept
-                {
-                    return compileEffect(
-                        *native,
-                        *nri_core,
-                        enabled,
-                        formats,
-                        vertex_limits,
-                        queues,
-                        sampled_image_capacity,
-                        sampler_capacity,
-                        storage_types,
-                        request,
-                        entries,
-                        limit
-                    );
-                }
-            ) |
-            stdexec::continues_on(render_loop_.scheduler()) |
-            stdexec::let_value(
-                [server = this](RenderResult<RenderEffect>& candidate) noexcept
-                {
-                    return stdexec::read_env(stdexec::get_stop_token) |
-                           stdexec::then(
-                               [server, &candidate](auto stop) noexcept -> CreateEffect::Response
-                               {
-                                   if (!candidate)
-                                   {
-                                       return {candidate.error()};
-                                   }
-                                   if (stop.stop_requested())
-                                   {
-                                       return {RenderError{kCommandCancelled}};
-                                   }
-                                   const auto effect = server->effects.emplace(std::move(*candidate));
-                                   ++server->compiled_graphs;
-                                   return EffectCreated{{}, effect};
-                               }
-                           );
-                }
-            );
+        auto compiled = stdexec::schedule(cpu_scheduler) |
+                        stdexec::then(
+                            [native = &device->device(),
+                             nri_core = &device->nriCore(),
+                             enabled = device->enabledFeatures(),
+                             formats = device->formatSupport(),
+                             vertex_limits = std::array{device->vertexStrideLimit(), device->vertexOffsetLimit()},
+                             queues =
+                                 std::array{
+                                     &device->queue(detail::EQueueRole::GRAPHICS).properties(),
+                                     &device->queue(detail::EQueueRole::COMPUTE).properties(),
+                                     &device->queue(detail::EQueueRole::TRANSFER).properties()
+                                 },
+                             sampled_image_capacity,
+                             sampler_capacity,
+                             storage_types = std::move(storage_types),
+                             request = std::move(input),
+                             entries = std::move(registrations),
+                             limit = config.max_config_bytes]() noexcept
+                            {
+                                return compileEffect(
+                                    *native,
+                                    *nri_core,
+                                    enabled,
+                                    formats,
+                                    vertex_limits,
+                                    queues,
+                                    sampled_image_capacity,
+                                    sampler_capacity,
+                                    storage_types,
+                                    request,
+                                    entries,
+                                    limit
+                                );
+                            }
+                        ) |
+                        stdexec::continues_on(render_loop_.scheduler()) |
+                        stdexec::let_value(
+                            [server = this](RenderResult<RenderEffect>& candidate) noexcept
+                            {
+                                return stdexec::read_env(stdexec::get_stop_token) |
+                                       stdexec::then(
+                                           [server, &candidate](auto stop) noexcept -> CreateEffect::Response
+                                           {
+                                               if (!candidate)
+                                               {
+                                                   return {candidate.error()};
+                                               }
+                                               if (stop.stop_requested())
+                                               {
+                                                   return {RenderError{kCommandCancelled}};
+                                               }
+                                               const auto effect = server->effects.emplace(std::move(*candidate));
+                                               ++server->compiled_graphs;
+                                               return EffectCreated{{}, effect};
+                                           }
+                                       );
+                            }
+                        );
         auto invalid = stdexec::just(CreateEffect::Response{initial_error});
         using VSource = exec::variant_sender<decltype(invalid), decltype(compiled)>;
         return initial_error.type != error::ErrorId{} ? VSource{std::move(invalid)} : VSource{std::move(compiled)};
@@ -243,10 +245,13 @@ namespace lux::render
 
     RenderResult<EffectAttachment> RenderServer::Impl::prepareAttachment(
         const RenderEffect& effect,
-        detail::OffscreenTarget& output,
+        detail::TargetOutput output,
         StorageSet& scene,
         StorageSet& view,
-        StorageSet& attachment
+        StorageSet& attachment,
+        std::span<const TargetImageInput> target_images,
+        TargetId replaced_target,
+        detail::TargetOutput replaced_output
     ) noexcept
     {
         const auto& plan = *effect.plan;
@@ -306,13 +311,66 @@ namespace lux::render
                 parameter_bytes = std::max(parameter_bytes, binding.parameter_bytes);
             }
         }
-        candidate.instance = std::make_unique<detail::RenderGraphInstance>(
-            *device,
-            frames->frameCount(),
-            plan,
-            &output,
-            parameter_bytes
-        );
+        candidate.instance =
+            std::make_unique<detail::RenderGraphInstance>(*device, frames->frameCount(), plan, output, parameter_bytes);
+        candidate.target_images.assign(target_images.begin(), target_images.end());
+        std::vector<GraphResourceId> image_resources;
+        for (const auto& input : target_images)
+        {
+            const auto* source = targets.find(input.target);
+            if (!source || !source->description.sampled || source->surface())
+            {
+                return cxx::unexpected(RenderError{kRuntimeIdentity});
+            }
+            const auto resource =
+                std::ranges::find(plan.resources(), input.resource_key, &detail::CompiledResource::key);
+            if (resource == plan.resources().end())
+            {
+                return cxx::unexpected(RenderError{kRuntimeIdentity});
+            }
+            const auto index = static_cast<std::uint32_t>(resource - plan.resources().begin());
+            const GraphResourceId id{index};
+            const bool duplicate = std::ranges::find(image_resources, id) != image_resources.end();
+            const auto* image = std::get_if<GraphImageDesc>(&resource->description);
+            const bool invalid_resource = duplicate || !image || !resource->memory_used ||
+                                          resource->origin != EGraphOrigin::IMPORTED ||
+                                          effect.graph.resources()[index].initial_use != EGraphUse::SAMPLED;
+            if (invalid_resource)
+            {
+                return cxx::unexpected(RenderError{kCommandContract});
+            }
+            const bool invalid_access = std::ranges::any_of(
+                plan.passes(),
+                [&](const auto& pass) noexcept
+                {
+                    return std::ranges::any_of(
+                        effect.graph.passes()[pass.source_pass].uses,
+                        [&](const auto& use) noexcept
+                        {
+                            return use.version.resource == id &&
+                                   (use.access != EGraphAccess::READ || use.usage != EGraphUse::SAMPLED);
+                        }
+                    );
+                }
+            );
+            if (invalid_access)
+            {
+                return cxx::unexpected(RenderError{kCommandContract});
+            }
+            const auto images = input.target == replaced_target ? replaced_output : source->output();
+            const bool incompatible = !images.description.sampled || images.description.samples != image->samples ||
+                                      images.description.format != image->format || image->layers != 1 ||
+                                      image->mips != 1;
+            if (incompatible)
+            {
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            image_resources.push_back(id);
+            for (std::uint32_t slot = 0; slot < frames->frameCount(); ++slot)
+            {
+                candidate.instance->bindImage(id, slot, *images.frames[slot].image);
+            }
+        }
         candidate.storage_inputs.reserve(plan.resources().size());
         std::vector<StorageId> resolved(plan.resources().size());
         const auto prepareGroup = [&](std::span<const GraphStorageBinding> bindings,
@@ -564,6 +622,10 @@ namespace lux::render
         effect.attachments[attachment.effect_position] = last_effect;
         attachments.find(last_effect)->effect_position = attachment.effect_position;
         effect.attachments.pop_back();
+        for (const auto& input : attachment.target_images)
+        {
+            std::erase(targets.find(input.target)->consumers, id);
+        }
         target.attachment = {};
         active_targets.erase(attachment.target);
         active_frame_inputs_dirty = true;
@@ -587,6 +649,16 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
+        if (target->surface() && !target->surface()->available())
+        {
+            output_response.error = RenderError{kRuntimeState};
+            return;
+        }
+        if (target->surface() && effect->plan->output() == kGraphInvalidIndex)
+        {
+            output_response.error = RenderError{kRuntimeUnsupported};
+            return;
+        }
         const bool target_mismatch = target->attachment != _request.replaces;
         if (target_mismatch)
         {
@@ -608,8 +680,20 @@ namespace lux::render
             output_response.error = valid.error();
             return;
         }
+        if (targetDependencyCycle(target_id, _request.target_images))
+        {
+            output_response.error = RenderError{kCommandContract};
+            return;
+        }
         auto local_storages = std::make_unique<StorageSet>(*resources);
-        auto prepared = prepareAttachment(*effect, *target->physical, scene->storages, view->storages, *local_storages);
+        auto prepared = prepareAttachment(
+            *effect,
+            target->output(),
+            scene->storages,
+            view->storages,
+            *local_storages,
+            _request.target_images
+        );
         if (!prepared)
         {
             output_response.error = prepared.error();
@@ -642,52 +726,108 @@ namespace lux::render
         view->attachments.push_back(id);
         effect->attachments.push_back(id);
         target->attachment = id;
+        for (const auto& input : attachment.target_images)
+        {
+            auto& consumers = targets.find(input.target)->consumers;
+            if (std::ranges::find(consumers, id) == consumers.end())
+            {
+                consumers.push_back(id);
+            }
+        }
         output_response.attachment = id;
-        active_targets.emplace(target_id);
+        if (target->enabled)
+        {
+            active_targets.emplace(target_id);
+        }
         active_frame_inputs_dirty = true;
         storages_created.store(resources->creations());
         return;
     }
 
-    RenderResult<void> RenderServer::Impl::resizeTargetResources(
+    bool RenderServer::Impl::targetDependencyCycle(TargetId destination, std::span<const TargetImageInput> inputs)
+        const noexcept
+    {
+        std::vector<TargetId> pending, visited;
+        for (const auto& input : inputs)
+        {
+            pending.push_back(input.target);
+        }
+        while (!pending.empty())
+        {
+            const auto id = pending.back();
+            pending.pop_back();
+            if (id == destination)
+            {
+                return true;
+            }
+            if (std::ranges::find(visited, id) != visited.end())
+            {
+                continue;
+            }
+            visited.push_back(id);
+            const auto* target = targets.find(id);
+            const auto* attachment = target ? attachments.find(target->attachment) : nullptr;
+            if (attachment)
+            {
+                for (const auto& input : attachment->target_images)
+                {
+                    pending.push_back(input.target);
+                }
+            }
+        }
+        return false;
+    }
+
+    RenderResult<void> RenderServer::Impl::replaceTargetResources(
+        TargetId id,
         RenderTarget& target,
-        const TargetDesc& description
+        RenderTarget::VPhysicalTarget physical
     ) noexcept
     {
-        auto physical = detail::OffscreenTarget::create(*device, description, frames->frameCount());
-        if (!physical)
+        const auto output = std::visit([](const auto& value) noexcept { return value->output(); }, physical);
+        std::vector<std::pair<AttachmentId, EffectAttachment>> candidates;
+        auto affected = target.consumers;
+        if (!target.attachment.isNull())
         {
-            return cxx::unexpected(physical.error());
+            affected.push_back(target.attachment);
         }
-        auto* group = target.attachment.isNull() ? nullptr : attachments.find(target.attachment);
-        if (group)
+        candidates.reserve(affected.size());
+        for (auto attachment : affected)
         {
-            // One Target writer, proven on attach. Resize builds one candidate without recompilation.
-            const auto& effect = *effects.find(group->effect);
+            auto& group = *attachments.find(attachment);
+            const auto& effect = *effects.find(group.effect);
             auto candidate = prepareAttachment(
                 effect,
-                **physical,
-                scenes.find(group->scene)->storages,
-                scenes.find(group->scene)->views.find(group->view)->storages,
-                *group->storages
+                group.target == id ? output : targets.find(group.target)->output(),
+                scenes.find(group.scene)->storages,
+                scenes.find(group.scene)->views.find(group.view)->storages,
+                *group.storages,
+                group.target_images,
+                id,
+                output
             );
             if (!candidate)
             {
                 return cxx::unexpected(candidate.error());
             }
-            if (auto values = candidate->instance
-                                  ->setInputs(group->instance->instanceParameters(), group->instance->conditions());
+            if (auto values =
+                    candidate->instance->setInputs(group.instance->instanceParameters(), group.instance->conditions());
                 !values)
             {
                 return cxx::unexpected(values.error());
             }
-            candidate->instance->setViewport(group->instance->viewport());
-            group->swapResources(*candidate);
-            active_frame_inputs_dirty = true;
+            candidate->instance->setViewport(group.instance->viewport());
+            candidates.emplace_back(attachment, std::move(*candidate));
         }
-        target.physical = std::move(*physical);
-        target.description = description;
+        // Publish only after every affected descriptor bank and graph instance is prepared.
+        for (auto& [attachment, candidate] : candidates)
+        {
+            attachments.find(attachment)->swapResources(candidate);
+        }
+        target.physical = std::move(physical);
+        target.description = output.description;
         ++target.epoch;
+        active_frame_inputs_dirty = true;
         storages_created.store(resources->creations());
         return {};
     }
@@ -818,69 +958,194 @@ namespace lux::render
         output_response = {};
     }
 
-    void RenderServer::Impl::createTarget(
-        const CreateTarget::Request& _request,
-        CreateTarget::Response& output_response
-    ) noexcept
+    void RenderServer::Impl::createTarget(const CreateTarget::Request& input, CreateTarget::Response& response) noexcept
     {
-        const auto* input = &_request;
-        if (auto valid = input->description.validate(); !valid)
+        if (auto valid = input.description.validate(); !valid)
         {
-            output_response.error = valid.error();
+            response.error = valid.error();
             return;
         }
-        if (input->description.kind != ETargetKind::OFFSCREEN)
+        const bool is_surface = input.description.kind == ETargetKind::SURFACE;
+        if (is_surface != input.surface.has_value())
         {
-            output_response.error = RenderError{kRuntimeUnsupported};
+            response.error = RenderError{kCommandContract};
             return;
         }
-        auto physical = detail::OffscreenTarget::create(*device, input->description, frames->frameCount());
-        if (!physical)
+        TargetId id;
+        if (is_surface)
         {
-            output_response.error = physical.error();
-            return;
+            auto physical =
+                detail::SurfaceTarget::create(*device, input.description, *input.surface, frames->frameCount());
+            if (!physical)
+            {
+                response.error = physical.error();
+                return;
+            }
+            id = targets.emplace(RenderTarget::VPhysicalTarget{std::move(*physical)});
         }
-        output_response = TargetCreated{{}, targets.emplace(std::move(*physical)), 1};
+        else
+        {
+            auto physical = detail::OffscreenTarget::create(*device, input.description, frames->frameCount());
+            if (!physical)
+            {
+                response.error = physical.error();
+                return;
+            }
+            id = targets.emplace(RenderTarget::VPhysicalTarget{std::move(*physical)});
+        }
+        response = TargetCreated{{}, id, 1, targets.find(id)->description};
     }
 
-    void RenderServer::Impl::resizeTarget(
-        const ResizeTarget::Request& _request,
-        ResizeTarget::Response& output_response
-    ) noexcept
+    exec::task<TargetCreated> RenderServer::Impl::resizeTarget(ResizeTarget::Request&& request) noexcept
     {
-        const auto* input = &_request;
-        if (auto valid = input->description.validate(); !valid)
+        const auto input = std::move(request);
+        if (auto valid = input.description.validate(); !valid)
         {
-            output_response.error = valid.error();
-            return;
+            co_return TargetCreated{valid.error()};
         }
-        if (input->description.kind != ETargetKind::OFFSCREEN)
-        {
-            output_response.error = RenderError{kRuntimeUnsupported};
-            return;
-        }
-        auto* target = targets.find(input->target);
+        auto* target = targets.find(input.target);
         if (!target)
         {
-            output_response.error = RenderError{kRuntimeIdentity};
-            return;
+            co_return TargetCreated{RenderError{kRuntimeIdentity}};
         }
-        if (!target->attachment.isNull() && attachmentsSubmitting({&target->attachment, 1}))
+        const bool different_kind = input.description.kind != target->description.kind;
+        const auto maximum = device->description().dimensions.attachmentMaxDim;
+        const bool oversized = input.description.width > maximum || input.description.height > maximum;
+        if (different_kind || oversized)
         {
-            output_response.error = RenderError{kDeviceBusy};
-            return;
+            co_return TargetCreated{RenderError{kCommandContract}};
+        }
+        if (!target->attachment.isNull())
+        {
+            const auto& attachment = *attachments.find(target->attachment);
+            if (frames->submitting(*attachment.instance))
+            {
+                co_return TargetCreated{RenderError{kDeviceBusy}};
+            }
+            if (!effects.find(attachment.effect)->plan->compatible(input.description))
+            {
+                co_return TargetCreated{RenderError{kDeviceArgument}};
+            }
+        }
+        if (attachmentsSubmitting(target->consumers))
+        {
+            co_return TargetCreated{RenderError{kDeviceBusy}};
         }
         if (target->epoch == UINT64_MAX)
         {
-            output_response.error = RenderError{kRuntimeCapacity};
-            return;
+            co_return TargetCreated{RenderError{kRuntimeCapacity}};
         }
-        if (auto changed = resizeTargetResources(*target, input->description); !changed)
+        RenderTarget::VPhysicalTarget candidate;
+        if (auto* surface = target->surface())
         {
-            output_response.error = changed.error();
+            const auto window = surface->surface();
+            active_targets.erase(input.target);
+            active_frame_inputs_dirty = true;
+            // NRI creates a new SwapChain for this native window. Retire the previous presentation
+            // first; unlike offscreen allocation, a WSI failure can leave an unavailable target.
+            auto closed = co_await surface->close();
+            if (!closed)
+            {
+                if (!target->attachment.isNull())
+                {
+                    detachAttachment(target->attachment);
+                }
+                co_return TargetCreated{closed.error()};
+            }
+            auto created = detail::SurfaceTarget::create(*device, input.description, window, frames->frameCount());
+            if (!created)
+            {
+                if (!target->attachment.isNull())
+                {
+                    detachAttachment(target->attachment);
+                }
+                co_return TargetCreated{created.error()};
+            }
+            candidate = std::move(*created);
+        }
+        else
+        {
+            auto created = detail::OffscreenTarget::create(*device, input.description, frames->frameCount());
+            if (!created)
+            {
+                co_return TargetCreated{created.error()};
+            }
+            candidate = std::move(*created);
+        }
+        if (auto changed = replaceTargetResources(input.target, *target, std::move(candidate)); !changed)
+        {
+            if (target->surface() && !target->attachment.isNull())
+            {
+                detachAttachment(target->attachment);
+            }
+            co_return TargetCreated{changed.error()};
+        }
+        if (target->enabled && !target->attachment.isNull())
+        {
+            active_targets.emplace(input.target);
+        }
+        co_return TargetCreated{{}, input.target, target->epoch, target->description};
+    }
+
+    exec::task<AckResponse> RenderServer::Impl::removeTarget(RemoveTarget::Request&& input) noexcept
+    {
+        auto* target = targets.find(input);
+        if (!target)
+        {
+            co_return AckResponse{RenderError{kRuntimeIdentity}};
+        }
+        if (!target->consumers.empty())
+        {
+            co_return AckResponse{RenderError{kRuntimeState}};
+        }
+        if (!target->attachment.isNull())
+        {
+            if (attachmentsSubmitting({&target->attachment, 1}))
+            {
+                co_return AckResponse{RenderError{kDeviceBusy}};
+            }
+            detachAttachment(target->attachment);
+        }
+        auto physical = std::move(target->physical);
+        targets.erase(input);
+        if (auto* surface = std::get_if<std::unique_ptr<detail::SurfaceTarget>>(&physical))
+        {
+            auto closed = co_await (*surface)->close();
+            if (!closed)
+            {
+                co_return AckResponse{closed.error()};
+            }
+        }
+        co_return AckResponse{};
+    }
+
+    void RenderServer::Impl::setTargetActive(
+        const SetTargetActive::Request& input,
+        SetTargetActive::Response& response
+    ) noexcept
+    {
+        auto* target = targets.find(input.target);
+        if (!target)
+        {
+            response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        output_response = TargetCreated{{}, input->target, target->epoch};
+        if (input.active && target->surface() && !target->surface()->available())
+        {
+            response.error = RenderError{kRuntimeState};
+            return;
+        }
+        target->enabled = input.active;
+        if (input.active && !target->attachment.isNull())
+        {
+            active_targets.emplace(input.target);
+        }
+        else
+        {
+            active_targets.erase(input.target);
+        }
+        active_frame_inputs_dirty = true;
+        response = {};
     }
 
     void RenderServer::Impl::detachEffect(const Detach::Request& _request, Detach::Response& output_response) noexcept
@@ -985,25 +1250,80 @@ namespace lux::render
         const auto keys = active_targets.keys();
         std::vector<TargetId> active(keys.begin(), keys.end());
         std::ranges::sort(active, {}, &TargetId::index);
+        std::map<std::uint32_t, std::size_t> positions;
+        std::vector<std::vector<std::size_t>> successors(active.size());
+        std::vector<std::size_t> predecessors(active.size());
+        std::vector<bool> unavailable(active.size());
+        for (std::size_t i = 0; i < active.size(); ++i)
+        {
+            positions.emplace(active[i].index, i);
+        }
+        for (std::size_t i = 0; i < active.size(); ++i)
+        {
+            const auto& attachment = *attachments.find(targets.find(active[i])->attachment);
+            for (const auto& input : attachment.target_images)
+            {
+                const auto producer = positions.find(input.target.index);
+                if (producer == positions.end())
+                {
+                    unavailable[i] = true; // No implicit previous-frame/history sampling.
+                    continue;
+                }
+                successors[producer->second].push_back(i);
+                ++predecessors[i];
+            }
+        }
+        std::vector<std::size_t> ready;
+        std::vector<TargetId> ordered;
+        ready.reserve(active.size());
+        ordered.reserve(active.size());
+        for (std::size_t i = 0; i < active.size(); ++i)
+        {
+            if (predecessors[i] == 0)
+            {
+                ready.push_back(i);
+            }
+        }
+        for (std::size_t cursor = 0; cursor < ready.size(); ++cursor)
+        {
+            const auto i = ready[cursor];
+            if (!unavailable[i])
+            {
+                ordered.push_back(active[i]);
+            }
+            for (auto consumer : successors[i])
+            {
+                unavailable[consumer] = unavailable[consumer] || unavailable[i];
+                if (--predecessors[consumer] == 0)
+                {
+                    ready.push_back(consumer);
+                }
+            }
+        }
+        active = std::move(ordered);
         frame_instances.clear();
+        frame_surfaces.clear();
         frame_storages.clear();
         frame_features.clear();
         for (auto id : active)
         {
-            auto& attachment = *attachments.find(targets.find(id)->attachment);
+            auto& target = *targets.find(id);
+            if (auto* surface = target.surface())
+            {
+                frame_surfaces.push_back(surface);
+            }
+            auto& attachment = *attachments.find(target.attachment);
             frame_instances.push_back(attachment.instance.get());
             for (const auto& input : attachment.storage_inputs)
             {
                 if (input.ops->prepareFrame)
                 {
-                    frame_storages.push_back(
-                        detail::StorageFrameUse{
-                            input.native,
-                            input.ops,
-                            input.storage_id,
-                            input.ops->preparationRevision ? input.ops->preparationRevision(input.native) : nullptr
-                        }
-                    );
+                    frame_storages.push_back(detail::StorageFrameUse{
+                        input.native,
+                        input.ops,
+                        input.storage_id,
+                        input.ops->preparationRevision ? input.ops->preparationRevision(input.native) : nullptr
+                    });
                 }
             }
             for (auto& feature : attachment.feature_bindings)
@@ -1017,18 +1337,50 @@ namespace lux::render
         active_frame_inputs_dirty = false;
     }
 
-    RenderResult<void> RenderServer::Impl::submitCurrentFrame() noexcept
+    RenderResult<void> RenderServer::Impl::submitCurrentFrame(std::uint32_t slot) noexcept
     {
         if (active_frame_inputs_dirty)
         {
             rebuildActiveFrameInputs();
         }
+        if (!frames->submitting())
+        {
+            for (auto* surface : frame_surfaces)
+            {
+                if (auto acquired = surface->acquire(slot); !acquired)
+                {
+                    frames->cancelSubmissions(acquired.error());
+                    return acquired;
+                }
+            }
+        }
         auto accepted = frames->render(frame_instances, frame_storages, frame_features);
+        RenderError present_error;
+        for (auto* surface : frame_surfaces)
+        {
+            auto presented = surface->present();
+            if (presented)
+            {
+                presentations += *presented;
+            }
+            else if (present_error.type == 0)
+            {
+                present_error = presented.error();
+            }
+        }
         if (!accepted)
         {
             return cxx::unexpected(accepted.error());
         }
         submissions += *accepted;
+        if (present_error.type != 0)
+        {
+            if (!frames->inputConsumed(slot))
+            {
+                frames->cancelSubmissions(present_error);
+            }
+            return cxx::unexpected(present_error);
+        }
         return {};
     }
 
@@ -1308,7 +1660,8 @@ namespace lux::render
             s.submissions.load(),
             s.validation_errors.load(),
             s.validation_warnings.load(),
-            s.storages_created.load()
+            s.storages_created.load(),
+            s.presentations.load()
         };
     }
 

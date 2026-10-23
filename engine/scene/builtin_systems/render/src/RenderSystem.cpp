@@ -358,10 +358,9 @@ namespace lux::scene
                 }
                 DeferredLightingFeatureConfig light;
                 light.extent = {description.width, description.height, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
-                light.extent.extent.target_relative = true;
+                light.extent.extent.source = EImageExtentSource::TARGET;
                 light.input_layout = layout;
-                const auto encoding =
-                    rdesc::isSrgbTextureFormat(description.format) ? EColorEncoding::LINEAR : EColorEncoding::SRGB;
+                const auto encoding = EColorEncoding::SRGB;
                 TonemapFeatureConfig tone{description, encoding, layout};
                 MeshVisibilityFeatureConfig selection;
                 selection.candidate_capacity = surface.visible_capacity;

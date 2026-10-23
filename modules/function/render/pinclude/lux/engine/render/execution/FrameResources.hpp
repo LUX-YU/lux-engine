@@ -28,6 +28,8 @@ namespace lux::render::detail
         std::vector<nri::Buffer*> buffers;
         std::vector<nri::Texture*> images;
         std::vector<nri::Descriptor*> views;
+        // Stable addresses of output attachment fields, built once after all Pass arrays are fixed.
+        std::vector<nri::Descriptor**> output_views;
 
         struct MemoryAllocation final
         {

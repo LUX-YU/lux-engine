@@ -62,6 +62,7 @@ set(render_sources
     src/execution/FrameResources.cpp
     src/execution/HistoryState.cpp
     src/execution/OffscreenTarget.cpp
+    src/execution/SurfaceTarget.cpp
     src/execution/RenderGraphInstance.cpp
     src/execution/RenderExecutor.cpp
     src/graph/RenderPlan.cpp

@@ -164,7 +164,7 @@ struct CaptureFeature
         const auto& config = *static_cast<const CaptureConfig*>(value);
         image.format = config.format;
         image.layers = config.layers;
-        image.extent.target_relative = config.target_relative;
+        image.extent.source = config.target_relative ? EImageExtentSource::TARGET : EImageExtentSource::FIXED;
         ports.resources.push_back(
             {"color",
              EFeaturePort::INPUT,

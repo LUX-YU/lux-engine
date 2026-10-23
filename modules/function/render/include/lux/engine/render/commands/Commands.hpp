@@ -42,6 +42,7 @@ namespace lux::render
     struct CreateTargetRequest final
     {
         TargetDesc description{};
+        std::optional<SurfaceDescription> surface;
     };
 
     struct ResizeTargetRequest final
@@ -53,6 +54,14 @@ namespace lux::render
     struct EffectRequest final
     {
         EffectId effect{};
+    };
+
+    // A sampled offscreen Target supplies this declared imported image in the same sealed frame.
+    // The producer must remain attached and enabled. Detach consumers before removing its Target.
+    struct TargetImageInput final
+    {
+        std::string resource_key;
+        TargetId target;
     };
 
     struct AttachmentRequest final
@@ -67,6 +76,7 @@ namespace lux::render
         // Optional current writer of the same Scene/View/Target. The new instance is fully prepared
         // before replacing it at this frame safe point; failure preserves the previous attachment.
         AttachmentId replaces;
+        std::vector<TargetImageInput> target_images;
     };
 
     struct AttachmentInputs final
@@ -160,6 +170,7 @@ namespace lux::render
         RenderError error{};
         TargetId target{};
         std::uint64_t epoch = 0;
+        TargetDesc description; // Actual output format/extent selected by the backend.
     };
 
     struct EffectCreated final
@@ -358,6 +369,28 @@ namespace lux::render
         static constexpr bool frame_scoped = true;
         using Request = ResizeTargetRequest;
         using Response = TargetCreated;
+    };
+
+    struct RemoveTarget final
+    {
+        static constexpr std::string_view name = "render.target.remove";
+        static constexpr bool frame_scoped = true;
+        using Request = TargetId;
+        using Response = AckResponse;
+    };
+
+    struct SetTargetActive final
+    {
+        static constexpr std::string_view name = "render.target.set_active";
+        static constexpr bool frame_scoped = true;
+
+        struct Request final
+        {
+            TargetId target;
+            bool active = true;
+        };
+
+        using Response = AckResponse;
     };
 
     struct CreateEffect final

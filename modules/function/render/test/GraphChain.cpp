@@ -176,7 +176,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     GraphImageDesc image{64, 64};
-    image.extent.target_relative = true;
+    image.extent.source = EImageExtentSource::TARGET;
     auto seed_description = image;
     seed_description.mips = 2;
     const auto seed = take(builder.declareResource({"seed", seed_description}));
@@ -252,7 +252,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
         {nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE, nri::AddressMode::CLAMP_TO_EDGE};
     CHECK(session->nriCore().CreateSampler(session->device(), sampler_description, sampler) == nri::Result::SUCCESS);
     auto physical = take(OffscreenTarget::create(*session, target, fif));
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, physical.get());
+    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, physical->output());
     CHECK(instance->bindSampler(0, *sampler));
     CHECK(instance->initialize());
     CHECK(instance->dumpResources(sink));
@@ -267,7 +267,7 @@ static void imageChain(Validation& validation, std::uint32_t fif, bool async_com
     larger_target.width = larger_target.height = 128;
     CHECK(plan.compatible(larger_target));
     auto larger = take(OffscreenTarget::create(*session, larger_target, fif));
-    auto second_instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, larger.get());
+    auto second_instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, larger->output());
     CHECK(second_instance->bindSampler(0, *sampler));
     CHECK(second_instance->initialize());
     const std::array instances{instance.get(), second_instance.get()};
@@ -641,7 +641,7 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
     auto frames = take(FrameExecution::create(*session, nullptr, fif));
     RenderGraphBuilder builder;
     GraphImageDesc image{9, 7, 1, 1, rdesc::ETextureFormat::R32_SFLOAT};
-    image.extent.target_relative = true;
+    image.extent.source = EImageExtentSource::TARGET;
     const auto source = take(builder.declareResource({"depth field", image}));
     image.mips = 4;
     const auto history = take(builder.declareHistory("hzb", image, {{1, 1, 1, 1}}, EGraphUse::SAMPLED));
@@ -704,7 +704,7 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
     TargetDesc target{9, 7, color_description.format, 1, ETargetKind::OFFSCREEN};
     auto plan = compile(*session, graph, analysis, &target);
     auto physical = take(OffscreenTarget::create(*session, target, fif));
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, physical.get());
+    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan, physical->output());
     CHECK(instance->initialize());
     for (std::uint32_t execution = 0; execution < 4; ++execution)
     {
@@ -716,7 +716,7 @@ static void hzbHistory(Validation& validation, std::uint32_t fif)
             target.width = 17;
             target.height = 11;
             auto replacement = take(OffscreenTarget::create(*session, target, fif));
-            auto candidate = std::make_unique<RenderGraphInstance>(*session, fif, plan, replacement.get());
+            auto candidate = std::make_unique<RenderGraphInstance>(*session, fif, plan, replacement->output());
             CHECK(candidate->initialize());
             instance = std::move(candidate);
             physical = std::move(replacement);

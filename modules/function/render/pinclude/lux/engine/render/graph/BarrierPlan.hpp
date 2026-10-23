@@ -12,6 +12,7 @@ namespace lux::render::detail
         const PipelineLayoutPlan& layouts,
         std::span<CompiledResource> resources,
         RecordingProgram& recording,
+        const TargetDesc& target,
         const PhysicalResourcePlan* physical = nullptr
     ) noexcept;
 } // namespace lux::render::detail

@@ -198,6 +198,7 @@ namespace lux::render::detail
             std::array<std::vector<std::uint32_t>, 3> ready_batches;
             std::vector<ImportedUse> imported_uses;
             std::vector<std::uint32_t> recording_batches;
+            std::vector<nri::FenceSubmitDesc> wait_fences, signal_fences;
             std::vector<ResourceUploader::BufferCopy> feature_copies;
             std::vector<PreparedStorage> prepared_storages;
             std::uint32_t remaining_batches = 0;

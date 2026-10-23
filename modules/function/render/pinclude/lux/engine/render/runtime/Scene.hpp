@@ -1,9 +1,11 @@
 #pragma once
 
 #include <lux/cxx/container/StableSlotMap.hpp>
+#include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
+#include <lux/engine/render/execution/SurfaceTarget.hpp>
 #include <lux/engine/render/features/FeatureBinding.hpp>
 #include <lux/engine/render/graph/RenderGraphAnalysis.hpp>
 #include <lux/engine/render/graph/Sampler.hpp>
@@ -38,15 +40,22 @@ namespace lux::render::runtime_detail
 
     struct RenderTarget final
     {
+        using VPhysicalTarget =
+            std::variant<std::unique_ptr<detail::OffscreenTarget>, std::unique_ptr<detail::SurfaceTarget>>;
         TargetDesc description;
-        std::unique_ptr<detail::OffscreenTarget> physical;
+        VPhysicalTarget physical;
         std::uint64_t epoch = 1;
         AttachmentId attachment;
+        std::vector<AttachmentId> consumers; // Non-owning sampled output relationships.
+        bool enabled = true;
 
-        explicit RenderTarget(std::unique_ptr<detail::OffscreenTarget> value) noexcept
-            : description(value->description()), physical(std::move(value))
+        explicit RenderTarget(VPhysicalTarget value) noexcept : physical(std::move(value))
         {
+            description = output().description;
         }
+
+        [[nodiscard]] detail::TargetOutput output() const noexcept;
+        [[nodiscard]] detail::SurfaceTarget* surface() const noexcept;
 
         RenderTarget(const RenderTarget&) = delete;
         RenderTarget& operator=(const RenderTarget&) = delete;
@@ -91,6 +100,7 @@ namespace lux::render::runtime_detail
         // Destruction disconnects professional data and inputs before the graph instance and local StorageSet.
         std::vector<StorageInput> storage_inputs;
         std::vector<detail::FeatureBinding> feature_bindings;
+        std::vector<TargetImageInput> target_images;
         [[nodiscard]] RenderResult<void> bindStorage(
             std::uint32_t resource,
             StorageId,

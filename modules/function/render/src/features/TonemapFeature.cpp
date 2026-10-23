@@ -18,16 +18,18 @@ namespace lux::render
                 return valid;
             }
             const bool valid_format = config.target.format == rdesc::ETextureFormat::RGBA8_UNORM ||
-                                      config.target.format == rdesc::ETextureFormat::RGBA8_SRGB;
+                                      config.target.format == rdesc::ETextureFormat::RGBA8_SRGB ||
+                                      config.target.format == rdesc::ETextureFormat::BGRA8_UNORM ||
+                                      config.target.format == rdesc::ETextureFormat::BGRA8_SRGB;
             const bool invalid_encoding =
                 config.encoding > EColorEncoding::SRGB ||
-                (config.target.format == rdesc::ETextureFormat::RGBA8_SRGB && config.encoding != EColorEncoding::SRGB);
+                (rdesc::isSrgbTextureFormat(config.target.format) && config.encoding != EColorEncoding::SRGB);
             if (!valid_format || invalid_encoding || config.target.samples != 1)
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
             GraphImageDesc hdr{config.target.width, config.target.height, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
-            hdr.extent.target_relative = true;
+            hdr.extent.source = EImageExtentSource::TARGET;
             FeaturePort input{"hdr_color", EFeaturePort::INPUT, hdr};
             input.semantic = "lux.color.linear-hdr.v1";
             ports.resources.push_back(std::move(input));
@@ -41,7 +43,7 @@ namespace lux::render
         {
             const auto& config = *static_cast<const TonemapFeatureConfig*>(value);
             const bool encode =
-                config.encoding == EColorEncoding::SRGB && config.target.format == rdesc::ETextureFormat::RGBA8_UNORM;
+                config.encoding == EColorEncoding::SRGB && !rdesc::isSrgbTextureFormat(config.target.format);
             auto work = encode ? detail::fullscreenRaster(context, kTonemapSrgb, kTonemapSrgbReflection)
                                : detail::fullscreenRaster(context, kTonemapLinear, kTonemapLinearReflection);
             if (!work)

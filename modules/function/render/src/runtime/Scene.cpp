@@ -3,6 +3,17 @@
 
 namespace lux::render::runtime_detail
 {
+    detail::TargetOutput RenderTarget::output() const noexcept
+    {
+        return std::visit([](const auto& value) noexcept { return value->output(); }, physical);
+    }
+
+    detail::SurfaceTarget* RenderTarget::surface() const noexcept
+    {
+        const auto* value = std::get_if<std::unique_ptr<detail::SurfaceTarget>>(&physical);
+        return value ? value->get() : nullptr;
+    }
+
     EffectAttachment::EffectAttachment() noexcept = default;
 
     EffectAttachment::~EffectAttachment() noexcept = default;
@@ -20,6 +31,7 @@ namespace lux::render::runtime_detail
             instance = std::move(other.instance);
             storage_inputs = std::move(other.storage_inputs);
             feature_bindings = std::move(other.feature_bindings);
+            target_images = std::move(other.target_images);
             effect = other.effect;
             scene = other.scene;
             view = other.view;

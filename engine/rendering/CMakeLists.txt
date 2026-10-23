@@ -53,4 +53,31 @@ if(BUILD_TESTING)
     target_link_libraries(engine_render_transport_test PRIVATE engine_rendering)
     add_test(NAME engine.render_transport COMMAND engine_render_transport_test)
     set_tests_properties(engine.render_transport PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+    if(WIN32 AND TARGET window)
+        set(surface_shader_headers)
+        foreach(source IN ITEMS
+            "${CMAKE_CURRENT_SOURCE_DIR}/test/SurfaceSample.frag"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/function/render/test/shaders/GraphTriangle.vert"
+        )
+            get_filename_component(shader_name "${source}" NAME_WE)
+            set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.spv")
+            set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.hpp")
+            add_custom_command(
+                OUTPUT "${binary}" "${header}"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders"
+                COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -o "${binary}" "${source}"
+                COMMAND lux_shader_metadata "${binary}" "${header}" "k${shader_name}"
+                DEPENDS "${source}" lux_shader_metadata
+                VERBATIM
+            )
+            list(APPEND surface_shader_headers "${header}")
+        endforeach()
+
+        add_executable(engine_render_surface_test test/Surface.cpp ${surface_shader_headers})
+        target_include_directories(engine_render_surface_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shaders")
+        target_link_libraries(engine_render_surface_test PRIVATE engine_rendering lux::engine::platform::window)
+        add_test(NAME engine.render_surface COMMAND engine_render_surface_test)
+        add_test(NAME engine.render_surface_uploads COMMAND engine_render_surface_test uploads)
+        set_tests_properties(engine.render_surface engine.render_surface_uploads PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+    endif()
 endif()

@@ -2,6 +2,9 @@
 
 #include <lux/engine/render/visibility.h>
 
+#include <NRI.h>
+
+#include <Extensions/NRISwapChain.h>
 #include <cstdint>
 #include <lux/engine/description/Image.hpp>
 #include <lux/engine/render/core/Error.hpp>
@@ -23,9 +26,18 @@ namespace lux::render
         rdesc::ETextureFormat format{rdesc::ETextureFormat::UNDEFINED};
         std::uint32_t samples{1};
         ETargetKind kind{ETargetKind::OFFSCREEN};
+        bool sampled = false; // Explicit same-frame producer/consumer use; not an output history.
 
         [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void> validate() const noexcept;
         bool operator==(const TargetDesc&) const noexcept = default;
+    };
+
+    // Borrowed platform window, retained until RemoveTarget completes (or RenderServer joins).
+    // No Window/UI object crosses the protocol. The first path is SDR; WAITABLE/HDR are not implied.
+    struct SurfaceDescription final
+    {
+        nri::Window window{};
+        bool vertical_sync = true;
     };
 
     // Target's uint64_t epoch changes when its specification changes in place.

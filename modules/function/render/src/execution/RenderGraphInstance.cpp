@@ -9,7 +9,6 @@
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/execution/FrameResources.hpp>
-#include <lux/engine/render/execution/OffscreenTarget.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/PhysicalResourcePlan.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
@@ -46,10 +45,11 @@ namespace lux::render::detail
         DeviceSession& session,
         std::uint32_t frame_count,
         const RenderPlan& plan,
-        OffscreenTarget* output,
+        TargetOutput output,
         std::uint32_t parameter_bytes
     ) noexcept
-        : session_(&session), plan_(&plan), target_(output ? output->description() : plan.target()), output_(output)
+        : session_(&session), plan_(&plan), target_(output.frames.empty() ? plan.target() : output.description),
+          output_(output)
     {
         instance_values_.resize(std::max(plan.descriptor_plan_->instance_parameters.size, parameter_bytes));
         condition_values_.resize(plan.condition_count_);
@@ -159,9 +159,9 @@ namespace lux::render::detail
         auto& session = *session_;
         const auto& plan = *plan_;
         const bool wrong_device = plan.device() != &session.device();
-        const bool wrong_target = output_ && (&output_->session() != &session || !plan.compatible(target_) ||
-                                              !target_.width || !target_.height);
-        const bool missing_target = plan.output() != kGraphInvalidIndex && !output_;
+        const bool wrong_target =
+            !output_.frames.empty() && (!plan.compatible(target_) || output_.frames.size() != frames_.size());
+        const bool missing_target = plan.output() != kGraphInvalidIndex && output_.frames.empty();
         if (wrong_device || wrong_target || missing_target)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
@@ -232,9 +232,10 @@ namespace lux::render::detail
                         return cxx::unexpected(RenderError{kDeviceArgument});
                     }
                     const auto& actual = core.GetTextureDesc(*binding.image);
-                    const bool mismatch = actual.width != image->width || actual.height != image->height ||
-                                          actual.mipNum != image->mips || actual.layerNum != image->layers ||
-                                          actual.sampleNum != image->samples ||
+                    const bool extent_mismatch = image->extent.source != EImageExtentSource::IMPORTED &&
+                                                 (actual.width != image->width || actual.height != image->height);
+                    const bool mismatch = extent_mismatch || actual.mipNum != image->mips ||
+                                          actual.layerNum != image->layers || actual.sampleNum != image->samples ||
                                           actual.format != imageFormat(image->format).native;
                     if (mismatch)
                     {
@@ -245,7 +246,7 @@ namespace lux::render::detail
             }
             if (i == plan.output())
             {
-                binding.image = output_->frame(slot).image;
+                binding.image = output_.frames[slot].image;
                 continue;
             }
             const auto physical = plan.physical_resources_.resource_slots[i];
@@ -871,6 +872,11 @@ namespace lux::render::detail
                               ) -> RenderResult<void>
         {
             const auto index = access.version.resource.index;
+            if (index == plan.output())
+            {
+                result = output_.frames[slot].view;
+                return {};
+            }
             if (plan.resources()[index].history != kGraphInvalidIndex)
             {
                 return {}; // The selected physical History bank supplies its already-created view.
@@ -1113,6 +1119,37 @@ namespace lux::render::detail
             pass.parameters =
                 std::span(frame.parameters).subspan(compiled_pass.parameter_offset, compiled_pass.parameter_size);
             frame.passes.push_back(std::move(pass));
+        }
+        // Pass arrays are fixed now. Acquiring another image only changes these borrowed view
+        // fields, without allocating descriptors or searching author names during recording.
+        for (auto& pass : frame.passes)
+        {
+            if (const auto* raster = std::get_if<RasterCommands>(&pass.compiled_pass->work))
+            {
+                for (std::size_t i = 0; i < raster->colors.size(); ++i)
+                {
+                    const auto& attachment = raster->colors[i];
+                    if (attachment.access.version.resource.index == plan.output())
+                    {
+                        frame.output_views.push_back(&pass.colors[i].descriptor);
+                    }
+                    if (attachment.resolve && attachment.resolve->version.resource.index == plan.output())
+                    {
+                        frame.output_views.push_back(&pass.colors[i].resolveDst);
+                    }
+                }
+            }
+            else if (const auto* transfer = std::get_if<TransferWork>(&pass.compiled_pass->work))
+            {
+                for (std::size_t i = 0; i < transfer->operations.size(); ++i)
+                {
+                    const auto* clear = std::get_if<ClearImage>(&transfer->operations[i]);
+                    if (clear && clear->destination.version.resource.index == plan.output())
+                    {
+                        frame.output_views.push_back(&pass.clear_views[i]);
+                    }
+                }
+            }
         }
         return {};
     }
@@ -1668,6 +1705,25 @@ namespace lux::render::detail
             return cxx::unexpected(submission_error_);
         }
         auto& frame = frames_[slot];
+        if (plan_->output() != kGraphInvalidIndex)
+        {
+            const auto& output = output_.frames[slot];
+            auto& binding = frame.bindings[plan_->output()];
+            if (binding.image != output.image)
+            {
+                binding.image = output.image;
+                frame.imported_revision = nextImportedRevision();
+                if (!binding.dirty)
+                {
+                    binding.dirty = true;
+                    frame.changed_resources.push_back(plan_->output());
+                }
+                for (auto* view : frame.output_views)
+                {
+                    *view = output.view;
+                }
+            }
+        }
         if (frame.unavailable_buffers)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});

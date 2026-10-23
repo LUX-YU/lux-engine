@@ -60,6 +60,7 @@ namespace lux::render
         std::uint64_t ticks = 0, commands = 0, compiled_graphs = 0, submissions = 0;
         std::uint64_t validation_errors = 0, validation_warnings = 0;
         std::uint64_t storages_created = 0;
+        std::uint64_t presentations = 0; // Successful QueuePresent calls, not measured display scanout.
     };
 
     // The application owns the rendering thread. Only stop() and stats() may race with run().

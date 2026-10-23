@@ -20,9 +20,17 @@ namespace lux::render
         bool operator==(const GraphBufferDesc&) const noexcept = default;
     };
 
+    enum class EImageExtentSource : std::uint8_t
+    {
+        FIXED,
+        TARGET,
+        // Dimensions come from the imported physical image; format, mips and layers stay declared.
+        IMPORTED
+    };
+
     struct ImageExtent final
     {
-        bool target_relative = false;
+        EImageExtentSource source = EImageExtentSource::FIXED;
         std::uint32_t numerator = 1;
         std::uint32_t denominator = 1;
         std::uint32_t alignment = 1;

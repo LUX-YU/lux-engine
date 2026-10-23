@@ -115,7 +115,8 @@ namespace lux::render::detail
         const RecordingProgram& recording,
         std::array<const QueueProperties*, 3> queues,
         std::vector<SubmissionBatch>& batches,
-        std::vector<ImportedAccess>& imports
+        std::vector<ImportedAccess>& imports,
+        std::uint32_t output
     ) noexcept
     {
         std::vector<std::uint32_t> pass_batches(graph.passes().size(), kGraphInvalidIndex);
@@ -140,7 +141,9 @@ namespace lux::render::detail
                     {
                         batches.back().histories.push_back(resource);
                     }
-                    if (resources[resource.index].origin == EGraphOrigin::IMPORTED &&
+                    // The final Target is also borrowed physical memory, despite its logical
+                    // graph resource being transient. A different instance may sample that image.
+                    if ((resources[resource.index].origin == EGraphOrigin::IMPORTED || resource.index == output) &&
                         !resources[resource.index].shared_table)
                     {
                         imports.push_back({resource, use.range, write, batch, batch});

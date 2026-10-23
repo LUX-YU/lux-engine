@@ -408,7 +408,7 @@ namespace mesh_sample
         second_request.definition.features.push_back({depth_feature, "main", take(ConfigValue::make(depth_config))});
         const auto hzb = feature(main, main_commands, main_next, HzbFeatureDescriptor::name);
         HzbFeatureConfig hzb_config{{64, 64, 1, 1, rdesc::ETextureFormat::D32_SFLOAT}, 6};
-        hzb_config.depth.extent.target_relative = true;
+        hzb_config.depth.extent.source = EImageExtentSource::TARGET;
         second_request.definition.features.push_back({hzb, "depth pyramid", take(ConfigValue::make(hzb_config))});
         second_request.definition.connections.push_back({{0, "depth"}, {1, "depth"}});
         first_request.definition.outputs.push_back(

@@ -525,7 +525,7 @@ namespace lux::render::detail
         }
         GraphImageDesc color{config.target.width, config.target.height, 1, 1, config.target.format};
         GraphImageDesc depth{config.target.width, config.target.height, 1, 1, rdesc::ETextureFormat::D32_SFLOAT};
-        color.extent.target_relative = depth.extent.target_relative = true;
+        color.extent.source = depth.extent.source = EImageExtentSource::TARGET;
         ports.resources.push_back({"color", EFeaturePort::OUTPUT, color});
         ports.resources.push_back({"depth", EFeaturePort::OUTPUT, depth});
         return {};

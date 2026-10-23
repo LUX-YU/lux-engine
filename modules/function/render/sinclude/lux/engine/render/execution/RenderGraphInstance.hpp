@@ -6,12 +6,12 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/execution/ResourceInput.hpp>
+#include <lux/engine/render/execution/TargetOutput.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 
 namespace lux::render::detail
 {
     class DeviceSession;
-    class OffscreenTarget;
     class FrameExecution;
 
     class LUX_RENDER_PUBLIC RenderGraphInstance final
@@ -21,7 +21,7 @@ namespace lux::render::detail
             DeviceSession&,
             std::uint32_t frame_count,
             const RenderPlan&,
-            OffscreenTarget* = nullptr,
+            TargetOutput = {},
             std::uint32_t parameter_bytes = 0
         ) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
@@ -178,7 +178,7 @@ namespace lux::render::detail
         const RenderPlan* plan_;
         TargetDesc target_;
         RasterViewport viewport_;
-        OffscreenTarget* output_;
+        TargetOutput output_;
 
         struct SamplerInput final
         {

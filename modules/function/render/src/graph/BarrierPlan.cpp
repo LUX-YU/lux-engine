@@ -154,6 +154,7 @@ namespace lux::render::detail
         const PipelineLayoutPlan& layouts,
         std::span<CompiledResource> resources,
         RecordingProgram& recording,
+        const TargetDesc& target,
         const PhysicalResourcePlan* physical
     ) noexcept
     {
@@ -426,12 +427,28 @@ namespace lux::render::detail
         }
         for (const auto& output : graph.outputs())
         {
-            if (!output.final_use)
+            const bool presented = output.target && target.kind == ETargetKind::SURFACE;
+            const bool sampled_target = output.target && target.sampled;
+            if (!output.final_use && !presented && !sampled_target)
             {
                 continue;
             }
             const auto index = output.version.resource.index;
-            auto state = externalState(output.version.resource, *output.final_use);
+            auto state = externalState(output.version.resource, output.final_use.value_or(EGraphUse::SAMPLED));
+            if (presented)
+            {
+                if (output.final_use)
+                {
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+                }
+                state.access = nri::AccessBits::NONE;
+                state.stages = nri::StageBits::NONE;
+                state.layout = nri::Layout::PRESENT;
+            }
+            else if (sampled_target && output.final_use && *output.final_use != EGraphUse::SAMPLED)
+            {
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            }
             state.boundary = ETransitionBoundary::EXPORT;
             includeUsage(resources[index], state);
             if (final_states[index].empty())

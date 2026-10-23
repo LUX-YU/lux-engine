@@ -33,12 +33,14 @@ namespace lux::render::detail
         const auto count = frame_count;
         result->images_.reserve(count);
         result->views_.reserve(count);
+        result->frames_.reserve(count);
         const auto format = imageFormat(description.format);
         for (std::uint32_t slot = 0; slot < count; ++slot)
         {
             const nri::TextureDesc image_description{
                 nri::TextureType::TEXTURE_2D,
-                nri::TextureUsageBits::COLOR_ATTACHMENT,
+                description.sampled ? nri::TextureUsageBits::COLOR_ATTACHMENT | nri::TextureUsageBits::SHADER_RESOURCE
+                                    : nri::TextureUsageBits::COLOR_ATTACHMENT,
                 format.native,
                 static_cast<nri::Dim_t>(description.width),
                 static_cast<nri::Dim_t>(description.height),
@@ -70,6 +72,7 @@ namespace lux::render::detail
                 return cxx::unexpected(nativeError(created));
             }
             result->views_.push_back(handle);
+            result->frames_.push_back({image, handle});
         }
         return result;
     }

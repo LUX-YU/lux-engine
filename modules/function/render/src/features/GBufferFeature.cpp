@@ -53,7 +53,7 @@ namespace lux::render
                 const auto format =
                     i == 3 ? rdesc::GBufferLayout::depth_format : rdesc::GBufferLayout::color_formats[i];
                 GraphImageDesc image{config.target.width, config.target.height, 1, 1, format};
-                image.extent.target_relative = true;
+                image.extent.source = EImageExtentSource::TARGET;
                 FeaturePort port{std::string(ports[i]), EFeaturePort::OUTPUT, image};
                 port.semantic = std::string(rdesc::GBufferLayout::semantic) + "." + std::string(ports[i]);
                 result.resources.push_back(std::move(port));

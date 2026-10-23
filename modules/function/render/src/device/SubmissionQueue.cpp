@@ -235,7 +235,10 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<void> SubmissionQueue::submit(std::span<const nri::FenceSubmitDesc> waits) noexcept
+    RenderResult<void> SubmissionQueue::submit(
+        std::span<const nri::FenceSubmitDesc> waits,
+        std::span<const nri::FenceSubmitDesc> signals
+    ) noexcept
     {
         const auto slot = static_cast<std::uint32_t>(submitted_ % capacity());
         const nri::FenceSubmitDesc signal{fence_, submitted_ + 1, nri::StageBits::ALL};
@@ -244,8 +247,18 @@ namespace lux::render::detail
         submission.commandBufferNum = 1;
         submission.waitFences = waits.data();
         submission.waitFenceNum = static_cast<std::uint32_t>(waits.size());
-        submission.signalFences = &signal;
-        submission.signalFenceNum = 1;
+        if (signals.empty())
+        {
+            submission.signalFences = &signal;
+            submission.signalFenceNum = 1;
+        }
+        else
+        {
+            submission_signals_.assign(signals.begin(), signals.end());
+            submission_signals_.push_back(signal);
+            submission.signalFences = submission_signals_.data();
+            submission.signalFenceNum = static_cast<std::uint32_t>(submission_signals_.size());
+        }
         const auto result = session_.nriCore().QueueSubmit(queue_, submission);
         if (result != nri::Result::SUCCESS)
         {

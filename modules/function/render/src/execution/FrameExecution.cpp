@@ -291,13 +291,13 @@ namespace lux::render::detail
         // submit, suspend or dispatch callbacks. Only the following recording segment owns a CommandBuffer.
         if ((!storages.empty() || !features.empty()) && !uploads_)
         {
+            cancelSubmissions(RenderError{kDeviceArgument});
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
         const auto resources_ready = prepareStorages(storages);
         if (!resources_ready)
         {
-            finishPreparation(cxx::unexpected(resources_ready.error()));
-            sealFrame(frame);
+            cancelSubmissions(resources_ready.error());
             return cxx::unexpected(resources_ready.error());
         }
         bool instances_ready = *resources_ready;
@@ -308,8 +308,7 @@ namespace lux::render::detail
             const auto features_ready = prepareFeatures(features, feature_copies);
             if (!features_ready)
             {
-                finishPreparation(cxx::unexpected(features_ready.error()));
-                sealFrame(frame);
+                cancelSubmissions(features_ready.error());
                 return cxx::unexpected(features_ready.error());
             }
             instances_ready = *features_ready;
@@ -319,8 +318,7 @@ namespace lux::render::detail
             const auto prepared = prepareInstances(instances);
             if (!prepared)
             {
-                finishPreparation(cxx::unexpected(prepared.error()));
-                sealFrame(frame);
+                cancelSubmissions(prepared.error());
                 return cxx::unexpected(prepared.error());
             }
             instances_ready = *prepared;
@@ -473,8 +471,7 @@ namespace lux::render::detail
         );
         if (!accepted)
         {
-            finishPreparation(accepted);
-            sealFrame(frame);
+            cancelSubmissions(accepted.error());
             return cxx::unexpected(accepted.error());
         }
         acceptSubmission(next_frame_, graphics);
@@ -607,6 +604,8 @@ namespace lux::render::detail
             ++frame.batches[dependency.consumer].predecessor_count;
         }
         frame.recording_batches.reserve(frame.batches.size());
+        frame.wait_fences.reserve(instances.size() + 3);
+        frame.signal_fences.reserve(instances.size());
         for (auto& ready : frame.ready_batches)
         {
             ready.reserve(frame.batches.size());
@@ -763,6 +762,21 @@ namespace lux::render::detail
         auto& batch = frame.batches[index];
         batch.serial = serial;
         auto& execution = frame.instances[batch.instance];
+        auto& instance = *execution.instance;
+        if (!instance.output_.frames.empty())
+        {
+            if (auto* presentation = instance.output_.frames[next_frame_].presentation)
+            {
+                if (batch.local_batch == instance.plan_->output_first_batch_)
+                {
+                    presentation->acquired_consumed = true;
+                }
+                if (batch.local_batch + 1 == instance.plan_->submissions_.size())
+                {
+                    presentation->rendered_signalled = true;
+                }
+            }
+        }
         execution.instance->acceptedBatch(batch.local_batch, batch.queue, serial);
         if (--execution.remaining_batches == 0)
         {
@@ -816,8 +830,8 @@ namespace lux::render::detail
             auto& queue = device_.physicalQueue(selected_queue);
             selectReadyBatches(frame, selected_queue);
             const auto& first = frame.batches[frame.recording_batches.front()];
-            std::array<nri::FenceSubmitDesc, 3> fences{};
-            std::uint32_t fence_count = 0;
+            frame.wait_fences.clear();
+            frame.signal_fences.clear();
             for (std::uint32_t q = 0; q < queue_count; ++q)
             {
                 if (first.waits.serials[q] == 0)
@@ -830,7 +844,29 @@ namespace lux::render::detail
                     cancelSubmissions(dependency.error());
                     return cxx::unexpected(dependency.error());
                 }
-                fences[fence_count++] = *dependency;
+                frame.wait_fences.push_back(*dependency);
+            }
+            for (auto index : frame.recording_batches)
+            {
+                const auto& batch = frame.batches[index];
+                const auto& instance = *frame.instances[batch.instance].instance;
+                if (instance.output_.frames.empty())
+                {
+                    continue;
+                }
+                const auto* presentation = instance.output_.frames[next_frame_].presentation;
+                if (!presentation)
+                {
+                    continue;
+                }
+                if (batch.local_batch == instance.plan_->output_first_batch_ && !presentation->acquired_consumed)
+                {
+                    frame.wait_fences.push_back({presentation->acquired, 0, nri::StageBits::ALL});
+                }
+                if (batch.local_batch + 1 == instance.plan_->submissions_.size())
+                {
+                    frame.signal_fences.push_back({presentation->rendered, 0, nri::StageBits::ALL});
+                }
             }
             const bool preparation = frame.preparation_serial == 0;
             auto accepted = queue.recordAndSubmit(
@@ -855,7 +891,8 @@ namespace lux::render::detail
                     }
                     return {};
                 },
-                std::span(fences).first(fence_count)
+                frame.wait_fences,
+                frame.signal_fences
             );
             if (!accepted)
             {

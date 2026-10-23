@@ -72,7 +72,7 @@ static void graphOutput(Validation& validation)
         &target
     ));
     auto physical = take(OffscreenTarget::create(*session, target, frames->frameCount()));
-    auto execution = std::make_unique<RenderGraphInstance>(*session, frames->frameCount(), graph, physical.get());
+    auto execution = std::make_unique<RenderGraphInstance>(*session, frames->frameCount(), graph, physical->output());
     CHECK(execution->initialize());
     const std::array contexts{execution.get()};
     std::vector<StorageFrameUse> storage_preparation;

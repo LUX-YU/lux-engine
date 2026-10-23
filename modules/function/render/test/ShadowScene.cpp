@@ -25,7 +25,7 @@ struct SamplerProbe
     static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
     {
         GraphImageDesc color{64, 64};
-        color.extent.target_relative = true;
+        color.extent.source = EImageExtentSource::TARGET;
         ports.resources.push_back({"color", EFeaturePort::OUTPUT, color});
         ports.resources.push_back(
             {"depths", EFeaturePort::OUTPUT, GraphImageDesc{64, 64, 1, 2, rdesc::ETextureFormat::D32_SFLOAT}}
@@ -459,7 +459,7 @@ int main(int argc, char** argv)
         surface.visible_capacity = 8;
         DeferredLightingFeatureConfig light_config;
         light_config.extent = {64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
-        light_config.extent.extent.target_relative = true;
+        light_config.extent.extent.source = EImageExtentSource::TARGET;
         light_config.input_layout = layout;
         light_config.shadows = shape;
         CapturedPixels pixels, view_bytes, counts, surface_pixels, depth_pixels, indirect, differences, cluster_status;

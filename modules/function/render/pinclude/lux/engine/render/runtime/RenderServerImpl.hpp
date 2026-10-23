@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <exec/task.hpp>
 #include <lux/cxx/container/BasicSparseSet.hpp>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
@@ -87,6 +88,7 @@ namespace lux::render
         std::uint64_t last_frame_sequence_ = 0;
         bool frame_resynchronization_ = false;
         std::vector<detail::RenderGraphInstance*> frame_instances;
+        std::vector<detail::SurfaceTarget*> frame_surfaces;
         std::vector<detail::StorageFrameUse> frame_storages;
         std::vector<std::pair<detail::RenderGraphInstance*, detail::FeatureBinding*>> frame_features;
         bool active_frame_inputs_dirty = true;
@@ -94,6 +96,7 @@ namespace lux::render
         std::atomic<std::uint64_t> ticks{0}, commands{0}, compiled_graphs{0}, submissions{0};
         std::atomic<std::uint64_t> validation_errors{0}, validation_warnings{0};
         std::atomic<std::uint64_t> storages_created{0};
+        std::atomic<std::uint64_t> presentations{0};
 
         Impl(RenderServerConfig value, ipc::IpcResponder input, execution::CpuScheduler cpu_scheduler);
 
@@ -112,18 +115,22 @@ namespace lux::render
 
         RenderResult<runtime_detail::EffectAttachment> prepareAttachment(
             const runtime_detail::RenderEffect&,
-            detail::OffscreenTarget&,
+            detail::TargetOutput,
             StorageSet& scene,
             StorageSet& view,
-            StorageSet& attachment
+            StorageSet& attachment,
+            std::span<const TargetImageInput> target_images,
+            TargetId replaced_target = {},
+            detail::TargetOutput replaced_output = {}
         ) noexcept;
 
         void attachEffect(const Attach::Request&, Attach::Response&) noexcept;
 
-        RenderResult<void> resizeTargetResources(RenderTarget& target, const TargetDesc& description) noexcept;
+        RenderResult<void> replaceTargetResources(TargetId, RenderTarget&, RenderTarget::VPhysicalTarget) noexcept;
+        [[nodiscard]] bool targetDependencyCycle(TargetId, std::span<const TargetImageInput>) const noexcept;
 
         void rebuildActiveFrameInputs() noexcept;
-        RenderResult<void> submitCurrentFrame() noexcept;
+        RenderResult<void> submitCurrentFrame(std::uint32_t slot) noexcept;
         RenderResult<void> progressGpuCompletions() noexcept;
         void progressUploads() noexcept;
         void progressFrame() noexcept;
@@ -153,7 +160,9 @@ namespace lux::render
 
         void createTarget(const CreateTarget::Request&, CreateTarget::Response&) noexcept;
 
-        void resizeTarget(const ResizeTarget::Request&, ResizeTarget::Response&) noexcept;
+        exec::task<TargetCreated> resizeTarget(ResizeTarget::Request&&) noexcept;
+        exec::task<AckResponse> removeTarget(RemoveTarget::Request&&) noexcept;
+        void setTargetActive(const SetTargetActive::Request&, SetTargetActive::Response&) noexcept;
 
         auto createEffect(CreateEffect::Request&&) noexcept;
         void bindCreateEffectCommand() noexcept;

@@ -287,6 +287,7 @@ namespace lux::render::detail
 
         std::vector<nri::Pipeline*> pipelines_; // unique physical owners; recorded work only borrows handles
         std::uint32_t output_ = kGraphInvalidIndex;
+        std::uint32_t output_first_batch_ = kGraphInvalidIndex;
         bool resizable_output_ = false;
     };
 

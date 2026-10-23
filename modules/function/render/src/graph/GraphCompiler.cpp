@@ -334,7 +334,7 @@ namespace lux::render::detail
                 {
                     return cxx::unexpected(RenderError{kDeviceUnsupported});
                 }
-                output.target_sized = image->extent.target_relative;
+                output.target_sized = (image->extent.source == EImageExtentSource::TARGET);
                 if (output.target_sized && !target)
                 {
                     return cxx::unexpected(RenderError{kDeviceArgument});
@@ -358,7 +358,7 @@ namespace lux::render::detail
             previous.used = current.used = previous.memory_used = current.memory_used = true;
             if (const auto* image = std::get_if<GraphImageDesc>(&current.description))
             {
-                previous.target_sized = current.target_sized = image->extent.target_relative;
+                previous.target_sized = current.target_sized = (image->extent.source == EImageExtentSource::TARGET);
             }
             plan.histories_.push_back({history});
         }
@@ -683,7 +683,8 @@ namespace lux::render::detail
         planConditions(graph, plan.recording_);
         selectQueues(graph, queues, plan.recording_);
         // Logical transitions establish the original batch dependency graph before choosing storage.
-        auto barriers = planBarriers(graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_);
+        auto barriers =
+            planBarriers(graph, analysis, *plan.descriptor_plan_, plan.resources_, plan.recording_, plan.target_);
         if (!barriers)
         {
             return cxx::unexpected(barriers.error());
@@ -728,8 +729,16 @@ namespace lux::render::detail
             plan.recording_,
             queues,
             plan.submissions_,
-            plan.imported_accesses_
+            plan.imported_accesses_,
+            plan.output_
         );
+        for (const auto& access : plan.imported_accesses_)
+        {
+            if (access.resource.index == plan.output_)
+            {
+                plan.output_first_batch_ = std::min(plan.output_first_batch_, access.batch);
+            }
+        }
         plan.physical_resources_ =
             planPhysicalResources(graph, plan.resources_, plan.recording_, plan.submissions_, queues, allocation);
         if (std::ranges::find(plan.physical_resources_.reasons, EResourceReuse::REUSED) !=
@@ -743,6 +752,7 @@ namespace lux::render::detail
                 *plan.descriptor_plan_,
                 plan.resources_,
                 plan.recording_,
+                plan.target_,
                 &plan.physical_resources_
             );
             if (!barriers)

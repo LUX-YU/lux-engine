@@ -453,7 +453,7 @@ int main(int argc, char** argv)
         surface.visible_capacity = 8;
         DeferredLightingFeatureConfig reference;
         reference.extent = {64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
-        reference.extent.extent.target_relative = true;
+        reference.extent.extent.source = EImageExtentSource::TARGET;
         reference.input_layout = block;
         auto optimized = reference;
         optimized.clusters = grid;

@@ -416,7 +416,7 @@ int main(int argc, char** argv)
         surface.groups[1].textures = normal_textures;
         DeferredLightingFeatureConfig light_config;
         light_config.extent = {64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
-        light_config.extent.extent.target_relative = true;
+        light_config.extent.extent.source = EImageExtentSource::TARGET;
         light_config.input_layout = layout;
         TonemapFeatureConfig tonemap{target, EColorEncoding::LINEAR, layout};
         CreateEffectRequest request{target};

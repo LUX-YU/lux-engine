@@ -15,7 +15,7 @@ struct SceneComparison
     static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
     {
         GraphImageDesc image{64, 64, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
-        image.extent.target_relative = true;
+        image.extent.source = EImageExtentSource::TARGET;
         ports.resources.push_back({"reference", EFeaturePort::INPUT, image});
         ports.resources.push_back({"candidate", EFeaturePort::INPUT, image});
         ports.resources.push_back({"differences", EFeaturePort::OUTPUT, GraphBufferDesc{64 * 64 * 4}});

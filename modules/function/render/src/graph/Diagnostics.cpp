@@ -103,8 +103,9 @@ namespace lux::render
                         ",\"width\":" + std::to_string(image.width) + ",\"height\":" + std::to_string(image.height) +
                         ",\"mips\":" + std::to_string(image.mips) + ",\"layers\":" + std::to_string(image.layers) +
                         ",\"samples\":" + std::to_string(image.samples) +
-                        ",\"format\":" + std::to_string(static_cast<unsigned>(image.format)) +
-                        ",\"target_relative\":" + (image.extent.target_relative ? "true" : "false");
+                        ",\"format\":" + std::to_string(static_cast<unsigned>(image.format)) + ",\"target_relative\":" +
+                        (image.extent.source == EImageExtentSource::TARGET ? "true" : "false") +
+                        ",\"extent_source\":" + std::to_string(static_cast<unsigned>(image.extent.source));
                 }
                 output += ",\"initial_ranges\":[";
                 for (std::size_t range = 0; range < graph.resources()[i].initial_ranges.size(); ++range)

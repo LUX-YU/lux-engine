@@ -28,6 +28,11 @@ namespace lux::render
             return cxx::unexpected(RenderError{kInvalidTargetKind, {static_cast<std::uint64_t>(kind), 0, 0}});
         }
 
+        if (kind == ETargetKind::SURFACE && (samples != 1 || sampled))
+        {
+            return cxx::unexpected(RenderError{kInvalidTargetKind, {static_cast<std::uint64_t>(kind)}});
+        }
+
         return {};
     }
 

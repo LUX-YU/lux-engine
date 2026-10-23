@@ -1,12 +1,18 @@
+#include "support/ModelSource.hpp"
 #include "support/ProjectRequests.hpp"
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
+#include <lux/engine/editor/ModelPlacement.hpp>
+#include <lux/engine/editor/ProjectAssets.hpp>
 #include <lux/engine/editor/ProjectScenes.hpp>
 #include <lux/engine/editor/SceneCreationPane.hpp>
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/editor/SceneViewportPane.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/resource/asset/model/ModelAsset.hpp>
+#include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/simulation/ecs/Visual.hpp>
 #include <lux/engine/ui/Pane.hpp>
 
 #include <cassert>
@@ -40,9 +46,17 @@ int main(int argc, char** argv)
         [](EditorComposition& composition) noexcept -> FrameworkResult<void>
         {
             assert(composition.registerSceneProfile(sceneProfile3D()));
+            assert(composition.registerServiceFactory<ProjectAssets>(
+                [](EditorContext& context) noexcept -> FrameworkResult<std::unique_ptr<ProjectAssets>>
+                {
+                    auto assets = std::make_unique<ProjectAssets>(context);
+                    assert(assets->open());
+                    return assets;
+                }
+            ));
             assert(composition.registerServiceFactory<ProjectScenes>(
                 [](EditorContext& context) noexcept -> FrameworkResult<std::unique_ptr<ProjectScenes>>
-                { return std::make_unique<ProjectScenes>(context); }
+                { return std::make_unique<ProjectScenes>(context, context.service<ProjectAssets>()->get()); }
             ));
             assert(composition.registerUiFactory(
                 "scene.creation",
@@ -63,6 +77,7 @@ int main(int argc, char** argv)
                     assert(scenes);
                     return std::make_unique<SceneViewportPane>(
                         scenes->get(),
+                        context.service<ProjectAssets>()->get(),
                         context.engine().sceneRuntime(),
                         pane.title
                     );
@@ -117,9 +132,24 @@ int main(int argc, char** argv)
     assert(fixture::open(host, project_path));
     until([&] { return host.project() != nullptr; });
     auto& context = *host.project();
+    until([&] { return context.service<ProjectAssets>()->get().ready(); });
     auto service = context.service<ProjectScenes>();
     assert(service);
     auto& scenes = service->get();
+    scene::RenderSystem* scene_projection = nullptr;
+    auto projection_connection = object::LuxObject::connect(
+        &scenes,
+        &ProjectScenes::opened,
+        &host,
+        [&](asset::AssetId opened) noexcept
+        {
+            auto system =
+                context.engine().sceneRuntime().borrowSystem<scene::RenderSystem>(scenes.find(opened)->instance());
+            assert(system);
+            scene_projection = *system; // Cold construction borrow; ends before that Scene's retirement.
+        }
+    );
+    assert(projection_connection);
     const auto selection = [&]
     {
         auto package =
@@ -185,15 +215,78 @@ int main(int argc, char** argv)
     until([&] { return scenes.viewport(*a).error.type != 0 && !scenes.viewport(*a).ready; });
     assert(scenes.updateViewport(*a, left, 640, 320));
     until([&] { return scenes.viewport(*a).ready && scenes.viewport(*b).ready; });
+
+    auto& assets = context.service<ProjectAssets>()->get();
+    const auto source = fixture::modelSource(root / "Sources");
+    assert(assets.importModel(source));
+    until([&] { return !assets.busy(); });
+    if (assets.failure())
+    {
+        std::fprintf(stderr, "Import: %s\n", assets.failure()->detail.c_str());
+    }
+    assert(!assets.failure() && assets.records().size() == 1);
+    const auto imported = assets.records().front();
+    std::fprintf(stderr, "Model imported: %zu products\n", imported.products.size());
+    const auto* model = assets.model(imported.id);
+    assert(model && model->data().primitives.size() == 2 && imported.products.size() >= 7);
+    auto* document = scenes.find(id);
+    auto placement = prepareModelPlacement(*document, *model, Eigen::Affine3d::Identity(), {0});
+    std::fprintf(stderr, "Model placement prepared\n");
+    assert(placement);
+    const auto before_drop = document->objects()->size();
+    assert(document->apply(*placement));
+    std::fprintf(stderr, "Model placement adopted\n");
+    const auto after_drop = document->objects()->size();
+    assert(after_drop > before_drop);
+    assert(document->undo() && document->objects()->size() == before_drop);
+    std::fprintf(stderr, "Model placement undo complete\n");
+    assert(document->redo() && document->objects()->size() == after_drop);
+    std::fprintf(stderr, "Model placement redo complete\n");
+    auto& runtime = context.engine().sceneRuntime();
+    auto projected = [&]()
+    {
+        auto borrowed = std::as_const(runtime).borrowInstance(document->instance());
+        assert(borrowed);
+        assert(scene_projection);
+        std::size_t count = 0;
+        for (auto entity : borrowed->get().view<const simulation::ecs::Mesh3D>())
+        {
+            assert(scene_projection->assetError(entity).type == 0);
+            count += scene_projection->visualReady(entity);
+        }
+        return count;
+    };
+    until([&] { return projected() == 2 && scenes.viewport(*a).ready && scenes.viewport(*b).ready; });
+    const auto old_snapshot = context.assets().view().capture();
+    assert(assets.reimport(imported.id));
+    until([&] { return !assets.busy(); });
+    assert(!assets.failure() && assets.records().front().revision == imported.revision + 1);
+    assert(assets.records().front().products == imported.products);
+    assert(assets.records().front().package != imported.package);
+    assert(old_snapshot.open(imported.id)); // Old readers still own their exact published provider.
+    const auto accepted_catalog = assets.revision();
+    fixture::writeText(source, "this is not a model");
+    assert(assets.reimport(imported.id));
+    until([&] { return !assets.busy(); });
+    assert(assets.failure() && !assets.failure()->catalog_published && assets.revision() == accepted_catalog);
+    assert(assets.model(imported.id) && projected() == 2);
+    assert(assets.importModel(root / "Sources" / "missing.obj"));
+    until([&] { return !assets.busy(); });
+    assert(assets.failure() && assets.revision() == accepted_catalog);
+    assert(scenes.viewport(*a).ready && scenes.viewport(*b).ready);
+
     scenes.closeViewport(*a);
     until([&] { return scenes.viewport(*a).target.isNull(); });
     assert(scenes.viewport(*b).ready);
     assert(scenes.close(id));
+    scene_projection = nullptr;
     until([&] { return host.engine().sceneRuntime().instanceCount() == 0 && scenes.settled(); });
     assert(scenes.open(root / "Scenes/authored.luxscene"));
     until([&] { return scenes.find(id) != nullptr; });
     assert(scenes.find(id)->instance() != editing_instance);
     assert(scenes.open(root / "Scenes/authored.luxscene"));
+    fixture::modelSource(root / "Sources");
+    assert(assets.reimport(imported.id));
     fixture::close(host); // A decode may return after closure; it cannot adopt into the next Context.
     until([&] { return host.project() == nullptr && host.engine().sceneRuntime().instanceCount() == 0; });
     made->reset();

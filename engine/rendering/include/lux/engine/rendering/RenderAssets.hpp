@@ -14,11 +14,17 @@ namespace lux::rendering
     {
         asset::AssetId asset;
         std::uint64_t revision = 0;
+        // Caller-assigned source namespace. Distinguishes project/VFS generations with equal AssetId/revision.
+        std::uint64_t source = 0;
 
         friend bool operator==(const RenderAssetVersion&, const RenderAssetVersion&) noexcept = default;
 
         friend bool operator<(const RenderAssetVersion& left, const RenderAssetVersion& right) noexcept
         {
+            if (left.source != right.source)
+            {
+                return left.source < right.source;
+            }
             return left.asset < right.asset || (left.asset == right.asset && left.revision < right.revision);
         }
     };
@@ -68,15 +74,18 @@ namespace lux::rendering
         // generations can load concurrently without mutating a shared current-source selector.
         [[nodiscard]] render::RenderResult<void> acquireMesh(
             RenderAssetVersion,
-            process::asset_loading::AssetReadPort source = {}
+            process::asset_loading::AssetReadPort source = {},
+            asset::AssetVfsView snapshot = {}
         ) noexcept;
         [[nodiscard]] render::RenderResult<void> acquireTexture(
             RenderAssetVersion,
-            process::asset_loading::AssetReadPort source = {}
+            process::asset_loading::AssetReadPort source = {},
+            asset::AssetVfsView snapshot = {}
         ) noexcept;
         [[nodiscard]] render::RenderResult<void> acquireMaterial(
             RenderAssetVersion,
-            process::asset_loading::AssetReadPort source = {}
+            process::asset_loading::AssetReadPort source = {},
+            asset::AssetVfsView snapshot = {}
         ) noexcept;
         void releaseMesh(RenderAssetVersion) noexcept;
         void releaseTexture(RenderAssetVersion) noexcept;

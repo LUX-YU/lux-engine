@@ -11,11 +11,12 @@ namespace lux::scene
 namespace lux::editor
 {
     class ProjectScenes;
+    class ProjectAssets;
 
     class SceneViewportPane final : public ui::Pane
     {
     public:
-        SceneViewportPane(ProjectScenes&, scene::SceneRuntime&, std::string title);
+        SceneViewportPane(ProjectScenes&, ProjectAssets&, scene::SceneRuntime&, std::string title);
         ~SceneViewportPane() noexcept;
 
     private:
@@ -24,6 +25,7 @@ namespace lux::editor
         void selectDocument() noexcept;
         void refreshCameras() noexcept;
         void updateCamera() noexcept;
+        void placeDroppedModel() noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

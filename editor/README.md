@@ -190,7 +190,7 @@ An independent Render UI Scene presents the native window; it does not create an
 All Engine Scene commands and UI draw lists join the same Main `FrameInput` before one SubmitFrame.
 
 Project factories obtain RenderExecution/RenderAssets from ContextExtensions and their own typed read port
-from EditorContext::prepareAssetReads(). Supply that port to RenderSystemDependencies; use a distinct source revision when
+from EditorContext::prepareAssetReads(). Supply that port to RenderSystemDependencies; use a distinct source namespace when
 opening another project generation. Build with the existing SceneRuntime, then transfer its SceneInstanceLease
 to EditorContext::adoptScene(). Keep the Scene providers and view inputs in project services.
 
@@ -203,3 +203,22 @@ Viewport code supplies `UiTargetImage` values through LuxEngine::setUiImages. Th
 relations. After removal, wait for uiImagesApplied before destroying the old output Target through the Main
 Client; its actual creator remains responsible for that resource. Scene/Target editing tools are separate
 product work, not manufactured by this transport layer.
+
+## Model import and Scene placement
+
+The product registers ProjectAssets before ProjectScenes. ProjectAssets opens `.luxassets/catalog.json`,
+cooks finite model requests on the shared CPU scheduler, reads/writes through the bounded blocking scheduler,
+and publishes immutable LUXPAK products before replacing the catalog. Model subasset identities remain stable
+across reimport; ambiguous source identities fail. AssetBrowserPane displays this catalog and sends a small
+copied AssetId/revision drag payload. SceneViewportPane creates one author SceneEdit through ModelPlacement;
+RenderSystem performs the asynchronous GPU projection.
+
+SceneRenderInputs publishes one captured VFS table with its asset revision. Material and texture loads use
+that same snapshot, while RenderAssetVersion distinguishes project generations. A failed unadopted upload
+candidate retains the existing Scene binding; it does not clear the old picture first. RenderSystem exposes
+per-entity pending/error queries for tools without exposing RenderServer or Storage instances.
+
+The current viewport places imported models on the world Y=0 plane. General picking, Inspector, author save
+and isolated Play belong to the Scene tools workflow; their implementation status is recorded separately,
+not inferred from successful importing. Old published product files are retained until a reference-aware
+cleanup is provided; importing never deletes a prior published package that a reader may still need.

@@ -22,7 +22,7 @@
 
 #include <bit>
 #include <cstring>
-#include <entt/entity/sparse_set.hpp>
+#include <entt/container/dense_set.hpp>
 #include <map>
 #include <set>
 #include <unordered_map>
@@ -88,13 +88,24 @@ namespace lux::scene
             std::vector<RenderAssetVersion> textures;
             std::size_t references = 0;
             std::uint64_t program_hash = 0;
+            asset::AssetVfsView snapshot;
+            RenderError error;
+        };
+
+        struct MeshBinding final
+        {
+            rdesc::MeshVisualDescription visual;
+            std::uint64_t revision = 0;
         };
 
         struct MeshEntry final
         {
-            rdesc::MeshVisualDescription visual;
-            std::uint64_t revision = 0;
+            MeshBinding binding;
+            // Candidate uploads never invalidate the currently drawn binding. Previous is retained
+            // only until every observation has stopped referring to its compiled resource groups.
+            std::optional<MeshBinding> replacement, previous;
             MeshInstanceId instance;
+            RenderError error;
             bool present = true;
         };
 
@@ -255,12 +266,67 @@ namespace lux::scene
             co_return RenderResult<void>{};
         }
 
-        exec::task<RenderResult<void>> prepareMaterials() noexcept
+        RenderAssetVersion assetKey(asset::AssetId id, std::uint64_t revision) const noexcept
+        {
+            return {id, revision, asset_source};
+        }
+
+        void releaseBinding(const MeshBinding& binding) noexcept
+        {
+            assets.releaseMesh(assetKey(binding.visual.mesh, binding.revision));
+            --materials.find(assetKey(binding.visual.material, binding.revision))->second.references;
+        }
+
+        RenderResult<void> acquireBinding(const MeshBinding& binding) noexcept
+        {
+            const auto mesh_key = assetKey(binding.visual.mesh, binding.revision);
+            const auto material_key = assetKey(binding.visual.material, binding.revision);
+            auto acquired_mesh = assets.acquireMesh(mesh_key, source, view_inputs.asset_snapshot);
+            if (!acquired_mesh)
+            {
+                return acquired_mesh;
+            }
+            auto material = materials.find(material_key);
+            if (material == materials.end())
+            {
+                auto acquired = assets.acquireMaterial(material_key, source, view_inputs.asset_snapshot);
+                if (!acquired)
+                {
+                    assets.releaseMesh(mesh_key);
+                    return acquired;
+                }
+                material = materials.emplace(material_key, MaterialEntry{.snapshot = view_inputs.asset_snapshot}).first;
+                pending_materials.insert(material_key);
+            }
+            ++material->second.references;
+            return {};
+        }
+
+        bool bindingReady(const MeshBinding& binding, RenderError& failure) const noexcept
+        {
+            const auto key = assetKey(binding.visual.mesh, binding.revision);
+            const auto& material = materials.find(assetKey(binding.visual.material, binding.revision))->second;
+            failure = assets.failure(key);
+            if (failure.type == 0)
+            {
+                failure = material.error;
+            }
+            return failure.type == 0 && assets.mesh(key) && !material.material.isNull();
+        }
+
+        exec::task<void> prepareMaterials() noexcept
         {
             for (auto pending = pending_materials.begin(); pending != pending_materials.end();)
             {
                 const auto key = *pending++;
                 auto& entry = materials.find(key)->second;
+                const auto reject = [&](RenderError failure) noexcept
+                {
+                    entry.error = failure;
+                    entry.snapshot = {};
+                    pending_materials.erase(key);
+                    reportRenderFailure(failure, "Prepare Scene material candidate");
+                };
                 if (entry.references == 0 || !entry.material.isNull())
                 {
                     continue;
@@ -271,24 +337,25 @@ namespace lux::scene
                     const auto error = assets.failure(key);
                     if (error.type != 0)
                     {
-                        co_return cxx::unexpected(error);
+                        reject(error);
                     }
                     continue;
                 }
                 // Incremental admission can stop at the actual Asset limit without reacquiring earlier slots.
                 for (std::size_t i = entry.textures.size(); i < cooked->texture_slot_ids.size(); ++i)
                 {
-                    const RenderAssetVersion texture{cooked->texture_slot_ids[i], key.revision};
+                    const RenderAssetVersion texture{cooked->texture_slot_ids[i], key.revision, key.source};
                     if (!texture.asset.isNull())
                     {
-                        auto acquired = assets.acquireTexture(texture, source);
+                        auto acquired = assets.acquireTexture(texture, source, entry.snapshot);
                         if (!acquired && acquired.error().type == kRuntimeCapacity)
                         {
                             break;
                         }
                         if (!acquired)
                         {
-                            co_return cxx::unexpected(acquired.error());
+                            reject(acquired.error());
+                            break;
                         }
                     }
                     entry.textures.push_back(texture);
@@ -312,7 +379,7 @@ namespace lux::scene
                         const auto error = assets.failure(texture);
                         if (error.type != 0)
                         {
-                            co_return cxx::unexpected(error);
+                            reject(error);
                         }
                         ready = false;
                         break;
@@ -326,31 +393,43 @@ namespace lux::scene
                 auto created = co_await request<CreateMaterial>(client, input);
                 if (created.error.type != 0)
                 {
-                    co_return cxx::unexpected(created.error);
+                    reject(created.error);
+                    continue;
                 }
                 entry.material = created.material;
                 entry.program_hash = programHash(cooked->programs);
+                entry.snapshot = {};
                 pending_materials.erase(key);
             }
-            co_return RenderResult<void>{};
+            co_return;
         }
 
-        std::vector<RasterMeshGroup> prepareDrawGroups() noexcept
+        std::vector<RasterMeshGroup> prepareDrawGroups(bool include_replacements) noexcept
         {
             GBufferFeatureConfig surface;
             surface.visible_capacity =
                 std::bit_ceil(std::max<std::uint32_t>(128, static_cast<std::uint32_t>(meshes.size())));
             std::unordered_multimap<std::uint64_t, std::size_t> group_indices;
             std::vector<const rdesc::MaterialProgramSet*> group_programs;
+            std::vector<const MeshBinding*> bindings;
             for (const auto& [entity, entry] : meshes)
             {
                 if (!entry.present || entry.instance.isNull())
                 {
                     continue;
                 }
-                const auto& mesh = *assets.mesh({entry.visual.mesh, entry.revision});
-                const auto& material = materials.find({entry.visual.material, entry.revision})->second;
-                const auto& program = assets.material({entry.visual.material, entry.revision})->programs;
+                bindings.push_back(&entry.binding);
+                RenderError failure;
+                if (include_replacements && entry.replacement && bindingReady(*entry.replacement, failure))
+                {
+                    bindings.push_back(&*entry.replacement);
+                }
+            }
+            for (const auto* binding : bindings)
+            {
+                const auto& mesh = *assets.mesh(assetKey(binding->visual.mesh, binding->revision));
+                const auto& material = materials.find(assetKey(binding->visual.material, binding->revision))->second;
+                const auto& program = assets.material(assetKey(binding->visual.material, binding->revision))->programs;
                 const auto bucket = material.program_hash ^ (std::uint64_t(mesh.mesh.local.index) << 32) ^
                                     mesh.mesh.local.gen ^ mesh.mesh.storage.index;
                 const auto [first, last] = group_indices.equal_range(bucket);
@@ -389,8 +468,8 @@ namespace lux::scene
                 RasterMeshGroup group{mesh.geometry, program, {mesh.mesh, material.material}};
                 group.mesh_storage = "assets";
                 group.material_storage = "assets";
-                // Engine Camera uses a right-handed, image-down projection; compensate its Y flip once.
-                group.front_counter_clockwise = false;
+                // Keep the raster recipe's canonical winding. Camera projection is not an additional
+                // source-mesh winding conversion; mirrored instance transforms are handled by the Mesh Feature.
                 for (const auto texture : material.textures)
                 {
                     const auto* value = texture.asset.isNull() ? nullptr : assets.texture(texture);
@@ -519,10 +598,13 @@ namespace lux::scene
             co_return co_await releaseEffects(observation);
         }
 
-        exec::task<RenderResult<void>> synchronizeViews() noexcept
+        exec::task<RenderResult<void>> synchronizeViews(
+            bool include_replacements = false,
+            bool* groups_adopted = nullptr
+        ) noexcept
         {
             const auto accepted_topology = topology_revision;
-            auto groups = prepareDrawGroups();
+            auto groups = prepareDrawGroups(include_replacements);
             std::vector<MeshInstanceDrawGroup> selection;
             selection.reserve(groups.size());
             for (const auto& group : groups)
@@ -663,6 +745,14 @@ namespace lux::scene
                     observation.effect_to_release = {};
                 }
             }
+            if (groups_adopted)
+            {
+                *groups_adopted = std::ranges::all_of(
+                    observations,
+                    [&](const auto& entry) noexcept
+                    { return entry.second.attachment.isNull() || entry.second.groups == selection; }
+                );
+            }
             co_return RenderResult<void>{};
         }
 
@@ -684,6 +774,7 @@ namespace lux::scene
                 co_return RenderResult<void>{};
             }
             bool changed = rebuild_requested;
+            bool groups_pruned = false;
             for (auto& [entity, entry] : meshes)
             {
                 if (entry.present || entry.instance.isNull())
@@ -738,34 +829,42 @@ namespace lux::scene
                     new_lights.push_back(light_inputs[i].entity);
                 }
             }
-            auto prepared = co_await prepareMaterials();
-            if (!prepared)
-            {
-                co_return prepared;
-            }
+            co_await prepareMaterials();
             std::vector<MeshInstanceDescription> descriptions;
             std::vector<std::uint64_t> entities;
+            std::vector<MeshInstanceUpdate> replacements;
+            std::vector<std::uint64_t> replacement_entities;
             for (auto& input : inputs)
             {
                 auto& entry = meshes.find(input.entity)->second;
-                const auto* mesh = assets.mesh({entry.visual.mesh, entry.revision});
-                if (!mesh)
-                {
-                    const auto error = assets.failure({entry.visual.mesh, entry.revision});
-                    if (error.type != 0)
-                    {
-                        co_return cxx::unexpected(error);
-                    }
-                }
-                const auto material = materials.find({entry.visual.material, entry.revision});
-                if (!entry.present || !entry.instance.isNull() || !mesh || material->second.material.isNull())
+                if (!entry.present)
                 {
                     continue;
                 }
+                const auto& binding = entry.replacement ? *entry.replacement : entry.binding;
+                if (!bindingReady(binding, entry.error))
+                {
+                    if (entry.error.type != 0)
+                    {
+                        // Failed candidates remain diagnosable; a new author/asset revision retries them.
+                        pending_instances.erase(input.entity);
+                    }
+                    continue;
+                }
+                const auto* mesh = assets.mesh(assetKey(binding.visual.mesh, binding.revision));
+                const auto material = materials.find(assetKey(binding.visual.material, binding.revision));
                 input.description.mesh = mesh->mesh;
                 input.description.material = material->second.material;
-                descriptions.push_back(input.description);
-                entities.push_back(input.entity);
+                if (entry.instance.isNull())
+                {
+                    descriptions.push_back(input.description);
+                    entities.push_back(input.entity);
+                }
+                else if (entry.replacement)
+                {
+                    replacements.push_back({entry.instance, input.description});
+                    replacement_entities.push_back(input.entity);
+                }
             }
             if (!descriptions.empty())
             {
@@ -773,35 +872,106 @@ namespace lux::scene
                 auto created = co_await request<CreateMeshInstances>(client, create);
                 if (created.error.type != 0)
                 {
-                    co_return cxx::unexpected(created.error);
+                    for (const auto entity : entities)
+                    {
+                        meshes.find(entity)->second.error = created.error;
+                        pending_instances.erase(entity);
+                    }
+                    reportRenderFailure(created.error, "Create Scene instance candidates");
                 }
-                for (std::size_t i = 0; i < entities.size(); ++i)
+                else
                 {
-                    meshes.find(entities[i])->second.instance = created.instances[i];
-                    new_instances.push_back(entities[i]);
-                    pending_instances.erase(entities[i]);
+                    for (std::size_t i = 0; i < entities.size(); ++i)
+                    {
+                        auto& entry = meshes.find(entities[i])->second;
+                        entry.instance = created.instances[i];
+                        if (entry.replacement)
+                        {
+                            releaseBinding(entry.binding);
+                            entry.binding = std::move(*entry.replacement);
+                            entry.replacement.reset();
+                        }
+                        new_instances.push_back(entities[i]);
+                        pending_instances.erase(entities[i]);
+                    }
                 }
                 changed = true;
             }
-            if (changed && !closing)
+            if ((changed || !replacements.empty()) && !closing)
             {
-                auto rebuilt = co_await synchronizeViews();
+                const auto accepted_views = view_inputs.revision();
+                const auto accepted_topology = topology_revision;
+                // A temporary recipe accepts both old and candidate groups. It changes no instance:
+                // every observation can keep drawing the old binding until the single frame update.
+                bool groups_adopted = false;
+                auto rebuilt = co_await synchronizeViews(!replacements.empty(), &groups_adopted);
                 if (!rebuilt)
                 {
                     co_return rebuilt;
                 }
-                // New input revisions arriving during compilation are picked up by the next maintenance pass.
-                rebuild_requested = false;
+                const bool changed_during_compile = !groups_adopted || accepted_views != view_inputs.revision() ||
+                                                    accepted_topology != topology_revision;
+                rebuild_requested = changed_during_compile;
+                groups_pruned = replacements.empty() && groups_adopted;
+                if (!replacements.empty() && !changed_during_compile)
+                {
+                    MeshInstanceBatch update{instance_storage, ++sequence, replacements};
+                    const auto result = co_await request<UpdateMeshInstances>(client, update);
+                    if (result.error.type == 0)
+                    {
+                        for (const auto entity : replacement_entities)
+                        {
+                            auto& entry = meshes.find(entity)->second;
+                            entry.previous = std::move(entry.binding);
+                            entry.binding = std::move(*entry.replacement);
+                            entry.replacement.reset();
+                            pending_instances.erase(entity);
+                            new_instances.push_back(entity);
+                        }
+                        auto pruned = co_await synchronizeViews(false, &groups_pruned);
+                        if (!pruned)
+                        {
+                            co_return pruned; // Previous resource references still belong to MeshEntry.
+                        }
+                    }
+                    else
+                    {
+                        for (const auto entity : replacement_entities)
+                        {
+                            meshes.find(entity)->second.error = result.error;
+                            pending_instances.erase(entity);
+                        }
+                        reportRenderFailure(result.error, "Adopt Scene instance candidates");
+                    }
+                }
+            }
+            rebuild_requested |= std::ranges::any_of(
+                                     meshes,
+                                     [](const auto& value) noexcept { return value.second.previous.has_value(); }
+                                 ) &&
+                                 !groups_pruned;
+            // All current recipes have stopped mentioning these resources. Native retirement still
+            // governs actual GPU use; this only releases the Engine's asset reference.
+            for (auto& [entity, entry] : meshes)
+            {
+                if (entry.previous && groups_pruned)
+                {
+                    releaseBinding(*entry.previous);
+                    entry.previous.reset();
+                }
             }
             for (auto entry = meshes.begin(); entry != meshes.end();)
             {
-                if (entry->second.present)
+                if (entry->second.present || !groups_pruned)
                 {
                     ++entry;
                     continue;
                 }
-                assets.releaseMesh({entry->second.visual.mesh, entry->second.revision});
-                --materials.find({entry->second.visual.material, entry->second.revision})->second.references;
+                releaseBinding(entry->second.binding);
+                if (entry->second.replacement)
+                {
+                    releaseBinding(*entry->second.replacement);
+                }
                 pending_instances.erase(entry->first);
                 entry = meshes.erase(entry);
             }
@@ -863,7 +1033,15 @@ namespace lux::scene
             while (!meshes.empty())
             {
                 const auto entry = meshes.begin();
-                assets.releaseMesh({entry->second.visual.mesh, entry->second.revision});
+                releaseBinding(entry->second.binding);
+                if (entry->second.replacement)
+                {
+                    releaseBinding(*entry->second.replacement);
+                }
+                if (entry->second.previous)
+                {
+                    releaseBinding(*entry->second.previous);
+                }
                 meshes.erase(entry);
             }
             while (!materials.empty())
@@ -929,55 +1107,56 @@ namespace lux::scene
                 const auto* mesh = registry.valid(entity) ? registry.try_get<const Mesh3D>(entity) : nullptr;
                 const bool visible = mesh && mesh->value.visible && registry.all_of<WorldTransform3D>(entity);
                 auto current = meshes.find(bits);
+                if (!visible)
+                {
+                    if (current != meshes.end())
+                    {
+                        current->second.present = false;
+                        changed = true;
+                    }
+                    processed.push_back(entity);
+                    continue;
+                }
                 if (current != meshes.end())
                 {
-                    if (visible && current->second.present && current->second.visual == mesh->value &&
-                        current->second.revision == asset_revision)
+                    auto& entry = current->second;
+                    if (!entry.present || entry.previous)
+                    {
+                        continue; // Finish withdrawing an already accepted binding before another replacement.
+                    }
+                    const auto& desired = entry.replacement ? *entry.replacement : entry.binding;
+                    if (desired.visual == mesh->value && desired.revision == asset_revision)
                     {
                         processed.push_back(entity);
                         continue;
                     }
-                    current->second.present = false;
-                    changed = true;
-                    if (visible)
-                    {
-                        continue;
-                    } // Re-admit the new binding after the old one is retired.
                 }
-                else if (visible)
+                MeshBinding candidate{mesh->value, asset_revision};
+                auto acquired = acquireBinding(candidate);
+                if (!acquired)
                 {
-                    const RenderAssetVersion mesh_key{mesh->value.mesh, asset_revision},
-                        material_key{mesh->value.material, asset_revision};
-                    auto mesh_acquired = assets.acquireMesh(mesh_key, source);
-                    if (!mesh_acquired && mesh_acquired.error().type == kRuntimeCapacity)
+                    if (acquired.error().type == kRuntimeCapacity)
                     {
                         continue;
                     }
-                    if (!mesh_acquired)
-                    {
-                        return cxx::unexpected(mesh_acquired.error());
-                    }
-                    auto material = materials.find(material_key);
-                    if (material == materials.end())
-                    {
-                        auto acquired = assets.acquireMaterial(material_key, source);
-                        if (!acquired)
-                        {
-                            assets.releaseMesh(mesh_key);
-                            if (acquired.error().type == kRuntimeCapacity)
-                            {
-                                continue;
-                            }
-                            return cxx::unexpected(acquired.error());
-                        }
-                        material = materials.emplace(material_key, MaterialEntry{}).first;
-                        pending_materials.insert(material_key);
-                    }
-                    ++material->second.references;
-                    meshes.emplace(bits, MeshEntry{mesh->value, asset_revision});
-                    pending_instances.insert(bits);
-                    changed = true;
+                    return cxx::unexpected(acquired.error());
                 }
+                if (current == meshes.end())
+                {
+                    meshes.emplace(bits, MeshEntry{.binding = std::move(candidate)});
+                }
+                else
+                {
+                    auto& entry = current->second;
+                    if (entry.replacement)
+                    {
+                        releaseBinding(*entry.replacement);
+                    }
+                    entry.replacement = std::move(candidate);
+                    entry.error = {};
+                }
+                pending_instances.insert(bits);
+                changed = true;
                 processed.push_back(entity);
             }
             for (auto entity : processed)
@@ -1104,7 +1283,7 @@ namespace lux::scene
         Impl(Registry& registry, const RenderSystemDependencies& dependencies, RenderSystemConfiguration selected)
             : registry(registry), view_inputs(dependencies.inputs), client(dependencies.client),
               execution(dependencies.execution), assets(dependencies.assets), source(dependencies.source),
-              configuration(std::move(selected)),
+              asset_source(dependencies.inputs.asset_source), configuration(std::move(selected)),
               mesh_added(registry.on_construct<Mesh3D>().connect<&Impl::structureChanged>(*this)),
               mesh_updated(registry.on_update<Mesh3D>().connect<&Impl::structureChanged>(*this)),
               mesh_removed(registry.on_destroy<Mesh3D>().connect<&Impl::structureChanged>(*this)),
@@ -1125,11 +1304,11 @@ namespace lux::scene
             }
             for (const auto entity : registry.view<const Mesh3D>())
             {
-                structure.push(entity);
+                structure.insert(entity);
             }
             for (const auto entity : registry.view<const Light3D>())
             {
-                light_changes.push(entity);
+                light_changes.insert(entity);
             }
             auto transforms_command = dependencies.client.bind<UpdateTransforms>();
             auto lighting_command = dependencies.client.bind<UpdateDirectLights>();
@@ -1157,7 +1336,7 @@ namespace lux::scene
         {
             if (!structure.contains(entity))
             {
-                structure.push(entity);
+                structure.insert(entity);
             }
         }
 
@@ -1198,7 +1377,7 @@ namespace lux::scene
         {
             if (!light_changes.contains(entity))
             {
-                light_changes.push(entity);
+                light_changes.insert(entity);
             }
         }
 
@@ -1214,7 +1393,7 @@ namespace lux::scene
             }
             if (!transformed.contains(entity))
             {
-                transformed.push(entity);
+                transformed.insert(entity);
             }
         }
 
@@ -1224,6 +1403,7 @@ namespace lux::scene
         execution::ExecutionRuntime& execution;
         RenderAssets& assets;
         process::asset_loading::AssetReadPort source;
+        const std::uint64_t asset_source;
         std::unordered_map<std::uint64_t, MeshEntry> meshes;
         std::vector<std::uint64_t> new_instances, new_lights;
         std::unordered_set<std::uint64_t> pending_instances;
@@ -1239,7 +1419,9 @@ namespace lux::scene
         bool initialized = false, transaction_pending = false, closing = false;
         bool rebuild_requested = false;
 
-        entt::basic_sparse_set<Entity> structure, transformed, light_changes;
+        // Dirty intents can contain an erased entity and its reused slot's next generation in
+        // one Main interval (for example Undo + Redo). A live-component sparse set cannot.
+        entt::dense_set<Entity> structure, transformed, light_changes;
         std::vector<Entity> processed;
         std::vector<cxx::SlotKey<MeshInstanceTag>> transform_ids;
         std::vector<Entity> transform_entities;
@@ -1277,6 +1459,20 @@ namespace lux::scene
     {
         const auto found = impl_->observations.find(id);
         return found == impl_->observations.end() ? RenderError{} : found->second.error;
+    }
+
+    RenderError RenderSystem::assetError(Entity entity) const noexcept
+    {
+        const auto found = impl_->meshes.find(entityBits(entity));
+        return found == impl_->meshes.end() ? RenderError{} : found->second.error;
+    }
+
+    bool RenderSystem::visualReady(Entity entity) const noexcept
+    {
+        const auto found = impl_->meshes.find(entityBits(entity));
+        return found != impl_->meshes.end() && !found->second.instance.isNull() &&
+               found->second.error.type == 0 && !found->second.replacement &&
+               !impl_->structure.contains(entity) && !impl_->pending_instances.contains(entityBits(entity));
     }
 
     bool RenderSystem::viewRetired(SceneViewId id) const noexcept
@@ -1359,7 +1555,7 @@ namespace lux::scene
             for (const auto bits : self.pending_instances)
             {
                 const auto& entry = self.meshes.find(bits)->second;
-                if (!entry.present || !entry.instance.isNull())
+                if (!entry.present || (!entry.instance.isNull() && !entry.replacement))
                 {
                     continue;
                 }
@@ -1423,7 +1619,7 @@ namespace lux::scene
             self.transform_ids.push_back(entry->second.instance.local);
             self.transform_entities.push_back(entity);
         }
-        self.transformed.clear();
+        self.transformed.erase(self.transformed.begin(), self.transformed.end());
         for (auto bits : self.new_lights)
         {
             self.lightChanged(self.registry, static_cast<Entity>(bits));

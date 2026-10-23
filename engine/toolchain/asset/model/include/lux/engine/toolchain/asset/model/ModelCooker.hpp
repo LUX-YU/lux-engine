@@ -6,6 +6,7 @@
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
+#include <lux/engine/toolchain/asset/model/ModelCookConfiguration.hpp>
 #include <lux/engine/toolchain/asset/model/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -44,14 +45,6 @@ namespace lux::toolchain
         EModelCookError code{EModelCookError::INVALID_SOURCE};
         std::uint32_t source_ordinal{};
         std::string detail;
-    };
-
-    struct ModelCookConfiguration final
-    {
-        Eigen::Quaternionf pre_rotation{Eigen::Quaternionf::Identity()};
-        float uniform_scale{1.0F};
-        bool make_left_handed{};
-        bool import_animations{true};
     };
 
     struct ModelCookProduct final

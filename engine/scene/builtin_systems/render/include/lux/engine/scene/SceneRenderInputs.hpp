@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/scene/SceneViewRequest.hpp>
 #include <lux/engine/scene/render/visibility.h>
 
@@ -26,6 +27,10 @@ namespace lux::scene
 
         // Asset identity domain supplied by the project, independent of observation changes.
         std::uint64_t asset_revision{};
+        std::uint64_t asset_source{
+        }; // Fixed before constructing RenderSystem; not changed during that Scene's lifetime.
+        asset::AssetVfsView
+            asset_snapshot; // Published together with asset_revision; may be empty for a fixed custom port.
 
     private:
         cxx::SlotMap<SceneViewInput, SceneViewTag> views_;

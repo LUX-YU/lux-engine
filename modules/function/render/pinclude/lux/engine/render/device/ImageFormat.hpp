@@ -19,6 +19,10 @@ namespace lux::render::detail
         const auto bytes = rdesc::textureBlockBytes(value);
         switch (value)
         {
+        case F::R8_UNORM:
+            return {nri::Format::R8_UNORM, bytes};
+        case F::RG8_UNORM:
+            return {nri::Format::RG8_UNORM, bytes};
         case F::RGBA8_UNORM:
             return {nri::Format::RGBA8_UNORM, bytes};
         case F::RGBA8_SRGB:
@@ -39,6 +43,12 @@ namespace lux::render::detail
             return {nri::Format::D16_UNORM, bytes, nri::PlaneBits::DEPTH};
         case F::BC1_RGBA_SRGB:
             return {nri::Format::BC1_RGBA_SRGB, bytes, nri::PlaneBits::COLOR, 4};
+        case F::BC3_SRGB:
+            return {nri::Format::BC3_RGBA_SRGB, bytes, nri::PlaneBits::COLOR, 4};
+        case F::BC5_UNORM:
+            return {nri::Format::BC5_RG_UNORM, bytes, nri::PlaneBits::COLOR, 4};
+        case F::BC7_SRGB:
+            return {nri::Format::BC7_RGBA_SRGB, bytes, nri::PlaneBits::COLOR, 4};
         default:
             return {};
         }

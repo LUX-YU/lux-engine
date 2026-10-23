@@ -1,6 +1,10 @@
+#include <lux/engine/editor/ModelPlacement.hpp>
+#include <lux/engine/editor/ProjectAssets.hpp>
 #include <lux/engine/editor/ProjectScenes.hpp>
 #include <lux/engine/editor/SceneViewportPane.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
+#include <lux/engine/resource/asset/model/ModelAsset.hpp>
+#include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/ImageElement.hpp>
@@ -8,19 +12,138 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <utility>
 
 namespace lux::editor
 {
+    namespace
+    {
+        std::optional<scene::SceneCameraInput> placementCamera(
+            scene::SceneRuntime& runtime,
+            const SceneDocument& document,
+            const scene::VSceneCameraSource& source
+        ) noexcept
+        {
+            if (const auto* free = std::get_if<scene::SceneCameraInput>(&source))
+            {
+                return *free;
+            }
+            auto borrowed = std::as_const(runtime).borrowInstance(document.instance());
+            if (!borrowed)
+            {
+                return {};
+            }
+            const auto& registry = borrowed->get();
+            auto entity = simulation::ecs::NullEntity;
+            if (const auto* selected = std::get_if<scene::SceneEntityCamera>(&source))
+            {
+                entity = selected->entity;
+            }
+            else
+            {
+                for (auto candidate : registry.view<const scene::Camera>())
+                {
+                    if (registry.get<scene::Camera>(candidate).primary)
+                    {
+                        if (entity != simulation::ecs::NullEntity)
+                        {
+                            return {};
+                        }
+                        entity = candidate;
+                    }
+                }
+            }
+            const bool available =
+                registry.valid(entity) && registry.all_of<scene::Camera, simulation::ecs::WorldTransform3D>(entity);
+            if (!available)
+            {
+                return {};
+            }
+            return scene::SceneCameraInput{
+                registry.get<scene::Camera>(entity),
+                registry.get<simulation::ecs::WorldTransform3D>(entity).value
+            };
+        }
+
+        std::optional<Eigen::Vector3d> groundPosition(
+            const scene::SceneCameraInput& camera,
+            ui::Point pointer,
+            ui::Size size
+        ) noexcept
+        {
+            if (size.width <= 0 || size.height <= 0)
+            {
+                return {};
+            }
+            const auto projection = scene::cameraProjection(camera.camera, double(size.width) / size.height);
+            const auto view = scene::cameraView(camera.transform, Eigen::Vector3d::Zero());
+            if (!projection || !view)
+            {
+                return {};
+            }
+            const Eigen::Matrix4d inverse = (*projection * *view).inverse();
+            const double x = 2.0 * pointer.x / size.width - 1.0;
+            const double y = 2.0 * pointer.y / size.height - 1.0;
+            Eigen::Vector4d near_point = inverse * Eigen::Vector4d{x, y, 0, 1};
+            Eigen::Vector4d far_point = inverse * Eigen::Vector4d{x, y, 1, 1};
+            near_point /= near_point.w();
+            far_point /= far_point.w();
+            const Eigen::Vector3d direction = (far_point - near_point).head<3>().normalized();
+            const double distance = std::abs(direction.y()) > 1e-8 ? -near_point.y() / direction.y() : -1;
+            if (!std::isfinite(distance) || distance < 0)
+            {
+                return {};
+            }
+            return Eigen::Vector3d{near_point.head<3>() + distance * direction};
+        }
+    } // namespace
+
     struct SceneViewportPane::Impl final
     {
+        class ViewportImage final : public ui::ImageElement
+        {
+        public:
+            struct Drop final
+            {
+                ModelAssetReference asset;
+                asset::AssetId document;
+                std::uint64_t based_on{};
+                ui::Point pointer;
+                ui::Size size;
+            };
+
+            asset::AssetId document;
+            std::uint64_t revision{};
+            std::optional<Drop> drop;
+
+        private:
+            void draw() noexcept override
+            {
+                ImageElement::draw();
+                const auto& input = interaction();
+                const bool accepted = input.drop && input.drop->type == ui::PayloadTypeIdView{kModelAssetPayload} &&
+                                      input.drop->bytes.size() == sizeof(ModelAssetReference);
+                if (!accepted)
+                {
+                    return;
+                }
+                ModelAssetReference copied;
+                std::memcpy(&copied, input.drop->bytes.data(), sizeof(copied));
+                drop = Drop{copied, document, revision, input.local_pointer, input.size};
+            }
+        };
+
         ProjectScenes& scenes;
+        ProjectAssets& assets;
         scene::SceneRuntime& runtime;
         ui::Layout layout;
         ui::Choice documents{{}}, cameras{{{0, "Editor camera"}, {1, "Primary Scene camera"}}};
         ui::Layout position{ui::ELayoutType::HORIZONTAL};
         ui::NumericEdit x{0.0}, y{2.0}, z{8.0}, yaw{0.0}, pitch{-12.0};
         ui::Label status;
-        ui::ImageElement image;
+        ViewportImage image;
+        std::string editing_status;
         std::vector<asset::AssetId> document_ids;
         std::vector<simulation::ecs::Entity> camera_entities;
         std::vector<object::Connection> connections;
@@ -31,7 +154,8 @@ namespace lux::editor
         std::uint32_t width{640}, height{360};
         bool cameras_dirty{true};
 
-        Impl(ProjectScenes& scenes, scene::SceneRuntime& runtime) noexcept : scenes(scenes), runtime(runtime)
+        Impl(ProjectScenes& scenes, ProjectAssets& assets, scene::SceneRuntime& runtime) noexcept
+            : scenes(scenes), assets(assets), runtime(runtime)
         {
             const auto add = [](auto& parent, auto& child)
             {
@@ -59,8 +183,13 @@ namespace lux::editor
         }
     };
 
-    SceneViewportPane::SceneViewportPane(ProjectScenes& scenes, scene::SceneRuntime& runtime, std::string title)
-        : Pane(std::move(title)), impl_(std::make_unique<Impl>(scenes, runtime))
+    SceneViewportPane::SceneViewportPane(
+        ProjectScenes& scenes,
+        ProjectAssets& assets,
+        scene::SceneRuntime& runtime,
+        std::string title
+    )
+        : Pane(std::move(title)), impl_(std::make_unique<Impl>(scenes, assets, runtime))
     {
         if (!addElement(impl_->layout))
         {
@@ -210,6 +339,12 @@ namespace lux::editor
 
     void SceneViewportPane::update() noexcept
     {
+        placeDroppedModel();
+        impl_->image.document = impl_->document;
+        if (const auto* document = impl_->scenes.find(impl_->document))
+        {
+            impl_->image.revision = document->revision();
+        }
         if (impl_->cameras_dirty)
         {
             refreshCameras();
@@ -231,8 +366,52 @@ namespace lux::editor
         impl_->image.setImage(status.ready ? status.image : rdesc::UiImageToken{});
         impl_->status.setText(
             status.error.type ? error::format(status.error)
-            : status.ready    ? ""
+            : status.ready    ? impl_->editing_status
                               : "Preparing viewport..."
         );
+    }
+
+    void SceneViewportPane::placeDroppedModel() noexcept
+    {
+        if (!impl_->image.drop)
+        {
+            return;
+        }
+        const auto drop = std::exchange(impl_->image.drop, {});
+        auto* document = impl_->scenes.find(drop->document);
+        const asset::AssetId id{drop->asset.id};
+        const auto record = std::ranges::find(impl_->assets.records(), id, &ProjectAsset::id);
+        const bool stale = !document || drop->document != impl_->document || document->revision() != drop->based_on ||
+                           record == impl_->assets.records().end() || record->revision != drop->asset.revision;
+        if (stale)
+        {
+            impl_->editing_status = "Scene or asset changed during drag; drop again";
+            return;
+        }
+        const auto* model = impl_->assets.model(id);
+        if (!model)
+        {
+            impl_->editing_status = "Model has not loaded";
+            return;
+        }
+        const auto camera = placementCamera(impl_->runtime, *document, impl_->camera);
+        const auto position = camera ? groundPosition(*camera, drop->pointer, drop->size) : std::nullopt;
+        if (!position)
+        {
+            impl_->editing_status = "Point a valid camera at the ground plane to place a model";
+            return;
+        }
+        // Initial placement is on world Y=0. Geometry picking remains a separate tool operation.
+        Eigen::Affine3d placement = Eigen::Affine3d::Identity();
+        placement.translation() = *position;
+        auto edit = prepareModelPlacement(*document, *model, placement, {0});
+        if (!edit)
+        {
+            impl_->editing_status = "Model transform or Scene schemas cannot represent this model";
+            return;
+        }
+        edit->based_on = drop->based_on;
+        const auto applied = document->apply(*edit);
+        impl_->editing_status = applied ? "Model placed; GPU assets load asynchronously" : "Model edit rejected";
     }
 } // namespace lux::editor

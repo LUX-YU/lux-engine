@@ -42,7 +42,7 @@ namespace
             entered.store(true);
             entered.notify_one();
             proceed.wait(false);
-            return asset::AssetBlob::fromShared(cxx::SharedBytes<>::copyOf(std::as_bytes(std::span("value"))));
+            return asset::AssetBlob::fromShared(cxx::SharedBytes<>::copyOf(std::span(&marker, 1)));
         }
 
         void enumerate(const std::function<void(const asset::ProviderEntry&)>& visitor) const override
@@ -58,6 +58,7 @@ namespace
         std::function<void()> on_destroy;
         mutable std::atomic<bool> entered{};
         mutable std::atomic<bool> proceed{};
+        std::byte marker{};
     };
 
     struct Reply final
@@ -65,6 +66,7 @@ namespace
         std::atomic<std::size_t> calls{};
         std::thread::id submission_thread;
         bool succeeded{};
+        std::byte marker{};
         std::optional<async::ESubmitError> failure;
         std::function<void()> on_complete;
 
@@ -75,6 +77,10 @@ namespace
             // Pre-start cancellation/failure may settle synchronously on the submitting thread.
             assert(!result || self.submission_thread != std::this_thread::get_id());
             self.succeeded = result.has_value();
+            if (result)
+            {
+                self.marker = result->bytes.data()[0];
+            }
             if (!result && result.error().isRuntime())
             {
                 self.failure = result.error().runtimeError();
@@ -145,6 +151,62 @@ namespace
         assert(runtime->waitUntil([&]() noexcept
                                   { return reply.calls.load(std::memory_order_acquire) != 0 && runtime->settled(); }));
         assert(reply.calls == 1 && reply.succeeded && rejected.calls == 0 && !endpoint);
+        assert(tasks.join());
+        runtime->requestStop();
+        assert(runtime->join());
+    }
+
+    void acceptedSnapshot()
+    {
+        auto runtime = execution::ExecutionRuntime::create({1, 16, {16}, execution::BlockingSchedulerConfig{1, 16}});
+        assert(runtime);
+        execution::TaskScope tasks{*runtime};
+        auto blocking = *runtime->blocking();
+        std::atomic<bool> entered{}, proceed{};
+        assert(tasks.submit(
+            {"Hold IO for snapshot publication", "test"},
+            [&](execution::TaskReporter) noexcept
+            {
+                return stdexec::schedule(blocking) | stdexec::then(
+                                                         [&]() noexcept
+                                                         {
+                                                             entered.store(true);
+                                                             entered.notify_one();
+                                                             proceed.wait(false);
+                                                         }
+                                                     );
+            }
+        ));
+        entered.wait(false);
+        asset::AssetVfs vfs;
+        auto old = std::make_shared<BlockedProvider>();
+        old->proceed = true;
+        old->marker = std::byte{1};
+        auto first_mount = vfs.mount({"/Game", old});
+        assert(first_mount);
+        auto snapshot = vfs.view().capture();
+        auto endpoint = VfsAssetReadEndpoint::create(vfs.view(), blocking, tasks.execution(), {4}, tasks.stopToken());
+        assert(endpoint);
+        auto port = (*endpoint)->port();
+        Reply accepted{0, std::this_thread::get_id(), false};
+        Reply dependent{0, std::this_thread::get_id(), false};
+        Reply next{0, std::this_thread::get_id(), false};
+        assert(port.submit({Asset, 1024}, &accepted, &Reply::complete, {}));
+        auto newer = std::make_shared<BlockedProvider>();
+        newer->proceed = true;
+        newer->marker = std::byte{2};
+        std::array<asset::MountLease, 1> removed{std::move(*first_mount)};
+        const std::array<asset::MountDesc, 1> replacement{{{"/Game", newer}}};
+        auto adopted = vfs.replaceMounts(removed, replacement);
+        assert(adopted);
+        assert(port.submit({Asset, 1024, snapshot}, &dependent, &Reply::complete, {}));
+        assert(port.submit({Asset, 1024}, &next, &Reply::complete, {}));
+        proceed = true;
+        proceed.notify_one();
+        assert(runtime->waitUntil([&]() noexcept
+                                  { return next.calls.load(std::memory_order_acquire) && runtime->settled(); }));
+        assert(accepted.marker == std::byte{1} && dependent.marker == std::byte{1} && next.marker == std::byte{2});
+        endpoint->reset();
         assert(tasks.join());
         runtime->requestStop();
         assert(runtime->join());
@@ -322,6 +384,7 @@ int main()
     ownerDeath(false);
     ownerDeath(true);
     cancelledQueuedRead();
+    acceptedSnapshot();
     cleanupAndCapacity();
     wakeReentry();
     std::puts("PASS actual VFS endpoint owner death, stale ports, queued cancellation, completion/wake/cleanup reentry "

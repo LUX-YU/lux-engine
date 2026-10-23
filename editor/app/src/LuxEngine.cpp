@@ -351,6 +351,9 @@ namespace lux::editor
             render_config.render.max_frames_ahead = 1;
             render_config.render.uploads.emplace();
             render_config.device.texture_descriptors = true;
+            // Built-in model cooking emits BC7 color and BC5 normal textures. Request the real device
+            // capability at startup instead of accepting imports that cannot become render resources.
+            render_config.device.texture_compression_bc = true;
             auto rendering = rendering::RenderExecution::create(std::move(render_config), execution);
             if (!rendering)
             {

@@ -15,6 +15,7 @@
 namespace lux::editor
 {
     class EditorContext;
+    class ProjectAssets;
     enum class EProjectSceneError : std::uint8_t
     {
         INVALID_DOCUMENT,
@@ -61,7 +62,7 @@ namespace lux::editor
     class ProjectScenes final : public object::LuxObject
     {
     public:
-        explicit ProjectScenes(EditorContext&) noexcept;
+        ProjectScenes(EditorContext&, ProjectAssets&) noexcept;
         ~ProjectScenes() noexcept;
         // Admission creates one existing monitored Task. IO, decode and Main adoption use the shared execution.
         [[nodiscard]] ProjectSceneResult<execution::TaskId> open(std::filesystem::path) noexcept;
@@ -78,6 +79,8 @@ namespace lux::editor
         void maintain() noexcept;
         [[nodiscard]] bool settled() const noexcept;
         [[nodiscard]] const std::optional<VProjectSceneFailure>& failure() const noexcept;
+        // Called after the project publishes a complete VFS version, independently of viewport changes.
+        void setAssetRevision(std::uint64_t) noexcept;
 
         [[nodiscard]] ProjectSceneResult<SceneViewportId> addViewport(
             asset::AssetId,

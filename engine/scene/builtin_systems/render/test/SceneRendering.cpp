@@ -116,15 +116,17 @@ namespace
         return response;
     }
 
-    rdesc::MaterialProgramSet materialProgram()
+    rdesc::MaterialProgramSet materialProgram(asset::AssetId texture)
     {
         using namespace material;
         MaterialGraph graph;
         graph.shading_model = rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS;
-        graph.render_state.double_sided = true;
-        graph.param_slots = {{"albedo", EValueType::VEC4, {0.4f, 0.6f, 0.2f, 1}}};
+        graph.render_state.double_sided = false;
+        graph.texture_slots = {{"albedo", texture}};
         auto output = material_test::add(graph, MaterialOutputSurface{});
-        auto albedo = material_test::add(graph, MaterialParameter{0, EValueType::VEC4});
+        auto albedo = material_test::add(graph, MaterialSampleTexture{0});
+        auto uv = material_test::add(graph, MaterialInput{EMaterialInput::UV0});
+        CHECK(material_test::connect(graph, uv, 0, albedo, 0));
         CHECK(material_test::connect(graph, albedo, 0, output, 0));
         constexpr std::array purposes{rdesc::EMaterialPurpose::GBUFFER, rdesc::EMaterialPurpose::SHADOW};
         return take(compileMaterial(graph, purposes)).programs;
@@ -158,7 +160,8 @@ int main()
     provider->images[mesh_id] =
         take(asset::TAssetSerDeser<asset::MeshAsset>::encode(*mesh_asset, asset::AssetEncodeLimits{1 << 20}));
     auto material = std::make_shared<rdesc::MaterialDescription>();
-    material->programs = materialProgram();
+    material->programs = materialProgram(texture_id);
+    material->texture_slot_ids = {texture_id};
     const auto material_asset =
         take(asset::MaterialAsset::create({material_id, asset::MaterialAsset::asset_type}, material));
     provider->images[material_id] =
@@ -495,6 +498,120 @@ int main()
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
     CHECK(assets->mesh({mesh_id, inputs.asset_revision}) != nullptr);
+    // A valid layered asset reaches the real upload Handler, which rejects this single-layer
+    // Storage contract. No previous instance/Effect is removed just because a candidate failed.
+    auto rejected_provider = std::make_shared<CookedAssets>();
+    rejected_provider->images = provider->images;
+    auto layered_info = info;
+    layered_info.layers = 2;
+    layered_info.mip_ranges[0].size = 32;
+    const std::array<std::byte, 32> layered_pixels{};
+    auto layered = std::make_shared<rdesc::Texture>(take(rdesc::Texture::copyOf(layered_info, layered_pixels)));
+    auto layered_asset = take(asset::TextureAsset::create({texture_id, asset::TextureAsset::asset_type}, layered));
+    rejected_provider->images[texture_id] =
+        take(asset::TAssetSerDeser<asset::TextureAsset>::encode(*layered_asset, asset::AssetEncodeLimits{1 << 20}));
+    std::array<asset::MountLease, 1> previous_mount{std::move(mount)};
+    const std::array<asset::MountDesc, 1> rejected_mount{{{"/assets", rejected_provider}}};
+    auto rejected_registration = take(vfs.replaceMounts(previous_mount, rejected_mount));
+    const auto last_good = scene->attachment(first_view);
+    const auto previous_asset_revision = inputs.asset_revision;
+    const auto last_mesh = assets->mesh({mesh_id, inputs.asset_revision})->mesh;
+    inputs.asset_revision += 2; // Revision one was preloaded by the independent Asset Client check.
+    inputs.asset_snapshot = vfs.view().capture();
+    while (scene->assetError(first).type == 0)
+    {
+        drive(true);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    CHECK(scene->assetError(first).type == kDeviceArgument);
+    CHECK(
+        scene->attachment(first_view) == last_good &&
+        assets->mesh({mesh_id, previous_asset_revision})->mesh == last_mesh
+    );
+    const auto continued = rendering->stats().submissions;
+    while (rendering->stats().submissions < continued + 3)
+    {
+        drive(true);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    const std::array<asset::MountDesc, 1> restored_mount{{{"/assets", provider}}};
+    auto restored_registration = take(vfs.replaceMounts(rejected_registration, restored_mount));
+    ++inputs.asset_revision;
+    inputs.asset_snapshot = vfs.view().capture();
+    auto next_diagnostic = std::chrono::steady_clock::now() + 2s;
+    while (scene->attachment(first_view) == last_good || scene->assetError(first).type != 0)
+    {
+        drive(true);
+        if (std::chrono::steady_clock::now() > next_diagnostic)
+        {
+            std::fprintf(
+                stderr,
+                "Candidate recovery: mesh=%d material=%d texture=%d error=%llu graphs=%llu queued=%d mesh_error=%llu "
+                "texture_error=%llu commands=%llu\n",
+                assets->mesh({mesh_id, inputs.asset_revision}) != nullptr,
+                assets->material({material_id, inputs.asset_revision}) != nullptr,
+                assets->texture({texture_id, inputs.asset_revision}) != nullptr,
+                static_cast<unsigned long long>(scene->assetError(first).type),
+                static_cast<unsigned long long>(rendering->stats().compiled_graphs),
+                rendering->mainClient().hasQueuedFrameCommands(),
+                static_cast<unsigned long long>(assets->failure({mesh_id, inputs.asset_revision}).type),
+                static_cast<unsigned long long>(assets->failure({texture_id, inputs.asset_revision}).type),
+                static_cast<unsigned long long>(rendering->stats().commands)
+            );
+            next_diagnostic += 10s;
+        }
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    // Separate project generations must not alias the same revision in the shared upload cache.
+    const RenderAssetVersion other_project{texture_id, 1, 9};
+    CHECK(assets->acquireTexture(other_project, endpoint->port(), inputs.asset_snapshot));
+    while (!assets->texture(other_project))
+    {
+        drive(true);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    CHECK(assets->texture(other_project)->texture != assets->texture({texture_id, 1})->texture);
+    assets->releaseTexture(other_project);
+    // These are the real data formats emitted by model cooking for AO, metal/roughness and normals.
+    for (const auto format :
+         {rdesc::ETexturePixelFormat::R8_UNORM,
+          rdesc::ETexturePixelFormat::RG8_UNORM,
+          rdesc::ETexturePixelFormat::BC5_UNORM})
+    {
+        rdesc::TextureInfo cooked_info{};
+        cooked_info.pixel_format = format;
+        cooked_info.color_space = rdesc::ETextureColorSpace::DATA;
+        const bool compressed = rdesc::isCompressedFormat(format);
+        cooked_info.width = cooked_info.height = compressed ? 4 : 2;
+        cooked_info.channel = format == rdesc::ETexturePixelFormat::R8_UNORM ? 1 : 2;
+        cooked_info.flags = compressed ? rdesc::toUnderlying(rdesc::ETextureAssetFlags::COMPRESSED) : 0;
+        const auto bytes = compressed ? 16U : 4U * cooked_info.channel;
+        cooked_info.mip_ranges[0] =
+            {0, bytes, static_cast<std::uint32_t>(cooked_info.width), static_cast<std::uint32_t>(cooked_info.height)};
+        std::vector<std::byte> data(bytes);
+        const asset::AssetId id{ids(std::to_string(static_cast<unsigned>(format)))};
+        auto value = std::make_shared<rdesc::Texture>(take(rdesc::Texture::copyOf(cooked_info, data)));
+        auto cooked = take(asset::TextureAsset::create({id, asset::TextureAsset::asset_type}, value));
+        auto format_provider = std::make_shared<CookedAssets>();
+        format_provider->images[id] =
+            take(asset::TAssetSerDeser<asset::TextureAsset>::encode(*cooked, asset::AssetEncodeLimits{1 << 20}));
+        asset::AssetVfs format_vfs;
+        auto format_mount = take(format_vfs.mount({"/assets", format_provider}));
+        const RenderAssetVersion key{id, 1, 9};
+        CHECK(assets->acquireTexture(key, endpoint->port(), format_vfs.view().capture()));
+        while (!assets->texture(key))
+        {
+            drive(true);
+            CHECK(assets->failure(key).type == 0 && std::chrono::steady_clock::now() < deadline);
+        }
+        CHECK(assets->texture(key)->description.format == rdesc::textureImageFormat(format));
+        assets->releaseTexture(key);
+    }
+    while (assets->mesh({mesh_id, previous_asset_revision}) != nullptr)
+    {
+        drive(true);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
     const auto compiled_before_removal = rendering->stats().compiled_graphs;
     registry.destroy(first);
     for (unsigned i = 0; i < 8; ++i)

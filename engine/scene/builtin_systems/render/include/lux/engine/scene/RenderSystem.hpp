@@ -68,6 +68,10 @@ namespace lux::scene
         // this identity is a borrow, not a promise that a GPU frame has completed.
         [[nodiscard]] render::AttachmentId attachment(SceneViewId) const noexcept;
         [[nodiscard]] render::RenderError viewError(SceneViewId) const noexcept;
+        // A failed asset candidate does not remove the previously adopted instance binding.
+        [[nodiscard]] render::RenderError assetError(simulation::ecs::Entity) const noexcept;
+        // True only after an actual instance has adopted the current asset binding.
+        [[nodiscard]] bool visualReady(simulation::ecs::Entity) const noexcept;
         // After removing the input, keep its Target alive until this returns true.
         [[nodiscard]] bool viewRetired(SceneViewId) const noexcept;
 

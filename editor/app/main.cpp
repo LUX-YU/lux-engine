@@ -1,10 +1,12 @@
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/editor/AssetBrowserPane.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorMenuComposition.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
+#include <lux/engine/editor/ProjectAssets.hpp>
 #include <lux/engine/editor/ProjectCreationPane.hpp>
 #include <lux/engine/editor/ProjectScenes.hpp>
 #include <lux/engine/editor/SceneCreationPane.hpp>
@@ -88,10 +90,31 @@ int main(int argc, char** argv)
         {
             return registered;
         }
+        if (auto registered = context.registerServiceFactory<lux::editor::ProjectAssets>(
+                [](lux::editor::EditorContext& value
+                ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::editor::ProjectAssets>>
+                {
+                    auto assets = std::make_unique<lux::editor::ProjectAssets>(value);
+                    static_cast<void>(assets->open()
+                    ); // The valid service exposes readiness and any IO/admission failure.
+                    return assets;
+                }
+            );
+            !registered)
+        {
+            return registered;
+        }
         if (auto registered = context.registerServiceFactory<lux::editor::ProjectScenes>(
                 [](lux::editor::EditorContext& value
                 ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::editor::ProjectScenes>>
-                { return std::make_unique<lux::editor::ProjectScenes>(value); }
+                {
+                    auto assets = value.service<lux::editor::ProjectAssets>();
+                    if (!assets)
+                    {
+                        return lux::cxx::unexpected(assets.error());
+                    }
+                    return std::make_unique<lux::editor::ProjectScenes>(value, assets->get());
+                }
             );
             !registered)
         {
@@ -114,6 +137,23 @@ int main(int argc, char** argv)
         {
             return registered;
         }
+        if (auto registered = context.registerUiFactory(
+                "assets.browser",
+                [](lux::editor::EditorContext& value, const lux::editor::PaneDescription& description
+                ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::ui::Pane>>
+                {
+                    auto assets = value.service<lux::editor::ProjectAssets>();
+                    if (!assets)
+                    {
+                        return lux::cxx::unexpected(assets.error());
+                    }
+                    return std::make_unique<lux::editor::AssetBrowserPane>(assets->get(), description.title);
+                }
+            );
+            !registered)
+        {
+            return registered;
+        }
         return context.registerUiFactory(
             "scene.viewport",
             [](lux::editor::EditorContext& value, const lux::editor::PaneDescription& description
@@ -126,6 +166,7 @@ int main(int argc, char** argv)
                 }
                 return std::make_unique<lux::editor::SceneViewportPane>(
                     scenes->get(),
+                    value.service<lux::editor::ProjectAssets>()->get(),
                     value.engine().sceneRuntime(),
                     description.title
                 );
@@ -135,6 +176,7 @@ int main(int argc, char** argv)
     lux::editor::EditorConfig config;
     config.layout = {
         {"scene.catalog", "scenes", "Scenes"},
+        {"assets.browser", "assets", "Assets"},
         {"scene.viewport", "viewport", "Scene View"},
         {"scene.viewport", "second_viewport", "Second View"}
     };

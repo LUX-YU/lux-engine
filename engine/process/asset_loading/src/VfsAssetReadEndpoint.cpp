@@ -107,9 +107,11 @@ namespace lux::process::asset_loading
                 ++admitted;
             }
             Request request{shared_from_this(), completion_state, complete};
+            auto snapshot = operation.snapshot ? std::move(operation.snapshot) : accepted->vfs.capture();
             auto read = stdexec::then(
                 stdexec::schedule(accepted->blocking),
-                [view = accepted->vfs, operation]() noexcept { return view.open(operation.id, operation.max_bytes); }
+                [view = std::move(snapshot), id = operation.id, limit = operation.max_bytes]() noexcept
+                { return view.open(id, limit); }
             );
             auto delivered = stdexec::then(
                 execution::taskResult(std::move(read)),

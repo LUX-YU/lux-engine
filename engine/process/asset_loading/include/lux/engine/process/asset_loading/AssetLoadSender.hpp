@@ -97,16 +97,17 @@ namespace lux::process::asset_loading
         execution::CpuScheduler cpu,
         lux::asset::AssetId id,
         lux::asset::AssetDecodeLimits limits,
-        std::stop_token stop = {}
+        std::stop_token stop = {},
+        lux::asset::AssetVfsView snapshot = {}
     ) noexcept
     {
         static_assert(std::is_base_of_v<lux::asset::Asset, Asset>);
         auto operation = stdexec::let_value(
             stdexec::read_env(stdexec::get_stop_token),
-            [read = std::move(read), cpu, id, limits, stop](auto ambient_stop) noexcept
+            [read = std::move(read), cpu, id, limits, stop, snapshot = std::move(snapshot)](auto ambient_stop) noexcept
             {
                 auto image = stdexec::let_error(
-                    execution::portSender(read, ReadAssetImage{id, limits.max_image_bytes}),
+                    execution::portSender(read, ReadAssetImage{id, limits.max_image_bytes, snapshot}),
                     [](lux::async::TOperationFailure<lux::asset::EAssetStorageError> failure) noexcept
                     { return stdexec::just_error(detail::assetReadFailure(failure)); }
                 );

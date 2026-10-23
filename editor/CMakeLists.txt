@@ -2,6 +2,8 @@ find_package(lux-cxx REQUIRED COMPONENTS core compile_time container)
 
 find_package(nlohmann_json CONFIG REQUIRED)
 
+find_package(imgui REQUIRED COMPONENTS core)
+
 # A single file publication algorithm, with no installed support header or domain dependency.
 add_component(
     COMPONENT_NAME lux_editor_file_io
@@ -298,12 +300,67 @@ component_add_transitive_commands(
 lux_classify_target(TARGET lux_editor_scene_profiles LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
 add_component(
+    COMPONENT_NAME lux_editor_assets
+    NAMESPACE lux::engine::editor
+    STATIC
+    SOURCE_FILES
+        assets/src/ProjectAssets.cpp
+        assets/src/AssetImport.cpp
+)
+
+component_include_directories(
+    lux_editor_assets
+    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/assets/include
+    INSTALL_TIME include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/assets/pinclude
+)
+
+component_add_internal_dependencies(lux_editor_assets lux_editor_context lux_editor_file_io)
+
+target_link_libraries(lux_editor_assets
+    PUBLIC lux::engine::toolchain::toolchain_model_cooker
+    PRIVATE nlohmann_json::nlohmann_json lux::cxx::algorithm
+)
+
+component_add_transitive_commands(lux_editor_assets
+    "find_package(lux-engine-toolchain-asset REQUIRED COMPONENTS toolchain_model_cooker)"
+    "find_package(nlohmann_json CONFIG REQUIRED)"
+    "find_package(lux-cxx REQUIRED COMPONENTS algorithm)"
+)
+
+lux_classify_target(TARGET lux_editor_assets LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+
+component_add_internal_dependencies(lux_editor_app lux_editor_assets)
+
+add_component(
+    COMPONENT_NAME lux_editor_asset_tools
+    NAMESPACE lux::engine::editor
+    STATIC
+    SOURCE_FILES assets/tools/src/AssetBrowserPane.cpp
+)
+
+component_include_directories(
+    lux_editor_asset_tools
+    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/assets/tools/include
+    INSTALL_TIME include
+)
+
+component_add_internal_dependencies(lux_editor_asset_tools lux_editor_assets lux_editor_ui)
+
+target_link_libraries(lux_editor_asset_tools PRIVATE imgui::core)
+
+component_add_transitive_commands(lux_editor_asset_tools "find_package(imgui REQUIRED COMPONENTS core)")
+
+lux_classify_target(TARGET lux_editor_asset_tools LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+
+add_component(
     COMPONENT_NAME lux_editor_scene_tools
     NAMESPACE lux::engine::editor
     STATIC
     SOURCE_FILES
         scene/tools/src/SceneCreationPane.cpp
         scene/tools/src/SceneViewportPane.cpp
+        scene/tools/src/ModelPlacement.cpp
         project/tools/src/ProjectCreationPane.cpp
 )
 
@@ -317,10 +374,15 @@ component_include_directories(
 
 component_add_internal_dependencies(lux_editor_scene_tools lux_editor_app lux_editor_scene_document)
 
-target_link_libraries(lux_editor_scene_tools PRIVATE lux::engine::project::project_plugins)
+target_link_libraries(lux_editor_scene_tools PRIVATE
+    lux::engine::project::project_plugins
+    lux::engine::simulation::ecs::transform
+    lux::engine::simulation::ecs::visual
+)
 
 component_add_transitive_commands(lux_editor_scene_tools
     "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)"
+    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS transform visual)"
 )
 
 lux_classify_target(TARGET lux_editor_scene_tools LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
@@ -333,6 +395,8 @@ target_link_libraries(
         lux_editor_app
         lux_editor_scene_profiles
         lux_editor_scene_tools
+        lux_editor_assets
+        lux_editor_asset_tools
         lux::engine::project::project_plugins
         lux::engine::platform::platform_process
 )
@@ -359,6 +423,8 @@ lux_engine_install_components(
         lux_editor_app
         lux_editor_scene_profiles
         lux_editor_scene_tools
+        lux_editor_assets
+        lux_editor_asset_tools
 )
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)

@@ -38,6 +38,12 @@ namespace lux::editor
         [[nodiscard]] SceneEditResult<void> saved(scene::ScenePackage, std::uint64_t captured_revision) noexcept;
         [[nodiscard]] const scene::ScenePackage& baseline() const noexcept;
 
+        // Immutable author codecs retained by this document; tools prepare owned drafts through them.
+        [[nodiscard]] const simulation::ecs::ComponentSchemaSet& schemas() const noexcept
+        {
+            return schemas_;
+        }
+
         object::TSignal<> changed{*this};
 
     private:

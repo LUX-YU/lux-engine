@@ -1649,6 +1649,10 @@ namespace lux::render
             // by this frame. Count their progress before deciding whether the loop may wait.
             progressed |= s.render_loop_.executeReady(128) != 0;
             s.progressUploads();
+            // Staging availability resumes a Task through the same scheduler. Let that continuation
+            // consume its admitted range before frame preparation closes background staging again;
+            // otherwise continuously submitted frames can wake and immediately requeue it forever.
+            progressed |= s.render_loop_.executeReady(128) != 0;
             s.progressFrame();
             // Safe point 3: publish terminal frame/command results produced by this iteration.
             progressed |= s.render_loop_.executeReady(128) != 0;

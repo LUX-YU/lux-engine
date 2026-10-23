@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <lux/engine/description/Image.hpp>
 #include <type_traits>
 
 namespace lux::rdesc
@@ -37,6 +38,35 @@ namespace lux::rdesc
         LINEAR,
         DATA,
     };
+
+    // Projects an encoded texture's pixel representation into the common image contract.
+    // Unsupported representations remain explicit; no implicit RGBA conversion is performed.
+    [[nodiscard]] constexpr ETextureFormat textureImageFormat(ETexturePixelFormat format) noexcept
+    {
+        switch (format)
+        {
+        case ETexturePixelFormat::RGBA8_UNORM:
+            return ETextureFormat::RGBA8_UNORM;
+        case ETexturePixelFormat::RGBA8_SRGB:
+            return ETextureFormat::RGBA8_SRGB;
+        case ETexturePixelFormat::RG8_UNORM:
+            return ETextureFormat::RG8_UNORM;
+        case ETexturePixelFormat::R8_UNORM:
+            return ETextureFormat::R8_UNORM;
+        case ETexturePixelFormat::RGBA16_SFLOAT:
+            return ETextureFormat::RGBA16_SFLOAT;
+        case ETexturePixelFormat::BC1_SRGB:
+            return ETextureFormat::BC1_RGBA_SRGB;
+        case ETexturePixelFormat::BC3_SRGB:
+            return ETextureFormat::BC3_SRGB;
+        case ETexturePixelFormat::BC5_UNORM:
+            return ETextureFormat::BC5_UNORM;
+        case ETexturePixelFormat::BC7_SRGB:
+            return ETextureFormat::BC7_SRGB;
+        default:
+            return ETextureFormat::UNDEFINED;
+        }
+    }
 
     enum class ETextureAssetFlags : uint32_t
     {
@@ -140,4 +170,4 @@ namespace lux::rdesc
 
     static_assert(std::is_standard_layout_v<TextureAssetInfo>, "TextureAssetInfo must be standard layout");
 
-}
+} // namespace lux::rdesc

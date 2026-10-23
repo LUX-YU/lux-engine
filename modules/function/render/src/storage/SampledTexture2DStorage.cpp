@@ -1,9 +1,13 @@
+#include <NRI.h>
+
+#include <Extensions/NRIHelper.h>
 #include <algorithm>
 #include <bit>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/storage/SampledTexture2DStorage.hpp>
@@ -31,60 +35,42 @@ namespace lux::render::detail
         }
     }
 
-    namespace
-    {
-        struct Format final
-        {
-            nri::Format native;
-            std::uint32_t extent, bytes;
-            bool srgb;
-        };
-
-        Format format(rdesc::ETexturePixelFormat value) noexcept
-        {
-            switch (value)
-            {
-            case rdesc::ETexturePixelFormat::RGBA8_UNORM:
-                return {nri::Format::RGBA8_UNORM, 1, 4, false};
-            case rdesc::ETexturePixelFormat::RGBA8_SRGB:
-                return {nri::Format::RGBA8_SRGB, 1, 4, true};
-            case rdesc::ETexturePixelFormat::BC1_SRGB:
-                return {nri::Format::BC1_RGBA_SRGB, 4, 8, true};
-            default:
-                return {};
-            }
-        }
-    } // namespace
-
     RenderResult<SampledTexture2DStorage::ImagePreparation> SampledTexture2DStorage::prepareImage(
         const rdesc::TextureInfo& info,
         std::span<const std::byte> source
     ) noexcept
     {
         auto& session = session_;
-        const auto layout = format(info.pixel_format);
+        const auto image_format = rdesc::textureImageFormat(info.pixel_format);
+        const auto layout = imageFormat(image_format);
+        const bool srgb = rdesc::isSrgbTextureFormat(image_format);
+        const auto channels = info.pixel_format == rdesc::ETexturePixelFormat::R8_UNORM ? 1
+                              : info.pixel_format == rdesc::ETexturePixelFormat::RG8_UNORM ||
+                                      info.pixel_format == rdesc::ETexturePixelFormat::BC5_UNORM
+                                  ? 2
+                                  : 4;
         const auto max_dimension = session.description().dimensions.texture2DMaxDim;
         const bool bad_extent = info.width <= 0 || info.height <= 0 || std::uint32_t(info.width) > max_dimension ||
                                 std::uint32_t(info.height) > max_dimension;
         const bool bad_count = info.layers != 1 || info.mip_count == 0 || info.mip_count > rdesc::kTextureMaxMipCount;
         const bool bad_color = info.color_space == rdesc::ETextureColorSpace::UNKNOWN ||
                                info.color_space > rdesc::ETextureColorSpace::DATA ||
-                               (layout.srgb != (info.color_space == rdesc::ETextureColorSpace::SRGB));
+                               (srgb != (info.color_space == rdesc::ETextureColorSpace::SRGB));
         const bool premultiplied_srgb =
-            layout.srgb && rdesc::hasTextureFlag(info.flags, rdesc::ETextureAssetFlags::PREMULTIPLIED_ALPHA);
+            srgb && rdesc::hasTextureFlag(info.flags, rdesc::ETextureAssetFlags::PREMULTIPLIED_ALPHA);
         const bool bad_flags =
             (info.flags & ~7u) != 0 ||
-            (rdesc::hasTextureFlag(info.flags, rdesc::ETextureAssetFlags::COMPRESSED) != (layout.extent == 4)) ||
+            (rdesc::hasTextureFlag(info.flags, rdesc::ETextureAssetFlags::COMPRESSED) != (layout.block == 4)) ||
             (rdesc::hasTextureFlag(info.flags, rdesc::ETextureAssetFlags::NO_MIPS) && info.mip_count != 1);
         if (layout.native == nri::Format::UNKNOWN)
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
-        if (bad_extent || bad_count || bad_color || bad_flags || info.channel != 4)
+        if (bad_extent || bad_count || bad_color || bad_flags || info.channel != channels)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        if (layout.extent == 4 && !session.enabledFeatures().texture_compression_bc)
+        if (layout.block == 4 && !session.enabledFeatures().texture_compression_bc)
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
@@ -102,8 +88,8 @@ namespace lux::render::detail
         {
             const auto width = std::max(1u, std::uint32_t(info.width) >> mip);
             const auto height = std::max(1u, std::uint32_t(info.height) >> mip);
-            const auto rows = (height + layout.extent - 1) / layout.extent;
-            const std::uint64_t row = std::uint64_t((width + layout.extent - 1) / layout.extent) * layout.bytes;
+            const auto rows = (height + layout.block - 1) / layout.block;
+            const std::uint64_t row = std::uint64_t((width + layout.block - 1) / layout.block) * layout.bytes;
             const auto size = cxx::checkedMul<std::uint64_t>(row, std::uint64_t(rows));
             if (!size)
             {
@@ -148,11 +134,11 @@ namespace lux::render::detail
         for (std::uint32_t mip = 0; mip < info.mip_count; ++mip)
         {
             const auto& input = info.mip_ranges[mip];
-            const auto pitch = std::uint64_t((input.width + layout.extent - 1) / layout.extent) * layout.bytes;
+            const auto pitch = std::uint64_t((input.width + layout.block - 1) / layout.block) * layout.bytes;
             regions.push_back(
                 {input.offset,
                  pitch,
-                 layout.extent,
+                 layout.block,
                  layout.bytes,
                  {0,
                   0,
@@ -186,7 +172,7 @@ namespace lux::render::detail
     ) noexcept
     {
         const auto& original = session_.nriCore().GetTextureDesc(*source_image.image_);
-        const bool compressed = original.format == nri::Format::BC1_RGBA_SRGB;
+        const auto& layout = *nri::nriGetFormatProps(original.format);
         // Check wide Client values before narrowing into NRI's dimension fields.
         const bool invalid = region.mip >= original.mipNum || region.x > original.width || region.y > original.height ||
                              region.width > original.width || region.height > original.height;
@@ -197,8 +183,8 @@ namespace lux::render::detail
         const ImageTransferRegion patch{
             0,
             region.row_pitch,
-            compressed ? 4u : 1u,
-            compressed ? 8u : 4u,
+            layout.blockWidth,
+            layout.stride,
             {static_cast<nri::Dim_t>(region.x),
              static_cast<nri::Dim_t>(region.y),
              0,
@@ -407,10 +393,7 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(RenderError{kStorageMismatch});
             }
-            const auto native_format = expected->format == rdesc::ETextureFormat::RGBA8_UNORM ? nri::Format::RGBA8_UNORM
-                                       : expected->format == rdesc::ETextureFormat::RGBA8_SRGB
-                                           ? nri::Format::RGBA8_SRGB
-                                           : nri::Format::BC1_RGBA_SRGB;
+            const auto native_format = imageFormat(expected->format).native;
             const auto& image = session_.nriCore().GetTextureDesc(*backing->image_);
             const bool is_mismatch = expected->width != image.width || expected->height != image.height ||
                                      expected->mips != image.mipNum || expected->layers != image.layerNum ||

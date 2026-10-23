@@ -3,6 +3,7 @@
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/core/execution/ExecutionError.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
+#include <lux/engine/editor/ProjectAssets.hpp>
 #include <lux/engine/editor/ProjectScenes.hpp>
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
 #include <lux/engine/editor/detail/RenderCommandRequest.hpp>
@@ -66,6 +67,8 @@ namespace lux::editor
         };
 
         EditorContext& context;
+        ProjectAssets& project_assets;
+        object::Connection assets_changed;
         rendering::RenderExecution* rendering;
         rendering::RenderAssets* assets;
         EditorUiScene* ui;
@@ -73,10 +76,12 @@ namespace lux::editor
         cxx::StableSlotMap<Viewport, SceneViewportTag> viewports;
         std::optional<VProjectSceneFailure> failure;
         std::size_t operations{};
+        std::uint64_t asset_revision{}, asset_source{};
         bool closing{}, catalog_write_pending{};
 
-        Impl(EditorContext& context) noexcept
-            : context(context), rendering(context.extensions().find<rendering::RenderExecution>()),
+        Impl(EditorContext& context, ProjectAssets& project_assets) noexcept
+            : context(context), project_assets(project_assets),
+              rendering(context.extensions().find<rendering::RenderExecution>()),
               assets(context.extensions().find<rendering::RenderAssets>()),
               ui(context.extensions().find<EditorUiScene>())
         {
@@ -134,6 +139,9 @@ namespace lux::editor
             }
             auto entry = std::make_unique<Entry>();
             entry->path = std::move(path);
+            entry->inputs.asset_revision = asset_revision;
+            entry->inputs.asset_source = asset_source;
+            entry->inputs.asset_snapshot = context.assets().view().capture();
             const auto world = std::shared_ptr<const world::WorldDescription>{package.world, &package.world->data()};
             const auto description =
                 std::shared_ptr<const scene::SceneDescription>{package.scene, &package.scene->data()};
@@ -555,7 +563,30 @@ namespace lux::editor
         );
     }
 
-    ProjectScenes::ProjectScenes(EditorContext& context) noexcept : impl_(std::make_unique<Impl>(context)) {}
+    ProjectScenes::ProjectScenes(EditorContext& context, ProjectAssets& assets) noexcept
+        : impl_(std::make_unique<Impl>(context, assets))
+    {
+        const auto id = objectId();
+        impl_->asset_source = ((std::uint64_t{id.gen} << 32) | id.index) + 1;
+        auto connection = connect(
+            &assets,
+            &ProjectAssets::changed,
+            this,
+            [this]() noexcept
+            {
+                if (impl_->project_assets.ready())
+                {
+                    setAssetRevision(impl_->project_assets.revision());
+                }
+            }
+        );
+        if (!connection)
+        {
+            std::terminate();
+        }
+        impl_->assets_changed = std::move(*connection);
+        setAssetRevision(assets.revision());
+    }
 
     ProjectScenes::~ProjectScenes() noexcept
     {
@@ -568,6 +599,10 @@ namespace lux::editor
     ProjectSceneResult<execution::TaskId> ProjectScenes::open(std::filesystem::path path) noexcept
     {
         auto& state = *impl_;
+        if (!state.project_assets.ready())
+        {
+            return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::BUSY});
+        }
         if (state.closing || path.empty())
         {
             return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::CLOSED});
@@ -615,6 +650,10 @@ namespace lux::editor
     ) noexcept
     {
         auto& state = *impl_;
+        if (!state.project_assets.ready())
+        {
+            return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::BUSY});
+        }
         if (state.closing)
         {
             return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::CLOSED});
@@ -799,6 +838,21 @@ namespace lux::editor
         if (removed)
         {
             static_cast<void>(emit(changed));
+        }
+    }
+
+    void ProjectScenes::setAssetRevision(std::uint64_t revision) noexcept
+    {
+        if (impl_->asset_revision == revision)
+        {
+            return;
+        }
+        impl_->asset_revision = revision;
+        auto snapshot = impl_->context.assets().view().capture();
+        for (auto& [id, entry] : impl_->documents)
+        {
+            entry->inputs.asset_revision = revision;
+            entry->inputs.asset_snapshot = snapshot;
         }
     }
 

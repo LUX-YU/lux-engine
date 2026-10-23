@@ -305,7 +305,7 @@ Scope 任务完成、Runtime 实例数为零、ProjectScenes 清空各表达不�
 
 | 现有或拟新增对象 | 唯一责任 |
 |---|---|
-| `ProjectAssets`，拟新增 Editor 领域对象 | 源文件、导入设置、稳定 AssetId、子资产映射、Cooked 版本与导入诊断 |
+| `ProjectAssets` | 源文件、导入设置、稳定 AssetId、子资产映射、Cooked 版本与导入诊断 |
 | `AssetVfs` | 按已发布目录读取资产字节，不拥有导入 UI 或 GPU |
 | `RenderAssets` | 已实际使用资产版本到 Render 逻辑句柄的投影，不成为项目资产数据库 |
 
@@ -321,6 +321,16 @@ AssetManager。索引可重建，稳定 ID/导入配置必须持久化，移动�
 不在 CPU 池使用路径重载做隐式阻塞 IO。取消检查位于发布前，已经发布的结果不能报告确定未发生。
 失败保留上一版可用产物；所有子资产候选就绪后才更新唯一目录引用，不能留下半套模型。
 
+当前目录是项目下 `.luxassets/catalog.json`，每次导入写入一个独立的不可变 LUXPAK，然后原子更新
+目录。子资产身份复用 ModelCooker 的源名称映射；重名/缺少可判别身份时拒绝重导入，不按新 ordinal
+覆盖旧身份。目录记录保留源路径、具体 Cook 配置、版本和产物 ID。已经发布的历史产物暂不自动回收，
+避免破坏仍持有旧 VFS 快照的读者；后续磁盘整理必须以实际引用为依据。
+
+`VfsAssetReadEndpoint` 在接纳时捕获挂载表。材质与后续纹理读取共同借用本次发布的同一快照，
+不能在读取中途重新选择最新目录。`RenderAssetVersion::source` 区分项目代次；相同 AssetId 和
+revision 不会误用另一项目的 GPU 缓存。后台文件/Cook 工作只拥有输入，采用回到 Main 并解析现有
+ObjectId；项目已经关闭时不采用迟到结果，也不回滚已经完成的文件发布。
+
 现有工具若尚缺某一种输入格式/材质用途，则本轮明确拒绝并展示诊断；不伪造占位 Mesh/材质通过闭环。
 
 ### 6.3 拖放进入 Scene
@@ -332,8 +342,18 @@ RenderSystem 观察真实组件变化，RenderAssets 经独立 Asset Client 读�
 可以先存在而 GPU 数据尚未到位，此时展示加载状态；实际 Response 后采用 Render 句柄。
 不由拖放工具等待 GPU，也不让 Render 推断模型之间的业务依赖。
 
-重新导入发布新资产版本，由 Client 侧 RenderAssets 更新引用；失败继续显示已采用版本。
+重新导入发布新资产版本，由 Client 侧 RenderAssets 更新引用。RenderSystem 保留已采用绑定，先
+准备候选 Mesh、Texture 和 Material；未采用的候选失败不会撤销旧实例。成功时先让各观察的配方
+接受旧、新两组资源，再用一次完整帧 UpdateMeshInstances 切换现有实例，最后移除旧组并释放旧引用。
+这避免了提前删除和临时双重绘制；DeviceLost/结果不确定仍保留实际错误，不承诺设备失败后画面可用。
+
+RenderSystem 的待处理实体集合按完整 Entity 代际去重。连续撤销/重做可让一个槽位的两代实体同时
+等待投影；它们不能存入只允许一个活代际的组件 sparse set。
 原 stdexec 上传源借用终点、FIF 数据隔离和唯一物理清理合同保持。
+
+内置 ModelCooker 实际输出 BC7 颜色、BC5 法线、RG8 金属/粗糙度和 R8 遮蔽数据。Render 上传与图像
+描述直接消费这些格式，不能把成功上传结果默认描述成 RGBA8，也不在导入时偷偷降级成替代材质。
+Editor 启动请求实际使用的 BC 能力，不支持的设备或像素格式明确失败。
 
 ## 7 Inspector Hierarchy 保存与运行
 

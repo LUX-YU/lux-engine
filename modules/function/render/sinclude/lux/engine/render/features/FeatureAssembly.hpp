@@ -38,12 +38,6 @@ namespace lux::render
         std::vector<SamplerDescription> samplers;
     };
 
-    [[nodiscard]] LUX_RENDER_PUBLIC std::string featureKey(
-        FeatureName type,
-        std::string_view instance,
-        std::string_view local
-    ) noexcept;
-
     // Synchronous cold assembly. Inputs/configurations are borrowed for this call only; the result owns
     // graph, analysis and Attach arguments. Failure publishes no Effect and leaves inputs untouched.
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<FeatureAssembly> composeFeatures(

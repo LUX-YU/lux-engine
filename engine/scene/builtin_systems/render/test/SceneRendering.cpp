@@ -83,6 +83,7 @@ namespace
 
     template <RenderCommand C> typename C::Response call(RenderExecution& rendering, typename C::Request input)
     {
+        static_assert(!C::frame_scoped, "Frame-scoped controls require the application's maintenance frames");
         auto bound = take(rendering.mainClient().bind<C>());
         typename C::Response response;
         bool complete = false;
@@ -238,7 +239,7 @@ int main()
             return;
         }
         auto& frame = **available;
-        inputs.frame = &frame;
+
         if (scene)
         {
             scene::SceneStageContext context;
@@ -246,7 +247,7 @@ int main()
             CHECK(scene->prepareInputs(context));
             CHECK(scene->publish(context));
         }
-        inputs.frame = nullptr;
+
         CHECK(frames.submit(
             {},
             [&](execution::TaskReporter) noexcept
@@ -302,6 +303,40 @@ int main()
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
+    const auto previous_target = inputs.target;
+    const auto previous_attachment = scene->attachment();
+    inputs.target = call<CreateTarget>(*rendering, {inputs.description}).target;
+    ++inputs.revision;
+    while (scene->attachment() == previous_attachment)
+    {
+        drive(true);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    // Moving the view prepares the new output before revoking the previous writer.
+    // The old Target is now independently releasable, without recreating Mesh/Material assets.
+    auto old_target = previous_target;
+    const auto remove_target = take(rendering->mainClient().bind<RemoveTarget>());
+    bool target_released = false;
+    auto removal = take(execution.submit(
+        {},
+        [&](execution::TaskReporter) noexcept
+        {
+            return stdexec::then(
+                rendering->mainClient().request(remove_target, old_target),
+                [&](AckResponse response) noexcept
+                {
+                    CHECK(response.error.type == 0);
+                    target_released = true;
+                }
+            );
+        }
+    ));
+    while (!target_released)
+    {
+        drive(false);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    CHECK(assets->mesh({mesh_id, inputs.asset_revision}) != nullptr);
     registry.destroy(first);
     for (unsigned i = 0; i < 8; ++i)
     {

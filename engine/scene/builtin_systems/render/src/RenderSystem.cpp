@@ -153,8 +153,13 @@ namespace lux::scene
         // It contains no Registry/SceneSystem pointer, CPU transform mirror, thread or operation owner.
         struct SceneRendering final
         {
-            SceneRendering(RenderExecution& rendering, RenderAssets& assets, execution::TaskScope& tasks) noexcept
-                : rendering(rendering), assets(assets), tasks(tasks)
+            SceneRendering(
+                RenderExecution& rendering,
+                RenderAssets& assets,
+                execution::TaskScope& tasks,
+                process::asset_loading::AssetReadPort source
+            ) noexcept
+                : rendering(rendering), assets(assets), tasks(tasks), source(std::move(source))
             {
             }
 
@@ -265,7 +270,7 @@ namespace lux::scene
                         const RenderAssetVersion texture{cooked->texture_slot_ids[i], key.revision};
                         if (!texture.asset.isNull())
                         {
-                            auto acquired = assets.acquireTexture(texture);
+                            auto acquired = assets.acquireTexture(texture, source);
                             if (!acquired && acquired.error().type == kRuntimeCapacity)
                             {
                                 break;
@@ -454,7 +459,7 @@ namespace lux::scene
                     co_return RenderResult<void>{};
                 }
                 auto& client = rendering.mainClient();
-                bool changed = attachment.isNull();
+                bool changed = attachment.isNull() || rebuild_requested;
                 for (auto& [entity, entry] : meshes)
                 {
                     if (entry.present || entry.instance.isNull())
@@ -558,6 +563,7 @@ namespace lux::scene
                     {
                         co_return rebuilt;
                     }
+                    rebuild_requested = false;
                 }
                 for (auto entry = meshes.begin(); entry != meshes.end();)
                 {
@@ -654,6 +660,7 @@ namespace lux::scene
 
             RenderExecution& rendering;
             RenderAssets& assets;
+            process::asset_loading::AssetReadPort source;
             execution::TaskScope& tasks;
             std::unordered_map<std::uint64_t, MeshEntry> meshes;
             std::vector<std::uint64_t> new_instances, new_lights;
@@ -671,6 +678,7 @@ namespace lux::scene
             SceneParameters parameters;
             RenderError error;
             bool initialized = false, busy = false, closing = false;
+            bool rebuild_requested = false;
         };
 
         exec::task<RenderResult<void>> updateScene(
@@ -751,7 +759,9 @@ namespace lux::scene
     {
         Impl(Registry& registry, SceneRenderServices& services)
             : registry(registry), services(services),
-              state(std::make_shared<SceneRendering>(services.rendering, services.assets, services.tasks)),
+              state(
+                  std::make_shared<SceneRendering>(services.rendering, services.assets, services.tasks, services.source)
+              ),
               mesh_added(registry.on_construct<Mesh3D>().connect<&Impl::structureChanged>(*this)),
               mesh_updated(registry.on_update<Mesh3D>().connect<&Impl::structureChanged>(*this)),
               mesh_removed(registry.on_destroy<Mesh3D>().connect<&Impl::structureChanged>(*this)),
@@ -892,17 +902,18 @@ namespace lux::scene
         }
         const auto& inputs = self.services.inputs;
         const bool changed_inputs = self.camera_dirty || self.view_revision != inputs.revision ||
-                                    self.resynchronization != inputs.resynchronization;
+                                    self.resynchronization != self.services.rendering.mainClient().resynchronization();
         context.publication_needed |= !self.structure.empty() || !self.transformed.empty() ||
                                       !self.light_changes.empty() || changed_inputs || state.busy;
         if (state.busy || self.services.inputs.target.isNull())
         {
             return ESceneProgress::COMPLETE;
         }
+        state.rebuild_requested |= state.initialized && state.target != self.services.inputs.target;
         state.target = self.services.inputs.target;
         state.description = self.services.inputs.description;
         state.viewport = self.services.inputs.viewport;
-        bool changed = !state.initialized;
+        bool changed = !state.initialized || state.rebuild_requested;
         if (self.asset_revision != self.services.inputs.asset_revision)
         {
             self.asset_revision = self.services.inputs.asset_revision;
@@ -937,7 +948,7 @@ namespace lux::scene
             {
                 const RenderAssetVersion mesh_key{mesh->value.mesh, self.asset_revision},
                     material_key{mesh->value.material, self.asset_revision};
-                auto mesh_acquired = state.assets.acquireMesh(mesh_key);
+                auto mesh_acquired = state.assets.acquireMesh(mesh_key, self.services.source);
                 if (!mesh_acquired && mesh_acquired.error().type == kRuntimeCapacity)
                 {
                     continue;
@@ -949,7 +960,7 @@ namespace lux::scene
                 auto material = state.materials.find(material_key);
                 if (material == state.materials.end())
                 {
-                    auto acquired = state.assets.acquireMaterial(material_key);
+                    auto acquired = state.assets.acquireMaterial(material_key, self.services.source);
                     if (!acquired)
                     {
                         state.assets.releaseMesh(mesh_key);
@@ -1048,9 +1059,9 @@ namespace lux::scene
             self.transformChanged(self.registry, static_cast<Entity>(bits));
         }
         self.state->new_instances.clear();
-        if (self.resynchronization != self.services.inputs.resynchronization)
+        if (self.resynchronization != self.services.rendering.mainClient().resynchronization())
         {
-            self.resynchronization = self.services.inputs.resynchronization;
+            self.resynchronization = self.services.rendering.mainClient().resynchronization();
             self.parameters_changed = true;
             for (const auto& [bits, entry] : self.state->meshes)
             {
@@ -1177,7 +1188,7 @@ namespace lux::scene
     SceneStageResult RenderSystem::publish(SceneStageContext&) noexcept
     {
         auto& self = *impl_;
-        auto* frame = self.services.inputs.frame;
+        auto* frame = self.services.rendering.mainClient().buildingFrame();
         if (!frame)
         {
             return ESceneProgress::PENDING;

@@ -10,6 +10,7 @@ namespace lux::editor
         std::filesystem::path catalog;
         std::filesystem::path root;
     };
+
     struct EditorConfig final
     {
         std::string title{"LuxEngine"};
@@ -19,5 +20,6 @@ namespace lux::editor
         bool enable_vsync{true};
         EditorLayout layout;
         std::vector<ProjectPluginLocation> plugin_locations;
+        bool enable_validation{false}; // Development diagnostics, independent of display pacing.
     };
 } // namespace lux::editor

@@ -82,12 +82,22 @@ namespace lux::render::detail
     };
 
     // Recording values contain neither author names, Shader artifacts nor pipeline construction state.
+    struct IndexedListCommands final
+    {
+        ResourceVersion index_resource;
+        std::uint64_t index_offset;
+        EIndexType type;
+        std::uint32_t selection_offset, selection_count, data_index;
+    };
+
+    using VRasterDraw = std::variant<DrawVertices, DrawIndexed, DrawIndexedIndirect, IndexedListCommands>;
+
     struct RasterCommands final
     {
         std::vector<RasterAttachment> colors;
         std::optional<RasterAttachment> depth;
         std::vector<VertexSource> vertices;
-        VDrawCommand draw;
+        VRasterDraw draw;
         std::optional<RasterViewport> viewport;
         std::optional<RasterStateInput> state_input;
         std::array<float, 2> depth_bias{};

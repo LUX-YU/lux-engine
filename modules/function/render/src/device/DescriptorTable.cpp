@@ -195,7 +195,10 @@ namespace lux::render::detail
         };
         description.compareOp =
             input.comparison ? comparisons[static_cast<unsigned>(*input.comparison)] : nri::CompareOp::NONE;
-        description.borderColor.f = {input.border, input.border, input.border, input.border};
+        if (input.address == ESamplerAddress::CLAMP_TO_BORDER)
+        {
+            description.borderColor.f = {input.border, input.border, input.border, input.border};
+        }
         auto index = sampler(description);
         if (!index)
         {

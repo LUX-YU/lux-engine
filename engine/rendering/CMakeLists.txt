@@ -9,6 +9,7 @@ add_component(
         src/RenderExecution.cpp
         src/RenderDiagnostics.cpp
         src/RenderAssets.cpp
+        src/UiDrawInput.cpp
 )
 
 component_include_directories(
@@ -53,6 +54,13 @@ if(BUILD_TESTING)
     target_link_libraries(engine_render_transport_test PRIVATE engine_rendering)
     add_test(NAME engine.render_transport COMMAND engine_render_transport_test)
     set_tests_properties(engine.render_transport PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+
+    add_executable(engine_render_ui_test test/UiDrawing.cpp)
+    target_include_directories(engine_render_ui_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/function/render/test")
+    target_link_libraries(engine_render_ui_test PRIVATE engine_rendering)
+    add_test(NAME engine.render_ui COMMAND engine_render_ui_test)
+    add_test(NAME engine.render_ui32 COMMAND engine_render_ui_test uint32)
+    set_tests_properties(engine.render_ui engine.render_ui32 PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
     if(WIN32 AND TARGET window)
         set(surface_shader_headers)
         foreach(source IN ITEMS

@@ -43,12 +43,6 @@ namespace lux::render
         }
     } // namespace
 
-    std::string featureKey(FeatureName type, std::string_view instance, std::string_view local) noexcept
-    {
-        return "feature:" + std::to_string(type.name().size()) + ":" + std::string(type.name()) + ":" +
-               std::to_string(instance.size()) + ":" + std::string(instance) + ":" + std::string(local);
-    }
-
     RenderResult<FeatureAssembly> composeFeatures(
         std::span<const FeatureBuildInput> inputs,
         std::size_t config_byte_limit,

@@ -64,9 +64,20 @@ namespace lux::rendering
         RenderAssets(const RenderAssets&) = delete;
         RenderAssets& operator=(const RenderAssets&) = delete;
 
-        [[nodiscard]] render::RenderResult<void> acquireMesh(RenderAssetVersion) noexcept;
-        [[nodiscard]] render::RenderResult<void> acquireTexture(RenderAssetVersion) noexcept;
-        [[nodiscard]] render::RenderResult<void> acquireMaterial(RenderAssetVersion) noexcept;
+        // An explicit project source is captured by this acquisition, so project candidates and old
+        // generations can load concurrently without mutating a shared current-source selector.
+        [[nodiscard]] render::RenderResult<void> acquireMesh(
+            RenderAssetVersion,
+            process::asset_loading::AssetReadPort source = {}
+        ) noexcept;
+        [[nodiscard]] render::RenderResult<void> acquireTexture(
+            RenderAssetVersion,
+            process::asset_loading::AssetReadPort source = {}
+        ) noexcept;
+        [[nodiscard]] render::RenderResult<void> acquireMaterial(
+            RenderAssetVersion,
+            process::asset_loading::AssetReadPort source = {}
+        ) noexcept;
         void releaseMesh(RenderAssetVersion) noexcept;
         void releaseTexture(RenderAssetVersion) noexcept;
         void releaseMaterial(RenderAssetVersion) noexcept;

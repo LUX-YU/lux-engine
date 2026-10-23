@@ -55,6 +55,9 @@ namespace lux::rendering
         std::deque<FrameCarrier> frame_inputs;
         CommandId submit_frame;
         std::uint64_t next_frame = 1;
+        FrameInput* building = nullptr;
+        std::uint64_t resynchronization = 0;
+        bool requires_resynchronization = false;
         bool closed = false;
 
         Impl(ipc::IpcRequester value, RenderRequesterConfig config) noexcept
@@ -100,6 +103,11 @@ namespace lux::rendering
             auto* node = std::exchange(frame.terminal, nullptr);
             auto result = std::move(frame.result);
             frame.state = EInputState::COMPLETE;
+            requires_resynchronization = result.get<FrameCompletion>().requires_resynchronization;
+            if (requires_resynchronization)
+            {
+                ++resynchronization;
+            }
             deliverResponse(*node, std::move(result), {});
             // The receiver can release/reuse this carrier. Do not read frame afterwards.
         }
@@ -267,7 +275,7 @@ namespace lux::rendering
 
     RenderResult<FrameInput*> RenderRequester::beginFrame() noexcept
     {
-        if (impl_->closed)
+        if (impl_->closed || impl_->building)
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
@@ -276,6 +284,8 @@ namespace lux::rendering
             if (frame.state == Impl::EInputState::FREE)
             {
                 frame.state = Impl::EInputState::BUILDING;
+                impl_->building = &frame.input;
+                frame.input.resynchronize = impl_->requires_resynchronization;
                 frame.input.commands.swap(impl_->queued_frame_commands);
                 for (std::uint32_t i = 0; i < frame.input.commands.size(); ++i)
                 {
@@ -296,6 +306,25 @@ namespace lux::rendering
             }
         }
         return cxx::unexpected(RenderError{kRuntimeCapacity});
+    }
+
+    FrameInput* RenderRequester::buildingFrame() noexcept
+    {
+        return impl_->building;
+    }
+
+    bool RenderRequester::hasFrameCapacity() const noexcept
+    {
+        return !impl_->closed && !impl_->building &&
+               std::ranges::any_of(
+                   impl_->frame_inputs,
+                   [](const auto& frame) noexcept { return frame.state == Impl::EInputState::FREE; }
+               );
+    }
+
+    std::uint64_t RenderRequester::resynchronization() const noexcept
+    {
+        return impl_->resynchronization;
     }
 
     bool RenderRequester::isBuildingInput(const FrameInput& input, ipc::RequesterId source) const noexcept
@@ -319,6 +348,7 @@ namespace lux::rendering
         }
         if (frame.state == Impl::EInputState::BUILDING)
         {
+            impl_->building = nullptr;
             impl_->rejectCommands(frame, RenderError{kCommandCancelled});
         }
         input.commands.clear();
@@ -411,6 +441,7 @@ namespace lux::rendering
         frame.frame_response_received = false;
         frame.terminal = &terminal;
         frame.state = Impl::EInputState::AWAITING_RESPONSE;
+        impl_->building = nullptr;
     }
 
     std::size_t RenderRequester::consumeResponses(std::size_t limit) noexcept

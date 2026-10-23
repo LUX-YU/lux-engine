@@ -71,3 +71,18 @@ ExecutionRuntime, file providers, native windows and callback code outlive their
 Render diagnostics use the single Engine log bridge; this module never selects a console/output target.
 
 Window presentation and Editor UI assembly are separate consumers of these facilities. No new CPU pool is created.
+
+Only one carrier may be BUILDING. `buildingFrame()` lets existing Scene systems append during the
+application's frame safe point; it is not a second frame owner. `hasFrameCapacity()` is a pacing observation,
+not an admission promise across callbacks. Received failed frames advance `resynchronization()` so every
+Scene can refresh its own authoritative state.
+
+Asset acquire methods accept an optional explicit project read port. It is captured into that finite
+pipeline before control returns; simultaneously active project generations never consult a mutable global
+source selector. The caller supplies a distinct `RenderAssetVersion::revision` for distinct source generations.
+
+UI captures `rdesc::UiDrawData` directly into `FrameInput::memory()`. `makeUiDrawInput` freezes only per-draw
+clip/image selections and the projection parameters; geometry remains the original frame borrow. Native pads
+only a final non-four-byte-aligned copy fragment. Sampled UI input values are linear: use an SRGB Target for an
+already display-encoded LDR viewport, or a deliberately linear UNORM/float source. The final UI pass performs
+one display encoding and no tone mapping.

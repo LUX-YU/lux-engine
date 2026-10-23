@@ -11,6 +11,7 @@
 #include <lux/engine/render/features/MeshVisibilityFeature.hpp>
 #include <lux/engine/render/features/ShadowMapFeature.hpp>
 #include <lux/engine/render/features/TonemapFeature.hpp>
+#include <lux/engine/render/features/UiRasterFeature.hpp>
 #include <lux/engine/render/storage/DirectLightingCommandHandler.hpp>
 #include <lux/engine/render/storage/DirectLightingStorage.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshCommandHandler.hpp>
@@ -32,8 +33,7 @@ namespace lux::render::detail
             SampledTexture2DStorage,
             IndexedTriangleMeshStorage,
             RasterMaterialTableStorage,
-            RasterMeshInstanceStorage
-        >;
+            RasterMeshInstanceStorage>;
         using Commands = decltype(std::tuple_cat(
             std::declval<SampledTexture2DCommandHandler::Bindings>(),
             std::declval<IndexedTriangleMeshCommandHandler::Bindings>(),
@@ -70,8 +70,7 @@ namespace lux::render::detail
             SampledTexture2DStorage,
             IndexedTriangleMeshStorage,
             RasterMaterialTableStorage,
-            RasterMeshInstanceStorage
-        >;
+            RasterMeshInstanceStorage>;
         using Commands = decltype(std::tuple_cat(
             std::declval<SampledTexture2DCommandHandler::Bindings>(),
             std::declval<IndexedTriangleMeshCommandHandler::Bindings>(),
@@ -124,8 +123,7 @@ namespace lux::render::detail
             SampledTexture2DStorage,
             IndexedTriangleMeshStorage,
             RasterMaterialTableStorage,
-            RasterMeshInstanceStorage
-        >;
+            RasterMeshInstanceStorage>;
         using Commands = decltype(std::tuple_cat(
             std::declval<SampledTexture2DCommandHandler::Bindings>(),
             std::declval<IndexedTriangleMeshCommandHandler::Bindings>(),
@@ -143,6 +141,14 @@ namespace lux::render::detail
         static const FeatureGraphOps& graph(bool paged_instances) noexcept;
     };
 
+    struct UiRasterFeature final
+    {
+        using Descriptor = UiRasterFeatureDescriptor;
+        using Storages = std::tuple<SampledTexture2DStorage>;
+        using Commands = SampledTexture2DCommandHandler::Bindings;
+        static const FeatureGraphOps& graph(bool paged_instances) noexcept;
+    };
+
     using BuiltinFeatures = std::tuple<
         MaterialMeshRaster,
         MeshDepthRaster,
@@ -153,6 +159,6 @@ namespace lux::render::detail
         ClusteredLightingFeature,
         MeshVisibilityFeature,
         MeshShadowFeature,
-        TonemapFeature
-    >;
+        TonemapFeature,
+        UiRasterFeature>;
 } // namespace lux::render::detail

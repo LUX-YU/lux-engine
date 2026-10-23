@@ -19,6 +19,8 @@ namespace lux::render::detail
         using S = rdesc::EDataScalar;
         switch (format)
         {
+        case F::RGBA8_UNORM:
+            return {nri::Format::RGBA8_UNORM, S::FLOAT, 4, 1};
         case F::R32_SFLOAT:
             return {nri::Format::R32_SFLOAT, S::FLOAT, 1};
         case F::RG32_SFLOAT:
@@ -907,12 +909,38 @@ namespace lux::render::detail
             streams.data(),
             static_cast<std::uint8_t>(streams.size())
         };
+        constexpr std::array blend_factors{
+            nri::BlendFactor::ZERO,
+            nri::BlendFactor::ONE,
+            nri::BlendFactor::SRC_ALPHA,
+            nri::BlendFactor::ONE_MINUS_SRC_ALPHA
+        };
+        const auto& blend = graphics.blend;
+        const bool invalid_blend = blend.source_color > EBlendFactor::ONE_MINUS_SOURCE_ALPHA ||
+                                   blend.destination_color > EBlendFactor::ONE_MINUS_SOURCE_ALPHA ||
+                                   blend.source_alpha > EBlendFactor::ONE_MINUS_SOURCE_ALPHA ||
+                                   blend.destination_alpha > EBlendFactor::ONE_MINUS_SOURCE_ALPHA;
+        if (invalid_blend)
+        {
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        }
         std::vector<nri::ColorAttachmentDesc> attachments;
         for (auto color : colors)
         {
             nri::ColorAttachmentDesc attachment{};
             attachment.format = color;
             attachment.colorWriteMask = nri::ColorWriteBits::RGBA;
+            attachment.blendEnabled = blend.enabled;
+            attachment.colorBlend = {
+                blend_factors[static_cast<unsigned>(blend.source_color)],
+                blend_factors[static_cast<unsigned>(blend.destination_color)],
+                nri::BlendOp::ADD
+            };
+            attachment.alphaBlend = {
+                blend_factors[static_cast<unsigned>(blend.source_alpha)],
+                blend_factors[static_cast<unsigned>(blend.destination_alpha)],
+                nri::BlendOp::ADD
+            };
             attachments.push_back(attachment);
         }
         constexpr std::array comparisons{

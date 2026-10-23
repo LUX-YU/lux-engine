@@ -5,6 +5,7 @@
 #include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/detail/PreparedProject.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
+#include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
 
 namespace lux::editor
 {
@@ -22,7 +23,14 @@ namespace lux::editor
     {
     }
 
-    EditorContext::~EditorContext() noexcept = default;
+    EditorContext::~EditorContext() noexcept
+    {
+        // Contexts without Scene borrows retain the existing nonblocking task-destruction contract.
+        if (!scenes_.empty() || (!scene_retirements_.empty() && !finishClose()))
+        {
+            std::terminate();
+        }
+    }
 
     FrameworkResult<std::unique_ptr<EditorContext>> EditorContext::create(
         engine::EngineContext& engine,
@@ -74,6 +82,79 @@ namespace lux::editor
             std::terminate();
         }
         return tasks_;
+    }
+
+    FrameworkResult<process::asset_loading::AssetReadPort> EditorContext::prepareAssetReads() noexcept
+    {
+        if (!object::ObjectRuntime::instance().isCurrent())
+        {
+            return cxx::unexpected(error::Error{Errors::EditorProjectServicesRequireOwnerThread});
+        }
+        if (!asset_reads_)
+        {
+            auto blocking = engine_.execution().blocking();
+            if (!blocking)
+            {
+                return cxx::unexpected(execution::toError(blocking.error()));
+            }
+            auto endpoint =
+                process::asset_loading::VfsAssetReadEndpoint::create(assets_.view(), *blocking, tasks_, {16});
+            if (!endpoint)
+            {
+                std::terminate(); // Valid VFS and fixed nonzero admission capacity.
+            }
+            asset_reads_ = std::move(*endpoint);
+        }
+        return asset_reads_->port();
+    }
+
+    FrameworkResult<scene::SceneInstanceId> EditorContext::adoptScene(scene::SceneInstanceLease&& scene) noexcept
+    {
+        if (close_stage_ != ECloseStage::OPEN || !scene)
+        {
+            return cxx::unexpected(error::Error{Errors::EditorServiceUseOutsideProjectLifetime});
+        }
+        const auto id = scene.id();
+        scenes_.push_back(std::move(scene));
+        return id;
+    }
+
+    void EditorContext::close() noexcept
+    {
+        if (close_stage_ != ECloseStage::OPEN)
+        {
+            return;
+        }
+        close_stage_ = ECloseStage::SCENES;
+        scene_retirements_.reserve(scenes_.size());
+        for (auto& scene : scenes_)
+        {
+            scene_retirements_.push_back(scene.retire());
+        }
+        scenes_.clear();
+    }
+
+    bool EditorContext::finishClose() noexcept
+    {
+        if (close_stage_ == ECloseStage::OPEN)
+        {
+            return false;
+        }
+        if (close_stage_ == ECloseStage::SCENES)
+        {
+            for (const auto& retirement : scene_retirements_)
+            {
+                if (!retirement.complete())
+                {
+                    return false;
+                }
+            }
+            // Scene system destructors have now registered their final cleanup transactions.
+            tasks_.requestStop();
+            asset_reads_.reset();
+            close_stage_ = ECloseStage::TASKS;
+        }
+        return scene_retirements_.empty() || tasks_.settled();
     }
 
     FrameworkResult<std::unique_ptr<EditorContext>> detail::createEditorContext(

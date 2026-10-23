@@ -1,415 +1,479 @@
 #include <algorithm>
-#include <lux/engine/EngineContext.hpp>
-#include <lux/engine/RenderContext.hpp>
-#include <lux/engine/editor/EditorUiErrors.hpp>
+#include <exec/task.hpp>
+#include <exec/variant_sender.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
-#include <lux/engine/editor/detail/UiFrame.hpp>
-#include <lux/engine/editor/detail/UiRenderSyncStage.hpp>
-#include <lux/engine/core/execution/CompletionWork.hpp>
-#include <lux/engine/scene/RenderSystem.hpp>
-#include <lux/engine/scene/RenderSystemConfiguration.hpp>
-#include <lux/engine/scene/SceneDescriptionBuilder.hpp>
-#include <lux/engine/scene/SceneError.hpp>
-#include <lux/engine/scene/SceneRuntime.hpp>
+#include <lux/engine/render/features/UiRasterFeature.hpp>
+#include <lux/engine/rendering/RenderDiagnostics.hpp>
+#include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/rendering/UiDrawInput.hpp>
 
 namespace lux::editor
 {
+    using namespace render;
+    using namespace rendering;
+
     namespace
     {
-        error::Error descriptionError(const scene::SceneDescriptionFailure& failure) noexcept
+        // A value-owned request in the caller's existing Sender chain. No task, queue or reply owner.
+        template <RenderCommand C> auto request(RenderRequester& client, typename C::Request input) noexcept
         {
-            return error::Error{
-                Errors::SceneDescription,
-                {static_cast<std::uint64_t>(failure.code), failure.system.value, failure.subject_hash}
-            };
+            return stdexec::let_value(
+                stdexec::just(std::move(input), client.bind<C>()),
+                [&client](typename C::Request& input, auto& binding) noexcept
+                {
+                    using Immediate = decltype(stdexec::just(typename C::Response{}));
+                    using Request = decltype(client.request(*binding, input));
+                    using VRequest = exec::variant_sender<Immediate, Request>;
+                    return binding ? VRequest{client.request(*binding, input)}
+                                   : VRequest{stdexec::just(typename C::Response{binding.error()})};
+                }
+            );
         }
     } // namespace
 
     struct EditorUiScene::Impl final
     {
-        Impl(
-            execution::ExecutionRuntime& execution,
-            lux::scene::SceneRuntime& scenes,
-            lux::scene::RenderResources& resources,
-            std::optional<scene::ViewConfig> output
-        )
-            : scenes_(scenes), resources_(resources), output_(std::move(output)),
-              work_(
-                  execution,
-                  this,
-                  [](void* value) noexcept { static_cast<Impl*>(value)->dispatchMainCompletions(); }
-              ),
-              completion_(std::make_shared<execution::CompletionWork::Request>(work_.requester()))
+        using Transaction = exec::task<RenderResult<void>>;
+
+        Impl(RenderExecution& input, TargetDesc description, SurfaceDescription surface)
+            : rendering(input), description(description), desired_description(description), surface(surface)
         {
-            for (auto& slot : frames_)
-            {
-                slot = std::make_shared<lux::ui::RenderFrame>();
-            }
         }
 
-        ~Impl() noexcept
+        RenderResult<void> launch(Transaction work) noexcept
         {
-            collectOutputReceipt();
-            stopFrames();
-            work_.cancel();
-            retirement_ = scene_.retire();
-            // The application keeps the native window and shared RenderContext alive
-            // through SceneRuntime's final retirement drain. No callback blocks here.
+            transaction_pending = true;
+            auto accepted = rendering.execution().submit(
+                {.name = "Configure UI output", .category = "editor.ui"},
+                [this, work = std::move(work)](execution::TaskReporter) mutable noexcept
+                {
+                    auto operation = stdexec::starts_on(rendering.execution().mainScheduler(), std::move(work));
+                    // Revocation stops new UI frames, not cleanup of already accepted native objects.
+                    auto result = execution::taskResult(stdexec::write_env(
+                        std::move(operation),
+                        stdexec::prop{stdexec::get_stop_token, stdexec::never_stop_token{}}
+                    ));
+                    return stdexec::then(
+                        std::move(result),
+                        [this](auto result) noexcept
+                        {
+                            if (!result)
+                            {
+                                if (const auto* domain = result.error().domainFailure())
+                                {
+                                    failure = *domain;
+                                }
+                                else
+                                {
+                                    failure =
+                                        RenderError{result.error().isCancelled() ? kCommandCancelled : kRuntimeState};
+                                }
+                            }
+                            transaction_pending = false;
+                            return execution::taskState(result);
+                        }
+                    );
+                }
+            );
+            if (!accepted)
+            {
+                transaction_pending = false;
+                return cxx::unexpected(execution::toError(accepted.error()));
+            }
+            return {};
         }
 
-        FrameworkResult<void> initialize(std::vector<std::byte> configuration, render::RenderRuntime& runtime) noexcept
+        Transaction initialize(ui::FontAtlas atlas) noexcept
         {
-            const auto registration = lux::scene::builtinRenderSystemRegistration();
-            const auto codec = render::UiRenderConfigurationCodec();
-            lux::scene::RenderSystemConfiguration render_configuration;
-            render_configuration.features.push_back(
-                {render::kUiRenderDescriptor.type,
-                 std::move(configuration),
-                 std::string(codec.schema),
-                 codec.schema_version}
-            );
-            std::vector<std::byte> bytes;
-            const auto encoded = registration.configuration.encode(&render_configuration, bytes);
-            if (!encoded)
+            auto& client = rendering.mainClient();
+            const auto features = co_await request<ListFeatures>(client, {});
+            if (features.error.type != 0)
             {
-                return lux::cxx::unexpected(error::Error{
-                    Errors::UiConfigurationEncode,
-                    {static_cast<std::uint64_t>(encoded.error().code), encoded.error().offset}
-                });
+                co_return cxx::unexpected(features.error);
             }
-            lux::scene::SceneDescriptionBuilder description;
-            auto added = description.addSystem(
-                RenderSystemId,
-                "Editor UI",
-                registration.type,
-                registration.description->version,
-                registration.description->configuration_schema_name,
-                registration.description->configuration_schema_version,
-                bytes
-            );
-            if (!added)
+            const auto selected =
+                std::ranges::find(features.features, UiRasterFeatureDescriptor::name.name(), &FeatureInfo::name);
+            if (selected == features.features.end())
             {
-                return lux::cxx::unexpected(descriptionError(added.error()));
+                co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
             }
-            auto resolved = std::move(description).buildResolved();
-            if (!resolved)
+            feature = selected->id;
+            const auto storages = co_await request<ListStorages>(client, {});
+            if (storages.error.type != 0)
             {
-                return lux::cxx::unexpected(descriptionError(resolved.error()));
+                co_return cxx::unexpected(storages.error);
             }
-            const simulation::ecs::ComponentSchemaSet components;
-            const simulation::SimulationSystemRegistry systems;
-            const std::array bindings{detail::uiRenderFeatureBinding()};
-            lux::scene::RenderFeatureSceneBindings binding_view{bindings};
-            const std::array providers{
-                lux::scene::makeSceneCapabilityProvider<render::RenderRuntime>(
-                    "runtime",
-                    "lux.render.runtime",
-                    runtime
-                ),
-                lux::scene::makeSceneCapabilityProvider<lux::scene::RenderResources>(
-                    "resources",
-                    "lux.render.resources",
-                    resources_
-                ),
-                lux::scene::makeSceneCapabilityProvider<lux::scene::RenderFeatureSceneBindings>(
-                    "bindings",
-                    "lux.render.scene_bindings",
-                    binding_view
-                )
+            const auto type = std::ranges::find(storages.storages, kTextureStorageType.name(), &StorageInfo::name);
+            if (type == storages.storages.end())
+            {
+                co_return cxx::unexpected(RenderError{kStorageFactory});
+            }
+            const auto storage =
+                co_await request<PrepareStorage>(client, {{GlobalStorageLocation{}, type->id, "ui"}, {}});
+            if (storage.error.type != 0)
+            {
+                co_return cxx::unexpected(storage.error);
+            }
+            rdesc::TextureInfo texture{};
+            texture.width = atlas.width;
+            texture.height = atlas.height;
+            texture.channel = 4;
+            texture.pixel_format = rdesc::ETexturePixelFormat::RGBA8_UNORM;
+            texture.color_space = rdesc::ETextureColorSpace::DATA;
+            texture.mip_ranges[0] = {
+                0,
+                atlas.pixels.size(),
+                static_cast<std::uint32_t>(atlas.width),
+                static_cast<std::uint32_t>(atlas.height)
             };
-            auto builder = scenes_.builder();
-            builder.setDescription(std::make_shared<const lux::scene::SceneDescription>(std::move(*resolved)))
-                .setWorld(std::make_shared<const world::WorldDescription>())
-                .setSimulation(std::make_shared<const simulation::SimulationDescription>())
-                .setRegistrations(components, systems, std::span{&registration, 1})
-                .setProviders(providers);
-            auto built = builder.build();
-            if (!built)
-            {
-                return lux::cxx::unexpected(scene::toError(built.error()));
-            }
-            scene_ = std::move(*built);
-            if (!scenes_.pauseSimulation(scene_.id()))
-            {
-                render::renderFatal("New UI scene identity was rejected");
-            }
-            auto borrowed = scenes_.borrowInstance(scene_.id());
-            if (!borrowed)
-            {
-                return lux::cxx::unexpected(scene::toError(borrowed.error()));
-            }
-            auto& registry = borrowed->get();
-            input_ = registry.create();
-            registry.emplace<detail::UiFrame>(input_);
-            if (output_)
-            {
-                desired_extent_ = output_->extent;
-                output_request_ = registry.create();
-                registry.emplace<lux::scene::RenderViewRequest>(
-                    output_request_,
-                    RenderSystemId,
-                    simulation::ecs::NullEntity,
-                    *output_,
-                    std::uint64_t{1},
-                    output_stop_.get_token()
-                );
-            }
-            const auto bound = runtime.bindProgress(
-                completion_,
-                [](void* value) noexcept { static_cast<execution::CompletionWork::Request*>(value)->request(); }
+            font_description = {static_cast<std::uint32_t>(atlas.width), static_cast<std::uint32_t>(atlas.height)};
+            auto upload = request<CreateTexture>(
+                rendering.assetClient(),
+                {storage.storage, texture, std::as_bytes(std::span(atlas.pixels))}
             );
-            if (!bound)
+            const auto uploaded = co_await stdexec::continues_on(
+                stdexec::starts_on(rendering.assetScheduler(), std::move(upload)),
+                rendering.execution().mainScheduler()
+            );
+            if (uploaded.error.type != 0)
             {
-                return lux::cxx::unexpected(render::toError(bound.error()));
+                co_return cxx::unexpected(uploaded.error);
             }
-            return {};
+            font = uploaded.texture;
+            std::vector<std::uint8_t>{}.swap(atlas.pixels); // Real Response ended the source borrow.
+            const auto created_scene = co_await request<CreateScene>(client, {});
+            if (created_scene.error.type != 0)
+            {
+                co_return cxx::unexpected(created_scene.error);
+            }
+            scene = created_scene.scene;
+            const auto created_view = co_await request<CreateView>(client, {scene});
+            if (created_view.error.type != 0)
+            {
+                co_return cxx::unexpected(created_view.error);
+            }
+            view = created_view.view;
+            co_return desired_active && !closing ? co_await createOutput() : RenderResult<void>{};
         }
 
-        void collectOutputReceipt() noexcept
+        Transaction createOutput() noexcept
         {
-            if (!output_ || !bool(scene_))
+            auto& client = rendering.mainClient();
+            const auto created_target = co_await request<CreateTarget>(client, {desired_description, surface});
+            if (created_target.error.type != 0)
             {
-                return;
-            }
-            const auto registry = std::as_const(scenes_).borrowInstance(scene_.id());
-            if (!registry)
-            {
-                return;
-            }
-            const auto* result = registry->get().try_get<lux::scene::RenderViewResult>(output_request_);
-            if (!result)
-            {
-                return;
-            }
-            if (result->failure)
-            {
-                failure_ = render::toError(*result->failure);
-            }
-            if (result->view.isValid())
-            {
-                if (auto receipt = resources_.viewReceipt(result->view))
+                if (!desired_active && created_target.error.type == kDeviceArgument)
                 {
-                    output_receipt_ = *receipt;
+                    co_return RenderResult<void>{}; // Minimize raced the submitted creation; retry on restore.
                 }
+                co_return cxx::unexpected(created_target.error);
             }
+            target = created_target.target;
+            description = created_target.description;
+            desired_description.format = description.format;
+            co_return co_await rebuildImages();
         }
 
-        FrameworkResult<bool> outputReady() noexcept
+        Transaction rebuildImages() noexcept
         {
-            collectOutputReceipt();
-            if (failure_)
+            const auto revision = desired_image_revision;
+            const auto images = desired_images;
+            UiRasterFeatureConfig ui{description};
+            ui.images.push_back(UiTextureImage{font, font_description, "ui"});
+            CreateEffectRequest program{description};
+            AttachmentRequest binding{scene, view, target};
+            std::vector<UiImageSelection> selections{{{0}, 0}};
+            for (std::uint32_t i = 0; i < images.size(); ++i)
             {
-                return cxx::unexpected(*failure_);
-            }
-            return !output_ || output_receipt_.status().status.state == lux::scene::EViewState::READY;
-        }
-
-        static bool reusable(const std::shared_ptr<lux::ui::RenderFrame>& frame) noexcept
-        {
-            return frame.use_count() == 1 && frame->submission.complete();
-        }
-
-        bool hasWritableFrame() const noexcept
-        {
-            return !frames_stopped_ && !failure_ && !pending_ && std::ranges::any_of(frames_, &Impl::reusable);
-        }
-
-        void dispatchMainCompletions() noexcept
-        {
-            for (auto& frame : frames_)
-            {
-                if (reusable(frame))
-                {
-                    frame->resources.clear();
-                }
-            }
-        }
-
-        lux::ui::DrawData* tryAcquireDrawData() noexcept
-        {
-            if (frames_stopped_ || failure_ || pending_)
-            {
-                return nullptr;
-            }
-            const auto slot = std::ranges::find_if(frames_, &Impl::reusable);
-            if (slot == frames_.end())
-            {
-                return nullptr;
-            }
-            current_frame_ = static_cast<std::size_t>(slot - frames_.begin());
-            (*slot)->resources.clear();
-            return &(*slot)->draw_data;
-        }
-
-        lux::cxx::expected<void, lux::ui::ECaptureError> captureDrawData(const lux::ui::DrawData& data) noexcept
-        {
-            const bool is_valid_slot = current_frame_ < frames_.size() && &frames_[current_frame_]->draw_data == &data;
-            if (!is_valid_slot || frames_stopped_ || pending_)
-            {
-                return lux::cxx::unexpected(lux::ui::ECaptureError::FRAME_OPEN);
-            }
-            auto& frame = *frames_[current_frame_];
-            if (!data.textures().empty())
-            {
-                auto captured = resources_.captureTextures(data.textures());
-                if (!captured)
-                {
-                    failure_ = render::toError(captured.error());
-                    return lux::cxx::unexpected(lux::ui::ECaptureError::INVALID_INPUT);
-                }
-                frame.resources.push_back(std::move(*captured));
-            }
-            frame.sequence = ++frame_sequence_;
-            pending_ = frames_[current_frame_];
-            return {};
-        }
-
-        void stopFrames() noexcept
-        {
-            if (std::exchange(frames_stopped_, true))
-            {
-                return;
-            }
-            output_stop_.request_stop();
-            pending_.reset();
-            clear_pending_ = true;
-        }
-
-        FrameworkResult<void> applySceneInput() noexcept
-        {
-            if (failure_)
-            {
-                return lux::cxx::unexpected(*failure_);
-            }
-            if (!pending_ && !clear_pending_ && !extent_pending_)
-            {
-                return {};
-            }
-            auto borrowed = scenes_.borrowInstance(scene_.id());
-            if (!borrowed)
-            {
-                const auto* error = std::get_if<lux::scene::ESceneRuntimeError>(&borrowed.error().cause);
-                if (error && *error == lux::scene::ESceneRuntimeError::BUSY)
-                {
-                    return {};
-                }
-                return lux::cxx::unexpected(scene::toError(borrowed.error()));
-            }
-            auto& registry = borrowed->get();
-            if (extent_pending_ && output_)
-            {
-                registry.patch<scene::RenderViewRequest>(
-                    output_request_,
-                    [&](auto& request)
-                    {
-                        request.configuration.extent = desired_extent_;
-                        ++request.revision;
-                    }
+                const auto& image = images[i];
+                GraphImageDesc source{1, 1, 1, 1, image.description.format};
+                source.extent.source = EImageExtentSource::IMPORTED;
+                ui.images.push_back(render::UiTargetImage{source});
+                const auto resource = "ui.target." + std::to_string(i);
+                program.definition.inputs.push_back(
+                    {{0, uiImagePort(i + 1)},
+                     {resource, source, EGraphOrigin::IMPORTED, {GraphImageRange{}}, EGraphUse::SAMPLED}}
                 );
-                extent_pending_ = false;
+                binding.target_images.push_back({resource, image.target});
+                selections.push_back({image.token, i + 1});
             }
-            if (pending_ || clear_pending_)
+            auto configuration = ConfigValue::make(std::move(ui));
+            if (!configuration)
             {
-                registry.patch<detail::UiFrame>(input_, [&](auto& value) { value.frame = std::move(pending_); });
-                clear_pending_ = false;
-                current_frame_ = frames_.size();
+                co_return cxx::unexpected(configuration.error());
             }
-            return {};
+            program.definition.features.push_back({feature, "ui", std::move(*configuration)});
+            program.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{description.format, 1}});
+            auto& client = rendering.mainClient();
+            const auto compiled = co_await request<CreateEffect>(client, std::move(program));
+            if (compiled.error.type != 0)
+            {
+                co_return cxx::unexpected(compiled.error);
+            }
+            binding.effect = compiled.effect;
+            binding.replaces = attachment;
+            const auto attached = co_await request<Attach>(client, std::move(binding));
+            if (attached.error.type != 0)
+            {
+                static_cast<void>(co_await request<RemoveEffect>(client, {compiled.effect}));
+                co_return cxx::unexpected(attached.error);
+            }
+            if (attached.draw_lists.size() != 1)
+            {
+                std::terminate(); // Built-in UiRasterFeature has exactly one list.
+            }
+            const auto previous = std::exchange(effect, compiled.effect);
+            attachment = attached.attachment;
+            draw_pass = attached.draw_lists[0].second;
+            image_selections = std::move(selections);
+            applied_image_revision = revision;
+            if (!previous.isNull())
+            {
+                const auto removed = co_await request<RemoveEffect>(client, {previous});
+                if (removed.error.type != 0)
+                {
+                    co_return cxx::unexpected(removed.error);
+                }
+            }
+            co_return RenderResult<void>{};
         }
 
-        inline static constexpr system::SystemInstanceId RenderSystemId{1};
-        lux::scene::SceneRuntime& scenes_;
-        lux::scene::RenderResources& resources_;
-        std::optional<scene::ViewConfig> output_;
-        render::PixelExtent desired_extent_{};
-        bool extent_pending_{};
-        execution::CompletionWork work_;
-        std::shared_ptr<execution::CompletionWork::Request> completion_;
-        lux::scene::SceneInstanceLease scene_;
-        lux::scene::InstanceRetirement retirement_;
-        simulation::ecs::Entity input_{simulation::ecs::NullEntity}, output_request_{simulation::ecs::NullEntity};
-        std::stop_source output_stop_;
-        lux::scene::RenderViewReceipt output_receipt_;
-        std::array<std::shared_ptr<lux::ui::RenderFrame>, render::TRenderProgramChannel<>::request_slot_count + 1>
-            frames_;
-        std::shared_ptr<const lux::ui::RenderFrame> pending_;
-        std::size_t current_frame_{frames_.size()};
-        bool frames_stopped_{}, clear_pending_{};
-        std::uint64_t frame_sequence_{};
-        std::optional<error::Error> failure_;
+        Transaction reconfigure() noexcept
+        {
+            const auto desired = desired_description;
+            const auto active = desired_active;
+            auto& client = rendering.mainClient();
+            if (target.isNull())
+            {
+                co_return active ? co_await createOutput() : RenderResult<void>{};
+            }
+            if (active && (desired != description || resize_required))
+            {
+                const auto resized = co_await request<ResizeTarget>(client, {target, desired});
+                if (resized.error.type != 0)
+                {
+                    if (!desired_active && resized.error.type == kDeviceArgument)
+                    {
+                        resize_required = true;
+                        co_return RenderResult<void>{};
+                    }
+                    co_return cxx::unexpected(resized.error);
+                }
+                description = resized.description;
+                resize_required = false;
+            }
+            if (active != applied_active)
+            {
+                const auto changed = co_await request<SetTargetActive>(client, {target, active});
+                if (changed.error.type != 0)
+                {
+                    co_return cxx::unexpected(changed.error);
+                }
+                applied_active = active;
+            }
+            if (desired_image_revision != applied_image_revision)
+            {
+                co_return co_await rebuildImages();
+            }
+            co_return RenderResult<void>{};
+        }
+
+        Transaction close() noexcept
+        {
+            auto& client = rendering.mainClient();
+            RenderError first;
+            const auto remember = [&](RenderError error) noexcept
+            {
+                if (first.type == 0)
+                {
+                    first = error;
+                }
+            };
+            if (!scene.isNull())
+            {
+                remember((co_await request<RemoveScene>(client, {std::exchange(scene, {})})).error);
+                attachment = {};
+            }
+            if (!effect.isNull())
+            {
+                remember((co_await request<RemoveEffect>(client, {std::exchange(effect, {})})).error);
+            }
+            if (!target.isNull())
+            {
+                remember((co_await request<RemoveTarget>(client, std::exchange(target, {}))).error);
+            }
+            if (!font.isNull())
+            {
+                remember((co_await request<ReleaseTexture>(client, std::exchange(font, {}))).error);
+            }
+            co_return first.type == 0 ? RenderResult<void>{} : RenderResult<void>{cxx::unexpected(first)};
+        }
+
+        RenderExecution& rendering;
+        TargetDesc description, desired_description;
+        SurfaceDescription surface;
+        FeatureId feature;
+        SceneId scene;
+        ViewId view;
+        TargetId target;
+        EffectId effect;
+        AttachmentId attachment;
+        GraphPassId draw_pass;
+        TextureId font;
+        GraphImageDesc font_description;
+        std::optional<BoundCommand<UpdateDrawList>> update_draws;
+        ui::DrawData draw_data;
+        std::vector<UiTargetImage> desired_images;
+        std::vector<UiImageSelection> image_selections;
+        std::uint64_t desired_image_revision = 1, applied_image_revision = 0;
+        bool desired_active = true, applied_active = true;
+        bool transaction_pending = false, closing = false;
+        bool resize_required = false;
+        RenderError failure;
     };
 
+    EditorUiScene::EditorUiScene(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
+
     FrameworkResult<std::unique_ptr<EditorUiScene>> EditorUiScene::create(
-        engine::EngineContext& engine,
-        std::vector<std::byte> configuration,
-        std::optional<scene::ViewConfig> output
+        RenderExecution& rendering,
+        TargetDesc description,
+        SurfaceDescription surface,
+        ui::FontAtlas atlas
     ) noexcept
     {
-        auto* rendering = engine.renderContext();
-        if (!rendering)
+        auto impl = std::make_unique<Impl>(rendering, description, surface);
+        auto command = rendering.mainClient().bind<UpdateDrawList>();
+        if (!command)
         {
-            return cxx::unexpected(render::toError(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT}));
+            return cxx::unexpected(command.error());
         }
-        auto& runtime = rendering->runtime();
-        auto impl = std::make_unique<Impl>(
-            engine.execution(),
-            engine.sceneRuntime(),
-            rendering->resources(),
-            std::move(output)
-        );
-        auto initialized = impl->initialize(std::move(configuration), runtime);
-        if (!initialized)
+        impl->update_draws = *command;
+        if (auto started = impl->launch(impl->initialize(std::move(atlas))); !started)
         {
-            return cxx::unexpected(std::move(initialized.error()));
+            return cxx::unexpected(started.error());
         }
         return std::unique_ptr<EditorUiScene>{new EditorUiScene(std::move(impl))};
     }
 
-    EditorUiScene::EditorUiScene(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
-
-    EditorUiScene::~EditorUiScene() noexcept = default;
-
-    void EditorUiScene::setExtent(render::PixelExtent extent) noexcept
+    EditorUiScene::~EditorUiScene() noexcept
     {
-        if (impl_->desired_extent_ != extent)
+        if (impl_->transaction_pending)
         {
-            impl_->desired_extent_ = extent;
-            impl_->extent_pending_ = true;
+            std::terminate();
         }
     }
 
-    FrameworkResult<bool> EditorUiScene::outputReady() noexcept
+    void EditorUiScene::setExtent(std::uint32_t width, std::uint32_t height, bool active) noexcept
     {
-        return impl_->outputReady();
+        impl_->desired_active = active && width != 0 && height != 0;
+        if (width && height)
+        {
+            impl_->desired_description.width = width;
+            impl_->desired_description.height = height;
+        }
     }
 
-    bool EditorUiScene::hasWritableFrame() const noexcept
+    FrameworkResult<void> EditorUiScene::setTargetImages(std::vector<UiTargetImage> images) noexcept
     {
-        return impl_->hasWritableFrame();
+        std::ranges::sort(images, {}, &UiTargetImage::token);
+        for (std::size_t i = 0; i < images.size(); ++i)
+        {
+            const auto& image = images[i];
+            const bool duplicate = i != 0 && image.token == images[i - 1].token;
+            const bool invalid = image.token.value == 0 || image.target.isNull() || !image.description.sampled ||
+                                 image.description.kind != ETargetKind::OFFSCREEN || image.description.samples != 1;
+            if (duplicate || invalid)
+            {
+                return cxx::unexpected(RenderError{kCommandContract});
+            }
+        }
+        if (images != impl_->desired_images)
+        {
+            impl_->desired_images = std::move(images);
+            ++impl_->desired_image_revision;
+        }
+        return {};
     }
 
-    ui::DrawData* EditorUiScene::acquireDrawData() noexcept
+    bool EditorUiScene::imagesApplied() const noexcept
     {
-        return impl_->tryAcquireDrawData();
+        return impl_->applied_image_revision == impl_->desired_image_revision;
     }
 
-    cxx::expected<void, ui::ECaptureError> EditorUiScene::captureDrawData(const ui::DrawData& data) noexcept
+    FrameworkResult<void> EditorUiScene::maintain() noexcept
     {
-        return impl_->captureDrawData(data);
+        auto& state = *impl_;
+        if (state.transaction_pending)
+        {
+            return {};
+        }
+        if (state.closing)
+        {
+            if (!state.scene.isNull() || !state.target.isNull() || !state.effect.isNull() || !state.font.isNull())
+            {
+                return state.launch(state.close());
+            }
+            return {};
+        }
+        if (state.failure.type != 0)
+        {
+            return cxx::unexpected(state.failure);
+        }
+        if (state.target.isNull() && !state.desired_active)
+        {
+            return {}; // No swapchain exists yet; a window restore is the next real producer.
+        }
+        const bool resize = state.desired_active && (state.target.isNull() || state.resize_required ||
+                                                     state.description != state.desired_description);
+        const bool changed = resize || state.desired_active != state.applied_active || !imagesApplied();
+        return changed ? state.launch(state.reconfigure()) : FrameworkResult<void>{};
     }
 
-    FrameworkResult<void> EditorUiScene::publishFrame() noexcept
+    FrameworkResult<bool> EditorUiScene::outputReady() const noexcept
     {
-        return impl_->applySceneInput();
+        const auto& state = *impl_;
+        if (state.failure.type != 0)
+        {
+            return cxx::unexpected(state.failure);
+        }
+        return !state.closing && !state.transaction_pending && state.desired_active && !state.resize_required &&
+               !state.attachment.isNull();
+    }
+
+    ui::DrawData& EditorUiScene::captureBuffer(FrameInput& frame) noexcept
+    {
+        impl_->draw_data.setFrameMemory(frame.memory());
+        return impl_->draw_data;
+    }
+
+    FrameworkResult<void> EditorUiScene::appendFrameCommands(FrameInput& frame) noexcept
+    {
+        auto& state = *impl_;
+        auto input = makeUiDrawInput(frame, state.draw_data.data(), state.image_selections);
+        if (!input)
+        {
+            return cxx::unexpected(input.error());
+        }
+        auto appended = state.rendering.mainClient()
+                            .append(frame, *state.update_draws, {state.attachment, state.draw_pass, *input});
+        if (!appended)
+        {
+            return appended;
+        }
+        frame.group_ends.push_back(frame.commands.size());
+        return {};
     }
 
     void EditorUiScene::stopFrames() noexcept
     {
-        impl_->stopFrames();
+        impl_->closing = true;
     }
 
-    scene::SceneInstanceId EditorUiScene::sceneId() const noexcept
+    bool EditorUiScene::settled() const noexcept
     {
-        return impl_->scene_.id();
+        const auto& state = *impl_;
+        return state.closing && !state.transaction_pending && state.scene.isNull() && state.target.isNull() &&
+               state.font.isNull();
     }
 } // namespace lux::editor

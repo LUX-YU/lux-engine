@@ -104,9 +104,6 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
-            output.shared =
-                std::ranges::any_of(output.bindings, [](const auto& binding) { return binding.count == 0; });
-            output.private_set = output.shared ? 1u : 0u;
             std::vector<std::size_t> private_fields;
             std::vector<const ResourceParameter*> resources(output.bindings.size());
             std::vector<const SamplerParameter*> samplers(output.bindings.size());
@@ -118,6 +115,12 @@ namespace lux::render::detail
             {
                 samplers[sampler.field] = &sampler;
             }
+            for (std::size_t field = 0; field < output.bindings.size(); ++field)
+            {
+                const auto* resource = resources[field];
+                output.shared |= output.bindings[field].count == 0 && (!resource || resource->descriptor_count == 0);
+            }
+            output.private_set = output.shared ? 1u : 0u;
             for (std::size_t field = 0; field < output.bindings.size(); ++field)
             {
                 auto& binding = output.bindings[field];
@@ -154,6 +157,16 @@ namespace lux::render::detail
                 if (invalid)
                 {
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                }
+                if (selected->descriptor_count)
+                {
+                    const bool invalid_array = binding.count != 0 || binding.kind != EDescriptorKind::SAMPLED_IMAGE ||
+                                               selected->descriptor_count != selected->elements.size() + 1;
+                    if (invalid_array)
+                    {
+                        return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                    }
+                    binding.count = selected->descriptor_count;
                 }
                 const bool buffer =
                     binding.kind == EDescriptorKind::STORAGE_BUFFER || binding.kind == EDescriptorKind::UNIFORM_BUFFER;

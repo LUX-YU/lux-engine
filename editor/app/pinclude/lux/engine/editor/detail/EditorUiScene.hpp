@@ -1,40 +1,50 @@
 #pragma once
-#include <lux/engine/editor/FrameworkResult.hpp>
-#include <lux/engine/scene/RenderResourceTypes.hpp>
-#include <lux/engine/scene/SceneInstanceId.hpp>
-#include <lux/engine/ui/DrawData.hpp>
-#include <memory>
-#include <optional>
-#include <span>
 
-namespace lux::engine
+#include <lux/engine/editor/FrameworkResult.hpp>
+#include <lux/engine/editor/UiTargetImage.hpp>
+#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/ui/DrawData.hpp>
+#include <lux/engine/ui/FontAtlas.hpp>
+#include <memory>
+
+namespace lux::rendering
 {
-    class EngineContext;
-}
+    class RenderExecution;
+    struct FrameInput;
+} // namespace lux::rendering
+
 namespace lux::editor
 {
-    // UI scene/input transport only. No window, project, root or Pane is borrowed.
+    // One window's independent Render Scene. No empty Engine World, simulation, thread or frame ring.
+    // All requests use the application's existing Main/Asset clients and execution resource.
     class EditorUiScene final
     {
     public:
         [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorUiScene>> create(
-            engine::EngineContext&,
-            std::vector<std::byte> render_configuration,
-            std::optional<scene::ViewConfig> output = {}
+            rendering::RenderExecution&,
+            render::TargetDesc,
+            render::SurfaceDescription,
+            ui::FontAtlas
         ) noexcept;
         ~EditorUiScene() noexcept;
         EditorUiScene(const EditorUiScene&) = delete;
         EditorUiScene& operator=(const EditorUiScene&) = delete;
-        EditorUiScene(EditorUiScene&&) = delete;
-        EditorUiScene& operator=(EditorUiScene&&) = delete;
-        void setExtent(render::PixelExtent) noexcept;
-        [[nodiscard]] FrameworkResult<bool> outputReady() noexcept;
-        [[nodiscard]] bool hasWritableFrame() const noexcept;
-        [[nodiscard]] ui::DrawData* acquireDrawData() noexcept;
-        [[nodiscard]] cxx::expected<void, ui::ECaptureError> captureDrawData(const ui::DrawData&) noexcept;
-        [[nodiscard]] FrameworkResult<void> publishFrame() noexcept;
+
+        // Record desired window state; zero/minimized extents disable presentation until restored.
+        void setExtent(std::uint32_t width, std::uint32_t height, bool active) noexcept;
+        // Cold image-set change. Keep removed Targets alive until imagesApplied() becomes true.
+        [[nodiscard]] FrameworkResult<void> setTargetImages(std::vector<UiTargetImage>) noexcept;
+        [[nodiscard]] bool imagesApplied() const noexcept;
+        // Starts a finite reconfiguration/close transaction. Application keeps driving complete frames.
+        [[nodiscard]] FrameworkResult<void> maintain() noexcept;
+        [[nodiscard]] FrameworkResult<bool> outputReady() const noexcept;
+        [[nodiscard]] ui::DrawData& captureBuffer(rendering::FrameInput&) noexcept;
+        [[nodiscard]] FrameworkResult<void> appendFrameCommands(rendering::FrameInput&) noexcept;
         void stopFrames() noexcept;
-        [[nodiscard]] scene::SceneInstanceId sceneId() const noexcept;
+        // Only protocol work has settled. Native-window lifetime ends at successful RemoveTarget
+        // or after RenderExecution shutdown; an error never claims an unavailable response succeeded.
+        [[nodiscard]] bool settled() const noexcept;
 
     private:
         struct Impl;

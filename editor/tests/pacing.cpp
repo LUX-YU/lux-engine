@@ -2,11 +2,10 @@
 #include <cassert>
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
-#include <lux/engine/RenderContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/object/LuxObject.hpp>
-#include <lux/engine/render/RenderRuntime.hpp>
+#include <lux/engine/rendering/RenderExecution.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -20,6 +19,7 @@
 
 using namespace lux;
 using namespace std::chrono_literals;
+
 namespace
 {
     struct Probe final : ui::Pane
@@ -51,6 +51,7 @@ namespace
         std::size_t updates{};
         bool scheduled{}, changed{};
     };
+
     struct Receiver final : object::LuxObject
     {
         explicit Receiver(editor::LuxEngine& value) : host(value) {}
@@ -58,6 +59,7 @@ namespace
         object::TSignal<> finished{*this};
         editor::LuxEngine& host;
         bool called{};
+
         void complete() noexcept
         {
             called = true;
@@ -70,6 +72,7 @@ namespace
             assert(sent.queued == 1);
         }
     };
+
     auto timer(editor::LuxEngine& host, Receiver& receiver)
     {
         auto& runtime = host.engine().execution();
@@ -161,7 +164,7 @@ namespace
                  assert(result && probe->changed);
                  warmed = true;
                  before_updates = probe->updates;
-                 before_frames = host->engine().renderContext()->runtime().statistics().frames;
+                 before_frames = host->rendering().stats().presentations;
                  before_messages = object::ObjectRuntime::instance().statistics().posted;
                  started = std::chrono::steady_clock::now();
                  if (native_close)
@@ -202,7 +205,7 @@ namespace
         assert(warmed);
         const auto elapsed = std::chrono::steady_clock::now() - started;
         const auto iterations = probe->updates - before_updates;
-        const auto frames = host->engine().renderContext()->runtime().statistics().frames - before_frames;
+        const auto frames = host->rendering().stats().presentations - before_frames;
         std::printf(
             "PACING vsync=%d minimized=%d native=%d updates=%llu rendered=%llu elapsed_ms=%.3f\n",
             vsync,
@@ -223,7 +226,7 @@ namespace
         {
             assert(frames > 0 && iterations > 0);
         }
-        assert(host->engine().sceneRuntime().instanceCount() == 1);
+        assert(host->engine().sceneRuntime().instanceCount() == 0);
         assert(host->window().uiRoot().statistics().panes == 1);
         assert(host->window().uiRoot().statistics().elements == 1);
     }
@@ -245,6 +248,7 @@ namespace
         assert(probe->updates <= 2);
     }
 } // namespace
+
 int main()
 {
     closeDuringMaintenance();

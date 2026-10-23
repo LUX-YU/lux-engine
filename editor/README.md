@@ -1,7 +1,7 @@
 # Editor Framework v2 — Project / Scene foundation
 
 `editor/` builds the sole installed `lux_editor`. `editor_legacy/` remains frozen reference source.
-The terminal architecture uses typed Project Events, complete Contexts and immediate RAII project replacement. It does not yet open a project Scene
+The architecture uses typed Project Events, complete Contexts and immediate UI replacement; Scene provider retirement is explicit. It does not yet open a project Scene
 in SceneRuntime, create SceneSession/EditorScene/SceneWorkspace, or install editing tools.
 
 ## Ownership and lifetime
@@ -14,13 +14,14 @@ in SceneRuntime, create SceneSession/EditorScene/SceneWorkspace, or install edit
 | EditorServices | Lazy unique services, destroyed in reverse successful construction order |
 | EditorUiRegistry | Detached factories; createPane is implemented by lux_editor_ui, Root adopts the returned owners |
 | SceneProfileRegistry | Immutable canonical profile declarations; creation returns an owned authored ScenePackage |
-| Original Process / SceneRuntime / RenderRuntime | Scheduling, completion, the single frame driver and resource retirement |
+| ExecutionRuntime / SceneRuntime / RenderExecution | Scheduling, completion, the single frame driver and resource retirement |
 
 Parent links still do not own C++ objects. Object/UI/Error Framework v2 contracts remain unchanged.
 TaskScope destruction only requests cancellation. Accepted tasks retain their TaskGroup and own all worker inputs,
 results and code leases; they must not borrow a Context, service, Pane or mutable Registry. Context destruction never
-waits. `join()` remains an explicit synchronous application/runtime boundary. Final host shutdown stops admission and
-continues original Object/Process completion collection before EngineContext joins producers. Project closure has no wait.
+blocks. A Context with adopted Scenes first closes those leases and retains its providers until their cleanup settles;
+the application continues completion and maintenance-frame processing throughout this phase. Only then does it close
+the project TaskScope. Final application shutdown joins producers after accepted CPU, Render and protocol work settles.
 
 ## Project use
 
@@ -40,8 +41,7 @@ auto result = (*host)->run();
 
 Assembly belongs to the host lifetime, may own move-only captures, and builds EditorComposition before any candidate
 Context exists. Composition exposes registration only. Its tables move into immutable runtime registries and lazy
-EditorServices when a complete PreparedProject is adopted into a Context. No freeze/closing flag or incomplete public
-Context constructor exists. UI/service factories receive a fully constructed Context. A factory may start accepted transport work but must not publish project effects before adoption.
+EditorServices when a complete PreparedProject is adopted into a Context. No registration freeze or incomplete public Context constructor exists. Scene retirement is a separate explicit lifetime phase. UI/service factories receive a fully constructed Context. A factory may start accepted transport work but must not publish project effects before adoption.
 
 `CreateProjectRequest{absolute_root, manifest}` creates `Project.luxproj` in an empty directory. `OpenProjectRequest{path}` reads
 an existing manifest. Product configuration supplies plugin catalog locations and the default layout, separately
@@ -86,7 +86,7 @@ a worker must own those registrations for the whole call, not borrow a live Cont
 `sceneProfile3D()` contributes `lux.editor.scene.3d` and spatial.3d/transform.3d/mesh.3d/camera.3d capabilities. It uses
 verified project schema/system/feature registrations and their codecs to create a single-partition world with Parent,
 Transform3D, Mesh3D, Light3D and Camera author schemas; Transform, WorldLoading and Render systems; an empty Simulation;
-and the material/mesh-stack/view-camera/light/forward preset. No editor camera, picking entity or runtime scene is created.
+and the typed deferred-rendering Scene projection. No editor camera, picking entity or runtime scene is created.
 Missing capabilities and incompatible configuration fail without partial output. A test-only 2D profile uses the same
 public registration/creation path without changing the host.
 
@@ -110,19 +110,19 @@ The installed package is `lux-engine-editor-framework` under `lux::engine::edito
 - `lux_editor_file_io`: shared internal file primitive; only its static library is installed, not its support header.
 
 These libraries are STATIC. The executable explicitly selects the concrete profile; Context and the host do not link
-it. UI Scene transport remains private. Product-owned factory layout names are not a workspace persistence protocol.
+it. UI Scene implementation remains private; UiTargetImage is the installed token/Target value contract. Product-owned factory layout names are not a workspace persistence protocol.
 
 Build the EDITOR profile, `all -j 4 -- -k 0`, with a second no-work build after CMake changes. CPU tests cover manifests,
 actual plugin-driven profiles, scope completion and existing framework behavior. Explicit GPU/desktop tests cover async
-project switching, native close, resize, minimization and the original UI rendering chain. Installed tests use SDK
+project switching, native close, resize, minimization and the UiRasterFeature and the common complete-frame transport. Installed tests use SDK
 public headers/libraries, including isolated project and context consumers and throwing-callback compile negatives.
 
 The event-driven loop retains one input sample and one SceneRuntime drive per iteration. Backpressure retains captured
 resource ownership. Accepted completions and retirement continue while a project closes. No private executor, second
 runtime, global event bus or frame-hook registry is added.
 
-The ProjectBuilder user patch remains separately archived and unapplied. Original user formatting bytes remain archived; the Context definition was replaced under the P03 contract and the untouched Pane comment change remains uncommitted. Interactive native input, IME, Linux and old longbench deferrals remain unchanged; sanitizer execution and its exact coverage are recorded in the terminal P06 qualification;
-automated desktop/GPU tests do not qualify those deferred checks. Logs and command provenance remain outside source.
+Interactive native input, IME and other platforms require their own qualification; automated desktop/GPU tests do not
+qualify them. Exact sanitizer coverage, commands and raw results are retained outside source and bound to a commit.
 
 ### PS0–PS2 correction contracts
 
@@ -135,7 +135,8 @@ A prepared ProjectDescription binds the canonical `manifest_file`, independently
 is that file's parent, including when the input follows a filesystem alias. Every constructed Context has this exact file binding; the removed incomplete bootstrap is not an SDK fallback.
 
 LuxEngine tracks only the handles from its project mount. Switching atomically replaces those panes, publishes the new Context before notification, then destroys the old
-panes before the old Context without waiting for its TaskScope.
+panes before retiring the old Context. Adopted Scene leases keep their providers until asynchronous cleanup settles;
+project switching does not block on a TaskScope or stop the application's shared execution resources.
 Application panes remain mounted and continue maintenance. Root has no Project grouping or Project ownership tag.
 A pane removed/re-registered by an external owner has a different registration and is no longer part of that mount.
 
@@ -180,3 +181,25 @@ Menu placement/order and descriptor shortcut customization leave CommandId and i
 Descriptor values can outlive their declaring DLL; no plugin code is required to interpret them. The receiver's
 own endpoint still governs business execution and lifetime. `cmake/installed-consumers/ui-actions` exercises the
 public contract, including actual DLL declarations and UI input after that DLL has unloaded.
+
+## Shared rendering and project retirement
+
+The app owns one RenderExecution and RenderAssets, sharing EngineContext::execution(). The Asset protocol
+thread owns only its SPSC Link; IO and CPU decoding use the existing bounded blocking/CPU resources.
+An independent Render UI Scene presents the native window; it does not create an empty Engine World.
+All Engine Scene commands and UI draw lists join the same Main `FrameInput` before one SubmitFrame.
+
+Project factories obtain RenderExecution/RenderAssets from ContextExtensions and their own typed read port
+from EditorContext::prepareAssetReads(). Supply that port to SceneRenderServices; use a distinct source revision when
+opening another project generation. Build with the existing SceneRuntime, then transfer its SceneInstanceLease
+to EditorContext::adoptScene(). Keep the Scene providers and view inputs in project services.
+
+Project replacement removes Panes immediately. A Context with adopted Scenes remains in the app's closing
+list until Scene retirement receipts and its accepted cleanup tasks settle; no new GPU scope is involved.
+A Context without Scene borrows keeps the original immediate, nonblocking destruction contract. Worker
+operations still own their captured inputs and code instead of borrowing a destroyed Context.
+
+Viewport code supplies `UiTargetImage` values through LuxEngine::setUiImages. The UI owns only sampling
+relations. After removal, wait for uiImagesApplied before destroying the old output Target through the Main
+Client; its actual creator remains responsible for that resource. Scene/Target editing tools are separate
+product work, not manufactured by this transport layer.

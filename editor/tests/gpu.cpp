@@ -4,7 +4,7 @@
 #include <cassert>
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
-#include <lux/engine/RenderContext.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
@@ -12,9 +12,8 @@
 #include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
-#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/project/SceneRegistrations.hpp>
-#include <lux/engine/render/RenderRuntime.hpp>
+#include <lux/engine/rendering/RenderExecution.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -157,6 +156,7 @@ namespace
             );
         };
         EditorConfig config{"Framework project qualification", 640, 480};
+        config.enable_validation = true;
         config.layout = {{"test", "one", "One"}, {"test", "two", "Two"}};
         config.plugin_locations = {{catalog, plugin_root}};
         auto engine = take(LuxEngine::create(std::move(config), std::move(assembly)));
@@ -203,7 +203,7 @@ namespace
         until(settled);
         assert(facts.changed == 1 && facts.failed == 0);
         assert(readProjectManifest(directory / "A/Project.luxproj"));
-        until([&] { return TestPane::draws >= 4 && runtime->renderContext()->runtime().statistics().frames > 0; });
+        until([&] { return TestPane::draws >= 4 && engine->rendering().stats().presentations > 0; });
         auto* original = engine->project();
         assert(!fixture::open(*engine, {}) && engine->project() == original);
         assert(fixture::open(*engine, directory / "missing.luxproj"));
@@ -306,9 +306,11 @@ namespace
         until([&] { return delivered; });
         assert(delivered && engine->project()->project().name == "B");
         assert((deaths == std::vector<int>{1, 1, 2}));
-        assert(!engine->project()->sceneRegistrations().features.empty());
+        assert(!engine->project()->sceneRegistrations().scene_systems.empty());
         assert(&engine->engine() == runtime && &engine->window() == window && &window->uiRoot() == root);
-        assert(runtime->sceneRuntime().instanceCount() == 1); // Only the original UI Scene; no project Scene yet.
+        assert(
+            runtime->sceneRuntime().instanceCount() == 0
+        ); // UI is an independent Render Scene, never an empty Engine World.
         auto state = window->state();
         assert(state);
         auto placement = state->placement;
@@ -342,8 +344,8 @@ namespace
         assert(engine->project()->project().name == "D");
         assert((deaths == std::vector<int>{1, 1, 2, 1, 2, 1, 1, 2}));
         until([&] { return TestPane::draws > before + 2; });
-        const auto statistics = runtime->renderContext()->runtime().statistics();
-        assert(statistics.frames > 0);
+        const auto statistics = engine->rendering().stats();
+        assert(statistics.presentations > 0);
         assert(fixture::open(*engine, directory / "A/Project.luxproj"));
         window->exit(); // Late preparation is drained/cancelled; A is never adopted after native close.
         const auto exit_deadline = std::chrono::steady_clock::now() + 20s;
@@ -360,7 +362,7 @@ namespace
         std::filesystem::remove_all(directory);
         std::printf(
             "PASS real project create/prepare/cancel/plugins/async close, failed C preserves B, GPU %llu frames\n",
-            static_cast<unsigned long long>(statistics.frames)
+            static_cast<unsigned long long>(statistics.presentations)
         );
     }
 

@@ -14,6 +14,9 @@ namespace lux::render
         // Additional elements of a finite descriptor array, in shader array order.
         std::vector<ResourceAccess> elements;
         std::uint32_t field = kGraphInvalidIndex; // Normalized by Builder; never trusted from author input.
+        // A runtime Shader array can be bound to this finite pass-local image list. Zero retains
+        // the existing complete device table; nonzero must equal 1 + elements.size().
+        std::uint32_t descriptor_count = 0;
     };
 
     struct ValueParameter final

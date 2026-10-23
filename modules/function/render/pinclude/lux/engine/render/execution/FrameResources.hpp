@@ -16,6 +16,17 @@ namespace lux::render::detail
         // Changes only when an imported physical identity or range changes, never for its contents.
         std::uint64_t imported_revision = 0;
         std::vector<Pass> passes;
+
+        struct DrawList final
+        {
+            nri::Buffer* vertices = nullptr;
+            nri::Buffer* indices = nullptr;
+            std::uint64_t vertex_capacity = 0, index_capacity = 0;
+            std::vector<IndexedDrawRange> ranges;
+            std::vector<std::byte> parameters;
+        };
+
+        std::vector<DrawList> draw_lists;
         std::vector<std::byte> parameters;
         std::vector<std::uint8_t> parameter_dirty;
         std::vector<std::uint32_t> parameter_updates;

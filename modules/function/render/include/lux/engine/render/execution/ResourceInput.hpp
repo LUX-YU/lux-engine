@@ -18,5 +18,6 @@ namespace lux::render::detail
         // Zero means a live borrow whose contents may change without a notification. Nonzero
         // revisions change whenever parameter bytes change; setResource publishes that revision.
         std::uint64_t parameter_revision = 0;
+        nri::Texture* image = nullptr;
     };
 } // namespace lux::render::detail

@@ -1,33 +1,44 @@
 #pragma once
 #include <lux/engine/ContextExtensions.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/editor/EditorServices.hpp>
 #include <lux/engine/editor/EditorUiRegistry.hpp>
 #include <lux/engine/editor/ProjectDescription.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
 #include <lux/engine/editor/SceneProfileRegistry.hpp>
 #include <lux/engine/editor/SceneToolRegistry.hpp>
-#include <lux/engine/core/execution/TaskScope.hpp>
+#include <lux/engine/process/asset_loading/AssetRead.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/scene/SceneInstanceLease.hpp>
+
+namespace lux::process::asset_loading
+{
+    class VfsAssetReadEndpoint;
+}
 
 namespace lux::engine
 {
     class EngineContext;
 }
+
 namespace lux::project
 {
     class PluginManager;
     struct SceneRegistrations;
 } // namespace lux::project
+
 namespace lux::editor
 {
     class EditorContext;
     class EditorComposition;
+
     namespace detail
     {
         struct PreparedProject;
         [[nodiscard]] FrameworkResult<std::unique_ptr<EditorContext>>
         createEditorContext(engine::EngineContext&, PreparedProject, EditorComposition&&) noexcept;
     } // namespace detail
+
     class EditorContext final
     {
     public:
@@ -41,50 +52,62 @@ namespace lux::editor
         {
             return engine_;
         }
+
         [[nodiscard]] const engine::EngineContext& engine() const noexcept
         {
             return engine_;
         }
+
         [[nodiscard]] const ProjectDescription& project() const noexcept
         {
             return project_;
         }
+
         [[nodiscard]] const ProjectManifest& manifest() const noexcept
         {
             return manifest_;
         }
+
         [[nodiscard]] const project::PluginManager& plugins() const noexcept
         {
             return *plugins_;
         }
+
         [[nodiscard]] const project::SceneRegistrations& sceneRegistrations() const noexcept
         {
             return *registrations_;
         }
+
         [[nodiscard]] asset::AssetVfs& assets() noexcept
         {
             return assets_;
         }
+
         [[nodiscard]] const asset::AssetVfs& assets() const noexcept
         {
             return assets_;
         }
+
         [[nodiscard]] EditorServices& services() noexcept
         {
             return services_;
         }
+
         [[nodiscard]] const EditorUiRegistry& ui() const noexcept
         {
             return ui_;
         }
+
         [[nodiscard]] const SceneToolRegistry& sceneTools() const noexcept
         {
             return scene_tools_;
         }
+
         [[nodiscard]] const SceneProfileRegistry& sceneProfiles() const noexcept
         {
             return scene_profiles_;
         }
+
         [[nodiscard]] engine::ContextExtensions& extensions() noexcept
         {
             return extensions_;
@@ -96,6 +119,17 @@ namespace lux::editor
         }
 
         [[nodiscard]] execution::TaskScope& tasks() noexcept;
+        // Main-only lazy project VFS endpoint. IO uses the Engine's bounded blocking resource.
+        // Copied ports close with this Context; accepted reads retain their source snapshot and code.
+        [[nodiscard]] FrameworkResult<process::asset_loading::AssetReadPort> prepareAssetReads() noexcept;
+        // Adopt a Scene built with this project's service borrows. The existing SceneRuntime owns
+        // its systems; this Context owns only the retirement responsibility. No second Scene table.
+        [[nodiscard]] FrameworkResult<scene::SceneInstanceId> adoptScene(scene::SceneInstanceLease&&) noexcept;
+        // Main-only, nonblocking: revoke Scene production first. Continue SceneRuntime driving and
+        // maintenance frames, then call finishClose until providers can be destroyed.
+        void close() noexcept;
+        [[nodiscard]] bool finishClose() noexcept;
+
         template <class T> [[nodiscard]] FrameworkResult<std::reference_wrapper<T>> service() noexcept
         {
             return services_.get<T>(*this);
@@ -121,5 +155,15 @@ namespace lux::editor
         EditorServices services_;
         // Destruction requests cancellation only; accepted tasks own their inputs and code.
         execution::TaskScope tasks_;
+        std::unique_ptr<process::asset_loading::VfsAssetReadEndpoint> asset_reads_;
+        std::vector<scene::SceneInstanceLease> scenes_;
+        std::vector<scene::InstanceRetirement> scene_retirements_;
+        enum class ECloseStage : std::uint8_t
+        {
+            OPEN,
+            SCENES,
+            TASKS
+        };
+        ECloseStage close_stage_ = ECloseStage::OPEN;
     };
 } // namespace lux::editor

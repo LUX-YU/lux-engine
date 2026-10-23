@@ -126,11 +126,16 @@ namespace lux::rendering
         {
         }
 
-        template <class Asset> auto decode(RenderAssetVersion key) noexcept
+        template <class Asset> auto decode(RenderAssetVersion key, loading::AssetReadPort input) noexcept
         {
             return stdexec::let_error(
-                loading::loadAsset<
-                    Asset>(source, rendering.execution().cpu(), key.asset, limits.decode, stop.get_token()),
+                loading::loadAsset<Asset>(
+                    input ? std::move(input) : source,
+                    rendering.execution().cpu(),
+                    key.asset,
+                    limits.decode,
+                    stop.get_token()
+                ),
                 [](loading::AssetLoadFailure failure) noexcept { return stdexec::just_error(assetError(failure)); }
             );
         }
@@ -466,16 +471,16 @@ namespace lux::rendering
         return std::unique_ptr<RenderAssets>{new RenderAssets(std::move(impl))};
     }
 
-    RenderResult<void> RenderAssets::acquireMesh(RenderAssetVersion key) noexcept
+    RenderResult<void> RenderAssets::acquireMesh(RenderAssetVersion key, loading::AssetReadPort source) noexcept
     {
         auto& state = *impl_;
         return state.acquire(
             state.meshes,
             key,
-            [&state, key]() noexcept
+            [&state, key, source = std::move(source)]() mutable noexcept
             {
                 auto packed = stdexec::then(
-                    state.decode<asset::MeshAsset>(key),
+                    state.decode<asset::MeshAsset>(key, std::move(source)),
                     [](auto decoded) noexcept { return packMesh(decoded->data()); }
                 );
                 return stdexec::let_value(
@@ -486,32 +491,32 @@ namespace lux::rendering
         );
     }
 
-    RenderResult<void> RenderAssets::acquireTexture(RenderAssetVersion key) noexcept
+    RenderResult<void> RenderAssets::acquireTexture(RenderAssetVersion key, loading::AssetReadPort source) noexcept
     {
         auto& state = *impl_;
         return state.acquire(
             state.textures,
             key,
-            [&state, key]() noexcept
+            [&state, key, source = std::move(source)]() mutable noexcept
             {
                 return stdexec::let_value(
-                    state.decode<asset::TextureAsset>(key),
+                    state.decode<asset::TextureAsset>(key, std::move(source)),
                     [&state](auto& decoded) noexcept { return state.uploadTexture(decoded); }
                 );
             }
         );
     }
 
-    RenderResult<void> RenderAssets::acquireMaterial(RenderAssetVersion key) noexcept
+    RenderResult<void> RenderAssets::acquireMaterial(RenderAssetVersion key, loading::AssetReadPort source) noexcept
     {
         auto& state = *impl_;
         return state.acquire(
             state.materials,
             key,
-            [&state, key]() noexcept
+            [&state, key, source = std::move(source)]() mutable noexcept
             {
                 return stdexec::then(
-                    state.decode<asset::MaterialAsset>(key),
+                    state.decode<asset::MaterialAsset>(key, std::move(source)),
                     [](auto decoded) noexcept -> RenderResult<std::shared_ptr<const asset::MaterialAsset>>
                     { return decoded; }
                 );

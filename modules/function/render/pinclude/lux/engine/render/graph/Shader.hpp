@@ -13,10 +13,11 @@ namespace lux::render::detail
         nri::Format native = nri::Format::UNKNOWN;
         rdesc::EDataScalar scalar = rdesc::EDataScalar::FLOAT;
         std::uint32_t components = 0;
+        std::uint32_t component_bytes = 4; // Storage width; normalized attributes still feed float Shader values.
 
         [[nodiscard]] std::uint32_t bytes() const noexcept
         {
-            return components * 4;
+            return components * component_bytes;
         }
     };
 

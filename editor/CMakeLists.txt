@@ -92,6 +92,7 @@ target_link_libraries(
         lux::engine::scene::scene_asset
         lux::engine::core::core_execution
         lux::engine::engine_context
+        lux::engine::process::asset_loading
     PRIVATE
         lux::engine::project::project_plugins
 )
@@ -106,6 +107,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-core-execution REQUIRED COMPONENTS core_execution)"
     "find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)"
     "find_package(lux-engine-context REQUIRED COMPONENTS engine_context)"
+    "find_package(lux-engine-process-asset-loading REQUIRED COMPONENTS process_asset_loading)"
     "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)"
 )
 
@@ -162,7 +164,6 @@ add_component(
         app/src/ProjectUiMount.cpp
         app/src/ProjectPreparation.cpp
         app/src/EditorUiScene.cpp
-        app/src/UiRenderSyncStage.cpp
 )
 
 component_include_directories(
@@ -176,6 +177,7 @@ component_include_directories(
 
 target_link_libraries(
     lux_editor_app
+    PUBLIC lux::engine::function::render
     PRIVATE
         lux::engine::process::object_execution
         lux::engine::project::project_plugins
@@ -189,6 +191,7 @@ component_add_transitive_commands(
     lux_editor_app
     "find_package(lux-engine-process-object-execution REQUIRED COMPONENTS object_execution)"
     "find_package(lux-engine-rendering REQUIRED COMPONENTS engine_rendering)"
+    "find_package(lux-engine-render REQUIRED COMPONENTS render)"
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
 )
 
@@ -493,6 +496,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
         PRIVATE
             lux_editor_app
             lux::engine::engine_rendering
+            lux::engine::project::project_plugins
     )
 
     target_include_directories(editor_framework_gpu_test PRIVATE app/pinclude)

@@ -7,12 +7,63 @@
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/ProjectErrors.hpp>
+#include <lux/engine/scene/SceneDescriptionBuilder.hpp>
+#include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <semaphore>
 #include <thread>
 
 using namespace lux;
 using namespace lux::editor;
 using namespace std::chrono_literals;
+
+namespace
+{
+    struct RetirementState final
+    {
+        execution::TaskScope& tasks;
+        bool& destroyed;
+        bool completed = false;
+
+        ~RetirementState()
+        {
+            destroyed = true;
+        }
+    };
+
+    struct ProjectScene final
+    {
+        inline static constexpr std::string_view Worlds[]{"*"};
+        inline static constexpr system::SystemTypeDescription Description{
+            .canonical_name = "test.editor.retirement",
+            .version = 1,
+            .supported_world_types = Worlds
+        };
+        inline static RetirementState* input;
+        RetirementState& state = *input;
+
+        ~ProjectScene()
+        {
+            assert(state.tasks.submit(
+                {},
+                [state = &state](execution::TaskReporter) noexcept
+                {
+                    auto ready = stdexec::then(
+                        stdexec::schedule(state->tasks.execution().mainScheduler()),
+                        [state]() noexcept
+                        {
+                            assert(!state->destroyed);
+                            state->completed = true;
+                        }
+                    );
+                    return stdexec::write_env(
+                        std::move(ready),
+                        stdexec::prop{stdexec::get_stop_token, stdexec::never_stop_token{}}
+                    );
+                }
+            ));
+        }
+    };
+} // namespace
 
 int main()
 {
@@ -133,6 +184,58 @@ int main()
         static_cast<void>((*engine)->execution().dispatchMainCompletions());
         std::this_thread::yield();
     }
+    bool provider_destroyed = false;
+    auto scene_context = fixture::createContext(
+        **engine,
+        description,
+        manifest,
+        [&](EditorComposition& composition) noexcept -> FrameworkResult<void>
+        {
+            return composition.registerServiceFactory<RetirementState>(
+                [&](EditorContext& context) noexcept -> FrameworkResult<std::unique_ptr<RetirementState>>
+                { return std::unique_ptr<RetirementState>{new RetirementState{context.tasks(), provider_destroyed}}; }
+            );
+        }
+    );
+    assert(scene_context);
+    auto provider = (*scene_context)->service<RetirementState>();
+    assert(provider);
+    ProjectScene::input = &provider->get();
+    const scene::SceneSystemRegistration registration{
+        .type = system::systemTypeId(ProjectScene::Description.canonical_name),
+        .cpp_type = cxx::typeToken<ProjectScene>(),
+        .description = &ProjectScene::Description,
+        .install = [](scene::SceneSystemInstaller& installer, scene::SceneSystemDescription description
+                   ) noexcept -> cxx::expected<void, scene::SceneSystemBuildFailure>
+        {
+            auto system = installer.emplaceSystem<ProjectScene>(description.instanceId());
+            return system ? cxx::expected<void, scene::SceneSystemBuildFailure>{} : cxx::unexpected(system.error());
+        }
+    };
+    scene::SceneDescriptionBuilder authored;
+    assert(authored.addSystem({1}, "retirement", registration.type, 1, {}, 0));
+    auto resolved = std::move(authored).buildResolved();
+    assert(resolved);
+    const simulation::ecs::ComponentSchemaSet components;
+    const simulation::SimulationSystemRegistry systems;
+    auto instance = (*engine)
+                        ->sceneRuntime()
+                        .builder()
+                        .setDescription(std::make_shared<const scene::SceneDescription>(std::move(*resolved)))
+                        .setWorld(std::make_shared<const world::WorldDescription>())
+                        .setSimulation(std::make_shared<const simulation::SimulationDescription>())
+                        .setRegistrations(components, systems, std::span{&registration, 1})
+                        .build();
+    assert(instance && (*scene_context)->adoptScene(std::move(*instance)));
+    (*scene_context)->close();
+    assert(!(*scene_context)->finishClose() && !provider_destroyed);
+    auto driven = (*engine)->sceneRuntime().driveFrame();
+    assert(driven && driven->empty());
+    assert(!(*scene_context)->finishClose() && !provider_destroyed);
+    assert((*engine)->execution().dispatchMainCompletions());
+    assert(provider->get().completed && (*scene_context)->finishClose());
+    scene_context->reset();
+    assert(provider_destroyed);
     std::puts("PASS complete Context, assembly refusal before construction, blocked task outlives Context without wait"
     );
 }

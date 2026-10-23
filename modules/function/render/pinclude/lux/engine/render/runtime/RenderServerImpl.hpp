@@ -127,7 +127,8 @@ namespace lux::render
         void attachEffect(const Attach::Request&, Attach::Response&) noexcept;
 
         RenderResult<void> replaceTargetResources(TargetId, RenderTarget&, RenderTarget::VPhysicalTarget) noexcept;
-        [[nodiscard]] bool targetDependencyCycle(TargetId, std::span<const TargetImageInput>) const noexcept;
+        [[nodiscard]] bool targetDependencyCycle(TargetId, std::span<const TargetImageInput>, AttachmentId)
+            const noexcept;
 
         void rebuildActiveFrameInputs() noexcept;
         RenderResult<void> submitCurrentFrame(std::uint32_t slot) noexcept;
@@ -154,6 +155,7 @@ namespace lux::render
 
         void createView(const CreateView::Request&, CreateView::Response&) noexcept;
         void updateAttachmentInputs(const UpdateAttachmentInputs::Request&, UpdateAttachmentInputs::Response&) noexcept;
+        exec::task<AckResponse> updateDrawList(UpdateDrawList::Request&&) noexcept;
         void invalidateHistory(const InvalidateHistory::Request&, InvalidateHistory::Response&) noexcept;
 
         void removeView(const RemoveView::Request&, RemoveView::Response&) noexcept;

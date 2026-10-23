@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <atomic>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
@@ -8,6 +9,7 @@
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
+#include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/FrameResources.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/PhysicalResourcePlan.hpp>
@@ -172,6 +174,10 @@ namespace lux::render::detail
         }
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
+            if (auto lists = createDrawListResources(slot); !lists)
+            {
+                return lists;
+            }
             if (auto resources = createFrameResources(slot); !resources)
             {
                 return resources;
@@ -192,6 +198,184 @@ namespace lux::render::detail
             updateHistoryViews(slot);
         }
         return {};
+    }
+
+    RenderResult<void> RenderGraphInstance::createDrawListResources(std::uint32_t slot) noexcept
+    {
+        auto& frame = frames_[slot];
+        const auto& core = session_->nriCore();
+        for (std::size_t p = 0; p < plan_->passes().size(); ++p)
+        {
+            const auto& pass = plan_->passes()[p];
+            const auto* raster = std::get_if<RasterCommands>(&pass.work);
+            const auto* list = raster ? std::get_if<IndexedListCommands>(&raster->draw) : nullptr;
+            if (!list)
+            {
+                continue;
+            }
+            auto& physical = frame.draw_lists.emplace_back();
+            const auto vertex = raster->vertices.front();
+            physical.vertex_capacity = std::max<std::uint64_t>(vertex.stride, 4);
+            physical.index_capacity = 4;
+            auto status = core.CreatePlacedBuffer(
+                session_->device(),
+                NriDeviceHeap,
+                {physical.vertex_capacity, 0, nri::BufferUsageBits::VERTEX_BUFFER},
+                physical.vertices
+            );
+            if (status == nri::Result::SUCCESS)
+            {
+                status = core.CreatePlacedBuffer(
+                    session_->device(),
+                    NriDeviceHeap,
+                    {physical.index_capacity, 0, nri::BufferUsageBits::INDEX_BUFFER},
+                    physical.indices
+                );
+            }
+            if (status != nri::Result::SUCCESS)
+            {
+                return cxx::unexpected(nativeError(status));
+            }
+            physical.parameters.resize(pass.parameter_size);
+            setResource(vertex.resource.index, slot, {physical.vertices, 0, physical.vertex_capacity});
+            setResource(list->index_resource.resource.index, slot, {physical.indices, 0, physical.index_capacity});
+        }
+        return {};
+    }
+
+    ResourceUploader::Task RenderGraphInstance::updateDrawList(
+        GraphPassId id,
+        DrawListData input,
+        FrameExecution& execution,
+        ResourceUploader& uploads
+    ) noexcept
+    {
+        const auto index = id.index < plan_->pass_indices_.size() ? plan_->pass_indices_[id.index] : kGraphInvalidIndex;
+        if (index == kGraphInvalidIndex)
+        {
+            co_return cxx::unexpected(RenderError{kGraphUnknownPass});
+        }
+        const auto& pass = plan_->passes()[index];
+        const auto* raster = std::get_if<RasterCommands>(&pass.work);
+        const auto* list = raster ? std::get_if<IndexedListCommands>(&raster->draw) : nullptr;
+        if (!list)
+        {
+            co_return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        const auto vertex = raster->vertices.front();
+        const auto index_bytes = list->type == EIndexType::UINT16 ? 2u : 4u;
+        const bool invalid_data =
+            input.vertices.size() % vertex.stride != 0 || input.indices.size() % index_bytes != 0 ||
+            input.parameters.size() != pass.parameter_size || input.vertices.size() > SIZE_MAX - input.indices.size();
+        if (invalid_data)
+        {
+            co_return cxx::unexpected(RenderError{kDeviceArgument});
+        }
+        const auto indices = input.indices.size() / index_bytes;
+        for (const auto& draw : input.draws)
+        {
+            const bool invalid_range = draw.first_index > indices || draw.index_count > indices - draw.first_index;
+            const bool invalid_clip = draw.x > target_.width || draw.y > target_.height ||
+                                      draw.width > target_.width - draw.x || draw.height > target_.height - draw.y;
+            if (invalid_range || invalid_clip || draw.selection >= list->selection_count)
+            {
+                co_return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+        }
+        std::uint32_t slot = 0;
+        while (!execution.tryBeginWrite(slot))
+        {
+            auto ready = co_await execution.whenWritable(input.vertices.size() + input.indices.size());
+            if (!ready)
+            {
+                co_return cxx::unexpected(ready.error());
+            }
+        }
+        SubmissionFrontiers progress;
+        cxx::scope_exit finish([&]() noexcept { execution.finishWrite(slot, progress); });
+        auto& physical = frames_[slot].draw_lists[list->data_index];
+        const auto& core = session_->nriCore();
+        const auto grow =
+            [&](nri::Buffer*& buffer, std::uint64_t& capacity, std::size_t bytes, nri::BufferUsageBits usage
+            ) -> RenderResult<void>
+        {
+            if (bytes <= capacity)
+            {
+                return {};
+            }
+            if (bytes > (std::uint64_t{1} << 63))
+            {
+                return cxx::unexpected(RenderError{kDeviceCapacity});
+            }
+            const auto size = std::bit_ceil(std::max(std::uint64_t(bytes), std::uint64_t{4}));
+            nri::Buffer* candidate = nullptr;
+            const auto status = core.CreatePlacedBuffer(session_->device(), NriDeviceHeap, {size, 0, usage}, candidate);
+            if (status != nri::Result::SUCCESS)
+            {
+                return cxx::unexpected(nativeError(status));
+            }
+            auto* previous = std::exchange(buffer, candidate);
+            capacity = size;
+            session_->deferRelease([native = &core, previous]() noexcept { native->DestroyBuffer(previous); });
+            return {};
+        };
+        // The selected slice is reusable. If an accepted copy later fails, no old draw range may
+        // consume partially replaced bytes; the failed complete frame requests a fresh Client snapshot.
+        physical.ranges.clear();
+        if (auto grown = grow(
+                physical.vertices,
+                physical.vertex_capacity,
+                input.vertices.size(),
+                nri::BufferUsageBits::VERTEX_BUFFER
+            );
+            !grown)
+        {
+            co_return cxx::unexpected(grown.error());
+        }
+        setResource(vertex.resource.index, slot, {physical.vertices, 0, physical.vertex_capacity});
+        if (auto grown = grow(
+                physical.indices,
+                physical.index_capacity,
+                input.indices.size(),
+                nri::BufferUsageBits::INDEX_BUFFER
+            );
+            !grown)
+        {
+            co_return cxx::unexpected(grown.error());
+        }
+        setResource(list->index_resource.resource.index, slot, {physical.indices, 0, physical.index_capacity});
+        // Buffer copies require four-byte sizes. Keep the original stream borrowed; only the
+        // final 1-3 bytes need local padding (common for an odd count of uint16 UI indices).
+        // These coroutine-local tails stay alive through the actual uploader completion.
+        std::array<std::array<std::byte, 4>, 2> tails{};
+        std::array<BufferWrite, 4> writes;
+        std::size_t count = 0;
+        const auto append = [&](nri::Buffer* buffer, std::span<const std::byte> source, auto& tail) noexcept
+        {
+            const auto aligned = source.size() & ~std::size_t{3};
+            if (aligned != 0)
+            {
+                writes[count++] = {buffer, 0, source.first(aligned)};
+            }
+            if (aligned != source.size())
+            {
+                std::memcpy(tail.data(), source.data() + aligned, source.size() - aligned);
+                writes[count++] = {buffer, aligned, tail};
+            }
+        };
+        append(physical.vertices, input.vertices, tails[0]);
+        append(physical.indices, input.indices, tails[1]);
+        if (count != 0)
+        {
+            auto copied = co_await uploads.writeBuffers(std::span(writes).first(count), {}, slot, &progress);
+            if (!copied)
+            {
+                co_return cxx::unexpected(copied.error());
+            }
+        }
+        physical.ranges.assign(input.draws.begin(), input.draws.end());
+        std::ranges::copy(input.parameters, physical.parameters.begin());
+        co_return RenderResult<void>{};
     }
 
     RenderResult<void> RenderGraphInstance::createFrameResources(std::uint32_t slot) noexcept
@@ -1375,13 +1559,23 @@ namespace lux::render::detail
                 session_->nriCore().GetTextureMemoryDesc(*image, nri::MemoryLocation::DEVICE, memory);
                 bytes += memory.size;
             }
+            for (const auto& list : frame.draw_lists)
+            {
+                for (auto* buffer : {list.vertices, list.indices})
+                {
+                    nri::MemoryDesc memory{};
+                    session_->nriCore().GetBufferMemoryDesc(*buffer, nri::MemoryLocation::DEVICE, memory);
+                    bytes += memory.size;
+                }
+            }
             const auto allocated = std::accumulate(
                 frame.memories.begin(),
                 frame.memories.end(),
                 std::uint64_t{0},
                 [](auto sum, const auto& allocation) { return sum + allocation.bytes; }
             );
-            output += "{\"slot\":" + std::to_string(i) + ",\"owned_buffers\":" + std::to_string(frame.buffers.size()) +
+            output += "{\"slot\":" + std::to_string(i) +
+                      ",\"owned_buffers\":" + std::to_string(frame.buffers.size() + frame.draw_lists.size() * 2) +
                       ",\"owned_textures\":" + std::to_string(frame.images.size()) +
                       ",\"allocation_requirement_bytes\":" + std::to_string(bytes) +
                       ",\"explicit_memory_count\":" + std::to_string(frame.memories.size()) +
@@ -1465,7 +1659,7 @@ namespace lux::render::detail
             auto& frame = frames_[current];
             auto& binding = frame.bindings[resource];
             const bool changed_physical = binding.buffer != value.buffer || binding.buffer_offset != value.offset ||
-                                          binding.buffer_size != value.size;
+                                          binding.buffer_size != value.size || binding.image != value.image;
             if (changed_physical && plan_->resources()[resource].origin == EGraphOrigin::IMPORTED)
             {
                 frame.imported_revision = nextImportedRevision();
@@ -1482,6 +1676,7 @@ namespace lux::render::detail
                     ++frame.unavailable_buffers;
                 }
             }
+            binding.image = value.image;
             binding.buffer = value.buffer;
             binding.buffer_offset = value.offset;
             binding.buffer_size = value.size;

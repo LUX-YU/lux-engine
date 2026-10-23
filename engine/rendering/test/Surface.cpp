@@ -1,4 +1,5 @@
 #include "GraphTriangle.hpp"
+#include "RenderTest.hpp"
 #include "SurfaceSample.hpp"
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
@@ -17,31 +18,10 @@
 using namespace lux;
 using namespace lux::render;
 using namespace lux::rendering;
+using namespace integration_test;
 
 namespace
 {
-    void check(bool result, std::source_location source = std::source_location::current()) noexcept
-    {
-        if (!result)
-        {
-            std::fprintf(stderr, "Surface failed at %s:%u\n", source.file_name(), source.line());
-            std::abort();
-        }
-    }
-
-    template <class T> auto take(T result, std::source_location source = std::source_location::current())
-    {
-        if constexpr (requires { result.error().type; })
-        {
-            if (!result)
-            {
-                reportRenderFailure(result.error(), "Surface test");
-            }
-        }
-        check(bool(result), source);
-        return std::move(*result);
-    }
-
     struct ClearConfiguration final
     {
         TargetDesc target;
@@ -187,97 +167,11 @@ namespace
         }
     };
 
-    std::uint64_t expected_frame_error = 0;
-    bool resynchronize = false;
-
-    void frame(RenderExecution& rendering)
-    {
-        auto& client = rendering.mainClient();
-        auto* input = take(client.beginFrame());
-        input->resynchronize = resynchronize;
-        bool complete = false;
-        auto operation = take(rendering.execution().submit(
-            {},
-            [&](execution::TaskReporter) noexcept
-            {
-                return stdexec::then(
-                    client.submitFrame(*input),
-                    [&](FrameCompletion response) noexcept
-                    {
-                        if (response.error.type != 0)
-                        {
-                            reportRenderFailure(response.error, "Present frame");
-                        }
-                        check(response.error.type == expected_frame_error);
-                        expected_frame_error = 0;
-                        resynchronize = response.requires_resynchronization;
-                        check(bool(client.releaseFrame(*input)));
-                        complete = true;
-                    }
-                );
-            }
-        ));
-        check(bool(rendering.execution().waitUntil(
-            [&]() noexcept
-            {
-                window::LuxWindow::pollEvents();
-                rendering.consumeResponses();
-                return complete;
-            }
-        )));
-    }
-
-    template <RenderCommand C>
-    auto call(RenderExecution& rendering, typename C::Request input, std::uint64_t expected_error = 0)
-    {
-        auto& client = rendering.mainClient();
-        typename C::Response response;
-        bool completed = false;
-        auto command = take(client.bind<C>());
-        auto operation = take(rendering.execution().submit(
-            {},
-            [&](execution::TaskReporter) noexcept
-            {
-                return stdexec::then(
-                    client.request(command, input),
-                    [&](typename C::Response result) noexcept
-                    {
-                        response = std::move(result);
-                        completed = true;
-                    }
-                );
-            }
-        ));
-        while (!completed)
-        {
-            rendering.consumeResponses();
-            check(bool(rendering.execution().dispatchMainCompletions()));
-            if constexpr (C::frame_scoped)
-            {
-                frame(rendering);
-            }
-            else if (!completed)
-            {
-                check(bool(rendering.execution().waitUntil(
-                    [&]() noexcept
-                    {
-                        rendering.consumeResponses();
-                        return completed;
-                    }
-                )));
-            }
-        }
-        if (response.error.type != 0)
-        {
-            reportRenderFailure(response.error, C::name);
-        }
-        check(response.error.type == expected_error);
-        return response;
-    }
 } // namespace
 
 int main(int argc, char**)
 {
+    poll_events = &window::LuxWindow::pollEvents;
     auto platform = take(window::GlfwRuntime::create());
     auto first = take(window::LuxWindow::create({320, 240, "NRI presentation 1"}));
     auto second = take(window::LuxWindow::create({400, 240, "NRI presentation 2"}));

@@ -4,13 +4,12 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
-#include <lux/engine/RenderContext.hpp>
-#include <lux/engine/error/ErrorRegistry.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
-#include <lux/engine/core/execution/TaskScope.hpp>
-#include <lux/engine/render/RenderRuntime.hpp>
+#include <lux/engine/error/ErrorRegistry.hpp>
+#include <lux/engine/rendering/RenderExecution.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <map>
@@ -24,22 +23,26 @@
 using namespace lux;
 using namespace lux::editor;
 using namespace std::chrono_literals;
+
 namespace
 {
     struct Counts final
     {
         unsigned updates{}, draws{}, panes{}, services{};
     };
+
     struct Service final
     {
         Counts& counts;
         std::shared_ptr<bool> alive{std::make_shared<bool>(true)};
+
         ~Service()
         {
             *alive = false;
             ++counts.services;
         }
     };
+
     struct Pane final : ui::Pane
     {
         Pane(EditorContext& context, Counts& counts)
@@ -76,6 +79,7 @@ namespace
         TUiTestContent<Pane> draw;
         std::shared_ptr<const bool> alive;
     };
+
     struct Global final : ui::Pane
     {
         explicit Global(cxx::move_only_function<void() noexcept> step) : ui::Pane("Global"), step(std::move(step)) {}
@@ -118,6 +122,7 @@ int main(int argc, char** argv)
     const auto a = file("A"), b = file("B"), c = file("C");
     std::map<std::string, Counts> counts;
     EditorConfig config{"Public SDK host", 640, 480};
+    config.enable_validation = true;
     config.layout = {{"probe", "project", "Project"}};
     auto made = LuxEngine::create(
         std::move(config),
@@ -220,7 +225,7 @@ int main(int argc, char** argv)
                 return;
             }
             assert(project->project().manifest_file == std::filesystem::canonical(a));
-            assert(engine_identity->sceneRuntime().instanceCount() == 1);
+            assert(engine_identity->sceneRuntime().instanceCount() == 0);
             {
                 const auto scheduler = project->tasks().execution().blocking();
                 assert(scheduler);
@@ -361,7 +366,7 @@ int main(int argc, char** argv)
         case 8:
             if (window_identity->metrics().minimized || counts["B"].draws <= draws_before)
                 return;
-            assert(engine_identity->renderContext()->runtime().statistics().frames > 0);
+            assert(host->rendering().stats().presentations > 0);
             fixture::close(*host);
             phase = 9;
             return;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/features/FeaturePorts.hpp>
+#include <lux/engine/render/features/FeatureDescriptor.hpp>
 #include <lux/engine/render/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/graph/Sampler.hpp>
 #include <lux/engine/render/resource/Binding.hpp>
@@ -12,6 +12,13 @@ namespace lux::render::detail
 
 namespace lux::render
 {
+    // Stable cold key for one Feature contribution. No Runtime lookup or registry side effect.
+    [[nodiscard]] LUX_RENDER_PUBLIC std::string featureKey(
+        FeatureName type,
+        std::string_view instance,
+        std::string_view local
+    ) noexcept;
+
     // Borrowed for one synchronous contribution. Graph owns programs and Pass work;
     // Effect owns the separate Attach materials. No device or Runtime access.
     struct LUX_RENDER_PUBLIC FeatureBuildContext final

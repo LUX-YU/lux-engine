@@ -15,6 +15,7 @@ namespace lux::render
         bindFrameworkCommand<RemoveScene, &Impl::removeScene>();
         bindFrameworkCommand<CreateView, &Impl::createView>();
         bindFrameworkCommand<UpdateAttachmentInputs, &Impl::updateAttachmentInputs>();
+        bindFrameworkCommand<UpdateDrawList, &Impl::updateDrawList>();
         bindFrameworkCommand<InvalidateHistory, &Impl::invalidateHistory>();
         bindFrameworkCommand<RemoveView, &Impl::removeView>();
         bindFrameworkCommand<CreateTarget, &Impl::createTarget>();
@@ -659,7 +660,7 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeUnsupported};
             return;
         }
-        const bool target_mismatch = target->attachment != _request.replaces;
+        const bool target_mismatch = !target->attachment.isNull() && target->attachment != _request.replaces;
         if (target_mismatch)
         {
             output_response.error = RenderError{kRuntimeState};
@@ -667,9 +668,14 @@ namespace lux::render
         }
         if (!_request.replaces.isNull())
         {
-            const auto& previous = *attachments.find(_request.replaces);
-            const bool different_view = previous.scene != scene_id || previous.view != view_id;
-            if (different_view || frames->submitting(*previous.instance))
+            const auto* previous = attachments.find(_request.replaces);
+            if (!previous)
+            {
+                output_response.error = RenderError{kRuntimeIdentity};
+                return;
+            }
+            const bool different_view = previous->scene != scene_id || previous->view != view_id;
+            if (different_view || frames->submitting(*previous->instance))
             {
                 output_response.error = RenderError{different_view ? kRuntimeIdentity : kDeviceBusy};
                 return;
@@ -680,7 +686,7 @@ namespace lux::render
             output_response.error = valid.error();
             return;
         }
-        if (targetDependencyCycle(target_id, _request.target_images))
+        if (targetDependencyCycle(target_id, _request.target_images, _request.replaces))
         {
             output_response.error = RenderError{kCommandContract};
             return;
@@ -709,6 +715,17 @@ namespace lux::render
         for (const auto& input : prepared->storage_inputs)
         {
             output_response.storages.push_back({effect->plan->resources()[input.resource].key, input.storage_id});
+        }
+        for (const auto& pass : effect->plan->passes())
+        {
+            const auto* raster = std::get_if<detail::RasterCommands>(&pass.work);
+            if (raster && std::holds_alternative<detail::IndexedListCommands>(raster->draw))
+            {
+                output_response.draw_lists.emplace_back(
+                    effect->graph.passes()[pass.source_pass].key,
+                    GraphPassId{pass.source_pass}
+                );
+            }
         }
         prepared->effect = effect_id;
         prepared->scene = scene_id;
@@ -744,8 +761,11 @@ namespace lux::render
         return;
     }
 
-    bool RenderServer::Impl::targetDependencyCycle(TargetId destination, std::span<const TargetImageInput> inputs)
-        const noexcept
+    bool RenderServer::Impl::targetDependencyCycle(
+        TargetId destination,
+        std::span<const TargetImageInput> inputs,
+        AttachmentId replaced
+    ) const noexcept
     {
         std::vector<TargetId> pending, visited;
         for (const auto& input : inputs)
@@ -766,7 +786,8 @@ namespace lux::render
             }
             visited.push_back(id);
             const auto* target = targets.find(id);
-            const auto* attachment = target ? attachments.find(target->attachment) : nullptr;
+            const auto* attachment =
+                target && target->attachment != replaced ? attachments.find(target->attachment) : nullptr;
             if (attachment)
             {
                 for (const auto& input : attachment->target_images)
@@ -830,6 +851,17 @@ namespace lux::render
         active_frame_inputs_dirty = true;
         storages_created.store(resources->creations());
         return {};
+    }
+
+    exec::task<AckResponse> RenderServer::Impl::updateDrawList(UpdateDrawList::Request&& input) noexcept
+    {
+        auto* attachment = attachments.find(input.attachment);
+        if (!attachment || !uploads)
+        {
+            co_return AckResponse{RenderError{attachment ? kRuntimeUnsupported : kRuntimeIdentity}};
+        }
+        auto result = co_await attachment->instance->updateDrawList(input.pass, input.data, *frames, *uploads);
+        co_return result ? AckResponse{} : AckResponse{result.error()};
     }
 
     void RenderServer::Impl::createScene(

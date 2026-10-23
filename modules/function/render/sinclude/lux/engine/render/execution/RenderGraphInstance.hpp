@@ -8,6 +8,7 @@
 #include <lux/engine/render/execution/ResourceInput.hpp>
 #include <lux/engine/render/execution/TargetOutput.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
+#include <lux/engine/render/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {
@@ -25,6 +26,10 @@ namespace lux::render::detail
             std::uint32_t parameter_bytes = 0
         ) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
+        // Frame-scoped upload, using the caller's existing FrameExecution and ResourceUploader.
+        // No private queue/scope: geometry belongs to this instance's actual reusable physical slice.
+        [[nodiscard]] ResourceUploader::Task
+        updateDrawList(GraphPassId, DrawListData, FrameExecution&, ResourceUploader&) noexcept;
         // Borrowed physical inputs are installed before initialize; the caller retains them through GPU completion.
         void bindImage(GraphResourceId resource, std::uint32_t slot, nri::Texture& image) noexcept;
         [[nodiscard]] RenderResult<void> bindSampler(
@@ -137,6 +142,7 @@ namespace lux::render::detail
         struct HistoryState;
         struct FrameResources;
         [[nodiscard]] RenderResult<nri::TextureDesc> textureDescription(const CompiledResource&) const noexcept;
+        [[nodiscard]] RenderResult<void> createDrawListResources(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> allocatePhysicalResources(FrameResources&) noexcept;
         void prepareAliasBarriers(FrameResources&) noexcept;
         [[nodiscard]] RenderResult<void> createResource(std::uint32_t resource, Binding&) noexcept;

@@ -53,6 +53,22 @@ namespace lux::render
     };
 
     // Pipeline state excludes resource names, Buffer offsets and draw counts.
+    enum class EBlendFactor : std::uint8_t
+    {
+        ZERO,
+        ONE,
+        SOURCE_ALPHA,
+        ONE_MINUS_SOURCE_ALPHA
+    };
+
+    struct ColorBlendState final
+    {
+        bool enabled = false;
+        EBlendFactor source_color = EBlendFactor::ONE, destination_color = EBlendFactor::ZERO;
+        EBlendFactor source_alpha = EBlendFactor::ONE, destination_alpha = EBlendFactor::ZERO;
+        bool operator==(const ColorBlendState&) const noexcept = default;
+    };
+
     struct GraphicsState final
     {
         std::vector<VertexBinding> vertex_bindings;
@@ -62,6 +78,7 @@ namespace lux::render
         ECullMode cull_mode = ECullMode::NONE;
         bool front_counter_clockwise = true;
         float depth_bias_constant = 0, depth_bias_slope = 0;
+        ColorBlendState blend;
         bool operator==(const GraphicsState&) const noexcept = default;
     };
 
@@ -98,5 +115,32 @@ namespace lux::render
         std::uint64_t count_offset = 0;
     };
 
-    using VDrawCommand = std::variant<DrawVertices, DrawIndexed, DrawIndexedIndirect>;
+    // Cold recipe. Geometry and draw ranges are supplied to this pass in a complete frame.
+    // One interleaved vertex stream; selection_parameter names a scalar uint push constant.
+    struct DrawIndexedList final
+    {
+        ResourceVersion index_resource;
+        std::uint64_t index_offset = 0;
+        EIndexType type = EIndexType::UINT32;
+        std::string selection_parameter;
+        std::uint32_t selection_count = 0;
+    };
+
+    struct IndexedDrawRange final
+    {
+        std::uint32_t first_index = 0, index_count = 0;
+        std::int32_t vertex_offset = 0;
+        std::uint32_t x = 0, y = 0, width = 0, height = 0;
+        std::uint32_t selection = 0;
+    };
+
+    // Borrowed through the upload terminal. Indices name vertices in the supplied interleaved stream;
+    // their contents are authored geometry, just as for an ordinary DrawIndexed resource.
+    struct DrawListData final
+    {
+        std::span<const std::byte> vertices, indices, parameters;
+        std::span<const IndexedDrawRange> draws;
+    };
+
+    using VDrawCommand = std::variant<DrawVertices, DrawIndexed, DrawIndexedIndirect, DrawIndexedList>;
 } // namespace lux::render

@@ -122,13 +122,16 @@ namespace lux::ui
                     continue;
                 }
                 const rdesc::UiImageToken image{static_cast<std::uint64_t>(command.GetTexID())};
-                commands[draw++] = {
-                    first_index + command.IdxOffset,
-                    command.ElemCount,
-                    static_cast<std::int32_t>(first_vertex + command.VtxOffset),
-                    {command.ClipRect.x, command.ClipRect.y, command.ClipRect.z, command.ClipRect.w},
-                    image
-                };
+                std::construct_at(
+                    commands.data() + draw++,
+                    rdesc::UiDrawCommand{
+                        first_index + command.IdxOffset,
+                        command.ElemCount,
+                        static_cast<std::int32_t>(first_vertex + command.VtxOffset),
+                        {command.ClipRect.x, command.ClipRect.y, command.ClipRect.z, command.ClipRect.w},
+                        image
+                    }
+                );
                 if (image.value != 0)
                 {
                     output.textures.push_back(image);

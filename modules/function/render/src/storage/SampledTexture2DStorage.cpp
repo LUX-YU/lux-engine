@@ -434,7 +434,15 @@ namespace lux::render::detail
         // Texture identities are immutable. The Client ends bindings before release; there is no update subscription.
         static constexpr TextureGpuRef default_reference{};
         const auto& reference = backing ? backing->reference_ : default_reference;
-        return ResourceInput{nullptr, 0, 0, std::as_bytes(std::span(&reference, 1)), &layout, 1};
+        return ResourceInput{
+            nullptr,
+            0,
+            0,
+            std::as_bytes(std::span(&reference, 1)),
+            &layout,
+            1,
+            backing ? backing->image_ : nullptr
+        };
     }
 
     StorageFactory SampledTexture2DStorage::factory() noexcept

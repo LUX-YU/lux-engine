@@ -7,7 +7,7 @@
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/execution/FrameExecution.hpp>
-#include <lux/engine/render/features/FeatureAssembly.hpp>
+#include <lux/engine/render/features/FeatureBuildContext.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/runtime/FeatureRegistration.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>

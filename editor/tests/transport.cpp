@@ -1,221 +1,159 @@
-#include "../../cmake/installed-consumers/common/RenderRegistration.hpp"
-#include "../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <cassert>
+#include <chrono>
 #include <cstdio>
-#include <lux/engine/EngineContext.hpp>
-#include <lux/engine/EngineRendering.hpp>
-#include <lux/engine/RenderContext.hpp>
-#include <lux/engine/editor/EditorContext.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
-#include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
-#include <lux/engine/error/ErrorRegistry.hpp>
-#include <lux/engine/scene/RenderResources.hpp>
-#include <lux/engine/scene/RenderViewRequest.hpp>
+#include <lux/engine/rendering/RenderDiagnostics.hpp>
+#include <lux/engine/rendering/RenderExecution.hpp>
 #include <lux/engine/ui/Controls.hpp>
-#include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
-#include <lux/engine/ui/rendering/RenderFeature.hpp>
 #include <thread>
-#if defined(_WIN32)
-#define NOMINMAX
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif
 
 using namespace lux;
+using namespace lux::render;
+using namespace lux::rendering;
 using namespace lux::editor;
 using namespace std::chrono_literals;
-namespace FixtureErrors
-{
-    inline constexpr lux::error::ErrorId EditorExpectedSecondFactoryRefusal =
-        lux::error::errorId("lux.editor.expected_second_factory_refusal");
-}
 
 namespace
 {
-    struct Service final
+    template <class T> auto take(T result)
     {
-        std::vector<int>& deaths;
-        ~Service()
+        if constexpr (requires { result.error().type; })
         {
-            deaths.push_back(2);
-        }
-    };
-    class TestPane final : public ui::Pane
-    {
-    public:
-        TestPane(std::string name, std::vector<int>& deaths)
-            : Pane(std::move(name)), deaths_(deaths), content_{}, label_("Actual UI GPU content")
-        {
-            assert(content_.addElement(label_) && addElement(content_));
-        }
-        ~TestPane() override
-        {
-            deaths_.push_back(1);
-        }
-
-    private:
-        std::vector<int>& deaths_;
-        ui::Layout content_;
-        ui::Label label_;
-    };
-    template <class T> T take(FrameworkResult<T> result)
-    {
-        if (!result)
-        {
-            std::fprintf(stderr, "framework error: %s\n", error::format(result.error()).c_str());
+            if (!result)
+            {
+                reportRenderFailure(result.error(), "Editor UI transport");
+            }
         }
         assert(result);
         return std::move(*result);
     }
-    void offscreen()
+
+    struct Content final : ui::Pane
     {
-        auto created_engine = engine::EngineContext::create({1, 64, {64}}, 128);
-        assert(created_engine);
-        auto engine = std::move(*created_engine);
-        assert(engine::initializeRendering(*engine, {}));
-        auto* rendering = engine->renderContext();
-        assert(rendering && rendering->registerFeatures({render::kUiRenderRenderFeatureRegistration}));
-        auto* runtime = &rendering->runtime();
-        auto* resources = &rendering->resources();
-        auto* execution = &engine->execution();
-        auto* scenes = &engine->sceneRuntime();
-        auto made_root = ui::Root::create();
-        assert(made_root);
-        auto root = std::move(*made_root);
-        auto configuration = ui::makeRenderConfiguration(*root);
-        assert(configuration);
-        auto ui_scene =
-            take(EditorUiScene::create(*engine, std::move(*configuration), scene::ViewConfig{.extent = {640, 480}}));
-        std::vector<int> deaths;
-        std::unique_ptr<ui::Pane> pane = std::make_unique<TestPane>("gpu", deaths);
-        assert(root->addPane(std::move(pane)));
-        const auto pump = [&]
+        Content() : Pane("Actual UI GPU content"), label("Font, clipping and alpha use UiRasterFeature")
         {
-            std::size_t controls = 8, programs = 4;
-            assert(runtime->dispatchMainCompletions(32));
-            assert(runtime->submitPending(controls, programs));
-            assert(execution->dispatchMainCompletions());
-            if (ui_scene)
-            {
-                assert(ui_scene->publishFrame());
-            }
-            auto driven = scenes->driveFrame();
-            assert(driven && driven->empty());
-        };
-        unsigned waiting{};
-        auto until = [&](auto predicate)
-        {
-            std::fprintf(stderr, "GPU wait %u\n", ++waiting);
-            const auto deadline = std::chrono::steady_clock::now() + 20s;
-            while (!predicate())
-            {
-                assert(std::chrono::steady_clock::now() < deadline);
-                pump();
-                std::this_thread::sleep_for(1ms);
-            }
-        };
-        until([&] { return take(ui_scene->outputReady()); });
-        scene::RenderResourceId view;
-        {
-            auto registry = std::as_const(*scenes).borrowInstance(ui_scene->sceneId());
-            assert(registry);
-            for (auto entity : registry->get().view<scene::RenderViewResult>())
-            {
-                view = registry->get().get<scene::RenderViewResult>(entity).view;
-            }
+            assert(addElement(label));
         }
-        assert(view.isValid());
-        auto capture = [&](const ui::DrawData& data) noexcept { return ui_scene->captureDrawData(data); };
-        for (unsigned i{}; i < 8; ++i)
-        {
-            ui::DrawData* data{};
-            until(
-                [&]
-                {
-                    data = ui_scene->acquireDrawData();
-                    return data != nullptr;
-                }
-            );
-            assert(root->update({{640, 480}, 0.016F}, *data, ui::Root::Capture{capture}));
-            assert(ui_scene->acquireDrawData() == nullptr); // Captured pending frame is never redrawn.
-            pump();
-        }
-        until([&] { return runtime->statistics().gpu_completed > 0; });
-        auto readPixels = [&]
-        {
-            auto output = resources->viewOutput(view);
-            assert(output);
-            auto info = resources->outputInfo(*output);
-            assert(info);
-            std::vector<std::byte> bytes(std::size_t(info->extent.width) * info->extent.height * 8);
-            auto control = runtime->control();
-            assert(control);
-            auto request = control->get().readbackTargetAsync(info->target, bytes.data(), bytes.size(), 4);
-            until(
-                [&]
-                {
-                    if (request.isReady())
-                    {
-                        return true;
-                    }
-                    // Readback settles on render ticks. Keep producing frames, with the same backpressure contract.
-                    if (auto* data = ui_scene->acquireDrawData())
-                    {
-                        assert(root->update({{640, 480}, 0.016F}, *data, ui::Root::Capture{capture}));
-                    }
-                    return false;
-                }
-            );
-            auto response = request.tryResult();
-            assert(response && response->get().status == 0 && response->get().bytes_written > 0);
-            bytes.resize(response->get().bytes_written);
-            return bytes;
-        };
-        // Real output admission failure stays a failure when queried by a sleeping host.
-        auto invalid_configuration = ui::makeRenderConfiguration(*root);
-        assert(invalid_configuration);
-        auto invalid = take(EditorUiScene::create(
-            *engine,
-            std::move(*invalid_configuration),
-            scene::ViewConfig{.extent = {640, 480}, .output = scene::NativeSurfaceOutput{0}}
-        ));
-        until([&] { return !invalid->outputReady(); });
-        const auto failure = invalid->outputReady();
-        assert(
-            !failure &&
-            failure.error() == render::toError(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT})
-        );
-        invalid.reset();
-        auto populated = readPixels();
-        assert(root->clearPanes());
-        for (unsigned i{}; i < 8; ++i)
-        {
-            ui::DrawData* data{};
-            until(
-                [&]
-                {
-                    data = ui_scene->acquireDrawData();
-                    return data != nullptr;
-                }
-            );
-            assert(root->update({{640, 480}, 0.016F}, *data, ui::Root::Capture{capture}));
-            pump();
-        }
-        auto empty = readPixels();
-        assert(populated != empty);
-        ui_scene.reset();
-        resources->beginClose();
-        until([&] { return resources->empty(); });
-        assert(runtime->statistics().validation_errors == 0);
-        std::printf(
-            "PASS UI RenderSystem GPU readback differs with Pane; pending frame retained; zero validation errors\n"
-        );
-    }
+
+        ui::Label label;
+    };
 } // namespace
+
 int main()
 {
-    offscreen();
+    auto execution = take(execution::ExecutionRuntime::create({2, 128, {32}}));
+    auto window = take(EditorWindow::create({640, 480, "Render UI integration"}));
+    execution.setWake(&window::LuxWindow::wakeEvents);
+    RenderExecutionConfig configuration;
+    configuration.render.channel_name = "editor.ui.test";
+    configuration.render.validation = true;
+    configuration.render.frames_in_flight = 3;
+    configuration.render.uploads.emplace();
+    configuration.device.texture_descriptors = true;
+    auto rendering = take(RenderExecution::create(std::move(configuration), execution));
+    SurfaceDescription surface;
+#if defined(_WIN32)
+    surface.window.windows.hwnd = window->nativeHandle();
+#endif
+    auto& root = window->uiRoot();
+    auto ui_scene = take(EditorUiScene::create(
+        *rendering,
+        {640, 480, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::SURFACE},
+        surface,
+        take(root.fontAtlas())
+    ));
+    std::unique_ptr<ui::Pane> content = std::make_unique<Content>();
+    assert(root.addPane(std::move(content)));
+    auto& client = rendering->mainClient();
+    std::size_t completed = 0, captured_vertices = 0;
+    auto drive = [&](bool capture)
+    {
+        window::LuxWindow::pollEvents();
+        rendering->consumeResponses();
+        assert(execution.dispatchMainCompletions() && execution.dispatchTaskEvents());
+        assert(ui_scene->maintain());
+        const bool draw = capture && take(ui_scene->outputReady());
+        if ((!draw && !client.hasQueuedFrameCommands()) || !client.hasFrameCapacity())
+        {
+            return;
+        }
+        auto* frame = take(client.beginFrame());
+        if (draw)
+        {
+            auto& data = ui_scene->captureBuffer(*frame);
+            assert(root.update({{640, 480}, 0.016f}, data));
+            captured_vertices += data.data().vertices.size();
+            assert(ui_scene->appendFrameCommands(*frame));
+        }
+        assert(execution.submit(
+            {},
+            [&](execution::TaskReporter) noexcept
+            {
+                return stdexec::then(
+                    client.submitFrame(*frame),
+                    [&, frame](FrameCompletion response) noexcept
+                    {
+                        if (response.error.type)
+                        {
+                            reportRenderFailure(response.error, "UI frame");
+                        }
+                        assert(response.error.type == 0);
+                        assert(client.releaseFrame(*frame));
+                        ++completed;
+                    }
+                );
+            }
+        ));
+    };
+    auto until = [&](auto condition, bool draw)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + 30s;
+        while (!condition())
+        {
+            assert(std::chrono::steady_clock::now() < deadline);
+            drive(draw);
+            std::this_thread::sleep_for(1ms);
+        }
+    };
+    until([&] { return completed >= 12 && rendering->stats().presentations >= 6; }, true);
+    assert(captured_vertices > 0);
+    // A malformed real output fails asynchronously; it is not reported as a ready UI scene.
+    auto invalid =
+        take(EditorUiScene::create(*rendering, {0, 480, rdesc::ETextureFormat::RGBA8_UNORM}, {}, take(root.fontAtlas()))
+        );
+    until([&] { return !invalid->outputReady(); }, true);
+    assert(!invalid->outputReady());
+    invalid->stopFrames();
+    until(
+        [&]
+        {
+            assert(invalid->maintain());
+            return invalid->settled();
+        },
+        true
+    );
+    invalid.reset();
+    until([&] { return client.pendingRequests() == 0; }, false);
+    assert(root.clearPanes());
+    const auto before = completed;
+    until([&] { return completed >= before + 6; }, true);
+    ui_scene->setExtent(0, 0, false);
+    until([&] { return !take(ui_scene->outputReady()) && client.pendingRequests() == 0; }, false);
+    ui_scene->setExtent(640, 480, true);
+    until([&] { return take(ui_scene->outputReady()) && completed >= before + 10; }, true);
+    ui_scene->stopFrames();
+    until([&] { return ui_scene->settled() && client.pendingRequests() == 0; }, false);
+    assert(rendering->shutdown());
+    assert(rendering->stats().validation_errors == 0);
+    ui_scene.reset();
+    rendering.reset();
+    execution.requestStop();
+    assert(execution.waitUntil([&]() noexcept { return execution.settled(); }));
+    assert(execution.join());
+    std::puts("PASS actual Root/font/UiRasterFeature, shared Main frame, minimize/restore and native shutdown; "
+              "pixel/clip/blend assertions are retained in engine.render_ui");
 }

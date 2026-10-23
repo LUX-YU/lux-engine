@@ -50,14 +50,14 @@ Render 当前链路见 [源码阅读说明](rendering-flow.md)。
 | 世界解码的有限 coroutine 保持 CPU affinity | [WorldPartitionLoadSender.cpp](../../engine/process/world_loading/src/WorldPartitionLoadSender.cpp) | 每次读取后执行原 decoder.accept；Scene 采用单独进行 |
 | Editor 项目准备已用同一 Runtime + ObjectScheduler | [LuxEngine.cpp](../../editor/app/src/LuxEngine.cpp) | 保留项目序号和安全采用；删除完成回传的空绕行 |
 | WorldFileStorageSource 提供正式有限文件范围读取 | [WorldFileStorageSource.cpp](../../engine/process/world_loading/src/WorldFileStorageSource.cpp) | 测试只保留延迟控制；实际 IO 复用该 provider |
-| EngineContext 与 Scene 已迁新运输；EditorUiScene/UiRenderSyncStage 仍为旧接线 | 各模块 CMake 与 Editor app | 完成真实 UI/产品消费者，不加空 target/兼容别名 |
+| EngineContext、Scene 和 EditorUiScene 已迁统一运输；旧 UiFrame/UiRenderSyncStage 删除 | 各模块 CMake 与 Editor app | 根 EDITOR 使用真实 Engine/Render 依赖，不加空 target/兼容别名 |
 | SurfaceTarget 已使用 NRI SwapChain；Target 图像输入与 Resize 有实际消费者关系 | [SurfaceTarget.cpp](../../modules/function/render/src/execution/SurfaceTarget.cpp)、RenderServerImpl | 窗口与 Scene 输出接入现有 FIF，不创建呈现调度层 |
-| CPU UI 已使用中立 UiDrawData；Editor UI GPU 运输尚未迁移 | [DrawData.hpp](../../modules/function/ui/include/lux/engine/ui/DrawData.hpp)、[EditorUiScene.cpp](../../editor/app/src/EditorUiScene.cpp) | 保留必要的一次捕获；完成实际 Raster Feature |
-| Raster 尚无 ImGui 所需的绘制列表、逐 draw 裁剪和颜色混合合同 | [Draw.hpp](../../modules/function/render/include/lux/engine/render/graph/Draw.hpp)、[RenderExecutor.cpp](../../modules/function/render/src/execution/RenderExecutor.cpp) | 一次完成通用 Raster 能力与 UI 消费者 |
+| CPU UI 捕获中立 UiDrawData，Editor 直接写入共同 FrameInput | [DrawData.hpp](../../modules/function/ui/include/lux/engine/ui/DrawData.hpp)、[EditorUiScene.cpp](../../editor/app/src/EditorUiScene.cpp) | 顶点与索引只捕获一次；Native 只补齐复制尾部 1–3 字节 |
+| Raster 已具有 IndexedDrawList、逐 draw 裁剪、图像选择与颜色混合 | [Draw.hpp](../../modules/function/render/include/lux/engine/render/graph/Draw.hpp)、[RenderExecutor.cpp](../../modules/function/render/src/execution/RenderExecutor.cpp) | UiRasterFeature 只消费中立数据，不链接 ImGui/Editor |
 
 旧文档中“Asset Client 回主线程发送”“TaskExecutor 尚有私有池”“新建 RenderRequester”均被本版取代。
-此前 Root EDITOR 配置缺失 `engine_context_render`、`project_plugin_rendering` 的事实仍成立；
-本轮要通过真实迁移消除，不能沿用不存在的包拼出成功配置。
+历史 Root EDITOR 曾缺失 `engine_context_render`、`project_plugin_rendering`；活动配置已迁入真实
+`engine_rendering`/`scene_render`，旧包不再作为依赖。历史失败不回写，产品验收绑定最终精确提交。
 
 ## 3. 线程、执行资源与唯一权威
 
@@ -395,8 +395,12 @@ revision n 仅确认 n，等待期间的新变化不能被旧回复清掉。
 结构性帧内控制也可用现有 RequestSender：Requester 暂存真实命令输入，下一次 beginFrame 纳入完整帧，
 Response 仍交给原 stdexec Operation。它不创建第二套结果队列或操作 Owner。
 创建、移除和替换可以在项目关闭时由维护帧清偿；普通热帧批量数据仍直接 append，避免逐项 Task。
-Attach 可携带同 Scene/View/Target 的待替换 AttachmentId，候选全部准备成功后才替换；
+Attach 可携带同 Scene/View 的待替换 AttachmentId；目的 Target 必须空闲或由该 Attachment 写入，候选全部准备成功后才替换；
 失败保留旧实例，不能先 detach 再赌新 attach 成功。
+
+`RenderRequester::buildingFrame()` 是当前唯一正在构造的 Main 帧借用；Scene 从这里追加，
+不再由每个 SceneRenderInputs 保存/设置第二份帧指针。submit/release 结束该借用。
+Requester 根据收到的 FrameCompletion 更新 resynchronization 版本，各 Scene 只重发自己的权威值。
 
 FrameInput 可以把平凡数组冻结到自身的分配区，直到真实 FrameCompletion 后再释放；
 Scene 或 Pane 提前销毁不会使这些 span 悬空。L+1 载体共用标准 PMR 块复用，
@@ -558,12 +562,16 @@ clip clamp、IdxOffset/VtxOffset、Alpha Blend 等成熟算法。
 
 ### 10.2 项目关闭
 
-先撤销该项目的新业务并请求 SceneRuntime 退休。Scene 系统的析构把必要的 Render 关闭事务
+先从 Root 撤销该项目 UI，再请求该项目实际拥有的 SceneRuntime 实例退休。Scene 系统的析构把必要的 Render 关闭事务
 登记到已有项目 TaskScope 后，再关闭该 Scope 的新准入并请求停止；不能先关准入再要求析构补发释放。
 已接纳的 Render 事务保持真实 Response/句柄清偿，不因项目停止而跳过清理。
+项目把实际 SceneInstanceLease 交给 `EditorContext::adoptScene()`。close 仅请求退休，
+应用保留有 Scene 借用的关闭 Context 并继续 SceneRuntime/维护帧；finishClose 在退休回执完成后
+关闭 TaskScope 准入，等待它的已接纳清偿结束。它只保存真实 lease/回执，不建立另一份 Scene 目录。
 Scene 退休完成加项目 TaskScope.settled() 才允许移除其输出 Target 和销毁相关能力提供者。
 这仍是现有项目任务组，不是新增 GPU 清理 Scope。
 Pane/EditorContext 可先撤销 UI 采用，但已经发送的上传输入、文件 provider、代码 pin 和结果清偿不能随它们销毁。
+没有 Scene 借用的 Context 保留原来的非阻塞销毁合同；已接纳任务自行拥有输入和代码。
 项目关闭不停止整个 ExecutionRuntime，不 join RenderThread，不卸载仍有回调/Handler 的 DLL。
 
 成功创建但已经无人采用的资源走真实释放命令；该清偿属于应用仍存活的 RenderAssets/协议流水线。
@@ -703,7 +711,7 @@ TaskScope 内部迁移是一个完整模块，不能先删除 API 留一半消�
 | B：IO 与解码 | VFS 直接运输完成、标准 AssetLoadSender、World 每次读取后 CPU 调度、正式文件范围 provider | 主线程暂停时 accepted read/decode 前进；内存同步/文件异步/短读/取消/endpoint 关闭；source epoch/revision 与 staged bytes |
 | C：Engine 双 Client 与 Scene | RenderExecution、独立 Asset Link、RenderAssets、RenderSystem、完整帧 | 一个 CPU 池；固定 SPSC 线程；两个相同数值 RequestId 不串 Link；上传借用、额度、跨 Link 发布、两 Scene、关闭维护帧 |
 | D：窗口与 Target | 真 Surface、输出采样、明确图间依赖及关闭 | 真实窗口/多窗口、resize/minimize/out-of-date、FIF/WSI 同步、GPU Validation/SyncValidation、项目暂停/恢复 |
-| E：UI 完整闭环 | 独立 Render UI Scene、UiRasterFeature、中立快照、IndexedList/Blend、项目视口合成 | clip/DPI/透明/多纹理/索引宽度/大网格、字体更新、两窗口、项目切换、Pane 删除、完整帧与 CPU 借用 |
+| E：UI 完整闭环 | 独立 Render UI Scene、UiRasterFeature、中立快照、IndexedList/Blend、项目视口合成 | clip/DPI/透明/多纹理/索引宽度/大网格、字体上传、两窗口、项目切换、Pane 删除、完整帧与 CPU 借用 |
 | F：产品与 SDK 收口 | 删除旧接线、正式安装/迁移 prefix、更新使用说明、真实 Editor 启停 | Root EDITOR 实配、all/第二轮无工作、公共头/安装消费者、ASan/GPU、关闭与磁盘清理 |
 
 A 的 OperationState 迁移先做同一模块内的实际生命周期证明，再迁全部消费者；
@@ -760,3 +768,30 @@ Frame/Record/Submit、堆分配、切换次数和峰值；采样与正式时延�
 分别报告执行架构、Render/产品功能、GPU/寿命安全、性能、SDK/产品闭包。
 阶段材料和原始输出外置，本文件只维护架构与使用合同，不变成历史施工账本。
 实现按模块提交，独立验收后才安全推送；本文的目标形状不代替实际交付结果。
+
+## 14. 实际接入接口
+
+- 应用启动以 `RenderExecution::create(config, execution)` 组合 Server/Main/Asset；
+  Editor 的 `LuxEngine::rendering()` 与 `renderAssets()` 借用同一设施。
+- EditorComposition 的 ContextExtensions 发布这两个现存对象；它们不变成 Context 的第二份 Owner。
+  `EditorContext::prepareAssetReads()` 提供项目 VFS 端点，使用同一 ExecutionRuntime 的阻塞资源。
+  SceneRenderServices 的 source 显式传入此端点，RenderAssets 每次 acquire 捕获它，
+  不通过全局“当前项目”选择器路由。调用方用不同 asset_revision 区分来源代次。
+- SceneRenderInputs 只保存 Target/Viewport/Camera 相关输入，不拥有完整帧。
+  Scene 在 Requester 正在构建的 carrier 中直接写 K 项变化；UI 随后捕获并追加，应用提交一次。
+- `LuxEngine::setUiImages(vector<UiTargetImage>)` 建立 UI token 到 sampled offscreen Target 的冷态关系。
+  移除图像后，要等 uiImagesApplied，再移除原 Target。Target 的创建/释放仍由实际视口消费者负责。
+- UiRasterFeature 的颜色运算为线性 BT.709 + straight alpha。SRGB 格式由采样器解码，
+  UNORM/浮点输入必须已经是线性值；ToneMap 后的 LDR 视口宜使用 SRGB Target，
+  不能把已经编码的 UNORM 值假装线性输入而再次编码。UI 不运行 ACES。
+- 当前 ui::Root 的字体 atlas 在创建后不可变，因此 Editor 在初始化时上传一次；没有运行期字体重建接口。
+  通用 Texture 替换仍使用原上传合同，不能把它当作已实现的动态字体更新。预乘 alpha 输入也不是当前 UI 合同。
+- 首次窗口初始化时如已经最小化，延后创建 SwapChain；恢复事件才触发创建。
+  Resize 事务先登记，再判断 outputReady，不能把新尺寸几何送入旧 Target。
+- `UiRasterFeature` 支持本轮 CPU UI 的直通绘制数据；Context/Pane 或 ImGui 指针不进入 Render。
+  具体 Scene 编辑工具、动画/LOD 选择、编辑器 picking 不在此次接线闭环内。
+
+Main 等待还必须覆盖 RunLoop 发布尾部：节点已被消费而 post 尚未退出唤醒回调时，
+hasReadyWork 仍为真。发布返回的序号与活跃计数位于同一原子字，wakeEpoch 包含这次返回，
+防止在“已消费、尚未 settled”与进入等待之间丢失最后一次变化；等待方在检查业务条件前取得 epoch。
+没有第二套完成队列或新的 operation Owner。

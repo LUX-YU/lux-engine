@@ -24,6 +24,11 @@ namespace lux::render::detail
         {
             nri_core.DestroyBuffer(buffer);
         }
+        for (auto& list : draw_lists)
+        {
+            nri_core.DestroyBuffer(list.vertices);
+            nri_core.DestroyBuffer(list.indices);
+        }
         for (const auto& allocation : memories)
         {
             nri_core.FreeMemory(allocation.memory);

@@ -9,6 +9,7 @@
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/features/EffectDefinition.hpp>
+#include <lux/engine/render/graph/Draw.hpp>
 #include <memory>
 #include <optional>
 #include <span>
@@ -73,8 +74,9 @@ namespace lux::render
         std::vector<std::byte> parameters; // Exact bytes of the compiled context parameter block.
         RasterViewport viewport;
         std::vector<std::uint8_t> conditions;
-        // Optional current writer of the same Scene/View/Target. The new instance is fully prepared
-        // before replacing it at this frame safe point; failure preserves the previous attachment.
+        // Optional current attachment of the same Scene/View. The destination Target must be free
+        // or contain that attachment. Prepare the complete candidate before atomically replacing
+        // the old writer; this also supports moving a view to another output without a detach gap.
         AttachmentId replaces;
         std::vector<TargetImageInput> target_images;
     };
@@ -117,6 +119,24 @@ namespace lux::render
         RenderError error{};
         AttachmentId attachment;
         std::vector<StorageBindingInfo> storages;
+        // Cold pass names/IDs for streaming geometry. IDs belong to this attachment's compiled graph.
+        std::vector<std::pair<std::string, GraphPassId>> draw_lists;
+    };
+
+    struct DrawListUpdate final
+    {
+        AttachmentId attachment;
+        GraphPassId pass;
+        // Frozen through Response. Vertex format, index width and parameter layout come from the pass.
+        DrawListData data;
+    };
+
+    struct UpdateDrawList final
+    {
+        static constexpr std::string_view name{"render.attachment.draw_list"};
+        static constexpr bool frame_scoped = true;
+        using Request = DrawListUpdate;
+        using Response = AckResponse;
     };
 
     struct FindStorage final

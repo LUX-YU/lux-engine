@@ -238,6 +238,16 @@ namespace lux::render::detail
                             }
                         }
                     }
+                    else if constexpr (std::is_same_v<Draw, DrawIndexedList>)
+                    {
+                        const bool invalid_list = work.vertex_buffers.size() != 1 || draw.index_offset != 0 ||
+                                                  work.vertex_buffers.front().offset != 0 ||
+                                                  draw.selection_parameter.empty() || draw.selection_count == 0;
+                        if (invalid_list)
+                        {
+                            return cxx::unexpected(RenderError{kDeviceArgument});
+                        }
+                    }
                     else
                     {
                         if (!draw.count || !draw.instances)
@@ -421,6 +431,7 @@ namespace lux::render::detail
         std::vector<PipelineIdentity> identities;
         plan.pass_indices_.resize(graph.passes().size(), kGraphInvalidIndex);
         std::size_t parameter_bytes = 0;
+        std::uint32_t draw_list_count = 0;
         for (const auto id : analysis.execution_order)
         {
             const auto& source = graph.passes()[id.index];
@@ -528,7 +539,43 @@ namespace lux::render::detail
                 auto& recorded = std::get<RasterCommands>(pass.work);
                 recorded.colors = raster->colors;
                 recorded.depth = raster->depth;
-                recorded.draw = raster->draw;
+                if (const auto* list = std::get_if<DrawIndexedList>(&raster->draw))
+                {
+                    const auto reflected = shaderInterface(graph.programs()[input->program].interface);
+                    if (!reflected)
+                    {
+                        return cxx::unexpected(reflected.error());
+                    }
+                    const auto& fields = reflected->parameters.fields;
+                    const auto field = std::ranges::find(fields, list->selection_parameter, &rdesc::ShaderMember::path);
+                    const bool invalid_selection = field == fields.end() || field->scalar != rdesc::EDataScalar::UINT ||
+                                                   field->rows != 1 || field->columns != 1 || field->array_stride != 0;
+                    if (invalid_selection)
+                    {
+                        return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                    }
+                    recorded.draw = IndexedListCommands{
+                        list->index_resource,
+                        list->index_offset,
+                        list->type,
+                        field->offset,
+                        list->selection_count,
+                        draw_list_count++
+                    };
+                }
+                else
+                {
+                    std::visit(
+                        [&](const auto& draw) noexcept
+                        {
+                            if constexpr (!std::same_as<std::decay_t<decltype(draw)>, DrawIndexedList>)
+                            {
+                                recorded.draw = draw;
+                            }
+                        },
+                        raster->draw
+                    );
+                }
                 recorded.viewport = raster->viewport;
                 recorded.state_input = raster->state_input;
                 recorded.depth_bias = {raster->graphics.depth_bias_constant, raster->graphics.depth_bias_slope};

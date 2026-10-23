@@ -256,6 +256,13 @@ namespace lux::rendering
         // consumes/waits at its normal safe point; it must not prepare another unbounded frame.
         [[nodiscard]] render::RenderResult<FrameInput*> beginFrame() noexcept;
 
+        // Main safe-point borrows only. Scene systems append to the application's single open
+        // carrier; submit/release ends this borrow. Sent carriers remain isolated until their replies.
+        [[nodiscard]] FrameInput* buildingFrame() noexcept;
+        [[nodiscard]] bool hasFrameCapacity() const noexcept;
+        // Incremented after a received unsuccessful frame. Each Scene republishes its own authority.
+        [[nodiscard]] std::uint64_t resynchronization() const noexcept;
+
         template <render::RenderCommand C>
         [[nodiscard]] render::RenderResult<void> append(
             FrameInput& frame,

@@ -127,7 +127,7 @@ namespace lux::render::detail
     {
         const auto& core = instance.session_->nriCore();
         const auto& plan = *instance.plan_;
-        const auto& frame = instance.frames_[slot];
+        auto& frame = instance.frames_[slot];
         const auto& batch = plan.submissions_[batch_index];
         const auto& bindings = frame.bindings;
         const auto readBinding = [&](const ResourceAccess& access) -> const RenderGraphInstance::Binding&
@@ -231,7 +231,7 @@ namespace lux::render::detail
                     }
                 }
                 binding_state.descriptors = pass.descriptors;
-                if (!parameters.empty())
+                if (!parameters.empty() && (!raster || !std::holds_alternative<IndexedListCommands>(raster->draw)))
                 {
                     core.CmdSetRootConstants(
                         command,
@@ -252,7 +252,8 @@ namespace lux::render::detail
                 }
                 const auto* previous = p ? std::get_if<RasterCommands>(&plan.recording_.passes[p - 1].work) : nullptr;
                 if (group.first_pass == p || raster->state_input ||
-                    (previous && (previous->state_input || previous->viewport != raster->viewport)))
+                    (previous && (previous->state_input || previous->viewport != raster->viewport ||
+                                  std::holds_alternative<IndexedListCommands>(previous->draw))))
                 {
                     const auto& attachment = raster->colors.empty() ? *raster->depth : raster->colors.front();
                     const auto& image = core.GetTextureDesc(*bindings[attachment.access.version.resource.index].image);
@@ -348,6 +349,41 @@ namespace lux::render::detail
                                     command,
                                     {draw.count, draw.instances, draw.first, draw.vertex_offset, draw.first_instance}
                                 );
+                            }
+                            else if constexpr (std::same_as<Draw, IndexedListCommands>)
+                            {
+                                auto& list = frame.draw_lists[draw.data_index];
+                                for (const auto& range : list.ranges)
+                                {
+                                    if (!range.index_count || !range.width || !range.height)
+                                    {
+                                        continue;
+                                    }
+                                    const nri::Rect scissor{
+                                        static_cast<std::int16_t>(range.x),
+                                        static_cast<std::int16_t>(range.y),
+                                        static_cast<nri::Dim_t>(range.width),
+                                        static_cast<nri::Dim_t>(range.height)
+                                    };
+                                    core.CmdSetScissors(command, &scissor, 1);
+                                    std::memcpy(
+                                        list.parameters.data() + draw.selection_offset,
+                                        &range.selection,
+                                        sizeof(range.selection)
+                                    );
+                                    core.CmdSetRootConstants(
+                                        command,
+                                        {0,
+                                         list.parameters.data(),
+                                         static_cast<std::uint32_t>(list.parameters.size()),
+                                         0,
+                                         nri::BindPoint::GRAPHICS}
+                                    );
+                                    core.CmdDrawIndexed(
+                                        command,
+                                        {range.index_count, 1, range.first_index, range.vertex_offset, 0}
+                                    );
+                                }
                             }
                             else
                             {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/process/asset_loading/AssetRead.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/core/Target.hpp>
@@ -22,19 +23,15 @@ namespace lux::rendering
 
 namespace lux::scene
 {
-    // Application-owned view/frame input. A Scene only appends to the current Main carrier;
-    // it never submits a second frame or owns the window. Set frame before driveFrame, clear afterwards.
+    // Application-owned view input. The Scene appends to RenderRequester's open Main carrier;
+    // it never submits a second frame or owns the window. Call beginFrame before driveFrame.
     struct SceneRenderInputs final
     {
-        rendering::FrameInput* frame = nullptr;
         render::TargetId target;
         render::TargetDesc description;
         render::RasterViewport viewport;
         std::uint64_t revision = 0;       // Increment after changing target/viewport/exposure/background.
         std::uint64_t asset_revision = 0; // Project source generation; distinct generations may coexist.
-        // Increment after an unsuccessful frame. The next publication rebuilds authoritative values;
-        // a receipt for an older frame never clears newer Scene dirtiness.
-        std::uint64_t resynchronization = 0;
         float exposure = 0;
         std::array<float, 4> background{0, 0, 0, 1};
     };
@@ -47,6 +44,8 @@ namespace lux::scene
         // admission; then settled() also proves their accepted protocol cleanup has returned.
         execution::TaskScope& tasks;
         SceneRenderInputs& inputs;
+        // Optional project VFS; copied into each accepted load, never selected globally by workers.
+        process::asset_loading::AssetReadPort source;
     };
 
     // Main-thread Scene projection. Observers collect intent; the existing TransformSystem remains

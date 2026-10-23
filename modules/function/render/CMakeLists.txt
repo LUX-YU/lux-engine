@@ -48,6 +48,7 @@ set(render_sources
     src/features/MeshVisibilityFeature.cpp
     src/features/MeshShadowFeature.cpp
     src/features/TonemapFeature.cpp
+    src/features/UiRasterFeature.cpp
     src/features/FullscreenRaster.cpp
     src/features/ParameterLayout.cpp
     src/storage/DirectLightingStorage.cpp
@@ -164,10 +165,20 @@ foreach(shader
     DeferredLighting DeferredLightingShadow
     DeferredLightingClustered DeferredLightingClusteredShadow
     TonemapLinear TonemapSrgb
+    UiRasterVertex UiRasterFragment UiOutputLinear UiOutputSrgb
 )
     set(defines)
     if(shader STREQUAL "FullscreenVertex")
         set(source shaders/deferred/Fullscreen.vert)
+    elseif(shader STREQUAL "UiRasterVertex")
+        set(source shaders/ui/UiRaster.vert)
+    elseif(shader STREQUAL "UiRasterFragment")
+        set(source shaders/ui/UiRaster.frag)
+    elseif(shader MATCHES "^UiOutput")
+        set(source shaders/ui/UiOutput.frag)
+        if(shader STREQUAL "UiOutputSrgb")
+            list(APPEND defines -DOUTPUT_SRGB=1)
+        endif()
     elseif(shader MATCHES "^DeferredLighting")
         set(source shaders/deferred/DeferredLighting.frag)
         if(shader MATCHES "Shadow$")

@@ -133,6 +133,133 @@ namespace lux::render
         // Terminal delivery owns its Response and can release its connected state immediately.
     }
 
+    void RenderServer::Impl::activateFrame(FrameRecord& frame) noexcept
+    {
+        if (frame_resynchronization_ && !frame.input.resynchronize)
+        {
+            frame.error = RenderError{kFrameResynchronization};
+        }
+        if (frame.error.type == 0)
+        {
+            if (!frames->beginFrame(frame.slot))
+            {
+                return; // Keep the input queued until a physical FIF slice becomes reusable.
+            }
+            // Directory entries are not erased while running. Resolve the selected method at
+            // activation, so a frame-boundary selection affects queued, not already started frames.
+            for (auto& invocation : frame.invocations)
+            {
+                const auto* selected = command_registry_.findCommand(invocation.input->command)->selectedBinding();
+                if (!selected)
+                {
+                    frame.error = RenderError{kRuntimeUnsupported};
+                    break;
+                }
+                invocation.handler = selected->call;
+            }
+            frame.stage = FrameRecord::EStage::APPLYING;
+        }
+    }
+
+    void RenderServer::Impl::dispatchFrameGroups(FrameRecord& frame) noexcept
+    {
+        while (frame.group < frame.input.groups.size())
+        {
+            const auto count = frame.input.groups[frame.group++].commands.size();
+            frame.group_pending = count; // Register the whole group before synchronous completion can reenter.
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                auto& invocation = frame.invocations[frame.dispatched++];
+                auto& command = *invocation.input;
+                CommandDispatchContext context{
+                    command.request,
+                    {frame_source_, command.request_id},
+                    response_outbox_,
+                    command_scope_,
+                    render_loop_,
+                    &frame
+                };
+                invocation.handler.invoke(invocation.handler.object, context);
+                command.request.reset();
+                ++commands;
+            }
+            if (frame.group_pending != 0 || frame.error.type != 0)
+            {
+                break;
+            }
+        }
+        const bool groups_complete =
+            frame.group_pending == 0 && frame.error.type == 0 && frame.group == frame.input.groups.size();
+        if (groups_complete)
+        {
+            frame.stage = FrameRecord::EStage::SUBMITTING;
+        }
+    }
+
+    void RenderServer::Impl::failFrame(FrameRecord& frame) noexcept
+    {
+        const bool applied_commands = frame.dispatched != 0;
+        skipFrameCommands(frame, frame.error);
+        std::uint32_t accepted = 0;
+        if (frame.slot != UINT32_MAX)
+        {
+            accepted = frames->submittedBatches(frame.slot);
+            if (!frames->inputConsumed(frame.slot))
+            {
+                frames->cancelSubmissions(frame.error);
+            }
+            frame_resynchronization_ |= applied_commands;
+        }
+        finishFrame(
+            frame,
+            FrameCompletion{
+                frame.error,
+                frame.input.sequence,
+                accepted ? EFrameOutcome::PARTIALLY_SUBMITTED : EFrameOutcome::NOT_SUBMITTED,
+                accepted,
+                frame_resynchronization_
+            }
+        );
+    }
+
+    void RenderServer::Impl::submitFrameRendering(FrameRecord& frame) noexcept
+    {
+        const auto submitted = submitCurrentFrame();
+        if (!submitted)
+        {
+            frame.error = submitted.error();
+            // render() already retires a failed submission. Do not cancel the next physical slot.
+            frame_resynchronization_ = true;
+            const auto accepted = frames->submittedBatches(frame.slot);
+            finishFrame(
+                frame,
+                FrameCompletion{
+                    frame.error,
+                    frame.input.sequence,
+                    accepted ? EFrameOutcome::PARTIALLY_SUBMITTED : EFrameOutcome::NOT_SUBMITTED,
+                    accepted,
+                    true
+                }
+            );
+            return;
+        }
+        if (frames->inputConsumed(frame.slot))
+        {
+            const bool no_draw = active_targets.empty();
+            frame_resynchronization_ = false;
+            finishFrame(
+                frame,
+                FrameCompletion{
+                    {},
+                    frame.input.sequence,
+                    no_draw ? EFrameOutcome::NO_DRAW : EFrameOutcome::SUBMITTED,
+                    frames->submittedBatches(frame.slot),
+                    false
+                }
+            );
+        }
+    }
+
     void RenderServer::Impl::progressFrame() noexcept
     {
         if (frame_count_ == 0)
@@ -146,125 +273,26 @@ namespace lux::render
         }
         if (frame.stage == FrameRecord::EStage::QUEUED)
         {
-            if (frame_resynchronization_ && !frame.input.resynchronize)
-            {
-                frame.error = RenderError{kFrameResynchronization};
-            }
-            if (frame.error.type == 0)
-            {
-                if (!frames->beginFrame(frame.slot))
-                {
-                    return;
-                }
-                // Directory entries are not erased while running. Resolve the selected method at
-                // activation, so a frame-boundary selection affects queued, not already started frames.
-                for (auto& invocation : frame.invocations)
-                {
-                    const auto* selected = command_registry_.findCommand(invocation.input->command)->selectedBinding();
-                    if (!selected)
-                    {
-                        frame.error = RenderError{kRuntimeUnsupported};
-                        break;
-                    }
-                    invocation.handler = selected->call;
-                }
-                frame.stage = FrameRecord::EStage::APPLYING;
-            }
+            activateFrame(frame);
         }
-        if (frame.stage == FrameRecord::EStage::APPLYING && frame.group_pending == 0 && frame.error.type == 0)
+        const bool can_dispatch =
+            frame.stage == FrameRecord::EStage::APPLYING && frame.group_pending == 0 && frame.error.type == 0;
+        if (can_dispatch)
         {
-            while (frame.group < frame.input.groups.size())
-            {
-                const auto count = frame.input.groups[frame.group++].commands.size();
-                frame.group_pending = count; // Register the whole group before synchronous completion can reenter.
-                for (std::size_t i = 0; i < count; ++i)
-                {
-                    auto& invocation = frame.invocations[frame.dispatched++];
-                    auto& command = *invocation.input;
-                    CommandDispatchContext context{
-                        command.request,
-                        {frame_source_, command.request_id},
-                        response_outbox_,
-                        command_scope_,
-                        render_loop_,
-                        &frame
-                    };
-                    invocation.handler.invoke(invocation.handler.object, context);
-                    command.request.reset();
-                    ++commands;
-                }
-                if (frame.group_pending != 0 || frame.error.type != 0)
-                {
-                    break;
-                }
-            }
-            if (frame.group_pending == 0 && frame.error.type == 0 && frame.group == frame.input.groups.size())
-            {
-                frame.stage = FrameRecord::EStage::SUBMITTING;
-            }
+            dispatchFrameGroups(frame);
         }
         if (frame.group_pending != 0)
         {
-            return; // ResourceUploader and RunLoop continue independently in the service loop.
+            return; // Upload and completion continuations progress at the service-loop safe points.
         }
         if (frame.error.type != 0)
         {
-            const bool applied_commands = frame.dispatched != 0;
-            skipFrameCommands(frame, frame.error);
-            std::uint32_t accepted = 0;
-            if (frame.slot != UINT32_MAX)
-            {
-                accepted = frames->submittedBatches(frame.slot);
-                if (!frames->inputSubmitted(frame.slot))
-                {
-                    frames->cancelSubmissions(frame.error);
-                }
-                frame_resynchronization_ |= applied_commands;
-            }
-            finishFrame(
-                frame,
-                {frame.error,
-                 frame.input.sequence,
-                 accepted ? EFrameOutcome::PARTIALLY_SUBMITTED : EFrameOutcome::NOT_SUBMITTED,
-                 accepted,
-                 frame_resynchronization_}
-            );
+            failFrame(frame);
             return;
         }
-        if (frame.stage != FrameRecord::EStage::SUBMITTING)
+        if (frame.stage == FrameRecord::EStage::SUBMITTING)
         {
-            return;
+            submitFrameRendering(frame);
         }
-        const auto submitted = submitCurrentFrame();
-        if (!submitted)
-        {
-            frame.error = submitted.error();
-            // render() already retires a failed submission. Do not cancel the next physical slot.
-            frame_resynchronization_ = true;
-            const auto accepted = frames->submittedBatches(frame.slot);
-            finishFrame(
-                frame,
-                {frame.error,
-                 frame.input.sequence,
-                 accepted ? EFrameOutcome::PARTIALLY_SUBMITTED : EFrameOutcome::NOT_SUBMITTED,
-                 accepted,
-                 true}
-            );
-            return;
-        }
-        if (frames->inputSubmitted(frame.slot))
-        {
-            const bool no_draw = active_targets.empty();
-            frame_resynchronization_ = false;
-            finishFrame(
-                frame,
-                {{},
-                 frame.input.sequence,
-                 no_draw ? EFrameOutcome::NO_DRAW : EFrameOutcome::SUBMITTED,
-                 frames->submittedBatches(frame.slot),
-                 false}
-            );
-        }
-        return;
     }
 } // namespace lux::render

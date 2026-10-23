@@ -93,6 +93,7 @@ set(render_sources
     src/runtime/EffectCompilation.cpp
     src/runtime/CommandDispatchContext.cpp
     src/runtime/FrameSubmission.cpp
+    src/runtime/ResponseOutbox.cpp
 )
 
 set(mesh_shader_headers)

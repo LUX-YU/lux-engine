@@ -24,11 +24,13 @@ Stopping halfway would misrepresent ECS writes already performed. One graph at a
 ALREADY_EXECUTING is returned before any callable runs. Simulation restores its candidate time on that rejection.
 Ordinary allocation failure is fatal, not a recoverable graph failure.
 
-Workspace capacity is a hint, not a business limit. Actual bytes depend on the connected caller scheduler's
-operation size. The first execution allocates; same-size subsequent executions reuse storage. All nodes are
+`minimumTaskCapacity()` reports a nondecreasing sizing hint, not allocated storage or a business limit.
+`setMinimumTaskCapacity()` raises that hint only while idle; it does not allocate. Actual bytes depend on the
+connected caller scheduler's operation size. The first execution allocates; same-size subsequent executions reuse storage. All nodes are
 constructed before root publication. A startup reference and completion references protect synchronous reentry
 and predecessor tails; workspace is released before the final Receiver, which may start another graph.
 
-Graph, executor, CPU pool and code modules must outlive accepted work. ExecutionRuntime is joined only after all
-external graph/Render/asset work is quiescent. Its pool destructor joins producer callback tails. Scope completion
+Graph, executor, CPU pool and code modules must outlive accepted work. Do not move an executor while a Sender or
+connected operation borrows it. ExecutionRuntime is joined only after all external graph/Render/asset work is
+quiescent. Its pool destructor joins producer callback tails. Scope completion
 alone is not a substitute for that join.

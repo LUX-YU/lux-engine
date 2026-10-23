@@ -7,7 +7,9 @@ namespace lux::task
 {
     struct TaskExecutor::Impl final
     {
-        Impl(execution::CpuScheduler value, std::size_t capacity) noexcept : cpu(value), task_capacity(capacity) {}
+        Impl(execution::CpuScheduler value, std::size_t capacity) noexcept : cpu(value), minimum_task_capacity(capacity)
+        {
+        }
 
         ~Impl() noexcept
         {
@@ -21,7 +23,7 @@ namespace lux::task
         execution::CpuScheduler cpu;
         std::atomic_bool executing{};
         void* workspace{};
-        std::size_t task_capacity{};
+        std::size_t minimum_task_capacity{};
         std::size_t bytes{};
         std::size_t alignment{alignof(std::max_align_t)};
     };
@@ -35,18 +37,18 @@ namespace lux::task
     TaskExecutor::TaskExecutor(TaskExecutor&&) noexcept = default;
     TaskExecutor& TaskExecutor::operator=(TaskExecutor&&) noexcept = default;
 
-    std::size_t TaskExecutor::taskCapacity() const noexcept
+    std::size_t TaskExecutor::minimumTaskCapacity() const noexcept
     {
-        return impl_->task_capacity;
+        return impl_->minimum_task_capacity;
     }
 
-    TaskExecutor::Result TaskExecutor::reserve(std::size_t task_capacity) noexcept
+    TaskExecutor::Result TaskExecutor::setMinimumTaskCapacity(std::size_t minimum_task_capacity) noexcept
     {
         if (!acquire())
         {
             return lux::cxx::unexpected(TaskExecutorFailure{});
         }
-        impl_->task_capacity = std::max(task_capacity, impl_->task_capacity);
+        impl_->minimum_task_capacity = std::max(minimum_task_capacity, impl_->minimum_task_capacity);
         release();
         return {};
     }
@@ -68,8 +70,8 @@ namespace lux::task
 
     void* TaskExecutor::workspace(std::size_t count, std::size_t stride, std::size_t alignment) noexcept
     {
-        impl_->task_capacity = std::max(impl_->task_capacity, count);
-        const auto bytes = impl_->task_capacity * stride;
+        impl_->minimum_task_capacity = std::max(impl_->minimum_task_capacity, count);
+        const auto bytes = impl_->minimum_task_capacity * stride;
         if (bytes > impl_->bytes || alignment > impl_->alignment)
         {
             auto* value = ::operator new(bytes, std::align_val_t(alignment));

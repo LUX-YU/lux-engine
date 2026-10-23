@@ -89,7 +89,7 @@ namespace lux::render
         std::vector<detail::RenderGraphInstance*> frame_instances;
         std::vector<detail::StorageFrameUse> frame_storages;
         std::vector<std::pair<detail::RenderGraphInstance*, detail::FeatureBinding*>> frame_features;
-        bool frame_storages_dirty = true;
+        bool active_frame_inputs_dirty = true;
         std::atomic<bool> stop_requested{false}, started{false}, running{false};
         std::atomic<std::uint64_t> ticks{0}, commands{0}, compiled_graphs{0}, submissions{0};
         std::atomic<std::uint64_t> validation_errors{0}, validation_warnings{0};
@@ -122,8 +122,9 @@ namespace lux::render
 
         RenderResult<void> resizeTargetResources(RenderTarget& target, const TargetDesc& description) noexcept;
 
+        void rebuildActiveFrameInputs() noexcept;
         RenderResult<void> submitCurrentFrame() noexcept;
-        RenderResult<void> progressCompletions() noexcept;
+        RenderResult<void> progressGpuCompletions() noexcept;
         void progressUploads() noexcept;
         void progressFrame() noexcept;
 
@@ -132,6 +133,10 @@ namespace lux::render
         void admitFrame(FrameSubmission, void*, void (*)(void*, FrameCompletion) noexcept) noexcept;
         void finishFrame(FrameRecord&, FrameCompletion) noexcept;
         void skipFrameCommands(FrameRecord&, RenderError) noexcept;
+        void activateFrame(FrameRecord&) noexcept;
+        void dispatchFrameGroups(FrameRecord&) noexcept;
+        void failFrame(FrameRecord&) noexcept;
+        void submitFrameRendering(FrameRecord&) noexcept;
 
         static void NRI_CALL
         diagnostic(nri::Message severity, const char*, std::uint32_t, const char*, void* user) noexcept;

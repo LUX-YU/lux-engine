@@ -29,6 +29,7 @@ namespace lux::task
     /** Executes immutable DAGs on the application's CPU scheduler; owns no threads or ready queues.
      * One graph may use an executor at a time. Graph, callables and code pins outlive its completion.
      * Workspace is reused after completion. The supplying ExecutionRuntime outlives this executor.
+     * Do not move the executor while a Sender or connected operation borrows it.
      */
     class LUX_CORE_TASK_PUBLIC TaskExecutor final
     {
@@ -42,8 +43,10 @@ namespace lux::task
         TaskExecutor(const TaskExecutor&) = delete;
         TaskExecutor& operator=(const TaskExecutor&) = delete;
 
-        [[nodiscard]] std::size_t taskCapacity() const noexcept;
-        [[nodiscard]] Result reserve(std::size_t task_capacity) noexcept;
+        // A nondecreasing sizing hint, not allocated storage or a task limit. Actual workspace
+        // is allocated on execution, once the connected scheduler/receiver state size is known.
+        [[nodiscard]] std::size_t minimumTaskCapacity() const noexcept;
+        [[nodiscard]] Result setMinimumTaskCapacity(std::size_t task_capacity) noexcept;
 
         /** CALLER_THREAD nodes run on the receiver's scheduler, which must enqueue on that thread, be infallible and
          * remain available until completion. Stop is observed before starting; an accepted finite DAG drains. This does
@@ -173,7 +176,7 @@ namespace lux::task
                 {
                     startNode(root);
                 }
-                finishNode();
+                releaseCompletionReference();
             }
 
         private:
@@ -203,10 +206,10 @@ namespace lux::task
                     }
                 }
                 // No graph/state access follows this release, including nested completions.
-                finishNode();
+                releaseCompletionReference();
             }
 
-            void finishNode() noexcept
+            void releaseCompletionReference() noexcept
             {
                 if (remaining_.fetch_sub(1, std::memory_order_acq_rel) != 1)
                 {

@@ -59,15 +59,15 @@ namespace lux::rendering
     {
         struct ResponseNode
         {
-            ResponseNode(void (*deliver)(ResponseNode&, platform::ipc::IpcMessage&&, render::RenderError) noexcept
-            ) noexcept
-                : deliver(deliver)
+            using Deliver = void (*)(ResponseNode&, platform::ipc::IpcMessage&&, render::RenderError) noexcept;
+
+            ResponseNode(Deliver deliver) noexcept : deliver(deliver)
             {
             }
 
             ResponseNode(const ResponseNode&) = delete;
             ResponseNode& operator=(const ResponseNode&) = delete;
-            void (*deliver)(ResponseNode&, platform::ipc::IpcMessage&&, render::RenderError) noexcept;
+            Deliver deliver;
         };
 
     public:
@@ -103,18 +103,21 @@ namespace lux::rendering
             template <class Receiver> struct Operation final : ResponseNode
             {
                 using operation_state_concept = stdexec::operation_state_t;
-                RenderRequester& connection;
+                RenderRequester& requester;
                 BoundCommand<C> command;
                 typename C::Request& input;
                 Receiver receiver;
 
                 Operation(
-                    RenderRequester& connection,
+                    RenderRequester& requester,
                     BoundCommand<C> command,
                     typename C::Request& input,
                     Receiver receiver
                 ) noexcept
-                    : ResponseNode{&finish<Operation, C>}, connection(connection), command(command), input(input),
+                    : ResponseNode{&finish<Operation, C>},
+                      requester(requester),
+                      command(command),
+                      input(input),
                       receiver(std::move(receiver))
                 {
                 }
@@ -126,24 +129,24 @@ namespace lux::rendering
                         finish<Operation, C>(*this, {}, render::RenderError{render::kCommandCancelled});
                         return;
                     }
-                    connection.send<C>(command, input, *this);
+                    requester.send<C>(command, input, *this);
                 }
             };
 
             template <class Receiver> [[nodiscard]] auto connect(Receiver receiver) const noexcept
             {
-                return Operation<Receiver>{connection_, command_, input_, std::move(receiver)};
+                return Operation<Receiver>{requester_, command_, input_, std::move(receiver)};
             }
 
         private:
             friend class RenderRequester;
 
-            RequestSender(RenderRequester& connection, BoundCommand<C> command, typename C::Request& input) noexcept
-                : connection_(connection), command_(command), input_(input)
+            RequestSender(RenderRequester& requester, BoundCommand<C> command, typename C::Request& input) noexcept
+                : requester_(requester), command_(command), input_(input)
             {
             }
 
-            RenderRequester& connection_;
+            RenderRequester& requester_;
             BoundCommand<C> command_;
             typename C::Request& input_;
         };
@@ -166,12 +169,14 @@ namespace lux::rendering
             template <class Receiver> struct Operation final : ResponseNode
             {
                 using operation_state_concept = stdexec::operation_state_t;
-                RenderRequester& connection;
+                RenderRequester& requester;
                 FrameInput& input;
                 Receiver receiver;
 
-                Operation(RenderRequester& connection, FrameInput& input, Receiver receiver) noexcept
-                    : ResponseNode{&finish<Operation, render::SubmitFrame>}, connection(connection), input(input),
+                Operation(RenderRequester& requester, FrameInput& input, Receiver receiver) noexcept
+                    : ResponseNode{&finish<Operation, render::SubmitFrame>},
+                      requester(requester),
+                      input(input),
                       receiver(std::move(receiver))
                 {
                 }
@@ -187,24 +192,23 @@ namespace lux::rendering
                         );
                         return;
                     }
-                    connection.sendFrame(input, *this);
+                    requester.sendFrame(input, *this);
                 }
             };
 
             template <class Receiver> [[nodiscard]] auto connect(Receiver receiver) const noexcept
             {
-                return Operation<Receiver>{connection_, input_, std::move(receiver)};
+                return Operation<Receiver>{requester_, input_, std::move(receiver)};
             }
 
         private:
             friend class RenderRequester;
 
-            FrameSender(RenderRequester& connection, FrameInput& input) noexcept
-                : connection_(connection), input_(input)
+            FrameSender(RenderRequester& requester, FrameInput& input) noexcept : requester_(requester), input_(input)
             {
             }
 
-            RenderRequester& connection_;
+            RenderRequester& requester_;
             FrameInput& input_;
         };
 
@@ -249,8 +253,8 @@ namespace lux::rendering
     private:
         struct Impl;
         explicit RenderRequester(std::unique_ptr<Impl>) noexcept;
-        [[nodiscard]] render::RenderResult<render::CommandId> findCommand(const render::CommandDescriptor&)
-            const noexcept;
+        [[nodiscard]] render::RenderResult<render::CommandId>
+        findCommand(const render::CommandDescriptor&) const noexcept;
         [[nodiscard]] bool isBuildingInput(const FrameInput&, platform::ipc::RequesterId) const noexcept;
         [[nodiscard]] render::RenderResult<render::RequestId> admit(ResponseNode&, platform::ipc::RequesterId) noexcept;
         [[nodiscard]] render::RenderResult<void>

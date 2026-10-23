@@ -112,6 +112,11 @@ guarantees this final handoff even during shutdown, preserving failures and unkn
 result record or hand-written completion callback owns the Response. The RenderThread publishes IPC replies.
 Each asynchronous Command, including SubmitFrame, still has stdexec's operation-state allocation. Allocation-free
 steady recording is a narrower claim than allocation-free Client-to-Server frame submission.
+The service loop adopts ready CPU results before dispatch, runs continuations made ready by GPU completion/write
+admission before frame preparation, then delivers terminals produced by the frame. These three explicit safe points
+also remain active while the Command Scope drains. GPU polling itself does not drain the CPU RunLoop.
+Outbox service counts settled records, including replies discarded for closed destinations; it is not a delivery
+acknowledgement. The wakeable idle revisit remains bounded because one IPC receive examines only part of the Links.
 The CommandRegistry owns one Command directory, stable Handler objects and one selected binding index per
 Command. External installation validates its entries before publishing. Selection affects future dispatch, never
 an operation already started with another Handler.

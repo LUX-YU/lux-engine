@@ -74,7 +74,7 @@ namespace lux::render::detail
         return true;
     }
 
-    bool FrameExecution::inputSubmitted(std::uint32_t slot) const noexcept
+    bool FrameExecution::inputConsumed(std::uint32_t slot) const noexcept
     {
         const auto phase = frames_[slot].phase;
         return phase == EFramePhase::FREE || phase == EFramePhase::SUBMITTED;
@@ -293,6 +293,62 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
+        const auto resources_ready = prepareStorages(storages);
+        if (!resources_ready)
+        {
+            finishPreparation(cxx::unexpected(resources_ready.error()));
+            sealFrame(frame);
+            return cxx::unexpected(resources_ready.error());
+        }
+        bool instances_ready = *resources_ready;
+        bool feature_copies = false;
+        auto waiting = EExecutionOutcome::RESOURCE_PREPARATION_PENDING;
+        if (*resources_ready)
+        {
+            const auto features_ready = prepareFeatures(features, feature_copies);
+            if (!features_ready)
+            {
+                finishPreparation(cxx::unexpected(features_ready.error()));
+                sealFrame(frame);
+                return cxx::unexpected(features_ready.error());
+            }
+            instances_ready = *features_ready;
+        }
+        if (instances_ready)
+        {
+            const auto prepared = prepareInstances(instances);
+            if (!prepared)
+            {
+                finishPreparation(cxx::unexpected(prepared.error()));
+                sealFrame(frame);
+                return cxx::unexpected(prepared.error());
+            }
+            instances_ready = *prepared;
+            waiting = EExecutionOutcome::HISTORY_PENDING;
+        }
+        const bool has_copies = (uploads_ && uploads_->hasFrameCopies()) || feature_copies;
+        if (!instances_ready && !has_copies)
+        {
+            finishPreparation(cxx::unexpected(RenderError{kDeviceBusy}));
+            return outcome(waiting);
+        }
+        if (instances_ready)
+        {
+            collectFeatureCopies(features);
+            prepareSubmissions(instances);
+            return advanceSubmissions();
+        }
+        auto accepted = submitPreparationCopies(features, *resources_ready);
+        if (accepted)
+        {
+            (void)outcome(waiting);
+        }
+        return accepted;
+    }
+
+    RenderResult<bool> FrameExecution::prepareStorages(std::span<const StorageFrameUse> storages) noexcept
+    {
+        auto& frame = frames_[next_frame_];
         bool resources_ready = true;
         frame.prepared_storages.resize(storages.size());
         for (std::size_t i = 0; i < storages.size(); ++i)
@@ -309,8 +365,6 @@ namespace lux::render::detail
             auto prepared = use.ops->prepareFrame(use.storage, next_frame_, *uploads_);
             if (!prepared)
             {
-                finishPreparation(cxx::unexpected(prepared.error()));
-                sealFrame(frame);
                 return cxx::unexpected(prepared.error());
             }
             resources_ready &= *prepared;
@@ -319,85 +373,86 @@ namespace lux::render::detail
                 applied = {use.identity, use.storage, revision};
             }
         }
-        bool instances_ready = resources_ready;
-        auto waiting = EExecutionOutcome::RESOURCE_PREPARATION_PENDING;
-        bool native_records = false;
-        if (resources_ready)
+        return resources_ready;
+    }
+
+    RenderResult<bool> FrameExecution::prepareFeatures(
+        std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>> features,
+        bool& has_copies
+    ) noexcept
+    {
+        bool features_ready = true;
+        for (const auto& [instance, binding] : features)
         {
-            for (const auto& [instance, binding] : features)
+            const auto revision = binding->preparation_revision ? *binding->preparation_revision : 0;
+            if (revision != 0 && binding->applied_preparation[next_frame_] == revision)
             {
-                const auto revision = binding->preparation_revision ? *binding->preparation_revision : 0;
-                if (revision != 0 && binding->applied_preparation[next_frame_] == revision)
-                {
-                    continue;
-                }
-                for (std::size_t i = 0; i < binding->inputs.size(); ++i)
-                {
-                    binding->resolved_inputs[i] = instance->resourceInput(binding->inputs[i], next_frame_);
-                }
-                const FeatureFrameInput input{next_frame_, instance->instanceParameters(), binding->resolved_inputs};
-                auto prepared = binding->prepare(binding->value.get(), input, *uploads_);
-                if (!prepared)
-                {
-                    finishPreparation(cxx::unexpected(prepared.error()));
-                    sealFrame(frame);
-                    return cxx::unexpected(prepared.error());
-                }
-                for (const auto& update : prepared->resources)
-                {
-                    instance->setResource(update.resource.index, next_frame_, update.input);
-                }
-                instances_ready &= prepared->state != FeatureBinding::EPreparation::WAITING;
-                if (prepared->state == FeatureBinding::EPreparation::READY)
-                {
-                    binding->applied_preparation[next_frame_] = revision;
-                }
-                binding->prepared_copies = prepared->state == FeatureBinding::EPreparation::RECORD
-                                               ? prepared->copies
-                                               : std::span<const ResourceUploader::BufferCopy>{};
-                native_records |= !binding->prepared_copies.empty();
+                continue;
+            }
+            for (std::size_t i = 0; i < binding->inputs.size(); ++i)
+            {
+                binding->resolved_inputs[i] = instance->resourceInput(binding->inputs[i], next_frame_);
+            }
+            const FeatureFrameInput input{next_frame_, instance->instanceParameters(), binding->resolved_inputs};
+            auto prepared = binding->prepare(binding->value.get(), input, *uploads_);
+            if (!prepared)
+            {
+                return cxx::unexpected(prepared.error());
+            }
+            for (const auto& update : prepared->resources)
+            {
+                instance->setResource(update.resource.index, next_frame_, update.input);
+            }
+            features_ready &= prepared->state != FeatureBinding::EPreparation::WAITING;
+            if (prepared->state == FeatureBinding::EPreparation::READY)
+            {
+                binding->applied_preparation[next_frame_] = revision;
+            }
+            binding->prepared_copies = prepared->state == FeatureBinding::EPreparation::RECORD
+                                           ? prepared->copies
+                                           : std::span<const ResourceUploader::BufferCopy>{};
+            has_copies |= !binding->prepared_copies.empty();
+        }
+        return features_ready;
+    }
+
+    RenderResult<bool> FrameExecution::prepareInstances(std::span<RenderGraphInstance* const> instances) noexcept
+    {
+        for (auto* instance : instances)
+        {
+            const auto prepared = instance->prepareFrame(next_frame_);
+            if (!prepared)
+            {
+                return cxx::unexpected(prepared.error());
+            }
+            if (!*prepared)
+            {
+                return false;
             }
         }
-        if (instances_ready)
+        return true;
+    }
+
+    void FrameExecution::collectFeatureCopies(std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>> features
+    ) noexcept
+    {
+        auto& frame = frames_[next_frame_];
+        frame.feature_copies.clear();
+        for (const auto& [instance, binding] : features)
         {
-            for (auto* instance : instances)
-            {
-                const auto prepared = instance->prepareFrame(next_frame_);
-                if (!prepared)
-                {
-                    finishPreparation(cxx::unexpected(prepared.error()));
-                    sealFrame(frame);
-                    return cxx::unexpected(prepared.error());
-                }
-                if (!*prepared)
-                {
-                    waiting = EExecutionOutcome::HISTORY_PENDING;
-                    instances_ready = false;
-                    break;
-                }
-            }
+            frame.feature_copies
+                .insert(frame.feature_copies.end(), binding->prepared_copies.begin(), binding->prepared_copies.end());
+            binding->prepared_copies = {};
         }
-        const bool has_copies = uploads_ && uploads_->hasFrameCopies();
-        if (!instances_ready && !has_copies && !native_records)
-        {
-            finishPreparation(cxx::unexpected(RenderError{kDeviceBusy}));
-            return outcome(waiting);
-        }
-        if (instances_ready)
-        {
-            frame.feature_copies.clear();
-            for (const auto& [instance, binding] : features)
-            {
-                frame.feature_copies.insert(
-                    frame.feature_copies.end(),
-                    binding->prepared_copies.begin(),
-                    binding->prepared_copies.end()
-                );
-                binding->prepared_copies = {};
-            }
-            prepareSubmissions(instances);
-            return advanceSubmissions();
-        }
+    }
+
+    RenderResult<std::uint32_t> FrameExecution::submitPreparationCopies(
+        std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>> features,
+        bool include_features
+    ) noexcept
+    {
+        auto& frame = frames_[next_frame_];
+        auto& graphics = device_.queue();
         auto accepted = graphics.recordAndSubmit(
             [&](nri::CommandBuffer& command, std::uint32_t) noexcept -> RenderResult<void>
             {
@@ -405,7 +460,7 @@ namespace lux::render::detail
                 {
                     uploads_->recordFrameCopies(command);
                 }
-                if (resources_ready)
+                if (include_features)
                 {
                     for (const auto& [instance, binding] : features)
                     {
@@ -427,7 +482,6 @@ namespace lux::render::detail
         frame.recorded_instances = 0;
         frame.recorded_passes = 0;
         finishPreparation({});
-        (void)outcome(waiting);
         return 1; // A preparation submission does not publish an instance or advance its history.
     }
 

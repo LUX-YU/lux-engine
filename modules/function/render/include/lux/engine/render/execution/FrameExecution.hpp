@@ -103,7 +103,9 @@ namespace lux::render::detail
         // Reserve a reusable physical slice before applying a sealed frame's visible mutations.
         // No waiting or GPU submission. Standalone writers can still acquire a slice themselves.
         [[nodiscard]] bool beginFrame(std::uint32_t& slot) noexcept;
-        [[nodiscard]] bool inputSubmitted(std::uint32_t slot) const noexcept;
+        // Query the slot acquired for this input, before it is reused. True ends the CPU input
+        // borrow. An empty frame need not submit GPU work; accepted GPU work may still be in flight.
+        [[nodiscard]] bool inputConsumed(std::uint32_t slot) const noexcept;
         [[nodiscard]] std::uint32_t submittedBatches(std::uint32_t slot) const noexcept;
 
         [[nodiscard]] WriteAdmissionSender whenWritable(std::size_t source_bytes) noexcept
@@ -208,6 +210,17 @@ namespace lux::render::detail
         void updateUploadAdmission() noexcept;
         void acceptSubmission(std::uint32_t slot, const SubmissionQueue&) noexcept;
         void finishPreparation(RenderResult<void>) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareStorages(std::span<const StorageFrameUse>) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareFeatures(
+            std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>>,
+            bool& has_copies
+        ) noexcept;
+        [[nodiscard]] RenderResult<bool> prepareInstances(std::span<RenderGraphInstance* const>) noexcept;
+        void collectFeatureCopies(std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>>) noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> submitPreparationCopies(
+            std::span<const std::pair<RenderGraphInstance*, FeatureBinding*>>,
+            bool include_features
+        ) noexcept;
         void prepareSubmissions(std::span<RenderGraphInstance* const>) noexcept;
         void rebuildDependencies(std::span<RenderGraphInstance* const>) noexcept;
         void appendImportedDependencies(std::span<RenderGraphInstance* const>) noexcept;

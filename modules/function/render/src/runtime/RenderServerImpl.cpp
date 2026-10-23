@@ -566,7 +566,7 @@ namespace lux::render
         effect.attachments.pop_back();
         target.attachment = {};
         active_targets.erase(attachment.target);
-        frame_storages_dirty = true;
+        active_frame_inputs_dirty = true;
         attachments.erase(id);
     }
 
@@ -629,7 +629,7 @@ namespace lux::render
         target->attachment = id;
         output_response.attachment = id;
         active_targets.emplace(target_id);
-        frame_storages_dirty = true;
+        active_frame_inputs_dirty = true;
         storages_created.store(resources->creations());
         return;
     }
@@ -668,7 +668,7 @@ namespace lux::render
             }
             candidate->instance->setViewport(group->instance->viewport());
             group->swapResources(*candidate);
-            frame_storages_dirty = true;
+            active_frame_inputs_dirty = true;
         }
         target.physical = std::move(*physical);
         target.description = description;
@@ -945,15 +945,13 @@ namespace lux::render
         command_registry_.selectHandler(input, response, *resources);
     }
 
-    RenderResult<void> RenderServer::Impl::progressCompletions() noexcept
+    RenderResult<void> RenderServer::Impl::progressGpuCompletions() noexcept
     {
         if (auto observed = device->pollQueues(); !observed)
         {
             return observed;
         }
         device->dispatchQueueCompletions();
-        frames->dispatchWrites();
-        render_loop_.executeReady(128);
         return {};
     }
 
@@ -965,43 +963,50 @@ namespace lux::render
         }
     }
 
-    RenderResult<void> RenderServer::Impl::submitCurrentFrame() noexcept
+    void RenderServer::Impl::rebuildActiveFrameInputs() noexcept
     {
-        if (frame_storages_dirty)
+        // Semantic conflict order is stable. Fairness rotates ready physical queues, not
+        // the order of writers of one imported resource.
+        const auto keys = active_targets.keys();
+        std::vector<TargetId> active(keys.begin(), keys.end());
+        std::ranges::sort(active, {}, &TargetId::index);
+        frame_instances.clear();
+        frame_storages.clear();
+        frame_features.clear();
+        for (auto id : active)
         {
-            // Semantic conflict order is stable. Fairness rotates ready physical queues, not
-            // the order of writers of one imported resource.
-            const auto keys = active_targets.keys();
-            std::vector<TargetId> active(keys.begin(), keys.end());
-            std::ranges::sort(active, {}, &TargetId::index);
-            frame_instances.clear();
-            frame_storages.clear();
-            frame_features.clear();
-            for (auto id : active)
+            auto& attachment = *attachments.find(targets.find(id)->attachment);
+            frame_instances.push_back(attachment.instance.get());
+            for (const auto& input : attachment.storage_inputs)
             {
-                auto& attachment = *attachments.find(targets.find(id)->attachment);
-                frame_instances.push_back(attachment.instance.get());
-                for (const auto& input : attachment.storage_inputs)
+                if (input.ops->prepareFrame)
                 {
-                    if (input.ops->prepareFrame)
-                    {
-                        frame_storages.push_back(
-                            {input.native,
-                             input.ops,
-                             input.storage_id,
-                             input.ops->preparationRevision ? input.ops->preparationRevision(input.native) : nullptr}
-                        );
-                    }
-                }
-                for (auto& feature : attachment.feature_bindings)
-                {
-                    frame_features.emplace_back(attachment.instance.get(), &feature);
+                    frame_storages.push_back(
+                        detail::StorageFrameUse{
+                            input.native,
+                            input.ops,
+                            input.storage_id,
+                            input.ops->preparationRevision ? input.ops->preparationRevision(input.native) : nullptr
+                        }
+                    );
                 }
             }
-            std::ranges::sort(frame_storages, {}, &detail::StorageFrameUse::storage);
-            const auto duplicate = std::ranges::unique(frame_storages, {}, &detail::StorageFrameUse::storage);
-            frame_storages.erase(duplicate.begin(), duplicate.end());
-            frame_storages_dirty = false;
+            for (auto& feature : attachment.feature_bindings)
+            {
+                frame_features.emplace_back(attachment.instance.get(), &feature);
+            }
+        }
+        std::ranges::sort(frame_storages, {}, &detail::StorageFrameUse::storage);
+        const auto duplicate = std::ranges::unique(frame_storages, {}, &detail::StorageFrameUse::storage);
+        frame_storages.erase(duplicate.begin(), duplicate.end());
+        active_frame_inputs_dirty = false;
+    }
+
+    RenderResult<void> RenderServer::Impl::submitCurrentFrame() noexcept
+    {
+        if (active_frame_inputs_dirty)
+        {
+            rebuildActiveFrameInputs();
         }
         auto accepted = frames->render(frame_instances, frame_storages, frame_features);
         if (!accepted)
@@ -1118,6 +1123,7 @@ namespace lux::render
         // Keep RenderThread and GPU completion paths advancing until every accepted Sender settles.
         while (!joined.load(std::memory_order_acquire) || !render_loop_.empty())
         {
+            // Adopt published CPU results while the Scope is draining.
             render_loop_.executeReady(128);
             response_outbox_.flushTo(responder, 32);
             if (device)
@@ -1129,16 +1135,18 @@ namespace lux::render
                     frames->dispatchWrites();
                     frames->cancelSubmissions(RenderError{kUploadStopped});
                 }
-                if (uploads)
-                {
-                    uploads->submitReadyTransfers();
-                }
+                // Stopped upload continuations must run after GPU/write-admission callbacks.
+                render_loop_.executeReady(128);
+                progressUploads();
                 if (!collected && !device->deviceLost())
                 {
                     std::terminate();
                 }
                 progressFrame();
             }
+            // Settle frame terminals before testing Scope completion again.
+            render_loop_.executeReady(128);
+            response_outbox_.flushTo(responder, 32);
             if (!joined.load(std::memory_order_acquire))
             {
                 std::this_thread::yield();
@@ -1205,6 +1213,7 @@ namespace lux::render
             // changes the epoch, so WaitOnAddress/futex cannot sleep through that publication.
             const auto observed = notifications.workEpoch();
             const auto submitted_before = s.submissions.load();
+            // Safe point 1: adopt already-published CPU results before accepting more commands.
             bool progressed = s.render_loop_.executeReady(128) != 0;
             // Service batching is independent of the sealed frame boundary.
             for (std::uint32_t i = 0; i < 32 && !s.stop_requested.load(); ++i)
@@ -1221,13 +1230,18 @@ namespace lux::render
                 break;
             }
             progressed |= s.response_outbox_.flushTo(s.responder, 32) != 0;
-            if (auto observed_gpu = s.progressCompletions(); !observed_gpu)
+            if (auto observed_gpu = s.progressGpuCompletions(); !observed_gpu)
             {
                 result = cxx::unexpected(observed_gpu.error());
                 break;
             }
+            s.frames->dispatchWrites();
+            // Safe point 2: GPU callbacks/write admission can schedule continuations required
+            // by this frame. Count their progress before deciding whether the loop may wait.
+            progressed |= s.render_loop_.executeReady(128) != 0;
             s.progressUploads();
             s.progressFrame();
+            // Safe point 3: publish terminal frame/command results produced by this iteration.
             progressed |= s.render_loop_.executeReady(128) != 0;
             progressed |= s.response_outbox_.flushTo(s.responder, 32) != 0;
             progressed |= s.submissions.load() != submitted_before;

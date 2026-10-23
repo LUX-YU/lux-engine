@@ -12,6 +12,34 @@ namespace lux::execution
 {
     namespace detail
     {
+        bool admitExecution(ExecutionState& state) noexcept
+        {
+            auto admission = state.execution_admission.load(std::memory_order_acquire);
+            do
+            {
+                if (admission & 1U)
+                {
+                    return false;
+                }
+            } while (
+                !state.execution_admission.compare_exchange_weak(admission, admission + 4U, std::memory_order_acq_rel)
+            );
+            return true;
+        }
+
+        void releaseExecution(ExecutionState& state) noexcept
+        {
+            state.execution_admission.fetch_sub(2U, std::memory_order_acq_rel);
+            // Scope association still covers this wake call, both during deallocation and submit.
+            // join() can observe zero but cannot release ExecutionState before this tail returns.
+            state.wake();
+        }
+
+        stdexec::simple_counting_scope& executionScope(ExecutionState& state) noexcept
+        {
+            return state.execution_scope;
+        }
+
         bool RequestQueue::push(ScheduleRequest* request) noexcept
         {
             if (count == values.size())
@@ -305,7 +333,8 @@ namespace lux::execution
 
     bool ExecutionRuntime::settled() const noexcept
     {
-        return tasks_->settled() && state_->main_loop.empty() && state_->main_loop.activePublishers() == 0;
+        return (state_->execution_admission.load(std::memory_order_acquire) >> 1) == 0 && tasks_->settled() &&
+               state_->main_loop.empty() && state_->main_loop.activePublishers() == 0;
     }
 
     lux::cxx::expected<std::size_t, EExecutionError> ExecutionRuntime::dispatchMainCompletions() noexcept
@@ -414,7 +443,8 @@ namespace lux::execution
         // node in that interval. Do not sleep waiting for a second wake that the tail cannot emit.
         // Check the count BEFORE the epoch. Observing zero acquires the return serial as well;
         // it cannot disappear between a false settled() predicate and this sleep decision.
-        while (state_->main_loop.empty() && state_->main_loop.activePublishers() == 0 && wakeEpoch() == observed)
+        const auto publication = state_->main_loop.publicationEpoch();
+        while (state_->main_loop.canWait(publication) && wakeEpoch() == observed)
         {
             if (deadline == std::chrono::steady_clock::time_point::max())
             {
@@ -482,6 +512,7 @@ namespace lux::execution
             return;
         }
         state_->stop_requested = true;
+        state_->execution_admission.fetch_or(1U, std::memory_order_acq_rel);
         tasks_->stop();
         timer_.requestStop();
     }
@@ -512,8 +543,8 @@ namespace lux::execution
         }
         // No admitted submission or Main continuation remains. Only stdexec's association
         // release can still be returning from deallocation; joining cannot depend on this thread.
-        tasks_->execution_scope.close();
-        static_cast<void>(stdexec::sync_wait(tasks_->execution_scope.join()));
+        state_->execution_scope.close();
+        static_cast<void>(stdexec::sync_wait(state_->execution_scope.join()));
 
         timer_.requestStop();
         detail::stopState(state_);

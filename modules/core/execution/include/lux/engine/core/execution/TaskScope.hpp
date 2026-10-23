@@ -41,6 +41,9 @@ namespace lux::execution
         }
 
         void requestStop() noexcept;
+        // Borrow the group's cancellation domain for child IO senders without creating a TaskRecord.
+        // Such children are joined by ExecutionRuntime or their enclosing monitored operation.
+        [[nodiscard]] std::stop_token stopToken() const noexcept;
         // Thread-safe observation only: no waiting, callbacks or admission changes.
         [[nodiscard]] bool settled() const noexcept;
         // Explicit synchronous barrier: closes admission and collects accepted work to completion.

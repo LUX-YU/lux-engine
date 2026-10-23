@@ -128,29 +128,21 @@ namespace lux::editor
             FrameworkResult<void> submit(rendering::FrameInput& frame) noexcept
             {
                 ++frames_pending;
-                auto accepted = engine->execution().submit(
-                    {.name = "Editor frame", .category = "editor.render"},
-                    [this, &frame](execution::TaskReporter) noexcept
+                auto accepted = engine->execution().spawn(stdexec::then(
+                    rendering->mainClient().submitFrame(frame),
+                    [this, &frame](render::FrameCompletion result) noexcept
                     {
-                        return stdexec::then(
-                            rendering->mainClient().submitFrame(frame),
-                            [this, &frame](render::FrameCompletion result) noexcept
-                            {
-                                if (result.error.type != 0)
-                                {
-                                    rendering::reportRenderFailure(result.error, "Editor frame");
-                                }
-                                if (!rendering->mainClient().releaseFrame(frame))
-                                {
-                                    std::terminate();
-                                }
-                                --frames_pending;
-                                return result.error.type == 0 ? execution::ETaskState::SUCCEEDED
-                                                              : execution::ETaskState::FAILED;
-                            }
-                        );
+                        if (result.error.type != 0)
+                        {
+                            rendering::reportRenderFailure(result.error, "Editor frame");
+                        }
+                        if (!rendering->mainClient().releaseFrame(frame))
+                        {
+                            std::terminate();
+                        }
+                        --frames_pending;
                     }
-                );
+                ));
                 if (!accepted)
                 {
                     --frames_pending;
@@ -346,8 +338,9 @@ namespace lux::editor
             auto source = process::asset_loading::VfsAssetReadEndpoint::create(
                 application.engine->assets().view(),
                 *blocking,
-                *application.asset_read_tasks,
-                {16}
+                (*application.asset_read_tasks).execution(),
+                {16},
+                (*application.asset_read_tasks).stopToken()
             );
             if (!source)
             {

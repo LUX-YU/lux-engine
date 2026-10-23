@@ -51,7 +51,6 @@ namespace lux::process::world_loading
         struct Request final
         {
             std::shared_ptr<Impl> files;
-            execution::ExecutionRuntime& execution;
             void* state;
             void (*complete)(void*, Outcome&&) noexcept;
 
@@ -63,7 +62,6 @@ namespace lux::process::world_loading
                 }
                 // File access has ended. The continuation may immediately request its next range.
                 complete(state, std::move(outcome));
-                execution.wake();
             }
         };
 
@@ -71,24 +69,26 @@ namespace lux::process::world_loading
             std::shared_ptr<const world::WorldDescription> description,
             std::vector<std::filesystem::path> files,
             execution::BlockingScheduler scheduler,
-            execution::TaskScope& group,
-            WorldFileStorageLimits limits
+            execution::ExecutionRuntime& execution,
+            WorldFileStorageLimits limits,
+            std::stop_token stop
         ) noexcept
-            : world(std::move(description)), paths(std::move(files)), blocking(scheduler), tasks(&group), limits(limits)
+            : world(std::move(description)), paths(std::move(files)), blocking(scheduler), execution(&execution),
+              limits(limits), stop(stop)
         {
         }
 
         void close() noexcept
         {
             std::lock_guard lock{mutex};
-            tasks = nullptr;
+            execution = nullptr;
         }
 
         lux::async::SubmitResult submit(
             ReadWorldStorageRange range,
             void* state,
             void (*complete)(void*, Outcome&&) noexcept,
-            lux::async::SubmitOptions options
+            lux::async::SubmitOptions
         ) noexcept override
         {
             if (range.volume >= paths.size())
@@ -116,10 +116,10 @@ namespace lux::process::world_loading
                 complete(state, lux::cxx::unexpected(Failure::domain({error, range.volume, range.offset})));
                 return {};
             }
-            execution::TaskScope* accepted;
+            execution::ExecutionRuntime* accepted;
             {
                 std::lock_guard lock{mutex};
-                if (!tasks)
+                if (!execution || stop.stop_requested())
                 {
                     return lux::cxx::unexpected(lux::async::ESubmitError::STOPPING);
                 }
@@ -127,44 +127,37 @@ namespace lux::process::world_loading
                 {
                     return lux::cxx::unexpected(lux::async::ESubmitError::QUEUE_FULL);
                 }
-                accepted = tasks;
+                accepted = execution;
                 ++admitted;
             }
-            Request request{shared_from_this(), accepted->execution(), state, complete};
-            const auto submitted = accepted->submit(
-                {"Read world range", "world", execution::correlatedTask(options.correlation)},
-                [request = std::move(request), range](execution::TaskReporter) mutable noexcept
+            Request request{shared_from_this(), state, complete};
+            auto bytes = stdexec::then(
+                stdexec::schedule(blocking),
+                [files = request.files, range]() noexcept { return readRange(files->paths[range.volume], range); }
+            );
+            auto delivered = stdexec::then(
+                execution::taskResult(std::move(bytes)),
+                [request = std::move(request)](auto result) noexcept
                 {
-                    auto bytes = stdexec::then(
-                        stdexec::schedule(request.files->blocking),
-                        [files = request.files, range]() noexcept
-                        { return readRange(files->paths[range.volume], range); }
-                    );
-                    return stdexec::then(
-                        execution::taskResult(std::move(bytes)),
-                        [request = std::move(request)](auto result) noexcept
-                        {
-                            const auto terminal = execution::taskState(result);
-                            if (result)
-                            {
-                                request.finish(Outcome{std::move(*result)});
-                            }
-                            else if (const auto* failure = result.error().domainFailure())
-                            {
-                                request.finish(lux::cxx::unexpected(Failure::domain(*failure)));
-                            }
-                            else
-                            {
-                                const auto* execution_error = result.error().executionFailure();
-                                const auto error = execution_error ? admissionError(*execution_error)
-                                                                   : lux::async::ESubmitError::STOPPING;
-                                request.finish(lux::cxx::unexpected(Failure::runtime(error)));
-                            }
-                            return terminal;
-                        }
-                    );
+                    if (result)
+                    {
+                        request.finish(Outcome{std::move(*result)});
+                    }
+                    else if (const auto* failure = result.error().domainFailure())
+                    {
+                        request.finish(lux::cxx::unexpected(Failure::domain(*failure)));
+                    }
+                    else
+                    {
+                        const auto* execution_error = result.error().executionFailure();
+                        const auto error =
+                            execution_error ? admissionError(*execution_error) : lux::async::ESubmitError::STOPPING;
+                        request.finish(lux::cxx::unexpected(Failure::runtime(error)));
+                    }
                 }
             );
+            const auto submitted =
+                accepted->spawn(stdexec::write_env(std::move(delivered), stdexec::prop{stdexec::get_stop_token, stop}));
             if (!submitted)
             {
                 std::lock_guard lock{mutex};
@@ -178,7 +171,8 @@ namespace lux::process::world_loading
         std::vector<std::filesystem::path> paths;
         execution::BlockingScheduler blocking;
         std::mutex mutex;
-        execution::TaskScope* tasks;
+        execution::ExecutionRuntime* execution;
+        std::stop_token stop;
         WorldFileStorageLimits limits;
         std::size_t admitted{};
     };
@@ -194,8 +188,9 @@ namespace lux::process::world_loading
         std::shared_ptr<const world::WorldDescription> world,
         std::filesystem::path directory,
         execution::BlockingScheduler blocking,
-        execution::TaskScope& tasks,
-        WorldFileStorageLimits limits
+        execution::ExecutionRuntime& execution,
+        WorldFileStorageLimits limits,
+        std::stop_token stop
     ) noexcept
     {
         const bool invalid_inputs = !world || !blocking || directory.empty();
@@ -218,7 +213,7 @@ namespace lux::process::world_loading
             }
             files.push_back(directory / name);
         }
-        auto impl = std::make_shared<Impl>(std::move(world), std::move(files), blocking, tasks, limits);
+        auto impl = std::make_shared<Impl>(std::move(world), std::move(files), blocking, execution, limits, stop);
         return std::unique_ptr<WorldFileStorageSource>{new WorldFileStorageSource(std::move(impl))};
     }
 

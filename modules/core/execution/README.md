@@ -78,6 +78,18 @@ ExecutionRuntime::submit returns a nonblocking Task cancellation handle. Destroy
 it neither suppresses an already determined result nor waits/pumps Main. The Runtime must outlive its handles.
 Callers retain captured input through actual pipeline completion, not merely through the handle's lifetime.
 
+`ExecutionRuntime::spawn(sender)` accepts finite internal work without a TaskRecord, TaskId, history or
+per-operation cancellation source. Consume values and normalize failures in the sender first. It uses the
+same stdexec scope as monitored tasks; admission, synchronous start and operation destruction are covered
+by Runtime shutdown. Frame submission uses this path and cannot exhaust the business task directory.
+`TaskScope::stopToken()` supplies group cancellation to child IO without manufacturing another monitored
+task. The enclosing pipeline or Runtime, rather than TaskScope monitoring, proves those reads have ended.
+
+Before blocking a driver, capture both its notification epoch and `RunLoop::publicationEpoch()` **before**
+consuming work and checking termination. Block only when `canWait(publication)` holds and the notification
+epoch is unchanged. A wake callback may still be returning after its last queued node was consumed.
+Main and Asset drivers use this same publication contract, with their own actual wait facilities.
+
 ## Transport and business adoption
 
 A VFS read can complete on an IO worker and immediately schedule CPU decoding. Only code that changes
@@ -88,7 +100,7 @@ them. It is standard composition, without a queue or heap result envelope. Prese
 with `taskState(result)` when consuming the value, rather than marking a handled failure as success.
 
 `dispatchMainCompletions()` runs a bounded batch of ready continuations. `dispatchTaskEvents()` only notifies
-monitoring; it never invokes business adoption. `settled()` observes admitted task and Main work quiescence,
+monitoring; it never invokes business adoption. `settled()` observes monitored/unmonitored work and Main quiescence,
 not external producer callback tails. CompletionWork shares this same RunLoop with a cold-allocated,
 coalesced notification state and reusable schedule operation. It does not allocate on every request.
 `hasReadyWork()` is only an event-loop wake predicate: a worker may still be preparing a continuation when

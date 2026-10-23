@@ -1,3 +1,4 @@
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
 
 #include <atomic>
@@ -106,7 +107,13 @@ namespace
         auto provider = std::make_shared<BlockedProvider>();
         auto mount = vfs.mount({"/Game", provider});
         assert(mount);
-        auto created = VfsAssetReadEndpoint::create(vfs.view().capture(), *blocking, tasks, {1});
+        auto created = VfsAssetReadEndpoint::create(
+            vfs.view().capture(),
+            *blocking,
+            (tasks).execution(),
+            {1},
+            (tasks).stopToken()
+        );
         assert(created);
         auto endpoint = std::move(*created);
         auto port = endpoint->port();
@@ -135,7 +142,8 @@ namespace
         }
         provider->proceed.store(true);
         provider->proceed.notify_one();
-        assert(runtime->waitUntil([&]() noexcept { return reply.calls.load(std::memory_order_acquire) != 0 && runtime->settled(); }));
+        assert(runtime->waitUntil([&]() noexcept
+                                  { return reply.calls.load(std::memory_order_acquire) != 0 && runtime->settled(); }));
         assert(reply.calls == 1 && reply.succeeded && rejected.calls == 0 && !endpoint);
         assert(tasks.join());
         runtime->requestStop();
@@ -172,7 +180,13 @@ namespace
         provider->proceed.store(true);
         auto mount = vfs.mount({"/Game", provider});
         assert(mount);
-        auto endpoint = VfsAssetReadEndpoint::create(vfs.view().capture(), *blocking, *scope, {1});
+        auto endpoint = VfsAssetReadEndpoint::create(
+            vfs.view().capture(),
+            *blocking,
+            (*scope).execution(),
+            {1},
+            (*scope).stopToken()
+        );
         assert(endpoint);
         auto port = (*endpoint)->port();
         Reply reply{0, std::this_thread::get_id(), false};
@@ -184,7 +198,8 @@ namespace
         assert(port.submit({Asset, 1024}, &rejected, &Reply::complete, {}).error() == async::ESubmitError::STOPPING);
         proceed.store(true);
         proceed.notify_one();
-        assert(runtime->waitUntil([&]() noexcept { return reply.calls.load(std::memory_order_acquire) == 1 && runtime->settled(); }));
+        assert(runtime->waitUntil([&]() noexcept
+                                  { return reply.calls.load(std::memory_order_acquire) == 1 && runtime->settled(); }));
         assert(reply.failure == async::ESubmitError::STOPPING && !reply.succeeded);
         assert(!provider->entered.load() && rejected.calls == 0);
         assert(blocker.join());
@@ -205,17 +220,25 @@ namespace
         auto mount = vfs.mount({"/Game", provider});
         assert(mount);
         assert(
-            VfsAssetReadEndpoint::create(vfs.view(), *blocking, tasks, {0}).error() ==
-            EVfsAssetReadEndpointError::INVALID_ARGUMENT
+            VfsAssetReadEndpoint::create(vfs.view(), *blocking, (tasks).execution(), {0}, (tasks).stopToken())
+                .error() == EVfsAssetReadEndpointError::INVALID_ARGUMENT
         );
-        auto endpoint = VfsAssetReadEndpoint::create(vfs.view().capture(), *blocking, tasks, {1});
+        auto endpoint = VfsAssetReadEndpoint::create(
+            vfs.view().capture(),
+            *blocking,
+            (tasks).execution(),
+            {1},
+            (tasks).stopToken()
+        );
         assert(endpoint);
         auto port = (*endpoint)->port();
         for (unsigned i = 0; i != 32; ++i)
         {
             Reply reply{0, std::this_thread::get_id(), false};
             assert(port.submit({Asset, 1024}, &reply, &Reply::complete, {}));
-            assert(runtime->waitUntil([&]() noexcept { return reply.calls.load(std::memory_order_acquire) == 1 && runtime->settled(); }));
+            assert(runtime->waitUntil([&]() noexcept
+                                      { return reply.calls.load(std::memory_order_acquire) == 1 && runtime->settled(); }
+            ));
             assert(reply.succeeded);
         }
         tasks.requestStop();
@@ -258,7 +281,13 @@ namespace
         provider->proceed.store(true);
         auto mount = vfs.mount({"/Game", provider});
         assert(mount);
-        auto endpoint = VfsAssetReadEndpoint::create(vfs.view().capture(), *runtime->blocking(), tasks, {1});
+        auto endpoint = VfsAssetReadEndpoint::create(
+            vfs.view().capture(),
+            *runtime->blocking(),
+            (tasks).execution(),
+            {1},
+            (tasks).stopToken()
+        );
         assert(endpoint);
         auto port = (*endpoint)->port();
         wake_owner = &*endpoint;
@@ -273,7 +302,8 @@ namespace
         assert(port.submit({Asset, 1024}, &reply, &Reply::complete, {}));
         assert(!*endpoint);
         runtime->setWake(nullptr);
-        assert(runtime->waitUntil([&]() noexcept { return reply.calls.load(std::memory_order_acquire) == 1 && runtime->settled(); }));
+        assert(runtime->waitUntil([&]() noexcept
+                                  { return reply.calls.load(std::memory_order_acquire) == 1 && runtime->settled(); }));
         assert(reply.succeeded);
         assert(tasks.join());
         runtime->requestStop();

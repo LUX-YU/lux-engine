@@ -3,6 +3,7 @@
 #include <cassert>
 #include <fstream>
 #include <iostream>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/process/world_loading/WorldFileStorageSource.hpp>
 #include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
 #include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
@@ -309,8 +310,14 @@ namespace
         auto runtime = execution::ExecutionRuntime::create({2, 32, {16}, execution::BlockingSchedulerConfig{1, 16}});
         assert(runtime);
         execution::TaskScope tasks{*runtime};
-        auto files =
-            loading::WorldFileStorageSource::create(input.world, directory, *runtime->blocking(), tasks, {1, 4096});
+        auto files = loading::WorldFileStorageSource::create(
+            input.world,
+            directory,
+            *runtime->blocking(),
+            (tasks).execution(),
+            {1, 4096},
+            (tasks).stopToken()
+        );
         assert(files);
         auto source = (*files)->source();
         const auto decoded = stdexec::sync_wait(loading::loadWorldPartition(source, runtime->cpu(), {0}, 4096));

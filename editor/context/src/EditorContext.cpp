@@ -1,4 +1,5 @@
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
@@ -97,8 +98,13 @@ namespace lux::editor
             {
                 return cxx::unexpected(execution::toError(blocking.error()));
             }
-            auto endpoint =
-                process::asset_loading::VfsAssetReadEndpoint::create(assets_.view(), *blocking, tasks_, {16});
+            auto endpoint = process::asset_loading::VfsAssetReadEndpoint::create(
+                assets_.view(),
+                *blocking,
+                (tasks_).execution(),
+                {16},
+                (tasks_).stopToken()
+            );
             if (!endpoint)
             {
                 std::terminate(); // Valid VFS and fixed nonzero admission capacity.

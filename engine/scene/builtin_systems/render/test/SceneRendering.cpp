@@ -170,8 +170,13 @@ int main()
         take(asset::TAssetSerDeser<asset::TextureAsset>::encode(*texture_asset, asset::AssetEncodeLimits{1 << 20}));
     asset::AssetVfs vfs;
     auto mount = take(vfs.mount({"/assets", provider}));
-    auto endpoint =
-        take(process::asset_loading::VfsAssetReadEndpoint::create(vfs.view(), take(execution.blocking()), reads, {8}));
+    auto endpoint = take(process::asset_loading::VfsAssetReadEndpoint::create(
+        vfs.view(),
+        take(execution.blocking()),
+        (reads).execution(),
+        {8},
+        (reads).stopToken()
+    ));
     RenderExecutionConfig config;
     config.render.channel_name = "engine.scene.integration";
     config.render.validation = true;

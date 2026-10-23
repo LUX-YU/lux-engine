@@ -2,7 +2,6 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/process/asset_loading/AssetLoadSender.hpp>
 #include <lux/engine/process/asset_loading/visibility.h>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
@@ -31,12 +30,13 @@ namespace lux::process::asset_loading
         [[nodiscard]] static CreateResult create(
             asset::AssetVfsView vfs,
             execution::BlockingScheduler blocking,
-            execution::TaskScope& tasks,
-            VfsAssetReadEndpointConfig config
+            execution::ExecutionRuntime& execution,
+            VfsAssetReadEndpointConfig config,
+            std::stop_token stop = {}
         ) noexcept;
 
-        // The borrowed scope covers all admission calls; close this owner before releasing it.
-        // Runtime outlives accepted operations. Completion never accesses the scope.
+        // Runtime outlives accepted reads and their callback tails. A supplied group token cancels
+        // queued reads; a running blocking read completes before returning its result.
         // Destruction closes copied ports without waiting; requests own their inputs and completion state.
         ~VfsAssetReadEndpoint() noexcept;
         VfsAssetReadEndpoint(const VfsAssetReadEndpoint&) = delete;

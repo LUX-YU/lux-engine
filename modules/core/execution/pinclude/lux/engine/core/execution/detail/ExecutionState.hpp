@@ -31,6 +31,9 @@ namespace lux::execution::detail
         void wake() noexcept;
 
         std::atomic<EExecutionState> phase{EExecutionState::ACTIVE};
+        // Low bit closes unmonitored admission; each submission and spawn allocation owns one pair.
+        std::atomic<std::uint64_t> execution_admission{};
+        stdexec::simple_counting_scope execution_scope;
         std::unique_ptr<exec::static_thread_pool> cpu_pool;
         std::atomic<std::uint64_t> wake_epoch{};
         std::atomic_bool wake_pending{};

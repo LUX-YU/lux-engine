@@ -91,13 +91,15 @@ static void publisherTail()
             );
         }
     );
+    const auto before_publication = loop.publicationEpoch();
     state.published.wait();
     check(loop.activePublishers() == 1);
     check(loop.executeReady(1) == 1 && state.destroyed == 1 && loop.empty());
-    check(loop.activePublishers() == 1);
+    check(loop.activePublishers() == 1 && !loop.canWait(before_publication));
     state.finish_wakeup.count_down();
     producer.join();
-    check(loop.activePublishers() == 0);
+    check(loop.activePublishers() == 0 && !loop.canWait(before_publication));
+    check(loop.canWait(loop.publicationEpoch()));
     scope.close();
     check(stdexec::sync_wait(scope.join()).has_value());
 }
@@ -128,7 +130,8 @@ static void standardSchedule()
     stop.request_stop();
     unsigned completed = 0;
     auto operation = stdexec::connect(
-        stdexec::schedule(loop.scheduler()), Receiver{&completed, std::this_thread::get_id(), stop.get_token()}
+        stdexec::schedule(loop.scheduler()),
+        Receiver{&completed, std::this_thread::get_id(), stop.get_token()}
     );
     std::thread producer([&] { stdexec::start(operation); });
     producer.join();
@@ -136,12 +139,10 @@ static void standardSchedule()
     check(loop.executeReady(1) == 1 && completed == 1);
 
     // A completed error survives the handoff even when the consumer's stop was requested.
-    auto result = stdexec::just_error(37)
-        | stdexec::continues_on(loop.scheduler())
-        | stdexec::upon_error([&](int error) noexcept { check(error == 37); });
-    auto failure = stdexec::connect(
-        std::move(result), Receiver{&completed, std::this_thread::get_id(), stop.get_token()}
-    );
+    auto result = stdexec::just_error(37) | stdexec::continues_on(loop.scheduler()) |
+                  stdexec::upon_error([&](int error) noexcept { check(error == 37); });
+    auto failure =
+        stdexec::connect(std::move(result), Receiver{&completed, std::this_thread::get_id(), stop.get_token()});
     stdexec::start(failure);
     check(completed == 1 && loop.executeReady(1) == 1 && completed == 2);
 

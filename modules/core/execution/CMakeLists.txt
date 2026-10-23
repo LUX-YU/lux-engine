@@ -23,6 +23,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CompletionWork.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RunLoop.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Task.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskScope.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Timer.cpp
 )
 

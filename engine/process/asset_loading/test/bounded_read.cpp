@@ -1,6 +1,7 @@
 #include <atomic>
 #include <cassert>
 #include <fstream>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/process/asset_loading/AssetReadOverlay.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
@@ -31,7 +32,8 @@ int main(int argc, char** argv)
     execution::TaskScope tasks{*runtime};
     auto blocking = runtime->blocking();
     assert(blocking);
-    auto endpoint = VfsAssetReadEndpoint::create(vfs.view().capture(), *blocking, tasks, {2});
+    auto endpoint =
+        VfsAssetReadEndpoint::create(vfs.view().capture(), *blocking, (tasks).execution(), {2}, (tasks).stopToken());
     assert(endpoint);
 
     struct Reply final
@@ -80,7 +82,13 @@ int main(int argc, char** argv)
     // Completion must wake the Runtime directly, never dereference the destroyed execution::TaskScope.
     {
         auto scope = std::make_unique<execution::TaskScope>(*runtime);
-        auto late = VfsAssetReadEndpoint::create(vfs.view().capture(), *blocking, *scope, {2});
+        auto late = VfsAssetReadEndpoint::create(
+            vfs.view().capture(),
+            *blocking,
+            (*scope).execution(),
+            {2},
+            (*scope).stopToken()
+        );
         assert(late);
         Reply reply;
         assert((*late)->port().submit({id, image.size()}, &reply, &Reply::complete, {}));

@@ -22,6 +22,42 @@
 
 namespace lux::execution
 {
+    namespace detail
+    {
+        [[nodiscard]] LUX_CORE_EXECUTION_PUBLIC bool admitExecution(ExecutionState&) noexcept;
+        LUX_CORE_EXECUTION_PUBLIC void releaseExecution(ExecutionState&) noexcept;
+        [[nodiscard]] LUX_CORE_EXECUTION_PUBLIC stdexec::simple_counting_scope&
+        executionScope(ExecutionState&) noexcept;
+
+        // Only the outer spawn allocation counts an accepted operation. Nested sender allocations
+        // use their ordinary allocator. stdexec owns construction, destruction and scope association.
+        template <class T> struct ExecutionAllocator final
+        {
+            using value_type = T;
+            ExecutionState* state;
+
+            explicit ExecutionAllocator(ExecutionState& value) noexcept : state(&value) {}
+
+            template <class U> ExecutionAllocator(const ExecutionAllocator<U>& other) noexcept : state(other.state) {}
+
+            [[nodiscard]] T* allocate(std::size_t count)
+            {
+                return std::allocator<T>{}.allocate(count);
+            }
+
+            void deallocate(T* memory, std::size_t count) noexcept
+            {
+                std::allocator<T>{}.deallocate(memory, count);
+                releaseExecution(*state);
+            }
+
+            template <class U> [[nodiscard]] bool operator==(const ExecutionAllocator<U>& other) const noexcept
+            {
+                return state == other.state;
+            }
+        };
+    } // namespace detail
+
     struct BlockingSchedulerConfig final
     {
         std::size_t concurrency{};
@@ -56,6 +92,31 @@ namespace lux::execution
         [[nodiscard]] std::size_t cpuConcurrency() const noexcept;
         [[nodiscard]] TimerClient timer() const noexcept;
         [[nodiscard]] lux::cxx::expected<BlockingScheduler, EExecutionError> blocking() const noexcept;
+
+        // Starts finite work without TaskId, monitoring or a per-operation stop source. Consume
+        // business results and normalize errors/stopped inside sender before spawning it. Accepted
+        // work and its captures remain covered by settled()/join(); requestStop closes new admission.
+        // The caller keeps this Runtime alive through the submission call, including synchronous completion.
+        template <class Sender> [[nodiscard]] lux::cxx::expected<void, EExecutionError> spawn(Sender sender) noexcept
+        {
+            if (!state_ || !detail::admitExecution(*state_))
+            {
+                return lux::cxx::unexpected(EExecutionError::STOPPING);
+            }
+            auto& scope = detail::executionScope(*state_);
+            // The extra association covers the submission tail if start completes synchronously.
+            auto submitting = scope.get_token().try_associate();
+            stdexec::spawn(
+                stdexec::write_env(
+                    std::move(sender),
+                    stdexec::prop{stdexec::get_allocator, std::allocator<std::byte>{}}
+                ),
+                scope.get_token(),
+                stdexec::env{stdexec::prop{stdexec::get_allocator, detail::ExecutionAllocator<std::byte>{*state_}}}
+            );
+            detail::releaseExecution(*state_);
+            return {};
+        }
 
         // The returned Task is a nonblocking cancellation handle, not an operation owner.
         // Work and captured inputs remain in this Runtime until their real terminal completion.

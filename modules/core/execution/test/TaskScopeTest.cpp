@@ -13,6 +13,41 @@ namespace
     using namespace lux::execution;
     using Value = lux::cxx::expected<int, EExecutionError>;
 
+    void unmonitoredExecution()
+    {
+        auto runtime = ExecutionRuntime::create({1, 1, {16}});
+        assert(runtime);
+        TaskScope monitored{*runtime};
+        std::binary_semaphore entered{0}, release{0};
+        assert(monitored.submit(
+            {"Monitored capacity", "test"},
+            [&](TaskReporter) noexcept
+            {
+                return stdexec::schedule(runtime->cpu()) | stdexec::then(
+                                                               [&]() noexcept
+                                                               {
+                                                                   entered.release();
+                                                                   release.acquire();
+                                                               }
+                                                           );
+            }
+        ));
+        entered.acquire();
+        unsigned completed = 0;
+        assert(runtime->spawn(stdexec::just() | stdexec::then([&]() noexcept { ++completed; })));
+        assert(completed == 1 && runtime->taskInfos().size() == 1);
+        assert(
+            runtime->spawn(stdexec::schedule(runtime->mainScheduler()) | stdexec::then([&]() noexcept { ++completed; }))
+        );
+        assert(!runtime->settled());
+        runtime->requestStop();
+        assert(!runtime->spawn(stdexec::just()));
+        assert(runtime->dispatchMainCompletions() && completed == 2);
+        release.release();
+        assert(runtime->waitUntil([&]() noexcept { return runtime->settled(); }));
+        assert(runtime->join());
+    }
+
     void destroyedScope(bool shutdown)
     {
         std::binary_semaphore entered{0}, release{0}, destroyed{0};
@@ -239,6 +274,7 @@ namespace
 
 int main()
 {
+    unmonitoredExecution();
     destroyedScope(false);
     destroyedScope(true);
     explicitJoin();

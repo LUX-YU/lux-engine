@@ -68,16 +68,21 @@ namespace lux::execution
             return static_cast<std::uint32_t>(publication_state_.load(std::memory_order_acquire));
         }
 
-    private:
-        friend class ExecutionRuntime;
-
-        // Entry/return activity is part of Runtime's opaque wait epoch. Return changes the serial
+        // Observe before consuming/checking completion. Return changes the serial
         // and drops the active count in ONE atomic update, after the wake callback has returned.
         [[nodiscard]] std::uint64_t publicationEpoch() const noexcept
         {
             return publication_state_.load(std::memory_order_acquire);
         }
 
+        // Check publishers before the epoch: the last wake can return after its node was consumed.
+        // Pair this with the driver's own notification epoch before entering its blocking wait.
+        [[nodiscard]] bool canWait(std::uint64_t observed) const noexcept
+        {
+            return empty() && activePublishers() == 0 && publicationEpoch() == observed;
+        }
+
+    private:
         // Embedded in a connected schedule operation; the queue never owns that operation.
         struct Work
         {

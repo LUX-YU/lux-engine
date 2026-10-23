@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/core/execution/TaskScope.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/process/world_loading/WorldStorageSource.hpp>
 
 #include <filesystem>
@@ -15,7 +15,7 @@ namespace lux::process::world_loading
 
     // Finite file-range provider on the application's blocking IO resource. CPU decoding is separate.
     // Destroying the provider closes copied sources to new requests; accepted reads retain their inputs.
-    // The caller quiesces admission before destroying tasks, and joins ExecutionRuntime after accepted reads.
+    // The caller closes admission before joining ExecutionRuntime; accepted reads retain their inputs.
     class LUX_ENGINE_PROCESS_WORLD_LOADING_PUBLIC WorldFileStorageSource final
     {
     public:
@@ -25,8 +25,9 @@ namespace lux::process::world_loading
             std::shared_ptr<const world::WorldDescription> world,
             std::filesystem::path directory,
             execution::BlockingScheduler blocking,
-            execution::TaskScope& tasks,
-            WorldFileStorageLimits limits = {}
+            execution::ExecutionRuntime& execution,
+            WorldFileStorageLimits limits = {},
+            std::stop_token stop = {}
         ) noexcept;
 
         ~WorldFileStorageSource() noexcept;

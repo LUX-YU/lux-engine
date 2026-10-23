@@ -1,6 +1,7 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/process/world_loading/WorldFileStorageSource.hpp>
+#include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
@@ -215,8 +216,14 @@ namespace
             execution::TaskScope& tasks
         )
         {
-            auto files =
-                loading::WorldFileStorageSource::create(std::move(world), std::move(directory), scheduler, tasks);
+            auto files = loading::WorldFileStorageSource::create(
+                std::move(world),
+                std::move(directory),
+                scheduler,
+                (tasks).execution(),
+                {},
+                (tasks).stopToken()
+            );
             assert(files);
             files_ = std::move(*files);
         }
@@ -269,11 +276,13 @@ namespace
     struct Constructed final
     {
         std::size_t count{};
+
         void event(ecs::Registry&, ecs::Entity)
         {
             ++count;
         }
     };
+
     void materialization(const Fixture& valid, const Fixture& bad, const ecs::ComponentSchemaSet& schemas)
     {
         auto materializer = scene::WorldMaterializer::create(valid.world, schemas);
@@ -313,9 +322,8 @@ namespace
             registry,
             output[0],
             {&references,
-             +[](void* state, ecs::Entity entity) noexcept {
-                 static_cast<std::vector<ecs::Entity>*>(state)->push_back(entity);
-             }}
+             +[](void* state, ecs::Entity entity) noexcept
+             { static_cast<std::vector<ecs::Entity>*>(state)->push_back(entity); }}
         ));
         assert(references == std::vector{output[1]});
         std::cout
@@ -343,12 +351,12 @@ namespace
         truncated.pop_back();
         assert(!schema->decode_emplace(registry, identities, destination, 1, truncated));
         assert(decoded.partitions.size() == 3 && !decoded.required);
-        assert(schema->visit_references(registry, destination, {nullptr, +[](void*, ecs::Entity) noexcept {
-                                                                    assert(
-                                                                        false &&
-                                                                        "partition ordinals are not Entity references"
-                                                                    );
-                                                                }}));
+        assert(schema->visit_references(
+            registry,
+            destination,
+            {nullptr,
+             +[](void*, ecs::Entity) noexcept { assert(false && "partition ordinals are not Entity references"); }}
+        ));
     }
 
     template <class Poll, class Ready> void until(execution::ExecutionRuntime& execution, Poll poll, Ready ready)
@@ -418,7 +426,8 @@ namespace
                     );
                 }
             };
-            auto wait = [&](std::size_t residents) {
+            auto wait = [&](std::size_t residents)
+            {
                 const auto deadline = Clock::now() + 5s;
                 do
                 {
@@ -511,7 +520,8 @@ int main(int argc, char** argv)
     auto runtime = execution::ExecutionRuntime::create({2, 64, {64}, execution::BlockingSchedulerConfig{2, 64}});
     assert(runtime && runtime->blocking());
     execution::TaskScope tasks{*runtime};
-    auto disk = std::make_shared<ControlledFileReads>(valid.world, valid.path.parent_path(), *runtime->blocking(), tasks);
+    auto disk =
+        std::make_shared<ControlledFileReads>(valid.world, valid.path.parent_path(), *runtime->blocking(), tasks);
     auto source =
         loading::WorldStorageSource::create(valid.world, async::TOperationPort<loading::ReadWorldStorageRange>{disk});
     assert(source);
@@ -519,10 +529,12 @@ int main(int argc, char** argv)
     assert(scenes);
     const lux::simulation::ecs::ComponentSchemaSet task_components{*schemas};
     const lux::simulation::SimulationSystemRegistry task_system_types;
+
     struct LoaderStatus final
     {
         const scene::WorldLoadingSystem* loader{};
     };
+
     auto observed_registration = scene::worldLoadingSystemRegistration();
     observed_registration.install =
         +[](scene::SceneSystemInstaller& installer, scene::SceneSystemDescription input) noexcept
@@ -560,7 +572,9 @@ int main(int argc, char** argv)
         ecs::Registry target;
         auto captured = services;
         for (const auto& partition : valid.partitions)
+        {
             captured.initial_partitions.emplace_back(&partition, [](const world::WorldPartitionData*) {});
+        }
         scene::WorldLoadingSystem loader(target, *schemas, std::move(captured));
         auto& residency = target.ctx().get<scene::WorldResidency>();
         assert(loader.status() && loader.statistics().reads == 0);
@@ -611,7 +625,8 @@ int main(int argc, char** argv)
         << "PASS residency: initial adoption, atomic preparation, membership, foreign Registry, retention lifetime\n";
     auto provider =
         scene::makeSceneCapabilityProvider<scene::WorldLoadingServices>("loading", "lux.world.loading", services);
-    auto build = [&] {
+    auto build = [&]
+    {
         return (*scenes)
             ->builder()
             .setDescription(shared)
@@ -635,13 +650,16 @@ int main(int argc, char** argv)
     registry.emplace<scene::Observer>(observer, std::vector<partition::PartitionOrdinal>{{0}, {1}}, true);
     const auto second_observer = registry.create();
     registry.emplace<scene::Observer>(second_observer, std::vector<partition::PartitionOrdinal>{{1}}, true);
-    auto poll = [&] {
+    auto poll = [&]
+    {
         const auto progressed = (*scenes)->driveFrame();
         assert(progressed && progressed->empty());
     };
-    until(*runtime, poll, [&] {
-        return registry.ctx().get<scene::WorldResidency>().statistics().resident_partitions == 2;
-    });
+    until(
+        *runtime,
+        poll,
+        [&] { return registry.ctx().get<scene::WorldResidency>().statistics().resident_partitions == 2; }
+    );
     assert(disk->completed() > 0);
     assert(
         registry.ctx().get<scene::WorldResidency>().statistics().resident_entities == 2 &&
@@ -745,7 +763,8 @@ int main(int argc, char** argv)
         scene::WorldLoadingSystem loader(registry, *schemas, services);
         const auto observer = registry.create();
         registry.emplace<scene::Observer>(observer, std::vector<partition::PartitionOrdinal>{{0}, {1}}, true);
-        auto poll = [&] {
+        auto poll = [&]
+        {
             scene::SceneStageContext context;
             assert(loader.maintain(context));
         };
@@ -756,9 +775,11 @@ int main(int argc, char** argv)
             registry.ctx().get<scene::WorldResidency>().statistics().resident_partitions == 0
         );
         registry.patch<scene::Observer>(observer, [](auto& value) { value.partitions = {{1}}; });
-        until(*runtime, poll, [&] {
-            return registry.ctx().get<scene::WorldResidency>().statistics().resident_partitions == 1;
-        });
+        until(
+            *runtime,
+            poll,
+            [&] { return registry.ctx().get<scene::WorldResidency>().statistics().resident_partitions == 1; }
+        );
         assert(loader.status());
     }
     services.limits.residency.partitions = 64;
@@ -778,7 +799,8 @@ int main(int argc, char** argv)
     disk->release();
 
     // Replacement source while reads are pending cannot adopt stale generation.
-    auto next_disk = std::make_shared<ControlledFileReads>(next.world, next.path.parent_path(), *runtime->blocking(), tasks);
+    auto next_disk =
+        std::make_shared<ControlledFileReads>(next.world, next.path.parent_path(), *runtime->blocking(), tasks);
     auto next_source = loading::WorldStorageSource::create(
         next.world,
         async::TOperationPort<loading::ReadWorldStorageRange>{next_disk}
@@ -789,16 +811,19 @@ int main(int argc, char** argv)
         ecs::Registry registry;
         scene::WorldLoadingSystem loader(registry, *schemas, services);
         registry.emplace<scene::Observer>(registry.create(), std::vector<partition::PartitionOrdinal>{{1}}, true);
-        auto poll = [&] {
+        auto poll = [&]
+        {
             scene::SceneStageContext context;
             assert(loader.maintain(context));
         };
         poll();
         assert(loader.replaceSource(*next_source));
         disk->release();
-        until(*runtime, poll, [&] {
-            return registry.ctx().get<scene::WorldResidency>().statistics().resident_partitions == 1;
-        });
+        until(
+            *runtime,
+            poll,
+            [&] { return registry.ctx().get<scene::WorldResidency>().statistics().resident_partitions == 1; }
+        );
         const auto entity =
             registry.ctx().get<scene::WorldResidency>().identities().entity(identity<world::WorldObjectId>(2));
         assert(registry.get<ecs::Transform3D>(entity).translation.x() == 21);
@@ -810,7 +835,8 @@ int main(int argc, char** argv)
     // Real IO and codec errors retain their original identity. A changed
     // source retries the same explicit set without publishing failed contents.
     {
-        auto reader = std::make_shared<ControlledFileReads>(bad.world, bad.path.parent_path(), *runtime->blocking(), tasks);
+        auto reader =
+            std::make_shared<ControlledFileReads>(bad.world, bad.path.parent_path(), *runtime->blocking(), tasks);
         auto input = loading::WorldStorageSource::create(
             bad.world,
             async::TOperationPort<loading::ReadWorldStorageRange>{reader}
@@ -822,7 +848,8 @@ int main(int argc, char** argv)
         Constructed events;
         entt::scoped_connection connection =
             registry.on_construct<ecs::Transform3D>().connect<&Constructed::event>(events);
-        auto poll = [&] {
+        auto poll = [&]
+        {
             scene::SceneStageContext context;
             const auto progressed = loader.maintain(context);
             if (!progressed)
@@ -839,9 +866,11 @@ int main(int argc, char** argv)
             registry.ctx().get<scene::WorldResidency>().identities().size() == 0
         );
         assert(loader.replaceSource(*source));
-        until(*runtime, poll, [&] {
-            return registry.ctx().get<scene::WorldResidency>().statistics().resident_partitions == 2;
-        });
+        until(
+            *runtime,
+            poll,
+            [&] { return registry.ctx().get<scene::WorldResidency>().statistics().resident_partitions == 2; }
+        );
         assert(events.count == 2 && loader.status());
     }
     {
@@ -854,7 +883,8 @@ int main(int argc, char** argv)
         ecs::Registry registry;
         scene::WorldLoadingSystem loader(registry, *schemas, {*input, tasks});
         registry.emplace<scene::Observer>(registry.create(), std::vector<partition::PartitionOrdinal>{{1}}, true);
-        auto poll = [&] {
+        auto poll = [&]
+        {
             scene::SceneStageContext context;
             const auto progressed = loader.maintain(context);
             if (!progressed)
@@ -874,7 +904,8 @@ int main(int argc, char** argv)
 
     // Unknown schema bytes remain owned and prevent unsafe automatic unloading.
     {
-        auto reader = std::make_shared<ControlledFileReads>(opaque.world, opaque.path.parent_path(), *runtime->blocking(), tasks);
+        auto reader =
+            std::make_shared<ControlledFileReads>(opaque.world, opaque.path.parent_path(), *runtime->blocking(), tasks);
         auto input = loading::WorldStorageSource::create(
             opaque.world,
             async::TOperationPort<loading::ReadWorldStorageRange>{reader}
@@ -884,13 +915,16 @@ int main(int argc, char** argv)
         scene::WorldLoadingSystem loader(registry, *schemas, {*input, tasks});
         const auto observer = registry.create();
         registry.emplace<scene::Observer>(observer, std::vector<partition::PartitionOrdinal>{{1}}, true);
-        auto poll = [&] {
+        auto poll = [&]
+        {
             scene::SceneStageContext context;
             assert(loader.maintain(context));
         };
-        until(*runtime, poll, [&] {
-            return registry.ctx().get<scene::WorldResidency>().statistics().resident_partitions == 1;
-        });
+        until(
+            *runtime,
+            poll,
+            [&] { return registry.ctx().get<scene::WorldResidency>().statistics().resident_partitions == 1; }
+        );
         registry.destroy(observer);
         poll();
         assert(

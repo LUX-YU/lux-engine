@@ -102,6 +102,7 @@ namespace lux::rendering
             for (;;)
             {
                 const auto observed = notifications.workEpoch();
+                const auto publication = asset_loop.publicationEpoch();
                 const auto ready = asset_loop.executeReady(128);
                 const auto responses = asset_client->consumeResponses();
                 if (render_joined.load(std::memory_order_acquire) && !link_settled)
@@ -115,7 +116,7 @@ namespace lux::rendering
                 {
                     return;
                 }
-                if (ready == 0 && responses == 0)
+                if (ready == 0 && responses == 0 && asset_loop.canWait(publication))
                 {
                     notifications.waitUntil(observed, std::chrono::steady_clock::time_point::max());
                 }

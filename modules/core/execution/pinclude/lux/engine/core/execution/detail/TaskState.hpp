@@ -10,6 +10,7 @@ namespace lux::execution::detail
     {
         bool accepting{true};
         std::size_t outstanding{};
+        std::stop_source stop;
     };
 
     struct TaskRecord final
@@ -43,13 +44,13 @@ namespace lux::execution::detail
         [[nodiscard]] std::vector<TaskInfo> infos() const noexcept;
 
         ExecutionRuntime* execution;
+        ExecutionState& execution_state;
         const std::thread::id main_thread{std::this_thread::get_id()};
         const std::uint64_t identity;
         const std::size_t capacity;
         const std::size_t history_capacity;
         mutable std::mutex mutex;
         lux::cxx::SlotMap<std::unique_ptr<TaskRecord>, TaskTag> records;
-        stdexec::simple_counting_scope execution_scope;
         std::vector<TaskId> changes;
         std::vector<TaskId> change_batch;
         std::vector<TaskInfo> history;

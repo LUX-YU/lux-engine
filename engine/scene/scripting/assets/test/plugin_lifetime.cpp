@@ -1,4 +1,5 @@
 #include "PluginProbe.hpp"
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/dynamic_library/DynamicLibrary.hpp>
 #include <lux/engine/process/asset_loading/AssetReadOverlay.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
@@ -26,7 +27,11 @@ namespace
     {
         engine::platform::DynamicLibrary library;
         PluginCounts& counts;
-        Code(const char* file, PluginCounts& value) : library(file), counts(value) { assert(library.is_loaded()); }
+
+        Code(const char* file, PluginCounts& value) : library(file), counts(value)
+        {
+            assert(library.is_loaded());
+        }
 
         ~Code() noexcept
         {
@@ -36,32 +41,43 @@ namespace
         }
     };
 
-    struct Probe final { void begin() noexcept {} };
+    struct Probe final
+    {
+        void begin() noexcept {}
+    };
+
     struct Binding final
     {
         native::ScriptAssetAccess& access;
         ScriptInstanceId instance;
     };
+
     struct Reply final
     {
         std::optional<native::ScriptAssetReadOutcome> value;
         unsigned calls{};
     };
-}
+} // namespace
 
 int main(int argc, char** argv)
 {
     assert(argc == 2);
-    auto execution = take(execution::ExecutionRuntime::create({1, 64, {32}, execution::BlockingSchedulerConfig{1, 64}}));
+    auto execution =
+        take(execution::ExecutionRuntime::create({1, 64, {32}, execution::BlockingSchedulerConfig{1, 64}}));
     execution::TaskScope files{execution};
     asset::AssetVfs vfs;
     auto endpoint = take(process::asset_loading::VfsAssetReadEndpoint::create(
-        vfs.view().capture(), take(execution.blocking()), files, {4}
+        vfs.view().capture(),
+        take(execution.blocking()),
+        (files).execution(),
+        {4},
+        (files).stopToken()
     ));
     const auto id = asset::AssetId{*uuids::uuid::from_string("fedcba98-7654-4abc-ffff-ffffffffffff")};
     auto bytes = std::make_shared<const std::vector<std::byte>>(16, std::byte{42});
     auto read = take(process::asset_loading::makeAssetReadOverlay(
-        {{id, {cxx::SharedBytes<>::fromOwner(bytes, std::span<const std::byte>{*bytes})}}}, endpoint->port()
+        {{id, {cxx::SharedBytes<>::fromOwner(bytes, std::span<const std::byte>{*bytes})}}},
+        endpoint->port()
     ));
     using Entry = detail::TCppStaticSyncEntry<&Probe::begin>;
     const std::array exports{CppStaticExportEntry{1, "begin", Entry::Parameters, Entry::Results, &Entry::invoke}};
@@ -77,15 +93,24 @@ int main(int argc, char** argv)
         Binding binding{*access};
         auto publication = native::publishAssetAbility(*access);
         publication.context = &binding;
-        publication.prepare_instance = [](void* context, ScriptInstanceId instance) noexcept {
+        publication.prepare_instance = [](void* context, ScriptInstanceId instance) noexcept
+        {
             auto& binding = *static_cast<Binding*>(context);
             binding.instance = instance;
             return native::ScriptAssetAccess::prepareInstance(&binding.access, instance);
         };
         const std::array requirements{CppStaticApiRequirement{publication.contract, publication.schema_hash}};
         const CppStaticContract contract{
-            "ec2.plugin", "ec2.plugin.contract", false, detail::cppStaticObject<Probe>(), exports,
-            {1, 0}, requirements, {}, [](std::uint64_t hash, std::uint32_t& slot) noexcept {
+            "ec2.plugin",
+            "ec2.plugin.contract",
+            false,
+            detail::cppStaticObject<Probe>(),
+            exports,
+            {1, 0},
+            requirements,
+            {},
+            [](std::uint64_t hash, std::uint32_t& slot) noexcept
+            {
                 slot = 0;
                 return hash == script::ScriptApiContractIdView{"lux.scene.assets"}.hash();
             }
@@ -101,29 +126,46 @@ int main(int argc, char** argv)
         const std::array mounts{ScriptRuntimeMount{{1}, id, SimulationScriptScope{}}};
         const ScriptRuntimeLimits limits{8, 1, 4, 4, 4, 4, 256, 4, 4, 4, 4, 4};
         const ScriptArtifactResolver source{
-            &artifact, [](void* context, const asset::AssetId&, ResolvedScriptArtifact& result) noexcept {
+            &artifact,
+            [](void* context, const asset::AssetId&, ResolvedScriptArtifact& result) noexcept
+            {
                 result = {static_cast<script::ScriptArtifact*>(context), context, [](void*) noexcept {}};
                 return true;
             }
         };
-        auto system = take(ScriptSystem::create(simulation, take(planScriptRuntimeCapacity(mounts)), mounts,
-            registry, time, limits, source, publications, backends, {}, {}));
+        auto system = take(ScriptSystem::create(
+            simulation,
+            take(planScriptRuntimeCapacity(mounts)),
+            mounts,
+            registry,
+            time,
+            limits,
+            source,
+            publications,
+            backends,
+            {},
+            {}
+        ));
         assert(system.prepare());
         assert(binding.instance.valid());
         auto scope = take(access->prepare(binding.instance)); // The actual installed instance's original scope.
         auto reply = std::make_shared<Reply>();
         auto completion = native::ScriptAssetScope::Completion::fromErased(script::ScriptAbilityErasedCompletion::bind(
-            reply, reply.get(), 0, 0,
-            [](void* context, auto, auto, semantic::TypeId, const void* data, std::uint32_t size) noexcept
-                -> script::ScriptAbilityErasedCompletion::CompletionResult {
+            reply,
+            reply.get(),
+            0,
+            0,
+            [](void* context, auto, auto, semantic::TypeId, const void* data, std::uint32_t size
+            ) noexcept -> script::ScriptAbilityErasedCompletion::CompletionResult
+            {
                 assert(size == sizeof(native::ScriptAssetReadOutcome));
                 auto& reply = *static_cast<Reply*>(context);
                 reply.value = *static_cast<const native::ScriptAssetReadOutcome*>(data);
                 ++reply.calls;
                 return {};
             },
-            [](void*, auto, auto, script::ScriptAbilityOperationError) noexcept
-                -> script::ScriptAbilityErasedCompletion::CompletionResult { std::terminate(); },
+            [](void*, auto, auto, script::ScriptAbilityOperationError
+            ) noexcept -> script::ScriptAbilityErasedCompletion::CompletionResult { std::terminate(); },
             [](void*, auto, auto) noexcept { return true; }
         ));
         assert(start(*scope, id, std::move(completion), code, counts));
@@ -146,13 +188,18 @@ int main(int argc, char** argv)
             // Only the accepted sender pipeline still retains this real DLL result and its code.
             assert(counts.destroyed == 0 && counts.unloaded == 0 && !weak.expired());
         }
-        assert(execution.waitUntil([&]() noexcept {
-            assert(execution.dispatchTaskEvents());
-            return execution.settled();
-        }));
+        assert(execution.waitUntil(
+            [&]() noexcept
+            {
+                assert(execution.dispatchTaskEvents());
+                return execution.settled();
+            }
+        ));
         assert(execution.dispatchTaskEvents());
         if (stop_before_delivery)
+        {
             assert(reply->calls == 0);
+        }
         else
         {
             assert(reply->calls == 1 && reply->value->succeeded());

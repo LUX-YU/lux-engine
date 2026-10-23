@@ -38,13 +38,13 @@ namespace lux::process::asset_loading
         {
             asset::AssetVfsView vfs;
             execution::BlockingScheduler blocking;
-            execution::TaskScope& tasks;
+            execution::ExecutionRuntime& execution;
+            std::stop_token stop;
         };
 
         struct Request final
         {
             std::shared_ptr<Impl> state;
-            execution::ExecutionRuntime& execution;
             void* completion_state;
             void (*complete)(void*, Outcome&&) noexcept;
 
@@ -54,19 +54,19 @@ namespace lux::process::asset_loading
                     std::lock_guard lock{state->mutex};
                     --state->admitted;
                 }
-                // Read admission ends before continuation; callback tails remain part of this task.
+                // Read admission ends before continuation; stdexec retains the inputs through callback return.
                 complete(completion_state, std::move(outcome));
-                execution.wake();
             }
         };
 
         Impl(
             asset::AssetVfsView view,
             execution::BlockingScheduler scheduler,
-            execution::TaskScope& scope,
-            std::size_t limit
+            execution::ExecutionRuntime& execution,
+            std::size_t limit,
+            std::stop_token stop
         ) noexcept
-            : admission(std::in_place, std::move(view), std::move(scheduler), scope), capacity(limit)
+            : admission(std::in_place, std::move(view), std::move(scheduler), execution, stop), capacity(limit)
         {
         }
 
@@ -85,7 +85,7 @@ namespace lux::process::asset_loading
             ReadAssetImage operation,
             void* completion_state,
             void (*complete)(void*, Outcome&&) noexcept,
-            lux::async::SubmitOptions options
+            lux::async::SubmitOptions
         ) noexcept override
         {
             if (operation.id.isNull())
@@ -95,7 +95,7 @@ namespace lux::process::asset_loading
             std::optional<Admission> accepted;
             {
                 std::lock_guard lock{mutex};
-                if (!admission)
+                if (!admission || admission->stop.stop_requested())
                 {
                     return lux::cxx::unexpected(lux::async::ESubmitError::STOPPING);
                 }
@@ -106,46 +106,36 @@ namespace lux::process::asset_loading
                 accepted.emplace(*admission);
                 ++admitted;
             }
-            Request request{shared_from_this(), accepted->tasks.execution(), completion_state, complete};
-            // The caller's scope covers admission calls. Only owned inputs survive submission;
-            // never hold our mutex across Runtime wake callbacks or provider cleanup.
-            const auto started = accepted->tasks.submit(
-                {"Read asset image", "asset", execution::correlatedTask(options.correlation)},
-                [scheduler = accepted->blocking, view = accepted->vfs, operation, request = std::move(request)](
-                    execution::TaskReporter
-                ) mutable noexcept
+            Request request{shared_from_this(), completion_state, complete};
+            auto read = stdexec::then(
+                stdexec::schedule(accepted->blocking),
+                [view = accepted->vfs, operation]() noexcept { return view.open(operation.id, operation.max_bytes); }
+            );
+            auto delivered = stdexec::then(
+                execution::taskResult(std::move(read)),
+                [request = std::move(request)](auto result) mutable noexcept
                 {
-                    auto read = stdexec::then(
-                        stdexec::schedule(scheduler),
-                        [view, operation]() noexcept { return view.open(operation.id, operation.max_bytes); }
-                    );
-                    return stdexec::then(
-                        execution::taskResult(std::move(read)),
-                        [request = std::move(request)](auto result) mutable noexcept
-                        {
-                            const auto outcome = execution::taskState(result);
-                            using Failure = lux::async::TOperationFailure<asset::EAssetStorageError>;
-                            if (result)
-                            {
-                                request.finish(Outcome{std::move(*result)});
-                            }
-                            else if (auto* error = result.error().domainFailure())
-                            {
-                                request.finish(lux::cxx::unexpected(Failure::domain(*error)));
-                            }
-                            else if (auto* error = result.error().executionFailure())
-                            {
-                                request.finish(lux::cxx::unexpected(Failure::runtime(mapExecutionError(*error))));
-                            }
-                            else
-                            {
-                                const auto failure = Failure::runtime(lux::async::ESubmitError::STOPPING);
-                                request.finish(lux::cxx::unexpected(failure));
-                            }
-                            return outcome;
-                        }
-                    );
+                    using Failure = lux::async::TOperationFailure<asset::EAssetStorageError>;
+                    if (result)
+                    {
+                        request.finish(Outcome{std::move(*result)});
+                    }
+                    else if (auto* error = result.error().domainFailure())
+                    {
+                        request.finish(lux::cxx::unexpected(Failure::domain(*error)));
+                    }
+                    else if (auto* error = result.error().executionFailure())
+                    {
+                        request.finish(lux::cxx::unexpected(Failure::runtime(mapExecutionError(*error))));
+                    }
+                    else
+                    {
+                        request.finish(lux::cxx::unexpected(Failure::runtime(lux::async::ESubmitError::STOPPING)));
+                    }
                 }
+            );
+            const auto started = accepted->execution.spawn(
+                stdexec::write_env(std::move(delivered), stdexec::prop{stdexec::get_stop_token, accepted->stop})
             );
             if (started)
             {
@@ -167,8 +157,9 @@ namespace lux::process::asset_loading
     VfsAssetReadEndpoint::CreateResult VfsAssetReadEndpoint::create(
         asset::AssetVfsView vfs,
         execution::BlockingScheduler blocking,
-        execution::TaskScope& tasks,
-        VfsAssetReadEndpointConfig config
+        execution::ExecutionRuntime& execution,
+        VfsAssetReadEndpointConfig config,
+        std::stop_token stop
     ) noexcept
     {
         const bool invalid_dependency = !vfs || !blocking;
@@ -178,7 +169,8 @@ namespace lux::process::asset_loading
         {
             return lux::cxx::unexpected(EVfsAssetReadEndpointError::INVALID_ARGUMENT);
         }
-        auto impl = std::make_shared<Impl>(std::move(vfs), std::move(blocking), tasks, config.request_capacity);
+        auto impl =
+            std::make_shared<Impl>(std::move(vfs), std::move(blocking), execution, config.request_capacity, stop);
         return std::unique_ptr<VfsAssetReadEndpoint>(new VfsAssetReadEndpoint(std::move(impl)));
     }
 

@@ -1,3 +1,4 @@
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/process/asset_loading/AssetReadOverlay.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
 #include <lux/engine/resource/asset/animation/SkeletonAsset.hpp>
@@ -141,8 +142,9 @@ namespace
         auto endpoint = process::asset_loading::VfsAssetReadEndpoint::create(
             vfs.view().capture(),
             *runtime->blocking(),
-            files,
-            {2}
+            (files).execution(),
+            {2},
+            (files).stopToken()
         );
         assert(endpoint);
         auto memory = process::asset_loading::makeAssetReadOverlay({{Id, {image()}}}, {});

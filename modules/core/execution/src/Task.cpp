@@ -1,4 +1,5 @@
 #include <lux/engine/core/execution/TaskScope.hpp>
+#include <lux/engine/core/execution/detail/ExecutionState.hpp>
 #include <lux/engine/core/execution/detail/TaskState.hpp>
 
 #include <algorithm>
@@ -12,7 +13,8 @@ namespace lux::execution::detail
     }
 
     TaskRuntime::TaskRuntime(ExecutionRuntime& execution, std::size_t limit, std::size_t history_limit)
-        : execution(&execution), identity(next_runtime.fetch_add(1, std::memory_order_relaxed)), capacity(limit),
+        : execution(&execution), execution_state(*execution.state_),
+          identity(next_runtime.fetch_add(1, std::memory_order_relaxed)), capacity(limit),
           history_capacity(history_limit)
     {
         if (identity == 0)
@@ -45,7 +47,7 @@ namespace lux::execution::detail
     void TaskRuntime::moveTo(ExecutionRuntime& execution) noexcept
     {
         std::lock_guard lock{mutex};
-        if (!records.empty())
+        if (!records.empty() || (execution_state.execution_admission.load(std::memory_order_acquire) >> 1) != 0)
         {
             std::terminate();
         }
@@ -114,7 +116,7 @@ namespace lux::execution::detail
 
     stdexec::simple_counting_scope& taskScope(TaskRecord& record) noexcept
     {
-        return record.runtime->execution_scope;
+        return executionScope(record.runtime->execution_state);
     }
 
     void releaseTaskAccess(TaskRecord& record) noexcept
@@ -309,91 +311,6 @@ namespace lux::execution::detail
 
 namespace lux::execution
 {
-    TaskScope::TaskScope(ExecutionRuntime& execution) noexcept
-        : execution_(execution), group_(std::make_shared<detail::TaskGroup>())
-    {
-    }
-
-    TaskScope::~TaskScope() noexcept
-    {
-        requestStop();
-    }
-
-    void TaskScope::requestStop() noexcept
-    {
-        auto& tasks = *execution_.tasks_;
-        std::vector<std::stop_source> stops;
-        {
-            std::lock_guard lock{tasks.mutex};
-            group_->accepting = false;
-            if (group_->outstanding == 0)
-            {
-                return;
-            }
-            stops.reserve(group_->outstanding);
-            for (auto& record : tasks.records)
-            {
-                if (record->group != group_ || record->info.finished)
-                {
-                    continue;
-                }
-                record->info.cancel_requested = true;
-                stops.push_back(record->stop);
-                tasks.changed(*record);
-            }
-        }
-        for (auto& stop : stops)
-        {
-            stop.request_stop();
-        }
-        execution_.wake();
-    }
-
-    bool TaskScope::settled() const noexcept
-    {
-        auto& tasks = *execution_.tasks_;
-        std::lock_guard lock{tasks.mutex};
-        return group_->outstanding == 0;
-    }
-
-    lux::cxx::expected<void, EExecutionError> TaskScope::join() noexcept
-    {
-        auto& tasks = *execution_.tasks_;
-        if (tasks.main_thread != std::this_thread::get_id())
-        {
-            return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
-        }
-        {
-            std::lock_guard lock{tasks.mutex};
-            group_->accepting = false;
-            if (group_->outstanding == 0)
-            {
-                return {};
-            }
-        }
-        const auto valid = execution_.validateWait();
-        if (!valid)
-        {
-            return lux::cxx::unexpected(valid.error());
-        }
-        for (;;)
-        {
-            const auto epoch = execution_.wakeEpoch();
-            if (!execution_.dispatchMainCompletions())
-            {
-                std::terminate();
-            }
-            {
-                std::lock_guard lock{tasks.mutex};
-                if (group_->outstanding == 0)
-                {
-                    return {};
-                }
-            }
-            execution_.waitForWork(epoch);
-        }
-    }
-
     Task::Task(Task&& other) noexcept : tasks_(std::exchange(other.tasks_, nullptr)), id_(other.id_) {}
 
     Task& Task::operator=(Task&& other) noexcept

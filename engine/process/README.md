@@ -82,14 +82,14 @@ EditorContext 或可变 Registry 裸借用到 Worker。`taskResult()` 只归一�
 
 ## 世界文件与逐段解码
 
-`WorldFileStorageSource::create(world, directory, blocking, tasks, limits)` 将 World 描述中的相对 volume
+`WorldFileStorageSource::create(world, directory, blocking, execution, limits, stop)` 将 World 描述中的相对 volume
 名称解析到目录内。每次读取使用独立文件位置，检查范围和实际短读；不载入整个 volume，也不共享可变 seek 游标。
 `source()` 返回现有 WorldStorageSource/OperationPort。提供者析构撤销新读取，已接纳的读取自行结束；
-TaskScope 必须覆盖并发准入调用，ExecutionRuntime 必须覆盖完成尾栈。
+ExecutionRuntime 覆盖接纳的读取和完成尾栈；可选 stop token 来自实际项目/加载取消域。
 
 `loadWorldPartition(source, execution.cpu(), partition, max_bytes, stop)` 是一个有限解码任务。
 它保留同一个 WorldPartitionDecoder，使用 stdexec coroutine 的 CPU affinity 在每次读取后继续；
-内存提供者同步完成和文件提供者异步完成共用同一算法。文件读取是关联原任务的有限 IO 子任务，
+内存提供者同步完成和文件提供者异步完成共用同一算法。文件读取是原流水线中的有限 IO 操作，不逐范围创建 TaskRecord，
 不在每个范围重建分区解码器、重新申请 Scene 的分区/暂存额度或经过 Main。
 全局任务取消和调用方的分区取消都保留，不能只转发其中一个 token。
 

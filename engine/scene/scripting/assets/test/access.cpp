@@ -1,11 +1,12 @@
-#include <lux/engine/scene/scripting/ScriptAssetAccess.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/process/asset_loading/AssetReadOverlay.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
 #include <lux/engine/resource/asset/animation/SkeletonAsset.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
+#include <lux/engine/scene/scripting/ScriptAssetAccess.hpp>
 
-#include <cassert>
 #include <atomic>
+#include <cassert>
 #include <cstdlib>
 #include <iostream>
 #include <semaphore>
@@ -22,14 +23,22 @@ namespace
     public:
         explicit CountedRead(process::asset_loading::AssetReadPort port) : port_(std::move(port)) {}
 
-        lux::async::SubmitResult submit(process::asset_loading::ReadAssetImage request, void* state,
-            void (*complete)(void*, Outcome&&) noexcept, lux::async::SubmitOptions options) noexcept override
+        lux::async::SubmitResult submit(
+            process::asset_loading::ReadAssetImage request,
+            void* state,
+            void (*complete)(void*, Outcome&&) noexcept,
+            lux::async::SubmitOptions options
+        ) noexcept override
         {
             ++calls;
             if (fail_io)
             {
-                complete(state, cxx::unexpected(lux::async::TOperationFailure<asset::EAssetStorageError>::domain(
-                    asset::EAssetStorageError::IO_FAILURE)));
+                complete(
+                    state,
+                    cxx::unexpected(lux::async::TOperationFailure<asset::EAssetStorageError>::domain(
+                        asset::EAssetStorageError::IO_FAILURE
+                    ))
+                );
                 return {};
             }
             return port_.submit(request, state, complete, options);
@@ -37,46 +46,61 @@ namespace
 
         std::atomic_size_t calls{};
         bool fail_io{};
+
     private:
         process::asset_loading::AssetReadPort port_;
     };
+
     struct Reply final : std::enable_shared_from_this<Reply>
     {
         std::optional<ScriptAssetReadOutcome> value;
         bool active{true};
         bool backpressure{};
         std::size_t calls{};
+
         ScriptAssetScope::Completion completion()
         {
             return ScriptAssetScope::Completion::fromErased(script::ScriptAbilityErasedCompletion::bind(
-                shared_from_this(), this, 0, 0,
-                [](void* context, auto, auto, semantic::TypeId type, const void* data, std::uint32_t size) noexcept
-                    -> script::ScriptAbilityErasedCompletion::CompletionResult {
+                shared_from_this(),
+                this,
+                0,
+                0,
+                [](void* context, auto, auto, semantic::TypeId type, const void* data, std::uint32_t size
+                ) noexcept -> script::ScriptAbilityErasedCompletion::CompletionResult
+                {
                     auto& reply = *static_cast<Reply*>(context);
                     ++reply.calls;
                     if (!reply.active)
+                    {
                         return cxx::unexpected(script::EScriptAbilityCompletionError::STALE);
+                    }
                     if (reply.backpressure)
+                    {
                         return cxx::unexpected(script::EScriptAbilityCompletionError::BACKPRESSURE);
+                    }
                     assert(type == semantic::typeId(semantic::TTypeTraits<ScriptAssetReadOutcome>::CanonicalName));
                     assert(size == sizeof(ScriptAssetReadOutcome));
                     reply.value = *static_cast<const ScriptAssetReadOutcome*>(data);
                     return {};
                 },
-                [](void*, auto, auto, script::ScriptAbilityOperationError) noexcept
-                    -> script::ScriptAbilityErasedCompletion::CompletionResult { std::terminate(); },
+                [](void*, auto, auto, script::ScriptAbilityOperationError
+                ) noexcept -> script::ScriptAbilityErasedCompletion::CompletionResult { std::terminate(); },
                 [](void* context, auto, auto) noexcept { return static_cast<Reply*>(context)->active; }
             ));
         }
     };
+
     void settle(execution::ExecutionRuntime& execution)
     {
-        assert(execution.waitUntil([&]() noexcept {
-            assert(execution.dispatchTaskEvents());
-            return execution.settled();
-        }));
+        assert(execution.waitUntil(
+            [&]() noexcept
+            {
+                assert(execution.dispatchTaskEvents());
+                return execution.settled();
+            }
+        ));
     }
-}
+} // namespace
 
 int main()
 {
@@ -104,7 +128,11 @@ int main()
     auto blocking = execution->blocking();
     assert(blocking);
     auto endpoint = process::asset_loading::VfsAssetReadEndpoint::create(
-        vfs.view().capture(), *blocking, file_tasks, {4}
+        vfs.view().capture(),
+        *blocking,
+        (file_tasks).execution(),
+        {4},
+        (file_tasks).stopToken()
     );
     assert(endpoint);
     auto reads = process::asset_loading::makeAssetReadOverlay({{id, {image}}}, (*endpoint)->port());
@@ -137,14 +165,13 @@ int main()
             const auto description = (*first)->describeAsset(handle);
             assert(description && description->id == id && description->image_bytes == image.size());
             assert(description->has_image && !description->decoded);
-            const auto typed_read = (*first)->withAsset<asset::SkeletonAsset>(handle, [](const auto&) noexcept {
-                std::abort();
-            });
+            const auto typed_read =
+                (*first)->withAsset<asset::SkeletonAsset>(handle, [](const auto&) noexcept { std::abort(); });
             assert(!typed_read && typed_read.error() == EScriptAssetError::TYPE_MISMATCH);
             assert((*second)->describeAsset(handle).error() == EScriptAssetError::INVALID_HANDLE);
             auto bytes = (*first)->copyAssetBytes(handle, 0, 8);
-            const bool matches = bytes && bytes->size == 8 &&
-                std::equal(bytes->bytes.begin(), bytes->bytes.begin() + 8, image.data());
+            const bool matches =
+                bytes && bytes->size == 8 && std::equal(bytes->bytes.begin(), bytes->bytes.begin() + 8, image.data());
             assert(matches);
             assert((*first)->copyAssetBytes(handle, image.size(), 0)->size == 0);
             assert((*first)->copyAssetBytes(handle, UINT64_MAX, 2).error() == EScriptAssetError::INVALID_RANGE);
@@ -166,12 +193,16 @@ int main()
         assert(typed_description->type == asset::SkeletonAsset::asset_type && typed_description->image_bytes == 0);
         assert((*first)->copyAssetBytes(typed_handle, 0, 0).error() == EScriptAssetError::TYPE_MISMATCH);
         bool inspected{};
-        assert((*first)->withAsset<asset::SkeletonAsset>(typed_handle, [&](const auto& value) noexcept {
-            inspected = value.id() == id && value.data().bones.size() == 1;
-            // The local borrow owns code and asset through a reentrant release.
-            assert((*first)->releaseAsset(typed_handle));
-            assert(!weak_code.expired() && value.data().bones[0].name == "root");
-        }));
+        assert((*first)->withAsset<asset::SkeletonAsset>(
+            typed_handle,
+            [&](const auto& value) noexcept
+            {
+                inspected = value.id() == id && value.data().bones.size() == 1;
+                // The local borrow owns code and asset through a reentrant release.
+                assert((*first)->releaseAsset(typed_handle));
+                assert(!weak_code.expired() && value.data().bones[0].name == "root");
+            }
+        ));
         assert(inspected && weak_code.expired());
         auto absent = std::make_shared<Reply>();
         assert((*first)->readAsset(missing, absent->completion()));
@@ -238,12 +269,17 @@ int main()
 
     {
         auto counted = std::make_shared<CountedRead>(*reads);
-        auto access = ScriptAssetAccess::create(*execution, process::asset_loading::AssetReadPort{counted},
-            {1, 1, 24576, {8192, 16384, 8}});
+        auto access = ScriptAssetAccess::create(
+            *execution,
+            process::asset_loading::AssetReadPort{counted},
+            {1, 1, 24576, {8192, 16384, 8}}
+        );
         assert(access);
-        auto scope = (*access)->prepare({9, 1}); assert(scope);
+        auto scope = (*access)->prepare({9, 1});
+        assert(scope);
         auto reply = std::make_shared<Reply>();
-        assert((*scope)->readAsset(id, reply->completion())); settle(*execution);
+        assert((*scope)->readAsset(id, reply->completion()));
+        settle(*execution);
         assert(reply->value && reply->value->succeeded() && counted->calls == 1);
         const auto handle = reply->value->handle();
         for (std::size_t i = 0; i != 10000; ++i)
@@ -254,13 +290,15 @@ int main()
         assert(counted->calls == 1 && (*scope)->retainedResults() == 1);
         assert((*scope)->releaseAsset(handle));
         auto wrong = std::make_shared<Reply>();
-        assert((*scope)->readTyped<asset::MeshAsset>(id, wrong->completion())); settle(*execution);
+        assert((*scope)->readTyped<asset::MeshAsset>(id, wrong->completion()));
+        settle(*execution);
         assert(wrong->value && wrong->value->errorDomain() == EScriptAssetFailureDomain::DECODE);
         assert((*scope)->lastFailure()->code == process::asset_loading::EAssetLoadError::DECODE_FAILURE);
         assert((*scope)->retainedResults() == 0 && counted->calls == 2);
         counted->fail_io = true;
         auto io = std::make_shared<Reply>();
-        assert((*scope)->readAsset(id, io->completion())); settle(*execution);
+        assert((*scope)->readAsset(id, io->completion()));
+        settle(*execution);
         assert(io->value && io->value->errorDomain() == EScriptAssetFailureDomain::STORAGE);
         assert(io->value->errorCode() == static_cast<std::uint32_t>(asset::EAssetStorageError::IO_FAILURE));
         assert((*scope)->retainedResults() == 0 && counted->calls == 3);
@@ -273,15 +311,19 @@ int main()
         assert(truncated);
         auto access = ScriptAssetAccess::create(*execution, *truncated, {1, 1, 24576, {8192, 16384, 8}});
         assert(access);
-        auto scope = (*access)->prepare({10, 1}); assert(scope);
+        auto scope = (*access)->prepare({10, 1});
+        assert(scope);
         auto broken = std::make_shared<Reply>();
-        assert((*scope)->readTyped<asset::SkeletonAsset>(id, broken->completion())); settle(*execution);
+        assert((*scope)->readTyped<asset::SkeletonAsset>(id, broken->completion()));
+        settle(*execution);
         assert(broken->value && broken->value->errorDomain() == EScriptAssetFailureDomain::DECODE);
         auto limited_access = ScriptAssetAccess::create(*execution, *reads, {1, 1, 8193, {1, 8192, 8}});
         assert(limited_access);
-        auto small_scope = (*limited_access)->prepare({10, 2}); assert(small_scope);
+        auto small_scope = (*limited_access)->prepare({10, 2});
+        assert(small_scope);
         auto oversized = std::make_shared<Reply>();
-        assert((*small_scope)->readAsset(id, oversized->completion())); settle(*execution);
+        assert((*small_scope)->readAsset(id, oversized->completion()));
+        settle(*execution);
         assert(oversized->value && oversized->value->errorDomain() == EScriptAssetFailureDomain::STORAGE);
         assert(oversized->value->errorCode() == static_cast<std::uint32_t>(asset::EAssetStorageError::LIMIT_EXCEEDED));
         assert((*scope)->retainedResults() == 0 && (*small_scope)->reservedBytes() == 0);
@@ -290,13 +332,24 @@ int main()
     {
         execution::TaskScope blocker{*execution};
         std::binary_semaphore entered{0}, proceed{0};
-        assert(blocker.submit({"Hold IO", "test"}, [&](execution::TaskReporter) noexcept {
-            auto work = stdexec::then(stdexec::schedule(*blocking), [&]() noexcept {
-                entered.release();
-                proceed.acquire();
-            });
-            return stdexec::upon_error(std::move(work), [](execution::EExecutionError) noexcept { std::terminate(); });
-        }));
+        assert(blocker.submit(
+            {"Hold IO", "test"},
+            [&](execution::TaskReporter) noexcept
+            {
+                auto work = stdexec::then(
+                    stdexec::schedule(*blocking),
+                    [&]() noexcept
+                    {
+                        entered.release();
+                        proceed.acquire();
+                    }
+                );
+                return stdexec::upon_error(
+                    std::move(work),
+                    [](execution::EExecutionError) noexcept { std::terminate(); }
+                );
+            }
+        ));
         assert(entered.try_acquire_for(std::chrono::seconds(5)));
         auto access = ScriptAssetAccess::create(*execution, (*endpoint)->port(), {1, 1, 24576, {8192, 16384, 8}});
         assert(access);
@@ -313,13 +366,24 @@ int main()
     {
         execution::TaskScope blocker{*execution};
         std::binary_semaphore entered{0}, proceed{0};
-        assert(blocker.submit({"Hold decode", "test"}, [&](execution::TaskReporter) noexcept {
-            auto work = stdexec::then(stdexec::schedule(execution->cpu()), [&]() noexcept {
-                entered.release();
-                proceed.acquire();
-            });
-            return stdexec::upon_error(std::move(work), [](execution::EExecutionError) noexcept { std::terminate(); });
-        }));
+        assert(blocker.submit(
+            {"Hold decode", "test"},
+            [&](execution::TaskReporter) noexcept
+            {
+                auto work = stdexec::then(
+                    stdexec::schedule(execution->cpu()),
+                    [&]() noexcept
+                    {
+                        entered.release();
+                        proceed.acquire();
+                    }
+                );
+                return stdexec::upon_error(
+                    std::move(work),
+                    [](execution::EExecutionError) noexcept { std::terminate(); }
+                );
+            }
+        ));
         assert(entered.try_acquire_for(std::chrono::seconds(5)));
         auto access = ScriptAssetAccess::create(*execution, *reads, {1, 1, 24576, {8192, 16384, 8}});
         assert(access);

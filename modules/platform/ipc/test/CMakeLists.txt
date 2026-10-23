@@ -1,6 +1,6 @@
 add_executable(platform_ipc_test Ipc.cpp Allocation.cpp)
 
-target_link_libraries(platform_ipc_test PRIVATE platform_ipc render)
+target_link_libraries(platform_ipc_test PRIVATE platform_ipc)
 target_include_directories(platform_ipc_test PRIVATE ../pinclude)
 
 add_executable(platform_ipc_attachments_test Attachments.cpp)
@@ -33,7 +33,7 @@ foreach(plugin A B)
     target_link_libraries(platform_ipc_test PRIVATE ipc_plugin_${plugin})
 endforeach()
 
-foreach(test lifecycle messages directory grace closeout fifo progress protocol cost)
+foreach(test lifecycle messages directory grace closeout fifo progress cost)
     add_test(NAME platform.ipc.${test} COMMAND platform_ipc_test ${test})
     set_tests_properties(platform.ipc.${test} PROPERTIES TIMEOUT 90)
 endforeach()

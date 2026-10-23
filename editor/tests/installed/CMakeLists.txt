@@ -23,13 +23,17 @@ find_package(
 
 find_package(lux-engine-context REQUIRED COMPONENTS engine_context)
 
-find_package(lux-engine-context-render REQUIRED COMPONENTS engine_context_render)
+find_package(lux-engine-rendering REQUIRED COMPONENTS engine_rendering)
 
 find_package(lux-engine-core REQUIRED COMPONENTS object error)
+find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)
+find_package(lux-engine-scene-transform REQUIRED COMPONENTS scene_transform)
+find_package(lux-engine-scene-world-loading REQUIRED COMPONENTS scene_world_loading)
+find_package(lux-engine-process-world-loading REQUIRED COMPONENTS process_world_loading)
 
 find_package(lux-engine-platform REQUIRED COMPONENTS dynamic_library)
 
-find_package(lux-engine-project-plugin-rendering REQUIRED COMPONENTS project_plugin_rendering)
+find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)
 
 get_filename_component(sdk_root "${lux-engine-editor-framework_DIR}/../.." ABSOLUTE)
 
@@ -44,6 +48,8 @@ target_link_libraries(sdk_object_plugin PRIVATE lux::engine::core::object)
 add_executable(sdk_object "${foundation}/object/test/ownership.cpp")
 
 target_link_libraries(sdk_object PRIVATE lux::engine::core::object lux::engine::platform::dynamic_library)
+
+target_include_directories(sdk_object PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/test-support")
 
 add_library(sdk_error_plugin MODULE "${foundation}/error/test/plugin.cpp")
 
@@ -81,7 +87,7 @@ target_link_libraries(
         lux::engine::editor::lux_editor_scene
         lux::engine::editor::lux_editor_scene_profiles
         lux::engine::engine_context
-        lux::engine::project::project_plugin_rendering
+        lux::engine::project::project_plugins
         lux::engine::scene::scene_render
         lux::engine::scene::scene_transform
         lux::engine::scene::scene_world_loading
@@ -93,7 +99,7 @@ target_link_libraries(framework_manifest PRIVATE lux::engine::editor::lux_editor
 
 add_executable(framework_pacing ../pacing.cpp)
 
-target_link_libraries(framework_pacing PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_context_render)
+target_link_libraries(framework_pacing PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_rendering)
 
 find_package(nlohmann_json CONFIG REQUIRED)
 
@@ -113,7 +119,7 @@ target_link_libraries(framework_scene_file PRIVATE lux::engine::editor::lux_edit
 
 add_executable(framework_host host.cpp)
 
-target_link_libraries(framework_host PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_context_render)
+target_link_libraries(framework_host PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_rendering)
 
 add_executable(framework_shutdown ../shutdown.cpp)
 
@@ -213,6 +219,7 @@ set(
     ProjectManifest
     ProjectEvents
     EditorConfig
+    UiTargetImage
     SceneProfileRegistry
     SceneProfile3D
     ScenePackageFile
@@ -241,12 +248,19 @@ endforeach()
 set(
     foundation_headers
     project/PluginIdentity
-    process/TaskScope
+    core/execution/TaskScope
     object/ObjectRuntime
     object/LuxObject
     object/ObjectOwnership
     object/CodeLease
     object/Connection
+    rendering/RenderExecution
+    rendering/RenderRequester
+    rendering/RenderAssets
+    rendering/RenderDiagnostics
+    rendering/UiDrawInput
+    process/asset_loading/VfsAssetReadEndpoint
+    process/world_loading/WorldFileStorageSource
     error/Error
     error/ErrorDescriptor
     error/ErrorRegistry
@@ -268,7 +282,13 @@ foreach(header IN LISTS foundation_headers)
 
     add_library(header_${name} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${name}.cpp")
 
-    target_link_libraries(header_${name} PRIVATE lux::engine::editor::lux_editor_ui)
+    target_link_libraries(
+        header_${name}
+        PRIVATE
+            lux::engine::editor::lux_editor_ui
+            lux::engine::engine_rendering
+            lux::engine::process::world_loading
+    )
 
     if(MSVC)
         target_compile_options(header_${name} PRIVATE /GR- /we4541 /utf-8)

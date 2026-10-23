@@ -12,11 +12,20 @@ assert mode in ('MSVC', 'CLANG_CL', 'OTHER'), mode
 msvc = mode in ('MSVC', 'CLANG_CL')
 clang_cl = mode == 'CLANG_CL'
 commands = json.loads((build / 'compile_commands.json').read_text())
+cache = (build / 'CMakeCache.txt').read_text()
+source_root = Path(re.search(r'^CMAKE_HOME_DIRECTORY:INTERNAL=(.+)$', cache, re.M).group(1)).resolve()
+external = set()
 checked = 0
 for item in commands:
     command = item['command']
     source = item['file'].replace('\\', '/')
     if '/third_party/' in source or '/_deps/' in source:
+        continue
+    # Shared dependency source need not live in FetchContent's _deps. Match NoRtti.cmake's
+    # first-party boundary, while retaining generated Lux translation units in the build tree.
+    path = Path(source).resolve()
+    if not path.is_relative_to(source_root) and not path.is_relative_to(build.resolve()):
+        external.add(str(path.parent))
         continue
     if not source.endswith(('.cpp', '.cxx', '.cc')):
         continue
@@ -57,4 +66,5 @@ for name, text in cases.items():
     else:
         assert result.returncode != 0
         assert ('4541' in result.stdout if mode == 'MSVC' else 'rtti' in result.stdout.lower()), result.stdout
-print('PASS:', checked, 'active C++ units disable RTTI; positive and two compiler negatives qualified')
+print('External source directories (not Lux qualification):', sorted(external))
+print('PASS:', checked, 'active Lux C++ units disable RTTI; positive and two compiler negatives qualified')

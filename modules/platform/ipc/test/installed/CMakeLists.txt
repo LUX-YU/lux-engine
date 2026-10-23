@@ -11,15 +11,6 @@ add_executable(ipc_consumer Main.cpp)
 target_link_libraries(ipc_consumer PRIVATE lux::engine::platform::platform_ipc)
 add_test(NAME installed.ipc COMMAND ipc_consumer)
 
-set(CMAKE_DISABLE_FIND_PACKAGE_Vulkan ON)
-set(CMAKE_DISABLE_FIND_PACKAGE_NRI ON)
-find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render)
-add_executable(ipc_protocol_consumer Main.cpp)
-target_compile_definitions(ipc_protocol_consumer PRIVATE IPC_PROTOCOL_CONSUMER)
-target_link_libraries(ipc_protocol_consumer PRIVATE
-    lux::engine::platform::platform_ipc lux::engine::function::render)
-add_test(NAME installed.ipc_protocol COMMAND ipc_protocol_consumer)
-
 foreach(header IpcCore IpcMessage)
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" CONTENT
         "#include <lux/engine/platform/ipc/${header}.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\nstatic_assert(__cplusplus >= 202002L);\n")

@@ -111,3 +111,14 @@ target_link_libraries(render_clustered_scene PRIVATE
 
 add_test(NAME render.sample.clustered COMMAND render_clustered_scene)
 set_tests_properties(render.sample.clustered PROPERTIES TIMEOUT 120)
+
+# Render Command contracts live with Render; Platform IPC remains independently buildable.
+set(ipc_test_source "${CMAKE_CURRENT_SOURCE_DIR}/../../../platform/ipc/test")
+find_package(lux-cxx CONFIG REQUIRED COMPONENTS memory)
+add_executable(render_ipc_commands_test IpcCommands.cpp "${ipc_test_source}/Allocation.cpp")
+target_include_directories(render_ipc_commands_test PRIVATE "${ipc_test_source}" "${ipc_test_source}/../pinclude")
+target_link_libraries(render_ipc_commands_test PRIVATE render lux::engine::platform::platform_ipc lux::cxx::memory)
+# Preserve the original contract name; the cost case is now distinct from the raw IPC queue measurement.
+add_test(NAME platform.ipc.protocol COMMAND render_ipc_commands_test protocol)
+add_test(NAME render.ipc.command_cost COMMAND render_ipc_commands_test cost)
+set_tests_properties(platform.ipc.protocol render.ipc.command_cost PROPERTIES TIMEOUT 90)

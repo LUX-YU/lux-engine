@@ -115,13 +115,6 @@ if(LUX_PROFILE_HAS_EDITOR)
 endif()
 include(BuiltinPlugins)
 
-install(
-    DIRECTORY examples/render-plugin/ DESTINATION share/lux-engine/examples/external-feature
-    FILES_MATCHING PATTERN "*.cpp" PATTERN "*.hpp" PATTERN "*.json" PATTERN "*.py"
-    PATTERN "*.vert" PATTERN "*.frag" PATTERN "CMakeLists.txt"
-    PATTERN "ExternalEditor*" EXCLUDE
-)
-
 lux_generate_capabilities()
 
 include(NoRtti)

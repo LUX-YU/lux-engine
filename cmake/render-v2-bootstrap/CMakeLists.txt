@@ -45,19 +45,12 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/error" core-error
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/log" core-log)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/execution" core-execution)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/core/task" core-task)
-set_target_properties(task PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 
 if(BUILD_TESTING)
     # Real host scheduler consumers. These dependencies never enter Render production targets.
     find_package(lux-cxx CONFIG REQUIRED COMPONENTS core algorithm compile_time container)
 
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/dynamic_library" dynamic-library)
-
-    foreach(target dynamic_library error core_execution error_registry_test execution_error_test
-        task_scope_test port_sender_test execution_run_loop_test
-    )
-        set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
-    endforeach()
 
     list(APPEND platform_components dynamic_library)
 
@@ -76,20 +69,6 @@ if(BUILD_TESTING)
     set(LUX_MATERIAL_BUILD_COOKER OFF)
     set(LUX_EDITOR_BUILD_TOOLCHAIN_TESTS ON)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../engine/toolchain/material" material-toolchain)
-    set_target_properties(toolchain_material_compiler lux_shader_emitter material_domain_compiler_test PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin"
-    )
-    set_target_properties(lux_shader_metadata PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/render")
-
-    foreach(target object object_ownership_plugin object_ownership_test object_tree_test object_queue_test
-        object_target_test graph graph_edit_test material_graph material_registered_graph_test
-        material_authoring_schema_test material_builtin_nodes_test material_math_registration_test
-        material_lowering_test material_node_identity_test material_shader_ir_test material_node_catalog_test
-        material_node_plugin material_node_plugin_test
-    )
-        set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
-    endforeach()
-
 endif()
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render" render)
@@ -122,9 +101,6 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/ipc" ipc)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/gapi" gapi)
 
 set(resource_components description_types shader_metadata description asset identity)
-if(BUILD_TESTING)
-    # identity is also an Engine asset transport dependency.
-endif()
 
 lux_engine_install_components(
     PROJECT_NAME lux-engine-resource

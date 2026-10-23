@@ -9,12 +9,14 @@
   缺失、重复、版本不匹配或依赖环返回结构化失败，不按搜索顺序替用户选实现。
 - `loadPluginLibrary()` 复用单个二进制的路径/ABI/声明校验；具体层解释自己的导出表。
   Editor 侧通过这一边界打开工具扩展，共享层不认识 EditorPluginExports。
-- `project_plugin_rendering` 是可选 STATIC 接纳层，解释 RenderFeature/Scene binding 导出。
-  通用库加载成功不表示图形导出已被核验；图形产品必须采用该接纳层。
+- `SceneRegistrations` 从已验证的 Runtime 导出构造实际 Scene 注册值。
+  渲染的 SceneSystem 与组件走同一接点；应用通过 SceneRenderServices 提供自己的 RenderExecution 和资产设施。
+  Render Feature/Storage 的外部登记直接使用 Render SDK，不再经过额外的项目渲染接纳层。
 
 系统类内 SupportedWorldTypes 进入插件描述 v2；只允许精确分区名称或单独的 `*`。
 2D/3D 内容预设不改变分区名称。PluginLibrary 核对二进制登记与目录声明一致性。
-内置 lux.builtin.runtime v2 不依赖图形；lux.builtin.scene_render v1 依赖 runtime v2 和 render v1。
+内置 lux.builtin.runtime v2 不依赖图形；lux.builtin.scene_render v1 依赖 runtime v2，
+其动态库链接当前 scene_render 实现，不再要求旧 render 插件目录条目。
 
 模块保留的注册对象仍持有代码引用，因此任务和 GPU 消费者完成关闭前不会卸载被调用的函数。
 目录和模块引用是不同事实，不能用纯数据目录替代代码寿命。
@@ -38,7 +40,8 @@ CMake 消费者使用 `find_package(lux-engine-project-plugins REQUIRED COMPONEN
 
 外部插件使用 `lux_add_plugin_exports(TARGET ... DESCRIPTION ... INPUTS ...)`，INPUTS 覆盖影响实现的源码和生成产物。
 可用 `lux_generate_capabilities(BASE <sdk>/share/lux-engine/plugins/catalog.json)` 合并 SDK 目录。
-实际 Vulkan 插件示例安装到 `share/lux-engine/examples/external-feature`，只链接公开 Runtime SDK。
+外部 Render 扩展使用已安装的 FeatureRegistration/StorageFactory/CommandHandler 合同；
+冻结的旧 Vulkan 插件示例不参与当前安装。
 
 当前 Editor 项目文件为 `.luxproj`：`format = "lux.editor.project"`、`format_version = 1`。
 `plugins` 只保存正式插件身份与精确版本；空数组表示明确的空选择。插件身份与目录共同使用

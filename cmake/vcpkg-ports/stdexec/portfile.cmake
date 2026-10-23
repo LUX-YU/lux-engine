@@ -9,6 +9,7 @@ vcpkg_from_github(
     HEAD_REF main
     PATCHES
         task-std-stop-token.patch
+        task-variant-lookup.patch
         fix-version.patch
         fix-clangd-helper-file-basedir.patch
         fix-boost-asio-dependency.patch

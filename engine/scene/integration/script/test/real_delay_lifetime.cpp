@@ -2,6 +2,7 @@
 #include <lux/engine/scene/ScriptRuntimeSystem.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstdio>
@@ -99,8 +100,11 @@ int main()
         assert(owner);
         auto reply = std::make_shared<Reply>();
         const std::weak_ptr<Reply> retained = reply;
+        std::atomic_uint delay_completions{};
+        reply->on_reply = [&]() noexcept { delay_completions.fetch_add(1, std::memory_order_relaxed); };
         assert((*owner)->endpoint().invoke(std::chrono::hours(1), reply->completion()));
         reply.reset();
+        assert(!retained.expired()); // The outstanding timer owns its completion input.
         std::size_t deliveries{};
         assert(unrelated.submit(
             {"Unrelated completion", "LR05"},
@@ -124,9 +128,11 @@ int main()
             }
         ));
         owner->reset();
-        assert(deliveries == 0 && !retained.expired());
+        // Cancellation may already have completed on the timer/stop thread. There is no mandatory
+        // Main hop for releasing the request, but destruction must not pump unrelated business work.
+        assert(deliveries == 0);
         settle(*runtime);
-        assert(deliveries == 1 && retained.expired());
+        assert(deliveries == 1 && retained.expired() && delay_completions.load() == 0);
     }
 
     // Destruction inside Runtime collection must neither recursively collect nor wait on itself.

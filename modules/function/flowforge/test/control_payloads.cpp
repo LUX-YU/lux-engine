@@ -873,7 +873,7 @@ namespace
         require(write.error().message == "no lowering registered" && execution.calls == 2);
 
         auto changed = objectNodeRegistrations()[2];
-        changed.value_evaluation = EFlowValueEvaluation::PURE;
+        changed.value_evaluation = EFlowValueEvaluation::STATE_INDEPENDENT;
         FlowNodeCatalog isolated;
         require(!isolated.add({&changed, 1}));
         changed.identity = {graph::nodeTypeId("tests.external.memory"), "tests.external.memory", 1};

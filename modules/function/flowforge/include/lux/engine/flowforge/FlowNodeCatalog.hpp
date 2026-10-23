@@ -41,7 +41,7 @@ namespace lux::flowforge
 
     enum class EFlowValueEvaluation : std::uint8_t
     {
-        PURE,
+        STATE_INDEPENDENT,
         // Re-evaluate on every use, including within the same control-flow region.
         READS_STATE
     };
@@ -99,7 +99,7 @@ namespace lux::flowforge
         RestoreSource restore_source{};
         ValidateReferences validate_references{};
         CompileExecution compile_execution{};
-        EFlowValueEvaluation value_evaluation{EFlowValueEvaluation::PURE};
+        EFlowValueEvaluation value_evaluation{EFlowValueEvaluation::STATE_INDEPENDENT};
         EFlowSourceStage source_stage{EFlowSourceStage::BODY};
     };
 

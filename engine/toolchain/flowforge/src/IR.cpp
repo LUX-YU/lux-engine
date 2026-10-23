@@ -1974,7 +1974,7 @@ namespace lux::flowforge
         {
             LUX_FF_FAIL(bc, "registered output count differs from graph pins");
         }
-        const bool cache_values = definition.valueEvaluation() == EFlowValueEvaluation::PURE;
+        const bool cache_values = definition.valueEvaluation() == EFlowValueEvaluation::STATE_INDEPENDENT;
         mlir::Value requested;
         for (std::size_t i = 0; i != outputs.size(); ++i)
         {

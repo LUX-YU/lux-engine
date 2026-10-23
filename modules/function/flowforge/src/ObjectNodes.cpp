@@ -44,7 +44,7 @@ namespace lux::flowforge
             constexpr bool reads_state = std::is_same_v<T, GetFieldPayload> || std::is_same_v<T, GetVariablePayload>;
             if constexpr (reads_state || std::is_same_v<T, GetObjectPayload>)
             {
-                result.value_evaluation = reads_state ? EFlowValueEvaluation::READS_STATE : EFlowValueEvaluation::PURE;
+                result.value_evaluation = reads_state ? EFlowValueEvaluation::READS_STATE : EFlowValueEvaluation::STATE_INDEPENDENT;
                 result.compile = [](const FlowNodePayload& payload,
                                     std::span<const FlowValue> inputs,
                                     FlowValueCompiler& compiler) noexcept -> FlowNodeRegistration::ValueResult

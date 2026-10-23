@@ -31,7 +31,7 @@ namespace lux::flowforge
             const bool has_callbacks = value.create && value.describe_pins && value.validate && has_one_compiler;
             const bool has_codec_pair = (value.capture_source != nullptr) == (value.restore_source != nullptr);
             const bool has_evaluation =
-                value.value_evaluation == EFlowValueEvaluation::PURE ||
+                value.value_evaluation == EFlowValueEvaluation::STATE_INDEPENDENT ||
                 (value.value_evaluation == EFlowValueEvaluation::READS_STATE && value.compile != nullptr);
             const bool has_source_stage =
                 value.source_stage == EFlowSourceStage::DECLARATION || value.source_stage == EFlowSourceStage::BODY;

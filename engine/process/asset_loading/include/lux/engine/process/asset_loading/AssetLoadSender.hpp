@@ -1,8 +1,9 @@
 #pragma once
 
+#include <exec/variant_sender.hpp>
 #include <lux/engine/core/async/OperationPort.hpp>
 #include <lux/engine/core/execution/PortSender.hpp>
-#include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/AssetStorageError.hpp>
@@ -48,187 +49,59 @@ namespace lux::process::asset_loading
 
     namespace detail
     {
-        template <class Owner, class Environment> struct TAssetReadReceiver final
+        [[nodiscard]] inline AssetLoadFailure assetReadFailure(
+            lux::async::TOperationFailure<lux::asset::EAssetStorageError> failure
+        ) noexcept
         {
-            using receiver_concept = stdexec::receiver_t;
-
-            void set_value(lux::asset::AssetBlob value) && noexcept
+            AssetLoadFailure result;
+            if (failure.isRuntime())
             {
-                owner->readValue(std::move(value));
+                result.code = EAssetLoadError::SUBMIT_FAILURE;
+                result.submit_error = failure.runtimeError();
             }
-
-            void set_error(lux::async::TOperationFailure<lux::asset::EAssetStorageError> failure) && noexcept
+            else
             {
-                owner->readError(std::move(failure));
+                result.code = EAssetLoadError::STORAGE_FAILURE;
+                result.storage_error = failure.domainError();
             }
+            return result;
+        }
 
-            void set_stopped() && noexcept
-            {
-                owner->readStopped();
-            }
-
-            [[nodiscard]] Environment get_env() const noexcept
-            {
-                return environment;
-            }
-
-            Owner* owner{};
-            Environment environment;
-        };
-
-        template <class ConcreteAsset> class TAssetLoadSender final
+        template <class Asset, class StopToken>
+        [[nodiscard]] auto decodeAsset(
+            lux::asset::AssetId id,
+            lux::asset::AssetBlob& image,
+            lux::asset::AssetDecodeLimits limits,
+            std::stop_token stop,
+            StopToken ambient_stop
+        ) noexcept
         {
-            static_assert(std::is_base_of_v<lux::asset::Asset, ConcreteAsset>);
-
-        public:
-            using sender_concept = stdexec::sender_t;
-            using completion_signatures = stdexec::completion_signatures<
-                stdexec::set_value_t(std::shared_ptr<const ConcreteAsset>),
-                stdexec::set_error_t(AssetLoadFailure),
-                stdexec::set_stopped_t()>;
-
-            TAssetLoadSender(
-                AssetReadPort read,
-                execution::CpuScheduler cpu,
-                lux::asset::AssetId id,
-                lux::asset::AssetDecodeLimits limits,
-                std::stop_token stop
-            ) noexcept
-                : read_(std::move(read)), cpu_(std::move(cpu)), id_(id), limits_(limits), stop_(stop)
-            {}
-
-            template <class Receiver> class TState final
+            using VResult = exec::variant_sender<
+                decltype(stdexec::just(std::shared_ptr<const Asset>{})),
+                decltype(stdexec::just_error(AssetLoadFailure{})),
+                decltype(stdexec::just_stopped())>;
+            if (stop.stop_requested() || ambient_stop.stop_requested())
             {
-            public:
-                using operation_state_concept = stdexec::operation_state_t;
-                using ReadReceiver = TAssetReadReceiver<TState, stdexec::env_of_t<Receiver>>;
-                using ReadSender = decltype(stdexec::continues_on(
-                    lux::execution::portSender(std::declval<AssetReadPort>(), std::declval<ReadAssetImage>()),
-                    std::declval<execution::CpuScheduler>()
-                ));
-                using ReadState = decltype(stdexec::connect(std::declval<ReadSender>(), std::declval<ReadReceiver>()));
-
-                TState(
-                    AssetReadPort read,
-                    execution::CpuScheduler cpu,
-                    lux::asset::AssetId id,
-                    lux::asset::AssetDecodeLimits limits,
-                    std::stop_token stop,
-                    Receiver receiver
-                )
-                    : receiver_(std::move(receiver)), id_(id), limits_(limits), stop_(stop),
-                      read_state_(stdexec::connect(
-                          stdexec::continues_on(
-                              lux::execution::portSender(std::move(read), ReadAssetImage{id, limits.max_image_bytes}),
-                              std::move(cpu)
-                          ),
-                          ReadReceiver{this, stdexec::get_env(receiver_)}
-                      ))
-                {}
-
-                TState(const TState&) = delete;
-                TState& operator=(const TState&) = delete;
-                TState(TState&&) = delete;
-                TState& operator=(TState&&) = delete;
-
-                void start() & noexcept
-                {
-                    const auto token = stdexec::get_stop_token(stdexec::get_env(receiver_));
-                    if (stop_.stop_requested() || token.stop_requested())
-                    {
-                        stdexec::set_stopped(std::move(receiver_));
-                        return;
-                    }
-                    if (id_.isNull())
-                    {
-                        stdexec::set_error(std::move(receiver_), AssetLoadFailure{EAssetLoadError::INVALID_ASSET_ID});
-                        return;
-                    }
-                    stdexec::start(read_state_);
-                }
-
-                void readValue(lux::asset::AssetBlob value) noexcept
-                {
-                    const auto token = stdexec::get_stop_token(stdexec::get_env(receiver_));
-                    if (stop_.stop_requested() || token.stop_requested())
-                    {
-                        stdexec::set_stopped(std::move(receiver_));
-                        return;
-                    }
-
-                    auto decoded =
-                        lux::asset::TAssetSerDeser<ConcreteAsset>::decode(id_, std::move(value.bytes), limits_);
-                    if (stop_.stop_requested() || token.stop_requested())
-                    {
-                        stdexec::set_stopped(std::move(receiver_));
-                        return;
-                    }
-                    if (!decoded)
-                    {
-                        AssetLoadFailure failure{EAssetLoadError::DECODE_FAILURE};
-                        failure.decode = decoded.error();
-                        stdexec::set_error(std::move(receiver_), std::move(failure));
-                        return;
-                    }
-                    stdexec::set_value(std::move(receiver_), std::move(*decoded));
-                }
-
-                void readError(lux::async::TOperationFailure<lux::asset::EAssetStorageError> failure) noexcept
-                {
-                    AssetLoadFailure mapped;
-                    if (failure.isRuntime())
-                    {
-                        mapped.code = EAssetLoadError::SUBMIT_FAILURE;
-                        mapped.submit_error = failure.runtimeError();
-                    }
-                    else
-                    {
-                        mapped.code = EAssetLoadError::STORAGE_FAILURE;
-                        mapped.storage_error = failure.domainError();
-                    }
-                    stdexec::set_error(std::move(receiver_), std::move(mapped));
-                }
-
-                void readStopped() noexcept
-                {
-                    stdexec::set_stopped(std::move(receiver_));
-                }
-
-            private:
-                Receiver receiver_;
-                lux::asset::AssetId id_;
-                lux::asset::AssetDecodeLimits limits_;
-                std::stop_token stop_;
-                ReadState read_state_;
-            };
-
-            template <class Receiver> [[nodiscard]] TState<std::decay_t<Receiver>> connect(Receiver&& receiver) &&
-            {
-                return TState<std::decay_t<Receiver>>{
-                    std::move(read_),
-                    std::move(cpu_),
-                    id_,
-                    limits_,
-                    stop_,
-                    std::forward<Receiver>(receiver)
-                };
+                return VResult{stdexec::just_stopped()};
             }
-
-            [[nodiscard]] stdexec::empty_env get_env() const noexcept
+            auto decoded = lux::asset::TAssetSerDeser<Asset>::decode(id, std::move(image.bytes), limits);
+            if (stop.stop_requested() || ambient_stop.stop_requested())
             {
-                return {};
+                return VResult{stdexec::just_stopped()};
             }
-
-        private:
-            AssetReadPort read_;
-            execution::CpuScheduler cpu_;
-            lux::asset::AssetId id_;
-            lux::asset::AssetDecodeLimits limits_;
-            std::stop_token stop_;
-        };
+            if (!decoded)
+            {
+                AssetLoadFailure failure{EAssetLoadError::DECODE_FAILURE};
+                failure.decode = decoded.error();
+                return VResult{stdexec::just_error(std::move(failure))};
+            }
+            return VResult{stdexec::just(std::move(*decoded))};
+        }
     } // namespace detail
 
-    template <class ConcreteAsset>
+    // Reads on the provider's execution resource, then decodes on the shared CPU pool.
+    // No Main-thread delivery is implied. Accepted reads settle before cancellation releases their inputs.
+    template <class Asset>
     [[nodiscard]] auto loadAsset(
         AssetReadPort read,
         execution::CpuScheduler cpu,
@@ -237,6 +110,49 @@ namespace lux::process::asset_loading
         std::stop_token stop = {}
     ) noexcept
     {
-        return detail::TAssetLoadSender<ConcreteAsset>(std::move(read), std::move(cpu), id, limits, stop);
+        static_assert(std::is_base_of_v<lux::asset::Asset, Asset>);
+        auto operation = stdexec::let_value(
+            stdexec::read_env(stdexec::get_stop_token),
+            [read = std::move(read), cpu, id, limits, stop](auto ambient_stop) noexcept
+            {
+                auto image = stdexec::let_error(
+                    execution::portSender(read, ReadAssetImage{id, limits.max_image_bytes}),
+                    [](lux::async::TOperationFailure<lux::asset::EAssetStorageError> failure) noexcept
+                    { return stdexec::just_error(detail::assetReadFailure(failure)); }
+                );
+                auto decoded = stdexec::let_value(
+                    stdexec::continues_on(std::move(image), cpu),
+                    [id, limits, stop, ambient_stop](lux::asset::AssetBlob& value) noexcept
+                    { return detail::decodeAsset<Asset>(id, value, limits, stop, ambient_stop); }
+                );
+                using VSource = exec::variant_sender<
+                    decltype(decoded),
+                    decltype(stdexec::just_error(AssetLoadFailure{})),
+                    decltype(stdexec::just_stopped())>;
+                if (stop.stop_requested() || ambient_stop.stop_requested())
+                {
+                    return VSource{stdexec::just_stopped()};
+                }
+                if (id.isNull())
+                {
+                    return VSource{stdexec::just_error(AssetLoadFailure{EAssetLoadError::INVALID_ASSET_ID})};
+                }
+                return VSource{std::move(decoded)};
+            }
+        );
+        return stdexec::let_error(
+            std::move(operation),
+            [](auto failure) noexcept -> decltype(stdexec::just_error(AssetLoadFailure{}))
+            {
+                if constexpr (std::same_as<decltype(failure), std::exception_ptr>)
+                {
+                    std::terminate();
+                }
+                else
+                {
+                    return stdexec::just_error(std::move(failure));
+                }
+            }
+        );
     }
 } // namespace lux::process::asset_loading

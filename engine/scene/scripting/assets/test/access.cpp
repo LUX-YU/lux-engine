@@ -73,10 +73,7 @@ namespace
     {
         assert(execution.waitUntil([&]() noexcept {
             assert(execution.dispatchTaskEvents());
-            for (const auto& task : execution.taskInfos())
-                if (task.state == execution::ETaskState::QUEUED || task.state == execution::ETaskState::RUNNING)
-                    return false;
-            return !execution.hasPendingWork();
+            return execution.settled();
         }));
     }
 }

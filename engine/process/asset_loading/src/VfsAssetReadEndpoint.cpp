@@ -50,11 +50,12 @@ namespace lux::process::asset_loading
 
             void finish(Outcome outcome) noexcept
             {
-                complete(completion_state, std::move(outcome));
                 {
                     std::lock_guard lock{state->mutex};
                     --state->admitted;
                 }
+                // Read admission ends before continuation; callback tails remain part of this task.
+                complete(completion_state, std::move(outcome));
                 execution.wake();
             }
         };

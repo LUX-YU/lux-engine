@@ -656,6 +656,7 @@ namespace lux::scene
                     auto value = stdexec::then(
                         loading::loadWorldPartition(
                             services.source,
+                            services.tasks.execution().cpu(),
                             read->partition,
                             limits.read_bytes,
                             read->cancel.get_token()

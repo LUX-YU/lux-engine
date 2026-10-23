@@ -587,7 +587,7 @@ namespace
         first.request();
         first.request();
         assert(*runtime.dispatchMainCompletions() == 1 && a.calls == 1 && b.calls == 0);
-        assert(runtime.hasPendingWork());
+        assert(runtime.hasReadyWork());
         assert(*runtime.dispatchMainCompletions() == 1 && b.calls == 1);
         second.request();
         second.cancel();

@@ -1,5 +1,6 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
+#include <lux/engine/process/world_loading/WorldFileStorageSource.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
@@ -154,21 +155,22 @@ namespace
         return result;
     }
 
-    class Disk final : public async::TOperationPort<loading::ReadWorldStorageRange>::Endpoint,
-                       public std::enable_shared_from_this<Disk>
+    class ControlledFileReads final : public async::TOperationPort<loading::ReadWorldStorageRange>::Endpoint,
+                                      public std::enable_shared_from_this<ControlledFileReads>
     {
         using Range = loading::ReadWorldStorageRange;
         using Outcome = async::OperationOutcome<Range>;
         using Failure = async::TOperationFailure<loading::WorldStorageRuntimeFailure>;
+
         struct Request final
         {
             Range range;
             void* state;
             void (*complete)(void*, Outcome&&) noexcept;
+            async::SubmitOptions options;
         };
-        std::filesystem::path path_;
-        execution::BlockingScheduler blocking_;
-        execution::TaskScope& tasks_;
+
+        std::unique_ptr<loading::WorldFileStorageSource> files_;
         std::mutex mutex_;
         std::vector<Request> pending_;
         bool hold_{};
@@ -176,67 +178,74 @@ namespace
 
         void start(Request request)
         {
-            auto self = shared_from_this();
-            auto work = stdexec::then(stdexec::schedule(blocking_), [self, request]() noexcept {
-                const auto& range = request.range;
-                std::ifstream file(self->path_, std::ios::binary);
-                auto bytes = std::make_shared<std::vector<std::byte>>(static_cast<std::size_t>(range.size));
-                file.seekg(range.offset);
-                if (range.volume || !file.read(reinterpret_cast<char*>(bytes->data()), bytes->size()))
+            struct Completion final
+            {
+                Request request;
+                std::shared_ptr<ControlledFileReads> reads;
+            };
+
+            auto delivery = std::make_unique<Completion>(Completion{request, shared_from_this()});
+            const auto accepted = files_->source().readPort().submit(
+                request.range,
+                delivery.get(),
+                [](void* state, Outcome&& outcome) noexcept
                 {
-                    request.complete(
-                        request.state,
-                        cxx::unexpected(Failure::domain(
-                            {loading::EWorldStorageRuntimeError::IO_FAILURE, range.volume, range.offset}
-                        ))
-                    );
-                }
-                else
-                {
-                    request.complete(request.state, cxx::SharedBytes<>::fromOwner(bytes, *bytes));
-                }
-                ++self->completed_;
-            });
-            auto error = stdexec::upon_error(std::move(work), [request](execution::EExecutionError) noexcept {
-                request.complete(request.state, cxx::unexpected(Failure::runtime(async::ESubmitError::STOPPING)));
-            });
-            auto task = stdexec::upon_stopped(std::move(error), [request]() noexcept {
-                request.complete(request.state, cxx::unexpected(Failure::runtime(async::ESubmitError::STOPPING)));
-            });
-            const auto accepted = tasks_.submit(
-                {"Read partition", "test"},
-                [sender = std::move(task)](execution::TaskReporter) mutable noexcept { return std::move(sender); }
+                    std::unique_ptr<Completion> completion{static_cast<Completion*>(state)};
+                    ++completion->reads->completed_;
+                    completion->request.complete(completion->request.state, std::move(outcome));
+                },
+                request.options
             );
-            assert(accepted);
+            if (accepted)
+            {
+                // Synchronous completion may already have deleted the record.
+                delivery.release();
+            }
+            else
+            {
+                request.complete(request.state, cxx::unexpected(Failure::runtime(accepted.error())));
+            }
         }
 
     public:
-        Disk(std::filesystem::path path, execution::BlockingScheduler scheduler, execution::TaskScope& tasks)
-            : path_(std::move(path)), blocking_(scheduler), tasks_(tasks)
-        {}
+        ControlledFileReads(
+            std::shared_ptr<const world::WorldDescription> world,
+            std::filesystem::path directory,
+            execution::BlockingScheduler scheduler,
+            execution::TaskScope& tasks
+        )
+        {
+            auto files =
+                loading::WorldFileStorageSource::create(std::move(world), std::move(directory), scheduler, tasks);
+            assert(files);
+            files_ = std::move(*files);
+        }
+
         async::SubmitResult submit(
             Range range,
             void* state,
             void (*complete)(void*, Outcome&&) noexcept,
-            async::SubmitOptions
+            async::SubmitOptions options
         ) noexcept override
         {
             {
                 std::lock_guard lock(mutex_);
                 if (hold_)
                 {
-                    pending_.push_back({range, state, complete});
+                    pending_.push_back({range, state, complete, options});
                     return {};
                 }
             }
-            start({range, state, complete});
+            start({range, state, complete, options});
             return {};
         }
+
         void hold()
         {
             std::lock_guard lock(mutex_);
             hold_ = true;
         }
+
         void release()
         {
             std::vector<Request> pending;
@@ -250,6 +259,7 @@ namespace
                 start(request);
             }
         }
+
         std::size_t completed() const noexcept
         {
             return completed_.load();
@@ -360,7 +370,7 @@ namespace
     void measure(
         const ecs::ComponentSchemaSet& schemas,
         scene::WorldLoadingServices services,
-        const Disk& disk,
+        const ControlledFileReads& disk,
         execution::ExecutionRuntime& execution
     )
     {
@@ -501,7 +511,7 @@ int main(int argc, char** argv)
     auto runtime = execution::ExecutionRuntime::create({2, 64, {64}, execution::BlockingSchedulerConfig{2, 64}});
     assert(runtime && runtime->blocking());
     execution::TaskScope tasks{*runtime};
-    auto disk = std::make_shared<Disk>(valid.path, *runtime->blocking(), tasks);
+    auto disk = std::make_shared<ControlledFileReads>(valid.world, valid.path.parent_path(), *runtime->blocking(), tasks);
     auto source =
         loading::WorldStorageSource::create(valid.world, async::TOperationPort<loading::ReadWorldStorageRange>{disk});
     assert(source);
@@ -768,7 +778,7 @@ int main(int argc, char** argv)
     disk->release();
 
     // Replacement source while reads are pending cannot adopt stale generation.
-    auto next_disk = std::make_shared<Disk>(next.path, *runtime->blocking(), tasks);
+    auto next_disk = std::make_shared<ControlledFileReads>(next.world, next.path.parent_path(), *runtime->blocking(), tasks);
     auto next_source = loading::WorldStorageSource::create(
         next.world,
         async::TOperationPort<loading::ReadWorldStorageRange>{next_disk}
@@ -800,7 +810,7 @@ int main(int argc, char** argv)
     // Real IO and codec errors retain their original identity. A changed
     // source retries the same explicit set without publishing failed contents.
     {
-        auto reader = std::make_shared<Disk>(bad.path, *runtime->blocking(), tasks);
+        auto reader = std::make_shared<ControlledFileReads>(bad.world, bad.path.parent_path(), *runtime->blocking(), tasks);
         auto input = loading::WorldStorageSource::create(
             bad.world,
             async::TOperationPort<loading::ReadWorldStorageRange>{reader}
@@ -835,7 +845,7 @@ int main(int argc, char** argv)
         assert(events.count == 2 && loader.status());
     }
     {
-        auto reader = std::make_shared<Disk>(root / "missing.wvol", *runtime->blocking(), tasks);
+        auto reader = std::make_shared<ControlledFileReads>(valid.world, root / "missing", *runtime->blocking(), tasks);
         auto input = loading::WorldStorageSource::create(
             valid.world,
             async::TOperationPort<loading::ReadWorldStorageRange>{reader}
@@ -864,7 +874,7 @@ int main(int argc, char** argv)
 
     // Unknown schema bytes remain owned and prevent unsafe automatic unloading.
     {
-        auto reader = std::make_shared<Disk>(opaque.path, *runtime->blocking(), tasks);
+        auto reader = std::make_shared<ControlledFileReads>(opaque.world, opaque.path.parent_path(), *runtime->blocking(), tasks);
         auto input = loading::WorldStorageSource::create(
             opaque.world,
             async::TOperationPort<loading::ReadWorldStorageRange>{reader}

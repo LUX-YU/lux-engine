@@ -134,7 +134,7 @@ namespace lux::editor
                     {
                         return;
                     }
-                    const bool ready = execution.hasPendingWork() || objects.statistics().pending != 0;
+                    const bool ready = execution.hasReadyWork() || objects.statistics().pending != 0;
                     if (!ready)
                     {
                         window::LuxWindow::waitEvents();
@@ -628,7 +628,7 @@ namespace lux::editor
             const bool can_produce = !host_.window->shouldClose() && has_extent && !metrics.minimized && *output &&
                                      host_.ui_scene->hasWritableFrame();
             return host_.window->shouldClose() || pending_project_change_.has_value() || can_produce ||
-                   host_.engine->execution().hasPendingWork() ||
+                   host_.engine->execution().hasReadyWork() ||
                    object::ObjectRuntime::instance().statistics().pending != 0;
         }
 

@@ -81,16 +81,7 @@ namespace
             [&]() noexcept
             {
                 assert(runtime.dispatchTaskEvents());
-                for (const auto& task : runtime.taskInfos())
-                {
-                    const bool pending =
-                        task.state == execution::ETaskState::QUEUED || task.state == execution::ETaskState::RUNNING;
-                    if (pending)
-                    {
-                        return false;
-                    }
-                }
-                return !runtime.hasPendingWork();
+                return runtime.settled();
             }
         ));
     }

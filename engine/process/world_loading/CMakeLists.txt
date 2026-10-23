@@ -11,7 +11,11 @@ add_component(
     COMPONENT_NAME process_world_loading
     NAMESPACE      lux::engine::process
     OUTPUT_NAME    lux_engine_process_world_loading
-    SOURCE_FILES src/WorldPartitionLoad.cpp src/WorldMemoryStorageSource.cpp
+    SOURCE_FILES
+        src/WorldPartitionLoadSender.cpp
+        src/WorldStorageSource.cpp
+        src/WorldFileStorageSource.cpp
+        src/WorldMemoryStorageSource.cpp
 )
 add_library(lux::engine::process::world_loading ALIAS process_world_loading)
 component_include_directories(
@@ -56,6 +60,9 @@ if(BUILD_TESTING)
     else()
         target_compile_options(world_partition_decoder_test PRIVATE -UNDEBUG)
     endif()
-    add_test(NAME world.partition_decoder_parity COMMAND world_partition_decoder_test)
+    add_test(
+        NAME world.partition_decoder_parity
+        COMMAND world_partition_decoder_test "${CMAKE_CURRENT_BINARY_DIR}/file-ranges"
+    )
     set_tests_properties(world.partition_decoder_parity PROPERTIES LABELS "native;P10Q;editor_layering")
 endif()

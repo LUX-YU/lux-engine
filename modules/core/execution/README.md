@@ -4,6 +4,8 @@ Source and installed consumers require CMake 3.25 or newer, as does the pinned s
 Execution imports the complete stdexec export set with `find_package(stdexec CONFIG REQUIRED GLOBAL)`.
 Render uses the same package and visibility contract. No replacement targets are created; sibling modules
 can import the package in either order without relying on an application-level preload.
+The pinned package uses the [stdexec overlay](../../../cmake/vcpkg-ports/stdexec/README.md) to support
+`exec::task` with a parent `std::stop_token`; Engine does not introduce a token wrapper to hide that defect.
 
 `RunLoop` is a nonblocking scheduling destination, not a worker thread. Its driving thread calls
 `executeReady(limit)` at a safe point. The application supplies a borrowed wakeup callback;
@@ -89,6 +91,8 @@ with `taskState(result)` when consuming the value, rather than marking a handled
 monitoring; it never invokes business adoption. `settled()` observes admitted task and Main work quiescence,
 not external producer callback tails. CompletionWork shares this same RunLoop with a cold-allocated,
 coalesced notification state and reusable schedule operation. It does not allocate on every request.
+`hasReadyWork()` is only an event-loop wake predicate: a worker may still be preparing a continuation when
+it returns false. Waiting for completion uses the actual result or `settled()`, never an empty-queue test.
 
 Waits use the wake epoch and a coalesced semaphore; enqueueing a Main continuation takes no Runtime queue mutex.
 Task metadata/cancellation still use their existing mutex. This is not a claim that all scheduler or library

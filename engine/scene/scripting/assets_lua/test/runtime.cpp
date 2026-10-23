@@ -234,10 +234,7 @@ int main(int argc, char** argv)
             assert(execution->waitUntil([&]() noexcept {
                 assert(execution->dispatchTaskEvents());
                 (*access)->deliverCompletions();
-                for (const auto& task : execution->taskInfos())
-                    if (task.state == execution::ETaskState::QUEUED || task.state == execution::ETaskState::RUNNING)
-                        return false;
-                return !execution->hasPendingWork();
+                return execution->settled();
             }));
         };
         if (stop_window == 2) settle(); // accepted native result, VM has not resumed

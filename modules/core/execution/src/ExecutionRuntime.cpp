@@ -385,7 +385,7 @@ namespace lux::execution
         return state_->wake_epoch.load(std::memory_order_acquire);
     }
 
-    bool ExecutionRuntime::hasPendingWork() const noexcept
+    bool ExecutionRuntime::hasReadyWork() const noexcept
     {
         return tasks_->hasWork() || !state_->main_loop.empty();
     }

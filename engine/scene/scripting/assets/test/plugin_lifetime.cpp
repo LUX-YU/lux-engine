@@ -148,7 +148,7 @@ int main(int argc, char** argv)
         }
         assert(execution.waitUntil([&]() noexcept {
             assert(execution.dispatchTaskEvents());
-            return !execution.hasPendingWork();
+            return execution.settled();
         }));
         assert(execution.dispatchTaskEvents());
         if (stop_before_delivery)

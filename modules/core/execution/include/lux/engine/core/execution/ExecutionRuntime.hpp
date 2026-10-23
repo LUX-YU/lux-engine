@@ -95,7 +95,8 @@ namespace lux::execution
 
         // Observe before checking work, then pass the epoch to waitForWork to avoid a lost wake.
         [[nodiscard]] std::uint64_t wakeEpoch() const noexcept;
-        [[nodiscard]] bool hasPendingWork() const noexcept;
+        // Ready Main continuations or changed monitoring data, not tasks awaiting work elsewhere.
+        [[nodiscard]] bool hasReadyWork() const noexcept;
         void wake() noexcept;
         void setWake(void (*wake)() noexcept) noexcept;
         void waitForWork(

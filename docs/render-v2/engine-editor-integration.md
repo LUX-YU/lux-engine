@@ -2,7 +2,7 @@
 
 本文替代本文件的旧接线方案。源码核对基线为
 `1e3249e7eb51a8ef1d94a304f9edb9078d8bcb1e`（2026-10-23）；下文明确区分现状和拟实施方案。
-本次只更新设计，不代表生产接线、窗口输出或性能已经验收。
+本文说明接线目标与实施边界；API 已迁移不代表窗口输出、产品闭包或性能已经验收。
 
 遵守 [工程原则](../engineering-principles.md)、[Context 扩展合同](../context-extensions.md)、
 [Editor Framework v2](../editor-framework-v2.md) 和 [Editor 质量规则](../editor-quality.md)。
@@ -43,13 +43,13 @@ Render 当前链路见 [源码阅读说明](rendering-flow.md)。
 | RenderServer::create 已接收 ExecutionRuntime&，不创建 CPU 池 | [RenderServer.cpp](../../modules/function/render/src/runtime/RenderServer.cpp) | 实际应用组合根尚需接入 |
 | Render 已有标准 Scope、完成调度、完整 SubmitFrame 和真正 FIF | [FrameSubmission.cpp](../../modules/function/render/src/runtime/FrameSubmission.cpp) | 复用，不能再造 PendingOperation 或外层帧循环 |
 | RenderRequester 已有 typed RequestSender/FrameSender、关联表和 L+1 输入载体 | [RenderRequester.hpp](../../engine/rendering/include/lux/engine/rendering/RenderRequester.hpp) | 扩展实际装配，不能再次实现同名桥接 |
-| TaskScope 仍通过 TTaskOperation 手工拥有 connected operation，并在 collect 时交付结果 | [Task.hpp](../../modules/core/execution/include/lux/engine/core/execution/Task.hpp)、[Task.cpp](../../modules/core/execution/src/Task.cpp) | 纳入执行模块收敛；任务监控与取消语义保留 |
-| TaskScope 已有无业务 Completion 参数的 submit 重载 | [TaskScope.hpp](../../modules/core/execution/include/lux/engine/core/execution/TaskScope.hpp) | 作为最终 API 方向；其当前内部仍委托旧三参数路径，不能算已完成 |
-| VFS read 的完成回调经 TaskScope 主线程 collect 才触发 | [VfsAssetReadEndpoint.cpp](../../engine/process/asset_loading/src/VfsAssetReadEndpoint.cpp) | 直接在有限 Sender 中交付运输结果，删除主线程中转 |
-| AssetLoadSender 已在读取后 continues_on(cpu)，但读取完成受上述主线程影响 | [AssetLoadSender.hpp](../../engine/process/asset_loading/include/lux/engine/process/asset_loading/AssetLoadSender.hpp) | 保留 CPU 解码归属，去掉冗余 Receiver 转发 |
-| 世界解码在 read callback 内执行，没有明确 CPU Scheduler | [WorldPartitionLoad.cpp](../../engine/process/world_loading/src/WorldPartitionLoad.cpp) | 每次读取结果进入 CPU 后才执行 decoder.accept |
+| TaskScope 的 connected operation 已交给 stdexec；结果交付由 Sender 显式表达 | [Task.hpp](../../modules/core/execution/include/lux/engine/core/execution/Task.hpp)、[Task.cpp](../../modules/core/execution/src/Task.cpp) | 任务监控、逐任务取消和实际代码寿命仍保留 |
+| TaskScope 只有一个工厂式 submit，已删除隐式 Completion 参数 | [TaskScope.hpp](../../modules/core/execution/include/lux/engine/core/execution/TaskScope.hpp) | 业务结果在流水线消费，Runtime 只记录终态 |
+| VFS read 在有限 IO Sender 内直接完成端口交付 | [VfsAssetReadEndpoint.cpp](../../engine/process/asset_loading/src/VfsAssetReadEndpoint.cpp) | Main 只承担确有需要的业务采用 |
+| AssetLoadSender 已用标准 Sender 表达读取→CPU 解码 | [AssetLoadSender.hpp](../../engine/process/asset_loading/include/lux/engine/process/asset_loading/AssetLoadSender.hpp) | 已删除专用转发 Receiver/TState，停止与错误仍准确传播 |
+| 世界解码的有限 coroutine 保持 CPU affinity | [WorldPartitionLoadSender.cpp](../../engine/process/world_loading/src/WorldPartitionLoadSender.cpp) | 每次读取后执行原 decoder.accept；Scene 采用单独进行 |
 | Editor 项目准备已用同一 Runtime + ObjectScheduler | [LuxEngine.cpp](../../editor/app/src/LuxEngine.cpp) | 保留项目序号和安全采用；删除完成回传的空绕行 |
-| 当前只提供 WorldMemoryStorageSource；磁盘 range provider 出现在测试中 | [world_loading.cpp](../../engine/scene/builtin_systems/world_loading/test/world_loading.cpp) | 提取真正文件读取端点，不能将测试 Disk 当正式产品能力 |
+| WorldFileStorageSource 提供正式有限文件范围读取 | [WorldFileStorageSource.cpp](../../engine/process/world_loading/src/WorldFileStorageSource.cpp) | 测试只保留延迟控制；实际 IO 复用该 provider |
 | EngineContext/Scene/UI/Editor 仍有旧渲染依赖和缺失目录 | 各模块 CMake；EditorUiScene、UiRenderSyncStage | 迁真实消费者，不加空 target/兼容别名 |
 | Target 枚举有 SURFACE，但没有实际 SwapChain 路径 | [Target.hpp](../../modules/function/render/include/lux/engine/render/core/Target.hpp) | 新增真实 SurfaceTarget，不把枚举当能力 |
 | UI 仍依赖旧 RenderFrame/ResourceHandle/VulkanRenderer | [DrawData.hpp](../../modules/function/ui/include/lux/engine/ui/DrawData.hpp)、[EditorUiScene.cpp](../../editor/app/src/EditorUiScene.cpp) | 保留 CPU UI；替换 GPU 运输与 Feature |
@@ -138,7 +138,7 @@ TaskScope 收敛为“有限任务准入、取消分组、监控”，使用一�
 
 ### 4.2 通用 OperationState 交给 stdexec
 
-计划让现有 TaskRuntime 内一个应用寿命的 `stdexec::simple_counting_scope` 接管 connected operation。
+现有 TaskRuntime 内一个应用寿命的 `stdexec::simple_counting_scope` 接管 connected operation。
 选择 simple 版本的原因是任务已有真实的逐 Task 取消源和项目取消组；Runtime 停止通过现有取消入口传播，
 无需再引入 Scope 的第二套停止源。它属于现有 ExecutionRuntime 实现，不是新类型层，
 也不代替 DeviceSession 的物理清理 Scope。Render 已有 counting_scope 不因此机械改成同一种类型。
@@ -225,7 +225,9 @@ Endpoint 仍只负责准入、VFS 读取和端口交付，不负责 UI 结果采
 
 - Endpoint 销毁只撤销新准入；已接纳请求持有所需 VFS 快照、输入和代码寿命。
 - `AssetVfsView` 的 mount 快照是实际独立共享寿命，不套用 Render 物理资源“零共享”限制。
-- 端口完成可能同步重入/销毁消费者；完成回调返回后才返还本次读取额度，之后不能再访问已交付状态。
+- 端口完成可能同步重入/销毁消费者；实际 read 结束即返还读取额度，然后交付结果。
+  后续 continuation 可以立刻读取下一范围，不因上一段已经结束的 IO 被误拒绝。
+  回调尾栈仍属于已接纳任务的真实寿命，额度归还不允许提前销毁执行状态、provider 或代码。
 - 取消不能中断不支持取消的系统 read；其返回前输入与 provider 仍有效。
 - 保留真实 max_bytes/请求额度；普通堆 OOM fatal，删除将其假映射为 BYTE_BUDGET_EXHAUSTED 的路径。
 - `AssetReadOverlay` 的真实 provider fallback 保留；不为统一外观创建第二套 VFS。
@@ -724,4 +726,4 @@ Frame/Record/Submit、堆分配、切换次数和峰值；采样与正式时延�
 
 分别报告执行架构、Render/产品功能、GPU/寿命安全、性能、SDK/产品闭包。
 阶段材料和原始输出外置，本文件只维护架构与使用合同，不变成历史施工账本。
-后续实现按模块提交，独立验收后才安全推送；本次文档更新不等于实施授权已经执行。
+实现按模块提交，独立验收后才安全推送；本文的目标形状不代替实际交付结果。

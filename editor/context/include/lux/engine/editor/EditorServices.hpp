@@ -10,6 +10,7 @@ namespace lux::editor
 {
     class EditorContext;
     class EditorComposition;
+
     class EditorServices final
     {
     public:
@@ -29,11 +30,25 @@ namespace lux::editor
             return std::ref(*static_cast<T*>(*result));
         }
 
+        // Composition/teardown query; never constructs a service or reports a missing optional product tool.
+        template <class T> [[nodiscard]] T* constructed() noexcept
+        {
+            for (const auto& entry : entries_)
+            {
+                if (entry.type == cxx::typeToken<T>())
+                {
+                    return static_cast<T*>(entry.instance.get());
+                }
+            }
+            return nullptr;
+        }
+
     private:
         friend class EditorContext;
         friend class EditorComposition;
         using Owner = std::unique_ptr<void, void (*)(void*) noexcept>;
         using Factory = cxx::move_only_function<FrameworkResult<Owner>(EditorContext&) noexcept>;
+
         struct Entry final
         {
             cxx::TypeToken type;
@@ -41,6 +56,7 @@ namespace lux::editor
             Owner instance{nullptr, nullptr};
             bool constructing{};
         };
+
         explicit EditorServices(std::vector<Entry>) noexcept;
         [[nodiscard]] FrameworkResult<void*> getErased(cxx::TypeToken, EditorContext&) noexcept;
         std::vector<Entry> entries_;

@@ -10,7 +10,7 @@ namespace lux::scene
         inline static constexpr std::array Capabilities{std::string_view{"lux.scene.mesh_query.3d"}};
         inline static constexpr system::SystemDataContract DataInputs[]{
             {"lux.ecs.Transform3D"},
-            {"lux.ecs.Mesh3D"},
+            {"lux.ecs.Mesh3D", 2},
             {"lux.transform.world3d.ready", 1, system::ESystemDataKind::PREPARED_DATA, system::ESystemDataPhase::STABLE}
         };
         inline static constexpr system::SystemTypeDescription Description{

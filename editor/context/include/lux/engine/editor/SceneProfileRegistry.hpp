@@ -15,13 +15,25 @@ namespace lux::project
 namespace lux::editor
 {
     class EditorContext;
+
+    // Explicit author choices. Profiles supply defaults only when this value is absent.
+    struct SceneCreateSelection final
+    {
+        std::vector<world::WorldDataSchemaId> schemas;
+        std::shared_ptr<const simulation::SimulationDescription> simulation;
+        std::shared_ptr<const scene::SceneDescription> systems;
+        world::WorldPartitionerDescriptor partitioner{world::worldPartitionerId("lux.spatial.builtin.single"), 1};
+    };
+
     struct SceneCreateInfo final
     {
         asset::AssetId id;
         std::string_view name;
         const project::SceneRegistrations& registrations;
         std::stop_token stop;
+        const SceneCreateSelection* selection{};
     };
+
     using SceneCreateResult = cxx::expected<scene::ScenePackage, scene::ScenePackageFailure>;
 
     // A copy retains provider code. Creation synchronously borrows the verified project

@@ -21,6 +21,7 @@ namespace lux::editor
             std::uint32_t version{};
             friend bool operator==(const PluginRecord&, const PluginRecord&) = default;
         };
+
         struct SceneRecord final
         {
             asset::AssetId id;
@@ -29,6 +30,7 @@ namespace lux::editor
             std::string profile;
             friend bool operator==(const SceneRecord&, const SceneRecord&) = default;
         };
+
         std::uint32_t format_version{1};
         uuids::uuid id;
         std::string name;
@@ -54,8 +56,10 @@ namespace lux::editor
         CANCELLED,
         IO,
         DESTINATION_EXISTS,
-        PUBLICATION_UNKNOWN
+        PUBLICATION_UNKNOWN,
+        STALE_REVISION
     };
+
     struct ProjectFailure final
     {
         EProjectError code{};

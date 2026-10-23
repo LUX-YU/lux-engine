@@ -26,7 +26,7 @@ namespace lux::editor
         }
     } // namespace
 
-    SceneFileResult<scene::ScenePackage> readScenePackageFile(
+    cxx::expected<cxx::SharedBytes<>, SceneFileFailure> readScenePackageBytes(
         const std::filesystem::path& path,
         std::size_t max_bytes,
         std::stop_token stop
@@ -35,16 +35,31 @@ namespace lux::editor
         auto bytes = detail::readFileBounded(path, max_bytes, stop);
         if (!bytes)
         {
-            return cxx::unexpected(VSceneFileFailure{fileFailure(bytes.error())});
+            return cxx::unexpected(fileFailure(bytes.error()));
         }
         auto owner = std::make_shared<const std::vector<std::byte>>(std::move(*bytes));
-        auto package = scene::decodeScenePackage(cxx::SharedBytes<>::fromOwner(owner, *owner), stop);
+        return cxx::SharedBytes<>::fromOwner(owner, *owner);
+    }
+
+    SceneFileResult<scene::ScenePackage> readScenePackageFile(
+        const std::filesystem::path& path,
+        std::size_t max_bytes,
+        std::stop_token stop
+    ) noexcept
+    {
+        auto bytes = readScenePackageBytes(path, max_bytes, stop);
+        if (!bytes)
+        {
+            return cxx::unexpected(VSceneFileFailure{bytes.error()});
+        }
+        auto package = scene::decodeScenePackage(*bytes, stop);
         if (!package)
         {
             return cxx::unexpected(VSceneFileFailure{std::move(package.error())});
         }
         return std::move(*package);
     }
+
     SceneFileResult<void> writeScenePackageAtomic(
         const std::filesystem::path& path,
         const scene::ScenePackage& package,
@@ -58,15 +73,30 @@ namespace lux::editor
         {
             return cxx::unexpected(VSceneFileFailure{std::move(bytes.error())});
         }
+        auto written = writeScenePackageBytesAtomic(path, *bytes, mode, stop);
+        if (!written)
+        {
+            return cxx::unexpected(VSceneFileFailure{written.error()});
+        }
+        return {};
+    }
+
+    cxx::expected<void, SceneFileFailure> writeScenePackageBytesAtomic(
+        const std::filesystem::path& path,
+        std::span<const std::byte> bytes,
+        ESceneWrite mode,
+        std::stop_token stop
+    ) noexcept
+    {
         auto written = detail::writeFileAtomic(
             path,
-            *bytes,
+            bytes,
             mode == ESceneWrite::CREATE ? detail::EFileWriteMode::CREATE : detail::EFileWriteMode::REPLACE,
             stop
         );
         if (!written)
         {
-            return cxx::unexpected(VSceneFileFailure{fileFailure(written.error())});
+            return cxx::unexpected(fileFailure(written.error()));
         }
         return {};
     }

@@ -68,6 +68,14 @@ namespace lux::editor
             return manifest_;
         }
 
+        // Main adopts a scene catalog already published by the project's single file-writing operation.
+        // Plugin selection and project identity remain fixed for this Context's lifetime.
+        [[nodiscard]] ProjectResult<void> adoptSceneCatalog(
+            const ProjectManifest& expected,
+            std::vector<ProjectManifest::SceneRecord>,
+            std::optional<asset::AssetId> startup
+        ) noexcept;
+
         [[nodiscard]] const project::PluginManager& plugins() const noexcept
         {
             return *plugins_;

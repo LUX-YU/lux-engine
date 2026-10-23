@@ -1,13 +1,19 @@
 #include <cstdio>
+#include <lux/engine/EngineContext.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorMenuComposition.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
+#include <lux/engine/editor/ProjectCreationPane.hpp>
+#include <lux/engine/editor/ProjectScenes.hpp>
+#include <lux/engine/editor/SceneCreationPane.hpp>
 #include <lux/engine/editor/SceneProfile3D.hpp>
+#include <lux/engine/editor/SceneViewportPane.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/platform/Process.hpp>
+#include <lux/engine/project/PluginCatalog.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -48,74 +54,6 @@ namespace
         );
     }
 
-    class WelcomePane final : public lux::ui::Pane
-    {
-    public:
-        WelcomePane(lux::editor::EditorContext& context, const lux::editor::PaneDescription& description)
-            : Pane(description.title), layout_{}, label_("LuxEngine Editor Framework v2"),
-              detail_("Project: " + context.project().name)
-        {
-            if (!layout_.addElement(label_) || !layout_.addElement(detail_) || !addElement(layout_))
-            {
-                std::terminate();
-            }
-            for (const auto& profile : context.sceneProfiles().profiles())
-            {
-                auto label = std::make_unique<lux::ui::Label>("Available scene profile: " + profile.display_name);
-                if (!layout_.addElement(*label))
-                {
-                    std::terminate();
-                }
-                profiles_.push_back(std::move(label));
-            }
-        }
-
-    private:
-        lux::ui::Layout layout_;
-        lux::ui::Label label_, detail_;
-        std::vector<std::unique_ptr<lux::ui::Label>> profiles_;
-    };
-
-    class ProjectStatusPane final : public lux::ui::Pane
-    {
-    public:
-        explicit ProjectStatusPane(lux::editor::LuxEngine& engine)
-            : Pane("Project"), engine_(engine),
-              label_("No project. Open a .luxproj file or use --create directory name.")
-        {
-            if (!addElement(label_))
-            {
-                std::terminate();
-            }
-            auto changed =
-                connect(&engine_, &lux::editor::LuxEngine::projectChanged, this, [this]() noexcept { showProject(); });
-            auto failed = connect(
-                &engine_,
-                &lux::editor::LuxEngine::projectOpenFailed,
-                this,
-                [this](const lux::editor::ProjectOpenFailure& failure) noexcept
-                { label_.setText(lux::error::format(failure.error)); }
-            );
-            if (!changed || !failed)
-            {
-                std::terminate();
-            }
-            changed_ = std::move(*changed);
-            failed_ = std::move(*failed);
-            showProject();
-        }
-
-    private:
-        void showProject() noexcept
-        {
-            auto* project = engine_.project();
-            label_.setText(project ? "Project: " + project->project().name : "No project");
-        }
-
-        lux::editor::LuxEngine& engine_;
-        lux::ui::Label label_;
-        lux::object::Connection changed_, failed_;
-    };
 } // namespace
 
 int main(int argc, char** argv)
@@ -150,15 +88,56 @@ int main(int argc, char** argv)
         {
             return registered;
         }
+        if (auto registered = context.registerServiceFactory<lux::editor::ProjectScenes>(
+                [](lux::editor::EditorContext& value
+                ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::editor::ProjectScenes>>
+                { return std::make_unique<lux::editor::ProjectScenes>(value); }
+            );
+            !registered)
+        {
+            return registered;
+        }
+        if (auto registered = context.registerUiFactory(
+                "scene.catalog",
+                [](lux::editor::EditorContext& value, const lux::editor::PaneDescription& description
+                ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::ui::Pane>>
+                {
+                    auto scenes = value.service<lux::editor::ProjectScenes>();
+                    if (!scenes)
+                    {
+                        return lux::cxx::unexpected(scenes.error());
+                    }
+                    return std::make_unique<lux::editor::SceneCreationPane>(value, scenes->get(), description.title);
+                }
+            );
+            !registered)
+        {
+            return registered;
+        }
         return context.registerUiFactory(
-            "framework.welcome",
+            "scene.viewport",
             [](lux::editor::EditorContext& value, const lux::editor::PaneDescription& description
             ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::ui::Pane>>
-            { return std::unique_ptr<lux::ui::Pane>{new WelcomePane(value, description)}; }
+            {
+                auto scenes = value.service<lux::editor::ProjectScenes>();
+                if (!scenes)
+                {
+                    return lux::cxx::unexpected(scenes.error());
+                }
+                return std::make_unique<lux::editor::SceneViewportPane>(
+                    scenes->get(),
+                    value.engine().sceneRuntime(),
+                    description.title
+                );
+            }
         );
     };
     lux::editor::EditorConfig config;
-    config.layout = {{"framework.welcome", "welcome", "Welcome"}};
+    config.layout = {
+        {"scene.catalog", "scenes", "Scenes"},
+        {"scene.viewport", "viewport", "Scene View"},
+        {"scene.viewport", "second_viewport", "Second View"}
+    };
     auto executable = lux::engine::platform::executablePath();
     if (!executable)
     {
@@ -171,6 +150,17 @@ int main(int argc, char** argv)
     }
     const auto product_root = executable->parent_path().parent_path();
     config.plugin_locations = {{product_root / "share/lux-engine/plugins/catalog.json", product_root}};
+    lux::project::PluginCatalog catalog;
+    if (auto read = catalog.read(config.plugin_locations.front().catalog, product_root); !read)
+    {
+        std::fprintf(stderr, "Cannot read plugin catalog: %s\n", read.error().detail.c_str());
+        return 1;
+    }
+    std::vector<lux::editor::ProjectManifest::PluginRecord> available_plugins;
+    for (const auto& plugin : catalog.plugins())
+    {
+        available_plugins.push_back({plugin.identity.id, plugin.identity.version});
+    }
     auto engine = lux::editor::LuxEngine::create(std::move(config), std::move(assemble));
     if (!engine)
     {
@@ -178,7 +168,9 @@ int main(int argc, char** argv)
         return 1;
     }
     lux::error::Error rejection;
-    if (!(*engine)->window().uiRoot().addPane(std::make_unique<ProjectStatusPane>(**engine)))
+    if (!(*engine)->window().uiRoot().addPane(
+            std::make_unique<lux::editor::ProjectCreationPane>(**engine, std::move(available_plugins))
+        ))
     {
         return 1;
     }

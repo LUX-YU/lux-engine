@@ -178,6 +178,13 @@ namespace lux::scene
             setRegistrations(const simulation::ecs::ComponentSchemaSet&, const simulation::SimulationSystemRegistry&, std::span<const SceneSystemRegistration>) noexcept;
             Builder& setProviders(std::span<const SceneCapabilityProvider>) noexcept;
 
+            // A CPU-only Scene can advance on its clock while the application's graphics frame is unavailable.
+            Builder& setFrameAdmissionRequired(bool value) noexcept
+            {
+                frame_admission_required_ = value;
+                return *this;
+            }
+
             template <Clock T>
                 requires std::constructible_from<VSimulationClock, T>
             Builder& setClock(T value) noexcept
@@ -203,6 +210,7 @@ namespace lux::scene
             std::span<const SceneSystemRegistration> scene_systems_;
             std::span<const SceneCapabilityProvider> providers_;
             VSimulationClock clock_;
+            bool frame_admission_required_ = true;
         };
 
         using CreateResult = SceneRuntimeResult<std::unique_ptr<SceneRuntime>>;
@@ -232,6 +240,18 @@ namespace lux::scene
             SceneInstanceId,
             cxx::function_ref<void(simulation::ecs::Registry&)> edit
         ) noexcept;
+
+        // Cold lookup of an installed system. The caller ends the borrow before instance retirement.
+        template <SceneSystem T> [[nodiscard]] SceneRuntimeResult<T*> borrowSystem(SceneInstanceId id) noexcept
+        {
+            auto result = borrowSystem(id, cxx::typeToken<T>());
+            if (!result)
+            {
+                return cxx::unexpected(result.error());
+            }
+            return static_cast<T*>(*result);
+        }
+
         [[nodiscard]] SceneRuntimeResult<std::reference_wrapper<const VSimulationClock>> borrowClock(SceneInstanceId
         ) const noexcept;
         [[nodiscard]] SceneRuntimeResult<void> pauseSimulation(SceneInstanceId) noexcept;
@@ -250,8 +270,8 @@ namespace lux::scene
         // At the next driving safe point the active ID is revoked, before physical
         // completion. Retained step results then require the matching receipt.
         [[nodiscard]] SceneRuntimeResult<InstanceRetirement> retireInstance(SceneInstanceId) noexcept;
-        // MAINTENANCE still adopts completions and retires systems, but never starts a simulation step.
-        // A rendering application selects ADVANCE only after acquiring its complete-frame carrier.
+        // MAINTENANCE adopts completions and retires systems. It advances only independently clocked instances.
+        // Frame-admitted instances advance after the application acquires its complete-frame carrier.
         [[nodiscard]] DriveResult driveFrame(ESceneDriveMode mode = ESceneDriveMode::ADVANCE) noexcept;
         // Active lookup entries only; retirement completion is proved by its receipt.
         [[nodiscard]] std::size_t instanceCount() const noexcept;
@@ -260,6 +280,7 @@ namespace lux::scene
         struct Impl;
         explicit SceneRuntime(std::unique_ptr<Impl>) noexcept;
         [[nodiscard]] SceneRuntimeResult<SceneInstanceLease> build(const Builder&) noexcept;
+        [[nodiscard]] SceneRuntimeResult<void*> borrowSystem(SceneInstanceId, cxx::TypeToken) noexcept;
         std::unique_ptr<Impl> impl_;
     };
 } // namespace lux::scene

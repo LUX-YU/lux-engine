@@ -1,8 +1,8 @@
 #include <algorithm>
 #include <exec/task.hpp>
-#include <exec/variant_sender.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
+#include <lux/engine/editor/detail/RenderCommandRequest.hpp>
 #include <lux/engine/render/features/UiRasterFeature.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
@@ -13,24 +13,7 @@ namespace lux::editor
     using namespace render;
     using namespace rendering;
 
-    namespace
-    {
-        // A value-owned request in the caller's existing Sender chain. No task, queue or reply owner.
-        template <RenderCommand C> auto request(RenderRequester& client, typename C::Request input) noexcept
-        {
-            return stdexec::let_value(
-                stdexec::just(std::move(input), client.bind<C>()),
-                [&client](typename C::Request& input, auto& binding) noexcept
-                {
-                    using Immediate = decltype(stdexec::just(typename C::Response{}));
-                    using Request = decltype(client.request(*binding, input));
-                    using VRequest = exec::variant_sender<Immediate, Request>;
-                    return binding ? VRequest{client.request(*binding, input)}
-                                   : VRequest{stdexec::just(typename C::Response{binding.error()})};
-                }
-            );
-        }
-    } // namespace
+    using detail::requestRenderCommand;
 
     struct EditorUiScene::Impl final
     {
@@ -73,7 +56,7 @@ namespace lux::editor
         Transaction initialize(ui::FontAtlas atlas) noexcept
         {
             auto& client = rendering.mainClient();
-            const auto features = co_await request<ListFeatures>(client, {});
+            const auto features = co_await requestRenderCommand<ListFeatures>(client, {});
             if (features.error.type != 0)
             {
                 co_return cxx::unexpected(features.error);
@@ -85,7 +68,7 @@ namespace lux::editor
                 co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
             }
             feature = selected->id;
-            const auto storages = co_await request<ListStorages>(client, {});
+            const auto storages = co_await requestRenderCommand<ListStorages>(client, {});
             if (storages.error.type != 0)
             {
                 co_return cxx::unexpected(storages.error);
@@ -96,7 +79,7 @@ namespace lux::editor
                 co_return cxx::unexpected(RenderError{kStorageFactory});
             }
             const auto storage =
-                co_await request<PrepareStorage>(client, {{GlobalStorageLocation{}, type->id, "ui"}, {}});
+                co_await requestRenderCommand<PrepareStorage>(client, {{GlobalStorageLocation{}, type->id, "ui"}, {}});
             if (storage.error.type != 0)
             {
                 co_return cxx::unexpected(storage.error);
@@ -114,7 +97,7 @@ namespace lux::editor
                 static_cast<std::uint32_t>(atlas.height)
             };
             font_description = {static_cast<std::uint32_t>(atlas.width), static_cast<std::uint32_t>(atlas.height)};
-            auto upload = request<CreateTexture>(
+            auto upload = requestRenderCommand<CreateTexture>(
                 rendering.assetClient(),
                 {storage.storage, texture, std::as_bytes(std::span(atlas.pixels))}
             );
@@ -128,13 +111,13 @@ namespace lux::editor
             }
             font = uploaded.texture;
             std::vector<std::uint8_t>{}.swap(atlas.pixels); // Real Response ended the source borrow.
-            const auto created_scene = co_await request<CreateScene>(client, {});
+            const auto created_scene = co_await requestRenderCommand<CreateScene>(client, {});
             if (created_scene.error.type != 0)
             {
                 co_return cxx::unexpected(created_scene.error);
             }
             scene = created_scene.scene;
-            const auto created_view = co_await request<CreateView>(client, {scene});
+            const auto created_view = co_await requestRenderCommand<CreateView>(client, {scene});
             if (created_view.error.type != 0)
             {
                 co_return cxx::unexpected(created_view.error);
@@ -146,7 +129,8 @@ namespace lux::editor
         Transaction createOutput() noexcept
         {
             auto& client = rendering.mainClient();
-            const auto created_target = co_await request<CreateTarget>(client, {desired_description, surface});
+            const auto created_target =
+                co_await requestRenderCommand<CreateTarget>(client, {desired_description, surface});
             if (created_target.error.type != 0)
             {
                 if (!desired_active && created_target.error.type == kDeviceArgument)
@@ -192,7 +176,7 @@ namespace lux::editor
             program.definition.features.push_back({feature, "ui", std::move(*configuration)});
             program.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{description.format, 1}});
             auto& client = rendering.mainClient();
-            const auto compiled = co_await request<CreateEffect>(client, std::move(program));
+            const auto compiled = co_await requestRenderCommand<CreateEffect>(client, std::move(program));
             if (compiled.error.type != 0)
             {
                 co_return cxx::unexpected(compiled.error);
@@ -200,10 +184,10 @@ namespace lux::editor
             effect_to_release = compiled.effect;
             binding.effect = compiled.effect;
             binding.replaces = attachment;
-            const auto attached = co_await request<Attach>(client, std::move(binding));
+            const auto attached = co_await requestRenderCommand<Attach>(client, std::move(binding));
             if (attached.error.type != 0)
             {
-                const auto removed = co_await request<RemoveEffect>(client, {effect_to_release});
+                const auto removed = co_await requestRenderCommand<RemoveEffect>(client, {effect_to_release});
                 if (removed.error.type == 0)
                 {
                     effect_to_release = {};
@@ -225,7 +209,7 @@ namespace lux::editor
             applied_image_revision = revision;
             if (!effect_to_release.isNull())
             {
-                const auto removed = co_await request<RemoveEffect>(client, {effect_to_release});
+                const auto removed = co_await requestRenderCommand<RemoveEffect>(client, {effect_to_release});
                 if (removed.error.type != 0)
                 {
                     co_return cxx::unexpected(removed.error);
@@ -246,7 +230,7 @@ namespace lux::editor
             }
             if (active && (desired != description || resize_required))
             {
-                const auto resized = co_await request<ResizeTarget>(client, {target, desired});
+                const auto resized = co_await requestRenderCommand<ResizeTarget>(client, {target, desired});
                 if (resized.error.type != 0)
                 {
                     if (!desired_active && resized.error.type == kDeviceArgument)
@@ -261,7 +245,7 @@ namespace lux::editor
             }
             if (active != applied_active)
             {
-                const auto changed = co_await request<SetTargetActive>(client, {target, active});
+                const auto changed = co_await requestRenderCommand<SetTargetActive>(client, {target, active});
                 if (changed.error.type != 0)
                 {
                     co_return cxx::unexpected(changed.error);
@@ -280,7 +264,7 @@ namespace lux::editor
             auto& client = rendering.mainClient();
             if (!scene.isNull())
             {
-                const auto result = co_await request<RemoveScene>(client, {scene});
+                const auto result = co_await requestRenderCommand<RemoveScene>(client, {scene});
                 if (result.error.type != 0)
                 {
                     co_return cxx::unexpected(result.error);
@@ -295,7 +279,7 @@ namespace lux::editor
                 {
                     continue;
                 }
-                const auto result = co_await request<RemoveEffect>(client, {*handle});
+                const auto result = co_await requestRenderCommand<RemoveEffect>(client, {*handle});
                 if (result.error.type != 0)
                 {
                     co_return cxx::unexpected(result.error);
@@ -304,7 +288,7 @@ namespace lux::editor
             }
             if (!target.isNull())
             {
-                const auto result = co_await request<RemoveTarget>(client, target);
+                const auto result = co_await requestRenderCommand<RemoveTarget>(client, target);
                 if (result.error.type != 0)
                 {
                     co_return cxx::unexpected(result.error);
@@ -313,7 +297,7 @@ namespace lux::editor
             }
             if (!font.isNull())
             {
-                const auto result = co_await request<ReleaseTexture>(client, font);
+                const auto result = co_await requestRenderCommand<ReleaseTexture>(client, font);
                 if (result.error.type != 0)
                 {
                     co_return cxx::unexpected(result.error);
@@ -339,6 +323,7 @@ namespace lux::editor
         ui::DrawData draw_data;
         std::vector<UiTargetImage> desired_images;
         std::vector<UiImageSelection> image_selections;
+        std::uint64_t next_image_token = 1;
         std::uint64_t desired_image_revision = 1, applied_image_revision = 0;
         bool desired_active = true, applied_active = true;
         bool transaction_pending = false, closing = false;
@@ -404,15 +389,45 @@ namespace lux::editor
         }
         if (images != impl_->desired_images)
         {
+            for (const auto& image : images)
+            {
+                const auto next = image.token.value == UINT64_MAX ? UINT64_MAX : image.token.value + 1;
+                impl_->next_image_token = std::max(impl_->next_image_token, next);
+            }
             impl_->desired_images = std::move(images);
             ++impl_->desired_image_revision;
         }
         return {};
     }
 
+    FrameworkResult<rdesc::UiImageToken> EditorUiScene::addTargetImage(TargetId target, TargetDesc description) noexcept
+    {
+        auto images = impl_->desired_images;
+        if (impl_->next_image_token == UINT64_MAX)
+        {
+            return cxx::unexpected(RenderError{kRuntimeCapacity});
+        }
+        const rdesc::UiImageToken token{impl_->next_image_token++};
+        images.push_back({token, target, description});
+        if (auto applied = setTargetImages(std::move(images)); !applied)
+        {
+            return cxx::unexpected(applied.error());
+        }
+        return token;
+    }
+
+    void EditorUiScene::removeTargetImage(rdesc::UiImageToken token) noexcept
+    {
+        if (std::erase_if(impl_->desired_images, [&](const auto& image) noexcept { return image.token == token; }))
+        {
+            ++impl_->desired_image_revision;
+        }
+    }
+
     bool EditorUiScene::imagesApplied() const noexcept
     {
-        return impl_->applied_image_revision == impl_->desired_image_revision;
+        return (impl_->closing && impl_->scene.isNull() && !impl_->transaction_pending) ||
+               impl_->applied_image_revision == impl_->desired_image_revision;
     }
 
     FrameworkResult<void> EditorUiScene::maintain() noexcept

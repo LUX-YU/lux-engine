@@ -1,6 +1,6 @@
 #include "support/ContextFixture.hpp"
 #include <lux/engine/EngineContext.hpp>
-#include <lux/engine/editor/ProjectScenes.hpp>
+#include <lux/engine/editor/SceneDocument.hpp>
 #include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/simulation/ecs/HierarchySchema.hpp>
@@ -114,10 +114,9 @@ int main()
                           .build());
     const auto instance = take(context->adoptScene(std::move(lease)));
     assert(runtime.pauseSimulation(instance));
-    ProjectScenes documents(*context);
     auto owned = std::make_unique<SceneDocument>(runtime, instance, schemas, package);
-    auto* document = take(documents.adopt(owned, "scene.luxscene"));
-    assert(!owned && !document->dirty());
+    auto* document = owned.get();
+    assert(!document->dirty());
     auto& registry = take(runtime.borrowInstance(instance)).get();
     auto& residency = registry.ctx().get<scene::WorldResidency>();
     const world::WorldObjectId first{ids("first")}, second{ids("second")};
@@ -183,7 +182,6 @@ int main()
     replaced.release();
     added.release();
     removed.release();
-    assert(documents.close(document->id()));
     const auto retirement = take(context->retireScene(instance));
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (!retirement.complete())
@@ -192,8 +190,8 @@ int main()
         assert(engine->execution().dispatchMainCompletions());
         assert(runtime.driveFrame(scene::ESceneDriveMode::MAINTENANCE));
     }
-    documents.collectClosed();
-    assert(documents.documents().empty());
+    owned.reset();
+    assert(runtime.instanceCount() == 0);
     context->close();
     while (!context->finishClose())
     {

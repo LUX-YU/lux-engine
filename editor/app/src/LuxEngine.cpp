@@ -15,6 +15,7 @@
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/editor/ProjectErrors.hpp>
+#include <lux/engine/editor/ProjectScenes.hpp>
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/editor/detail/ProjectPrepared.hpp>
@@ -75,6 +76,16 @@ namespace lux::editor
                 {
                     return;
                 }
+                if (auto* scenes = context->services().constructed<ProjectScenes>())
+                {
+                    scenes->closeAll();
+                    scenes->maintain();
+                    if (!scenes->settled())
+                    {
+                        closing_projects.push_back(std::move(context));
+                        return;
+                    }
+                }
                 context->close();
                 if (!context->finishClose())
                 {
@@ -90,6 +101,15 @@ namespace lux::editor
                 {
                     const auto index = --remaining;
                     auto* context = closing_projects[index].get();
+                    if (auto* scenes = context->services().constructed<ProjectScenes>())
+                    {
+                        scenes->maintain();
+                        if (!scenes->settled())
+                        {
+                            continue;
+                        }
+                        context->close();
+                    }
                     if (!context->finishClose())
                     {
                         continue;
@@ -387,6 +407,7 @@ namespace lux::editor
         struct OpenProject final
         {
             std::unique_ptr<EditorContext> context;
+            ProjectScenes* scenes{};
             detail::ProjectUiMount ui;
         };
 
@@ -548,7 +569,8 @@ namespace lux::editor
                 return;
             }
             EditorComposition composition;
-            if (!composition.bindExtension(*application_.rendering) || !composition.bindExtension(*application_.assets))
+            if (!composition.bindExtension(*application_.rendering) ||
+                !composition.bindExtension(*application_.assets) || !composition.bindExtension(*application_.ui_scene))
             {
                 std::terminate();
             }
@@ -653,6 +675,7 @@ namespace lux::editor
                 next = std::make_unique<OpenProject>();
                 next->ui.prepare(root, adopt->panes.size());
                 next->context = std::move(adopt->context);
+                next->scenes = next->context->services().constructed<ProjectScenes>();
             }
             auto old = std::move(project_);
             auto commit = [&](std::span<const ui::PaneHandle> added) noexcept
@@ -815,6 +838,10 @@ namespace lux::editor
                 {
                     return cxx::unexpected(std::move(input.error()));
                 }
+            }
+            if (project_ && project_->scenes)
+            {
+                project_->scenes->maintain();
             }
             auto presentation = maintainPresentation(closing);
             if (!presentation)

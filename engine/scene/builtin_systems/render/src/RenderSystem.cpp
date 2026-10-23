@@ -37,6 +37,13 @@ namespace lux::scene
 
     namespace
     {
+        bool sameTargetRecipe(const TargetDesc& left, const TargetDesc& right) noexcept
+        {
+            // Built-in Scene recipes declare target-relative extents; dimensions belong to ResizeTarget.
+            return left.kind == right.kind && left.format == right.format && left.samples == right.samples &&
+                   left.sampled == right.sampled;
+        }
+
         std::vector<std::byte> parameterBytes(const SceneParameters& value)
         {
             const auto bytes = std::as_bytes(std::span(&value, 1));
@@ -570,8 +577,9 @@ namespace lux::scene
                 auto casters = std::move(*selected_casters);
                 const bool has_same_recipe =
                     !observation.attachment.isNull() && observation.adopted.target == input.request.target &&
-                    observation.adopted.description == input.request.description && observation.capacity >= capacity &&
-                    observation.groups == selection && observation.casters == casters;
+                    sameTargetRecipe(observation.adopted.description, input.request.description) &&
+                    observation.capacity >= capacity && observation.groups == selection &&
+                    observation.casters == casters;
                 if (has_same_recipe)
                 {
                     observation.parameters_changed |= !detail::sameParameters(observation.parameters, *parameters) ||
@@ -1035,8 +1043,9 @@ namespace lux::scene
                     return true;
                 }
                 const auto& observation = found->second;
-                const bool is_changed_output = observation.adopted.target != input.request.target ||
-                                               observation.adopted.description != input.request.description;
+                const bool is_changed_output =
+                    observation.adopted.target != input.request.target ||
+                    !sameTargetRecipe(observation.adopted.description, input.request.description);
                 if (is_changed_output || observation.attachment.isNull())
                 {
                     return true;
@@ -1071,7 +1080,7 @@ namespace lux::scene
                 }
                 // During candidate compilation the active Attachment keeps its own target/aspect inputs.
                 const bool same_output = observation.adopted.target == input->request.target &&
-                                         observation.adopted.description == input->request.description;
+                                         sameTargetRecipe(observation.adopted.description, input->request.description);
                 const auto& requested = same_output ? input->request : observation.adopted;
                 auto candidate = detail::sceneParameters(registry, requested);
                 if (!candidate)

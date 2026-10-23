@@ -141,6 +141,7 @@ namespace lux::scene
             std::optional<EClockError> clock_error;
             std::shared_ptr<detail::InstanceLifetime> lifetime;
             bool enabled{true};
+            bool frame_admission_required{true};
 
             detail::InstanceLifetime::Step* pendingStep() noexcept
             {
@@ -443,6 +444,7 @@ namespace lux::scene
             lifetime->code_lifetime = std::move(code);
             *active_records_.find(key) =
                 std::make_unique<ActiveRecord>(input.clock_, executor_, std::move(*prepared), lifetime);
+            (*active_records_.find(key))->frame_admission_required = input.frame_admission_required_;
             execution_.wake();
             return SceneInstanceLease(std::move(lifetime));
         }
@@ -696,10 +698,14 @@ namespace lux::scene
             }
         }
 
-        void advanceSimulations(SteadyClock::time_point now) noexcept
+        void advanceSimulations(SteadyClock::time_point now, ESceneDriveMode mode) noexcept
         {
             for (auto& record : active_records_)
             {
+                if (mode == ESceneDriveMode::MAINTENANCE && record->frame_admission_required)
+                {
+                    continue;
+                }
                 auto* step = record->pendingStep();
                 const bool step_ready = step && step->status.state == ESceneStepState::QUEUED;
                 const bool may_tick = !record->lifetime->requested.load(std::memory_order_acquire) &&
@@ -789,9 +795,10 @@ namespace lux::scene
                 {
                     failures_.push_back({record->scene->id(), *record->clock_error});
                 }
-                const bool may_tick =
-                    mode == ESceneDriveMode::ADVANCE && !record->lifetime->requested.load(std::memory_order_acquire) &&
-                    (record->enabled || record->pendingStep()) && !record->clock_error && record->scene->canTick();
+                const bool may_tick = (mode == ESceneDriveMode::ADVANCE || !record->frame_admission_required) &&
+                                      !record->lifetime->requested.load(std::memory_order_acquire) &&
+                                      (record->enabled || record->pendingStep()) && !record->clock_error &&
+                                      record->scene->canTick();
                 if (may_tick)
                 {
                     const auto next =
@@ -842,10 +849,7 @@ namespace lux::scene
                 static_cast<void>(record->driver.maintain(*record->scene));
             }
             maintainRetired();
-            if (mode == ESceneDriveMode::ADVANCE)
-            {
-                advanceSimulations(now);
-            }
+            advanceSimulations(now, mode);
             const auto deadline = publishActiveScenes(now, mode);
             publishRetiredScenes();
             collectRetired();
@@ -1034,6 +1038,27 @@ namespace lux::scene
         BusyScope editing(impl_->busy_);
         edit(registry->get());
         return {};
+    }
+
+    SceneRuntimeResult<void*> SceneRuntime::borrowSystem(SceneInstanceId id, cxx::TypeToken type) noexcept
+    {
+        auto record = impl_->find(id);
+        if (!record)
+        {
+            return cxx::unexpected(record.error());
+        }
+        const bool unavailable =
+            (**record).lifetime->requested.load(std::memory_order_acquire) || !(**record).scene->atSafePoint();
+        if (unavailable)
+        {
+            return rejected(ESceneRuntimeError::BUSY, id);
+        }
+        auto* system = (**record).scene->findSceneSystemErased(type);
+        if (!system)
+        {
+            return rejected(ESceneRuntimeError::INVALID_INPUT, id);
+        }
+        return system;
     }
 
     SceneRuntimeResult<void> SceneRuntime::pauseSimulation(SceneInstanceId id) noexcept

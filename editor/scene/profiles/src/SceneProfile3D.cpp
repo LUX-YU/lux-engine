@@ -2,8 +2,10 @@
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/project/SceneRegistrations.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/SceneCompatibility.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
+#include <map>
 
 namespace lux::editor
 {
@@ -97,6 +99,98 @@ namespace lux::editor
             if (info.stop.stop_requested())
             {
                 return cxx::unexpected(scene::ScenePackageFailure{scene::EScenePackageError::CANCELLED});
+            }
+            if (info.selection)
+            {
+                const auto& selected = *info.selection;
+                if (!selected.simulation || !selected.systems)
+                {
+                    return cxx::unexpected(missing("Scene selection", "missing system description"));
+                }
+                if (selected.partitioner.id.name != "lux.spatial.builtin.single" || selected.partitioner.version != 1)
+                {
+                    return cxx::unexpected(scene::ScenePackageFailure{
+                        scene::EScenePackageError::INDEX_REBUILD_REQUIRED,
+                        info.id,
+                        0,
+                        {},
+                        "Creating an indexed World requires its actual index builder"
+                    });
+                }
+                std::vector<scene::SceneSystemContract> systems;
+                std::vector<system::SystemDataContract> schemas;
+                std::map<system::SystemInstanceId, std::size_t> scene_indices;
+                for (const auto& name : selected.schemas)
+                {
+                    const auto* schema =
+                        info.registrations.components.find(simulation::ecs::componentSchemaId(name.name));
+                    if (!schema)
+                    {
+                        return cxx::unexpected(missing("Scene schema", name.name));
+                    }
+                    const bool is_not_authored =
+                        schema->semantic_kind == simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED ||
+                        schema->snapshot != simulation::ecs::EComponentSnapshotPolicy::COPY;
+                    if (is_not_authored)
+                    {
+                        return cxx::unexpected(missing("Scene schema is not authored", name.name));
+                    }
+                    schemas.push_back({name.name, schema->version});
+                }
+                for (std::size_t i = 0; i < selected.simulation->systemCount(); ++i)
+                {
+                    const auto input = selected.simulation->systemAt(i);
+                    const auto* registration = info.registrations.simulation_systems
+                                                   ? info.registrations.simulation_systems->find(input.type())
+                                                   : nullptr;
+                    if (!registration)
+                    {
+                        return cxx::unexpected(missing("Simulation system", input.type().name));
+                    }
+                    systems.push_back({input.instanceId(), &registration->description->type, true});
+                }
+                for (std::size_t i = 0; i < selected.systems->systemCount(); ++i)
+                {
+                    const auto input = selected.systems->systemAt(i);
+                    const auto found = std::ranges::find(
+                        info.registrations.scene_systems,
+                        input.type(),
+                        &scene::SceneSystemRegistration::type
+                    );
+                    if (found == info.registrations.scene_systems.end())
+                    {
+                        return cxx::unexpected(missing("Scene system", input.type().name));
+                    }
+                    scene_indices.emplace(input.instanceId(), systems.size());
+                    systems.push_back({input.instanceId(), found->description, false});
+                }
+                scene::SceneDataDependencies dependencies;
+                for (std::size_t i = 0; i < selected.systems->dependencyCount(); ++i)
+                {
+                    const auto dependency = selected.systems->dependencyAt(i);
+                    dependencies.push_back(
+                        {scene_indices.find(dependency.before())->second, scene_indices.find(dependency.after())->second
+                        }
+                    );
+                }
+                auto compatible = scene::resolveSceneData(systems, schemas, dependencies);
+                if (!compatible)
+                {
+                    return cxx::unexpected(scene::ScenePackageFailure{
+                        scene::EScenePackageError::INVALID_ARGUMENT,
+                        info.id,
+                        static_cast<std::size_t>(compatible.error().code),
+                        compatible.error().data,
+                        "Scene data compatibility"
+                    });
+                }
+                return scene::createScenePackage(
+                    info.id,
+                    info.name,
+                    selected.schemas,
+                    selected.simulation,
+                    *selected.systems
+                );
             }
             // These are authored schema requirements of this profile, not runtime-derived pools.
             constexpr std::string_view schema_names[]{

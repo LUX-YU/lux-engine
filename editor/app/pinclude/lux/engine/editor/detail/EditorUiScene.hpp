@@ -35,6 +35,11 @@ namespace lux::editor
         void setExtent(std::uint32_t width, std::uint32_t height, bool active) noexcept;
         // Cold image-set change. Keep removed Targets alive until imagesApplied() becomes true.
         [[nodiscard]] FrameworkResult<void> setTargetImages(std::vector<UiTargetImage>) noexcept;
+        [[nodiscard]] FrameworkResult<rdesc::UiImageToken> addTargetImage(
+            render::TargetId,
+            render::TargetDesc
+        ) noexcept;
+        void removeTargetImage(rdesc::UiImageToken) noexcept;
         [[nodiscard]] bool imagesApplied() const noexcept;
         // Starts a finite reconfiguration/close transaction. Application keeps driving complete frames.
         [[nodiscard]] FrameworkResult<void> maintain() noexcept;

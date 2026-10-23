@@ -141,6 +141,27 @@ namespace lux::editor
         scenes_.clear();
     }
 
+    ProjectResult<void> EditorContext::adoptSceneCatalog(
+        const ProjectManifest& expected,
+        std::vector<ProjectManifest::SceneRecord> scenes,
+        std::optional<asset::AssetId> startup
+    ) noexcept
+    {
+        if (close_stage_ != ECloseStage::OPEN || manifest_ != expected)
+        {
+            return cxx::unexpected(ProjectFailure{EProjectError::STALE_REVISION});
+        }
+        auto candidate = manifest_;
+        candidate.scenes = std::move(scenes);
+        candidate.startup_scene = startup;
+        if (auto valid = validateProjectManifest(candidate); !valid)
+        {
+            return valid;
+        }
+        manifest_ = std::move(candidate);
+        return {};
+    }
+
     FrameworkResult<scene::InstanceRetirement> EditorContext::retireScene(scene::SceneInstanceId id) noexcept
     {
         const auto found = std::ranges::find(scenes_, id, &scene::SceneInstanceLease::id);

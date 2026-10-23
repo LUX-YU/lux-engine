@@ -163,6 +163,7 @@ add_component(
         app/src/LuxEngine.cpp
         app/src/ProjectUiMount.cpp
         app/src/ProjectPreparation.cpp
+        app/src/ProjectScenes.cpp
         app/src/EditorUiScene.cpp
 )
 
@@ -177,12 +178,13 @@ component_include_directories(
 
 target_link_libraries(
     lux_editor_app
-    PUBLIC lux::engine::function::render
+    PUBLIC
+        lux::engine::function::render
+        lux::engine::scene::scene_render
     PRIVATE
         lux::engine::process::object_execution
         lux::engine::project::project_plugins
         lux::engine::engine_rendering
-        lux::engine::scene::scene_render
 )
 
 component_add_internal_dependencies(lux_editor_app lux_editor_context lux_editor_ui)
@@ -228,7 +230,6 @@ add_component(
     SOURCE_FILES
         scene/document/src/SceneDocument.cpp
         scene/document/src/SceneEditing.cpp
-        scene/document/src/ProjectScenes.cpp
 )
 
 component_include_directories(
@@ -238,8 +239,6 @@ component_include_directories(
 )
 
 target_include_directories(lux_editor_scene_document PRIVATE scene/document/pinclude)
-
-component_add_internal_dependencies(lux_editor_scene_document lux_editor_context)
 
 target_link_libraries(lux_editor_scene_document
     PUBLIC
@@ -260,6 +259,9 @@ component_add_transitive_commands(
 )
 
 lux_classify_target(TARGET lux_editor_scene_document LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+
+component_add_internal_dependencies(lux_editor_app lux_editor_scene_document lux_editor_scene)
+
 
 # Concrete authoring preset; the host/context and generic scene provider do not reference it.
 add_component(
@@ -295,6 +297,34 @@ component_add_transitive_commands(
 
 lux_classify_target(TARGET lux_editor_scene_profiles LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
+add_component(
+    COMPONENT_NAME lux_editor_scene_tools
+    NAMESPACE lux::engine::editor
+    STATIC
+    SOURCE_FILES
+        scene/tools/src/SceneCreationPane.cpp
+        scene/tools/src/SceneViewportPane.cpp
+        project/tools/src/ProjectCreationPane.cpp
+)
+
+component_include_directories(
+    lux_editor_scene_tools
+    BUILD_TIME_EXPORT
+        ${CMAKE_CURRENT_SOURCE_DIR}/scene/tools/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/project/tools/include
+    INSTALL_TIME include
+)
+
+component_add_internal_dependencies(lux_editor_scene_tools lux_editor_app lux_editor_scene_document)
+
+target_link_libraries(lux_editor_scene_tools PRIVATE lux::engine::project::project_plugins)
+
+component_add_transitive_commands(lux_editor_scene_tools
+    "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)"
+)
+
+lux_classify_target(TARGET lux_editor_scene_tools LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+
 add_executable(lux_editor app/main.cpp)
 
 target_link_libraries(
@@ -302,6 +332,8 @@ target_link_libraries(
     PRIVATE
         lux_editor_app
         lux_editor_scene_profiles
+        lux_editor_scene_tools
+        lux::engine::project::project_plugins
         lux::engine::platform::platform_process
 )
 
@@ -326,6 +358,7 @@ lux_engine_install_components(
         lux_editor_ui
         lux_editor_app
         lux_editor_scene_profiles
+        lux_editor_scene_tools
 )
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
@@ -564,6 +597,24 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
     set_tests_properties(framework.gpu PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE LABELS gpu)
 
     if(LUX_EDITOR_BUILD_DESKTOP_TESTS)
+        add_executable(editor_scene_workflow_test tests/scene_workflow.cpp)
+
+        target_link_libraries(editor_scene_workflow_test PRIVATE
+            lux_editor_app lux_editor_scene_profiles lux_editor_scene_tools lux::engine::engine_rendering
+        )
+
+        target_include_directories(editor_scene_workflow_test PRIVATE app/pinclude)
+
+        lux_editor_test_options(editor_scene_workflow_test)
+
+        add_test(NAME framework.scene_workflow COMMAND editor_scene_workflow_test
+            "${CMAKE_BINARY_DIR}/share/lux-engine/plugins/catalog.json"
+            "${CMAKE_BINARY_DIR}"
+            "${CMAKE_CURRENT_BINARY_DIR}/scene-workflow"
+        )
+
+        set_tests_properties(framework.scene_workflow PROPERTIES TIMEOUT 150 RUN_SERIAL TRUE LABELS "gpu;desktop")
+
         add_executable(editor_host_shutdown_test tests/shutdown.cpp)
 
         target_link_libraries(editor_host_shutdown_test PRIVATE lux_editor_app)

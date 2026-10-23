@@ -41,7 +41,7 @@ namespace lux::scene
     public:
         inline static constexpr system::SystemDataContract DataInputs[]{
             {"lux.ecs.Transform3D"},
-            {"lux.ecs.Mesh3D"},
+            {"lux.ecs.Mesh3D", 2},
             {"lux.scene.Camera"},
             {"lux.transform.world3d.ready", 1, system::ESystemDataKind::PREPARED_DATA, system::ESystemDataPhase::STABLE}
         };

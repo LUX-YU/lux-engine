@@ -286,6 +286,17 @@ int main()
     assert((*runtime)->retireInstance(replacement->id()) && (*runtime)->retireInstance(second->id()));
     assert((*runtime)->driveFrame());
 
+    // Headless instances advance on their own clock while the application's graphical frame is blocked.
+    builder.setFrameAdmissionRequired(false);
+    auto independent = builder.build();
+    assert(independent);
+    assert(time(**runtime, independent->id()).step_index == 0);
+    assert((*runtime)->driveFrame(ESceneDriveMode::MAINTENANCE));
+    assert(time(**runtime, independent->id()).step_index == 1);
+    assert((*runtime)->retireInstance(independent->id()));
+    assert((*runtime)->driveFrame(ESceneDriveMode::MAINTENANCE));
+    builder.setFrameAdmissionRequired(true);
+
     auto overflowing = FixedStepClock::create(simulation::SimulationDuration::max());
     assert(overflowing);
     builder.setClock(*overflowing);

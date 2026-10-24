@@ -226,6 +226,8 @@ namespace
         std::shared_ptr<const void> code;
         std::atomic_bool* executing;
         std::atomic_bool* completed;
+        std::binary_semaphore* entered{};
+        std::binary_semaphore* resume{};
 
         auto get_env() const noexcept
         {
@@ -236,12 +238,19 @@ namespace
         {
             auto* active = executing;
             auto* done = completed;
+            auto* entered_callback = entered;
+            auto* resume_callback = resume;
             std::weak_ptr<const void> lifetime = code;
             auto* state = std::exchange(*operation, nullptr);
             const auto release = destroy;
             active->store(true);
             release(state);              // The receiver and its only owned code pin cease to exist here.
             assert(!lifetime.expired()); // The publishing Core frame retains the callback code through return.
+            if (entered_callback)
+            {
+                entered_callback->release();
+                resume_callback->acquire();
+            }
             active->store(false);
             done->store(true, std::memory_order_release);
         }
@@ -252,7 +261,7 @@ namespace
         auto runtime = ExecutionRuntime::create({1, 8, {16}});
         assert(runtime);
         TaskScope group{*runtime};
-        std::binary_semaphore entered{0}, release{0};
+        std::binary_semaphore entered{0}, release{0}, callback_entered{0}, resume_callback{0};
         if (asynchronous)
         {
             assert(group.submit(
@@ -282,7 +291,9 @@ namespace
                 [](void* value) noexcept { delete static_cast<Operation*>(value); },
                 code,
                 &executing,
-                &completed
+                &completed,
+                asynchronous ? &callback_entered : nullptr,
+                asynchronous ? &resume_callback : nullptr
             }
         ));
         code.reset();
@@ -291,6 +302,13 @@ namespace
         {
             assert(!completed.load());
             release.release();
+            callback_entered.acquire();
+            // Account removal alone is not final delivery. Consume every earlier epoch while the
+            // Receiver is held, then require a wake after its completion instead of waiting forever.
+            const auto epoch = runtime->wakeEpoch();
+            resume_callback.release();
+            runtime->waitForWork(epoch, std::chrono::steady_clock::now() + std::chrono::seconds(1));
+            assert(runtime->wakeEpoch() != epoch && completed.load(std::memory_order_acquire));
         }
         assert(runtime->waitUntil([&]() noexcept { return completed.load(std::memory_order_acquire); }));
         runtime->requestStop();

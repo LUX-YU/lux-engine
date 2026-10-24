@@ -145,9 +145,6 @@ namespace lux::execution::detail
             pin = std::move(record.code_lifetime);
             runtime.retire(record);
         }
-        // Scope association is released by stdexec after its allocation/deallocation call.
-        // Runtime join observes that independently; no TaskRecord access after retirement.
-        runtime.execution->wake();
         while (waiters)
         {
             auto* next = waiters->next;
@@ -155,6 +152,10 @@ namespace lux::execution::detail
             waiters->complete(waiters);
             waiters = next;
         }
+        // Publish after the receivers: waking before delivery can let Main observe an unfinished result
+        // and sleep past its final completion. Scope association covers this tail until deallocation returns.
+        // No TaskRecord access follows retirement or a receiver callback.
+        execution.wake();
     }
 
     void completeTask(TaskRecord& record, ETaskState state) noexcept

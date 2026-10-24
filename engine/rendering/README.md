@@ -75,10 +75,15 @@ No live Scene/Pane buffer is borrowed after that object closes.
 CPU decode, Asset upload and Main adoption form finite standard Sender pipelines. Mesh conversion produces the
 actual static GPU vertex layout once; Texture/Mesh source bytes are released on real Response, before Main adoption.
 The first Scene projection consumes LOD0; animation/LOD selection is not fabricated by uploading all LOD indices.
-Different source revisions can coexist. `maintain()` visits pending release changes, not every live asset.
+Different source revisions can coexist. Zero-reference transitions start finite release Senders; actual replies
+resume the operation. There is no RenderAssets::maintain call. AvailabilityConnection is a borrowed Main-thread
+subscription to actual load/release completion; its Scene receiver only marks pending demand and disconnects
+before RenderAssets destruction. It does not create a second asset or operation owner.
 
 Close Scenes before closing their project task admission, drive their pending frame commands, then release asset
 references. After `RenderAssets::close()`, continue Main completion and maintenance frames until `settled()`.
+`settled()` proves that accepted work ended, not that every release succeeded. Check `releaseFailure()`;
+a failed logical release keeps its record visible until final Server teardown discharges the Native owner.
 Then call `RenderExecution::beginClose()` and keep driving Main plus `advanceClose()`. Unsent inputs cancel
 locally; accepted requests retain their borrows until real replies. Each Client closes on its own SPSC thread
 before Server is stopped and joined. `shutdown()` is the synchronous standalone form of this same progression.

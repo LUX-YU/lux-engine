@@ -213,15 +213,15 @@ from EditorContext::prepareAssetReads(). Supply that port to RenderSystemDepende
 opening another project generation. Build with the existing SceneRuntime, then transfer its SceneInstanceLease
 to EditorContext::adoptScene(). Keep the Scene providers and view inputs in project services.
 
-Project replacement removes Panes immediately. A Context with adopted Scenes remains in the app's closing
-list until Scene retirement receipts and its accepted cleanup tasks settle; no new GPU scope is involved.
+Project replacement removes Panes immediately. A finite close operation exclusively retains the old EditorProject
+until Scene retirement receipts and its accepted cleanup tasks settle; the application has no closing-project list.
 A Context without Scene borrows keeps the original immediate, nonblocking destruction contract. Worker
 operations still own their captured inputs and code instead of borrowing a destroyed Context.
 
-Viewport code supplies `UiTargetImage` values through LuxEngine::setUiImages. The UI owns only sampling
-relations. After removal, wait for uiImagesApplied before destroying the old output Target through the Main
-Client; its actual creator remains responsible for that resource. Scene/Target editing tools are separate
-product work, not manufactured by this transport layer.
+ProjectScenes manages each viewport's sampling relation through the private EditorUiScene. Removing an image
+returns a Sender that completes only for that token's actual removal. Await it before removing the Target;
+an unrelated image addition cannot postpone or certify that removal. App-level setUiImages/uiImagesApplied
+mailboxes do not exist. Window metrics and ImageElement geometry changes directly schedule output adoption.
 
 ## Model import and Scene placement
 
@@ -252,6 +252,28 @@ inside its logical rectangle; framebuffer scale is applied exactly once when req
 is resumed in a complete frame carrying matching camera/UI data and the replied Target epoch.
 
 Application startup publishes a fully constructed LuxEngine::Impl; partial startup rollback is local to its factory.
-OpenProject retains its Context until Scene/UI retirement completes. The regular loop and destructor share one
+EditorProject retains its Context until Scene/UI retirement completes. The regular loop and destructor share one
 nonblocking close progression. Clients drain and close before RenderServer stops; the shared ExecutionRuntime is
 joined only outside a driven callback. There is no Main 1024-request limit or per-frame reserved correlation slot.
+
+## Completion-driven editing and updates
+
+ProjectScenes starts a finite operation for the affected viewport, Play session or document. Window extent,
+Camera selection, geometry completion and close intent schedule that operation; unchanged documents and
+viewports are not scanned by the app loop. SceneRuntime::editInstanceAsync applies its borrowed callback at
+the actual structural safe point before delivering completion. whenEditable is only a notification: it does
+not grant an edit permit that remains valid across later callbacks.
+
+Camera recipe identity is rechecked after compilation and Attach. Target format/samples and shadow near/far
+cannot be overwritten by newer runtime parameters while retaining an incompatible old recipe. Parameter-only
+Camera changes stay on RenderSystem's parameter path. A relation's retirement does not wait for unrelated
+Scene asset transactions.
+
+Hierarchy and Inspector request UI updates on document/selection facts; Inspector keeps the original draft
+revision and reports stale edits. SceneViewport explicitly requests continuous input/Gizmo updates. Static
+Pane/Element update callbacks run only after requestUpdate; there is no static hierarchy-wide update pass.
+
+Normal frames and shutdown maintenance use the same FrameInput preparation/submission function. The outer
+run, controlled test step and final destructor close share one reentry boundary. A nested run from an ordinary
+Main continuation is rejected without closing the application. Object callback borrows and Scene/Root mutation
+boundaries remain separate protections. Final ExecutionRuntime join happens after leaving those callbacks.

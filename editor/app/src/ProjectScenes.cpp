@@ -1867,7 +1867,9 @@ namespace lux::editor
         {
             return false;
         }
-        if (viewport->requested.width != width || viewport->requested.height != height)
+        const bool changed = viewport->requested.width != width || viewport->requested.height != height;
+        const bool retry = viewport->error.type != 0;
+        if (changed || retry)
         {
             viewport->camera_dirty = true;
             ++viewport->requested_revision;

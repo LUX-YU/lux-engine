@@ -89,7 +89,8 @@ Editor 视口创建可采样的 Offscreen Target，RenderSystem 为它准备 Vie
 二者仍通过 Render 的资源依赖排序，不让 Scene Feature 知道 UiRasterFeature。
 
 Target Resize 在现有 Owner 安全点准备并采用完整候选：更新实际 extent、viewport 和相机宽高比，
-失败保留旧输出。位置变化只改变 viewport，不能无条件重新编译配方。最小化可以暂停该观察，
+Offscreen 候选失败保留旧输出；Surface 已关闭旧链时以真实 output_available 报告不可用并允许重试。
+位置变化只改变 viewport，不能无条件重新编译配方。最小化可以暂停该观察，
 不意味着卸载整个 Scene。
 
 关闭顺序：停止该视口的未来帧输入；撤销 UI 对它的采样并等待真实采用；解除观察关联并等待应答；
@@ -103,7 +104,8 @@ SceneDocument 不反向依赖 Render。这不是新的 GPU 清理 Scope。
 patch CameraTargetsComponent。CameraTargetId 在该 Scene 内单调生成，不复用，不是 vector 下标。
 调用方按 SceneInstanceId + Entity generation + CameraTargetId 路由，实际运行绑定只在该实体的
 私有 RenderViewComponent 中。`attachment(camera, id)`、`cameraTargetError(camera, id)` 为只读查询；
-移除意图后等待 `cameraTargetRetired(camera, id)` 再释放 Target。
+移除意图后等待 `whenCameraTargetRetired(camera, id)` 的真实完成再释放 Target；同步只读查询
+`cameraTargetRetired` 仍保留给独立消费者。等待只覆盖该关系，不受无关资产事务阻塞。
 
 观察者只记录变更；实体删除时把仍可读的绑定移动到 RenderSystem 的退出记录，不再活动查找。
 创建/编译 coroutine 仅保留身份与值，回 Main 后重新定位，不跨挂起借用组件或 vector 元素。
@@ -286,6 +288,8 @@ ExecutionRuntime、Context 或 Render。纯持久化工具不因编辑器新增�
 `SceneRuntime::editInstance()` 拒绝重入和非结构安全点；只读借用仍允许在等待发布时查询稳定数据。
 当前 Simulation 的 execute 在返回前已等待其 TaskGraph 完成，Runtime 的驱动标记阻止执行中的借用。
 不能把“待发布”误认成“Worker 仍在写 Registry”，也不能让可写借用跳过结构安全点。
+`editInstanceAsync` 在实际安全点执行借用回调，再向 Main 交付结果；借用到完成为止。`whenEditable`
+仅通知一次可编辑事实，随后调用者仍须检查编辑准入及作者 revision，不能把通知当作长期许可。
 
 ### 5.5 产品创建与视口调用
 
@@ -299,7 +303,8 @@ ExecutionRuntime、Context 或 Render。纯持久化工具不因编辑器新增�
 SceneCreationFailure 明确说明 Scene 文件是否已发布，根目录失败不删除已发布文件或伪造回滚。
 `open()` 则只读取、解码、验证并采用已有包。所有工作借用在 ProjectScenes 的关闭清偿结束后释放。
 
-`addViewport/updateViewport/closeViewport` 只提交观察意图。正常 Main 维护点创建或 Resize Target；
+`addViewport/updateViewport/closeViewport` 只提交观察意图；同一视口只有一个有限配置操作，新意图合并为
+最新值。实际回复立即推进该操作，不由主循环扫描所有视口。
 对应 RenderSystem 已采用 Attachment 后，才将 Target 加入现有 EditorUiScene。`viewport()` 区分真实
 错误与尚未就绪；尺寸候选未采用时不能报告 ready。失效相机撤销采样，恢复有效相机后重新加入。
 
@@ -482,7 +487,8 @@ live Registry、Render FeatureId 或设备地址。
 2. 处理 UI 意图，安全点提交已验证的 SceneEdit；不能在 EnTT 观察者中递归改世界。
 3. 获得完整 FrameInput 才推进需要呈现的模拟；没有载体时继续 MAINTENANCE，不忙等。
 4. SceneRuntime 执行 Simulation、同步/稳定阶段，各 RenderSystem 追加本 Scene 与各观察的增量输入。
-5. UI 捕获使用本轮合法图像引用，追加同一个 FrameInput，再进行唯一 SubmitFrame。
+5. EditorUiScene 通过 EditorWindow/UI Root 产生合法图像引用与绘制数据，追加同一 FrameInput。
+   当前 app 先产生 UI 数据再推进 Scene；二者均在唯一 SubmitFrame 前完成，不能跨帧借用其内存。
 6. Render 完成上传采用、Frame 准备、真实 FIF 录制/提交；GPU 清理只使用既有 cleanup_scope_。
 
 无图形应用以自己的时钟驱动 SceneRuntime，不等待一个不存在的 FrameInput。Editor Headless Play
@@ -540,7 +546,8 @@ MAINTENANCE 下仍按自己的时钟推进；图形实例为 true。随后仍遍
    就能放行的规则引擎。若实际消费者不需要某项声明，应删除该项而不是填空值。
 2. **World 支持验证归属。** 推荐彻底移出通用 System 描述，放在读取/索引实现及 Scene 装配边界；
    底层 RenderSystem 不维护“允许的世界”列表。
-3. **视口相机来源。** 推荐明确的 ECS Camera/Editor Camera 值 variant，避免在作者 ECS 创建隐藏假实体。
+3. **视口相机来源。** CameraTargets 位于选定的 CameraMan；临时编辑相机是没有作者 WorldObjectId
+   的运行实体，不进入作者保存/Undo/Play 快照，不另建观察实体。
 4. **编辑权威。** 推荐已加载编辑 ECS 为 current，脏分区暂不驱逐；不同时维护可变 Document Object 树。
 5. **运行隔离。** 推荐独立 Play 实例、作者编辑暂只读；不在本轮增加双向同步或自动应用运行变化。
 6. **发布边界。** 本轮实现 CPU-only 构建和运行预览；真正编译、优化、链接和游戏发布另行设计与授权。
@@ -559,3 +566,23 @@ LuxEngine 工厂在局部准备完整依赖后才构造 Impl。OpenProject 负�
 
 ProjectScenes 的 Camera 信号连接借用 Registry，开始 InstanceRetirement 前必须断开，不能等到 Play/文档
 记录析构时才断连。实体运行绑定的退出记录与这些观察连接是不同职责，不增加新的清理 Scope。
+
+## 响应式采用与关闭
+
+运行会话必须有已采用项目；无项目仅存在于共享设施上的启动选择过程。候选准备成功后在 Root
+安全段同时替换项目/UI，失败保持旧项目。旧 EditorProject 由有限关闭操作独占；没有 Scene 借用
+的失败候选在当前安全段释放，不为同步清理加入调度跳转。已有 Scene 借用则先撤下采样/Target、
+等待每个 InstanceRetirement 的真实完成，再清偿 Context 依赖。应用不扫描一份关闭项目列表。
+
+ProjectAssets 的几何完成携带 AssetId/revision，ProjectScenes 仅向登记需求的 Scene 调度采用。
+MeshQuery 的缺失集合发起需求；输入失败和容量拒绝保留准确诊断，不能伪装几何已到位。RenderAssets
+的零引用释放由原 stdexec 通路推进，失败记录与物理清偿分别处理。静态 UI 通过现有 Signal 与
+Root::deferChange/requestUpdate 采用事实，持续交互显式启用连续更新。
+
+Camera 配方保存 Target/格式/样本和实际阴影范围等编译输入的 key；每次编译与 Attach 挂起后复核。
+只改姿态或其它运行参数不重新选择 Primary 或构建配方。已成功 Attach 但资格失效的候选先真实
+Detach 再退出，不发布旧配方配新参数的混合状态。
+
+窗口 metrics 在连接时折入存量，后续变化直接调度 EditorUiScene；子视口只在矩形/DPI 变化时换算
+像素。Resize 返回实际描述/epoch/output_available；旧链已关闭后的失败不得伪报旧图可用。
+单个 image token 的解除结果是它的释放证明，不依赖全局 imagesApplied bool。

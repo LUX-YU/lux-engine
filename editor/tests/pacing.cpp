@@ -242,8 +242,8 @@ namespace
         assert(host->engine().sceneRuntime().instanceCount() == 0);
         // run() now finishes the application close protocol. Measurements outlive the retired Pane.
         assert(state.destroyed);
-        // These counters describe the last UI update, not the remaining live objects.
-        assert(host->window().uiRoot().statistics().panes == 1);
+        // Shutdown shares the normal maintenance path: the last Root update has no retired Pane callbacks.
+        assert(host->window().uiRoot().statistics().panes == 0);
         assert(host->window().uiRoot().statistics().elements == 0); // Static Label has no repeated maintenance.
     }
 

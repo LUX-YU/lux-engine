@@ -281,22 +281,6 @@ namespace lux::editor
             }
         }
 
-        FrameworkResult<void> submitMaintenanceFrame(rendering::FrameInput*& input) noexcept
-        {
-            if (!input && rendering_->mainClient().hasQueuedFrameCommands())
-            {
-                auto admitted = rendering_->beginFrame();
-                if (!admitted)
-                {
-                    return cxx::unexpected(admitted.error());
-                }
-                input = *admitted;
-            }
-            // A newly requested publication input belongs to the next maintenance pass, before Scene publication.
-            auto* submitted = std::exchange(input, nullptr);
-            return submitted ? rendering_->submitFrame(*submitted) : FrameworkResult<void>{};
-        }
-
         void beginClose() noexcept
         {
             if (close_phase_ != EClosePhase::OPEN)
@@ -321,53 +305,37 @@ namespace lux::editor
 
         FrameworkResult<ELoopState> advanceClose() noexcept
         {
+            if (close_phase_ == EClosePhase::CLOSED)
+            {
+                return ELoopState::STOPPED;
+            }
             if (auto dispatched = dispatchCompletions(); !dispatched)
             {
                 return cxx::unexpected(dispatched.error());
             }
-            rendering::FrameInput* input = nullptr;
-            cxx::scope_exit release_unsent(
-                [&]() noexcept
+            auto frame_state = ELoopState::WAITING;
+            if (close_phase_ == EClosePhase::PROJECTS || close_phase_ == EClosePhase::ASSETS)
+            {
+                auto frame = renderFrame();
+                if (frame)
                 {
-                    if (input)
-                    {
-                        static_cast<void>(rendering_->mainClient().releaseFrame(*input));
-                    }
+                    frame_state = *frame;
                 }
-            );
+                else
+                {
+                    recordFailure(frame.error());
+                }
+            }
             if (close_phase_ == EClosePhase::PROJECTS)
             {
-                if (rendering_->mainClient().needsFrameInput())
-                {
-                    auto admitted = rendering_->beginFrame();
-                    if (!admitted)
-                    {
-                        return cxx::unexpected(admitted.error());
-                    }
-                    input = *admitted;
-                }
-                auto driven = engine_->sceneRuntime().driveFrame(scene::ESceneDriveMode::MAINTENANCE);
-                if (!driven)
-                {
-                    return cxx::unexpected(scene::toError(driven.error()));
-                }
-                if (!driven->empty())
-                {
-                    recordFailure(scene::toError(driven->front()));
-                }
                 if (closing_project_count_ == 0 && project_tasks_.settled())
                 {
-                    ui_scene_->stopFrames();
                     assets_->close();
                     close_phase_ = EClosePhase::ASSETS;
                 }
             }
             if (close_phase_ == EClosePhase::PROJECTS || close_phase_ == EClosePhase::ASSETS)
             {
-                if (auto frame = submitMaintenanceFrame(input); !frame)
-                {
-                    return cxx::unexpected(frame.error());
-                }
                 const bool settled = close_phase_ == EClosePhase::ASSETS && ui_scene_->settled() &&
                                      assets_->settled() && rendering_->mainClient().pendingRequests() == 0;
                 if (settled)
@@ -393,10 +361,7 @@ namespace lux::editor
             {
                 return ELoopState::STOPPED;
             }
-            const bool pending_frame = close_phase_ < EClosePhase::RENDER &&
-                                       rendering_->mainClient().needsFrameInput() &&
-                                       rendering_->mainClient().hasFrameCapacity();
-            return pending_frame ? ELoopState::RUNNING : ELoopState::WAITING;
+            return close_phase_ < EClosePhase::RENDER ? frame_state : ELoopState::WAITING;
         }
 
         FrameworkResult<void> finishClose() noexcept
@@ -405,7 +370,7 @@ namespace lux::editor
             {
                 return {};
             }
-            // This barrier is outside pumpOnce's callback borrow and outside every counted Sender.
+            // This barrier is outside the driven callback borrow and every counted Sender.
             if (auto joined = engine_->execution().join(); !joined)
             {
                 return cxx::unexpected(execution::toError(joined.error()));
@@ -825,27 +790,8 @@ namespace lux::editor
             return true;
         }
 
-        FrameworkResult<bool> prepareUiOutput() noexcept
+        FrameworkResult<ELoopState> advance() noexcept
         {
-            auto output = ui_scene_->outputReady();
-            if (!output)
-            {
-                return cxx::unexpected(output.error());
-            }
-            const auto& metrics = window_->metrics();
-            const bool has_extent =
-                metrics.width && metrics.height && metrics.framebuffer_width && metrics.framebuffer_height;
-            return has_extent && !metrics.minimized && *output;
-        }
-
-        FrameworkResult<ELoopState> pumpOnce(LuxEngine& application) noexcept
-        {
-            if (pumping_)
-            {
-                return cxx::unexpected(error::Error{Errors::EditorRecursiveHostFrame, {}});
-            }
-            pumping_ = true;
-            cxx::scope_exit finish([this]() noexcept { pumping_ = false; });
             if (window_->shouldClose() || close_phase_ != EClosePhase::OPEN)
             {
                 beginClose();
@@ -871,7 +817,8 @@ namespace lux::editor
 
         FrameworkResult<ELoopState> renderFrame() noexcept
         {
-            auto presentation = prepareUiOutput();
+            const bool running = close_phase_ == EClosePhase::OPEN;
+            auto presentation = running ? ui_scene_->outputReady() : FrameworkResult<bool>{false};
             if (!presentation)
             {
                 return cxx::unexpected(presentation.error());
@@ -897,17 +844,35 @@ namespace lux::editor
             const auto ui = frame && can_draw ? ui_scene_->appendFrame(*frame) : window_->maintainUi();
             if (!ui)
             {
-                return cxx::unexpected(ui.error());
+                if (running)
+                {
+                    return cxx::unexpected(ui.error());
+                }
+                recordFailure(ui.error());
             }
             const auto mode = frame && can_draw ? scene::ESceneDriveMode::ADVANCE : scene::ESceneDriveMode::MAINTENANCE;
             auto driven = engine_->sceneRuntime().driveFrame(mode);
-            if (!driven)
+            const auto scene_error = !driven           ? scene::toError(driven.error())
+                                     : driven->empty() ? error::Error{}
+                                                       : scene::toError(driven->front());
+            if (scene_error.type != 0)
             {
-                return cxx::unexpected(scene::toError(driven.error()));
+                if (running)
+                {
+                    return cxx::unexpected(scene_error);
+                }
+                recordFailure(scene_error); // An error cannot discard cleanup commands appended by other Scenes.
             }
-            if (!driven->empty())
+            if (!frame && client.hasQueuedFrameCommands())
             {
-                return cxx::unexpected(scene::toError(driven->front()));
+                // A finite completion can append commands during maintenance. Only those owned requests may
+                // submit now; a newly requested Scene publication input is prepared in the next iteration.
+                auto pending = rendering_->beginFrame();
+                if (!pending)
+                {
+                    return cxx::unexpected(pending.error());
+                }
+                frame = *pending;
             }
             if (frame)
             {
@@ -937,7 +902,6 @@ namespace lux::editor
         std::unique_ptr<detail::EditorProject> project_;
         std::optional<execution::TaskId> project_prepare_;
         std::uint64_t project_request_serial_{};
-        bool pumping_{};
         error::Error failure_;
     };
 
@@ -948,10 +912,11 @@ namespace lux::editor
 
     LuxEngine::~LuxEngine() noexcept
     {
-        if (isDispatching()) // Final application barrier cannot run inside a completion callback.
+        if (driving_ || isDispatching()) // Final join cannot nest a driver or dispatched callback.
         {
             std::terminate();
         }
+        driving_ = true;
         impl_->window_->uiRoot().setCommandFallback(nullptr);
         beginDestruction();
         if (auto closed = impl_->close(); !closed)
@@ -1074,6 +1039,13 @@ namespace lux::editor
         }
         else if (auto* command = event.getIf<ui::Command>())
         {
+            if (impl_->close_phase_ != Impl::EClosePhase::OPEN)
+            {
+                event.accept();
+                command->enabled = false;
+                command->result = ui::ECommandDispatchResult::DISABLED;
+                return;
+            }
             const bool close = command->id == ui::CommandIdView{"lux.project.close"};
             const bool cancel = command->id == ui::CommandIdView{"lux.project.cancel_open"};
             if (!close && !cancel)
@@ -1108,10 +1080,16 @@ namespace lux::editor
 
     FrameworkResult<void> LuxEngine::run() noexcept
     {
+        if (driving_ || isDispatching())
+        {
+            return cxx::unexpected(error::Error{Errors::EditorRecursiveHostFrame});
+        }
+        driving_ = true;
+        cxx::scope_exit leave([this]() noexcept { driving_ = false; });
         for (;;)
         {
             const auto epoch = impl_->engine_->execution().wakeEpoch();
-            auto state = pumpOnce();
+            auto state = advanceOnce();
             if (!state)
             {
                 impl_->recordFailure(state.error());
@@ -1130,12 +1108,19 @@ namespace lux::editor
 
     FrameworkResult<LuxEngine::ELoopState> LuxEngine::pumpOnce() noexcept
     {
-        if (isDispatching())
+        if (driving_ || isDispatching())
         {
             return cxx::unexpected(error::Error{Errors::EditorRecursiveHostFrame});
         }
+        driving_ = true;
+        cxx::scope_exit leave([this]() noexcept { driving_ = false; });
+        return advanceOnce();
+    }
+
+    FrameworkResult<LuxEngine::ELoopState> LuxEngine::advanceOnce() noexcept
+    {
         beginCallbackBorrow(*this);
-        auto result = impl_->pumpOnce(*this);
+        auto result = impl_->advance();
         endCallbackBorrow(*this);
         return result;
     }

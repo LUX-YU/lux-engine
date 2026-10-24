@@ -554,7 +554,9 @@ clip clamp、IdxOffset/VtxOffset、Alpha Blend 等成熟算法。
 
 ### 10.1 主循环
 
-`LuxEngine::pumpOnce` 拆为可直接阅读的阶段，函数名表达动作：
+`LuxEngine::run` 的外层重入保护覆盖普通 Main continuation；私有受控单步与析构关闭遵循同一保护。
+Object 回调借用另行保留，最终 join 在回调之外。普通帧与关闭维护共用 `Impl::renderFrame`，只有一处
+未提交 carrier 的释放和一处完整提交。执行阶段为：
 
 1. 收取原生事件、Main Response、通用 Main continuation 和监控变化。
 2. 派发 Object 固定批，采用项目/窗口意图；不在完成回调递归 driveFrame。
@@ -571,8 +573,9 @@ clip clamp、IdxOffset/VtxOffset、Alpha Blend 等成熟算法。
 停止新的帧投影，清偿已接纳结构操作，发送关闭维护命令并归还资产引用；全部完成后才销毁系统并完成退休回执。
 析构不再申请任务资格，RenderSystem 不通过共享状态跨越系统寿命。
 
-应用保留关闭 Context 的原 lease/回执并继续驱动 maintenance 帧。finishClose 在退休回执完成后关闭业务
-TaskScope、撤销文件读取入口，再等待已接纳业务任务结束。读取结果的输入寿命由有限 Sender 和 ExecutionRuntime
+有限 EditorProject 关闭操作持有 Context，并等待原 lease 的 InstanceRetirement 完成；应用只继续驱动
+实际 Scene/Frame/Execution 安全点，不查询关闭项目列表。Context 在退休完成后关闭业务 TaskScope、
+撤销文件读取入口并清偿实际借用。没有 Scene 借用的候选可立即销毁，独立任务继续拥有自己的输入/代码。读取结果的输入寿命由有限 Sender 和 ExecutionRuntime
 覆盖，不为每次文件范围读取建立 TaskRecord。UI Scene 仅在释放 Response 成功后清空对应句柄；失败不是 settled。
 
 项目关闭不停止整个 ExecutionRuntime，不 join RenderThread，不卸载仍有回调/Handler 的 DLL。
@@ -584,7 +587,7 @@ TaskScope、撤销文件读取入口，再等待已接纳业务任务结束。�
 
 ```text
 关闭业务准入、取消项目准备任务、停止新普通帧
-  → OpenProject 关闭自己的 Scene/UI，清偿项目 IO/CPU 与关闭维护帧
+  → EditorProject 的有限关闭操作清偿 Scene/UI、项目 IO/CPU 与关闭维护帧
   → UI Scene 和 RenderAssets 结束；所有 FrameCompletion 及 Source 借用结清
   → RenderExecution 在各 SPSC 线程关闭 Main/Asset Client，取消尚未发送的本地输入
   → 请求 RenderServer 停止；RenderThread 推进 RunLoop、GPU、Outbox 和唯一 cleanup_scope_
@@ -789,9 +792,10 @@ Frame/Record/Submit、堆分配、切换次数和峰值；采样与正式时延�
   RenderSystemDependencies 的 source 显式传入此端点，RenderAssets 每次 acquire 捕获它，
   不通过全局“当前项目”选择器路由。调用方用不同 asset_revision 区分来源代次。
 - CameraTargetsComponent 在 CameraMan 上保存 Target/Viewport 意图；RenderAssetInput 单独提供资产版本。二者均不拥有完整帧。
-  Scene 在 Requester 正在构建的 carrier 中直接写 K 项变化；UI 随后捕获并追加，应用提交一次。
-- `LuxEngine::setUiImages(vector<UiTargetImage>)` 建立 UI token 到 sampled offscreen Target 的冷态关系。
-  移除图像后，要等 uiImagesApplied，再移除原 Target。Target 的创建/释放仍由实际视口消费者负责。
+  Scene 在 Requester 正在构建的 carrier 中直接写 K 项变化；UI 使用同一 carrier，应用提交一次。
+- ProjectScenes 通过 EditorUiScene 建立 UI token 到 sampled Offscreen Target 的冷态关系。
+  移除图像后等待该 token 的 removeTargetImage Sender，再移除原 Target；没有应用级图像邮箱。
+  Target 的创建/释放仍由实际视口消费者负责。
 - UiRasterFeature 的颜色运算为线性 BT.709 + straight alpha。SRGB 格式由采样器解码，
   UNORM/浮点输入必须已经是线性值；ToneMap 后的 LDR 视口宜使用 SRGB Target，
   不能把已经编码的 UNORM 值假装线性输入而再次编码。UI 不运行 ACES。
@@ -800,7 +804,7 @@ Frame/Record/Submit、堆分配、切换次数和峰值；采样与正式时延�
 - 首次窗口初始化时如已经最小化，延后创建 SwapChain；恢复事件才触发创建。
   Resize 事务先登记，再判断 outputReady，不能把新尺寸几何送入旧 Target。
 - `UiRasterFeature` 支持本轮 CPU UI 的直通绘制数据；Context/Pane 或 ImGui 指针不进入 Render。
-  具体 Scene 编辑工具、动画/LOD 选择、编辑器 picking 不在此次接线闭环内。
+  Scene 编辑与 picking 由 Scene 工具消费实际 Camera/几何，不放入 UI Render Feature；动画/LOD 另行设计。
 
 Main 等待还必须覆盖 RunLoop 发布尾部：节点已被消费而 post 尚未退出唤醒回调时，
 hasReadyWork 仍为真。发布返回的序号与活跃计数位于同一原子字，wakeEpoch 包含这次返回，
@@ -813,9 +817,10 @@ ExecutionRuntime::spawn 接纳内部有限操作，submit/TaskScope 保留可监
 stdexec 执行 Scope。读取端点接受 ExecutionRuntime 和可选项目停止 token，不逐范围登记 TaskRecord。
 运行期配置声明在轻量 ExecutionConfig.hpp，EditorConfig.execution 在组合根选择实际 CPU/IO 资源。
 
-应用循环明确执行完成领取、项目采用、呈现维护、帧载体准入、UI 捕获、Scene 推进和帧发布。
-未取得完整载体时调用 SceneRuntime 的 MAINTENANCE 模式，继续采用及退休但不产生新模拟步；
-独立无渲染应用继续使用默认 ADVANCE 模式。维护帧只清偿已有控制命令，不增加第二份领先帧计数。
+应用循环执行完成领取、Object 通知、帧载体准入、UI 数据产生、Scene 推进与统一发布；项目/尺寸等
+采用由实际完成与变化触发。未取得载体时调用 MAINTENANCE，图形 Scene 继续采用/退休而不产生新
+呈现模拟步；不要求 FrameInput 的 Headless Scene 仍按自己的时钟推进，不受窗口状态限制。
+维护帧只清偿已有控制命令，不增加第二份领先帧计数。
 
 RenderSystem 直接拥有实际 Scene 关联，构造时借用 Requester、ExecutionRuntime、RenderAssets 和视图输入。
 结构事务与现有实例的增量帧投影分开；等待资产只遍历待建立集合。SceneEffect 是纯冷态配方构造，
@@ -834,3 +839,14 @@ RenderViewComponent 中拥有对应逻辑绑定的清偿责任，不再维护第
 Resize 成功暂停目标。Client 用回复尺寸生成下一完整帧的相机/UI 数据，并在同一帧中按该 epoch 启用目标。
 旧帧的启用请求因 epoch 不匹配而拒绝，沿 FrameCompletion 的既有重同步处理，不增加帧队列。
 CPU 回复不表示新图像已有像素；producer→consumer 的实际 Graph 依赖保证 UI 首次采样发生在生产之后。
+
+### 响应式接线
+
+运行中的 LuxEngine::project() 是已加载项目引用。初次选择在未发布的启动过程完成，复用同一窗口、
+ExecutionRuntime、RenderExecution 和 UI Scene；CloseProjectRequest 结束会话。窗口 metrics、
+ProjectAssets 几何结果、Camera 选择变化与 UI 静态刷新在各自实际变化点交付。ProjectScenes 使用
+SceneRuntime::editInstanceAsync 在安全点采用，不能把 whenEditable 通知误作跨回调的编辑许可。
+
+EditorUiScene 负责帧内 UI 绘制数据与单项采样关系完成；LuxEngine 不再有 captureUi、setUiImages、
+uiImagesApplied 或待项目变化邮箱。正常循环不轮询 ProjectScenes/RenderAssets 的业务进度。
+RenderSystem 的活动模拟、GPU 完成推进、输入取消和真正的 Scene 退休仍由已有执行阶段处理。

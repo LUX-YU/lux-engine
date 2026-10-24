@@ -488,8 +488,9 @@ namespace lux::editor
                 result.get(),
                 [](void* value, const WindowMetrics& metrics) noexcept
                 {
+                    const bool active = !metrics.minimized && metrics.width != 0 && metrics.height != 0;
                     static_cast<EditorUiScene*>(value)
-                        ->setExtent(metrics.framebuffer_width, metrics.framebuffer_height, !metrics.minimized);
+                        ->setExtent(metrics.framebuffer_width, metrics.framebuffer_height, active);
                 }
             );
         }

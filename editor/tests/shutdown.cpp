@@ -2,6 +2,8 @@
 #include <chrono>
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/editor/AppErrors.hpp>
+#include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
@@ -47,6 +49,21 @@ int main(int argc, char** argv)
     }
     auto& rendering = (*host)->rendering();
     auto& client = rendering.mainClient();
+    bool rejected_recursive_drive{};
+    assert(rendering.execution().spawn(stdexec::then(
+        stdexec::schedule(rendering.execution().mainScheduler()),
+        [&]() noexcept
+        {
+            // Ordinary Execution callbacks are not Object event dispatch. The outer driver still forbids
+            // reentry, and a rejected nested run must not initiate application shutdown itself.
+            const auto nested_run = (*host)->run();
+            const auto nested_step = editor::detail::LuxEngineTestAccess::pumpOnce(**host);
+            assert(!nested_run && nested_run.error().type == editor::Errors::EditorRecursiveHostFrame);
+            assert(!nested_step && nested_step.error().type == editor::Errors::EditorRecursiveHostFrame);
+            assert((*host)->project().project().name == "Shutdown");
+            rejected_recursive_drive = true;
+        }
+    )));
     auto command = client.bind<render::Stop>();
     assert(command);
     render::EmptyRequest request_stop;
@@ -60,7 +77,7 @@ int main(int argc, char** argv)
         }
     )));
     const auto stopped = (*host)->run();
-    assert(!stopped && stopped.error().type == render::kCommandCancelled && acknowledged);
+    assert(!stopped && stopped.error().type == render::kCommandCancelled && acknowledged && rejected_recursive_drive);
     assert(client.pendingRequests() == 0 && rendering.stats().validation_errors == 0);
     host->reset();
     std::puts("execution failure reported after UI/Clients/Server cleanup; destructor completed");

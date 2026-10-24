@@ -86,7 +86,13 @@ target, application commands can still be queried and queued for the next safe p
 cancels its queued command; it does not become a new target-less application request. Clearing or destroying the
 fallback never leaves an owning pointer or a stale-address callback.
 
-`Root::statistics()` is the latest update snapshot, populated by the actual hierarchy/draw phases. Hidden content
-continues to count and maintain; maintenance-only updates report zero draw/capture counts. Theme application belongs
+Pane/Element use `requestUpdate()` for one coalesced update at the existing Root deferred-change boundary.
+Requests made before mounting are folded in during adoption. Only actual continuous interactions opt into
+`setContinuousUpdate(true)`; disable it when they end. Root retains non-owning generational targets, not another
+UI owner. Focus loss, IME and pointer cancellation still run when no frame can be drawn.
+
+`Root::statistics()` is the latest update snapshot. `panes` and `elements` count actual requested/continuous
+update callbacks, not live objects; unchanged static controls contribute zero. Maintenance-only updates report
+zero draw/capture counts. Theme application belongs
 to Context creation; normal beginFrame does not rewrite the scaled style. Event routes local input/commands up the
 tree; Signal carries semantic notifications from a shared domain owner. Use neither to stream per-frame bulk data.

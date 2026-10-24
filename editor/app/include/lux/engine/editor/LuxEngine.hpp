@@ -47,6 +47,8 @@ namespace lux::editor
         LuxEngine(LuxEngine&&) = delete;
         LuxEngine& operator=(LuxEngine&&) = delete;
 
+        // Main-only outer driver. Errors are returned after accepted work and rendering cleanup finish.
+        // Recursive entry from Object or ordinary Execution callbacks is rejected without starting close.
         [[nodiscard]] FrameworkResult<void> run() noexcept;
         [[nodiscard]] EditorWindow& window() noexcept;
         [[nodiscard]] engine::EngineContext& engine() noexcept;
@@ -74,6 +76,7 @@ namespace lux::editor
             STOPPED
         };
         [[nodiscard]] FrameworkResult<ELoopState> pumpOnce() noexcept;
+        [[nodiscard]] FrameworkResult<ELoopState> advanceOnce() noexcept;
         friend struct detail::LuxEngineTestAccess;
         friend FrameworkResult<std::unique_ptr<LuxEngine>> detail::createEditor(
             EditorConfig,
@@ -88,5 +91,6 @@ namespace lux::editor
         struct Impl;
         explicit LuxEngine(std::unique_ptr<Impl>) noexcept;
         std::unique_ptr<Impl> impl_;
+        bool driving_{}; // One outer run, controlled test step, or final close; never a nested callback loop.
     };
 } // namespace lux::editor

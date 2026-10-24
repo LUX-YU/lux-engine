@@ -769,6 +769,15 @@ namespace lux::window
 #endif
     }
 
+    VNativeWindowHandle LuxWindow::nativeWindow() const noexcept
+    {
+#ifdef __PLATFORM_WIN32__
+        return Win32WindowHandle{glfwGetWin32Window(native_->window)};
+#else
+        return std::monostate{};
+#endif
+    }
+
     GLFWwindow* LuxWindow::handle()
     {
         return native_->window;

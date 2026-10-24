@@ -58,6 +58,11 @@ namespace lux::window
         return nullptr;
     }
 
+    VNativeWindowHandle LuxWindow::nativeWindow() const noexcept
+    {
+        return std::monostate{};
+    }
+
     struct LuxWindow::NativeWindowState final
     {
     };

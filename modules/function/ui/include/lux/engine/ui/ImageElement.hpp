@@ -11,6 +11,8 @@ namespace lux::ui
     struct ImageInteraction final
     {
         Size size;
+        // Physical pixels per UI unit from this Root's current FrameInfo, not the layout scale.
+        Vec2 framebuffer_scale{1.0F, 1.0F};
         Point content_origin, local_pointer;
         bool hovered{}, window_focused{}, resized{};
         bool left_clicked{}, middle_clicked{}, right_clicked{};

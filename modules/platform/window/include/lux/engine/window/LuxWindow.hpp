@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <functional>
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/window/NativeWindowHandle.hpp>
 #include <lux/engine/window/WindowEvents.hpp>
 #include <lux/engine/window/WindowPlacement.hpp>
 #include <lux/engine/window/visibility.h>
@@ -80,6 +81,9 @@ namespace lux::window
         // Platform-adapter borrow; valid only during this window's lifetime.
         [[nodiscard]] void* nativeHandle() const noexcept;
 
+        /// Typed presentation borrow; query on the window thread before handing it to a surface consumer.
+        [[nodiscard]] VNativeWindowHandle nativeWindow() const noexcept;
+
         void hideCursor(bool);
 
         bool setRawMouseMotion(bool enable);
@@ -109,12 +113,8 @@ namespace lux::window
         void framebufferSize(std::uint32_t& width, std::uint32_t& height) const;
 
         // ── Vulkan surface seam (backend-specific) ───────────────────
-        // These two are the ONLY sanctioned way for render/ui code to get a
-        // VkSurfaceKHR / the surface instance extensions. Non-backend code
-        // must not touch handle() or the windowing library directly — that
-        // is what keeps a future Android (ANativeWindow) backend a pure
-        // source swap of this class. See
-        // the implementation §3.
+        // Direct Vulkan consumers use these entry points. NRI presentation uses nativeWindow()
+        // through the Engine WindowSurface conversion; product code does not inspect platform SDK handles.
 
         /// Create a Vulkan surface for this window using the active window
         /// backend. Writes VK_NULL_HANDLE and returns false on failure.

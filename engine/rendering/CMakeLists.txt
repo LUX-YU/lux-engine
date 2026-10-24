@@ -14,10 +14,32 @@ add_component(
 
 component_include_directories(
     engine_rendering
-    BUILD_TIME_EXPORT "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    BUILD_TIME_SHARED "${CMAKE_CURRENT_SOURCE_DIR}/include"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pinclude"
     INSTALL_TIME include
 )
+
+# WindowSurface is a real optional window dependency; offscreen SDKs do not advertise its API.
+install(
+    DIRECTORY include/
+    DESTINATION include
+    COMPONENT lux_engine_rendering
+    PATTERN WindowSurface.hpp EXCLUDE
+)
+
+if(LUX_BUILD_WINDOW)
+    target_sources(engine_rendering PRIVATE src/WindowSurface.cpp)
+
+    target_link_libraries(engine_rendering PUBLIC lux::engine::platform::window)
+
+    component_add_transitive_commands(engine_rendering "find_package(lux-engine-platform REQUIRED COMPONENTS window)")
+
+    install(
+        FILES include/lux/engine/rendering/WindowSurface.hpp
+        DESTINATION include/lux/engine/rendering
+        COMPONENT lux_engine_rendering
+    )
+endif()
 
 target_compile_features(engine_rendering PUBLIC cxx_std_20)
 

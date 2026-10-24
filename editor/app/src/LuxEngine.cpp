@@ -26,6 +26,7 @@
 #include <lux/engine/rendering/RenderAssets.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/rendering/WindowSurface.hpp>
 #include <lux/engine/scene/SceneError.hpp>
 #include <lux/engine/ui/Command.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -338,12 +339,10 @@ namespace lux::editor
             object::ObjectRuntime::instance().setWake(&window::LuxWindow::wakeEvents);
             execution.setWake(&window::LuxWindow::wakeEvents);
             render::SurfaceDescription surface;
-#if defined(_WIN32)
-            surface.window.windows.hwnd = application.window->nativeHandle();
-#else
-            return cxx::unexpected(error::Error{Errors::EditorNativeUiOutputIsNotImplementedOnThisPlatform});
-#endif
-            surface.vertical_sync = impl->config_.enable_vsync;
+            if (!rendering::makeWindowSurface(application.window->nativeWindow(), impl->config_.enable_vsync, surface))
+            {
+                return cxx::unexpected(error::Error{Errors::EditorNativeUiOutputIsNotImplementedOnThisPlatform});
+            }
             rendering::RenderExecutionConfig render_config;
             render_config.render.channel_name = "lux.editor.render";
             render_config.render.validation = impl->config_.enable_validation;

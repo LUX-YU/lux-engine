@@ -8,6 +8,7 @@
 #include <lux/engine/render/runtime/FeatureRegistration.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/rendering/WindowSurface.hpp>
 #include <lux/engine/window/GlfwRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 
@@ -202,8 +203,7 @@ int main(int argc, char**)
         TargetDesc description{320, 240, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::SURFACE};
         window->framebufferSize(description.width, description.height);
         SurfaceDescription surface;
-        surface.window.windows.hwnd = window->nativeHandle();
-        surface.vertical_sync = false;
+        check(makeWindowSurface(window->nativeWindow(), false, surface));
         auto target = call<CreateTarget>(*rendering, {description, surface});
         targets.push_back(target);
         CreateEffectRequest effect{target.description};
@@ -301,8 +301,7 @@ int main(int argc, char**)
     // Acquire succeeded, but preparation rejects before any rendering submit. Removing that
     // Target must still consume its WSI acquire signal before returning the window borrow.
     SurfaceDescription abandoned_surface;
-    abandoned_surface.window.windows.hwnd = first->nativeHandle();
-    abandoned_surface.vertical_sync = false;
+    check(makeWindowSurface(first->nativeWindow(), false, abandoned_surface));
     auto abandoned = call<CreateTarget>(*rendering, {targets[0].description, abandoned_surface});
     CreateEffectRequest failed_effect{abandoned.description};
     failed_effect.definition.features.push_back(

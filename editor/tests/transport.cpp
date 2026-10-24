@@ -6,6 +6,7 @@
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/rendering/WindowSurface.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -56,9 +57,7 @@ int main()
     configuration.device.texture_descriptors = true;
     auto rendering = take(RenderExecution::create(std::move(configuration), execution));
     SurfaceDescription surface;
-#if defined(_WIN32)
-    surface.window.windows.hwnd = window->nativeHandle();
-#endif
+    assert(makeWindowSurface(window->nativeWindow(), true, surface));
     auto& root = window->uiRoot();
     auto ui_scene = take(EditorUiScene::create(
         *rendering,

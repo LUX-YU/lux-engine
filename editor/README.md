@@ -103,7 +103,8 @@ The installed package is `lux-engine-editor-framework` under `lux::engine::edito
 
 - `lux_editor_project`: pure project values, codec and file IO; no Process/UI/Renderer dependency.
 - `lux_editor_context`: composition declarations, complete runtime directories and Process cancellation scopes; no UI or rendering implementation.
-- `lux_editor_ui`: native window/input and detached UI factory invocation; no scene_render or app dependency.
+- `lux_editor_ui`: Editor window policy and detached UI factory invocation; no scene_render or app dependency.
+  Ordered window input translation lives in `lux::ui::feedWindowInput`; native surface conversion lives in Engine Rendering.
 - `lux_editor_app`: typed Project Events, safe-point adoption, host and private UI Scene transport.
 - `lux_editor_scene_profiles`: concrete 3D authoring preset.
 

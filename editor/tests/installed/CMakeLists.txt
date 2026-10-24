@@ -273,6 +273,9 @@ set(
     rendering/RenderAssets
     rendering/RenderDiagnostics
     rendering/UiDrawInput
+    rendering/WindowSurface
+    window/NativeWindowHandle
+    ui/WindowInput
     process/asset_loading/VfsAssetReadEndpoint
     process/world_loading/WorldFileStorageSource
     error/Error

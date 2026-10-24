@@ -1,7 +1,7 @@
 #include <lux/engine/editor/EditorUiErrors.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
-#include <lux/engine/editor/detail/WindowInput.hpp>
 #include <lux/engine/ui/Root.hpp>
+#include <lux/engine/ui/WindowInput.hpp>
 #include <lux/engine/window/GlfwRuntime.hpp>
 
 namespace lux::editor
@@ -97,7 +97,7 @@ namespace lux::editor
     FrameworkResult<void> EditorWindow::sampleInput() noexcept
     {
         input_.sample(*this);
-        auto fed = feedWindowInput(*root_, input_.snapshot());
+        auto fed = ui::feedWindowInput(*root_, input_.snapshot());
         if (!fed)
         {
             return cxx::unexpected(

@@ -86,3 +86,11 @@ clip/image selections and the projection parameters; geometry remains the origin
 only a final non-four-byte-aligned copy fragment. Sampled UI input values are linear: use an SRGB Target for an
 already display-encoded LDR viewport, or a deliberately linear UNORM/float source. The final UI pass performs
 one display encoding and no tone mapping.
+
+## Window presentation
+
+When window support is enabled, `makeWindowSurface(window.nativeWindow(), vsync, surface)` translates the
+non-owning typed window value to NRI's surface description. It creates no device, window or swap chain.
+The caller keeps the actual window alive until its surface target is retired. Unsupported native handle
+forms return false; currently only the Windows path is implemented. Offscreen builds without window
+support omit this function and its installed header instead of advertising an unusable stub.

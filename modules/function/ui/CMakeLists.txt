@@ -59,6 +59,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Pane.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Element.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Theme.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/WindowInput.cpp
 )
 
 component_include_directories(
@@ -74,7 +75,7 @@ target_compile_definitions(ui PRIVATE LUX_FUNCTION_LIBRARY)
 
 target_link_libraries(
     ui
-    PRIVATE ui_imgui_backend imgui::core
+    PRIVATE ui_imgui_backend imgui::core lux::engine::function::input
     PUBLIC
         lux::engine::function::ui_input
         lux::cxx::core
@@ -92,7 +93,7 @@ add_custom_command(
 
 component_add_transitive_commands(
     ui
-    "find_package(lux-engine-function REQUIRED COMPONENTS ui_input)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS ui_input input)"
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description_types)"

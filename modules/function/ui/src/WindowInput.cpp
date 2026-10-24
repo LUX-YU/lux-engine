@@ -1,7 +1,9 @@
-#include <lux/engine/editor/detail/WindowInput.hpp>
 #include <lux/engine/input/InputSnapshot.hpp>
+#include <lux/engine/ui/Root.hpp>
+#include <lux/engine/ui/WindowInput.hpp>
 #include <optional>
-namespace lux::editor
+
+namespace lux::ui
 {
     namespace
     {
@@ -205,4 +207,4 @@ namespace lux::editor
         }
         return result;
     }
-} // namespace lux::editor
+} // namespace lux::ui

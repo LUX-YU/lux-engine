@@ -65,25 +65,6 @@ namespace
     {
     };
 
-    struct Tools final
-    {
-        unsigned serial;
-    };
-
-    bool match(const world::WorldDescription&) noexcept
-    {
-        return true;
-    }
-
-    bool alsoMatch(const world::WorldDescription&) noexcept
-    {
-        return true;
-    }
-
-    bool noMatch(const world::WorldDescription&) noexcept
-    {
-        return false;
-    }
 } // namespace
 
 int main(int argc, char** argv)
@@ -104,7 +85,7 @@ int main(int argc, char** argv)
     auto& runtime = object::ObjectRuntime::instance();
     assert(runtime.isCurrent());
     std::vector<int> destroyed;
-    unsigned constructed{}, attempts{}, tools{};
+    unsigned constructed{}, attempts{};
     asset::AssetVfs extension_assets;
     auto assemble = [&](EditorComposition& context) noexcept -> FrameworkResult<void>
     {
@@ -147,11 +128,6 @@ int main(int argc, char** argv)
                 return std::make_unique<Retry>();
             }
         ));
-        assert(context.registerSceneTool<Tools>(
-            &match,
-            [&](EditorContext&, const world::WorldDescription&) noexcept -> FrameworkResult<std::unique_ptr<Tools>>
-            { return std::make_unique<Tools>(++tools); }
-        ));
         assert(constructed == 0);
         static_assert(!api_contract::PublicServiceLookup<EditorComposition>);
         return {};
@@ -180,44 +156,10 @@ int main(int argc, char** argv)
         assert(!context.service<Recursive>());
         assert(!context.service<Retry>() && attempts == 1);
         assert(context.service<Retry>() && attempts == 2);
-        world::WorldDescription world;
-        auto a = context.sceneTools().create<Tools>(context, world);
-        auto b = context.sceneTools().create<Tools>(context, world);
-        assert(a && b && a->get() != b->get() && (*a)->serial == 1 && (*b)->serial == 2);
         static_assert(!api_contract::PublicRegistration<EditorServices>);
     };
     fixture::withContext({"First", path}, manifest("First"), assemble, inspect);
     assert((destroyed == std::vector<int>{2, 1}));
-    auto factory = [](EditorContext&,
-                      const world::WorldDescription&) noexcept -> FrameworkResult<std::unique_ptr<Tools>>
-    { return std::make_unique<Tools>(9); };
-    auto ambiguous_assembly = [&](EditorComposition& composition) noexcept -> FrameworkResult<void>
-    {
-        assert(composition.registerSceneTool<Tools>(&match, factory));
-        return composition.registerSceneTool<Tools>(&alsoMatch, factory);
-    };
-    fixture::withContext(
-        {"Second", path},
-        manifest("Second"),
-        ambiguous_assembly,
-        [](EditorContext& context) noexcept
-        {
-            auto result = context.sceneTools().create<Tools>(context, {});
-            assert(!result && result.error().type == error::errorId("lux.editor.ambiguous_scene_tool_rules"));
-        }
-    );
-    fixture::withContext(
-        {"Empty", path},
-        manifest("Empty"),
-        [](EditorComposition&) noexcept -> FrameworkResult<void> { return {}; },
-        [](EditorContext& context) noexcept
-        {
-            assert(!context.extensions().find<asset::AssetVfs>());
-            auto result = context.sceneTools().create<Tools>(context, {});
-            assert(!result && result.error().type == error::errorId("lux.editor.no_matching_scene_tool_rule"));
-        }
-    );
-
     // Both real Contexts coexist only during B's factory. Inspect isolation there,
     // before the normal safe point replaces A. No second Context constructor/API.
     const asset::AssetId id{*uuids::uuid::from_string("fedcba98-7654-3210-fedc-ba9876543210")};

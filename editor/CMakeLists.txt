@@ -72,7 +72,6 @@ add_component(
         context/src/EditorServices.cpp
         context/src/EditorUiRegistry.cpp
         context/src/SceneProfileRegistry.cpp
-        context/src/SceneToolRegistry.cpp
         context/src/EditorComposition.cpp
 )
 

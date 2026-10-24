@@ -6,7 +6,6 @@
 #include <lux/engine/editor/ProjectDescription.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
 #include <lux/engine/editor/SceneProfileRegistry.hpp>
-#include <lux/engine/editor/SceneToolRegistry.hpp>
 #include <lux/engine/process/asset_loading/AssetRead.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/scene/SceneInstanceLease.hpp>
@@ -106,11 +105,6 @@ namespace lux::editor
             return ui_;
         }
 
-        [[nodiscard]] const SceneToolRegistry& sceneTools() const noexcept
-        {
-            return scene_tools_;
-        }
-
         [[nodiscard]] const SceneProfileRegistry& sceneProfiles() const noexcept
         {
             return scene_profiles_;
@@ -158,7 +152,6 @@ namespace lux::editor
         std::shared_ptr<const project::SceneRegistrations> registrations_;
         asset::AssetVfs assets_;
         EditorUiRegistry ui_;
-        SceneToolRegistry scene_tools_;
         SceneProfileRegistry scene_profiles_;
         engine::ContextExtensions extensions_;
         // Instances die before factory captures, project paths, VFS and plugin registrations.

@@ -85,17 +85,17 @@ a worker must own those registrations for the whole call, not borrow a live Cont
 
 `sceneProfile3D()` contributes `lux.editor.scene.3d` and spatial.3d/transform.3d/mesh.3d/camera.3d capabilities. It uses
 verified project schema/system/feature registrations and their codecs to create a single-partition world with Parent,
-Transform3D, Mesh3D, Light3D and Camera author schemas; Transform, WorldLoading and Render systems; an empty Simulation;
+Transform3D, Mesh3D, Light3D and Camera author schemas; Transform, WorldLoading, MeshQuery and Render systems; an empty Simulation;
 and the typed deferred-rendering Scene projection. No editor camera, picking entity or runtime scene is created.
 Missing capabilities and incompatible configuration fail without partial output. A test-only 2D profile uses the same
 public registration/creation path without changing the host.
 
 `ScenePackageFile` reuses the existing ScenePackage/Pak/world codecs and the same file-publication primitive as the
 manifest. It preserves unknown package entries. There is no second scene format. These synchronous helpers are intended
-for worker-side IO; the async scene load/adopt layer belongs to PS3–PS5.
+for worker-side IO; ProjectScenes schedules read/decode/adoption and snapshot save on the shared execution resources.
 
-SceneToolRegistry remains **provisional and excluded from freeze**. Its replacement with 0..N applicable contributions
-is scheduled for PS6, after a real SceneSession/EditorScene composition exists. Profiles do not create tools.
+Tools use the actual SceneDocument, ComponentSchema and product UI factories. Profiles do not create tools;
+there is no World-name-matching SceneToolRegistry or frozen runtime tool directory.
 
 ## Components and verification
 

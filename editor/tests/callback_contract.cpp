@@ -24,11 +24,6 @@ void callbackContract(lux::editor::EditorComposition& context, lux::ui::Root& ro
         [](editor::EditorContext&) noexcept(LUX_CALLBACK_CASE != 3) -> editor::FrameworkResult<std::unique_ptr<int>>
         { return std::make_unique<int>(1); }
     ));
-    static_cast<void>(context.registerSceneTool<int>(
-        [](const world::WorldDescription&) noexcept { return true; },
-        [](editor::EditorContext&, const world::WorldDescription&) noexcept(LUX_CALLBACK_CASE != 4)
-            -> editor::FrameworkResult<std::unique_ptr<int>> { return std::make_unique<int>(2); }
-    ));
     auto profile = [](const editor::SceneCreateInfo&) noexcept(LUX_CALLBACK_CASE != 7) -> editor::SceneCreateResult
     { return cxx::unexpected(scene::ScenePackageFailure{scene::EScenePackageError::INVALID_ARGUMENT}); };
     static_cast<void>(context.registerSceneProfile({{}, "test.callback", "Test", {}, profile}));

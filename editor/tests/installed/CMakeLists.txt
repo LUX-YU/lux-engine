@@ -19,6 +19,9 @@ find_package(
         lux_editor_app
         lux_editor_scene
         lux_editor_scene_profiles
+        lux_editor_scene_tools
+        lux_editor_scene_document
+        lux_editor_assets
 )
 
 find_package(lux-engine-context REQUIRED COMPONENTS engine_context)
@@ -205,7 +208,6 @@ set(
     EditorServices
     EditorUiRegistry
     FrameworkResult
-    SceneToolRegistry
     ProjectDescription
     EditorLayout
     EditorUiFactories
@@ -223,6 +225,14 @@ set(
     SceneProfileRegistry
     SceneProfile3D
     ScenePackageFile
+    ProjectScenes
+    ProjectAssets
+    SceneDocument
+    SceneEdit
+    SceneHierarchyPane
+    SceneInspectorPane
+    SceneViewportPane
+    ModelPlacement
 )
 
 foreach(header IN LISTS framework_headers)
@@ -236,6 +246,7 @@ foreach(header IN LISTS framework_headers)
             lux::engine::editor::lux_editor_app
             lux::engine::editor::lux_editor_scene
             lux::engine::editor::lux_editor_scene_profiles
+            lux::engine::editor::lux_editor_scene_tools
     )
 
     if(MSVC)

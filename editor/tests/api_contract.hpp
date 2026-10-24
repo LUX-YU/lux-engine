@@ -30,7 +30,9 @@ namespace api_contract
     static_assert(!PublicFreeze<lux::editor::EditorContext>);
     static_assert(!PublicFreeze<lux::editor::EditorServices>);
     static_assert(!PublicFreeze<lux::editor::EditorUiRegistry>);
-    static_assert(!PublicFreeze<lux::editor::SceneToolRegistry>);
+    template <class T>
+    concept PublicSceneTools = requires(T& value) { value.sceneTools(); };
+    static_assert(!PublicSceneTools<lux::editor::EditorContext>);
     static_assert(!PublicFreeze<lux::editor::SceneProfileRegistry>);
     static_assert(!PublicFactoryReplacement<lux::editor::EditorUiRegistry>);
 } // namespace api_contract

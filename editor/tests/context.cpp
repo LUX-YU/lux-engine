@@ -63,25 +63,6 @@ namespace
     {
     };
 
-    struct Tools final
-    {
-        unsigned serial;
-    };
-
-    bool match(const world::WorldDescription&) noexcept
-    {
-        return true;
-    }
-
-    bool alsoMatch(const world::WorldDescription&) noexcept
-    {
-        return true;
-    }
-
-    bool noMatch(const world::WorldDescription&) noexcept
-    {
-        return false;
-    }
 } // namespace
 
 int main(int argc, char** argv)
@@ -121,12 +102,11 @@ int main(int argc, char** argv)
     static_assert(!std::is_move_constructible_v<EditorContext>);
     static_assert(!std::is_copy_constructible_v<EditorServices>);
     static_assert(!std::is_move_constructible_v<EditorUiRegistry>);
-    static_assert(!std::is_copy_constructible_v<SceneToolRegistry>);
     auto& queue = object::ObjectRuntime::instance();
     auto engine = engine::EngineContext::create({1, 64, {32}}, 64);
     assert(queue.isCurrent() && engine);
     std::vector<int> destroyed;
-    unsigned constructed{}, attempts{}, tools{};
+    unsigned constructed{}, attempts{};
     asset::AssetVfs external_assets;
     {
         auto assemble = [&](EditorComposition& context) noexcept -> FrameworkResult<void>
@@ -170,11 +150,6 @@ int main(int argc, char** argv)
                     return std::make_unique<Retry>();
                 }
             ));
-            assert(context.registerSceneTool<Tools>(
-                &match,
-                [&](EditorContext&, const world::WorldDescription&) noexcept -> FrameworkResult<std::unique_ptr<Tools>>
-                { return std::make_unique<Tools>(++tools); }
-            ));
             assert(constructed == 0);
             static_assert(!api_contract::PublicServiceLookup<EditorComposition>);
             return {};
@@ -207,30 +182,7 @@ int main(int argc, char** argv)
         assert(!context.service<Recursive>());
         assert(!context.service<Retry>() && attempts == 1);
         assert(context.service<Retry>() && attempts == 2);
-        world::WorldDescription world;
-        auto a = context.sceneTools().create<Tools>(context, world);
-        auto b = context.sceneTools().create<Tools>(context, world);
-        assert(a && b && a->get() != b->get() && (*a)->serial == 1 && (*b)->serial == 2);
         static_assert(!api_contract::PublicRegistration<EditorServices>);
-        auto factory = [](EditorContext&,
-                          const world::WorldDescription&) noexcept -> FrameworkResult<std::unique_ptr<Tools>>
-        { return std::make_unique<Tools>(9); };
-        auto assemble_second = [&](EditorComposition& second) noexcept -> FrameworkResult<void>
-        {
-            assert(second.registerSceneTool<Tools>(&match, factory));
-            assert(second.registerSceneTool<Tools>(&alsoMatch, factory));
-            return {};
-        };
-        auto second_owner = fixture::createContext(
-            **engine,
-            {"Second", std::filesystem::current_path()},
-            manifest("Second"),
-            assemble_second
-        );
-        assert(second_owner);
-        auto& second = **second_owner;
-        auto ambiguous = second.sceneTools().create<Tools>(second, world);
-        assert(!ambiguous && ambiguous.error().type == error::errorId("lux.editor.ambiguous_scene_tool_rules"));
         auto empty_assembly = [](EditorComposition&) noexcept -> FrameworkResult<void> { return {}; };
         auto empty = fixture::createContext(
             **engine,
@@ -240,11 +192,9 @@ int main(int argc, char** argv)
         );
         assert(empty);
         assert(!(*empty)->extensions().find<asset::AssetVfs>());
-        auto missing = (*empty)->sceneTools().create<Tools>(**empty, world);
-        assert(!missing && missing.error().type == error::errorId("lux.editor.no_matching_scene_tool_rule"));
     }
     assert((destroyed == std::vector<int>{2, 1}));
-    std::puts("PASS lazy services, build-only registration, recursion, retry, reverse destruction, typed tool rules");
+    std::puts("PASS lazy services, build-only registration, recursion, retry, reverse destruction");
     assert(argc == 2);
     const auto path = std::filesystem::path(argv[1]) / "framework-vfs";
     std::filesystem::create_directories(path);

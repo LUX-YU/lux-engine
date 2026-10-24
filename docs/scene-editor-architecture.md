@@ -303,7 +303,7 @@ Scope 任务完成、Runtime 实例数为零、ProjectScenes 清空各表达不�
 
 ### 6.1 不混淆三份不同信息
 
-| 现有或拟新增对象 | 唯一责任 |
+| 实际对象 | 唯一责任 |
 |---|---|
 | `ProjectAssets` | 源文件、导入设置、稳定 AssetId、子资产映射、Cooked 版本与导入诊断 |
 | `AssetVfs` | 按已发布目录读取资产字节，不拥有导入 UI 或 GPU |
@@ -489,7 +489,7 @@ MAINTENANCE 下仍按自己的时钟推进；图形实例为 true。随后仍遍
 
 ## 10 类型与文件的主要处置
 
-所有拟新增类型均为本设计的一部分，不能把下面的名称当作现有实现。完整逐文件顺序见外置实施计划。
+下表列出实际实现的主要边界。阶段顺序与历史验证材料保存在源码树外。
 
 | 类或文件 | 目标处置 |
 |---|---|
@@ -501,13 +501,13 @@ MAINTENANCE 下仍按自己的时钟推进；图形实例为 true。随后仍遍
 | `SceneEffect.hpp/.cpp` | 从明确配方和数据组合 Feature，保留端口协作 |
 | `Camera.hpp/.cpp` | 保留中立 Camera/姿态算法；删除注释中不必要的 Vulkan 身份，保留准确坐标约定 |
 | `SceneRenderInputs` | 迁为逐观察输入；删除单 target/唯一 primary 承担全部视图的假设，不留别名 |
-| `SceneDocument.hpp/.cpp`，拟新增 | 作者 revision、编辑/Play 实例身份、保存/撤销、选择和关闭；不拥有重复 Lease |
-| `ProjectScenes.hpp/.cpp`，拟新增 | 项目内已打开文档的唯一集合；沿现有 EditorServices 持有，不复制 SceneRuntime |
-| `SceneEdit.hpp`，拟新增 | 事务输入值；实际采用由 SceneDocument 执行，不引用 Runtime 来自行调度 |
-| `ProjectAssets.hpp/.cpp`，拟新增 | 导入记录与原子版本发布；复用 VFS、Cooker 与执行资源 |
+| `SceneDocument.hpp/.cpp` | 作者 revision、编辑/Play 实例身份、保存/撤销、选择和关闭；不拥有重复 Lease |
+| `ProjectScenes.hpp/.cpp` | 项目内已打开文档的唯一集合；沿现有 EditorServices 持有，不复制 SceneRuntime |
+| `SceneEdit.hpp` | 事务输入值；实际采用由 SceneDocument 执行，不引用 Runtime 来自行调度 |
+| `ProjectAssets.hpp/.cpp` | 导入记录与原子版本发布；复用 VFS、Cooker 与执行资源 |
 | 新增四个 Pane | 视口、资产浏览、Hierarchy、Inspector 的各自 UI；不互相持有业务指针 |
 | `EditorContext::adoptScene/scenes_` | 保留唯一 Lease 所有权，增加配对 retireScene；文档不再另持一份 Lease |
-| `SceneToolRegistry.hpp/.cpp` | 真实工具接入后删除 provisional World match/factory 通路 |
+| `SceneToolRegistry.hpp/.cpp` | 已删除 provisional World match/factory 通路；真实工具直接消费文档与 Schema |
 | `ScenePackageFile.cpp` | 分离纯编码和 blocking 原子写，保留格式与错误事实 |
 | `LuxEngine.cpp` | 装配/帧安全点/关闭，不承接 Inspector、导入或具体配方算法 |
 

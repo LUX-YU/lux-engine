@@ -26,6 +26,9 @@ target_include_directories(scene_render PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinc
 
 target_compile_definitions(scene_render PRIVATE LUX_ENGINE_SCENE_RENDER_LIBRARY)
 
+# Sender instantiations plus ASan instrumentation exceed COFF's normal section count.
+target_compile_options(scene_render PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>)
+
 target_link_libraries(
     scene_render
     PUBLIC

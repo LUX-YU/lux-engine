@@ -387,6 +387,13 @@ namespace lux::rendering
             reject(RenderError{kRuntimeUnsupported});
             return;
         }
+        // UINT32_MAX identifies the frame terminal in a correlation. Keep that representation boundary;
+        // it is not a configurable request budget and is checked before publishing any child correlation.
+        if (input.commands.size() >= UINT32_MAX)
+        {
+            reject(RenderError{kCommandContract});
+            return;
+        }
         auto& frame = impl_->frame_inputs[input.slot_];
         frame.groups.clear();
         std::size_t first = 0;

@@ -4,6 +4,29 @@ namespace lux::scene::detail
 {
     using namespace render;
 
+    CameraRecipeKey cameraRecipeKey(const Camera& camera, const CameraTarget& output, bool shadows) noexcept
+    {
+        CameraRecipeKey key{
+            output.target,
+            output.description.format,
+            output.description.kind,
+            output.description.samples,
+            output.description.sampled
+        };
+        if (shadows)
+        {
+            std::visit(
+                [&](const auto& projection) noexcept
+                {
+                    key.shadow_near = static_cast<float>(projection.near_plane);
+                    key.shadow_far = static_cast<float>(projection.far_plane);
+                },
+                camera.projection
+            );
+        }
+        return key;
+    }
+
     RenderResult<SceneCamera> prepareSceneCamera(const Camera& camera, const Eigen::Affine3d& transform) noexcept
     {
         auto view = cameraView(transform, Eigen::Vector3d::Zero());

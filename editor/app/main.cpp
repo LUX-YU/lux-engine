@@ -178,7 +178,11 @@ int main(int argc, char** argv)
                     {
                         return lux::cxx::unexpected(scenes.error());
                     }
-                    return std::make_unique<lux::editor::SceneHierarchyPane>(scenes->get(), description.title);
+                    return std::make_unique<lux::editor::SceneHierarchyPane>(
+                        scenes->get(),
+                        value.engine().execution(),
+                        description.title
+                    );
                 }
             );
             !registered)
@@ -195,7 +199,11 @@ int main(int argc, char** argv)
                     {
                         return lux::cxx::unexpected(scenes.error());
                     }
-                    return std::make_unique<lux::editor::SceneInspectorPane>(scenes->get(), description.title);
+                    return std::make_unique<lux::editor::SceneInspectorPane>(
+                        scenes->get(),
+                        value.engine().execution(),
+                        description.title
+                    );
                 }
             );
             !registered)

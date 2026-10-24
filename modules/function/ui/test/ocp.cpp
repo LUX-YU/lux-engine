@@ -139,7 +139,8 @@ namespace
         {
             assert(root.update({{1280, 800}, 0.016F}, data));
             const auto value = root.statistics();
-            assert(value.panes == panes && value.elements == panes * (elements + 1));
+            assert(value.panes == (n == 0 ? panes : 0));
+            assert(value.elements == (n == 0 ? panes * (elements + 1) : 0));
             assert(value.captured && value.draw_vertices && value.draw_indices && value.draw_commands);
             if (n >= 5)
             {
@@ -168,7 +169,7 @@ namespace
         assert(root.forEachPane(hide));
         assert(root.update());
         const auto idle = root.statistics();
-        assert(idle.panes == panes && idle.elements == panes * (elements + 1));
+        assert(idle.panes == 0 && idle.elements == 0); // No changes, no static maintenance callbacks.
         assert(!idle.captured && idle.draw.count() == 0 && idle.capture.count() == 0 && idle.draw_vertices == 0);
     }
 } // namespace

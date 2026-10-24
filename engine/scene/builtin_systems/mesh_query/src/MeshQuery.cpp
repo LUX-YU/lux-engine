@@ -234,6 +234,10 @@ namespace lux::scene
             }
             structure_dirty = false;
             ++rebuilds;
+            if (geometry_requests && !missing_geometry.empty())
+            {
+                geometry_requests(request_data, missing_geometry);
+            }
         }
 
         void update(Registry& registry)
@@ -365,6 +369,8 @@ namespace lux::scene
         std::vector<Node> nodes;
         std::vector<std::uint32_t> order, changed;
         std::vector<asset::AssetId> missing_geometry;
+        void* request_data{};
+        void (*geometry_requests)(void*, std::span<const asset::AssetId>) noexcept {};
         QueryResult<void> ready;
         bool structure_dirty{true};
         std::uint64_t rebuilds{}, leaf_updates{};
@@ -377,6 +383,19 @@ namespace lux::scene
     std::span<const asset::AssetId> MeshQuery::missingGeometry() const noexcept
     {
         return impl_->missing_geometry;
+    }
+
+    void MeshQuery::setGeometryRequests(
+        void* data,
+        void (*requests)(void*, std::span<const asset::AssetId>) noexcept
+    ) noexcept
+    {
+        impl_->request_data = data;
+        impl_->geometry_requests = requests;
+        if (requests && !impl_->missing_geometry.empty())
+        {
+            requests(data, impl_->missing_geometry);
+        }
     }
 
     void MeshQuery::clearGeometry() noexcept

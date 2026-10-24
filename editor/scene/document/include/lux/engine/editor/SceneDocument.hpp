@@ -28,6 +28,8 @@ namespace lux::editor
         void setReadOnly(bool) noexcept;
 
         [[nodiscard]] SceneEditResult<void> apply(const SceneEdit&) noexcept;
+        // Waits on the underlying instance, without retaining this document or changing a draft revision.
+        [[nodiscard]] exec::task<scene::SceneRuntimeResult<void>> whenEditable() const noexcept;
         [[nodiscard]] SceneEditResult<void> undo() noexcept;
         [[nodiscard]] SceneEditResult<void> redo() noexcept;
         // A drag may preview the same component write repeatedly. Every preview emits ordinary ECS updates;

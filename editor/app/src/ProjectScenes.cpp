@@ -15,6 +15,7 @@
 #include <lux/engine/rendering/RenderExecution.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/SceneError.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
 #include <lux/engine/ui/Command.hpp>
@@ -112,14 +113,126 @@ namespace lux::editor
 
     struct ProjectScenes::Impl final
     {
+        enum class ECloseCondition
+        {
+            VIEWPORT,
+            PLAY,
+            SAVE,
+            ALL
+        };
+
+        struct CloseWaiter
+        {
+            CloseWaiter* next{};
+            ECloseCondition kind;
+            SceneViewportId viewport;
+            asset::AssetId document;
+            void (*complete)(CloseWaiter&) noexcept {};
+            std::shared_ptr<const void> code_lifetime;
+        };
+
+        struct CloseCompletionSender final
+        {
+            using sender_concept = stdexec::sender_t;
+            using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t()>;
+            Impl& collection;
+            ECloseCondition kind;
+            SceneViewportId viewport{};
+            asset::AssetId document{};
+
+            template <class Receiver> struct Operation final : CloseWaiter
+            {
+                using operation_state_concept = stdexec::operation_state_t;
+                Impl& collection;
+                Receiver receiver;
+
+                Operation(const CloseCompletionSender& sender, Receiver receiver) noexcept
+                    : collection(sender.collection), receiver(std::move(receiver))
+                {
+                    this->kind = sender.kind;
+                    this->viewport = sender.viewport;
+                    this->document = sender.document;
+                    this->code_lifetime = execution::detail::getCompletionCode(stdexec::get_env(this->receiver));
+                    this->complete = [](CloseWaiter& waiter) noexcept
+                    {
+                        auto& operation = static_cast<Operation&>(waiter);
+                        stdexec::set_value(std::move(operation.receiver));
+                    };
+                }
+
+                void start() & noexcept
+                {
+                    collection.awaitClose(*this);
+                }
+            };
+
+            template <class Receiver> auto connect(Receiver receiver) const noexcept
+            {
+                return Operation<Receiver>{*this, std::move(receiver)};
+            }
+        };
+
+        bool closeConditionSatisfied(const CloseWaiter& waiter) const noexcept
+        {
+            if (waiter.kind == ECloseCondition::VIEWPORT)
+            {
+                return !viewports.find(waiter.viewport);
+            }
+            if (waiter.kind == ECloseCondition::ALL)
+            {
+                return operations == 0 && documents.empty() && viewports.empty();
+            }
+            const auto entry = documents.find(waiter.document);
+            return entry == documents.end() ||
+                   (waiter.kind == ECloseCondition::PLAY ? !entry->second->play : !entry->second->saving);
+        }
+
+        static void deliverClose(CloseWaiter& waiter) noexcept
+        {
+            auto code_lifetime = std::move(waiter.code_lifetime);
+            waiter.complete(waiter);
+        }
+
+        void awaitClose(CloseWaiter& waiter) noexcept
+        {
+            if (closeConditionSatisfied(waiter))
+            {
+                deliverClose(waiter);
+                return;
+            }
+            waiter.next = std::exchange(close_waiters, &waiter);
+        }
+
+        void completeClosures() noexcept
+        {
+            auto** link = &close_waiters;
+            while (*link)
+            {
+                auto* waiter = *link;
+                if (!closeConditionSatisfied(*waiter))
+                {
+                    link = &waiter->next;
+                    continue;
+                }
+                *link = waiter->next;
+                deliverClose(*waiter);
+            }
+        }
+
+        struct GeometryRequests final
+        {
+            Impl* collection{};
+            scene::SceneInstanceId instance;
+        };
+
         struct Play final
         {
             scene::SceneInstanceId instance;
             scene::RenderAssetInput inputs;
             scene::RenderSystem* rendering{};
-            std::optional<scene::InstanceRetirement> retirement;
             std::array<entt::scoped_connection, 3> camera_connections;
-            bool stopping{}, query_assets_changed{};
+            bool stopping{};
+            GeometryRequests geometry;
         };
 
         struct Entry final
@@ -128,11 +241,10 @@ namespace lux::editor
             std::filesystem::path path;
             scene::RenderAssetInput inputs;
             scene::RenderSystem* rendering{};
-            std::optional<scene::InstanceRetirement> retirement;
             std::array<entt::scoped_connection, 3> camera_connections;
             std::optional<Play> play;
             bool closing{}, saving{};
-            bool query_assets_changed{};
+            GeometryRequests geometry;
         };
 
         struct Viewport final
@@ -151,26 +263,31 @@ namespace lux::editor
             rdesc::UiImageToken image;
             render::RenderError error, camera_error;
             bool closing{}, pending{};
-            std::uint64_t retry_tick{}, failed_revision{}, requested_revision = 1;
+            std::uint64_t failed_revision{}, requested_revision = 1;
+            const simulation::ecs::Registry* registry{};
             bool play{};
         };
 
+        ProjectScenes& collection;
         EditorContext& context;
         ProjectAssets& project_assets;
-        object::Connection assets_changed;
+        object::Connection assets_changed, geometry_changed;
+        std::map<asset::AssetId, std::vector<scene::SceneInstanceId>> geometry_consumers;
         rendering::RenderExecution* rendering;
         rendering::RenderAssets* assets;
         EditorUiScene* ui;
         std::map<asset::AssetId, std::unique_ptr<Entry>> documents;
         cxx::StableSlotMap<Viewport, SceneViewportTag> viewports;
+        std::map<const simulation::ecs::Registry*, std::vector<SceneViewportId>> camera_viewports;
         std::optional<VProjectSceneFailure> failure;
         std::size_t operations{};
+        CloseWaiter* close_waiters{};
         std::uint64_t asset_revision{}, asset_source{};
         asset::AssetId active_document;
         bool closing{}, catalog_write_pending{};
 
-        Impl(EditorContext& context, ProjectAssets& project_assets) noexcept
-            : context(context), project_assets(project_assets),
+        Impl(ProjectScenes& collection, EditorContext& context, ProjectAssets& project_assets) noexcept
+            : collection(collection), context(context), project_assets(project_assets),
               rendering(context.extensions().find<rendering::RenderExecution>()),
               assets(context.extensions().find<rendering::RenderAssets>()),
               ui(context.extensions().find<EditorUiScene>())
@@ -227,7 +344,8 @@ namespace lux::editor
             std::shared_ptr<const scene::SceneDescription> description,
             scene::RenderAssetInput& inputs,
             scene::RenderSystem*& projection,
-            std::array<entt::scoped_connection, 3>& camera_connections
+            std::array<entt::scoped_connection, 3>& camera_connections,
+            GeometryRequests& requests
         ) noexcept
         {
             const auto world = std::shared_ptr<const world::WorldDescription>{package.world, &package.world->data()};
@@ -304,12 +422,24 @@ namespace lux::editor
             {
                 std::terminate(); // Same uninterrupted open-Context construction segment.
             }
+            requests = {this, instance};
             auto connect = [&](simulation::ecs::Registry& registry) noexcept
             {
+                if (auto* query = registry.ctx().find<scene::MeshQuery>())
+                {
+                    query->setGeometryRequests(
+                        &requests,
+                        [](void* data, std::span<const asset::AssetId> assets) noexcept
+                        {
+                            const auto& request = *static_cast<GeometryRequests*>(data);
+                            request.collection->requestGeometry(request.instance, assets);
+                        }
+                    );
+                }
                 camera_connections = {
                     registry.on_construct<scene::Camera>().connect<&Impl::camerasChanged>(*this),
                     registry.on_update<scene::Camera>().connect<&Impl::camerasChanged>(*this),
-                    registry.on_destroy<scene::Camera>().connect<&Impl::camerasChanged>(*this)
+                    registry.on_destroy<scene::Camera>().connect<&Impl::cameraRemoved>(*this)
                 };
             };
             if (auto connected = runtime.editInstance(instance, connect); !connected)
@@ -341,7 +471,8 @@ namespace lux::editor
                 std::shared_ptr<const scene::SceneDescription>{package.scene, &package.scene->data()},
                 entry->inputs,
                 entry->rendering,
-                entry->camera_connections
+                entry->camera_connections,
+                entry->geometry
             );
             if (!instance)
             {
@@ -568,34 +699,47 @@ namespace lux::editor
             co_return render::RenderResult<void>{};
         }
 
-        void startViewportChange(Viewport& viewport, exec::task<render::RenderResult<void>> work) noexcept
+        void requestViewportChange(Viewport& viewport) noexcept
         {
+            const bool failed_intent =
+                viewport.error.type != 0 && viewport.failed_revision == viewport.requested_revision;
+            if (viewport.pending || failed_intent)
+            {
+                return;
+            }
             viewport.pending = true;
-            const auto revision = viewport.requested_revision;
-            auto result =
-                execution::taskResult(stdexec::starts_on(context.engine().execution().mainScheduler(), std::move(work))
-                );
+            auto result = execution::taskResult(
+                stdexec::starts_on(context.engine().execution().mainScheduler(), synchronizeViewport(viewport))
+            );
             auto admitted = context.engine().execution().spawn(stdexec::then(
                 std::move(result),
-                [this, &viewport, revision](auto result) noexcept
+                [this, &viewport](auto result) noexcept
                 {
-                    viewport.failed_revision = revision;
+                    viewport.pending = false;
+                    viewport.failed_revision = viewport.requested_revision;
                     viewport.error = result                           ? render::RenderError{}
                                      : result.error().domainFailure() ? *result.error().domainFailure()
                                                                       : render::RenderError{render::kRuntimeState};
-                    const bool transient =
-                        viewport.error.type == render::kDeviceBusy || viewport.error.type == render::kRuntimeCapacity;
-                    if (transient)
+                    const auto id = viewport.id;
+                    if (result && viewport.closing)
                     {
-                        viewport.retry_tick = rendering->stats().ticks;
+                        auto& related = camera_viewports.find(viewport.registry)->second;
+                        std::erase(related, id);
+                        if (related.empty())
+                        {
+                            camera_viewports.erase(viewport.registry);
+                        }
+                        viewports.erase(id);
                     }
-                    viewport.pending = false;
+                    static_cast<void>(collection.emit(collection.viewportChanged, id));
+                    completeClosures();
                 }
             ));
             if (!admitted)
             {
                 viewport.pending = false;
                 viewport.error = execution::toError(admitted.error());
+                viewport.failed_revision = viewport.requested_revision;
             }
         }
 
@@ -611,13 +755,49 @@ namespace lux::editor
             return *(viewport.play ? entry.play->rendering : entry.rendering);
         }
 
-        void camerasChanged(simulation::ecs::Registry&, simulation::ecs::Entity) noexcept
+        void invalidateCameraSelection(
+            simulation::ecs::Registry& registry,
+            simulation::ecs::Entity camera,
+            bool removed
+        ) noexcept
         {
-            // Selection is an Editor policy. RenderSystem never searches for a primary camera.
-            for (auto& viewport : viewports)
+            const auto found = camera_viewports.find(&registry);
+            if (found == camera_viewports.end())
             {
-                viewport.camera_dirty = true;
+                return;
             }
+            const auto* residency = registry.ctx().find<scene::WorldResidency>();
+            const auto* description = registry.try_get<scene::Camera>(camera);
+            const bool primary = !removed && description && description->primary;
+            for (auto id : found->second)
+            {
+                auto& viewport = *viewports.find(id);
+                const bool selected = viewport.camera == camera;
+                const bool primary_changed = viewport.selection.kind == EViewportCamera::PRIMARY &&
+                                             (selected ? !primary : primary || viewport.camera_error.type != 0);
+                const bool fixed_changed =
+                    viewport.selection.kind != EViewportCamera::PRIMARY &&
+                    ((selected && removed) ||
+                     (!selected && !removed && viewport.selection.kind == EViewportCamera::SCENE && residency &&
+                      residency->identities().entity(viewport.selection.object) == camera));
+                const bool affected = primary_changed || fixed_changed;
+                if (affected && !viewport.closing)
+                {
+                    viewport.camera_dirty = true;
+                    ++viewport.requested_revision;
+                    requestViewportChange(viewport); // starts_on(Main); never mutates ECS in its observer.
+                }
+            }
+        }
+
+        void camerasChanged(simulation::ecs::Registry& registry, simulation::ecs::Entity camera) noexcept
+        {
+            invalidateCameraSelection(registry, camera, false);
+        }
+
+        void cameraRemoved(simulation::ecs::Registry& registry, simulation::ecs::Entity camera) noexcept
+        {
+            invalidateCameraSelection(registry, camera, true);
         }
 
         simulation::ecs::Entity selectCamera(simulation::ecs::Registry& registry, Viewport& viewport) noexcept
@@ -673,159 +853,306 @@ namespace lux::editor
             return selected;
         }
 
-        bool updateCameraTarget(Viewport& viewport) noexcept
+        exec::task<render::RenderResult<void>> synchronizeCamera(Viewport& viewport) noexcept
         {
             using namespace simulation::ecs;
             auto& system = projection(viewport);
             auto& runtime = context.engine().sceneRuntime();
-            bool finished = false;
-            auto edit = [&](Registry& registry) noexcept
+            for (;;)
             {
-                const auto selected = viewport.closing ? NullEntity : selectCamera(registry, viewport);
-                const bool change_camera = viewport.camera != selected;
-                if (viewport.camera_target.valid() && change_camera)
+                bool remove_image = false;
+                std::optional<std::pair<Entity, scene::CameraTargetId>> removed_target;
+                render::RenderError error;
+                auto apply = [&](Registry& registry) noexcept
                 {
-                    if (viewport.image.value != 0)
+                    const auto selected = viewport.closing ? NullEntity : selectCamera(registry, viewport);
+                    if (viewport.camera_target.valid() && viewport.camera != selected)
                     {
-                        startViewportChange(viewport, removeImage(viewport));
+                        if (viewport.image.value != 0)
+                        {
+                            remove_image = true;
+                        }
+                        else
+                        {
+                            removed_target = std::pair{viewport.camera, viewport.camera_target};
+                            static_cast<void>(system.removeCameraTarget(viewport.camera, viewport.camera_target));
+                        }
                         return;
                     }
-                    static_cast<void>(system.removeCameraTarget(viewport.camera, viewport.camera_target));
-                    if (!system.cameraTargetRetired(viewport.camera, viewport.camera_target))
+                    viewport.camera = selected;
+                    if (selected != NullEntity && !viewport.target.isNull())
                     {
-                        return;
+                        scene::CameraTarget desired;
+                        desired.target = viewport.target;
+                        desired.description = viewport.applied;
+                        desired.active = viewport.requested.width != 0 && viewport.requested.height != 0;
+                        desired.epoch = viewport.target_epoch;
+                        if (viewport.camera_target.valid())
+                        {
+                            const auto& targets = registry.get<scene::CameraTargetsComponent>(selected).targets;
+                            const auto found =
+                                std::ranges::find(targets, viewport.camera_target, &scene::CameraTarget::id);
+                            if (found->description != desired.description || found->active != desired.active ||
+                                found->epoch != desired.epoch)
+                            {
+                                static_cast<void>(system.updateCameraTarget(selected, viewport.camera_target, desired));
+                            }
+                        }
+                        else
+                        {
+                            auto added = system.addCameraTarget(selected, desired);
+                            if (added)
+                            {
+                                viewport.camera_target = *added;
+                            }
+                            else
+                            {
+                                error = added.error();
+                            }
+                        }
+                    }
+                    if (viewport.closing && registry.valid(viewport.free_camera))
+                    {
+                        registry.destroy(viewport.free_camera);
+                        viewport.free_camera = NullEntity;
+                    }
+                    viewport.camera_dirty = false;
+                };
+                auto edited = co_await runtime.editInstanceAsync(instance(viewport), apply);
+                if (!edited)
+                {
+                    const bool failed_scene = std::holds_alternative<scene::SceneDriveFailure>(edited.error().cause);
+                    if (viewport.closing && failed_scene)
+                    {
+                        if (viewport.camera_target.valid())
+                        {
+                            auto retired =
+                                co_await system.whenCameraTargetRetired(viewport.camera, viewport.camera_target);
+                            if (!retired)
+                            {
+                                co_return retired;
+                            }
+                            viewport.camera_target = {};
+                        }
+                        // Failed Scene maintenance owns withdrawal; its Registry retains the temporary camera
+                        // until retirement. No mutation of a stopped Scene is needed to release the output.
+                        co_return render::RenderResult<void>{};
+                    }
+                    co_return cxx::unexpected(scene::toError(edited.error()));
+                }
+                if (error.type != 0)
+                {
+                    co_return cxx::unexpected(error);
+                }
+                if (remove_image)
+                {
+                    auto removed = co_await removeImage(viewport);
+                    if (!removed)
+                    {
+                        co_return removed;
+                    }
+                    continue;
+                }
+                if (removed_target)
+                {
+                    auto retired =
+                        co_await system.whenCameraTargetRetired(removed_target->first, removed_target->second);
+                    if (!retired)
+                    {
+                        co_return retired;
                     }
                     viewport.camera_target = {};
+                    continue;
                 }
-                viewport.camera = selected;
-                if (selected != NullEntity && !viewport.target.isNull())
+                if (viewport.camera_target.valid())
                 {
-                    scene::CameraTarget desired;
-                    desired.target = viewport.target;
-                    desired.description = viewport.applied;
-                    desired.active = viewport.requested.width != 0 && viewport.requested.height != 0;
-                    desired.epoch = viewport.target_epoch;
-                    if (viewport.camera_target.valid())
-                    {
-                        const auto& targets = registry.get<scene::CameraTargetsComponent>(selected).targets;
-                        const auto found = std::ranges::find(targets, viewport.camera_target, &scene::CameraTarget::id);
-                        if (found->description != desired.description || found->active != desired.active ||
-                            found->epoch != desired.epoch)
-                        {
-                            static_cast<void>(system.updateCameraTarget(selected, viewport.camera_target, desired));
-                        }
-                    }
-                    else
-                    {
-                        auto added = system.addCameraTarget(selected, desired);
-                        if (!added)
-                        {
-                            viewport.camera_error = added.error();
-                            return;
-                        }
-                        viewport.camera_target = *added;
-                    }
+                    co_return co_await system.whenCameraTargetReady(viewport.camera, viewport.camera_target);
                 }
-                if (viewport.closing && registry.valid(viewport.free_camera))
-                {
-                    registry.destroy(viewport.free_camera);
-                    viewport.free_camera = NullEntity;
-                }
-                finished = true;
-            };
-            const auto edited = runtime.editInstance(instance(viewport), edit);
-            if (edited && finished)
-            {
-                viewport.camera_dirty = false;
-                return true;
+                co_return render::RenderResult<void>{};
             }
-            return false;
         }
 
-        bool maintainViewport(Viewport& viewport) noexcept
+        exec::task<render::RenderResult<void>> configureViewport(Viewport& viewport) noexcept
         {
-            if (viewport.pending)
-            {
-                return false;
-            }
             if (viewport.closing)
             {
                 if (viewport.image.value != 0)
                 {
-                    startViewportChange(viewport, removeImage(viewport));
-                    return false;
+                    auto removed = co_await removeImage(viewport);
+                    if (!removed)
+                    {
+                        co_return removed;
+                    }
                 }
-                if (!updateCameraTarget(viewport))
+                auto detached = co_await synchronizeCamera(viewport);
+                if (!detached)
                 {
-                    return false;
+                    co_return detached;
                 }
-                if (!viewport.target.isNull())
-                {
-                    startViewportChange(viewport, removeTarget(viewport));
-                    return false;
-                }
-                return true;
-            }
-            const bool retry =
-                viewport.error.type == render::kDeviceBusy || viewport.error.type == render::kRuntimeCapacity;
-            if ((retry && rendering->stats().ticks != viewport.retry_tick) ||
-                (viewport.error.type != 0 && viewport.failed_revision != viewport.requested_revision))
-            {
-                viewport.error = {};
+                co_return viewport.target.isNull() ? render::RenderResult<void>{} : co_await removeTarget(viewport);
             }
             const bool visible = viewport.requested.width != 0 && viewport.requested.height != 0;
-            if (visible && viewport.error.type == 0 && viewport.target.isNull())
+            if (visible && viewport.target.isNull())
             {
-                startViewportChange(viewport, createTarget(viewport));
-                return false;
-            }
-            if (visible && viewport.error.type == 0 && viewport.applied != viewport.requested)
-            {
-                startViewportChange(viewport, resizeTarget(viewport));
-                return false;
-            }
-            if (viewport.camera_dirty && !updateCameraTarget(viewport))
-            {
-                return false;
-            }
-            if (viewport.camera_target.valid())
-            {
-                const auto& system = projection(viewport);
-                const auto error = system.cameraTargetError(viewport.camera, viewport.camera_target);
-                if (error.type != 0)
+                auto created = co_await createTarget(viewport);
+                if (!created)
                 {
-                    viewport.camera_error = error;
-                    return false;
-                }
-                if (viewport.image.value == 0 && !system.attachment(viewport.camera, viewport.camera_target).isNull())
-                {
-                    auto image = ui->addTargetImage(viewport.target, viewport.applied);
-                    if (!image)
-                    {
-                        viewport.error = image.error();
-                    }
-                    else
-                    {
-                        viewport.image = *image;
-                    }
+                    co_return created;
                 }
             }
-            return false;
+            else if (visible && viewport.applied != viewport.requested)
+            {
+                auto resized = co_await resizeTarget(viewport);
+                if (!resized)
+                {
+                    co_return resized;
+                }
+            }
+            if (viewport.camera_dirty)
+            {
+                auto camera = co_await synchronizeCamera(viewport);
+                if (!camera)
+                {
+                    co_return camera;
+                }
+            }
+            if (viewport.camera_target.valid() && viewport.image.value == 0 && !viewport.closing)
+            {
+                auto image = ui->addTargetImage(viewport.target, viewport.applied);
+                if (!image)
+                {
+                    co_return cxx::unexpected(image.error());
+                }
+                viewport.image = *image;
+                co_return co_await ui->whenImageReady(*image);
+            }
+            co_return render::RenderResult<void>{};
         }
 
-        void maintainViews() noexcept
+        exec::task<render::RenderResult<void>> synchronizeViewport(Viewport& viewport) noexcept
         {
-            std::vector<SceneViewportId> removed;
-            for (auto& viewport : viewports)
+            for (;;)
             {
-                if (maintainViewport(viewport))
+                const auto revision = viewport.requested_revision;
+                auto result = co_await configureViewport(viewport);
+                if (!result && result.error().type == render::kDeviceBusy)
                 {
-                    removed.push_back(viewport.id);
+                    co_await rendering->mainClient().whenSubmittedFramesComplete();
+                    co_await stdexec::schedule(context.engine().execution().mainScheduler());
+                    continue;
+                }
+                if (revision == viewport.requested_revision)
+                {
+                    co_return result;
                 }
             }
-            for (auto id : removed)
+        }
+
+        exec::task<FrameworkResult<void>> closePlay(asset::AssetId id) noexcept
+        {
+            auto& entry = *documents.find(id)->second;
+            std::vector<SceneViewportId> outputs;
+            for (const auto& viewport : viewports)
             {
-                viewports.erase(id);
+                if (viewport.document == id && viewport.play)
+                {
+                    outputs.push_back(viewport.id);
+                }
+            }
+            for (auto viewport : outputs)
+            {
+                co_await stdexec::continues_on(
+                    CloseCompletionSender{*this, ECloseCondition::VIEWPORT, viewport},
+                    context.engine().execution().mainScheduler()
+                );
+            }
+            auto& play = *entry.play;
+            for (auto& connection : play.camera_connections)
+            {
+                connection.release();
+            }
+            auto retired = context.retireScene(play.instance);
+            if (!retired)
+            {
+                co_return cxx::unexpected(retired.error());
+            }
+            co_await stdexec::continues_on(retired->whenComplete(), context.engine().execution().mainScheduler());
+            entry.play.reset();
+            entry.document->setReadOnly(entry.closing);
+            static_cast<void>(collection.emit(collection.changed));
+            completeClosures();
+            co_return FrameworkResult<void>{};
+        }
+
+        exec::task<FrameworkResult<void>> closeDocument(asset::AssetId id) noexcept
+        {
+            auto& entry = *documents.find(id)->second;
+            std::vector<SceneViewportId> outputs;
+            for (const auto& viewport : viewports)
+            {
+                if (viewport.document == id)
+                {
+                    outputs.push_back(viewport.id);
+                }
+            }
+            for (auto viewport : outputs)
+            {
+                co_await stdexec::continues_on(
+                    CloseCompletionSender{*this, ECloseCondition::VIEWPORT, viewport},
+                    context.engine().execution().mainScheduler()
+                );
+            }
+            co_await stdexec::continues_on(
+                CloseCompletionSender{*this, ECloseCondition::PLAY, {}, id},
+                context.engine().execution().mainScheduler()
+            );
+            co_await stdexec::continues_on(
+                CloseCompletionSender{*this, ECloseCondition::SAVE, {}, id},
+                context.engine().execution().mainScheduler()
+            );
+            for (auto& connection : entry.camera_connections)
+            {
+                connection.release();
+            }
+            auto retired = context.retireScene(entry.document->instance());
+            if (!retired)
+            {
+                co_return cxx::unexpected(retired.error());
+            }
+            co_await stdexec::continues_on(retired->whenComplete(), context.engine().execution().mainScheduler());
+            documents.erase(id);
+            if (active_document == id)
+            {
+                active_document = documents.empty() ? asset::AssetId{} : documents.begin()->first;
+            }
+            static_cast<void>(collection.emit(collection.changed));
+            completeClosures();
+            co_return FrameworkResult<void>{};
+        }
+
+        void startClose(exec::task<FrameworkResult<void>> work) noexcept
+        {
+            // These ordinary close operations borrow the collection; its enclosing close waits on this count.
+            ++operations;
+            auto result =
+                execution::taskResult(stdexec::starts_on(context.engine().execution().mainScheduler(), std::move(work))
+                );
+            auto accepted = context.engine().execution().spawn(stdexec::then(
+                std::move(result),
+                [this](auto result) noexcept
+                {
+                    --operations;
+                    if (!result)
+                    {
+                        failure = result.error().domainFailure() ? *result.error().domainFailure()
+                                                                 : render::RenderError{render::kRuntimeState};
+                    }
+                    completeClosures();
+                }
+            ));
+            if (!accepted)
+            {
+                std::terminate();
             }
         }
 
@@ -835,6 +1162,7 @@ namespace lux::editor
         execution::ETaskState finishOpen(ProjectScenes& collection, DocumentResult result) noexcept
         {
             --operations;
+            completeClosures();
             if (!result)
             {
                 failure = taskFailure(result.error());
@@ -852,6 +1180,7 @@ namespace lux::editor
         execution::ETaskState finishCreate(ProjectScenes& collection, DocumentResult result) noexcept
         {
             --operations;
+            completeClosures();
             catalog_write_pending = false;
             if (!result)
             {
@@ -875,7 +1204,8 @@ namespace lux::editor
         execution::ETaskState finishSave(ProjectScenes& collection, asset::AssetId id, SaveResult result) noexcept
         {
             --operations;
-            documents.find(id)->second->saving = false; // Close retains a document until its publication ends.
+            documents.find(id)->second->saving = false;
+            completeClosures(); // The accepted save no longer borrows its document.
             if (!result)
             {
                 failure = taskFailure(result.error());
@@ -888,43 +1218,131 @@ namespace lux::editor
             return result ? execution::ETaskState::SUCCEEDED : execution::ETaskState::FAILED;
         }
 
-        void maintainQueries(scene::SceneInstanceId instance, bool& invalidated) noexcept
+        exec::task<void> adoptGeometry(
+            scene::SceneInstanceId instance,
+            asset::AssetId mesh,
+            std::uint64_t revision,
+            std::shared_ptr<const scene::MeshQueryGeometry> geometry,
+            scene::EMeshQueryError error
+        ) noexcept
         {
             auto& runtime = context.engine().sceneRuntime();
-            const auto borrowed = std::as_const(runtime).borrowInstance(instance);
-            if (!borrowed)
-            {
-                return;
-            }
-            const auto* query = borrowed->get().ctx().find<scene::MeshQuery>();
-            if (!query || (!invalidated && query->missingGeometry().empty()))
-            {
-                return;
-            }
             auto adopt = [&](simulation::ecs::Registry& registry) noexcept
             {
-                auto& query = registry.ctx().get<scene::MeshQuery>();
-                if (std::exchange(invalidated, false))
+                if (closing || asset_revision != revision)
                 {
-                    query.clearGeometry();
+                    return;
                 }
-                for (const auto id : query.missingGeometry())
+                if (auto* query = registry.ctx().find<scene::MeshQuery>())
                 {
-                    if (auto ready = project_assets.meshGeometry(id))
+                    if (geometry)
                     {
-                        query.setGeometry(id, std::move(ready));
+                        query->setGeometry(mesh, std::move(geometry));
                     }
-                    else if (auto started = project_assets.prepareMeshGeometry(id); !started)
+                    else
                     {
-                        if (started.error().code != EAssetImportError::BUSY)
-                        {
-                            query.setGeometryFailure(id, {scene::EMeshQueryError::ASSET_FAILURE, {}, id});
-                        }
+                        query->setGeometryFailure(mesh, {error, {}, mesh});
                     }
                 }
             };
-            static_cast<void>(runtime.editInstance(instance, adopt)
-            ); // Retry only if the structural safe point is busy.
+            static_cast<void>(co_await runtime.editInstanceAsync(instance, adopt));
+        }
+
+        exec::task<void> invalidateGeometry(scene::SceneInstanceId instance) noexcept
+        {
+            auto& runtime = context.engine().sceneRuntime();
+            auto invalidate = [this](simulation::ecs::Registry& registry) noexcept
+            {
+                if (closing)
+                {
+                    return;
+                }
+                if (auto* query = registry.ctx().find<scene::MeshQuery>())
+                {
+                    query->clearGeometry();
+                }
+            };
+            static_cast<void>(co_await runtime.editInstanceAsync(instance, invalidate));
+        }
+
+        void startQueryWork(exec::task<void> work) noexcept
+        {
+            ++operations;
+            auto result = execution::taskResult(stdexec::starts_on(
+                context.engine().execution().mainScheduler(),
+                stdexec::then(std::move(work), []() noexcept { return FrameworkResult<void>{}; })
+            ));
+            auto accepted = context.engine().execution().spawn(stdexec::then(
+                std::move(result),
+                [this](auto result) noexcept
+                {
+                    --operations;
+                    if (!result)
+                    {
+                        failure = render::RenderError{render::kRuntimeState};
+                    }
+                    completeClosures();
+                }
+            ));
+            if (!accepted)
+            {
+                std::terminate();
+            }
+        }
+
+        void requestGeometry(scene::SceneInstanceId instance, std::span<const asset::AssetId> meshes) noexcept
+        {
+            if (closing)
+            {
+                return;
+            }
+            for (auto mesh : meshes)
+            {
+                if (auto ready = project_assets.meshGeometry(mesh))
+                {
+                    startQueryWork(adoptGeometry(instance, mesh, asset_revision, std::move(ready), {}));
+                    continue;
+                }
+                auto& consumers = geometry_consumers[mesh];
+                if (std::ranges::find(consumers, instance) != consumers.end())
+                {
+                    continue;
+                }
+                consumers.push_back(instance);
+                if (auto prepared = project_assets.prepareMeshGeometry(mesh); !prepared)
+                {
+                    const auto error = prepared.error().code == EAssetImportError::BUSY
+                                           ? scene::EMeshQueryError::CAPACITY
+                                           : scene::EMeshQueryError::ASSET_FAILURE;
+                    startQueryWork(adoptGeometry(instance, mesh, asset_revision, {}, error));
+                    std::erase(consumers, instance);
+                    if (consumers.empty())
+                    {
+                        geometry_consumers.erase(mesh);
+                    }
+                }
+            }
+        }
+
+        void geometryReady(asset::AssetId mesh, std::uint64_t revision) noexcept
+        {
+            if (closing || revision != asset_revision)
+            {
+                return;
+            }
+            const auto found = geometry_consumers.find(mesh);
+            if (found == geometry_consumers.end())
+            {
+                return;
+            }
+            auto consumers = std::move(found->second);
+            geometry_consumers.erase(found);
+            const auto geometry = project_assets.meshGeometry(mesh);
+            for (auto instance : consumers)
+            {
+                startQueryWork(adoptGeometry(instance, mesh, revision, geometry, scene::EMeshQueryError::ASSET_FAILURE)
+                );
+            }
         }
     };
 
@@ -995,7 +1413,7 @@ namespace lux::editor
     }
 
     ProjectScenes::ProjectScenes(EditorContext& context, ProjectAssets& assets) noexcept
-        : impl_(std::make_unique<Impl>(context, assets))
+        : impl_(std::make_unique<Impl>(*this, context, assets))
     {
         const auto id = objectId();
         impl_->asset_source = ((std::uint64_t{id.gen} << 32) | id.index) + 1;
@@ -1016,6 +1434,18 @@ namespace lux::editor
             std::terminate();
         }
         impl_->assets_changed = std::move(*connection);
+        auto geometry = connect(
+            &assets,
+            &ProjectAssets::geometryChanged,
+            this,
+            [this](const MeshGeometryChanged& result) noexcept { impl_->geometryReady(result.mesh, result.revision); },
+            object::EDelivery::DIRECT
+        );
+        if (!geometry)
+        {
+            std::terminate();
+        }
+        impl_->geometry_changed = std::move(*geometry);
         setAssetRevision(assets.revision());
     }
 
@@ -1264,7 +1694,8 @@ namespace lux::editor
             std::move(*description),
             play.inputs,
             play.rendering,
-            play.camera_connections
+            play.camera_connections,
+            play.geometry
         );
         if (!instance)
         {
@@ -1280,7 +1711,7 @@ namespace lux::editor
     void ProjectScenes::stopPlay(asset::AssetId id) noexcept
     {
         const auto found = impl_->documents.find(id);
-        if (found == impl_->documents.end() || !found->second->play)
+        if (found == impl_->documents.end() || !found->second->play || found->second->play->stopping)
         {
             return;
         }
@@ -1288,8 +1719,14 @@ namespace lux::editor
         static_cast<void>(impl_->context.engine().sceneRuntime().pauseSimulation(found->second->play->instance));
         for (auto& viewport : impl_->viewports)
         {
-            viewport.closing |= viewport.document == id && viewport.play;
+            if (viewport.document == id && viewport.play)
+            {
+                viewport.closing = true;
+                ++viewport.requested_revision;
+                impl_->requestViewportChange(viewport);
+            }
         }
+        impl_->startClose(impl_->closePlay(id));
         static_cast<void>(emit(changed));
     }
 
@@ -1314,14 +1751,24 @@ namespace lux::editor
             return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::NOT_OPEN});
         }
         auto& entry = *found->second;
+        if (entry.closing)
+        {
+            return {};
+        }
         entry.closing = true;
         entry.document->setReadOnly(true);
         stopPlay(id);
         static_cast<void>(impl_->context.engine().sceneRuntime().pauseSimulation(entry.document->instance()));
         for (auto& viewport : impl_->viewports)
         {
-            viewport.closing |= viewport.document == id;
+            if (viewport.document == id)
+            {
+                viewport.closing = true;
+                ++viewport.requested_revision;
+                impl_->requestViewportChange(viewport);
+            }
         }
+        impl_->startClose(impl_->closeDocument(id));
         static_cast<void>(emit(changed));
         return {};
     }
@@ -1335,101 +1782,17 @@ namespace lux::editor
         }
     }
 
-    void ProjectScenes::maintain() noexcept
+    exec::task<void> ProjectScenes::closeAsync() noexcept
     {
-        if (impl_->ui)
+        closeAll();
+        if (settled())
         {
-            impl_->maintainViews();
+            co_return;
         }
-        bool removed = false;
-        for (auto entry = impl_->documents.begin(); entry != impl_->documents.end();)
-        {
-            auto& value = *entry->second;
-            if (!value.closing)
-            {
-                impl_->maintainQueries(value.document->instance(), value.query_assets_changed);
-            }
-            if (value.play && !value.play->stopping)
-            {
-                impl_->maintainQueries(value.play->instance, value.play->query_assets_changed);
-            }
-            if (value.play && value.play->stopping)
-            {
-                const bool has_play_view = std::ranges::any_of(
-                    impl_->viewports,
-                    [&](const auto& viewport) noexcept { return viewport.document == entry->first && viewport.play; }
-                );
-                auto& play = *value.play;
-                if (!has_play_view && !play.retirement)
-                {
-                    // These sinks borrow Registry storage, which retirement may destroy before Play is erased.
-                    for (auto& connection : play.camera_connections)
-                    {
-                        connection.release();
-                    }
-                    auto retired = impl_->context.retireScene(play.instance);
-                    if (retired)
-                    {
-                        play.retirement = *retired;
-                    }
-                    else
-                    {
-                        impl_->failure = retired.error();
-                    }
-                }
-                if (play.retirement && play.retirement->complete())
-                {
-                    value.play.reset();
-                    value.document->setReadOnly(value.closing);
-                    removed = true;
-                }
-            }
-            if (!value.closing)
-            {
-                ++entry;
-                continue;
-            }
-            bool has_view = false;
-            for (const auto& viewport : impl_->viewports)
-            {
-                has_view |= viewport.document == entry->first;
-            }
-            if (has_view || value.saving || value.play)
-            {
-                ++entry;
-                continue;
-            }
-            if (!value.retirement)
-            {
-                for (auto& connection : value.camera_connections)
-                {
-                    connection.release();
-                }
-                auto retired = impl_->context.retireScene(value.document->instance());
-                if (!retired)
-                {
-                    impl_->failure = retired.error();
-                    ++entry;
-                    continue;
-                }
-                value.retirement = *retired;
-            }
-            if (!value.retirement->complete())
-            {
-                ++entry;
-                continue;
-            }
-            entry = impl_->documents.erase(entry);
-            removed = true;
-        }
-        if (removed)
-        {
-            if (!impl_->documents.contains(impl_->active_document))
-            {
-                impl_->active_document = impl_->documents.empty() ? asset::AssetId{} : impl_->documents.begin()->first;
-            }
-            static_cast<void>(emit(changed));
-        }
+        co_await stdexec::continues_on(
+            Impl::CloseCompletionSender{*impl_, Impl::ECloseCondition::ALL},
+            impl_->context.engine().execution().mainScheduler()
+        );
     }
 
     void ProjectScenes::setAssetRevision(std::uint64_t revision) noexcept
@@ -1439,17 +1802,18 @@ namespace lux::editor
             return;
         }
         impl_->asset_revision = revision;
+        impl_->geometry_consumers.clear();
         auto snapshot = impl_->context.assets().view().capture();
         for (auto& [id, entry] : impl_->documents)
         {
             entry->inputs.revision = revision;
             entry->inputs.snapshot = snapshot;
-            entry->query_assets_changed = true;
+            impl_->startQueryWork(impl_->invalidateGeometry(entry->document->instance()));
             if (entry->play)
             {
                 entry->play->inputs.revision = revision;
                 entry->play->inputs.snapshot = snapshot;
-                entry->play->query_assets_changed = true;
+                impl_->startQueryWork(impl_->invalidateGeometry(entry->play->instance));
             }
         }
     }
@@ -1486,7 +1850,13 @@ namespace lux::editor
         viewport
             .requested = {width, height, rdesc::ETextureFormat::RGBA8_UNORM, 1, render::ETargetKind::OFFSCREEN, true};
         const auto id = impl_->viewports.emplace(std::move(viewport));
-        impl_->viewports.find(id)->id = id;
+        auto& installed = *impl_->viewports.find(id);
+        installed.id = id;
+        const auto registry =
+            std::as_const(impl_->context.engine().sceneRuntime()).borrowInstance(impl_->instance(installed));
+        installed.registry = &registry->get();
+        impl_->camera_viewports[installed.registry].push_back(id);
+        impl_->requestViewportChange(installed);
         return id;
     }
 
@@ -1504,6 +1874,7 @@ namespace lux::editor
             viewport->error = {}; // A new size is a new attempt; the failed size is not retried every tick.
             viewport->requested.width = width;
             viewport->requested.height = height;
+            impl_->requestViewportChange(*viewport);
         }
         return true;
     }
@@ -1519,6 +1890,8 @@ namespace lux::editor
         {
             viewport->selection = selection;
             viewport->camera_dirty = true;
+            ++viewport->requested_revision;
+            impl_->requestViewportChange(*viewport);
         }
         return true;
     }
@@ -1546,6 +1919,8 @@ namespace lux::editor
         if (auto* viewport = impl_->viewports.find(id))
         {
             viewport->closing = true;
+            ++viewport->requested_revision;
+            impl_->requestViewportChange(*viewport);
         }
     }
 

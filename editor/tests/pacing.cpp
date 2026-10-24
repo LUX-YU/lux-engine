@@ -33,6 +33,7 @@ namespace
     {
         explicit Probe(ProbeState& state) : Pane("Pacing probe"), label("Actual rendered content"), state(state)
         {
+            setContinuousUpdate(true);
             assert(addElement(label));
         }
 
@@ -243,7 +244,7 @@ namespace
         assert(state.destroyed);
         // These counters describe the last UI update, not the remaining live objects.
         assert(host->window().uiRoot().statistics().panes == 1);
-        assert(host->window().uiRoot().statistics().elements == 1);
+        assert(host->window().uiRoot().statistics().elements == 0); // Static Label has no repeated maintenance.
     }
 
     void closeDuringMaintenance()

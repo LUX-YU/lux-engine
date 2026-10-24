@@ -32,6 +32,7 @@ namespace
         Probe(Counts& counts, EditorContext* context = nullptr)
             : Pane("Probe"), counts_(counts), context_(context), content_(counts)
         {
+            setContinuousUpdate(true);
             assert(addElement(content_));
         }
 
@@ -48,7 +49,10 @@ namespace
         class Content final : public ui::Element
         {
         public:
-            explicit Content(Counts& counts) : counts_(counts) {}
+            explicit Content(Counts& counts) : counts_(counts)
+            {
+                setContinuousUpdate(true);
+            }
 
         private:
             void update() noexcept override

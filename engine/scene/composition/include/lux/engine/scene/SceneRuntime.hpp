@@ -1,4 +1,5 @@
 #pragma once
+#include <exec/task.hpp>
 
 #include <lux/engine/core/execution/Timer.hpp>
 #include <lux/engine/scene/Clock.hpp>
@@ -237,6 +238,16 @@ namespace lux::scene
         // Main-only synchronous edit. Rejects in-flight Simulation work and nested drive/structural calls.
         // Registry references and prepared edits must not escape this callback.
         [[nodiscard]] SceneRuntimeResult<void> editInstance(
+            SceneInstanceId,
+            cxx::function_ref<void(simulation::ecs::Registry&)> edit
+        ) noexcept;
+        // Finite Main-thread wait for this instance's next editable safe point. Completion resumes on the
+        // shared MainScheduler; retirement/identity failure is returned, not mistaken for edit permission.
+        // The caller revalidates its author revision inside editInstance; this operation owns no Registry borrow.
+        [[nodiscard]] exec::task<SceneRuntimeResult<void>> whenEditable(SceneInstanceId) noexcept;
+        // Apply at the actual Scene safe point, then deliver completion on Main. The callback is borrowed
+        // until completion; its captures must remain alive and may not recursively drive/edit the Runtime.
+        [[nodiscard]] exec::task<SceneRuntimeResult<void>> editInstanceAsync(
             SceneInstanceId,
             cxx::function_ref<void(simulation::ecs::Registry&)> edit
         ) noexcept;

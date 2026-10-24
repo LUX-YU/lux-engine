@@ -16,10 +16,12 @@
 namespace
 {
     using namespace lux;
+
     struct Counts final
     {
         unsigned destroyed{}, deleted{}, callbacks{};
     };
+
     class Item final : public ui::Element
     {
     public:
@@ -37,6 +39,7 @@ namespace
         ui::Pane* window{};
         ui::Element* candidate{};
         unsigned draws{}, measurements{}, events{}, finishes{};
+
         void finishEdit(bool = false) noexcept override
         {
             ++finishes;
@@ -77,10 +80,14 @@ namespace
 
         Counts& counts_;
     };
+
     class Window final : public ui::Pane
     {
     public:
-        Window(const char* id, Counts& counts) : Pane(id), counts_(counts) {}
+        Window(const char* id, Counts& counts) : Pane(id), counts_(counts)
+        {
+            setContinuousUpdate(true);
+        }
 
         ~Window() override
         {
@@ -90,6 +97,7 @@ namespace
 
         void (*on_update)(Window&) noexcept {};
         object::ObjectRuntime* messages{};
+
         void receive(const unsigned&) noexcept
         {
             ++counts_.callbacks;
@@ -111,6 +119,7 @@ namespace
 
         Counts& counts_;
     };
+
     static_assert(!std::derived_from<ui::Pane, ui::Element>);
     static_assert(!std::is_copy_constructible_v<ui::Root> && !std::is_move_constructible_v<ui::Root>);
 
@@ -225,6 +234,7 @@ namespace
         auto root = ui::Root::create();
         assert(root);
         Item external("external-item", counts);
+
         class Composite final : public ui::Pane
         {
         public:
@@ -242,6 +252,7 @@ namespace
             Counts& counts_;
             ui::Layout layout_{};
         };
+
         auto& pane = ui_test::makePane<Composite>(**root, counts, external);
         assert(external.parent() == pane.content() && external.attachedRoot() == root->get());
         root->reset();
@@ -494,11 +505,13 @@ namespace
         {
         public:
             object::TSignal<unsigned> changed{*this};
+
             auto send() noexcept
             {
                 return emit(changed, 1U);
             }
         } sender;
+
         Counts counts;
         auto root = ui::Root::create();
         assert(root);
@@ -631,10 +644,12 @@ namespace
         struct Prepare final
         {
         };
+
         struct Receiver final : object::LuxObject
         {
             ui::Root& root;
             bool prepared{};
+
             explicit Receiver(ui::Root& value) noexcept : root(value) {}
 
             void event(object::EventView& event) noexcept override
@@ -653,6 +668,7 @@ namespace
                 event.accept();
             }
         };
+
         auto root = ui::Root::create();
         assert(root);
         Receiver receiver{**root};

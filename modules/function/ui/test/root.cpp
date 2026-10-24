@@ -100,7 +100,10 @@ namespace
     class ChangeElement final : public lux::ui::Element
     {
     public:
-        ChangeElement() : Element{} {}
+        ChangeElement() : Element{}
+        {
+            setContinuousUpdate(true);
+        }
 
         unsigned applications{}, updates{}, draws{}, extra{};
         bool defer_draw{}, defer_update{}, repeat{};
@@ -333,6 +336,7 @@ namespace
     public:
         explicit Probe(const char* id) : lux::ui::Pane(id)
         {
+            setContinuousUpdate(true);
             assert(addElement(probe_content_));
         }
 
@@ -440,6 +444,22 @@ int main(int argc, char** argv)
     auto font = (*first)->fontAtlas();
     assert(font && font->pixels.size() == std::size_t(font->width) * font->height * 4);
     ui::DrawData slot;
+    {
+        auto& passive = ui_test::makePane<Probe>(**first, "requested maintenance");
+        passive.setContinuousUpdate(false);
+        assert((*first)->update());
+        const auto initial = passive.updates;
+        for (unsigned frame = 0; frame < 64; ++frame)
+        {
+            assert((*first)->update());
+        }
+        assert(passive.updates == initial && (*first)->statistics().panes == 0);
+        passive.requestUpdate();
+        passive.requestUpdate();
+        assert((*first)->update());
+        assert(passive.updates == initial + 1 && (*first)->statistics().panes == 1);
+        assert((*first)->clearPanes());
+    }
     {
         auto& parent = ui_test::makePane<Probe>(**first, "parent");
         parent.nested = true;

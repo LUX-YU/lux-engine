@@ -23,8 +23,10 @@ namespace element_checks
         template <class Parent>
         Item(Parent& parent, const char* id, ui::Size preferred = {40, 20}) : ui::Element{}, preferred(preferred)
         {
+            setContinuousUpdate(true);
             assert(parent.addElement(*this));
         }
+
         ui::Size preferred;
         unsigned draws{}, updates{}, measures{}, events{};
         bool wrap{}, accept{};
@@ -34,6 +36,7 @@ namespace element_checks
         {
             return {{10, 10}, preferred};
         }
+
         ui::SizeHint measureContent(float width) noexcept override
         {
             ++measures;
@@ -41,14 +44,17 @@ namespace element_checks
                 wrap ? std::ceil(preferred.width / std::max(1.F, width)) * preferred.height : preferred.height;
             return {{10, 10}, {preferred.width, height}};
         }
+
         void draw() noexcept override
         {
             ++draws;
         }
+
         void update() noexcept override
         {
             ++updates;
         }
+
         void event(object::EventView& event) noexcept override
         {
             ++events;
@@ -58,10 +64,15 @@ namespace element_checks
             }
         }
     };
+
     class Owner final : public ui::Pane
     {
     public:
-        Owner() : ui::Pane("Owner"), item(std::make_unique<Item>(*this, "old")) {}
+        Owner() : ui::Pane("Owner"), item(std::make_unique<Item>(*this, "old"))
+        {
+            setContinuousUpdate(true);
+        }
+
         std::unique_ptr<Item> item;
         bool replace{};
 

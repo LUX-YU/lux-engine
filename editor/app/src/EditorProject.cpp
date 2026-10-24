@@ -11,27 +11,28 @@ namespace lux::editor::detail
 
     EditorProject::~EditorProject() noexcept = default;
 
-    void EditorProject::beginClose() noexcept
+    std::optional<exec::task<void>> EditorProject::close() noexcept
     {
         ui = {};
         scenes = context->services().constructed<ProjectScenes>();
         if (scenes)
         {
             scenes->closeAll();
-        }
-    }
-
-    bool EditorProject::advanceClose() noexcept
-    {
-        if (scenes)
-        {
-            scenes->maintain();
             if (!scenes->settled())
             {
-                return false;
+                return completeClose();
             }
         }
         context->close();
-        return context->finishClose();
+        return context->finishClose() ? std::nullopt : std::optional{completeClose()};
+    }
+
+    exec::task<void> EditorProject::completeClose() noexcept
+    {
+        if (scenes)
+        {
+            co_await scenes->closeAsync();
+        }
+        co_await context->closeAsync();
     }
 } // namespace lux::editor::detail

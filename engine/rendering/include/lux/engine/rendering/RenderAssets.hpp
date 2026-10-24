@@ -55,6 +55,25 @@ namespace lux::rendering
     class RenderAssets final
     {
     public:
+        // Main-thread fact subscription. Callback records intent only; it may not mutate connections.
+        // Scene owns the connection and disconnects before destruction; RenderAssets outlives all Scenes.
+        class AvailabilityConnection final
+        {
+        public:
+            AvailabilityConnection(RenderAssets&, void*, void (*)(void*, RenderAssetVersion) noexcept) noexcept;
+            ~AvailabilityConnection() noexcept;
+            AvailabilityConnection(const AvailabilityConnection&) = delete;
+            AvailabilityConnection& operator=(const AvailabilityConnection&) = delete;
+
+        private:
+            friend class RenderAssets;
+            RenderAssets& assets_;
+            AvailabilityConnection* next_{};
+            AvailabilityConnection** previous_{};
+            void* receiver_;
+            void (*completed_)(void*, RenderAssetVersion) noexcept;
+        };
+
         using CreateResult = render::RenderResult<std::unique_ptr<RenderAssets>>;
 
         // Cold startup: installs the two global Storage instances through ordinary typed commands.
@@ -97,14 +116,14 @@ namespace lux::rendering
         [[nodiscard]] const RenderTexture* texture(RenderAssetVersion) const noexcept;
         [[nodiscard]] const rdesc::MaterialDescription* material(RenderAssetVersion) const noexcept;
         [[nodiscard]] render::RenderError failure(RenderAssetVersion) const noexcept;
-        [[nodiscard]] std::uint64_t revision() const noexcept;
 
         // Stops new demands and decoding, not accepted GPU work. Successful late uploads are released
         // through Main frames. Existing Scene material/instance references must already be removed.
         void close() noexcept;
-        // Main maintenance: retries only zero-reference releases held by real request backpressure.
-        void maintain() noexcept;
+        // No outstanding reads or replies. Failed release records remain owned until final Server cleanup;
+        // completion is not success: inspect releaseFailure() before ending the rendering session.
         [[nodiscard]] bool settled() const noexcept;
+        [[nodiscard]] render::RenderError releaseFailure() const noexcept;
 
     private:
         struct Impl;

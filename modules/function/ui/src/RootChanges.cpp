@@ -4,6 +4,98 @@
 
 namespace lux::ui
 {
+    void Root::updatePane(object::LuxObject& value) noexcept
+    {
+        auto& pane = static_cast<Pane&>(value);
+        pane.update_requested_ = false;
+        ++pane.root_->impl_->statistics.panes;
+        pane.update();
+    }
+
+    void Root::updateElement(object::LuxObject& value) noexcept
+    {
+        auto& element = static_cast<Element&>(value);
+        element.update_requested_ = false;
+        ++element.root().impl_->statistics.elements;
+        element.update();
+    }
+
+    void Root::Impl::setContinuousUpdate(StoredTarget target, ChangeCallback apply, bool enabled) noexcept
+    {
+        auto found =
+            std::ranges::find_if(continuous_updates, [&](const auto& entry) { return entry.target == target; });
+        if (enabled)
+        {
+            if (found == continuous_updates.end())
+            {
+                continuous_updates.push_back({target, apply});
+            }
+            else
+            {
+                found->apply = apply;
+            }
+        }
+        else if (found != continuous_updates.end())
+        {
+            if (updating)
+            {
+                found->apply = nullptr;
+                removed_updates = true;
+            }
+            else
+            {
+                continuous_updates.erase(found);
+            }
+        }
+    }
+
+    void Root::setContinuousUpdate(Pane& pane, bool enabled) noexcept
+    {
+        requireOwner();
+        impl_->setContinuousUpdate(Impl::store(*this, pane, pane), &Root::updatePane, enabled);
+    }
+
+    void Root::setContinuousUpdate(Element& element, bool enabled) noexcept
+    {
+        requireOwner();
+        impl_->setContinuousUpdate(Impl::store(*this, element.pane(), element), &Root::updateElement, enabled);
+    }
+
+    void Root::activateUpdates(Element& subtree) noexcept
+    {
+        visitSubtree(
+            subtree,
+            [&](object::LuxObject& object) noexcept
+            {
+                auto& element = static_cast<Element&>(object);
+                if (element.continuous_update_)
+                {
+                    setContinuousUpdate(element, true);
+                }
+                else if (element.update_requested_)
+                {
+                    element.requestUpdate();
+                }
+            }
+        );
+    }
+
+    void Root::activateUpdates(Pane& pane) noexcept
+    {
+        if (pane.continuous_update_)
+        {
+            setContinuousUpdate(pane, true);
+        }
+        else if (pane.update_requested_)
+        {
+            pane.requestUpdate();
+        }
+        if (pane.content_)
+        {
+            activateUpdates(*pane.content_);
+        }
+    }
+
     void Root::deferChange(Pane& target, ChangeCallback apply) noexcept
     {
         requireOwner();
@@ -75,6 +167,11 @@ namespace lux::ui
 
     void Root::Impl::cancelActions(object::LuxObject& target) noexcept
     {
+        // This is a cold detach path; stable frames visit only explicitly continuous objects.
+        std::erase_if(
+            continuous_updates,
+            [&](const auto& update) { return update.target.object == target.objectId(); }
+        );
         // The active batch keeps its indices even if a preceding callback destroys a later target.
         for (std::size_t index{}; index < safe_point_state.batch_size; ++index)
         {

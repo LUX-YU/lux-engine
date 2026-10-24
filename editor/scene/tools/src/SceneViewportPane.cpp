@@ -176,6 +176,8 @@ namespace lux::editor
         asset::AssetId document;
         std::uint32_t width{640}, height{360};
         bool cameras_dirty{true}, camera_controls_dirty{true};
+        bool output_dirty{true}, output_ready{};
+        bool play_state_dirty{true};
         bool observing_play{};
         bool dragging{};
         std::optional<bool> end_drag;
@@ -226,6 +228,7 @@ namespace lux::editor
     )
         : Pane(std::move(title)), impl_(std::make_unique<Impl>(*this, scenes, assets, runtime))
     {
+        setContinuousUpdate(true); // Gizmo/input interaction continues even when presentation is suspended.
         if (!addElement(impl_->layout))
         {
             std::terminate();
@@ -239,7 +242,28 @@ namespace lux::editor
             impl_->connections.push_back(std::move(*connection));
         };
         retain(connect(&scenes, &ProjectScenes::opened, this, [this](asset::AssetId) noexcept { refreshDocuments(); }));
-        retain(connect(&scenes, &ProjectScenes::changed, this, [this]() noexcept { refreshDocuments(); }));
+        retain(connect(
+            &scenes,
+            &ProjectScenes::changed,
+            this,
+            [this]() noexcept
+            {
+                impl_->play_state_dirty = true;
+                refreshDocuments();
+            }
+        ));
+        retain(connect(
+            &scenes,
+            &ProjectScenes::viewportChanged,
+            this,
+            [this](SceneViewportId id) noexcept
+            {
+                if (id == impl_->viewport)
+                {
+                    impl_->output_dirty = true;
+                }
+            }
+        ));
         retain(
             connect(&impl_->documents, &ui::Choice::edited, this, [this](ui::EditResult) noexcept { selectDocument(); })
         );
@@ -294,6 +318,8 @@ namespace lux::editor
 
     void SceneViewportPane::selectDocument() noexcept
     {
+        impl_->output_dirty = true;
+        impl_->output_ready = false;
         if (impl_->dragging)
         {
             if (auto* old = impl_->scenes.find(impl_->document))
@@ -409,7 +435,7 @@ namespace lux::editor
 
     void SceneViewportPane::update() noexcept
     {
-        if (impl_->observing_play &&
+        if (std::exchange(impl_->play_state_dirty, false) && impl_->observing_play &&
             (!impl_->scenes.playInstance(impl_->document).valid() || impl_->scenes.stoppingPlay(impl_->document)))
         {
             impl_->play.setValue(false);
@@ -435,14 +461,21 @@ namespace lux::editor
         {
             updateCamera();
         }
-        const auto status = impl_->scenes.viewport(impl_->viewport);
-        impl_->image.setImage(status.image);
-        impl_->image.setImageExtent({float(status.description.width), float(status.description.height)});
-        impl_->status.setText(
-            status.error.type ? error::format(status.error)
-            : status.ready    ? impl_->editing_status
-                              : "Preparing viewport..."
-        );
+        if (std::exchange(impl_->output_dirty, false))
+        {
+            const auto status = impl_->scenes.viewport(impl_->viewport);
+            impl_->image.setImage(status.image);
+            impl_->image.setImageExtent({float(status.description.width), float(status.description.height)});
+            impl_->output_ready = status.ready && status.error.type == 0;
+            if (!impl_->output_ready)
+            {
+                impl_->status.setText(status.error.type ? error::format(status.error) : "Preparing viewport...");
+            }
+        }
+        if (impl_->output_ready)
+        {
+            impl_->status.setText(impl_->editing_status);
+        }
     }
 
     void SceneViewportPane::applyViewportExtent() noexcept

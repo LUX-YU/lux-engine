@@ -213,7 +213,12 @@ namespace lux::editor
         tasks_.requestStop();
         asset_reads_.reset();
         close_stage_ = ECloseStage::TASKS;
-        co_await stdexec::continues_on(tasks_.whenSettled(), engine_.execution().mainScheduler());
+        if (!scene_retirements_.empty())
+        {
+            co_await stdexec::continues_on(tasks_.whenSettled(), engine_.execution().mainScheduler());
+        }
+        // With no Scene borrows, accepted work already owns its inputs/code in ExecutionRuntime.
+        // Destroy this Context now; its weak ObjectId adoption must fail while that work finishes later.
     }
 
     FrameworkResult<std::unique_ptr<EditorContext>> detail::createEditorContext(

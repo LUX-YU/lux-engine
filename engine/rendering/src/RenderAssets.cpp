@@ -1,3 +1,4 @@
+#include <exec/task.hpp>
 #include <lux/engine/rendering/Initialization.hpp>
 #include <lux/engine/rendering/RenderAssets.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
@@ -222,6 +223,10 @@ namespace lux::rendering
             auto found = records.find(key);
             if (found != records.end())
             {
+                if (found->second.releasing && found->second.error.type != 0)
+                {
+                    return cxx::unexpected(found->second.error);
+                }
                 if (found->second.releasing)
                 {
                     return cxx::unexpected(RenderError{kRuntimeCapacity});
@@ -252,7 +257,7 @@ namespace lux::rendering
                             {
                                 record.value.emplace(std::move(*result));
                             }
-                            ++adoption_revision;
+                            notifyAvailability(key);
                             if (record.references == 0)
                             {
                                 scheduleRelease(records, key);
@@ -271,94 +276,98 @@ namespace lux::rendering
             return {};
         }
 
-        template <class Map> void scheduleRelease(Map& records, RenderAssetVersion key) noexcept
+        template <class C>
+        exec::task<AckResponse> releaseResource(BoundCommand<C> command, typename C::Request input) noexcept
         {
-            if constexpr (std::same_as<Map, Meshes>)
+            auto& client = rendering.mainClient();
+            for (;;)
             {
-                mesh_releases.push_back(key);
-            }
-            else if constexpr (std::same_as<Map, Textures>)
-            {
-                texture_releases.push_back(key);
-            }
-            else
-            {
-                records.erase(key);
+                auto response = co_await client.request(command, input);
+                const bool frame_rejected =
+                    response.error.type == kCommandCancelled || response.error.type == kFrameResynchronization;
+                if (!frame_rejected)
+                {
+                    co_return response;
+                }
+                co_await client.whenSubmittedFramesComplete();
+                co_await stdexec::schedule(rendering.execution().mainScheduler());
             }
         }
 
-        template <class C, class Map, class Handle>
-        void releaseReady(
+        template <class C, class Map>
+        void startRelease(
             Map& records,
-            std::vector<RenderAssetVersion>& pending,
+            RenderAssetVersion key,
             BoundCommand<C> command,
-            Handle handle
+            typename C::Request input
         ) noexcept
         {
-            // Only zero-reference changes enter this list; live assets are never scanned per frame.
-            const auto count = pending.size();
-            for (std::size_t i = 0; i < count; ++i)
-            {
-                const auto key = pending[i];
-                const auto found = records.find(key);
-                if (found == records.end())
+            records.find(key)->second.releasing = true;
+            auto result = stdexec::starts_on(rendering.execution().mainScheduler(), releaseResource(command, input)) |
+                          stdexec::upon_error(
+                              [](auto error) noexcept -> AckResponse
+                              {
+                                  if constexpr (std::same_as<decltype(error), std::exception_ptr>)
+                                  {
+                                      std::terminate();
+                                  }
+                                  else
+                                  {
+                                      return AckResponse{execution::toError(error)};
+                                  }
+                              }
+                          ) |
+                          stdexec::upon_stopped([]() noexcept { return AckResponse{RenderError{kCommandCancelled}}; });
+            auto accepted = rendering.execution().spawn(stdexec::then(
+                std::move(result),
+                [this, &records, key](auto result) noexcept
                 {
-                    continue;
-                }
-                auto& record = found->second;
-                if (record.references != 0 || record.loading || record.releasing)
-                {
-                    continue;
-                }
-                if (!record.value)
-                {
-                    records.erase(found);
-                    continue;
-                }
-                auto input = handle(*record.value);
-                record.releasing = true;
-                const auto task = tasks.submit(
-                    {.name = std::string(C::name), .category = "render.release"},
-                    [this, key, &records, command, input](execution::TaskReporter) noexcept
+                    const auto error = result.error;
+                    if (error.type != 0)
                     {
-                        return stdexec::let_value(
-                            stdexec::just(input),
-                            [this, key, &records, command](typename C::Request& request) noexcept
-                            {
-                                return stdexec::then(
-                                    rendering.mainClient().request(command, request),
-                                    [this, key, &records](AckResponse response) noexcept
-                                    {
-                                        auto& record = records.find(key)->second;
-                                        record.releasing = false;
-                                        const bool retry = response.error.type == kRuntimeCapacity ||
-                                                           response.error.type == kCommandCancelled ||
-                                                           response.error.type == kFrameResynchronization;
-                                        if (retry)
-                                        {
-                                            scheduleRelease(records, key);
-                                            return execution::ETaskState::FAILED;
-                                        }
-                                        if (response.error.type != 0)
-                                        {
-                                            reportRenderFailure(response.error, C::name);
-                                        }
-                                        records.erase(key);
-                                        return response.error.type == 0 ? execution::ETaskState::SUCCEEDED
-                                                                        : execution::ETaskState::FAILED;
-                                    }
-                                );
-                            }
-                        );
+                        reportRenderFailure(error, C::name);
+                        records.find(key)->second.error = error;
+                        if (release_failure.type == 0)
+                        {
+                            release_failure = error;
+                        }
+                        // Keep the failed logical release visible. Native Storage still owns the physical
+                        // resource; final Server teardown discharges it, never a fabricated successful reply.
                     }
-                );
-                if (!task)
-                {
-                    record.releasing = false;
-                    scheduleRelease(records, key);
+                    else
+                    {
+                        records.erase(key);
+                    }
+                    notifyAvailability(key);
                 }
+            ));
+            if (!accepted)
+            {
+                std::terminate(); // RenderAssets is drained before the shared execution closes admission.
             }
-            pending.erase(pending.begin(), pending.begin() + count);
+        }
+
+        template <class Map> void scheduleRelease(Map& records, RenderAssetVersion key) noexcept
+        {
+            auto found = records.find(key);
+            auto& record = found->second;
+            if (!record.value)
+            {
+                records.erase(found);
+                return;
+            }
+            if constexpr (std::same_as<Map, Meshes>)
+            {
+                startRelease(records, key, *release_mesh, record.value->mesh);
+            }
+            else if constexpr (std::same_as<Map, Textures>)
+            {
+                startRelease(records, key, *release_texture, record.value->texture);
+            }
+            else
+            {
+                records.erase(found);
+            }
         }
 
         template <class Map> void release(Map& records, RenderAssetVersion key) noexcept
@@ -385,22 +394,57 @@ namespace lux::rendering
         Meshes meshes;
         Textures textures;
         Materials materials;
-        std::vector<RenderAssetVersion> mesh_releases, texture_releases;
         std::optional<BoundCommand<CreateMesh>> create_mesh;
         std::optional<BoundCommand<CreateTexture>> create_texture;
         std::optional<BoundCommand<ReleaseMesh>> release_mesh;
         std::optional<BoundCommand<ReleaseTexture>> release_texture;
         StorageId mesh_storage, texture_storage;
         std::size_t in_flight = 0;
-        std::uint64_t adoption_revision = 0;
+        RenderError release_failure;
+        AvailabilityConnection* availability_observers{};
+
+        void notifyAvailability(RenderAssetVersion key) noexcept
+        {
+            for (auto* observer = availability_observers; observer; observer = observer->next_)
+            {
+                observer->completed_(observer->receiver_, key);
+            }
+        }
+
         bool closing = false;
     };
 
     RenderAssets::RenderAssets(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
+    RenderAssets::AvailabilityConnection::AvailabilityConnection(
+        RenderAssets& assets,
+        void* receiver,
+        void (*completed)(void*, RenderAssetVersion) noexcept
+    ) noexcept
+        : assets_(assets), receiver_(receiver), completed_(completed)
+    {
+        auto& head = assets_.impl_->availability_observers;
+        next_ = head;
+        previous_ = &head;
+        if (head)
+        {
+            head->previous_ = &next_;
+        }
+        head = this;
+    }
+
+    RenderAssets::AvailabilityConnection::~AvailabilityConnection() noexcept
+    {
+        *previous_ = next_;
+        if (next_)
+        {
+            next_->previous_ = previous_;
+        }
+    }
+
     RenderAssets::~RenderAssets() noexcept
     {
-        if (!settled())
+        if (!settled() || impl_->availability_observers)
         {
             std::terminate();
         }
@@ -578,45 +622,25 @@ namespace lux::rendering
         return {};
     }
 
-    std::uint64_t RenderAssets::revision() const noexcept
-    {
-        return impl_->adoption_revision;
-    }
-
-    void RenderAssets::maintain() noexcept
-    {
-        auto& state = *impl_;
-        state.releaseReady<ReleaseMesh>(
-            state.meshes,
-            state.mesh_releases,
-            *state.release_mesh,
-            [](const RenderMesh& value) noexcept { return value.mesh; }
-        );
-        state.releaseReady<ReleaseTexture>(
-            state.textures,
-            state.texture_releases,
-            *state.release_texture,
-            [](const RenderTexture& value) noexcept { return value.texture; }
-        );
-    }
-
     void RenderAssets::close() noexcept
     {
         auto& state = *impl_;
         state.closing = true;
         state.stop.request_stop();
-        for (auto& [key, value] : state.meshes)
+        for (auto entry = state.meshes.begin(); entry != state.meshes.end();)
         {
+            auto& [key, value] = *entry++;
             if (std::exchange(value.references, 0) != 0 && !value.loading)
             {
-                state.mesh_releases.push_back(key);
+                state.scheduleRelease(state.meshes, key);
             }
         }
-        for (auto& [key, value] : state.textures)
+        for (auto entry = state.textures.begin(); entry != state.textures.end();)
         {
+            auto& [key, value] = *entry++;
             if (std::exchange(value.references, 0) != 0 && !value.loading)
             {
-                state.texture_releases.push_back(key);
+                state.scheduleRelease(state.textures, key);
             }
         }
         for (auto& [key, value] : state.materials)
@@ -624,11 +648,26 @@ namespace lux::rendering
             value.references = 0;
         }
         std::erase_if(state.materials, [](const auto& entry) noexcept { return !entry.second.loading; });
-        maintain();
     }
 
     bool RenderAssets::settled() const noexcept
     {
-        return impl_->tasks.settled() && impl_->meshes.empty() && impl_->textures.empty() && impl_->materials.empty();
+        const auto ended = [](const auto& records) noexcept
+        {
+            return std::ranges::all_of(
+                records,
+                [](const auto& entry) noexcept
+                {
+                    const auto& record = entry.second;
+                    return !record.loading && record.references == 0 && record.releasing && record.error.type != 0;
+                }
+            );
+        };
+        return impl_->tasks.settled() && ended(impl_->meshes) && ended(impl_->textures) && impl_->materials.empty();
+    }
+
+    RenderError RenderAssets::releaseFailure() const noexcept
+    {
+        return impl_->release_failure;
     }
 } // namespace lux::rendering

@@ -227,6 +227,16 @@ namespace lux::ui
         std::size_t pane_capacity{65536};
         cxx::SlotKeyAutoSparseSet<PaneId, std::unique_ptr<Pane>> panes;
         object::LuxObject* active_update{};
+
+        struct ContinuousUpdate final
+        {
+            StoredTarget target;
+            ChangeCallback apply;
+        };
+
+        std::vector<ContinuousUpdate> continuous_updates;
+        bool removed_updates{};
+        void setContinuousUpdate(StoredTarget, ChangeCallback, bool enabled) noexcept;
         bool committing_structure{}, drawing{}, updating{};
     };
 } // namespace lux::ui

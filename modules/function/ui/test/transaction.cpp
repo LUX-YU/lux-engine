@@ -39,7 +39,10 @@ namespace
     class Pane final : public ui::Pane
     {
     public:
-        explicit Pane(Counts& counts) : ui::Pane("Same title"), counts_(counts) {}
+        explicit Pane(Counts& counts) : ui::Pane("Same title"), counts_(counts)
+        {
+            setContinuousUpdate(true);
+        }
 
         ~Pane() override
         {

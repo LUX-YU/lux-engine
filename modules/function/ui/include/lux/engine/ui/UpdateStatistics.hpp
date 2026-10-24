@@ -4,9 +4,9 @@
 
 namespace lux::ui
 {
-    // Last update only. Counts are taken during the existing traversals, including hidden maintenance.
-    // draw includes layout/ImGui render; capture includes the one required draw-data freeze. Unique texture inspection
-    // is opt-in through DrawData.
+    // Last update only. Counts record actual requested/continuous update calls, including hidden interaction
+    // maintenance. draw includes layout/ImGui render; capture includes the one required draw-data freeze. Unique
+    // texture inspection is opt-in through DrawData.
     struct UpdateStatistics final
     {
         std::chrono::nanoseconds maintenance{}, draw{}, capture{};

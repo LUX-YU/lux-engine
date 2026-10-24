@@ -1,4 +1,5 @@
 #pragma once
+#include <exec/task.hpp>
 
 #include <lux/engine/process/asset_loading/AssetRead.hpp>
 #include <lux/engine/render/core/Ids.hpp>
@@ -82,6 +83,16 @@ namespace lux::scene
         [[nodiscard]] bool visualReady(simulation::ecs::Entity) const noexcept;
         // After removing the input, keep its Target alive until this returns true.
         [[nodiscard]] bool cameraTargetRetired(simulation::ecs::Entity, CameraTargetId) const noexcept;
+        // Main completion for this exact ECS relation, never a global Scene transaction. The Scene/System
+        // remains borrowed until completion; retired identity/error is returned explicitly.
+        [[nodiscard]] exec::task<render::RenderResult<void>> whenCameraTargetReady(
+            simulation::ecs::Entity,
+            CameraTargetId
+        ) noexcept;
+        [[nodiscard]] exec::task<render::RenderResult<void>> whenCameraTargetRetired(
+            simulation::ecs::Entity,
+            CameraTargetId
+        ) noexcept;
 
     private:
         struct Impl;

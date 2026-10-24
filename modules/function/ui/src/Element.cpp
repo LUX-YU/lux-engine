@@ -7,6 +7,36 @@
 
 namespace lux::ui
 {
+    void Element::requestUpdate() noexcept
+    {
+        if (!isOnAffinityThread())
+        {
+            detail::failContract();
+        }
+        update_requested_ = true;
+        if (auto* root = attachedRoot(); root && !continuous_update_)
+        {
+            root->deferChange(*this, &Root::updateElement);
+        }
+    }
+
+    void Element::setContinuousUpdate(bool enabled) noexcept
+    {
+        if (!isOnAffinityThread())
+        {
+            detail::failContract();
+        }
+        continuous_update_ = enabled;
+        if (auto* root = attachedRoot())
+        {
+            root->setContinuousUpdate(*this, enabled);
+            if (!enabled && update_requested_)
+            {
+                requestUpdate();
+            }
+        }
+    }
+
     namespace
     {
         bool validSize(Size size, bool infinite = false) noexcept
@@ -23,11 +53,13 @@ namespace lux::ui
     {
         return pane_ ? pane_->attachedRoot() : nullptr;
     }
+
     bool Element::menuActive() const noexcept
     {
         const auto* owner = attachedRoot();
         return owner && owner->menuTargets(*this);
     }
+
     void Element::assignPane(Pane* pane) noexcept
     {
         auto* node = this;
@@ -52,6 +84,7 @@ namespace lux::ui
             }
         }
     }
+
     PaneResult<void> Element::addElement(Element& child) noexcept
     {
         if (!acceptsElements())
@@ -117,10 +150,12 @@ namespace lux::ui
             }
         }
     }
+
     Root& Element::root() const noexcept
     {
         return pane().root();
     }
+
     Pane& Element::pane() const noexcept
     {
         if (!pane_)
@@ -129,11 +164,13 @@ namespace lux::ui
         }
         return *pane_;
     }
+
     bool Element::focused() const noexcept
     {
         const auto* attached = attachedRoot();
         return attached && attached->focusedElement() == this;
     }
+
     bool Element::displayed() const noexcept
     {
         if (!attachedRoot() || !pane_->visible())
@@ -149,6 +186,7 @@ namespace lux::ui
         }
         return true;
     }
+
     void Element::setVisible(bool visible) noexcept
     {
         if (!isOnAffinityThread())
@@ -157,6 +195,7 @@ namespace lux::ui
         }
         visible_ = visible;
     }
+
     void Element::setEnabled(bool enabled) noexcept
     {
         if (!isOnAffinityThread())
@@ -165,6 +204,7 @@ namespace lux::ui
         }
         enabled_ = enabled;
     }
+
     void Element::setMinimumSize(Size size) noexcept
     {
         if (!isOnAffinityThread() || !validSize(size))
@@ -173,6 +213,7 @@ namespace lux::ui
         }
         minimum_ = size;
     }
+
     void Element::setMaximumSize(Size size) noexcept
     {
         if (!isOnAffinityThread() || !validSize(size, true))
@@ -181,6 +222,7 @@ namespace lux::ui
         }
         maximum_ = size;
     }
+
     void Element::setStretch(Vec2 weight) noexcept
     {
         if (!isOnAffinityThread() || !validSize({weight.x, weight.y}))
@@ -189,6 +231,7 @@ namespace lux::ui
         }
         stretch_ = weight;
     }
+
     void Element::setAlignment(EAlignment horizontal, EAlignment vertical) noexcept
     {
         if (!isOnAffinityThread())
@@ -198,18 +241,22 @@ namespace lux::ui
         horizontal_alignment_ = horizontal;
         vertical_alignment_ = vertical;
     }
+
     SizeHint Element::sizeHintContent() noexcept
     {
         return {};
     }
+
     SizeHint Element::measureContent(float) noexcept
     {
         return sizeHint();
     }
+
     SizeHint Element::sizeHint() noexcept
     {
         return root().measureElement(*this, 0.F, true);
     }
+
     SizeHint Element::measure(float width) noexcept
     {
         if (!isOnAffinityThread() || !std::isfinite(width) || width < 0.F)
@@ -218,6 +265,7 @@ namespace lux::ui
         }
         return root().measureElement(*this, width, false);
     }
+
     SizeHint Element::constrain(SizeHint hint) const noexcept
     {
         const bool invalid_hint =
@@ -234,6 +282,7 @@ namespace lux::ui
         hint.preferred.height = std::clamp(hint.preferred.height, hint.minimum.height, hint.maximum.height);
         return hint;
     }
+
     void Element::arrange(Rect rect) noexcept
     {
         const bool valid_origin = std::isfinite(rect.position.x) && std::isfinite(rect.position.y);
@@ -244,6 +293,7 @@ namespace lux::ui
         rect_ = rect;
         root().arrangeElement(*this);
     }
+
     void Element::drawChild(Element& child, Point offset) noexcept
     {
         if (child.parent() != this)

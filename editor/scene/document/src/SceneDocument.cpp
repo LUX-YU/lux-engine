@@ -22,6 +22,11 @@ namespace lux::editor
         return baseline_.scene->id();
     }
 
+    exec::task<scene::SceneRuntimeResult<void>> SceneDocument::whenEditable() const noexcept
+    {
+        return runtime_.whenEditable(instance_);
+    }
+
     scene::SceneInstanceId SceneDocument::instance() const noexcept
     {
         return instance_;

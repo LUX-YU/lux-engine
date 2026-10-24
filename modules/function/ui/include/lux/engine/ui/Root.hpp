@@ -159,6 +159,12 @@ namespace lux::ui
             bool replace
         ) noexcept;
         void releasePane(Pane&) noexcept;
+        static void updatePane(object::LuxObject&) noexcept;
+        static void updateElement(object::LuxObject&) noexcept;
+        void activateUpdates(Pane&) noexcept;
+        void activateUpdates(Element&) noexcept;
+        void setContinuousUpdate(Pane&, bool) noexcept;
+        void setContinuousUpdate(Element&, bool) noexcept;
         void releaseElement(Element&) noexcept;
         void notifyRemoved(object::LuxObject&) noexcept;
         [[nodiscard]] bool attachmentSafe() const noexcept;

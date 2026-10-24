@@ -112,7 +112,8 @@ namespace lux::editor
             {
                 return execution::ETaskState::CANCELLED;
             }
-            auto& state = *static_cast<ProjectAssets*>(*resolved)->impl_;
+            auto& collection = *static_cast<ProjectAssets*>(*resolved);
+            auto& state = *collection.impl_;
             const auto found = state.geometry.find(mesh);
             if (found == state.geometry.end() || found->second.revision != revision)
             {
@@ -132,6 +133,7 @@ namespace lux::editor
                                                      "Mesh query execution did not complete"
                                                  };
             }
+            static_cast<void>(collection.emit(collection.geometryChanged, MeshGeometryChanged{mesh, revision}));
             return result ? execution::ETaskState::SUCCEEDED : execution::ETaskState::FAILED;
         }
 

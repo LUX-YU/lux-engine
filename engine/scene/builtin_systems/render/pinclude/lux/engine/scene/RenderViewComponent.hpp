@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/scene/CameraTargetsComponent.hpp>
+#include <lux/engine/scene/SceneCamera.hpp>
 #include <lux/engine/scene/SceneParameters.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 
@@ -14,6 +15,7 @@ namespace lux::scene::detail
         render::EffectId effect;
         render::AttachmentId attachment;
         CameraTarget adopted;
+        CameraRecipeKey recipe;
         SceneParameters parameters;
         render::RenderError error;
         std::vector<render::MeshInstanceDrawGroup> groups;

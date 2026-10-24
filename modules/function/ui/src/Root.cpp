@@ -233,30 +233,25 @@ namespace lux::ui
             detail::ContextActivation context{impl_->context->native()};
             routeInput();
         }
-        // The hierarchy is frozen for this whole pass; no global Element index or per-frame snapshot.
-        for (const auto& owner : impl_->panes.values())
+        // Only explicit continuous interactions run every maintenance phase. Static intent uses
+        // the existing generation-checked deferred changes; no hierarchy snapshot or full-tree update.
+        const auto count = impl_->continuous_updates.size();
+        for (std::size_t index = 0; index < count; ++index)
         {
-            ++impl_->statistics.panes;
-            auto& pane = *owner;
-            impl_->active_update = &pane;
-            beginCallbackBorrow(pane);
-            pane.update();
-            endCallbackBorrow(pane);
-            if (pane.content_)
+            const auto update = impl_->continuous_updates[index];
+            auto* target = update.apply ? Impl::resolve(*this, update.target) : nullptr;
+            if (!target)
             {
-                visitSubtree(
-                    *pane.content_,
-                    [&](object::LuxObject& node) noexcept
-                    {
-                        ++impl_->statistics.elements;
-                        auto& element = static_cast<Element&>(node);
-                        impl_->active_update = &element;
-                        beginCallbackBorrow(element);
-                        element.update();
-                        endCallbackBorrow(element);
-                    }
-                );
+                continue;
             }
+            impl_->active_update = target;
+            beginCallbackBorrow(*target);
+            update.apply(*target);
+            endCallbackBorrow(*target);
+        }
+        if (std::exchange(impl_->removed_updates, false))
+        {
+            std::erase_if(impl_->continuous_updates, [](const auto& update) { return update.apply == nullptr; });
         }
         impl_->active_update = nullptr;
         impl_->updating = false;

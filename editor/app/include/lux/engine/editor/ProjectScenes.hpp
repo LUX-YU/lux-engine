@@ -112,8 +112,8 @@ namespace lux::editor
         [[nodiscard]] bool stoppingPlay(asset::AssetId) const noexcept;
         [[nodiscard]] ProjectSceneResult<void> close(asset::AssetId) noexcept;
         void closeAll() noexcept;
-        // Main safe point, including while closing. No window, CPU or GPU blocking wait.
-        void maintain() noexcept;
+        // Finite Main-thread close. Continues actual viewport/Scene/producer work; no nested event pump.
+        [[nodiscard]] exec::task<void> closeAsync() noexcept;
         [[nodiscard]] bool settled() const noexcept;
         [[nodiscard]] const std::optional<VProjectSceneFailure>& failure() const noexcept;
         // Called after the project publishes a complete VFS version, independently of viewport changes.
@@ -135,6 +135,7 @@ namespace lux::editor
 
         object::TSignal<asset::AssetId> opened{*this};
         object::TSignal<> changed{*this};
+        object::TSignal<SceneViewportId> viewportChanged{*this};
 
     private:
         void event(object::EventView&) noexcept override;

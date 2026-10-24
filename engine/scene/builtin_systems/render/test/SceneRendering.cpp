@@ -271,7 +271,6 @@ int main()
         static_cast<void>(rendering->consumeResponses());
         CHECK(execution.dispatchMainCompletions());
         CHECK(execution.dispatchTaskEvents());
-        assets->maintain();
         if (scene && scene_stop.stop_requested())
         {
             scene::SceneStageContext context;
@@ -474,6 +473,14 @@ int main()
         drive(true);
     }
     CHECK(projected_during_compile);
+    // Main dispatch starts the already scheduled replacement. The FIFO query reaches Server after
+    // its CreateEffect request, while both actual CPU workers remain blocked by the test latches.
+    CHECK(execution.dispatchMainCompletions());
+    const auto before_replacement_compile = call<QueryRenderStats>(*rendering, {}).compiled_graphs;
+    registry.patch<scene::Camera>(
+        camera,
+        [](auto& value) noexcept { std::get<scene::PerspectiveProjection>(value.projection).near_plane = 0.5; }
+    );
     compilation_held = false;
     release_cpu.release(2);
     while (scene->attachment(camera, first_view) == previous_attachment)
@@ -481,6 +488,7 @@ int main()
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
+    CHECK(rendering->stats().compiled_graphs >= before_replacement_compile + 2);
     // Moving the view prepares the new output before revoking the previous writer.
     // The old Target is now independently releasable, without recreating Mesh/Material assets.
     auto old_target = previous_target;
@@ -628,9 +636,26 @@ int main()
     }
     CHECK(rendering->stats().compiled_graphs == compiled_before_removal);
     CHECK(scene->removeCameraTarget(editor_camera, second_view));
+    bool output_retired = false;
+    auto retired = execution::taskResult(
+        stdexec::starts_on(execution.mainScheduler(), scene->whenCameraTargetRetired(editor_camera, second_view))
+    );
+    CHECK(execution.spawn(stdexec::then(
+        std::move(retired),
+        [&](auto&& result) noexcept
+        {
+            CHECK(result && scene->cameraTargetRetired(editor_camera, second_view));
+            output_retired = true;
+        }
+    )));
     while (!scene->cameraTargetRetired(editor_camera, second_view))
     {
         drive(true);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    while (!output_retired)
+    {
+        drive(false);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
     bool second_target_released = false;

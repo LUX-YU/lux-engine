@@ -45,6 +45,12 @@ namespace lux::editor
         std::uint64_t revision{};
     };
 
+    struct MeshGeometryChanged final
+    {
+        asset::AssetId mesh;
+        std::uint64_t revision;
+    };
+
     enum class EAssetImportError : std::uint8_t
     {
         NOT_READY,
@@ -94,6 +100,8 @@ namespace lux::editor
         [[nodiscard]] const std::optional<AssetImportFailure>& failure() const noexcept;
 
         object::TSignal<> changed{*this};
+        // Main-thread completion fact for one immutable catalog revision (success or recorded failure).
+        object::TSignal<MeshGeometryChanged> geometryChanged{*this};
 
     private:
         [[nodiscard]] AssetImportResult<execution::TaskId> import(ProjectAsset) noexcept;

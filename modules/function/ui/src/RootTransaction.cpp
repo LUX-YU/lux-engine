@@ -92,6 +92,7 @@ namespace lux::ui
             pane->root_ = this;
             pane->rebuildImGuiLabel();
             commitRelation(*pane, this);
+            activateUpdates(*pane);
             added.push_back(paneHandle(*pane));
         }
         beginCallbackBorrow(*this);

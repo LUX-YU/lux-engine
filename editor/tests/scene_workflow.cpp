@@ -93,6 +93,7 @@ int main(int argc, char** argv)
     );
     assert(made);
     auto& host = **made;
+    std::vector<SceneViewportId> observed_views;
     auto until = [&](auto predicate, std::source_location location = std::source_location::current())
     {
         const auto deadline = std::chrono::steady_clock::now() + 30s;
@@ -117,10 +118,48 @@ int main(int argc, char** argv)
                     );
                 }
                 {
-                    if (auto* collection = host.project().services().constructed<ProjectScenes>();
-                        collection && collection->failure())
+                    if (auto* collection = host.project().services().constructed<ProjectScenes>(); collection)
                     {
-                        std::fprintf(stderr, "%s\n", describeProjectSceneFailure(*collection->failure()).c_str());
+                        if (collection->failure())
+                        {
+                            std::fprintf(stderr, "%s\n", describeProjectSceneFailure(*collection->failure()).c_str());
+                        }
+                        for (auto id : observed_views)
+                        {
+                            const auto view = collection->viewport(id);
+                            std::fprintf(
+                                stderr,
+                                "Viewport %u: %ux%u pending=%d ready=%d image=%llu error=%llu\n",
+                                id.index,
+                                view.description.width,
+                                view.description.height,
+                                view.pending,
+                                view.ready,
+                                static_cast<unsigned long long>(view.image.value),
+                                static_cast<unsigned long long>(view.error.type)
+                            );
+                            const auto registry =
+                                std::as_const(host.engine().sceneRuntime()).borrowInstance(view.instance);
+                            if (registry && registry->get().valid(view.camera))
+                            {
+                                if (const auto* targets =
+                                        registry->get().template try_get<scene::CameraTargetsComponent>(view.camera))
+                                {
+                                    for (const auto& target : targets->targets)
+                                    {
+                                        std::fprintf(
+                                            stderr,
+                                            "Camera target %llu: %ux%u revision=%llu epoch=%llu\n",
+                                            static_cast<unsigned long long>(target.id.value),
+                                            target.description.width,
+                                            target.description.height,
+                                            static_cast<unsigned long long>(target.revision),
+                                            static_cast<unsigned long long>(target.epoch)
+                                        );
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 assert(false);
@@ -189,6 +228,7 @@ int main(int argc, char** argv)
     auto a = scenes.addViewport(id, 320, 240);
     auto b = scenes.addViewport(id, 480, 240);
     assert(a && b);
+    observed_views = {*a, *b};
     until([&] { return scenes.setViewportCameraTransform(*a, left); });
     until([&] { return scenes.setViewportCameraTransform(*b, right); });
     until(

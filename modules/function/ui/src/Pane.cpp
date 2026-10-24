@@ -9,6 +9,36 @@
 
 namespace lux::ui
 {
+    void Pane::requestUpdate() noexcept
+    {
+        if (!isOnAffinityThread())
+        {
+            detail::failContract();
+        }
+        update_requested_ = true;
+        if (root_ && !continuous_update_)
+        {
+            root_->deferChange(*this, &Root::updatePane);
+        }
+    }
+
+    void Pane::setContinuousUpdate(bool enabled) noexcept
+    {
+        if (!isOnAffinityThread())
+        {
+            detail::failContract();
+        }
+        continuous_update_ = enabled;
+        if (root_)
+        {
+            root_->setContinuousUpdate(*this, enabled);
+            if (!enabled && update_requested_)
+            {
+                requestUpdate();
+            }
+        }
+    }
+
     Pane::Pane(std::string title) : title_(std::move(title)) {}
 
     Pane::~Pane()

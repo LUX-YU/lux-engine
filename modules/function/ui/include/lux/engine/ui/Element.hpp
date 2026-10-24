@@ -32,51 +32,66 @@ namespace lux::ui
     public:
         Element() noexcept = default;
         [[nodiscard]] Root* attachedRoot() const noexcept;
+
         [[nodiscard]] Pane* containingPane() const noexcept
         {
             return pane_;
         }
+
         ~Element() noexcept override;
         [[nodiscard]] Root& root() const noexcept;
         [[nodiscard]] Pane& pane() const noexcept;
+
         [[nodiscard]] bool visible() const noexcept
         {
             return visible_;
         }
+
         [[nodiscard]] bool enabled() const noexcept
         {
             return enabled_;
         }
+
         [[nodiscard]] bool displayed() const noexcept;
         [[nodiscard]] bool focused() const noexcept;
+
         [[nodiscard]] bool hovered() const noexcept
         {
             return hovered_;
         }
+
         [[nodiscard]] Rect rect() const noexcept
         {
             return rect_;
         }
+
         [[nodiscard]] Point contentOrigin() const noexcept
         {
             return draw_origin_;
         }
+
         [[nodiscard]] Vec2 stretch() const noexcept
         {
             return stretch_;
         }
+
         [[nodiscard]] EAlignment horizontalAlignment() const noexcept
         {
             return horizontal_alignment_;
         }
+
         [[nodiscard]] EAlignment verticalAlignment() const noexcept
         {
             return vertical_alignment_;
         }
 
         virtual void finishEdit(bool cancel = false) noexcept {}
+
         void setVisible(bool visible) noexcept;
         void setEnabled(bool enabled) noexcept;
+        // Main-thread, coalesced maintenance; record intent before attachment, apply after Root adoption.
+        void requestUpdate() noexcept;
+        void setContinuousUpdate(bool enabled) noexcept;
         void setMinimumSize(Size size) noexcept;
         void setMaximumSize(Size size) noexcept;
         void setStretch(Vec2 weight) noexcept;
@@ -91,17 +106,23 @@ namespace lux::ui
     protected:
         // True while a menu holds this control as its synchronous command target.
         [[nodiscard]] bool menuActive() const noexcept;
+
         // Only composites override this; leaf controls reject children even via a base reference.
         [[nodiscard]] virtual bool acceptsElements() const noexcept
         {
             return false;
         }
+
         void clearElements() noexcept;
         [[nodiscard]] virtual SizeHint sizeHintContent() noexcept;
         [[nodiscard]] virtual SizeHint measureContent(float width) noexcept;
+
         virtual void arrangeContent() noexcept {}
+
         virtual void draw() noexcept = 0;
+
         virtual void update() noexcept {}
+
         void drawChild(Element& child, Point offset = {}) noexcept;
 
     private:
@@ -111,10 +132,12 @@ namespace lux::ui
         friend class Root;
         friend class Pane;
         friend class Layout;
+
         bool allowsGenericStructure() const noexcept final
         {
             return false;
         }
+
         void assignPane(Pane*) noexcept;
         [[nodiscard]] SizeHint constrain(SizeHint) const noexcept;
         std::uint64_t hint_epoch_{}, measure_epoch_{};
@@ -129,5 +152,6 @@ namespace lux::ui
         Vec2 stretch_{1.F, 1.F};
         EAlignment horizontal_alignment_{EAlignment::FILL}, vertical_alignment_{EAlignment::FILL};
         bool visible_{true}, enabled_{true}, hovered_{};
+        bool update_requested_{true}, continuous_update_{};
     };
 } // namespace lux::ui

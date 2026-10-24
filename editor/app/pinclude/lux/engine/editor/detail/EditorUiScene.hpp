@@ -23,34 +23,36 @@ namespace lux::editor
     // All requests use the application's existing Main/Asset clients and execution resource.
     class EditorUiScene final
     {
-        struct ImageRemoval
+        struct ImageChange
         {
-            ImageRemoval* next = nullptr;
+            ImageChange* next = nullptr;
             rdesc::UiImageToken token;
             std::uint64_t revision = 0;
-            void (*complete)(ImageRemoval&, FrameworkResult<void>) noexcept = nullptr;
+            bool removing = true;
+            void (*complete)(ImageChange&, FrameworkResult<void>) noexcept = nullptr;
             std::shared_ptr<const void> code_lifetime;
         };
 
     public:
-        class RemovalSender final
+        class ImageChangeSender final
         {
         public:
             using sender_concept = stdexec::sender_t;
             using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(FrameworkResult<void>)>;
 
-            template <class Receiver> struct Operation final : ImageRemoval
+            template <class Receiver> struct Operation final : ImageChange
             {
                 using operation_state_concept = stdexec::operation_state_t;
                 EditorUiScene& scene;
                 Receiver receiver;
 
-                Operation(EditorUiScene& scene, rdesc::UiImageToken token, Receiver receiver) noexcept
+                Operation(EditorUiScene& scene, rdesc::UiImageToken token, bool removing, Receiver receiver) noexcept
                     : scene(scene), receiver(std::move(receiver))
                 {
                     this->token = token;
+                    this->removing = removing;
                     code_lifetime = execution::detail::getCompletionCode(stdexec::get_env(this->receiver));
-                    complete = [](ImageRemoval& node, FrameworkResult<void> result) noexcept
+                    complete = [](ImageChange& node, FrameworkResult<void> result) noexcept
                     {
                         auto& operation = static_cast<Operation&>(node);
                         stdexec::set_value(std::move(operation.receiver), std::move(result));
@@ -59,22 +61,26 @@ namespace lux::editor
 
                 void start() & noexcept
                 {
-                    scene.beginImageRemoval(*this);
+                    scene.beginImageChange(*this);
                 }
             };
 
             template <class Receiver> [[nodiscard]] auto connect(Receiver receiver) const noexcept
             {
-                return Operation<Receiver>{scene_, token_, std::move(receiver)};
+                return Operation<Receiver>{scene_, token_, removing_, std::move(receiver)};
             }
 
         private:
             friend class EditorUiScene;
 
-            RemovalSender(EditorUiScene& scene, rdesc::UiImageToken token) noexcept : scene_(scene), token_(token) {}
+            ImageChangeSender(EditorUiScene& scene, rdesc::UiImageToken token, bool removing) noexcept
+                : scene_(scene), token_(token), removing_(removing)
+            {
+            }
 
             EditorUiScene& scene_;
             rdesc::UiImageToken token_;
+            bool removing_;
         };
 
         [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorUiScene>> create(
@@ -96,9 +102,15 @@ namespace lux::editor
         ) noexcept;
 
         // The terminal result certifies only this token's old sampling relation; retain its Target until success.
-        [[nodiscard]] RemovalSender removeTargetImage(rdesc::UiImageToken token) noexcept
+        [[nodiscard]] ImageChangeSender removeTargetImage(rdesc::UiImageToken token) noexcept
         {
-            return RemovalSender{*this, token};
+            return ImageChangeSender{*this, token, true};
+        }
+
+        // Completes after this token actually belongs to the adopted graph. Removal cancels a pending add.
+        [[nodiscard]] ImageChangeSender whenImageReady(rdesc::UiImageToken token) noexcept
+        {
+            return ImageChangeSender{*this, token, false};
         }
 
         [[nodiscard]] bool imageReady(rdesc::UiImageToken) const noexcept;
@@ -112,8 +124,8 @@ namespace lux::editor
 
     private:
         struct Impl;
-        void beginImageRemoval(ImageRemoval&) noexcept;
-        static void deliverImageRemoval(ImageRemoval&, FrameworkResult<void>) noexcept;
+        void beginImageChange(ImageChange&) noexcept;
+        static void deliverImageChange(ImageChange&, FrameworkResult<void>) noexcept;
         explicit EditorUiScene(std::unique_ptr<Impl>) noexcept;
         std::unique_ptr<Impl> impl_;
     };

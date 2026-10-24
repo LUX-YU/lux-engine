@@ -150,6 +150,117 @@ namespace lux::scene
 
     struct SceneRuntime::Impl final
     {
+        struct EditWaiter
+        {
+            EditWaiter* next{};
+            SceneInstanceId instance;
+            std::optional<cxx::function_ref<void(simulation::ecs::Registry&)>> edit;
+            void (*complete)(EditWaiter&, SceneRuntimeResult<void>) noexcept {};
+            std::shared_ptr<const void> code_lifetime;
+        };
+
+        struct EditableSender final
+        {
+            using sender_concept = stdexec::sender_t;
+            using completion_signatures =
+                stdexec::completion_signatures<stdexec::set_value_t(SceneRuntimeResult<void>)>;
+            Impl& runtime;
+            SceneInstanceId instance;
+            std::optional<cxx::function_ref<void(simulation::ecs::Registry&)>> edit;
+
+            template <class Receiver> struct Operation final : EditWaiter
+            {
+                using operation_state_concept = stdexec::operation_state_t;
+                Impl& runtime;
+                Receiver receiver;
+
+                Operation(const EditableSender& sender, Receiver receiver) noexcept
+                    : runtime(sender.runtime), receiver(std::move(receiver))
+                {
+                    this->instance = sender.instance;
+                    this->edit = sender.edit;
+                    this->code_lifetime = execution::detail::getCompletionCode(stdexec::get_env(this->receiver));
+                    this->complete = [](EditWaiter& waiter, SceneRuntimeResult<void> result) noexcept
+                    {
+                        auto& operation = static_cast<Operation&>(waiter);
+                        stdexec::set_value(std::move(operation.receiver), std::move(result));
+                    };
+                }
+
+                void start() & noexcept
+                {
+                    runtime.awaitEdit(*this);
+                }
+            };
+
+            template <class Receiver> auto connect(Receiver receiver) const noexcept
+            {
+                return Operation<Receiver>{*this, std::move(receiver)};
+            }
+        };
+
+        void completeEdit(EditWaiter& waiter, SceneRuntimeResult<void> result) noexcept
+        {
+            if (result && waiter.edit)
+            {
+                const auto record = find(waiter.instance);
+                BusyScope editing(busy_);
+                (*waiter.edit)((**record).scene->registry());
+            }
+            auto code_lifetime = std::move(waiter.code_lifetime);
+            waiter.complete(waiter, std::move(result));
+        }
+
+        void awaitEdit(EditWaiter& waiter) noexcept
+        {
+            const auto record = find(waiter.instance);
+            if (!record)
+            {
+                completeEdit(waiter, cxx::unexpected(record.error()));
+                return;
+            }
+            if ((**record).lifetime->requested.load(std::memory_order_acquire))
+            {
+                completeEdit(waiter, rejected(ESceneRuntimeError::STOPPED, waiter.instance));
+                return;
+            }
+            if (!(**record).scene->progress().result)
+            {
+                completeEdit(waiter, rejected((**record).scene->progress().result.error(), waiter.instance));
+                return;
+            }
+            if ((**record).scene->atSafePoint())
+            {
+                completeEdit(waiter, {});
+                return;
+            }
+            waiter.next = std::exchange(edit_waiters_, &waiter);
+            execution_.wake();
+        }
+
+        void completeEdits() noexcept
+        {
+            auto** link = &edit_waiters_;
+            while (*link)
+            {
+                auto* waiter = *link;
+                const auto record = find(waiter->instance);
+                const bool retiring = record && (**record).lifetime->requested.load(std::memory_order_acquire);
+                const bool failed = record && !(**record).scene->progress().result;
+                if (record && !retiring && !failed && !(**record).scene->atSafePoint())
+                {
+                    link = &waiter->next;
+                    continue;
+                }
+                *link = waiter->next;
+                auto result = !record    ? SceneRuntimeResult<void>{cxx::unexpected(record.error())}
+                              : retiring ? rejected(ESceneRuntimeError::STOPPED, waiter->instance)
+                              : failed   ? rejected((**record).scene->progress().result.error(), waiter->instance)
+                                         : SceneRuntimeResult<void>{};
+                completeEdit(*waiter, std::move(result));
+            }
+        }
+
         struct ActiveRecord final
         {
             VSimulationClock clock;
@@ -938,6 +1049,7 @@ namespace lux::scene
         std::uint64_t domain_;
         std::thread::id owner_{std::this_thread::get_id()};
         ActiveRecords active_records_;
+        EditWaiter* edit_waiters_{}; // Borrowed operation nodes only; no Scene or task owner.
         std::vector<RetiredRecord> retiring_records_;
         // The existing borrowed drive-failure span ends at the next frame, after payload cleanup.
         std::vector<std::shared_ptr<const void>> failure_code_owners_;
@@ -1151,6 +1263,24 @@ namespace lux::scene
 
     SceneRuntime::DriveResult SceneRuntime::driveFrame(ESceneDriveMode mode) noexcept
     {
-        return impl_->driveFrame(mode);
+        auto result = impl_->driveFrame(mode);
+        impl_->completeEdits(); // Traversal ended. Receiver adoption is scheduled onto the existing Main loop.
+        return result;
+    }
+
+    exec::task<SceneRuntimeResult<void>> SceneRuntime::whenEditable(SceneInstanceId id) noexcept
+    {
+        co_return co_await stdexec::continues_on(Impl::EditableSender{*impl_, id}, impl_->execution_.mainScheduler());
+    }
+
+    exec::task<SceneRuntimeResult<void>> SceneRuntime::editInstanceAsync(
+        SceneInstanceId id,
+        cxx::function_ref<void(simulation::ecs::Registry&)> edit
+    ) noexcept
+    {
+        co_return co_await stdexec::continues_on(
+            Impl::EditableSender{*impl_, id, edit},
+            impl_->execution_.mainScheduler()
+        );
     }
 } // namespace lux::scene

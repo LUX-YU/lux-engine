@@ -297,6 +297,7 @@ namespace
         b.plugins = {{"lux.builtin.scene_render", 2}};
         assert(fixture::open(*engine, write(b)));
         until([&] { return engine->project().project().name == "B"; });
+        until([&] { return deaths == std::vector<int>{1, 1, 2}; });
         assert(!delivered && (deaths == std::vector<int>{1, 1, 2}));
         for (int i = 0; i < 3; ++i)
         {

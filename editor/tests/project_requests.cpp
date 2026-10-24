@@ -220,6 +220,7 @@ int main(int argc, char** argv)
     assert(root.resolvePane(original_handle));
     open(rejected);
     assert(facts.failed == 2 && facts.changed == 0 && &engine->project() == original);
+    until([&] { return lives["Rejected"].contexts == 1; }); // Finite cleanup, independent of the rejection fact.
     assert(root.resolvePane(original_handle) && lives["Rejected"].panes == 1 && lives["Rejected"].contexts == 1);
 
     // L05: occupy the real blocking scheduler, admit B then C, and let both accepted requests settle.

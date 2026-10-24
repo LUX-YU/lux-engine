@@ -48,6 +48,7 @@ namespace
         Pane(EditorContext& context, Counts& counts)
             : ui::Pane("Project"), context(context), counts(counts), draw(*this)
         {
+            setContinuousUpdate(true);
             auto service = context.service<Service>();
             assert(service);
             alive = service->get().alive;
@@ -82,7 +83,10 @@ namespace
 
     struct Global final : ui::Pane
     {
-        explicit Global(cxx::move_only_function<void() noexcept> step) : ui::Pane("Global"), step(std::move(step)) {}
+        explicit Global(cxx::move_only_function<void() noexcept> step) : ui::Pane("Global"), step(std::move(step))
+        {
+            setContinuousUpdate(true);
+        }
 
         void update() noexcept override
         {
@@ -284,6 +288,10 @@ int main(int argc, char** argv)
             {
                 return;
             }
+            if (counts["A"].services == 0)
+            {
+                return;
+            } // Old Context cleanup runs on the shared Main scheduler.
             assert(counts["A"].panes == 1 && counts["A"].services == 1 && !delivered);
             old_updates = counts["A"].updates;
             global_at_b = global->updates;

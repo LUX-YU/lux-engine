@@ -36,7 +36,7 @@ namespace lux::editor
             {
                 failure = {}; // Configuration failure does not discharge the handles it already created.
             }
-            completeImageRemovals(revision, closing ? RenderError{} : error);
+            completeImageChanges(revision, closing ? RenderError{} : error);
             if (error.type != 0 && !closing)
             {
                 reportRenderFailure(error, "Configure UI output");
@@ -66,7 +66,7 @@ namespace lux::editor
                 transaction_pending = false;
                 failure = execution::toError(accepted.error());
                 failed_revision = revision;
-                completeImageRemovals(revision, failure);
+                completeImageChanges(revision, failure);
                 return cxx::unexpected(failure);
             }
             return {};
@@ -121,15 +121,29 @@ namespace lux::editor
             return adopted || preparing;
         }
 
-        void completeImageRemovals(std::uint64_t attempted_revision, RenderError error) noexcept
+        bool imageChangeComplete(const ImageChange& change) const noexcept
         {
-            ImageRemoval* ready = nullptr;
-            auto** link = &image_removals;
+            return change.removing ? !referencesImage(change.token)
+                                   : std::ranges::any_of(
+                                         image_selections,
+                                         [&](const auto& image) { return image.token == change.token; }
+                                     );
+        }
+
+        void completeImageChanges(std::uint64_t attempted_revision, RenderError error) noexcept
+        {
+            ImageChange* ready = nullptr;
+            auto** link = &image_changes;
             while (*link)
             {
                 auto* removal = *link;
-                const bool removed = !referencesImage(removal->token);
-                const bool failed = error.type != 0 && removal->revision <= attempted_revision;
+                const bool removed = imageChangeComplete(*removal);
+                const bool cancelled = !removal->removing &&
+                                       (closing || std::ranges::none_of(
+                                                       desired_images,
+                                                       [&](const auto& image) { return image.token == removal->token; }
+                                                   ));
+                const bool failed = (error.type != 0 && removal->revision <= attempted_revision) || cancelled;
                 if (removed || failed)
                 {
                     *link = removal->next;
@@ -144,10 +158,11 @@ namespace lux::editor
             {
                 auto* removal = ready;
                 ready = removal->next;
-                const bool removed = !referencesImage(removal->token);
-                EditorUiScene::deliverImageRemoval(
+                const bool removed = imageChangeComplete(*removal);
+                EditorUiScene::deliverImageChange(
                     *removal,
-                    removed ? FrameworkResult<void>{} : cxx::unexpected(error)
+                    removed ? FrameworkResult<void>{}
+                            : cxx::unexpected(error.type ? error : RenderError{kCommandCancelled})
                 );
             }
         }
@@ -379,7 +394,7 @@ namespace lux::editor
                 view = {};
                 attachment = {};
                 image_selections.clear();
-                completeImageRemovals(desired_image_revision, {});
+                completeImageChanges(desired_image_revision, {});
             }
             for (auto* handle : {&effect_to_release, &effect})
             {
@@ -433,7 +448,7 @@ namespace lux::editor
         ui::DrawData draw_data;
         std::vector<UiTargetImage> desired_images;
         std::span<const UiTargetImage> configuring_images;
-        ImageRemoval* image_removals = nullptr;
+        ImageChange* image_changes = nullptr;
         std::vector<UiImageSelection> image_selections;
         std::uint64_t next_image_token = 1;
         std::uint64_t desired_image_revision = 1, applied_image_revision = 0;
@@ -487,7 +502,7 @@ namespace lux::editor
         {
             impl_->window.setMetricsReceiver(nullptr, nullptr);
         }
-        if (impl_->image_removals || impl_->transaction_pending || !impl_->scene.isNull() || !impl_->effect.isNull() ||
+        if (impl_->image_changes || impl_->transaction_pending || !impl_->scene.isNull() || !impl_->effect.isNull() ||
             !impl_->effect_to_release.isNull() || !impl_->target.isNull() || !impl_->font.isNull())
         {
             std::terminate();
@@ -534,33 +549,42 @@ namespace lux::editor
         return token;
     }
 
-    void EditorUiScene::deliverImageRemoval(ImageRemoval& removal, FrameworkResult<void> result) noexcept
+    void EditorUiScene::deliverImageChange(ImageChange& removal, FrameworkResult<void> result) noexcept
     {
         auto code_lifetime = std::move(removal.code_lifetime);
         removal.complete(removal, std::move(result));
     }
 
-    void EditorUiScene::beginImageRemoval(ImageRemoval& removal) noexcept
+    void EditorUiScene::beginImageChange(ImageChange& removal) noexcept
     {
         auto& state = *impl_;
         if (removal.token.value == 0)
         {
-            deliverImageRemoval(removal, cxx::unexpected(RenderError{kCommandContract}));
+            deliverImageChange(removal, cxx::unexpected(RenderError{kCommandContract}));
             return;
         }
-        if (std::erase_if(state.desired_images, [&](const auto& image) { return image.token == removal.token; }))
+        if (removal.removing &&
+            std::erase_if(state.desired_images, [&](const auto& image) { return image.token == removal.token; }))
         {
             ++state.desired_image_revision;
             ++state.requested_revision;
         }
-        if (!state.referencesImage(removal.token))
+        if (state.imageChangeComplete(removal))
         {
             state.requestConfiguration();
-            deliverImageRemoval(removal, {});
+            deliverImageChange(removal, {});
+            return;
+        }
+        const bool removed_before_ready =
+            !removal.removing &&
+            std::ranges::none_of(state.desired_images, [&](const auto& image) { return image.token == removal.token; });
+        if (removed_before_ready)
+        {
+            deliverImageChange(removal, cxx::unexpected(RenderError{kCommandCancelled}));
             return;
         }
         removal.revision = state.requested_revision;
-        removal.next = std::exchange(state.image_removals, &removal);
+        removal.next = std::exchange(state.image_changes, &removal);
         state.requestConfiguration();
     }
 

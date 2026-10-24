@@ -203,12 +203,43 @@ namespace lux::editor
             return impl;
         }
 
+        static exec::task<void> closeProject(
+            std::unique_ptr<detail::EditorProject> project,
+            exec::task<void> completion
+        ) noexcept
+        {
+            co_await std::move(completion);
+        }
+
         void retire(std::unique_ptr<detail::EditorProject> project) noexcept
         {
-            project->beginClose();
-            if (!project->advanceClose())
+            auto completion = project->close();
+            if (!completion)
             {
-                closing_projects_.push_back(std::move(project));
+                return;
+            }
+            ++closing_project_count_;
+            // Already at the Main adoption boundary. Supply affinity without an artificial queue hop:
+            // an unused candidate can release immediately; real Scene/producer waits still suspend.
+            auto work = stdexec::write_env(
+                closeProject(std::move(project), std::move(*completion)),
+                stdexec::prop{stdexec::get_scheduler, engine_->execution().mainScheduler()}
+            );
+            auto accepted = engine_->execution().spawn(stdexec::then(
+                execution::taskResult(stdexec::then(std::move(work), []() noexcept { return FrameworkResult<void>{}; })
+                ),
+                [this](auto result) noexcept
+                {
+                    if (!result)
+                    {
+                        std::terminate();
+                    } // Execution outlives the non-cancellable project cleanup.
+                    --closing_project_count_;
+                }
+            ));
+            if (!accepted)
+            {
+                std::terminate(); // Application execution admission remains open until project teardown ends.
             }
         }
 
@@ -216,27 +247,7 @@ namespace lux::editor
         {
             if (context)
             {
-                auto project = std::make_unique<detail::EditorProject>(std::move(context));
-                retire(std::move(project));
-            }
-        }
-
-        void collectProjects() noexcept
-        {
-            // Destructors can enqueue a new retirement. Keep objects stable, and remove lookup before destruction.
-            for (auto remaining = closing_projects_.size(); remaining != 0;)
-            {
-                const auto index = --remaining;
-                if (!closing_projects_[index]->advanceClose())
-                {
-                    continue;
-                }
-                auto retired = std::move(closing_projects_[index]);
-                if (index + 1 != closing_projects_.size())
-                {
-                    closing_projects_[index] = std::move(closing_projects_.back());
-                }
-                closing_projects_.pop_back();
+                retire(std::make_unique<detail::EditorProject>(std::move(context)));
             }
         }
 
@@ -344,8 +355,7 @@ namespace lux::editor
                 {
                     recordFailure(scene::toError(driven->front()));
                 }
-                collectProjects();
-                if (closing_projects_.empty() && project_tasks_.settled())
+                if (closing_project_count_ == 0 && project_tasks_.settled())
                 {
                     ui_scene_->stopFrames();
                     assets_->close();
@@ -354,7 +364,6 @@ namespace lux::editor
             }
             if (close_phase_ == EClosePhase::PROJECTS || close_phase_ == EClosePhase::ASSETS)
             {
-                assets_->maintain();
                 if (auto frame = submitMaintenanceFrame(input); !frame)
                 {
                     return cxx::unexpected(frame.error());
@@ -363,6 +372,7 @@ namespace lux::editor
                                      assets_->settled() && rendering_->mainClient().pendingRequests() == 0;
                 if (settled)
                 {
+                    recordFailure(assets_->releaseFailure());
                     rendering_->beginClose();
                     close_phase_ = EClosePhase::RENDER;
                 }
@@ -856,16 +866,11 @@ namespace lux::editor
             {
                 return cxx::unexpected(std::move(input.error()));
             }
-            if (project_->scenes)
-            {
-                project_->scenes->maintain();
-            }
             return renderFrame();
         }
 
         FrameworkResult<ELoopState> renderFrame() noexcept
         {
-            assets_->maintain();
             auto presentation = prepareUiOutput();
             if (!presentation)
             {
@@ -904,7 +909,6 @@ namespace lux::editor
             {
                 return cxx::unexpected(scene::toError(driven->front()));
             }
-            collectProjects();
             if (frame)
             {
                 auto* submitted = std::exchange(frame, nullptr);
@@ -928,7 +932,7 @@ namespace lux::editor
         EditorConfig config_;
         EditorAssembly assembly_;
         execution::TaskScope project_tasks_;
-        std::vector<std::unique_ptr<detail::EditorProject>> closing_projects_;
+        std::size_t closing_project_count_{};
         EClosePhase close_phase_ = EClosePhase::OPEN;
         std::unique_ptr<detail::EditorProject> project_;
         std::optional<execution::TaskId> project_prepare_;

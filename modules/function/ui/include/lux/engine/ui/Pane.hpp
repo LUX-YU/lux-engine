@@ -26,15 +26,16 @@ namespace lux::ui
     {
     public:
         /**
-     * Observers may update owner state, but must not synchronously destroy
-     * this Pane from either callback. Defer destruction until the current
-     * UI/Signal stack has returned to its owner-thread safe point.
-     */
+         * Observers may update owner state, but must not synchronously destroy
+         * this Pane from either callback. Defer destruction until the current
+         * UI/Signal stack has returned to its owner-thread safe point.
+         */
         object::TSignal<PaneFocusChanged> focusChanged{*this};
         object::TSignal<PaneVisibilityChanged> visibilityChanged{*this};
         object::TSignal<> closeRequested{*this};
 
         explicit Pane(std::string title);
+
         [[nodiscard]] Root* attachedRoot() const noexcept
         {
             return root_;
@@ -46,14 +47,17 @@ namespace lux::ui
         {
             return title_;
         }
+
         [[nodiscard]] bool visible() const noexcept
         {
             return visible_;
         }
+
         [[nodiscard]] bool focused() const noexcept
         {
             return focused_;
         }
+
         [[nodiscard]] bool hovered() const noexcept
         {
             return hovered_;
@@ -61,23 +65,32 @@ namespace lux::ui
 
         // The owner decides whether to close, hide or cancel. Notifications do not consume the intent.
         void requestClose() noexcept;
+
         [[nodiscard]] bool hasCloseRequest() const noexcept
         {
             return close_requested_;
         }
+
         void dismissCloseRequest() noexcept;
         void setTitle(std::string title);
         void setVisible(bool visible);
+        // Coalesced Main-thread maintenance at the next Root safe point. Unmounted intent is retained.
+        void requestUpdate() noexcept;
+        // Opt in only for continuous interaction/animation. Static panes update on explicit facts/intents.
+        void setContinuousUpdate(bool enabled) noexcept;
         // A modal is still one window, but cannot join the shared dock space.
         // Set during owner maintenance, before the next draw.
         void setModal(bool modal) noexcept;
+
         [[nodiscard]] bool modal() const noexcept
         {
             return modal_;
         }
+
         [[nodiscard]] Root& root() const noexcept;
         [[nodiscard]] PaneResult<void> addElement(Element&) noexcept;
         [[nodiscard]] PaneResult<void> replaceContent(Element&) noexcept;
+
         [[nodiscard]] Element* content() const noexcept
         {
             return content_;
@@ -85,21 +98,29 @@ namespace lux::ui
 
     protected:
         void clearContent() noexcept;
+
         virtual void update() noexcept {}
 
     private:
-        using LuxObject::setParent;
         using LuxObject::addChild;
         using LuxObject::removeChild;
+        using LuxObject::setParent;
         friend class Root;
         friend class Element;
         void setFocused(bool focused);
+
         void setHovered(bool hovered) noexcept
         {
             hovered_ = hovered;
         }
+
         void rebuildImGuiLabel();
-        bool allowsGenericStructure() const noexcept final { return false; }
+
+        bool allowsGenericStructure() const noexcept final
+        {
+            return false;
+        }
+
         PaneId id_;
         std::string title_;
         std::string imgui_label_;
@@ -108,6 +129,7 @@ namespace lux::ui
         bool hovered_{false};
         bool modal_{};
         bool close_requested_{};
+        bool update_requested_{true}, continuous_update_{};
         Element* content_{};
         Root* root_{};
     };

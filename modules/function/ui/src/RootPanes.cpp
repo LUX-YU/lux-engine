@@ -254,6 +254,10 @@ namespace lux::ui
         commitRelation(child, &parent);
         child.element_parent_ = element;
         child.assignPane(pane ? pane : element->pane_);
+        if (root)
+        {
+            root->activateUpdates(child);
+        }
         if (pane)
         {
             pane->content_ = &child;

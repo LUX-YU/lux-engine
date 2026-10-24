@@ -90,6 +90,9 @@ namespace lux::scene
         void removeGeometry(asset::AssetId);
         // Derived by the ordinary structural rebuild; providers prepare only these missing assets.
         [[nodiscard]] std::span<const asset::AssetId> missingGeometry() const noexcept;
+        // Single borrowed provider, notified only after a structural rebuild. Registration folds in missing
+        // geometry already discovered. The provider outlives this query or clears the callback before teardown.
+        void setGeometryRequests(void*, void (*)(void*, std::span<const asset::AssetId>) noexcept) noexcept;
         void clearGeometry() noexcept;
         [[nodiscard]] bool hasPendingChanges() const noexcept;
         [[nodiscard]] QueryResult<bool> raycastNearest(

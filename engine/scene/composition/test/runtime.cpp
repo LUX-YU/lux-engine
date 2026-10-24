@@ -239,6 +239,20 @@ int main()
     assert((*runtime)->driveFrame() && time(**runtime, first->id()).step_index == 1);
     assert(!(*runtime)->borrowInstance(first->id()));
     assert(std::as_const(**runtime).borrowInstance(first->id()));
+    bool edit_available = false;
+    auto editable =
+        execution::taskResult(stdexec::starts_on(execution->mainScheduler(), (*runtime)->whenEditable(first->id())));
+    assert(execution->spawn(stdexec::then(
+        std::move(editable),
+        [&](auto&& result) noexcept
+        {
+            assert(result);
+            auto edit = [](ecs::Registry&) noexcept {};
+            assert((*runtime)->editInstance(first->id(), edit)); // Receiver is outside the Scene traversal.
+            edit_available = true;
+        }
+    )));
+    assert(execution->dispatchMainCompletions() && !edit_available);
     for (unsigned turn{}; turn < 5; ++turn)
     {
         assert((*runtime)->driveFrame());
@@ -246,6 +260,7 @@ int main()
     assert(time(**runtime, first->id()).step_index == 1);
     probe.blocked = false;
     assert((*runtime)->driveFrame());
+    assert(execution->waitUntil([&]() noexcept { return edit_available; }));
     assert((*runtime)->pauseSimulation(first->id()) && (*runtime)->resumeSimulation(first->id()));
     assert((*runtime)->driveFrame() && time(**runtime, first->id()).step_index == 2);
     assert((*runtime)->resumeSimulation(first->id()) && (*runtime)->driveFrame());

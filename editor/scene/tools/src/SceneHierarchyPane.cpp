@@ -1,6 +1,8 @@
 #include <imgui.h>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/editor/ProjectScenes.hpp>
 #include <lux/engine/editor/SceneHierarchyPane.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
@@ -22,6 +24,10 @@ namespace lux::editor
         };
 
         ProjectScenes& scenes;
+        execution::ExecutionRuntime& execution;
+        object::Connection project_changed, project_opened, document_changed, selection_changed;
+        object::ObjectId observed_document;
+        bool waiting_for_edit{};
         asset::AssetId document;
         std::uint64_t revision{UINT64_MAX};
         std::uint64_t hierarchy_revision{UINT64_MAX};
@@ -33,7 +39,10 @@ namespace lux::editor
         int create_kind{};
         std::string status;
 
-        explicit Impl(ProjectScenes& scenes) noexcept : scenes(scenes) {}
+        Impl(ProjectScenes& scenes, execution::ExecutionRuntime& execution) noexcept
+            : scenes(scenes), execution(execution)
+        {
+        }
 
         void refresh(SceneDocument& source) noexcept
         {
@@ -90,16 +99,19 @@ namespace lux::editor
             if (ImGui::Button("Create object"))
             {
                 create = true;
+                pane().requestUpdate();
             }
             ImGui::SameLine();
             if (ImGui::Button("Delete selected"))
             {
                 erase = true;
+                pane().requestUpdate();
             }
             ImGui::InputText("Parent UUID", parent_text.data(), parent_text.size());
             if (ImGui::Button("Set parent (empty = root)"))
             {
                 reparent = true;
+                pane().requestUpdate();
             }
             ImGui::EndDisabled();
             ImGui::Separator();
@@ -114,6 +126,7 @@ namespace lux::editor
                     if (ImGui::Selectable(row.label.c_str(), selected == row.id))
                     {
                         clicked = row.id;
+                        pane().requestUpdate();
                     }
                     ImGui::Unindent(static_cast<float>(std::min(row.depth, 12U)) * 10.0F);
                 }
@@ -167,9 +180,22 @@ namespace lux::editor
         }
     };
 
-    SceneHierarchyPane::SceneHierarchyPane(ProjectScenes& scenes, std::string title)
-        : Pane(std::move(title)), impl_(std::make_unique<Impl>(scenes))
+    SceneHierarchyPane::SceneHierarchyPane(
+        ProjectScenes& scenes,
+        execution::ExecutionRuntime& execution,
+        std::string title
+    )
+        : Pane(std::move(title)), impl_(std::make_unique<Impl>(scenes, execution))
     {
+        auto changed = connect(&scenes, &ProjectScenes::changed, this, [this]() noexcept { requestUpdate(); });
+        auto opened =
+            connect(&scenes, &ProjectScenes::opened, this, [this](asset::AssetId) noexcept { requestUpdate(); });
+        if (!changed || !opened)
+        {
+            std::terminate();
+        }
+        impl_->project_changed = std::move(*changed);
+        impl_->project_opened = std::move(*opened);
         if (!addElement(*impl_))
         {
             std::terminate();
@@ -177,6 +203,43 @@ namespace lux::editor
     }
 
     SceneHierarchyPane::~SceneHierarchyPane() noexcept = default;
+
+    void SceneHierarchyPane::waitForEdit(SceneDocument& document) noexcept
+    {
+        if (impl_->waiting_for_edit)
+        {
+            return;
+        }
+        impl_->waiting_for_edit = true;
+        const auto target = objectId();
+        auto work =
+            execution::taskResult(stdexec::starts_on(impl_->execution.mainScheduler(), document.whenEditable()));
+        auto accepted = impl_->execution.spawn(stdexec::then(
+            std::move(work),
+            [target](auto&& result) noexcept
+            {
+                const auto found = object::ObjectRuntime::instance().resolve(target);
+                if (!found)
+                {
+                    return;
+                }
+                auto& pane = *static_cast<SceneHierarchyPane*>(*found);
+                pane.impl_->waiting_for_edit = false;
+                if (!result)
+                {
+                    pane.impl_->pending.reset();
+                    pane.impl_->status = "Scene retired before the edit could be applied";
+                }
+                pane.requestUpdate();
+            }
+        ));
+        if (!accepted)
+        {
+            impl_->waiting_for_edit = false;
+            impl_->pending.reset();
+            impl_->status = "Edit completion could not be scheduled";
+        }
+    }
 
     void SceneHierarchyPane::update() noexcept
     {
@@ -186,6 +249,9 @@ namespace lux::editor
         {
             state.rows.clear();
             state.document = {};
+            state.observed_document = {};
+            state.document_changed = {};
+            state.selection_changed = {};
             state.status = "Open a Scene";
             state.create = state.erase = state.reparent = false;
             state.clicked = {};
@@ -193,6 +259,19 @@ namespace lux::editor
             return;
         }
         // Consume intent against the revision shown when it was produced; a refresh never rebases a command.
+        if (state.observed_document != document->objectId())
+        {
+            state.observed_document = document->objectId();
+            auto changed = connect(document, &SceneDocument::changed, this, [this]() noexcept { requestUpdate(); });
+            auto selected =
+                connect(document, &SceneDocument::selectionChanged, this, [this]() noexcept { requestUpdate(); });
+            if (!changed || !selected)
+            {
+                std::terminate();
+            }
+            state.document_changed = std::move(*changed);
+            state.selection_changed = std::move(*selected);
+        }
         const bool changed_document = state.document != document->id();
         if (changed_document)
         {
@@ -232,12 +311,13 @@ namespace lux::editor
                 state.status = "Invalid parent UUID";
             }
         }
-        if (state.pending)
+        if (state.pending && !state.waiting_for_edit)
         {
             const auto result = document->apply(*state.pending);
             if (!result && isSceneEditBusy(result.error()))
             {
                 state.status = "Waiting for the Scene edit safe point";
+                waitForEdit(*document);
             }
             else
             {

@@ -685,6 +685,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         target_link_libraries(editor_scene_workflow_test PRIVATE
             lux_editor_app lux_editor_scene_profiles lux_editor_scene_tools lux::engine::engine_rendering
+            lux::engine::scene::scene_mesh_query
         )
 
         target_include_directories(editor_scene_workflow_test PRIVATE app/pinclude)

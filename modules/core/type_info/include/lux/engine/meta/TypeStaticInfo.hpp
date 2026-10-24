@@ -10,12 +10,20 @@ namespace lux::meta
     {
         static constexpr auto pointer = Member;
         std::string_view name;
+        std::string_view display_name;
+        double edit_speed{0.01};
+        bool read_only{};
     };
 
     template <auto Member>
-    [[nodiscard]] consteval TTypeStaticField<Member> typeStaticField(std::string_view name) noexcept
+    [[nodiscard]] consteval TTypeStaticField<Member> typeStaticField(
+        std::string_view name,
+        std::string_view display_name = {},
+        double edit_speed = 0.01,
+        bool read_only = false
+    ) noexcept
     {
-        return {name};
+        return {name, display_name.empty() ? name : display_name, edit_speed, read_only};
     }
 
     template <class T> struct TTypeStaticInfo

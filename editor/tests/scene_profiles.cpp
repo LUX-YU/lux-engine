@@ -50,7 +50,8 @@ namespace
             assert(std::ranges::any_of(schemas, [&](const auto& schema) { return schema.name == name; }));
         }
         const auto& description = package.scene->data();
-        assert(description.systemCount() == 3);
+        assert(description.systemCount() == 4);
+        assert(description.findSystem("mesh_query"));
         const auto transform = description.findSystem("transform");
         assert(transform && transform.type().name == "lux.scene.transform");
         scene::TransformSystemConfiguration transform_config;

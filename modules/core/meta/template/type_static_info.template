@@ -14,7 +14,12 @@ namespace lux::meta
         using type = ::{{ decl.fq_name }};
         static constexpr auto fields = std::make_tuple(
 {% set emitted = false %}{% for field_id in decl.field_decls %}{% set field = decl_from_id(field_id) %}{% if field.visibility == 1 and not annotation_get_for_or(field, "luxtype::member", "skip_static", false) %}{% if emitted %},
-{% endif %}            typeStaticField<&type::{{ field.name }}>("{{ cxx_str(field.name) }}"){% set emitted = true %}{% endif %}{% endfor %}
+{% endif %}            typeStaticField<&type::{{ field.name }}>(
+                "{{ cxx_str(field.name) }}",
+                "{{ cxx_str(annotation_get_for_or(field, "luxref::property::member", "display_name", field.name)) }}",
+                {{ annotation_get_for_or(field, "luxref::property::member", "speed", 0.01) }},
+                {% if annotation_get_for_or(field, "luxref::property::member", "readonly", false) or annotation_get_for_or(field, "luxtype::member", "readonly", false) %}true{% else %}false{% endif %}
+            ){% set emitted = true %}{% endif %}{% endfor %}
         );
     };
 {% endif %}{% endfor %}

@@ -364,6 +364,25 @@ Editor 启动请求实际使用的 BC 能力，不支持的设备或像素格式
 - `AssetBrowserPane`：显示 ProjectAssets，不读取 Render Storage。
 - `SceneViewportPane`：画面、相机操作、拾取与变换；选择通过 SceneDocument，Pane 互不互相持有。
 
+当前工具的组件草稿使用已有 `ComponentSchema` 编解码与 `TTypeStaticInfo` 成员指针；字段显示名、
+编辑速度、只读标注由同一 Meta 生成器输出。Inspector 不按 byte offset 写 live ECS，也不另建字段目录。
+Transform、Camera、Mesh/Material 资产引用和 Light 具有实际编辑器；其它组件保留并明确显示无字段编辑器。
+材质引用编辑不等于已经提供 MaterialGraph 编辑产品。Parent 由 Hierarchy 的关系编辑入口处理。
+
+Hierarchy 只在作者对象/Parent 的结构 revision 改变时重建展示行；Transform 内容改变不重扫整棵树。
+Inspector 草稿不会被后台刷新自动改写 based_on。只有 SceneRuntime 的 BUSY 允许重试同一拥有型编辑，
+其它错误终结本次意图；重试不补最新 revision。视口拾取借用 WorldResidency 的唯一身份映射，而不是
+假设 Registry 中还有第二份 WorldEntityMap。
+
+平移轴柄用双精度 picking ray 与世界轴的最近点求位移，再通过父变换的逆线性部分转换到局部空间。
+拖动预览通过 SceneDocument 的正常组件替换发出更新，结束合并为一次 Undo，Escape 恢复起始值。
+未结束的拖动不能成为保存或 Play 快照。工具关闭时保留最后已采用的值并结束历史记录；不留下悬空
+草稿或锁住文档。当前轴柄提供平移；旋转/缩放使用 Inspector，更多 Gizmo 形式不是已有能力。
+
+MeshQuerySystem 仍拥有实际空间索引，结构重建提供缺失的 Mesh 身份。ProjectAssets 在共享执行资源上
+读取 Mesh、解码并构造不可变 BVH；ProjectScenes 在 Scene 安全点采用结果。同一项目多个观察复用几何，
+不从 GPU Readback 生成选择数据。没有 MeshQuery 的组合可以通过 Hierarchy 选择，界面准确报告拾取不可用。
+
 这些工具位于 Editor 的纵向主题目录，使用现有 Pane/Root、LuxObject signal 和路由事件。
 删除无消费者的 `SceneToolRegistry` provisional match/factory 接口；工具可用性从实际 Scene
 组合和公开合同确定，不再读取任意 WorldDescription 去猜“应该是什么工具”。
@@ -382,6 +401,10 @@ rename 是原子事务。新 Scene 文件写好后再发布 ProjectManifest，�
 重开必须恢复相同稳定身份、作者值与所选 Systems，并重新生成派生值。Save As 遇到目前不支持
 重写的索引/扩展时保留明确错误，不能把简单 single 分区能力写成任意 World 都已支持。
 
+实际文件保存由 ProjectScenes 调度；SceneDocument 只负责快照和已发布 revision 的采用。每份文档
+同一时刻最多一个文件写入者。关闭文档等待已接纳的保存完成，迟到结果核对文档 ObjectId；普通停止
+不能覆盖已经发布的文件结果。撤销重做、保存和 Play 使用现有 UI Command 路由，没有第二个命令目录。
+
 ### 7.3 Play 与停止
 
 Play 从 revision R 的作者快照创建独立运行实例；共享不可变资产和 ExecutionRuntime，ECS 可变状态
@@ -393,6 +416,12 @@ Play 的变化不自动写回作者文档；“应用运行变更”延期，未
 
 Headless 预览使用显式运行选择，排除已声明为可选呈现的 RenderSystem，并再次验证剩余依赖。
 如果业务 System 实际依赖被移除的输出，则报不相容，不静默跳过。Editor 自身的 UI 继续渲染。
+
+ProjectScenes 通过 `startPlay(document, ESceneRunMode)` 装配运行实例，复用同一个 Builder 创建路径。
+`ESceneRunMode` 仅表达 GRAPHICAL/HEADLESS 两个实际选择。RenderSystem 的输入保存在该实例的稳定记录中；
+唯一 SceneInstanceLease 仍归 EditorContext。Play 视口使用自己的 Target，停止先撤下 UI 引用和观察，
+再退休运行 Scene。编辑实例及作者数据保留，Play 中的更改不自动写回。目录发布的新资产版本可以更新
+两种实例的只读资产投影，这不会共享它们的可变 Registry。
 
 ## 8 Headless 构建与未来发布边界
 

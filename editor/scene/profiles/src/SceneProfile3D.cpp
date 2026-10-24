@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/project/SceneRegistrations.hpp>
+#include <lux/engine/scene/MeshQuerySystem.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/SceneCompatibility.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>
@@ -263,6 +264,12 @@ namespace lux::editor
                     ordered.error(),
                     "3d transform/render order"
                 });
+            }
+            if (auto query = addSystem<
+                    void>(builder, info.registrations, scene::MeshQuerySystem::Description, {4}, "mesh_query", nullptr);
+                !query)
+            {
+                return cxx::unexpected(query.error());
             }
             auto description = std::move(builder).buildResolved();
             if (!description)

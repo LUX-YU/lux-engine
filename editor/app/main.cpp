@@ -10,6 +10,8 @@
 #include <lux/engine/editor/ProjectCreationPane.hpp>
 #include <lux/engine/editor/ProjectScenes.hpp>
 #include <lux/engine/editor/SceneCreationPane.hpp>
+#include <lux/engine/editor/SceneHierarchyPane.hpp>
+#include <lux/engine/editor/SceneInspectorPane.hpp>
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/editor/SceneViewportPane.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
@@ -54,6 +56,16 @@ namespace
         composition.contributions.push_back(
             {menu, group, ui::CommandId{"lux.edit.redo"}, {{}, ui::CommandId{"lux.edit.undo"}}}
         );
+        for (auto action : std::array{
+                 ui::ActionDescriptor{ui::CommandId{"lux.scene.save"}, "Save Scene", "Ctrl+S", {ui::EKey::S, true}},
+                 ui::ActionDescriptor{ui::CommandId{"lux.scene.play"}, "Play Scene"},
+                 ui::ActionDescriptor{ui::CommandId{"lux.scene.play_headless"}, "Play Headless"},
+                 ui::ActionDescriptor{ui::CommandId{"lux.scene.stop"}, "Stop Play"}
+             })
+        {
+            composition.contributions.push_back({menu, group, action.id});
+            composition.actions.push_back(std::move(action));
+        }
     }
 
 } // namespace
@@ -154,6 +166,40 @@ int main(int argc, char** argv)
         {
             return registered;
         }
+        if (auto registered = context.registerUiFactory(
+                "scene.hierarchy",
+                [](lux::editor::EditorContext& value, const lux::editor::PaneDescription& description
+                ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::ui::Pane>>
+                {
+                    auto scenes = value.service<lux::editor::ProjectScenes>();
+                    if (!scenes)
+                    {
+                        return lux::cxx::unexpected(scenes.error());
+                    }
+                    return std::make_unique<lux::editor::SceneHierarchyPane>(scenes->get(), description.title);
+                }
+            );
+            !registered)
+        {
+            return registered;
+        }
+        if (auto registered = context.registerUiFactory(
+                "scene.inspector",
+                [](lux::editor::EditorContext& value, const lux::editor::PaneDescription& description
+                ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::ui::Pane>>
+                {
+                    auto scenes = value.service<lux::editor::ProjectScenes>();
+                    if (!scenes)
+                    {
+                        return lux::cxx::unexpected(scenes.error());
+                    }
+                    return std::make_unique<lux::editor::SceneInspectorPane>(scenes->get(), description.title);
+                }
+            );
+            !registered)
+        {
+            return registered;
+        }
         return context.registerUiFactory(
             "scene.viewport",
             [](lux::editor::EditorContext& value, const lux::editor::PaneDescription& description
@@ -175,10 +221,12 @@ int main(int argc, char** argv)
     };
     lux::editor::EditorConfig config;
     config.layout = {
-        {"scene.catalog", "scenes", "Scenes"},
-        {"assets.browser", "assets", "Assets"},
+        {"scene.catalog", "scenes", "Scenes", lux::editor::EPaneRegion::LEFT},
+        {"assets.browser", "assets", "Assets", lux::editor::EPaneRegion::BOTTOM},
         {"scene.viewport", "viewport", "Scene View"},
-        {"scene.viewport", "second_viewport", "Second View"}
+        {"scene.viewport", "second_viewport", "Second View"},
+        {"scene.hierarchy", "hierarchy", "Hierarchy", lux::editor::EPaneRegion::LEFT},
+        {"scene.inspector", "inspector", "Inspector", lux::editor::EPaneRegion::RIGHT}
     };
     auto executable = lux::engine::platform::executablePath();
     if (!executable)

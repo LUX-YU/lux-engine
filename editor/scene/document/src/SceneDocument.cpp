@@ -1,5 +1,6 @@
 #include <lux/engine/editor/SceneDocument.hpp>
 #include <lux/engine/editor/SceneEditing.hpp>
+#include <lux/engine/simulation/ecs/Parent.hpp>
 #include <set>
 
 namespace lux::editor
@@ -36,6 +37,11 @@ namespace lux::editor
         return revision_ != saved_revision_;
     }
 
+    std::uint64_t SceneDocument::hierarchyRevision() const noexcept
+    {
+        return hierarchy_revision_;
+    }
+
     bool SceneDocument::readOnly() const noexcept
     {
         return read_only_;
@@ -43,12 +49,26 @@ namespace lux::editor
 
     void SceneDocument::setReadOnly(bool value) noexcept
     {
+        if (read_only_ == value)
+        {
+            return;
+        }
         read_only_ = value;
+        static_cast<void>(emit(changed));
     }
 
     void SceneDocument::changedRevision() noexcept
     {
         ++revision_;
+        auto borrowed = std::as_const(runtime_).borrowInstance(instance_);
+        const bool removed =
+            selection_.valid() && borrowed &&
+            borrowed->get().ctx().get<scene::WorldResidency>().identities().entity(selection_) == ecs::NullEntity;
+        if (removed)
+        {
+            selection_ = {};
+            static_cast<void>(emit(selectionChanged));
+        }
         // Notification does not own the edit result. Revision remains queryable if a queued receiver is full.
         static_cast<void>(emit(changed));
     }
@@ -131,11 +151,28 @@ namespace lux::editor
         {
             return cxx::unexpected(VSceneEditFailure{edited.error()});
         }
+        if (result)
+        {
+            const auto* write = std::get_if<SceneWriteComponents>(&operation);
+            const bool structural =
+                !write || std::ranges::any_of(
+                              write->components,
+                              [](const auto& change) noexcept { return change.schema.name == "lux.ecs.Parent"; }
+                          );
+            if (structural)
+            {
+                ++hierarchy_revision_;
+            }
+        }
         return result;
     }
 
     SceneEditResult<void> SceneDocument::apply(const SceneEdit& edit) noexcept
     {
+        if (preview_)
+        {
+            return cxx::unexpected(VSceneEditFailure{ESceneEditError::READ_ONLY});
+        }
         if (edit.based_on != revision_)
         {
             return cxx::unexpected(VSceneEditFailure{ESceneEditError::STALE_REVISION});
@@ -154,6 +191,10 @@ namespace lux::editor
 
     SceneEditResult<void> SceneDocument::undo() noexcept
     {
+        if (preview_)
+        {
+            return cxx::unexpected(VSceneEditFailure{ESceneEditError::READ_ONLY});
+        }
         if (history_position_ == 0)
         {
             return cxx::unexpected(VSceneEditFailure{ESceneEditError::NO_HISTORY});
@@ -170,6 +211,10 @@ namespace lux::editor
 
     SceneEditResult<void> SceneDocument::redo() noexcept
     {
+        if (preview_)
+        {
+            return cxx::unexpected(VSceneEditFailure{ESceneEditError::READ_ONLY});
+        }
         if (history_position_ == history_.size())
         {
             return cxx::unexpected(VSceneEditFailure{ESceneEditError::NO_HISTORY});
@@ -181,6 +226,74 @@ namespace lux::editor
         }
         ++history_position_;
         changedRevision();
+        return {};
+    }
+
+    bool SceneDocument::previewing() const noexcept
+    {
+        return preview_.has_value();
+    }
+
+    SceneEditResult<void> SceneDocument::preview(const SceneEdit& edit) noexcept
+    {
+        if (edit.based_on != revision_)
+        {
+            return cxx::unexpected(VSceneEditFailure{ESceneEditError::STALE_REVISION});
+        }
+        const auto* write = std::get_if<SceneWriteComponents>(&edit.operation);
+        if (!write || write->components.size() != 1 || !write->components.front().value)
+        {
+            return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_COMPONENT});
+        }
+        if (preview_)
+        {
+            const auto& before = std::get<SceneWriteComponents>(preview_->forward).components.front();
+            const auto& next = write->components.front();
+            if (before.object != next.object || before.schema != next.schema)
+            {
+                return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_COMPONENT});
+            }
+        }
+        auto inverse = execute(edit.operation);
+        if (!inverse)
+        {
+            return cxx::unexpected(inverse.error());
+        }
+        if (!preview_)
+        {
+            preview_ = History{edit.operation, std::move(*inverse)};
+        }
+        else
+        {
+            preview_->forward = edit.operation;
+        }
+        changedRevision();
+        return {};
+    }
+
+    SceneEditResult<void> SceneDocument::finishPreview(bool commit) noexcept
+    {
+        if (!preview_)
+        {
+            return {};
+        }
+        if (commit)
+        {
+            history_.erase(history_.begin() + history_position_, history_.end());
+            history_.push_back(std::move(*preview_));
+            history_position_ = history_.size();
+        }
+        else
+        {
+            auto restored = execute(preview_->inverse);
+            if (!restored)
+            {
+                return cxx::unexpected(restored.error());
+            }
+            changedRevision();
+        }
+        preview_.reset();
+        static_cast<void>(emit(changed));
         return {};
     }
 
@@ -222,8 +335,170 @@ namespace lux::editor
         return result;
     }
 
+    world::WorldObjectId SceneDocument::selection() const noexcept
+    {
+        return selection_;
+    }
+
+    bool SceneDocument::select(world::WorldObjectId id) noexcept
+    {
+        if (id != world::WorldObjectId{} && !object(id))
+        {
+            return false;
+        }
+        if (selection_ != id)
+        {
+            selection_ = id;
+            static_cast<void>(emit(selectionChanged));
+        }
+        return true;
+    }
+
+    bool SceneDocument::canUndo() const noexcept
+    {
+        return !read_only_ && !preview_ && history_position_ != 0;
+    }
+
+    bool SceneDocument::canRedo() const noexcept
+    {
+        return !read_only_ && !preview_ && history_position_ != history_.size();
+    }
+
+    SceneEditResult<ecs::DecodedComponent> SceneDocument::component(
+        world::WorldObjectId id,
+        const ecs::ComponentSchemaId& type
+    ) const noexcept
+    {
+        auto captured = object(id);
+        if (!captured)
+        {
+            return cxx::unexpected(captured.error());
+        }
+        const auto* schema = schemas_.find(type);
+        const auto value = std::ranges::find(captured->components, type, &SceneComponentData::schema);
+        const bool unavailable = !schema || !schema->decode_value || value == captured->components.end();
+        if (unavailable)
+        {
+            return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_COMPONENT});
+        }
+        auto borrowed = std::as_const(runtime_).borrowInstance(instance_);
+        if (!borrowed)
+        {
+            return cxx::unexpected(VSceneEditFailure{borrowed.error()});
+        }
+        const auto& identities = borrowed->get().ctx().get<scene::WorldResidency>().identities();
+        ecs::ComponentEntityResolver resolver{
+            &identities,
+            [](const void* state,
+               world::WorldObjectId id) noexcept -> cxx::expected<ecs::Entity, ecs::ComponentDecodeFailure>
+            {
+                const auto entity = static_cast<const ecs::WorldEntityMap*>(state)->entity(id);
+                if (entity == ecs::NullEntity)
+                {
+                    return cxx::unexpected(
+                        ecs::ComponentDecodeFailure{ecs::EComponentDecodeError::UNRESOLVED_REFERENCE, 0, id}
+                    );
+                }
+                return entity;
+            }
+        };
+        auto decoded = schema->decode_value(value->version, value->payload, resolver, schema->code_lifetime);
+        if (!decoded)
+        {
+            return cxx::unexpected(VSceneEditFailure{decoded.error()});
+        }
+        return std::move(*decoded);
+    }
+
+    SceneEditResult<SceneEdit> SceneDocument::encodeComponentEdit(
+        world::WorldObjectId id,
+        std::uint64_t based_on,
+        cxx::TypeToken type,
+        const void* value
+    ) const noexcept
+    {
+        if (based_on != revision_)
+        {
+            return cxx::unexpected(VSceneEditFailure{ESceneEditError::STALE_REVISION});
+        }
+        const auto* schema = schemas_.find(type);
+        if (!schema || !schema->capture_value || !value)
+        {
+            return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_COMPONENT});
+        }
+        auto borrowed = std::as_const(runtime_).borrowInstance(instance_);
+        if (!borrowed)
+        {
+            return cxx::unexpected(VSceneEditFailure{borrowed.error()});
+        }
+        const auto& identities = borrowed->get().ctx().get<scene::WorldResidency>().identities();
+        auto captured = schema->capture_value(value, schema->code_lifetime);
+        auto bytes = captured.encode(identities, 64U << 20U);
+        if (!bytes)
+        {
+            return cxx::unexpected(VSceneEditFailure{bytes.error()});
+        }
+        SceneWriteComponents write;
+        write.components.push_back({id, schema->id, SceneComponentData{schema->id, schema->version, std::move(*bytes)}}
+        );
+        return SceneEdit{based_on, std::move(write)};
+    }
+
+    SceneEditResult<world::WorldObjectId> SceneDocument::parent(world::WorldObjectId id) const noexcept
+    {
+        auto borrowed = std::as_const(runtime_).borrowInstance(instance_);
+        if (!borrowed)
+        {
+            return cxx::unexpected(VSceneEditFailure{borrowed.error()});
+        }
+        const auto& registry = borrowed->get();
+        const auto& identities = registry.ctx().get<scene::WorldResidency>().identities();
+        const auto entity = identities.entity(id);
+        if (entity == ecs::NullEntity)
+        {
+            return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_OBJECT});
+        }
+        const auto* value = registry.try_get<const ecs::Parent>(entity);
+        return value ? identities.object(value->entity) : world::WorldObjectId{};
+    }
+
+    SceneEditResult<SceneEdit> SceneDocument::prepareParentEdit(
+        world::WorldObjectId child,
+        world::WorldObjectId parent,
+        std::uint64_t based_on
+    ) const noexcept
+    {
+        const auto* schema = schemas_.find(cxx::typeToken<ecs::Parent>());
+        if (!schema)
+        {
+            return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_COMPONENT});
+        }
+        if (!parent.valid())
+        {
+            SceneWriteComponents write;
+            write.components.push_back({child, schema->id, {}});
+            return SceneEdit{based_on, std::move(write)};
+        }
+        auto borrowed = std::as_const(runtime_).borrowInstance(instance_);
+        if (!borrowed)
+        {
+            return cxx::unexpected(VSceneEditFailure{borrowed.error()});
+        }
+        const auto entity = borrowed->get().ctx().get<scene::WorldResidency>().identities().entity(parent);
+        if (entity == ecs::NullEntity)
+        {
+            return cxx::unexpected(VSceneEditFailure{ESceneEditError::INVALID_OBJECT});
+        }
+        const ecs::Parent value{entity};
+        return prepareComponentEdit(child, based_on, value);
+    }
+
     SceneEditResult<scene::ScenePackage> SceneDocument::capture() const noexcept
     {
+        if (preview_)
+        {
+            return cxx::unexpected(VSceneEditFailure{ESceneEditError::READ_ONLY});
+        }
         auto borrowed = std::as_const(runtime_).borrowInstance(instance_);
         if (!borrowed)
         {

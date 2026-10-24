@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/engine/math/MeshBVH.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/math/MeshBVH.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
 
 #include <lux/engine/scene/mesh_query/visibility.h>
@@ -80,9 +80,15 @@ namespace lux::scene
         void setGeometry(asset::AssetId, std::shared_ptr<const MeshQueryGeometry>);
         void setGeometryFailure(asset::AssetId, MeshQueryFailure);
         void removeGeometry(asset::AssetId);
+        // Derived by the ordinary structural rebuild; providers prepare only these missing assets.
+        [[nodiscard]] std::span<const asset::AssetId> missingGeometry() const noexcept;
+        void clearGeometry() noexcept;
         [[nodiscard]] bool hasPendingChanges() const noexcept;
         [[nodiscard]] QueryResult<bool> raycastNearest(
-            const math::Ray3d&, double maximum_distance, RayHit3D&, MeshQueryWork* work = nullptr
+            const math::Ray3d&,
+            double maximum_distance,
+            RayHit3D&,
+            MeshQueryWork* work = nullptr
         ) const;
         [[nodiscard]] MeshQueryStatistics statistics() const noexcept;
 
@@ -94,4 +100,4 @@ namespace lux::scene
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::scene

@@ -11,8 +11,11 @@
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
+#include <lux/engine/scene/MeshQuery.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
+#include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
 #include <lux/engine/ui/Pane.hpp>
 
 #include <cassert>
@@ -234,7 +237,17 @@ int main(int argc, char** argv)
     std::fprintf(stderr, "Model placement prepared\n");
     assert(placement);
     const auto before_drop = document->objects()->size();
-    assert(document->apply(*placement));
+    until(
+        [&]
+        {
+            auto result = document->apply(*placement);
+            if (!result)
+            {
+                assert(isSceneEditBusy(result.error()));
+            }
+            return result.has_value();
+        }
+    );
     std::fprintf(stderr, "Model placement adopted\n");
     const auto after_drop = document->objects()->size();
     assert(after_drop > before_drop);
@@ -257,6 +270,21 @@ int main(int argc, char** argv)
         return count;
     };
     until([&] { return projected() == 2 && scenes.viewport(*a).ready && scenes.viewport(*b).ready; });
+    until(
+        [&]
+        {
+            auto registry = std::as_const(runtime).borrowInstance(document->instance());
+            const auto* query = registry ? registry->get().ctx().find<scene::MeshQuery>() : nullptr;
+            return query && query->statistics().entities == 2;
+        }
+    );
+    {
+        auto registry = std::as_const(runtime).borrowInstance(document->instance());
+        const auto& query = registry->get().ctx().get<scene::MeshQuery>();
+        scene::RayHit3D hit;
+        const auto picked = query.raycastNearest({{-1, 1, 3}, {0, 0, -1}}, 100, hit);
+        assert(picked && *picked && std::abs(hit.distance - 3.0) < 1e-5);
+    }
     const auto old_snapshot = context.assets().view().capture();
     assert(assets.reimport(imported.id));
     until([&] { return !assets.busy(); });
@@ -275,6 +303,85 @@ int main(int argc, char** argv)
     assert(assets.failure() && assets.revision() == accepted_catalog);
     assert(scenes.viewport(*a).ready && scenes.viewport(*b).ready);
 
+    const auto root_object = std::get<SceneCreateObjects>(placement->operation).objects.front().id;
+    assert(document->select(root_object));
+    const auto transform_schema = simulation::ecs::componentSchemaId("lux.ecs.Transform3D");
+    auto initial = document->component(root_object, transform_schema);
+    assert(initial);
+    auto edited_transform = *static_cast<const simulation::ecs::Transform3D*>(initial->data());
+    assert(scenes.save(id));
+    edited_transform.translation.x() += 0.75;
+    auto edit = document->prepareComponentEdit(root_object, document->revision(), edited_transform);
+    assert(edit);
+    until(
+        [&]
+        {
+            auto applied = document->apply(*edit);
+            if (!applied)
+            {
+                assert(isSceneEditBusy(applied.error()));
+            }
+            return applied.has_value();
+        }
+    );
+    until([&] { return !scenes.saving(id); });
+    assert(!scenes.failure() && document->dirty()); // R reached disk; the intervening R+1 is still unsaved.
+    assert(scenes.save(id));
+    until([&] { return !scenes.saving(id); });
+    assert(!scenes.failure() && !document->dirty());
+
+    auto headless = scenes.startPlay(id, ESceneRunMode::HEADLESS);
+    assert(headless && *headless != document->instance() && document->readOnly());
+    assert(!runtime.borrowSystem<scene::RenderSystem>(*headless));
+    until(
+        [&]
+        {
+            auto clock = std::as_const(runtime).borrowClock(*headless);
+            return clock && std::visit([](const auto& value) { return value.snapshot().step_index > 0; }, clock->get());
+        }
+    );
+    bool mutated = false;
+    until(
+        [&]
+        {
+            auto change = [&](simulation::ecs::Registry& registry) noexcept
+            {
+                const auto* residency = registry.ctx().find<scene::WorldResidency>();
+                const auto* identities = residency ? &residency->identities() : nullptr;
+                if (!identities)
+                {
+                    return;
+                }
+                const auto entity = identities->entity(root_object);
+                if (entity == simulation::ecs::NullEntity)
+                {
+                    return;
+                }
+                registry.patch<simulation::ecs::Transform3D>(entity, [](auto& value) { value.translation.x() = 900; });
+                mutated = true;
+            };
+            static_cast<void>(runtime.editInstance(*headless, change));
+            return mutated;
+        }
+    );
+    auto author = document->component(root_object, transform_schema);
+    assert(
+        author && static_cast<const simulation::ecs::Transform3D*>(author->data())->translation.x() ==
+                      edited_transform.translation.x()
+    );
+    scenes.stopPlay(id);
+    until([&] { return !scenes.playInstance(id).valid(); });
+    assert(!document->readOnly());
+
+    auto graphical = scenes.startPlay(id, ESceneRunMode::GRAPHICAL);
+    assert(graphical);
+    auto play_view = scenes.addViewport(id, left, 200, 150, true);
+    assert(play_view);
+    until([&] { return scenes.viewport(*play_view).ready; });
+    scenes.stopPlay(id);
+    until([&] { return !scenes.playInstance(id).valid(); });
+    assert(scenes.viewport(*play_view).target.isNull() && scenes.viewport(*b).ready);
+
     scenes.closeViewport(*a);
     until([&] { return scenes.viewport(*a).target.isNull(); });
     assert(scenes.viewport(*b).ready);
@@ -284,6 +391,12 @@ int main(int argc, char** argv)
     assert(scenes.open(root / "Scenes/authored.luxscene"));
     until([&] { return scenes.find(id) != nullptr; });
     assert(scenes.find(id)->instance() != editing_instance);
+    auto reopened_transform = scenes.find(id)->component(root_object, transform_schema);
+    assert(
+        reopened_transform &&
+        static_cast<const simulation::ecs::Transform3D*>(reopened_transform->data())->translation ==
+            edited_transform.translation
+    );
     assert(scenes.open(root / "Scenes/authored.luxscene"));
     fixture::modelSource(root / "Sources");
     assert(assets.reimport(imported.id));

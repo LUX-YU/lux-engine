@@ -165,6 +165,26 @@ metrics, real rendering and final posted-completion drain. A minimal consumer re
 
 ## Action and menu composition
 
+The product's Scene workflow uses the same commands: **Edit → Save Scene**, **Undo/Redo**, **Play Scene**,
+**Play Headless** and **Stop Play**. Open the Scenes tab, create or open a Scene, import a model in Assets,
+then drag it into a viewport. The default 3D preset includes the existing MeshQuery system. Clicking geometry
+selects its authored object; Hierarchy and Inspector share that selection. Inspector applies a complete typed
+component draft with its captured revision. Unknown component editors remain read-only without discarding data.
+
+The viewport's three translation axes publish normal author updates while dragging and create one undo entry.
+Escape cancels a drag; Ctrl+Z undoes its complete result. Rotation and scale are editable in Inspector. A stale
+Inspector draft requires **Revert / refresh draft**; it never silently overwrites newer values. Shader/material
+graph editing, indexed-world placement generation and production game compilation remain separate work.
+
+**Observe Play instance** chooses the independently running Registry for a viewport. Stop returns it to the
+author instance after withdrawing the Play observation. Headless preview runs Scene/Simulation without creating
+a project RenderSystem; the Editor's own UI remains graphical. The installed CPU-only Engine consumer checks
+the separate no-graphics build closure.
+
+Product panes use Root's existing docking tree. Asset/Hierarchy rows are derived caches; stable frames do not
+encode the Registry or rebuild the hierarchy. Hierarchy regeneration follows structural changes, while async
+asset readiness is adopted at the existing Scene safe point.
+
 `lux_editor_ui` provides the pure `composeEditorMenu(EditorMenuComposition)` algorithm. Products and external
 extensions append owning action, menu, group and placement declarations; they do not register handlers here.
 The product contributes project and editing commands through this same public input instead of assembling a

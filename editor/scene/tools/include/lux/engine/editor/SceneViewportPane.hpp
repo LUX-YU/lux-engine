@@ -26,6 +26,8 @@ namespace lux::editor
         void refreshCameras() noexcept;
         void updateCamera() noexcept;
         void placeDroppedModel() noexcept;
+        void pickObject() noexcept;
+        void updateGizmo() noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

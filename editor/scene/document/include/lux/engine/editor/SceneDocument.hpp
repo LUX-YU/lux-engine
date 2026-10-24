@@ -22,6 +22,7 @@ namespace lux::editor
         [[nodiscard]] asset::AssetId id() const noexcept;
         [[nodiscard]] scene::SceneInstanceId instance() const noexcept;
         [[nodiscard]] std::uint64_t revision() const noexcept;
+        [[nodiscard]] std::uint64_t hierarchyRevision() const noexcept;
         [[nodiscard]] bool dirty() const noexcept;
         [[nodiscard]] bool readOnly() const noexcept;
         void setReadOnly(bool) noexcept;
@@ -29,8 +30,37 @@ namespace lux::editor
         [[nodiscard]] SceneEditResult<void> apply(const SceneEdit&) noexcept;
         [[nodiscard]] SceneEditResult<void> undo() noexcept;
         [[nodiscard]] SceneEditResult<void> redo() noexcept;
+        // A drag may preview the same component write repeatedly. Every preview emits ordinary ECS updates;
+        // finish keeps exactly one undo entry, while cancel restores the captured author value.
+        [[nodiscard]] SceneEditResult<void> preview(const SceneEdit&) noexcept;
+        [[nodiscard]] SceneEditResult<void> finishPreview(bool commit) noexcept;
+        [[nodiscard]] bool previewing() const noexcept;
         [[nodiscard]] SceneEditResult<SceneObjectData> object(world::WorldObjectId) const noexcept;
         [[nodiscard]] SceneEditResult<std::vector<world::WorldObjectId>> objects() const noexcept;
+        [[nodiscard]] SceneEditResult<simulation::ecs::DecodedComponent>
+        component(world::WorldObjectId, const simulation::ecs::ComponentSchemaId&) const noexcept;
+
+        // Encodes an owned tool draft against this exact revision; apply performs domain admission.
+        template <class T>
+        [[nodiscard]] SceneEditResult<SceneEdit> prepareComponentEdit(
+            world::WorldObjectId object,
+            std::uint64_t based_on,
+            const T& value
+        ) const noexcept
+        {
+            return encodeComponentEdit(object, based_on, cxx::typeToken<T>(), &value);
+        }
+
+        [[nodiscard]] world::WorldObjectId selection() const noexcept;
+        [[nodiscard]] bool select(world::WorldObjectId) noexcept;
+        [[nodiscard]] bool canUndo() const noexcept;
+        [[nodiscard]] bool canRedo() const noexcept;
+        [[nodiscard]] SceneEditResult<world::WorldObjectId> parent(world::WorldObjectId) const noexcept;
+        [[nodiscard]] SceneEditResult<SceneEdit> prepareParentEdit(
+            world::WorldObjectId child,
+            world::WorldObjectId parent,
+            std::uint64_t based_on
+        ) const noexcept;
 
         // Main captures author values; workers only encode/write this immutable package.
         [[nodiscard]] SceneEditResult<scene::ScenePackage> capture() const noexcept;
@@ -45,6 +75,7 @@ namespace lux::editor
         }
 
         object::TSignal<> changed{*this};
+        object::TSignal<> selectionChanged{*this};
 
     private:
         struct History final
@@ -53,6 +84,8 @@ namespace lux::editor
         };
 
         [[nodiscard]] SceneEditResult<VSceneEdit> execute(const VSceneEdit&) noexcept;
+        [[nodiscard]] SceneEditResult<SceneEdit>
+        encodeComponentEdit(world::WorldObjectId, std::uint64_t, cxx::TypeToken, const void*) const noexcept;
         void changedRevision() noexcept;
 
         scene::SceneRuntime& runtime_;
@@ -60,9 +93,12 @@ namespace lux::editor
         simulation::ecs::ComponentSchemaSet schemas_;
         scene::ScenePackage baseline_;
         std::vector<History> history_;
+        std::optional<History> preview_;
         std::map<std::uint32_t, scene::PartitionRetention> retained_partitions_;
         std::size_t history_position_{};
         std::uint64_t revision_{}, saved_revision_{};
+        std::uint64_t hierarchy_revision_{};
         bool read_only_{};
+        world::WorldObjectId selection_;
     };
 } // namespace lux::editor

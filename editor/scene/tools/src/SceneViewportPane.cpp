@@ -1,9 +1,13 @@
 #include <lux/engine/editor/ModelPlacement.hpp>
 #include <lux/engine/editor/ProjectAssets.hpp>
 #include <lux/engine/editor/ProjectScenes.hpp>
+#include <lux/engine/editor/SceneTransformGizmo.hpp>
 #include <lux/engine/editor/SceneViewportPane.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
+#include <lux/engine/math/Picking.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
+#include <lux/engine/scene/MeshQuery.hpp>
+#include <lux/engine/simulation/ecs/Parent.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
 #include <lux/engine/ui/Controls.hpp>
@@ -66,7 +70,7 @@ namespace lux::editor
             };
         }
 
-        std::optional<Eigen::Vector3d> groundPosition(
+        std::optional<math::Ray3d> viewportRay(
             const scene::SceneCameraInput& camera,
             ui::Point pointer,
             ui::Size size
@@ -83,19 +87,35 @@ namespace lux::editor
                 return {};
             }
             const Eigen::Matrix4d inverse = (*projection * *view).inverse();
-            const double x = 2.0 * pointer.x / size.width - 1.0;
-            const double y = 2.0 * pointer.y / size.height - 1.0;
-            Eigen::Vector4d near_point = inverse * Eigen::Vector4d{x, y, 0, 1};
-            Eigen::Vector4d far_point = inverse * Eigen::Vector4d{x, y, 1, 1};
-            near_point /= near_point.w();
-            far_point /= far_point.w();
-            const Eigen::Vector3d direction = (far_point - near_point).head<3>().normalized();
-            const double distance = std::abs(direction.y()) > 1e-8 ? -near_point.y() / direction.y() : -1;
+            math::Ray3d ray;
+            math::screenToRay(
+                double(pointer.x),
+                double(pointer.y),
+                double(size.width),
+                double(size.height),
+                inverse,
+                ray
+            );
+            return ray;
+        }
+
+        std::optional<Eigen::Vector3d> groundPosition(
+            const scene::SceneCameraInput& camera,
+            ui::Point pointer,
+            ui::Size size
+        ) noexcept
+        {
+            const auto ray = viewportRay(camera, pointer, size);
+            if (!ray)
+            {
+                return {};
+            }
+            const double distance = std::abs(ray->direction.y()) > 1e-8 ? -ray->origin.y() / ray->direction.y() : -1;
             if (!std::isfinite(distance) || distance < 0)
             {
                 return {};
             }
-            return Eigen::Vector3d{near_point.head<3>() + distance * direction};
+            return Eigen::Vector3d{ray->origin + distance * ray->direction};
         }
     } // namespace
 
@@ -116,12 +136,19 @@ namespace lux::editor
             asset::AssetId document;
             std::uint64_t revision{};
             std::optional<Drop> drop;
+            std::optional<Drop> pick;
+            SceneTransformGizmo gizmo;
 
         private:
             void draw() noexcept override
             {
                 ImageElement::draw();
                 const auto& input = interaction();
+                const bool gizmo_active = gizmo.draw(input.content_origin, input.size);
+                if (input.left_clicked && !input.drop && !gizmo_active)
+                {
+                    pick = Drop{{}, document, revision, input.local_pointer, input.size};
+                }
                 const bool accepted = input.drop && input.drop->type == ui::PayloadTypeIdView{kModelAssetPayload} &&
                                       input.drop->bytes.size() == sizeof(ModelAssetReference);
                 if (!accepted)
@@ -139,6 +166,7 @@ namespace lux::editor
         scene::SceneRuntime& runtime;
         ui::Layout layout;
         ui::Choice documents{{}}, cameras{{{0, "Editor camera"}, {1, "Primary Scene camera"}}};
+        ui::CheckBox play{"Observe Play instance"};
         ui::Layout position{ui::ELayoutType::HORIZONTAL};
         ui::NumericEdit x{0.0}, y{2.0}, z{8.0}, yaw{0.0}, pitch{-12.0};
         ui::Label status;
@@ -153,6 +181,12 @@ namespace lux::editor
         scene::VSceneCameraSource camera{scene::SceneCameraInput{}};
         std::uint32_t width{640}, height{360};
         bool cameras_dirty{true};
+        bool observing_play{};
+        bool dragging{};
+        std::optional<bool> end_drag;
+        std::optional<SceneEdit> pending_drop;
+        std::uint64_t drag_revision{};
+        Eigen::Vector3d last_translation{Eigen::Vector3d::Zero()};
 
         Impl(ProjectScenes& scenes, ProjectAssets& assets, scene::SceneRuntime& runtime) noexcept
             : scenes(scenes), assets(assets), runtime(runtime)
@@ -169,6 +203,7 @@ namespace lux::editor
                 add(position, *control);
             }
             add(layout, documents);
+            add(layout, play);
             add(layout, cameras);
             add(layout, position);
             add(layout, status);
@@ -210,6 +245,8 @@ namespace lux::editor
         );
         retain(connect(&impl_->cameras, &ui::Choice::edited, this, [this](ui::EditResult) noexcept { updateCamera(); })
         );
+        retain(connect(&impl_->play, &ui::CheckBox::edited, this, [this](ui::EditResult) noexcept { selectDocument(); })
+        );
         for (auto* control : {&impl_->x, &impl_->y, &impl_->z, &impl_->yaw, &impl_->pitch})
         {
             retain(connect(control, &ui::NumericEdit::edited, this, [this](ui::EditResult) noexcept { updateCamera(); })
@@ -221,6 +258,13 @@ namespace lux::editor
 
     SceneViewportPane::~SceneViewportPane() noexcept
     {
+        if (impl_->dragging)
+        {
+            if (auto* document = impl_->scenes.find(impl_->document))
+            {
+                static_cast<void>(document->finishPreview(true)); // Keep the last adopted visible value.
+            }
+        }
         impl_->image.setImage({});
         impl_->scenes.closeViewport(impl_->viewport);
     }
@@ -250,7 +294,18 @@ namespace lux::editor
 
     void SceneViewportPane::selectDocument() noexcept
     {
+        if (impl_->dragging)
+        {
+            if (auto* old = impl_->scenes.find(impl_->document))
+            {
+                static_cast<void>(old->finishPreview(true));
+            }
+            impl_->dragging = false;
+            impl_->end_drag.reset();
+            impl_->image.gizmo.cancel();
+        }
         impl_->image.setImage({});
+        impl_->pending_drop.reset();
         impl_->scenes.closeViewport(impl_->viewport);
         impl_->viewport = {};
         impl_->document = {};
@@ -262,6 +317,7 @@ namespace lux::editor
             return;
         }
         impl_->document = impl_->document_ids[index];
+        static_cast<void>(impl_->scenes.selectDocument(impl_->document));
         auto* document = impl_->scenes.find(impl_->document);
         auto connected =
             connect(document, &SceneDocument::changed, this, [this]() noexcept { impl_->cameras_dirty = true; });
@@ -272,7 +328,10 @@ namespace lux::editor
         impl_->document_changed = std::move(*connected);
         impl_->cameras.setValue(0);
         updateCamera();
-        auto viewport = impl_->scenes.addViewport(impl_->document, impl_->camera, impl_->width, impl_->height);
+        impl_->observing_play = impl_->play.value();
+        auto viewport =
+            impl_->scenes
+                .addViewport(impl_->document, impl_->camera, impl_->width, impl_->height, impl_->observing_play);
         if (!viewport)
         {
             impl_->status.setText(describeProjectSceneFailure(viewport.error()));
@@ -289,7 +348,9 @@ namespace lux::editor
         {
             return;
         }
-        auto registry = std::as_const(impl_->runtime).borrowInstance(document->instance());
+        const auto instance =
+            impl_->observing_play ? impl_->scenes.playInstance(impl_->document) : document->instance();
+        auto registry = std::as_const(impl_->runtime).borrowInstance(instance);
         if (!registry)
         {
             return; // A previous simulation publication still owns its mutation interval.
@@ -297,7 +358,8 @@ namespace lux::editor
         impl_->camera_entities.clear();
         std::vector<ui::ChoiceOption> options{{0, "Editor camera"}, {1, "Primary Scene camera"}};
         const auto& entities = registry->get();
-        const auto* identities = entities.ctx().find<simulation::ecs::WorldEntityMap>();
+        const auto* residency = entities.ctx().find<scene::WorldResidency>();
+        const auto* identities = residency ? &residency->identities() : nullptr;
         for (auto entity : entities.view<const scene::Camera>())
         {
             const auto object = identities ? identities->object(entity) : world::WorldObjectId{};
@@ -339,7 +401,15 @@ namespace lux::editor
 
     void SceneViewportPane::update() noexcept
     {
+        if (impl_->observing_play &&
+            (!impl_->scenes.playInstance(impl_->document).valid() || impl_->scenes.stoppingPlay(impl_->document)))
+        {
+            impl_->play.setValue(false);
+            selectDocument();
+        }
         placeDroppedModel();
+        pickObject();
+        updateGizmo();
         impl_->image.document = impl_->document;
         if (const auto* document = impl_->scenes.find(impl_->document))
         {
@@ -371,8 +441,215 @@ namespace lux::editor
         );
     }
 
+    void SceneViewportPane::updateGizmo() noexcept
+    {
+        auto& state = *impl_;
+        auto& gizmo = state.image.gizmo;
+        auto* document = state.scenes.find(state.document);
+        auto intent = gizmo.takeEdit();
+        if (!document || state.observing_play || document->readOnly())
+        {
+            gizmo.hide();
+            gizmo.cancel();
+            state.dragging = false;
+            return;
+        }
+        if (state.end_drag)
+        {
+            if (!document->finishPreview(*state.end_drag))
+            {
+                gizmo.hide();
+                return;
+            }
+            state.end_drag.reset();
+            state.dragging = false;
+            gizmo.cancel();
+            intent.reset();
+        }
+        if (intent)
+        {
+            if (intent->begin)
+            {
+                state.drag_revision = intent->based_on;
+                state.dragging = true;
+                auto value =
+                    document->component(intent->object, simulation::ecs::componentSchemaId("lux.ecs.Transform3D"));
+                if (value)
+                {
+                    state.last_translation =
+                        static_cast<const simulation::ecs::Transform3D*>(value->data())->translation;
+                }
+            }
+            SceneEditResult<void> result;
+            if (!intent->cancel && state.last_translation != intent->value.translation)
+            {
+                auto edit = document->prepareComponentEdit(intent->object, state.drag_revision, intent->value);
+                result = edit ? document->preview(*edit) : SceneEditResult<void>{cxx::unexpected(edit.error())};
+                if (result)
+                {
+                    state.drag_revision = document->revision();
+                    state.last_translation = intent->value.translation;
+                }
+            }
+            if (intent->finish || !result)
+            {
+                const auto finished = document->finishPreview(!intent->cancel);
+                if (!finished)
+                {
+                    // Structural publication is still pending. Keep the exact end intent for the next safe point.
+                    state.end_drag = !intent->cancel;
+                    gizmo.hide();
+                    state.editing_status = "Waiting for transform publication before ending the drag";
+                    return;
+                }
+                else
+                {
+                    state.dragging = false;
+                    gizmo.cancel();
+                }
+            }
+            if (!result)
+            {
+                state.editing_status = "Transform draft rejected; the adopted value is unchanged";
+            }
+        }
+        const bool unavailable = !document->selection().valid() || (document->previewing() && !state.dragging);
+        if (unavailable)
+        {
+            gizmo.hide();
+            return;
+        }
+        auto borrowed = std::as_const(state.runtime).borrowInstance(document->instance());
+        if (!borrowed)
+        {
+            gizmo.hide();
+            return;
+        }
+        const auto& registry = borrowed->get();
+        const auto* residency = registry.ctx().find<scene::WorldResidency>();
+        const auto* identities = residency ? &residency->identities() : nullptr;
+        if (!identities)
+        {
+            gizmo.hide();
+            return;
+        }
+        const auto entity = identities->entity(document->selection());
+        const bool has_transform =
+            registry.valid(entity) &&
+            registry.all_of<simulation::ecs::Transform3D, simulation::ecs::WorldTransform3D>(entity);
+        if (!has_transform)
+        {
+            gizmo.hide();
+            return;
+        }
+        Eigen::Matrix3d inverse_parent = Eigen::Matrix3d::Identity();
+        if (const auto* parent = registry.try_get<const simulation::ecs::Parent>(entity))
+        {
+            if (const auto* transform = registry.try_get<const simulation::ecs::WorldTransform3D>(parent->entity))
+            {
+                inverse_parent = transform->value.linear().inverse();
+            }
+        }
+        const auto camera = placementCamera(state.runtime, *document, state.camera);
+        if (!camera || !inverse_parent.allFinite())
+        {
+            gizmo.hide();
+            return;
+        }
+        const auto projection = scene::cameraProjection(camera->camera, double(state.width) / state.height);
+        const auto view = scene::cameraView(camera->transform, Eigen::Vector3d::Zero());
+        if (!projection || !view)
+        {
+            gizmo.hide();
+            return;
+        }
+        const auto& world = registry.get<simulation::ecs::WorldTransform3D>(entity).value;
+        const double length = std::max(0.01, (world.translation() - camera->transform.translation()).norm() * 0.1);
+        gizmo.prepare(
+            document->selection(),
+            document->revision(),
+            registry.get<simulation::ecs::Transform3D>(entity),
+            world,
+            inverse_parent,
+            *projection * *view,
+            length
+        );
+    }
+
+    void SceneViewportPane::pickObject() noexcept
+    {
+        const auto click = std::exchange(impl_->image.pick, {});
+        if (!click || impl_->observing_play)
+        {
+            return;
+        }
+        auto* document = impl_->scenes.find(click->document);
+        if (!document || click->document != impl_->document || click->based_on != document->revision())
+        {
+            return;
+        }
+        const auto camera = placementCamera(impl_->runtime, *document, impl_->camera);
+        const auto ray = camera ? viewportRay(*camera, click->pointer, click->size) : std::nullopt;
+        if (!ray)
+        {
+            return;
+        }
+        auto borrowed = std::as_const(impl_->runtime).borrowInstance(document->instance());
+        if (!borrowed)
+        {
+            return;
+        }
+        const auto& registry = borrowed->get();
+        const auto* query = registry.ctx().find<scene::MeshQuery>();
+        if (!query)
+        {
+            impl_->editing_status = "This Scene has no MeshQuery system; select objects in Hierarchy";
+            return;
+        }
+        scene::RayHit3D hit;
+        const auto found = query->raycastNearest(*ray, 1.0e9, hit);
+        if (!found)
+        {
+            impl_->editing_status = "Mesh query is not ready or its asset failed";
+            return;
+        }
+        const auto* residency = registry.ctx().find<scene::WorldResidency>();
+        const auto* identities = residency ? &residency->identities() : nullptr;
+        if (identities)
+        {
+            static_cast<void>(impl_->scenes.selectDocument(document->id()));
+            static_cast<void>(document->select(*found ? identities->object(hit.entity) : world::WorldObjectId{}));
+        }
+    }
+
     void SceneViewportPane::placeDroppedModel() noexcept
     {
+        if (impl_->pending_drop)
+        {
+            auto* document = impl_->scenes.find(impl_->document);
+            if (!document)
+            {
+                impl_->pending_drop.reset();
+                return;
+            }
+            auto applied = document->apply(*impl_->pending_drop);
+            if (!applied && isSceneEditBusy(applied.error()))
+            {
+                impl_->editing_status = "Waiting for the Scene edit safe point";
+                return;
+            }
+            if (applied)
+            {
+                const auto& created = std::get<SceneCreateObjects>(impl_->pending_drop->operation).objects;
+                if (!created.empty())
+                {
+                    static_cast<void>(document->select(created.front().id));
+                }
+            }
+            impl_->pending_drop.reset();
+            impl_->editing_status = applied ? "Model placed; GPU assets load asynchronously" : "Model edit rejected";
+            return;
+        }
         if (!impl_->image.drop)
         {
             return;
@@ -394,6 +671,11 @@ namespace lux::editor
             impl_->editing_status = "Model has not loaded";
             return;
         }
+        if (document->baseline().world->data().partitioner().id.name != "lux.spatial.builtin.single")
+        {
+            impl_->editing_status = "This indexed World needs an explicit placement partition";
+            return;
+        }
         const auto camera = placementCamera(impl_->runtime, *document, impl_->camera);
         const auto position = camera ? groundPosition(*camera, drop->pointer, drop->size) : std::nullopt;
         if (!position)
@@ -411,7 +693,6 @@ namespace lux::editor
             return;
         }
         edit->based_on = drop->based_on;
-        const auto applied = document->apply(*edit);
-        impl_->editing_status = applied ? "Model placed; GPU assets load asynchronously" : "Model edit rejected";
+        impl_->pending_drop = std::move(*edit);
     }
 } // namespace lux::editor

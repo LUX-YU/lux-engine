@@ -319,18 +319,28 @@ component_add_internal_dependencies(lux_editor_assets lux_editor_context lux_edi
 
 target_link_libraries(lux_editor_assets
     PUBLIC lux::engine::toolchain::toolchain_model_cooker
-    PRIVATE nlohmann_json::nlohmann_json lux::cxx::algorithm
+    PRIVATE nlohmann_json::nlohmann_json lux::cxx::algorithm lux::engine::scene::scene_mesh_query
 )
 
 component_add_transitive_commands(lux_editor_assets
     "find_package(lux-engine-toolchain-asset REQUIRED COMPONENTS toolchain_model_cooker)"
     "find_package(nlohmann_json CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm)"
+    "find_package(lux-engine-scene-mesh-query REQUIRED COMPONENTS scene_mesh_query)"
 )
 
 lux_classify_target(TARGET lux_editor_assets LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
 component_add_internal_dependencies(lux_editor_app lux_editor_assets)
+
+target_link_libraries(lux_editor_app PRIVATE lux::engine::scene::scene_mesh_query)
+target_link_libraries(lux_editor_scene_profiles PRIVATE lux::engine::scene::scene_mesh_query)
+component_add_transitive_commands(lux_editor_app
+    "find_package(lux-engine-scene-mesh-query REQUIRED COMPONENTS scene_mesh_query)"
+)
+component_add_transitive_commands(lux_editor_scene_profiles
+    "find_package(lux-engine-scene-mesh-query REQUIRED COMPONENTS scene_mesh_query)"
+)
 
 add_component(
     COMPONENT_NAME lux_editor_asset_tools
@@ -361,6 +371,9 @@ add_component(
         scene/tools/src/SceneCreationPane.cpp
         scene/tools/src/SceneViewportPane.cpp
         scene/tools/src/ModelPlacement.cpp
+        scene/tools/src/SceneHierarchyPane.cpp
+        scene/tools/src/SceneInspectorPane.cpp
+        scene/tools/src/SceneTransformGizmo.cpp
         project/tools/src/ProjectCreationPane.cpp
 )
 
@@ -374,13 +387,19 @@ component_include_directories(
 
 component_add_internal_dependencies(lux_editor_scene_tools lux_editor_app lux_editor_scene_document)
 
+target_include_directories(lux_editor_scene_tools PRIVATE scene/tools/pinclude)
+
 target_link_libraries(lux_editor_scene_tools PRIVATE
+    imgui::core
+    lux::engine::scene::scene_mesh_query
     lux::engine::project::project_plugins
     lux::engine::simulation::ecs::transform
     lux::engine::simulation::ecs::visual
 )
 
 component_add_transitive_commands(lux_editor_scene_tools
+    "find_package(imgui REQUIRED COMPONENTS core)"
+    "find_package(lux-engine-scene-mesh-query REQUIRED COMPONENTS scene_mesh_query)"
     "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS transform visual)"
 )

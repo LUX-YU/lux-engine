@@ -43,7 +43,8 @@ namespace lux::editor
         scene::ScenePackageFailure,
         scene::SceneRuntimeFailure,
         ProjectFailure,
-        SceneCreationFailure>;
+        SceneCreationFailure,
+        VSceneEditFailure>;
     template <class T> using ProjectSceneResult = cxx::expected<T, VProjectSceneFailure>;
     [[nodiscard]] std::string describeProjectSceneFailure(const VProjectSceneFailure&);
     struct SceneViewportTag;
@@ -55,6 +56,12 @@ namespace lux::editor
         render::TargetId target;
         render::RenderError error;
         bool ready{};
+    };
+
+    enum class ESceneRunMode : std::uint8_t
+    {
+        GRAPHICAL,
+        HEADLESS
     };
 
     // One project's open documents and observations. Context leases actual Scene instances;
@@ -73,6 +80,16 @@ namespace lux::editor
         [[nodiscard]] SceneDocument* find(asset::AssetId) noexcept;
         [[nodiscard]] const std::filesystem::path* path(asset::AssetId) const noexcept;
         [[nodiscard]] std::vector<asset::AssetId> documents() const;
+        [[nodiscard]] asset::AssetId activeDocument() const noexcept;
+        [[nodiscard]] bool selectDocument(asset::AssetId) noexcept;
+        // Main snapshot -> CPU encoding -> blocking atomic write -> Main revision acknowledgement.
+        [[nodiscard]] ProjectSceneResult<execution::TaskId> save(asset::AssetId) noexcept;
+        [[nodiscard]] bool saving(asset::AssetId) const noexcept;
+        // Preview builds an independent Registry from the captured author revision, never copies Render IDs.
+        [[nodiscard]] ProjectSceneResult<scene::SceneInstanceId> startPlay(asset::AssetId, ESceneRunMode) noexcept;
+        void stopPlay(asset::AssetId) noexcept;
+        [[nodiscard]] scene::SceneInstanceId playInstance(asset::AssetId) const noexcept;
+        [[nodiscard]] bool stoppingPlay(asset::AssetId) const noexcept;
         [[nodiscard]] ProjectSceneResult<void> close(asset::AssetId) noexcept;
         void closeAll() noexcept;
         // Main safe point, including while closing. No window, CPU or GPU blocking wait.
@@ -86,7 +103,8 @@ namespace lux::editor
             asset::AssetId,
             scene::VSceneCameraSource,
             std::uint32_t width,
-            std::uint32_t height
+            std::uint32_t height,
+            bool play = false
         ) noexcept;
         [[nodiscard]] bool updateViewport(
             SceneViewportId,
@@ -101,6 +119,7 @@ namespace lux::editor
         object::TSignal<> changed{*this};
 
     private:
+        void event(object::EventView&) noexcept override;
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

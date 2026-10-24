@@ -144,9 +144,8 @@ namespace lux::scene
                 order.begin() + begin,
                 order.begin() + middle,
                 order.begin() + end,
-                [&](auto left, auto right) {
-                    return leaves[left].bounds.center()[axis] < leaves[right].bounds.center()[axis];
-                }
+                [&](auto left, auto right)
+                { return leaves[left].bounds.center()[axis] < leaves[right].bounds.center()[axis]; }
             );
             const auto left = buildNode(begin, middle, index);
             const auto right = buildNode(middle, end, index);
@@ -163,6 +162,7 @@ namespace lux::scene
             changed.clear();
             entity_leaf.clear();
             ready = {};
+            missing_geometry.clear();
 
             for (const Entity entity : registry.view<const Mesh3D>())
             {
@@ -172,6 +172,10 @@ namespace lux::scene
                     continue;
                 }
                 const auto geometry = geometries.find(visual.mesh);
+                if (geometry == geometries.end())
+                {
+                    missing_geometry.push_back(visual.mesh);
+                }
                 if (!registry.all_of<WorldTransform3D>(entity) || geometry == geometries.end())
                 {
                     ready = lux::cxx::unexpected(MeshQueryFailure{EMeshQueryError::NOT_READY, entity, visual.mesh});
@@ -204,6 +208,11 @@ namespace lux::scene
                 }
             }
 
+            std::sort(missing_geometry.begin(), missing_geometry.end());
+            missing_geometry.erase(
+                std::unique(missing_geometry.begin(), missing_geometry.end()),
+                missing_geometry.end()
+            );
             order.resize(leaves.size());
             std::iota(order.begin(), order.end(), 0U);
             nodes.reserve(leaves.empty() ? 0 : leaves.size() * 2 - 1);
@@ -343,13 +352,26 @@ namespace lux::scene
         std::vector<Leaf> leaves;
         std::vector<Node> nodes;
         std::vector<std::uint32_t> order, changed;
+        std::vector<asset::AssetId> missing_geometry;
         QueryResult<void> ready;
         bool structure_dirty{true};
         std::uint64_t rebuilds{}, leaf_updates{};
     };
 
     MeshQuery::MeshQuery() : impl_(std::make_unique<Impl>()) {}
+
     MeshQuery::~MeshQuery() noexcept = default;
+
+    std::span<const asset::AssetId> MeshQuery::missingGeometry() const noexcept
+    {
+        return impl_->missing_geometry;
+    }
+
+    void MeshQuery::clearGeometry() noexcept
+    {
+        impl_->geometries.clear();
+        impl_->structure_dirty = true;
+    }
 
     void MeshQuery::Impl::setGeometry(asset::AssetId source, std::shared_ptr<const MeshQueryGeometry> geometry)
     {
@@ -470,26 +492,32 @@ namespace lux::scene
     {
         impl_->structureChanged();
     }
+
     void MeshQuery::transformChanged(Registry& registry, Entity entity)
     {
         impl_->transformChanged(registry, entity);
     }
+
     void MeshQuery::setGeometry(asset::AssetId id, std::shared_ptr<const MeshQueryGeometry> geometry)
     {
         impl_->setGeometry(id, std::move(geometry));
     }
+
     void MeshQuery::removeGeometry(asset::AssetId id)
     {
         impl_->removeGeometry(id);
     }
+
     void MeshQuery::setGeometryFailure(asset::AssetId id, MeshQueryFailure failure)
     {
         impl_->setGeometryFailure(id, failure);
     }
+
     bool MeshQuery::hasPendingChanges() const noexcept
     {
         return impl_->hasPendingChanges();
     }
+
     QueryResult<bool> MeshQuery::raycastNearest(
         const math::Ray3d& ray,
         double distance,
@@ -499,8 +527,9 @@ namespace lux::scene
     {
         return impl_->raycastNearest(ray, distance, hit, work);
     }
+
     MeshQueryStatistics MeshQuery::statistics() const noexcept
     {
         return impl_->statistics();
     }
-}
+} // namespace lux::scene

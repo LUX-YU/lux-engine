@@ -16,6 +16,11 @@ namespace lux::asset
     class ModelAsset;
 }
 
+namespace lux::scene
+{
+    struct MeshQueryGeometry;
+}
+
 namespace lux::editor
 {
     class EditorContext;
@@ -83,6 +88,9 @@ namespace lux::editor
         [[nodiscard]] std::uint64_t revision() const noexcept;
         [[nodiscard]] std::span<const ProjectAsset> records() const noexcept;
         [[nodiscard]] const asset::ModelAsset* model(asset::AssetId) const noexcept;
+        // Lazy CPU geometry projection used by spatial queries; all read/decode/BVH work stays off Main.
+        [[nodiscard]] AssetImportResult<void> prepareMeshGeometry(asset::AssetId) noexcept;
+        [[nodiscard]] std::shared_ptr<const scene::MeshQueryGeometry> meshGeometry(asset::AssetId) const noexcept;
         [[nodiscard]] const std::optional<AssetImportFailure>& failure() const noexcept;
 
         object::TSignal<> changed{*this};

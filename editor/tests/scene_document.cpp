@@ -179,6 +179,26 @@ int main()
     document->setReadOnly(true);
     assert(!document->apply({document->revision(), change}));
     document->setReadOnly(false);
+    assert(document->select(first) && document->selection() == first);
+    auto value = take(document->component(first, transform_value.schema));
+    auto draft = *static_cast<const ecs::Transform3D*>(value.data());
+    const auto original = draft.translation;
+    const auto start_revision = document->revision();
+    for (unsigned i = 1; i <= 5; ++i)
+    {
+        draft.translation.x() = original.x() + i;
+        auto edit = take(document->prepareComponentEdit(first, document->revision(), draft));
+        assert(document->preview(edit));
+    }
+    assert(document->previewing() && document->revision() == start_revision + 5);
+    assert(!document->capture() && !document->undo());
+    assert(document->finishPreview(true) && document->undo());
+    assert(registry.get<ecs::Transform3D>(residency.identities().entity(first)).translation == original);
+    assert(document->redo());
+    draft.translation.y() += 10;
+    assert(document->preview(take(document->prepareComponentEdit(first, document->revision(), draft))));
+    assert(document->finishPreview(false));
+    assert(registry.get<ecs::Transform3D>(residency.identities().entity(first)).translation.y() == original.y());
     replaced.release();
     added.release();
     removed.release();

@@ -4,6 +4,14 @@
 
 namespace lux::editor
 {
+    enum class EPaneRegion : unsigned char
+    {
+        CENTER,
+        LEFT,
+        RIGHT,
+        BOTTOM
+    };
+
     struct PaneDescription final
     {
         std::string type;
@@ -11,6 +19,8 @@ namespace lux::editor
         // No persistent name-to-Pane binding is provided by the framework yet.
         std::string name;
         std::string title;
+        EPaneRegion region{EPaneRegion::CENTER};
     };
+
     using EditorLayout = std::vector<PaneDescription>;
 } // namespace lux::editor

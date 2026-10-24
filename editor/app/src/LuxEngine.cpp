@@ -726,6 +726,43 @@ namespace lux::editor
                 return {};
             }
             removed->clear();
+            if (project_ && !config_.layout.empty())
+            {
+                ui::DockTree tree;
+                tree.nodes.resize(7);
+                tree.nodes[0] = {ui::EDockSplit::HORIZONTAL, 1, 2, 0.22F};
+                tree.nodes[2] = {ui::EDockSplit::VERTICAL, 3, 4, 0.74F};
+                tree.nodes[3] = {ui::EDockSplit::HORIZONTAL, 5, 6, 0.72F};
+                const auto handles = project_->ui.handles();
+                for (std::size_t i = 0; i < handles.size(); ++i)
+                {
+                    const auto region = config_.layout[i].region;
+                    const auto node = region == EPaneRegion::LEFT     ? 1
+                                      : region == EPaneRegion::RIGHT  ? 6
+                                      : region == EPaneRegion::BOTTOM ? 4
+                                                                      : 5;
+                    tree.nodes[node].panes.push_back(handles[i]);
+                }
+                // Application panes, such as project creation, remain Root-owned and tab with project tools.
+                for (const auto& node : root.captureDockTree().nodes)
+                {
+                    for (auto handle : node.panes)
+                    {
+                        if (std::ranges::find(handles, handle) == handles.end())
+                        {
+                            tree.nodes[1].panes.push_back(handle);
+                        }
+                    }
+                }
+                const auto& metrics = application_.window->metrics();
+                tree.surfaces.push_back(
+                    {0, {{0, 0}, {static_cast<float>(metrics.width), static_cast<float>(metrics.height)}}, false}
+                );
+                if (!root.setDockTree(std::move(tree)))
+                {
+                    std::terminate();
+                }
+            }
             if (old)
             {
                 application_.retire(std::move(old->context));
@@ -1042,6 +1079,13 @@ namespace lux::editor
             const bool cancel = command->id == ui::CommandIdView{"lux.project.cancel_open"};
             if (!close && !cancel)
             {
+                if (impl_->project_ && impl_->project_->scenes)
+                {
+                    if (object::sendEvent(*impl_->project_->scenes, *command))
+                    {
+                        event.accept();
+                    }
+                }
                 return;
             }
             event.accept();

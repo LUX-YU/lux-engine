@@ -77,4 +77,12 @@ namespace lux::editor
         world::WorldStorageCodecFailure,
         scene::ScenePackageFailure>;
     template <class T> using SceneEditResult = cxx::expected<T, VSceneEditFailure>;
+
+    // Only this transient boundary permits retrying the exact owned edit without changing based_on.
+    [[nodiscard]] inline bool isSceneEditBusy(const VSceneEditFailure& failure) noexcept
+    {
+        const auto* runtime = std::get_if<scene::SceneRuntimeFailure>(&failure);
+        const auto* code = runtime ? std::get_if<scene::ESceneRuntimeError>(&runtime->cause) : nullptr;
+        return code && *code == scene::ESceneRuntimeError::BUSY;
+    }
 } // namespace lux::editor

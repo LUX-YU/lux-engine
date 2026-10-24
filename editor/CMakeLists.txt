@@ -173,6 +173,9 @@ target_link_libraries(
 
 component_add_internal_dependencies(lux_editor_app lux_editor_context lux_editor_ui)
 
+# Finite Scene/viewport Sender instantiations need the extended COFF format under ASan.
+target_compile_options(lux_editor_app PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>)
+
 component_add_transitive_commands(
     lux_editor_app
     "find_package(lux-engine-process-object-execution REQUIRED COMPONENTS object_execution)"

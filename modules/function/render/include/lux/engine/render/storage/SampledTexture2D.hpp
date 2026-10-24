@@ -84,6 +84,7 @@ namespace lux::render
 
     struct ReleaseTexture final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name = "lux.render.ReleaseTexture";
         static constexpr bool frame_scoped = true;
         // Client ends all Material/Attachment references first. Release does not update other Storage.

@@ -1,3 +1,4 @@
+#include "support/ProjectRequests.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
@@ -123,7 +124,7 @@ namespace
 
     void run(bool vsync, bool minimized, bool native_close)
     {
-        auto made = editor::LuxEngine::create({"Framework pacing", 640, 480, vsync});
+        auto made = editor::LuxEngine::create(fixture::loadedConfig("Framework pacing", 640, 480, vsync));
         assert(made);
         auto host = std::move(*made);
         ProbeState state;
@@ -247,7 +248,7 @@ namespace
 
     void closeDuringMaintenance()
     {
-        auto made = editor::LuxEngine::create({"Close during maintenance", 640, 480});
+        auto made = editor::LuxEngine::create(fixture::loadedConfig("Close during maintenance", 640, 480));
         assert(made);
         auto host = std::move(*made);
         ProbeState state;

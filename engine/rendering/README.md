@@ -28,6 +28,11 @@ For a complete game frame:
 5. Call `releaseFrame()` after adopting the result. It keeps vector capacities. FrameCompletion ends the CPU
    input borrow and reports submission facts; it is not GPU completion or presentation.
 
+A publication producer without a carrier calls `requestFrameInput()`. `needsFrameInput()` combines this coalesced
+request with queued commands; successful `beginFrame()` consumes it, while unavailable capacity preserves it.
+A host must acquire that input **before** Scene publication, including maintenance during shutdown. Publication
+cannot manufacture commands until it has their backing carrier; testing only the existing command queue can deadlock.
+
 An Asset requester leaves `max_frames_ahead` absent. New immutable uploads can progress independently; visible
 table updates belong in the Game frame. An Asset Link can set `max_pending_requests` for its actual outstanding
 requests (`RenderExecutionConfig::asset_pending_requests` configures the built-in Asset Client). Main has no
@@ -105,3 +110,10 @@ non-owning typed window value to NRI's surface description. It creates no device
 The caller keeps the actual window alive until its surface target is retired. Unsupported native handle
 forms return false; currently only the Windows path is implemented. Offscreen builds without window
 support omit this function and its installed header instead of advertising an unusable stub.
+
+Execution failure does not close the Server endpoint. `failure()` reports the first execution error; ordinary
+production commands subsequently receive typed failures. Commands declaring `failure_safe` may query or logically
+release existing objects without creating GPU work. `Stop` requests this quiescence; it does not destroy the Server.
+The application stops producers, drains its cleanup replies, then calls `beginClose()`/`advanceClose()` to close both
+Clients and stop/join the Server. `advanceClose()` reports progress independently of `failure()`; `shutdown()` returns
+the original error only after this sequence completes. Abnormal external disconnect still uses `settleClosed()`.

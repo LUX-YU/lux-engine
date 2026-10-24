@@ -141,6 +141,7 @@ namespace lux::render
 
     struct FindStorage final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.storage.find"};
         static constexpr bool frame_scoped = false;
         using Request = StorageSelection;
@@ -167,6 +168,7 @@ namespace lux::render
 
     struct RemoveStorage final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.storage.remove"};
         static constexpr bool frame_scoped = true;
         using Request = StorageId;
@@ -244,6 +246,7 @@ namespace lux::render
 
     struct ListStorages final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.storages.list"};
         static constexpr bool frame_scoped = false;
         using Request = EmptyRequest;
@@ -252,6 +255,7 @@ namespace lux::render
 
     struct ListFeatures final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.features.list"};
         static constexpr bool frame_scoped = false;
         using Request = EmptyRequest;
@@ -267,10 +271,11 @@ namespace lux::render
         cxx::TypeToken response;
         bool bound = false;
         bool frame_scoped = false;
+        bool failure_safe = false;
 
         [[nodiscard]] CommandDescriptor descriptor() const noexcept
         {
-            return {CommandName{name}, request, response, frame_scoped};
+            return {CommandName{name}, request, response, frame_scoped, failure_safe};
         }
     };
 
@@ -302,6 +307,7 @@ namespace lux::render
 
     struct ListCommands final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.commands.list"};
         static constexpr bool frame_scoped = false;
         using Request = EmptyRequest;
@@ -310,6 +316,7 @@ namespace lux::render
 
     struct ListCommandBindings final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.commands.bindings"};
         static constexpr bool frame_scoped = false;
         using Request = CommandId;
@@ -334,6 +341,7 @@ namespace lux::render
 
     struct RemoveScene final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.scene.remove"};
         static constexpr bool frame_scoped = true;
         using Request = SceneRequest;
@@ -358,6 +366,7 @@ namespace lux::render
 
     struct RemoveView final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.view.remove"};
         static constexpr bool frame_scoped = true;
         using Request = ViewRequest;
@@ -398,6 +407,7 @@ namespace lux::render
 
     struct RemoveTarget final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name = "render.target.remove";
         static constexpr bool frame_scoped = true;
         using Request = TargetId;
@@ -429,6 +439,7 @@ namespace lux::render
 
     struct RemoveEffect final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.effect.remove"};
         static constexpr bool frame_scoped = true;
         using Request = EffectRequest;
@@ -445,14 +456,18 @@ namespace lux::render
 
     struct Detach final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.detach"};
         static constexpr bool frame_scoped = true;
         using Request = AttachmentId;
         using Response = AckResponse;
     };
 
+    // Request that the host end the rendering session. Ack does not close the IPC endpoint:
+    // typed failures and logical cleanup remain available until the host closes its Clients.
     struct Stop final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.stop"};
         static constexpr bool frame_scoped = false;
         using Request = EmptyRequest;
@@ -461,6 +476,7 @@ namespace lux::render
 
     struct QueryExecutionProgress final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.execution.progress"};
         static constexpr bool frame_scoped = false;
         using Request = AttachmentId;
@@ -474,6 +490,7 @@ namespace lux::render
 
     struct QueryRenderStats final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name{"render.stats.query"};
         static constexpr bool frame_scoped = false;
         using Request = EmptyRequest;

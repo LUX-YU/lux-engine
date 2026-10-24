@@ -226,6 +226,12 @@ int main(int argc, char** argv)
     check(bounded->close());
     bounded.reset();
 
+    client.requestFrameInput();
+    check(client.needsFrameInput() && !client.hasQueuedFrameCommands());
+    input = take(client.beginFrame());
+    check(!client.needsFrameInput());
+    check(bool(client.releaseFrame(*input)));
+
     // Accepted frame replies, rather than GPU slots or request counts, permit another CPU input.
     // Do not consume replies until all L+1 carriers are held; Server may already be idle by then.
     for (std::uint32_t i = 0; i <= frame_lead; ++i)
@@ -234,7 +240,8 @@ int main(int argc, char** argv)
         check(frame != nullptr);
         check(bool(rendering->submitFrame(*frame)));
     }
-    check(take(rendering->beginFrame()) == nullptr);
+    client.requestFrameInput();
+    check(take(rendering->beginFrame()) == nullptr && client.needsFrameInput());
     check(bool(execution.waitUntil(
         [&]() noexcept
         {
@@ -243,7 +250,7 @@ int main(int argc, char** argv)
         }
     )));
     auto* recycled = take(rendering->beginFrame());
-    check(recycled != nullptr);
+    check(recycled != nullptr && !client.needsFrameInput());
     check(bool(client.releaseFrame(*recycled)));
 
     std::fputs("Normal shutdown with an unsent command\n", stderr);
@@ -254,6 +261,50 @@ int main(int argc, char** argv)
     check(bool(rendering->shutdown()));
     check(completed && reply.error.type == kCommandCancelled);
     check(client.pendingRequests() == 0 && rendering->stats().validation_errors == 0);
+    rendering.reset();
+    // A requested execution stop preserves the endpoint for typed errors and logical cleanup.
+    // This exercises the production quiescence protocol; it is not a synthetic DeviceLost qualification.
+    RenderExecutionConfig closing_config;
+    closing_config.render.channel_name = "engine.render.cleanup";
+    closing_config.render.validation = true;
+    rendering = take(RenderExecution::create(std::move(closing_config), execution));
+    auto& cleanup_client = rendering->mainClient();
+    const auto cleanup_scene = call<CreateScene>(*rendering, {}).scene;
+    call<Stop>(*rendering, {});
+    check(rendering->failure().type == kCommandCancelled);
+    SceneCreated refused;
+    CreateScene::Request creation{};
+    auto refusal = receive(
+        execution,
+        cleanup_client.request(take(cleanup_client.bind<CreateScene>()), creation),
+        refused,
+        completed
+    );
+    check(bool(execution.waitUntil(
+        [&]() noexcept
+        {
+            check(bool(rendering->consumeResponses()));
+            return completed;
+        }
+    )));
+    check(refused.error.type == kCommandCancelled && !cleanup_client.closed());
+    SceneRequest removal{cleanup_scene};
+    auto cleanup =
+        receive(execution, cleanup_client.request(take(cleanup_client.bind<RemoveScene>()), removal), reply, completed);
+    input = take(cleanup_client.beginFrame());
+    frame_task = receive(execution, cleanup_client.submitFrame(*input), result, frame_completed);
+    check(bool(execution.waitUntil(
+        [&]() noexcept
+        {
+            check(bool(rendering->consumeResponses()));
+            return frame_completed;
+        }
+    )));
+    check(completed && reply.error.type == 0 && result.error.type == 0);
+    check(bool(cleanup_client.releaseFrame(*input)));
+    const auto closed = rendering->shutdown();
+    check(!closed && closed.error().type == kCommandCancelled);
+    check(cleanup_client.pendingRequests() == 0 && rendering->stats().validation_errors == 0);
     rendering.reset();
     execution.requestStop();
     check(bool(execution.join()));

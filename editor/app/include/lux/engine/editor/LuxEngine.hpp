@@ -22,17 +22,24 @@ namespace lux::editor
 {
     class EditorWindow;
     class EditorContext;
+    class LuxEngine;
 
     namespace detail
     {
         struct LuxEngineTestAccess;
-    }
+        struct ProjectStartupRequest;
+        [[nodiscard]] FrameworkResult<std::unique_ptr<LuxEngine>> createEditor(
+            EditorConfig,
+            EditorAssembly,
+            ProjectStartupRequest
+        ) noexcept;
+    } // namespace detail
 
     class LuxEngine final : public object::LuxObject
     {
     public:
         [[nodiscard]] static FrameworkResult<std::unique_ptr<LuxEngine>> create(
-            EditorConfig = {},
+            EditorConfig,
             EditorAssembly = {}
         ) noexcept;
         ~LuxEngine() noexcept override;
@@ -53,8 +60,10 @@ namespace lux::editor
         // the corresponding replacement; only then may their owners remove those Targets.
         [[nodiscard]] FrameworkResult<void> setUiImages(std::vector<UiTargetImage>) noexcept;
         [[nodiscard]] bool uiImagesApplied() const noexcept;
-        [[nodiscard]] EditorContext* project() noexcept;
-        [[nodiscard]] const EditorContext* project() const noexcept;
+        // The currently adopted project, valid throughout the running session. A failed switch preserves it.
+        // CloseProjectRequest ends that session; do not borrow its Context during/after shutdown.
+        [[nodiscard]] EditorContext& project() noexcept;
+        [[nodiscard]] const EditorContext& project() const noexcept;
 
         object::TSignal<> projectChanged{*this};
         object::TSignal<ProjectOpenFailure> projectOpenFailed{*this};
@@ -71,6 +80,16 @@ namespace lux::editor
         };
         [[nodiscard]] FrameworkResult<ELoopState> pumpOnce() noexcept;
         friend struct detail::LuxEngineTestAccess;
+        friend FrameworkResult<std::unique_ptr<LuxEngine>> detail::createEditor(
+            EditorConfig,
+            EditorAssembly,
+            detail::ProjectStartupRequest
+        ) noexcept;
+        [[nodiscard]] static FrameworkResult<std::unique_ptr<LuxEngine>> createConfigured(
+            EditorConfig,
+            EditorAssembly,
+            detail::ProjectStartupRequest
+        ) noexcept;
         struct Impl;
         explicit LuxEngine(std::unique_ptr<Impl>) noexcept;
         std::unique_ptr<Impl> impl_;

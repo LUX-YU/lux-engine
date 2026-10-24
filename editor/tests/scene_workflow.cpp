@@ -1,4 +1,3 @@
-#include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include "support/ModelSource.hpp"
 #include "support/ProjectRequests.hpp"
 #include <lux/engine/editor/EditorComposition.hpp>
@@ -10,6 +9,7 @@
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/editor/SceneViewportPane.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
+#include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
@@ -41,6 +41,7 @@ int main(int argc, char** argv)
     ProjectManifest manifest{1, generate(), "Scene workflow", {{"lux.builtin.scene_render", 2}}};
     assert(writeProjectManifestAtomic(project_path, manifest, EProjectWrite::CREATE));
     EditorConfig config{"Scene product workflow", 900, 600};
+    config.project_file = project_path;
     config.enable_validation = true;
     config.enable_vsync = false;
     config.execution.task_capacity = 8;
@@ -115,9 +116,8 @@ int main(int argc, char** argv)
                         task.phase.c_str()
                     );
                 }
-                if (host.project())
                 {
-                    if (auto* collection = host.project()->services().constructed<ProjectScenes>();
+                    if (auto* collection = host.project().services().constructed<ProjectScenes>();
                         collection && collection->failure())
                     {
                         std::fprintf(stderr, "%s\n", describeProjectSceneFailure(*collection->failure()).c_str());
@@ -134,9 +134,7 @@ int main(int argc, char** argv)
             std::this_thread::yield();
         }
     };
-    assert(fixture::open(host, project_path));
-    until([&] { return host.project() != nullptr; });
-    auto& context = *host.project();
+    auto& context = host.project();
     until([&] { return context.service<ProjectAssets>()->get().ready(); });
     auto service = context.service<ProjectScenes>();
     assert(service);
@@ -433,7 +431,8 @@ int main(int argc, char** argv)
     fixture::modelSource(root / "Sources");
     assert(assets.reimport(imported.id));
     fixture::close(host); // A decode may return after closure; it cannot adopt into the next Context.
-    until([&] { return host.project() == nullptr && host.engine().sceneRuntime().instanceCount() == 0; });
+    assert(host.run());
+    assert(host.engine().sceneRuntime().instanceCount() == 0);
     made->reset();
     std::puts("Scene creation, incompatibility, multi-view, resize, reopen and late close passed");
 }

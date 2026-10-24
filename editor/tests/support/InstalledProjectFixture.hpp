@@ -21,33 +21,13 @@ namespace fixture
         std::filesystem::create_directories(description.root);
         const auto file = description.root / (description.name + ".fixture.luxproj");
         assert(writeProjectManifestAtomic(file, manifest, EProjectWrite::REPLACE));
-        auto made = LuxEngine::create(
-            {"Installed Context consumer", 160, 120},
-            EditorAssembly{std::forward<Assembly>(assembly)}
-        );
+        EditorConfig config{"Installed Context consumer", 160, 120};
+        config.project_file = file;
+        auto made = LuxEngine::create(std::move(config), EditorAssembly{std::forward<Assembly>(assembly)});
         assert(made);
         auto host = std::move(*made);
-        bool inspected{};
-        auto changed = object::LuxObject::connect(
-            host.get(),
-            &LuxEngine::projectChanged,
-            [&]() noexcept
-            {
-                if (host->project())
-                {
-                    assert(!inspected);
-                    inspected = true;
-                    inspect(*host->project());
-                    host->window().exit();
-                }
-            }
-        );
-        auto failed = object::LuxObject::connect(
-            host.get(),
-            &LuxEngine::projectOpenFailed,
-            [](const ProjectOpenFailure&) noexcept { std::abort(); }
-        );
-        assert(changed && failed && open(*host, file));
-        assert(host->run() && inspected && !host->project());
+        inspect(host->project());
+        host->window().exit();
+        assert(host->run());
     }
 } // namespace fixture

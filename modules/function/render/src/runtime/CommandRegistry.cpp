@@ -34,7 +34,8 @@ namespace lux::render::runtime_detail
                  description.request,
                  description.response,
                  entry.selectedBinding() != nullptr,
-                 description.frame_scoped}
+                 description.frame_scoped,
+                 description.failure_safe}
             );
         }
         return result;

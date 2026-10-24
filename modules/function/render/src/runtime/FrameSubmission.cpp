@@ -141,7 +141,7 @@ namespace lux::render
         }
         if (frame.error.type == 0)
         {
-            if (!frames->beginFrame(frame.slot))
+            if (execution_error.type == 0 && !frames->beginFrame(frame.slot))
             {
                 return; // Keep the input queued until a physical FIF slice becomes reusable.
             }
@@ -171,6 +171,18 @@ namespace lux::render
             {
                 auto& invocation = frame.invocations[frame.dispatched++];
                 auto& command = *invocation.input;
+                if (execution_error.type != 0 &&
+                    !command_registry_.findCommand(command.command)->description->failure_safe)
+                {
+                    invocation.make_error(
+                        response_outbox_.prepare({frame_source_, command.request_id}),
+                        execution_error
+                    );
+                    command.request.reset();
+                    --frame.group_pending;
+                    frame.error = execution_error;
+                    continue;
+                }
                 CommandDispatchContext context{
                     command.request,
                     {frame_source_, command.request_id},
@@ -224,6 +236,13 @@ namespace lux::render
 
     void RenderServer::Impl::submitFrameRendering(FrameRecord& frame) noexcept
     {
+        if (execution_error.type != 0)
+        {
+            // Cleanup-only frames have no physical slice and do not start new GPU work.
+            frame_resynchronization_ = false;
+            finishFrame(frame, FrameCompletion{{}, frame.input.sequence, EFrameOutcome::NO_DRAW, 0, false});
+            return;
+        }
         const auto submitted = submitCurrentFrame(frame.slot);
         if (!submitted)
         {

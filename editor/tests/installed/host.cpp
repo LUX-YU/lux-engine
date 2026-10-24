@@ -122,6 +122,7 @@ int main(int argc, char** argv)
     const auto a = file("A"), b = file("B"), c = file("C");
     std::map<std::string, Counts> counts;
     EditorConfig config{"Public SDK host", 640, 480};
+    config.project_file = a;
     config.enable_validation = true;
     config.layout = {{"probe", "project", "Project"}};
     auto made = LuxEngine::create(
@@ -216,7 +217,7 @@ int main(int argc, char** argv)
         assert(std::chrono::steady_clock::now() < deadline);
         assert(&host->engine() == engine_identity && &host->window() == window_identity);
         assert(root.resolvePane(global_handle) == global);
-        auto* project = host->project();
+        auto* project = &host->project();
         switch (phase)
         {
         case 0:
@@ -367,16 +368,9 @@ int main(int argc, char** argv)
             if (window_identity->metrics().minimized || counts["B"].draws <= draws_before)
                 return;
             assert(host->rendering().stats().presentations > 0);
-            fixture::close(*host);
-            phase = 9;
-            return;
-        case 9:
-            if (project)
-                return;
-            assert(counts["B"].panes == 1 && counts["B"].services == 1);
-            // Final close races an accepted real Project worker. Host must drain it safely.
+            // Closing a project now ends this loaded session; a pending replacement still has to settle.
             assert(fixture::open(*host, a));
-            host->window().exit();
+            fixture::close(*host);
             phase = 10;
             return;
         default:
@@ -388,7 +382,6 @@ int main(int argc, char** argv)
     auto added = root.addPane(std::move(owner));
     assert(added);
     global_handle = root.paneHandle(added->get());
-    assert(fixture::open(*host, a));
     const auto result = host->run();
     if (!result)
     {
@@ -396,7 +389,8 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "Public host run failed at phase %u: %s\n", phase, diagnostic.c_str());
     }
     assert(result);
-    assert(phase == 10 && !host->project() && facts.failed == 2 && counts["A"].panes == 1);
+    assert(phase == 10 && facts.failed == 2 && counts["A"].panes == 1);
+    assert(counts["B"].panes == 1 && counts["B"].services == 1);
     assert(object::ObjectRuntime::instance().statistics().pending == 0);
     std::puts("PASS public run/Events: global UI, blocked worker replacement, Root rejection, metrics, GPU and shutdown"
     );

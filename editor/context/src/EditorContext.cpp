@@ -203,6 +203,19 @@ namespace lux::editor
         return scene_retirements_.empty() || tasks_.settled();
     }
 
+    exec::task<void> EditorContext::closeAsync() noexcept
+    {
+        close();
+        for (const auto& retirement : scene_retirements_)
+        {
+            co_await stdexec::continues_on(retirement.whenComplete(), engine_.execution().mainScheduler());
+        }
+        tasks_.requestStop();
+        asset_reads_.reset();
+        close_stage_ = ECloseStage::TASKS;
+        co_await stdexec::continues_on(tasks_.whenSettled(), engine_.execution().mainScheduler());
+    }
+
     FrameworkResult<std::unique_ptr<EditorContext>> detail::createEditorContext(
         engine::EngineContext& engine,
         PreparedProject prepared,

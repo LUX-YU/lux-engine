@@ -75,6 +75,7 @@ namespace lux::render
 
     struct ReleaseMaterial final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name = "lux.render.ReleaseMaterial";
         static constexpr bool frame_scoped = true;
         using Request = MaterialId;

@@ -1,15 +1,15 @@
-#include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include "support/ProjectRequests.hpp"
 #include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
-#include <lux/engine/core/execution/TaskScope.hpp>
+#include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -25,6 +25,7 @@ namespace
     {
         unsigned pane{}, element{}, destroyed{};
     };
+
     class Probe final : public ui::Pane
     {
     public:
@@ -59,6 +60,7 @@ namespace
 
             Counts& counts_;
         };
+
         void update() noexcept override
         {
             ++counts_.pane;
@@ -84,6 +86,7 @@ int main(int argc, char** argv)
     assert(writeProjectManifestAtomic(b_file, {1, ids("b"), "B"}, EProjectWrite::REPLACE));
     Counts global, a, b;
     EditorConfig config{"Project ownership regression", 480, 320};
+    config.project_file = a_file;
     config.layout = {{"probe", "project", "Project"}};
     auto host = LuxEngine::create(
         std::move(config),
@@ -116,18 +119,17 @@ int main(int argc, char** argv)
         }
     };
     const auto settled = [&] { return fixture::preparationsFinished(engine); };
-    assert(fixture::open(engine, a_file));
-    until(settled);
-    assert(engine.project() && engine.project()->project().name == "A");
+    assert(settled());
+    assert(engine.project().project().name == "A");
     if (mode == "global")
     {
         assert(root.resolvePane(global_handle) && global.destroyed == 0);
     }
-    assert(engine.project()->project().manifest_file == std::filesystem::canonical(a_file));
-    assert(engine.project()->project().root == std::filesystem::canonical(directory));
+    assert(engine.project().project().manifest_file == std::filesystem::canonical(a_file));
+    assert(engine.project().project().root == std::filesystem::canonical(directory));
     std::atomic_bool started{}, release{};
     bool delivered{};
-    auto* old = engine.project();
+    auto* old = &engine.project();
     auto scheduler = engine.engine().execution().blocking();
     assert(scheduler);
     assert(old->tasks().submit(
@@ -174,7 +176,7 @@ int main(int argc, char** argv)
     ));
     until([&] { return started.load(); });
     assert(fixture::open(engine, b_file));
-    until([&] { return engine.project() && engine.project()->project().name == "B"; });
+    until([&] { return engine.project().project().name == "B"; });
     const auto before = a;
     const auto global_before = global.pane;
     for (int i{}; i < 5; ++i)
@@ -189,17 +191,14 @@ int main(int argc, char** argv)
     {
         assert(global.pane > global_before && root.resolvePane(global_handle));
     }
-    assert(a.destroyed == 1 && !delivered && engine.project() != old);
+    assert(a.destroyed == 1 && !delivered && &engine.project() != old);
     release = true;
     until([&] { return delivered; });
-    assert(delivered && a.destroyed == 1 && engine.project()->project().name == "B");
+    assert(delivered && a.destroyed == 1 && engine.project().project().name == "B");
     fixture::close(engine);
-    until([&] { return !engine.project(); });
-    assert(!engine.project() && b.destroyed == 1);
-    if (mode == "global")
-    {
-        assert(root.resolvePane(global_handle) && global.destroyed == 0);
-    }
+    assert(engine.run());
+    assert(b.destroyed == 1 && global.destroyed == 1);
+    assert(!root.resolvePane(global_handle));
     host->reset();
     assert(global.destroyed == 1);
     std::puts("PASS actual project lifecycle: global ownership / immediate old UI destruction / late safe completion");

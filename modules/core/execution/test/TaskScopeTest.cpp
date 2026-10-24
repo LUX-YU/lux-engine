@@ -206,6 +206,52 @@ namespace
         std::puts("PASS T05 explicit join waits for delivery and closes admission");
     }
 
+    void asynchronousGroupJoin()
+    {
+        auto runtime = ExecutionRuntime::create({1, 8, {16}});
+        assert(runtime);
+        TaskScope group{*runtime};
+        std::binary_semaphore entered{0}, release{0};
+        std::atomic_bool consumed{};
+        unsigned settled{};
+        assert(group.submit(
+            {},
+            [&](TaskReporter) noexcept
+            {
+                return stdexec::schedule(runtime->cpu()) | stdexec::then(
+                                                               [&]() noexcept
+                                                               {
+                                                                   entered.release();
+                                                                   release.acquire();
+                                                                   consumed.store(true, std::memory_order_release);
+                                                               }
+                                                           );
+            }
+        ));
+        entered.acquire();
+        for (unsigned i = 0; i != 2; ++i)
+        {
+            assert(runtime->spawn(stdexec::then(
+                stdexec::continues_on(group.whenSettled(), runtime->mainScheduler()),
+                [&]() noexcept
+                {
+                    assert(consumed.load(std::memory_order_acquire) && group.settled());
+                    ++settled;
+                }
+            )));
+        }
+        assert(!group.submit({}, [](TaskReporter) noexcept { return stdexec::just(); }));
+        assert(settled == 0);
+        release.release();
+        assert(runtime->waitUntil([&]() noexcept { return settled == 2; }));
+        // The already-settled path completes synchronously; its receiver may destroy the spawned state.
+        assert(runtime->spawn(stdexec::then(group.whenSettled(), [&]() noexcept { ++settled; })));
+        assert(settled == 3);
+        runtime->requestStop();
+        assert(runtime->waitUntil([&]() noexcept { return runtime->settled(); }));
+        assert(runtime->join());
+    }
+
     void terminalReleasesCapacity()
     {
         auto runtime = ExecutionRuntime::create({1, 1, {16}, {}, 2});
@@ -278,5 +324,6 @@ int main()
     destroyedScope(false);
     destroyedScope(true);
     explicitJoin();
+    asynchronousGroupJoin();
     terminalReleasesCapacity();
 }

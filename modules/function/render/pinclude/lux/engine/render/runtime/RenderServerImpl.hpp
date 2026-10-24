@@ -94,6 +94,7 @@ namespace lux::render
         std::vector<std::pair<detail::RenderGraphInstance*, detail::FeatureBinding*>> frame_features;
         bool active_frame_inputs_dirty = true;
         std::atomic<bool> stop_requested{false}, started{false}, running{false};
+        RenderError execution_error;
         std::atomic<std::uint64_t> ticks{0}, commands{0}, compiled_graphs{0}, submissions{0};
         std::atomic<std::uint64_t> validation_errors{0}, validation_warnings{0};
         std::atomic<std::uint64_t> storages_created{0};
@@ -188,6 +189,7 @@ namespace lux::render
         void stopCommand(const Stop::Request&, Stop::Response&) noexcept;
 
         void dispatchRequest(ipc::ReceivedRequest received) noexcept;
+        void failExecution(RenderError error) noexcept;
 
         std::size_t publishResponses(std::size_t limit) noexcept;
 

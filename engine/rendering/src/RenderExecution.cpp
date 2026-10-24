@@ -73,6 +73,13 @@ namespace lux::rendering
             execution.wake();
         }
 
+        void publishFailure(RenderError error) noexcept
+        {
+            failure = error;
+            failure_published.store(true, std::memory_order_release);
+            execution.wake();
+        }
+
         void runAssetProtocol(std::string channel, CommandList commands, std::size_t capacity) noexcept
         {
             auto requester = ipc::IpcCore::instance().createRequester(channel);
@@ -178,6 +185,8 @@ namespace lux::rendering
         std::latch asset_started{1};
         RenderError asset_start_error;
         RenderResult<void> render_result;
+        RenderError failure;
+        std::atomic_bool failure_published{};
         std::atomic_bool render_finished{};
         std::atomic_bool render_joined{};
         std::atomic_bool asset_stopping{};
@@ -205,6 +214,9 @@ namespace lux::rendering
         config.render.response_context = &execution;
         config.render.responses_available = [](void* context) noexcept
         { static_cast<execution::ExecutionRuntime*>(context)->wake(); };
+        config.render.failure_context = impl.get();
+        config.render.execution_failed = [](void* context, RenderError error) noexcept
+        { static_cast<Impl*>(context)->publishFailure(error); };
         auto channel = config.render.channel_name;
         const auto max_frames_ahead = config.render.max_frames_ahead;
         auto server = RenderServer::create(std::move(config.render), execution, config.device);
@@ -344,16 +356,22 @@ namespace lux::rendering
         }
         if (state.render_joined.load(std::memory_order_acquire))
         {
-            if (!state.render_result)
+            if (!state.failure_published.load(std::memory_order_acquire) && !state.render_result)
             {
-                return cxx::unexpected(state.render_result.error());
+                state.publishFailure(state.render_result.error());
             }
-            if (!state.asset_stopping.load(std::memory_order_acquire))
+            else if (!state.failure_published.load(std::memory_order_acquire) &&
+                     !state.asset_stopping.load(std::memory_order_acquire))
             {
-                return cxx::unexpected(RenderError{kOutcomeUnknown});
+                state.publishFailure(RenderError{kOutcomeUnknown});
             }
         }
         return count;
+    }
+
+    RenderError RenderExecution::failure() const noexcept
+    {
+        return impl_->failure_published.load(std::memory_order_acquire) ? impl_->failure : RenderError{};
     }
 
     RenderServerStats RenderExecution::stats() const noexcept
@@ -372,12 +390,12 @@ namespace lux::rendering
         ipc::IpcCore::instance().notifyWork();
     }
 
-    RenderResult<bool> RenderExecution::advanceClose() noexcept
+    bool RenderExecution::advanceClose() noexcept
     {
         auto& state = *impl_;
         if (!state.asset_stopping.load(std::memory_order_acquire))
         {
-            return cxx::unexpected(RenderError{kRuntimeState});
+            return false;
         }
         // An unexpected exit is joined and its missing responses are settled here. Normal Server shutdown
         // starts only after both Links have closed; no wait blocks the Main continuation driver.
@@ -397,30 +415,19 @@ namespace lux::rendering
         {
             return false;
         }
-        return state.render_result ? RenderResult<bool>{true} : cxx::unexpected(state.render_result.error());
+        return true;
     }
 
     RenderResult<void> RenderExecution::shutdown() noexcept
     {
         beginClose();
-        RenderError failure;
-        const auto waited = impl_->execution.waitUntil(
-            [&]() noexcept
-            {
-                auto result = advanceClose();
-                if (!result)
-                {
-                    failure = result.error();
-                    return true;
-                }
-                return *result;
-            }
-        );
+        const auto waited = impl_->execution.waitUntil([&]() noexcept { return advanceClose(); });
         if (!waited)
         {
             return cxx::unexpected(execution::toError(waited.error()));
         }
-        return failure.type != 0 ? RenderResult<void>{cxx::unexpected(failure)} : RenderResult<void>{};
+        const auto error = failure();
+        return error.type != 0 ? RenderResult<void>{cxx::unexpected(error)} : RenderResult<void>{};
     }
 
 } // namespace lux::rendering

@@ -3,6 +3,24 @@
 
 namespace lux::execution
 {
+    void detail::closeTaskGroup(
+        TaskRuntime& tasks,
+        const std::shared_ptr<TaskGroup>& group,
+        TaskGroupWaiter& waiter
+    ) noexcept
+    {
+        {
+            std::lock_guard lock{tasks.mutex};
+            group->accepting = false;
+            if (group->outstanding != 0)
+            {
+                waiter.next = std::exchange(group->waiters, &waiter);
+                return;
+            }
+        }
+        waiter.complete(&waiter);
+    }
+
     TaskScope::TaskScope(ExecutionRuntime& execution) noexcept
         : execution_(execution), group_(std::make_shared<detail::TaskGroup>())
     {
@@ -52,6 +70,11 @@ namespace lux::execution
         auto& tasks = *execution_.tasks_;
         std::lock_guard lock{tasks.mutex};
         return group_->outstanding == 0;
+    }
+
+    TaskScope::CompletionSender TaskScope::whenSettled() noexcept
+    {
+        return CompletionSender{*execution_.tasks_, group_};
     }
 
     lux::cxx::expected<void, EExecutionError> TaskScope::join() noexcept

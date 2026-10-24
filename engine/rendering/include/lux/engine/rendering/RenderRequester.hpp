@@ -294,6 +294,10 @@ namespace lux::rendering
         [[nodiscard]] bool closed() const noexcept;
         [[nodiscard]] std::size_t pendingRequests() const noexcept;
         [[nodiscard]] bool hasQueuedFrameCommands() const noexcept;
+        // Main-only publication demand. A Scene may need an input before it can construct any Command.
+        // Coalesced until the next successful beginFrame; capacity failure must not consume the demand.
+        void requestFrameInput() noexcept;
+        [[nodiscard]] bool needsFrameInput() const noexcept;
 
         // Stop local admission and cancel unsent commands. Keep consuming accepted replies while Server lives.
         void beginClose() noexcept;

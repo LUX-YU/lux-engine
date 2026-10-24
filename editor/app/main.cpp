@@ -8,12 +8,14 @@
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/editor/ProjectAssets.hpp>
 #include <lux/engine/editor/ProjectCreationPane.hpp>
+#include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/ProjectScenes.hpp>
 #include <lux/engine/editor/SceneCreationPane.hpp>
 #include <lux/engine/editor/SceneHierarchyPane.hpp>
 #include <lux/engine/editor/SceneInspectorPane.hpp>
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/editor/SceneViewportPane.hpp>
+#include <lux/engine/editor/detail/EditorStartup.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/platform/Process.hpp>
@@ -251,39 +253,59 @@ int main(int argc, char** argv)
     {
         available_plugins.push_back({plugin.identity.id, plugin.identity.version});
     }
-    auto engine = lux::editor::LuxEngine::create(std::move(config), std::move(assemble));
-    if (!engine)
-    {
-        std::fprintf(stderr, "%s\n", lux::error::format(engine.error()).c_str());
-        return 1;
-    }
-    lux::error::Error rejection;
-    if (!(*engine)->window().uiRoot().addPane(
-            std::make_unique<lux::editor::ProjectCreationPane>(**engine, std::move(available_plugins))
-        ))
-    {
-        return 1;
-    }
+    lux::editor::detail::ProjectStartupRequest startup;
+    startup.available_plugins = available_plugins;
     if (opening)
     {
-        lux::editor::OpenProjectRequest request{requested_path};
-        static_cast<void>(lux::object::sendEvent(**engine, request));
-        rejection = request.rejection;
+        config.project_file = requested_path;
     }
     else if (creating)
     {
-        std::random_device entropy;
-        std::seed_seq seed{entropy(), entropy(), entropy(), entropy(), entropy(), entropy(), entropy(), entropy()};
-        std::mt19937 random{seed};
+        std::mt19937 random{std::random_device{}()};
         uuids::uuid_random_generator generate(random);
-        lux::editor::ProjectManifest manifest{1, generate(), args[3], {{"lux.builtin.scene_render", 2}}};
-        lux::editor::CreateProjectRequest request{requested_path, std::move(manifest)};
-        static_cast<void>(lux::object::sendEvent(**engine, request));
-        rejection = request.rejection;
+        config.project_file = requested_path / "Project.luxproj";
+        startup.create = lux::editor::ProjectManifest{1, generate(), args[3], {{"lux.builtin.scene_render", 2}}};
     }
-    if (rejection.type)
+    auto engine = lux::editor::detail::createEditor(std::move(config), std::move(assemble), std::move(startup));
+    if (!engine)
     {
-        std::fprintf(stderr, "%s\n", lux::error::format(rejection).c_str());
+        if (engine.error().type == lux::editor::Errors::ProjectCancelled)
+        {
+            return 0;
+        }
+        std::fprintf(stderr, "%s\n", lux::error::format(engine.error()).c_str());
+        return 1;
+    }
+    auto chooser = std::make_unique<lux::editor::ProjectCreationPane>(
+        engine->get(),
+        [](void* receiver, lux::editor::OpenProjectRequest& request) noexcept
+        { static_cast<void>(lux::object::sendEvent(*static_cast<lux::editor::LuxEngine*>(receiver), request)); },
+        [](void* receiver, lux::editor::CreateProjectRequest& request) noexcept
+        { static_cast<void>(lux::object::sendEvent(*static_cast<lux::editor::LuxEngine*>(receiver), request)); },
+        std::move(available_plugins)
+    );
+    auto* project_pane = chooser.get();
+    project_pane->setStatus("Project: " + (*engine)->project().project().name);
+    if (!(*engine)->window().uiRoot().addPane(std::move(chooser)))
+    {
+        return 2;
+    }
+    auto project_changed = lux::object::LuxObject::connect(
+        engine->get(),
+        &lux::editor::LuxEngine::projectChanged,
+        project_pane,
+        [application = engine->get(), project_pane]() noexcept
+        { project_pane->setStatus("Project: " + application->project().project().name); }
+    );
+    auto project_failed = lux::object::LuxObject::connect(
+        engine->get(),
+        &lux::editor::LuxEngine::projectOpenFailed,
+        project_pane,
+        [project_pane](const lux::editor::ProjectOpenFailure& failure) noexcept
+        { project_pane->setStatus(lux::error::format(failure.error)); }
+    );
+    if (!project_changed || !project_failed)
+    {
         return 2;
     }
     // Product key bindings, transported by the same menu/shortcut path as external commands.

@@ -16,7 +16,8 @@ namespace lux::render
     RenderResult<void> compatibleCommands(const CommandDescriptor& left, const CommandDescriptor& right) noexcept
     {
         const bool is_mismatch = left.name != right.name || left.request != right.request ||
-                                 left.response != right.response || left.frame_scoped != right.frame_scoped;
+                                 left.response != right.response || left.frame_scoped != right.frame_scoped ||
+                                 left.failure_safe != right.failure_safe;
         if (is_mismatch)
         {
             return cxx::unexpected(RenderError{kCommandContract});

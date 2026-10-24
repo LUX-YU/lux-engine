@@ -32,6 +32,7 @@ namespace lux::scene
             SceneInstanceId id;
             execution::CompletionWork::Request wake;
             std::atomic_bool requested{}, completed{};
+            RetirementWaiter* waiters{};
 
             void request() noexcept
             {
@@ -41,6 +42,16 @@ namespace lux::scene
                 }
             }
         };
+
+        void awaitRetirement(const std::shared_ptr<InstanceLifetime>& lifetime, RetirementWaiter& waiter) noexcept
+        {
+            if (!lifetime || lifetime->completed.load(std::memory_order_acquire))
+            {
+                waiter.complete(&waiter);
+                return;
+            }
+            waiter.next = std::exchange(lifetime->waiters, &waiter);
+        }
     } // namespace detail
 
     InstanceRetirement::InstanceRetirement(std::shared_ptr<detail::InstanceLifetime> value) noexcept
@@ -56,6 +67,11 @@ namespace lux::scene
     SceneInstanceId InstanceRetirement::id() const noexcept
     {
         return lifetime_ ? lifetime_->id : SceneInstanceId{};
+    }
+
+    InstanceRetirement::CompletionSender InstanceRetirement::whenComplete() const noexcept
+    {
+        return CompletionSender{lifetime_};
     }
 
     SceneInstanceLease::SceneInstanceLease(std::shared_ptr<detail::InstanceLifetime> value) noexcept
@@ -695,6 +711,13 @@ namespace lux::scene
                 record.lifetime->code_lifetime.reset();
                 record.lifetime->completed.store(true, std::memory_order_release);
                 execution_.wake();
+                auto* waiter = std::exchange(record.lifetime->waiters, nullptr);
+                while (waiter)
+                {
+                    auto* next = waiter->next;
+                    waiter->complete(waiter);
+                    waiter = next;
+                }
             }
         }
 

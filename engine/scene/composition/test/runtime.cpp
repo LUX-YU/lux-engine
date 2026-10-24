@@ -273,8 +273,25 @@ int main()
     assert(wrong_thread);
     const auto first_retirement = (*runtime)->retireInstance(first->id());
     assert(first_retirement && !first_retirement->complete());
+    unsigned retired_notifications{};
+    for (unsigned i = 0; i != 2; ++i)
+    {
+        assert(execution->spawn(stdexec::then(
+            first_retirement->whenComplete(),
+            [&]() noexcept
+            {
+                assert(first_retirement->complete());
+                ++retired_notifications;
+            }
+        )));
+    }
+    assert(retired_notifications == 0);
     assert((*runtime)->borrowClock(first->id()));
     assert((*runtime)->driveFrame() && first_retirement->complete());
+    assert(retired_notifications == 2);
+    assert(execution->spawn(stdexec::then(first_retirement->whenComplete(), [&]() noexcept { ++retired_notifications; })
+    ));
+    assert(retired_notifications == 3);
     const auto replacement = builder.build();
     assert(
         replacement && replacement->id().slot == first->id().slot &&

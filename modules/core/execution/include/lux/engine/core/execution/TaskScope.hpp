@@ -4,9 +4,22 @@
 
 namespace lux::execution
 {
+    namespace detail
+    {
+        struct TaskGroupWaiter
+        {
+            TaskGroupWaiter* next{};
+            void (*complete)(TaskGroupWaiter*) noexcept {};
+        };
+
+        LUX_CORE_EXECUTION_PUBLIC void
+        closeTaskGroup(TaskRuntime&, const std::shared_ptr<TaskGroup>&, TaskGroupWaiter&) noexcept;
+    } // namespace detail
+
     class LUX_CORE_EXECUTION_PUBLIC TaskScope final
     {
     public:
+        class CompletionSender;
         explicit TaskScope(ExecutionRuntime& execution) noexcept;
         ~TaskScope() noexcept;
         TaskScope(const TaskScope&) = delete;
@@ -46,12 +59,67 @@ namespace lux::execution
         [[nodiscard]] std::stop_token stopToken() const noexcept;
         // Thread-safe observation only: no waiting, callbacks or admission changes.
         [[nodiscard]] bool settled() const noexcept;
+        // Close admission when started; complete after the accepted operation states have ended.
+        // No cancellation or nested loop. The waiting operation must be outside this group.
+        [[nodiscard]] CompletionSender whenSettled() noexcept;
         // Explicit synchronous barrier: closes admission and collects accepted work to completion.
         // Only shutdown, synchronous startup/APIs and tests may wait; object/project destruction must not.
         [[nodiscard]] lux::cxx::expected<void, EExecutionError> join() noexcept;
 
     private:
         ExecutionRuntime& execution_;
+        std::shared_ptr<detail::TaskGroup> group_;
+    };
+
+    class TaskScope::CompletionSender final
+    {
+    public:
+        using sender_concept = stdexec::sender_t;
+        using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t()>;
+
+        [[nodiscard]] stdexec::env<> get_env() const noexcept
+        {
+            return {};
+        }
+
+        template <class Receiver> class Operation final : private detail::TaskGroupWaiter
+        {
+        public:
+            Operation(detail::TaskRuntime& tasks, std::shared_ptr<detail::TaskGroup> group, Receiver receiver) noexcept
+                : tasks_(tasks), group_(std::move(group)), receiver_(std::move(receiver))
+            {
+                complete = [](detail::TaskGroupWaiter* waiter) noexcept
+                {
+                    auto& operation = *static_cast<Operation*>(waiter);
+                    stdexec::set_value(std::move(operation.receiver_));
+                };
+            }
+
+            void start() & noexcept
+            {
+                detail::closeTaskGroup(tasks_, group_, *this);
+            }
+
+        private:
+            detail::TaskRuntime& tasks_;
+            std::shared_ptr<detail::TaskGroup> group_;
+            Receiver receiver_;
+        };
+
+        template <class Receiver> [[nodiscard]] auto connect(Receiver receiver) const noexcept
+        {
+            return Operation<Receiver>{*tasks_, group_, std::move(receiver)};
+        }
+
+    private:
+        friend class TaskScope;
+
+        CompletionSender(detail::TaskRuntime& tasks, std::shared_ptr<detail::TaskGroup> group) noexcept
+            : tasks_(&tasks), group_(std::move(group))
+        {
+        }
+
+        detail::TaskRuntime* tasks_;
         std::shared_ptr<detail::TaskGroup> group_;
     };
 } // namespace lux::execution

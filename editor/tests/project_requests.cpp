@@ -2,11 +2,11 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
-#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <map>
@@ -137,34 +137,32 @@ int main(int argc, char** argv)
     config.layout = {{"probe", "project", "Project"}};
     LuxEngine* engine{};
     bool request_from_factory{};
-    auto host = LuxEngine::create(
-        std::move(config),
-        [&](EditorComposition& composition) noexcept -> FrameworkResult<void>
-        {
-            assert(composition.registerServiceFactory<Service>(
-                [&](EditorContext& context) noexcept -> FrameworkResult<std::unique_ptr<Service>>
-                { return std::make_unique<Service>(lives[context.project().name]); }
-            ));
-            return composition.registerUiFactory(
-                "probe",
-                [&](EditorContext& context,
-                    const PaneDescription&) noexcept -> FrameworkResult<std::unique_ptr<ui::Pane>>
+    auto assemble = [&](EditorComposition& composition) noexcept -> FrameworkResult<void>
+    {
+        assert(composition.registerServiceFactory<Service>(
+            [&](EditorContext& context) noexcept -> FrameworkResult<std::unique_ptr<Service>>
+            { return std::make_unique<Service>(lives[context.project().name]); }
+        ));
+        return composition.registerUiFactory(
+            "probe",
+            [&](EditorContext& context, const PaneDescription&) noexcept -> FrameworkResult<std::unique_ptr<ui::Pane>>
+            {
+                auto candidate = std::make_unique<Pane>(
+                    context,
+                    lives[context.project().name],
+                    context.project().name == "Rejected"
+                );
+                if (request_from_factory && context.project().name == "B")
                 {
-                    auto candidate = std::make_unique<Pane>(
-                        context,
-                        lives[context.project().name],
-                        context.project().name == "Rejected"
-                    );
-                    if (request_from_factory && context.project().name == "B")
-                    {
-                        request_from_factory = false;
-                        assert(fixture::open(*engine, c));
-                    }
-                    return candidate;
+                    request_from_factory = false;
+                    assert(fixture::open(*engine, c));
                 }
-            );
-        }
-    );
+                return candidate;
+            }
+        );
+    };
+    config.project_file = a;
+    auto host = LuxEngine::create(std::move(config), assemble);
     assert(host);
     engine = host->get();
     auto& root = engine->window().uiRoot();
@@ -197,15 +195,14 @@ int main(int argc, char** argv)
             ++notifications;
             if (change.attached)
             {
-                assert(engine->project());
+                assert(!engine->project().project().name.empty());
                 assert(root.resolvePane(root.paneHandle(*change.pane)) == change.pane);
             }
         }
     );
     assert(connection);
-    open(a);
-    assert(facts.changed == 1 && facts.failed == 0);
-    auto* original = engine->project();
+    assert(facts.changed == 0 && facts.failed == 0);
+    auto* original = &engine->project();
     ui::PaneHandle original_handle;
     auto find = [&](ui::Pane& pane) noexcept
     {
@@ -219,10 +216,10 @@ int main(int argc, char** argv)
 
     // L07/L08: preparation failure and a candidate rejected by the actual Root transaction are atomic.
     open(directory / "missing.luxproj");
-    assert(facts.failed == 1 && facts.changed == 1 && engine->project() == original);
+    assert(facts.failed == 1 && facts.changed == 0 && &engine->project() == original);
     assert(root.resolvePane(original_handle));
     open(rejected);
-    assert(facts.failed == 2 && facts.changed == 1 && engine->project() == original);
+    assert(facts.failed == 2 && facts.changed == 0 && &engine->project() == original);
     assert(root.resolvePane(original_handle) && lives["Rejected"].panes == 1 && lives["Rejected"].contexts == 1);
 
     // L05: occupy the real blocking scheduler, admit B then C, and let both accepted requests settle.
@@ -233,50 +230,39 @@ int main(int argc, char** argv)
     until([&] { return held->started == 2; });
     assert(fixture::open(*engine, b));
     assert(fixture::open(*engine, c));
-    assert(engine->project() == original);
+    assert(&engine->project() == original);
     held->release.release(2);
     until(idle);
-    assert(engine->project()->project().name == "C" && facts.changed == 2 && facts.failed == 2);
+    assert(engine->project().project().name == "C" && facts.changed == 1 && facts.failed == 2);
     assert(lives["B"].constructions == 0 && lives["A"].contexts == 1);
     until([&] { return held->delivered == 2; });
     blockers.reset();
 
-    // L06: B's actual ObjectScheduler completion and a later C intent share the owner batch.
+    // L06: a later accepted intent supersedes B even when its Worker has queued a completion.
     const auto changed_before = facts.changed;
     const auto b_before = lives["B"].constructions;
     assert(fixture::open(*engine, b));
     const auto deadline = std::chrono::steady_clock::now() + 20s;
-    while (object::ObjectRuntime::instance().statistics().pending == 0)
+    while (!engine->engine().execution().hasReadyWork())
     {
         assert(std::chrono::steady_clock::now() < deadline);
         std::this_thread::sleep_for(1ms);
     }
-    assert(
-        object::post(
-            engine->target(),
-            [c](object::LuxObject* receiver) noexcept
-            {
-                assert(receiver);
-                OpenProjectRequest request{c};
-                assert(object::sendEvent(*receiver, request) && !request.rejection.type);
-            }
-        ) == object::EObjectPostStatus::POSTED
-    );
+    assert(fixture::open(*engine, c));
     until(idle);
     assert(facts.changed == changed_before + 1 && facts.failed == 2);
-    assert(lives["B"].constructions == b_before + 1 && lives["B"].panes == lives["B"].constructions);
-    assert(engine->project()->project().name == "C");
+    assert(lives["B"].constructions == b_before);
+    assert(engine->project().project().name == "C");
     request_from_factory = true;
     open(b);
-    assert(!request_from_factory && engine->project()->project().name == "C" && facts.failed == 2);
+    assert(!request_from_factory && engine->project().project().name == "C" && facts.failed == 2);
 
-    // L09: close destroys the Context immediately even though the accepted worker is still blocked.
+    // L09: replacement retires C while its accepted worker is still blocked; the loaded session remains B.
     held = std::make_shared<Held>();
-    hold(engine->project()->tasks(), held);
+    hold(engine->project().tasks(), held);
     until([&] { return held->started == 1; });
     const auto contexts = lives["C"].contexts;
-    fixture::close(*engine);
-    until([&] { return !engine->project(); });
+    open(b);
     assert(lives["C"].contexts == contexts + 1 && held->delivered == 0 && root.resolvePane(global_handle));
     held->release.release();
     until([&] { return held->delivered == 1; });
@@ -289,7 +275,7 @@ int main(int argc, char** argv)
     ProjectManifest broken{1, id("published"), "Published", {{"Missing.Plugin-1", 1}}};
     assert(fixture::create(*engine, {create_directory, broken}));
     until(idle);
-    assert(facts.failed == 3 && facts.failure.manifest_published && !engine->project());
+    assert(facts.failed == 3 && facts.failure.manifest_published && engine->project().project().name == "B");
     assert(readProjectManifest(create_directory / "Project.luxproj"));
 
     // L11: a removed and re-registered Pane belongs to the external mount, not the old ProjectUiMount.
@@ -302,8 +288,7 @@ int main(int argc, char** argv)
     auto reused = root.addPane(std::make_unique<ui::Pane>("External"));
     assert(reused);
     const auto reused_handle = root.paneHandle(reused->get());
-    fixture::close(*engine);
-    until([&] { return !engine->project(); });
+    open(b);
     assert(root.resolvePane(reused_handle) && !root.resolvePane(original_handle));
     assert(root.resolvePane(global_handle));
     connection->disconnect();
@@ -321,27 +306,36 @@ int main(int argc, char** argv)
     assert(root.feedInput(ui::Key{ui::EKey::W, true}));
     assert(root.update({{400, 300}, 0.016F}, draw));
     assert(root.update());
-    assert(engine->project()); // Event accepted; structural change waits for the host safe point.
-    until([&] { return !engine->project(); });
-    assert(root.setMenu({}));
+    assert(!engine->project().project().name.empty()
+    ); // Event accepted; structural change waits for the host safe point.
+    assert(engine->run());
+    assert(!root.resolvePane(global_handle) && !root.resolvePane(reused_handle));
 
-    // L13: a notification sees B already current; its close request is retained for the next batch.
-    const auto changed = facts.changed;
+    // L13 uses a new loaded session: CloseProjectRequest no longer returns to an empty editor.
+    host->reset();
+    EditorConfig second_config{"Close on adoption", 400, 300};
+    second_config.project_file = a;
+    second_config.layout = {{"probe", "project", "Project"}};
+    host = LuxEngine::create(std::move(second_config), assemble);
+    assert(host);
+    engine = host->get();
+    auto& second_root = engine->window().uiRoot();
+    bool closed_on_adoption{};
     auto close_on_add = object::LuxObject::connect(
-        &root,
+        &second_root,
         &ui::Root::paneChanged,
         [&](const ui::PaneChanged& change) noexcept
         {
             if (change.attached)
             {
-                assert(engine->project() && engine->project()->project().name == "B");
+                assert(engine->project().project().name == "B");
+                closed_on_adoption = true;
                 fixture::close(*engine);
             }
         }
     );
     assert(close_on_add && fixture::open(*engine, b));
-    until([&] { return facts.changed == changed + 2; });
-    assert(!engine->project());
+    assert(engine->run() && closed_on_adoption);
     close_on_add->disconnect();
     host->reset();
     assert(notifications != 0);

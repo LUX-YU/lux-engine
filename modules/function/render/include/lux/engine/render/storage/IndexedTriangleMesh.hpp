@@ -101,6 +101,7 @@ namespace lux::render
 
     struct ReleaseMesh final
     {
+        static constexpr bool failure_safe = true;
         static constexpr std::string_view name = "lux.render.ReleaseMesh";
         static constexpr bool frame_scoped = true;
         using Request = MeshId;

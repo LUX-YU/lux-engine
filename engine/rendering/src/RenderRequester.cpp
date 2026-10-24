@@ -56,6 +56,7 @@ namespace lux::rendering
         CommandId submit_frame;
         std::uint64_t next_frame = 1;
         FrameInput* building = nullptr;
+        bool frame_input_requested = false;
         std::uint64_t resynchronization = 0;
         bool requires_resynchronization = false;
         enum class EConnectionState : std::uint8_t
@@ -297,6 +298,7 @@ namespace lux::rendering
             {
                 frame.state = Impl::EInputState::BUILDING;
                 impl_->building = &frame.input;
+                impl_->frame_input_requested = false;
                 frame.input.resynchronize = impl_->requires_resynchronization;
                 frame.input.commands.swap(impl_->queued_frame_commands);
                 for (std::uint32_t i = 0; i < frame.input.commands.size(); ++i)
@@ -535,8 +537,19 @@ namespace lux::rendering
         return !impl_->queued_frame_commands.empty();
     }
 
+    void RenderRequester::requestFrameInput() noexcept
+    {
+        impl_->frame_input_requested = true;
+    }
+
+    bool RenderRequester::needsFrameInput() const noexcept
+    {
+        return impl_->frame_input_requested || hasQueuedFrameCommands();
+    }
+
     void RenderRequester::beginClose() noexcept
     {
+        impl_->frame_input_requested = false;
         if (impl_->connection_state == Impl::EConnectionState::OPEN)
         {
             impl_->connection_state = Impl::EConnectionState::DRAINING;

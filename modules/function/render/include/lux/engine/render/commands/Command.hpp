@@ -64,6 +64,8 @@ namespace lux::render
         cxx::TypeToken response;
         // Visible-state mutations are admitted only inside the configured source's sealed frame.
         bool frame_scoped = false;
+        // Cleanup/query operations may run after device failure; they must not start new GPU production.
+        bool failure_safe = false;
     };
 
     template <typename C>
@@ -85,7 +87,15 @@ namespace lux::render
         CommandName(C::name),
         cxx::typeToken<typename C::Request>(),
         cxx::typeToken<typename C::Response>(),
-        C::frame_scoped
+        C::frame_scoped,
+        []() constexpr
+        {
+            if constexpr (requires { C::failure_safe; })
+            {
+                return C::failure_safe;
+            }
+            return false;
+        }()
     };
 
     template <RenderCommand C> [[nodiscard]] constexpr const CommandDescriptor& commandDescriptor() noexcept

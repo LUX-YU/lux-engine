@@ -6,11 +6,14 @@
 
 namespace lux::execution::detail
 {
+    struct TaskGroupWaiter;
+
     struct TaskGroup final
     {
         bool accepting{true};
         std::size_t outstanding{};
         std::stop_source stop;
+        TaskGroupWaiter* waiters{};
     };
 
     struct TaskRecord final

@@ -74,7 +74,7 @@ int main(int argc, char** argv)
     {
         auto& registry = error::ErrorRegistry::instance();
         assert(registry.registerType({"lux.editor.invalid_window_extent", "Conflicting schema"}));
-        auto host = LuxEngine::create();
+        auto host = LuxEngine::create(fixture::loadedConfig("Registration conflict", 160, 120));
         assert(!host && host.error().type == error::errorId("lux.error.registration"));
         assert(host.error().args[0] == Errors::EditorInvalidWindowExtent);
         assert(registry.find(Errors::EditorInvalidWindowExtent)->message == "Conflicting schema");
@@ -176,6 +176,7 @@ int main(int argc, char** argv)
     LuxEngine* host{};
     bool isolated{};
     EditorConfig config{"VFS isolation", 200, 160};
+    config.project_file = path / "A.luxproj";
     config.layout = {{"probe", "probe", "Probe"}};
     auto made = LuxEngine::create(
         std::move(config),
@@ -188,7 +189,7 @@ int main(int argc, char** argv)
                 {
                     if (candidate.project().name == "B")
                     {
-                        auto& a = *host->project();
+                        auto& a = host->project();
                         auto& b = candidate;
                         assert(a.project().name == "A");
                         auto a_mount = a.assets().mount({"/Game", *lower, 0});
@@ -227,11 +228,7 @@ int main(int argc, char** argv)
         &LuxEngine::projectChanged,
         [&]() noexcept
         {
-            if (!host->project())
-            {
-                return;
-            }
-            if (host->project()->project().name == "A")
+            if (host->project().project().name == "A")
             {
                 assert(fixture::open(*host, path / "B.luxproj"));
             }
@@ -242,7 +239,7 @@ int main(int argc, char** argv)
             }
         }
     );
-    assert(connection && fixture::open(*host, path / "A.luxproj") && host->run());
+    assert(connection && fixture::open(*host, path / "B.luxproj") && host->run());
     assert(isolated && lifetime.expired());
     std::puts("PASS installed public run/Events: complete Context factories, service lifetime and two-project VFS");
 }

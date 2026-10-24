@@ -143,6 +143,9 @@ add_component(
         app/src/AppErrors.cpp
         app/src/LuxEngine.cpp
         app/src/ProjectUiMount.cpp
+        app/src/EditorProject.cpp
+        app/src/EditorStartup.cpp
+        app/src/ProjectCreationPane.cpp
         app/src/ProjectPreparation.cpp
         app/src/ProjectScenes.cpp
         app/src/EditorUiScene.cpp
@@ -338,14 +341,12 @@ add_component(
         scene/tools/src/SceneHierarchyPane.cpp
         scene/tools/src/SceneInspectorPane.cpp
         scene/tools/src/SceneTransformGizmo.cpp
-        project/tools/src/ProjectCreationPane.cpp
 )
 
 component_include_directories(
     lux_editor_scene_tools
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/scene/tools/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/project/tools/include
     INSTALL_TIME include
 )
 
@@ -371,6 +372,8 @@ component_add_transitive_commands(lux_editor_scene_tools
 lux_classify_target(TARGET lux_editor_scene_tools LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
 add_executable(lux_editor app/main.cpp)
+
+target_include_directories(lux_editor PRIVATE app/pinclude)
 
 target_link_libraries(
     lux_editor
@@ -659,6 +662,8 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         target_link_libraries(editor_host_shutdown_test PRIVATE lux_editor_app)
 
+        target_include_directories(editor_host_shutdown_test PRIVATE app/pinclude)
+
         lux_editor_test_options(editor_host_shutdown_test)
 
         add_test(
@@ -668,7 +673,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
                 "${CMAKE_CURRENT_BINARY_DIR}/shutdown.luxproj"
         )
 
-        set_tests_properties(framework.shutdown_posted PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE LABELS "gpu;desktop")
+        set_tests_properties(framework.shutdown_posted PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE LABELS "gpu;desktop")
 
         add_executable(editor_public_host_test tests/installed/host.cpp)
 

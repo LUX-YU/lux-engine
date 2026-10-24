@@ -56,11 +56,13 @@ namespace lux::rendering
         // Main safe point: consume replies and report an actual Server failure here, not by polling Link state.
         // An unexpected exit is joined before missing responses release their borrowed inputs.
         render::RenderResult<std::size_t> consumeResponses() noexcept;
+        // Main-thread observation. Failure stops production, but does not stop completion/close progress.
+        [[nodiscard]] render::RenderError failure() const noexcept;
         [[nodiscard]] render::RenderServerStats stats() const noexcept;
 
         // Nonblocking application close. Drive Main continuations and advanceClose until it reports completion.
         void beginClose() noexcept;
-        [[nodiscard]] render::RenderResult<bool> advanceClose() noexcept;
+        [[nodiscard]] bool advanceClose() noexcept;
 
         // Synchronous standalone shutdown after business producers stop. Cancel unsent inputs, drain accepted replies,
         // close each Client on its SPSC thread, then stop/join Server. Unexpected Server failure retains

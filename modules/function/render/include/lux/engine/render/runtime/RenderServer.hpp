@@ -53,6 +53,10 @@ namespace lux::render
         // It must not reenter RenderServer; its context remains valid until the rendering thread joins.
         void* response_context = nullptr;
         void (*responses_available)(void*) noexcept = nullptr;
+        // One immutable failure notification on RenderThread. Keep consuming replies and close the
+        // Clients before stop(); device failure alone does not end the responder's lifetime.
+        void* failure_context = nullptr;
+        void (*execution_failed)(void*, RenderError) noexcept = nullptr;
     };
 
     struct RenderServerStats final

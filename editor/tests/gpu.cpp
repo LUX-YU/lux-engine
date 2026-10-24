@@ -10,6 +10,7 @@
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/editor/ProjectErrors.hpp>
+#include <lux/engine/editor/detail/EditorStartup.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/project/SceneRegistrations.hpp>
@@ -159,7 +160,9 @@ namespace
         config.enable_validation = true;
         config.layout = {{"test", "one", "One"}, {"test", "two", "Two"}};
         config.plugin_locations = {{catalog, plugin_root}};
-        auto engine = take(LuxEngine::create(std::move(config), std::move(assembly)));
+        config.project_file = directory / "A/Project.luxproj";
+        detail::ProjectStartupRequest startup{manifest("A"), {}};
+        auto engine = take(detail::createEditor(std::move(config), std::move(assembly), std::move(startup)));
         auto* runtime = &engine->engine();
         auto* window = &engine->window();
         auto* root = &window->uiRoot();
@@ -172,7 +175,7 @@ namespace
             void attached(const ui::PaneChanged&) noexcept
             {
                 // Structural facts observe the semantic owner published by on_commit.
-                assert(host_.project() || host_.window().shouldClose());
+                assert(!host_.project().project().name.empty() || host_.window().shouldClose());
                 ++calls;
             }
 
@@ -198,29 +201,27 @@ namespace
             }
         };
         const auto settled = [&] { return fixture::preparationsFinished(*engine); };
-        assert(fixture::create(*engine, {directory / "A", manifest("A")}));
-        assert(!engine->project());
-        until(settled);
-        assert(facts.changed == 1 && facts.failed == 0);
+        assert(engine->project().project().name == "A");
+        assert(facts.changed == 0 && facts.failed == 0);
         assert(readProjectManifest(directory / "A/Project.luxproj"));
         until([&] { return TestPane::draws >= 4 && engine->rendering().stats().presentations > 0; });
-        auto* original = engine->project();
-        assert(!fixture::open(*engine, {}) && engine->project() == original);
+        auto* original = &engine->project();
+        assert(!fixture::open(*engine, {}) && &engine->project() == original);
         assert(fixture::open(*engine, directory / "missing.luxproj"));
         until(settled);
-        assert(facts.failed != 0 && engine->project() == original);
+        assert(facts.failed != 0 && &engine->project() == original);
         auto broken = manifest("MissingPlugin");
         broken.plugins = {{"test.no_such_plugin", 1}};
         assert(fixture::open(*engine, write(broken)));
         until(settled);
-        assert(facts.failed != 0 && engine->project() == original);
+        assert(facts.failed != 0 && &engine->project() == original);
         assert(facts.failure.error.type == Errors::ProjectPlugins);
         const auto d = write(manifest("D"));
         assert(fixture::open(*engine, d));
         assert(fixture::open(*engine, d)); // Latest intent replaces the previous one.
         fixture::cancel(*engine);
         until(settled);
-        assert(facts.failed == 2 && engine->project() == original);
+        assert(facts.failed == 2 && &engine->project() == original);
         assert(deaths.empty() && ui_test::paneCount(*root) == 2);
         // Finish worker preparation without collecting it, then cancel. The manifest publication
         // remains a disk fact even though the prepared Context must never be adopted.
@@ -229,7 +230,7 @@ namespace
         for (;;)
         {
             if (std::filesystem::exists(directory / "PublishedCancelled/Project.luxproj") &&
-                object::ObjectRuntime::instance().statistics().pending != 0)
+                runtime->execution().hasReadyWork())
             {
                 break;
             }
@@ -239,7 +240,7 @@ namespace
         fixture::cancel(*engine);
         until(settled);
         assert(facts.failed == 2);
-        assert(engine->project() == original);
+        assert(&engine->project() == original);
         assert(readProjectManifest(directory / "PublishedCancelled/Project.luxproj"));
         assert(deaths.empty());
 
@@ -295,18 +296,18 @@ namespace
         auto b = manifest("B");
         b.plugins = {{"lux.builtin.scene_render", 2}};
         assert(fixture::open(*engine, write(b)));
-        until([&] { return engine->project() && engine->project()->project().name == "B"; });
+        until([&] { return engine->project().project().name == "B"; });
         assert(!delivered && (deaths == std::vector<int>{1, 1, 2}));
         for (int i = 0; i < 3; ++i)
         {
             assert(take(lux::editor::detail::LuxEngineTestAccess::pumpOnce(*engine)) == true);
-            assert(engine->project()->project().name == "B" && !delivered);
+            assert(engine->project().project().name == "B" && !delivered);
         }
         release = true;
         until([&] { return delivered; });
-        assert(delivered && engine->project()->project().name == "B");
+        assert(delivered && engine->project().project().name == "B");
         assert((deaths == std::vector<int>{1, 1, 2}));
-        assert(!engine->project()->sceneRegistrations().scene_systems.empty());
+        assert(!engine->project().sceneRegistrations().scene_systems.empty());
         assert(&engine->engine() == runtime && &engine->window() == window && &window->uiRoot() == root);
         assert(
             runtime->sceneRuntime().instanceCount() == 0
@@ -331,17 +332,17 @@ namespace
         ShowWindow(static_cast<HWND>(window->nativeHandle()), SW_RESTORE);
         until([&] { return !window->minimized() && TestPane::draws > before; });
 #endif
-        auto* b_context = engine->project();
+        auto* b_context = &engine->project();
         assert(fixture::open(*engine, write(manifest("C"))));
         until(settled);
         assert(facts.failed == 3);
         assert(facts.failure.error.type == FixtureErrors::EditorExpectedSecondFactoryRefusal);
-        assert(engine->project() == b_context && ui_test::paneCount(*root) == 2);
+        assert(&engine->project() == b_context && ui_test::paneCount(*root) == 2);
         until([&] { return rejected_candidate_delivered; });
         assert((deaths == std::vector<int>{1, 1, 2, 1, 2})); // Only C's detached candidates were destroyed.
         assert(fixture::open(*engine, d));
         until(settled);
-        assert(engine->project()->project().name == "D");
+        assert(engine->project().project().name == "D");
         assert((deaths == std::vector<int>{1, 1, 2, 1, 2, 1, 1, 2}));
         until([&] { return TestPane::draws > before + 2; });
         const auto statistics = engine->rendering().stats();
@@ -354,7 +355,7 @@ namespace
             assert(std::chrono::steady_clock::now() < exit_deadline);
             std::this_thread::sleep_for(1ms);
         }
-        assert(!engine->project());
+        assert(ui_test::paneCount(*root) == 0);
         assert(listener.calls > 0);
         connection->disconnect();
         engine.reset();

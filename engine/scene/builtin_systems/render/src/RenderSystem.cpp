@@ -1903,14 +1903,15 @@ namespace lux::scene
     SceneStageResult RenderSystem::publish(SceneStageContext&) noexcept
     {
         auto& self = *impl_;
-        auto* frame = self.client.buildingFrame();
-        if (!frame)
-        {
-            return ESceneProgress::PENDING;
-        }
         if (self.closing)
         {
             return ESceneProgress::COMPLETE;
+        }
+        auto* frame = self.client.buildingFrame();
+        if (!frame)
+        {
+            self.client.requestFrameInput();
+            return ESceneProgress::PENDING;
         }
         auto& client = self.client;
         if (!self.transform_ids.empty())

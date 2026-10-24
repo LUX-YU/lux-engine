@@ -111,3 +111,8 @@ Task metadata/cancellation still use their existing mutex. This is not a claim t
 internals are lock-free. Explicit shutdown continues Main dispatch until admitted pipelines settle, joins
 stdexec's scope, and only then joins CPU/IO workers. Never wait inside a Main callback on work that requires
 that same callback stack to return.
+
+`TaskScope::whenSettled()` closes that group's admission when started and completes after its accepted operation
+states have released their TaskRecord access. It does not request stop or drive a nested loop. Await it from outside
+the group; use `continues_on(execution.mainScheduler())` for thread-affine teardown. Already-completed groups may
+complete synchronously. This group fact does not replace Runtime join or the producer callback/code-pin tail contract.

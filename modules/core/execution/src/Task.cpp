@@ -131,11 +131,16 @@ namespace lux::execution::detail
         }
         auto& runtime = *record.runtime;
         std::shared_ptr<const void> pin;
+        TaskGroupWaiter* waiters{};
         {
             std::lock_guard lock{runtime.mutex};
             if (record.group)
             {
                 --record.group->outstanding;
+                if (record.group->outstanding == 0 && !record.group->accepting)
+                {
+                    waiters = std::exchange(record.group->waiters, nullptr);
+                }
             }
             pin = std::move(record.code_lifetime);
             runtime.retire(record);
@@ -143,6 +148,12 @@ namespace lux::execution::detail
         // Scope association is released by stdexec after its allocation/deallocation call.
         // Runtime join observes that independently; no TaskRecord access after retirement.
         runtime.execution->wake();
+        while (waiters)
+        {
+            auto* next = waiters->next;
+            waiters->complete(waiters);
+            waiters = next;
+        }
     }
 
     void completeTask(TaskRecord& record, ETaskState state) noexcept

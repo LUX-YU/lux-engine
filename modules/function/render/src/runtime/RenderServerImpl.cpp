@@ -1244,7 +1244,9 @@ namespace lux::render
             auto closed = co_await (*surface)->close();
             if (!closed)
             {
-                co_return AckResponse{closed.error()};
+                // The close completion follows actual SwapChain destruction, including DeviceLost.
+                // Removal succeeded; report device failure separately instead of retaining a stale TargetId.
+                failExecution(closed.error());
             }
         }
         co_return AckResponse{};
@@ -1550,8 +1552,30 @@ namespace lux::render
 
     void RenderServer::Impl::stopCommand(const Stop::Request& _request, Stop::Response& output_response) noexcept
     {
-        stop_requested.store(true);
+        failExecution(RenderError{kCommandCancelled});
         output_response = {};
+    }
+
+    void RenderServer::Impl::failExecution(RenderError error) noexcept
+    {
+        if (execution_error.type != 0)
+        {
+            return;
+        }
+        execution_error = error;
+        for (std::size_t i = 0; i < frame_count_; ++i)
+        {
+            auto& frame = frame_inputs_[(first_frame_ + i) % frame_inputs_.size()];
+            if (frame.error.type == 0)
+            {
+                frame.error = error;
+            }
+        }
+        frames->cancelSubmissions(error);
+        if (config.execution_failed)
+        {
+            config.execution_failed(config.failure_context, error);
+        }
     }
 
     void RenderServer::Impl::dispatchRequest(ipc::ReceivedRequest received) noexcept
@@ -1579,6 +1603,10 @@ namespace lux::render
         else if (is_wrong_frame_source)
         {
             entry->make_error(response_outbox_.prepare(route), RenderError{kFrameSource});
+        }
+        else if (execution_error.type != 0 && !entry->description->failure_safe && id != submit_frame_command_)
+        {
+            entry->make_error(response_outbox_.prepare(route), execution_error);
         }
         else if (requires_frame_boundary)
         {
@@ -1664,8 +1692,17 @@ namespace lux::render
         {
             std::this_thread::yield();
         }
-        publishResponses(SIZE_MAX);
-        response_outbox_.clear(); // Connection closes after safe operations; caller owns any unknown outcomes.
+        while (!response_outbox_.empty())
+        {
+            const auto observed = ipc::IpcCore::instance().workEpoch();
+            if (publishResponses(SIZE_MAX) == 0)
+            {
+                ipc::IpcCore::instance().waitUntil(
+                    observed,
+                    std::chrono::steady_clock::now() + std::chrono::milliseconds(1)
+                );
+            }
+        }
         responder.reset();
         while (!active_targets.empty())
         {
@@ -1750,8 +1787,7 @@ namespace lux::render
             progressed |= s.publishResponses(32) != 0;
             if (auto observed_gpu = s.progressGpuCompletions(); !observed_gpu)
             {
-                result = cxx::unexpected(observed_gpu.error());
-                break;
+                s.failExecution(observed_gpu.error());
             }
             s.frames->dispatchWrites();
             // Safe point 2: GPU callbacks/write admission can schedule continuations required
@@ -1776,12 +1812,11 @@ namespace lux::render
                 {
                     continue;
                 }
-                if (s.device->pendingGpuWork())
+                if (s.device->pendingGpuWork() && s.execution_error.type == 0)
                 {
                     if (auto advanced = s.frames->waitForProgress(s.config.gpu_wait_ns); !advanced)
                     {
-                        result = cxx::unexpected(advanced.error());
-                        break;
+                        s.failExecution(advanced.error());
                     }
                 }
                 else
@@ -1790,6 +1825,10 @@ namespace lux::render
                     notifications.waitUntil(observed, std::chrono::steady_clock::now() + std::chrono::milliseconds(1));
                 }
             }
+        }
+        if (s.execution_error.type != 0)
+        {
+            result = cxx::unexpected(s.execution_error);
         }
         s.shutdown(result ? RenderError{kCommandCancelled} : result.error());
         return result;

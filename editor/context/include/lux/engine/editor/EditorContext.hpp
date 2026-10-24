@@ -1,4 +1,5 @@
 #pragma once
+#include <exec/task.hpp>
 #include <lux/engine/ContextExtensions.hpp>
 #include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/editor/EditorServices.hpp>
@@ -133,6 +134,8 @@ namespace lux::editor
         // maintenance frames, then call finishClose until providers can be destroyed.
         void close() noexcept;
         [[nodiscard]] bool finishClose() noexcept;
+        // Await outside this Context's TaskScope. The caller retains the Context until completion.
+        [[nodiscard]] exec::task<void> closeAsync() noexcept;
 
         template <class T> [[nodiscard]] FrameworkResult<std::reference_wrapper<T>> service() noexcept
         {

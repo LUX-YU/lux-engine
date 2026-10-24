@@ -1,5 +1,3 @@
-#include <lux/engine/editor/EditorContext.hpp>
-#include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/editor/ProjectCreationPane.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
@@ -11,18 +9,25 @@ namespace lux::editor
 {
     struct ProjectCreationPane::Impl final
     {
-        LuxEngine& engine;
+        void* receiver;
+        void (*open_project)(void*, OpenProjectRequest&) noexcept;
+        void (*create_project)(void*, CreateProjectRequest&) noexcept;
         std::vector<ProjectManifest::PluginRecord> available;
         ui::Layout layout;
         ui::Label help{"New project: choose an empty directory and plugins. Open: choose a .luxproj file."};
         ui::TextEdit path, name{"My Project"};
-        ui::Button create{"Create project"}, open{"Open project"}, close{"Close project"};
+        ui::Button create{"Create project"}, open{"Open project"};
         ui::Label status;
         std::vector<std::unique_ptr<ui::CheckBox>> plugins;
         std::vector<object::Connection> connections;
 
-        Impl(LuxEngine& engine, std::vector<ProjectManifest::PluginRecord> available) noexcept
-            : engine(engine), available(std::move(available))
+        Impl(
+            void* receiver,
+            void (*open)(void*, OpenProjectRequest&) noexcept,
+            void (*create)(void*, CreateProjectRequest&) noexcept,
+            std::vector<ProjectManifest::PluginRecord> available
+        ) noexcept
+            : receiver(receiver), open_project(open), create_project(create), available(std::move(available))
         {
             path.setHint("Absolute directory or .luxproj path");
             name.setHint("Project name");
@@ -45,15 +50,19 @@ namespace lux::editor
                 ));
                 add(*plugins.back());
             }
-            add(create);
-            add(open);
-            add(close);
+            add(this->create);
+            add(this->open);
             add(status);
         }
     };
 
-    ProjectCreationPane::ProjectCreationPane(LuxEngine& engine, std::vector<ProjectManifest::PluginRecord> available)
-        : Pane("Project"), impl_(std::make_unique<Impl>(engine, std::move(available)))
+    ProjectCreationPane::ProjectCreationPane(
+        void* receiver,
+        void (*open)(void*, OpenProjectRequest&) noexcept,
+        void (*create)(void*, CreateProjectRequest&) noexcept,
+        std::vector<ProjectManifest::PluginRecord> available
+    )
+        : Pane("Project"), impl_(std::make_unique<Impl>(receiver, open, create, std::move(available)))
     {
         if (!addElement(impl_->layout))
         {
@@ -69,35 +78,14 @@ namespace lux::editor
         };
         retain(connect(&impl_->create, &ui::Button::activated, this, [this]() noexcept { createProject(); }));
         retain(connect(&impl_->open, &ui::Button::activated, this, [this]() noexcept { openProject(); }));
-        retain(connect(
-            &impl_->close,
-            &ui::Button::activated,
-            this,
-            [this]() noexcept
-            {
-                CloseProjectRequest request;
-                static_cast<void>(object::sendEvent(impl_->engine, request));
-            }
-        ));
-        retain(connect(
-            &engine,
-            &LuxEngine::projectChanged,
-            this,
-            [this]() noexcept
-            {
-                const auto* project = impl_->engine.project();
-                impl_->status.setText(project ? "Project: " + project->project().name : "No project");
-            }
-        ));
-        retain(connect(
-            &engine,
-            &LuxEngine::projectOpenFailed,
-            this,
-            [this](const ProjectOpenFailure& failure) noexcept { impl_->status.setText(error::format(failure.error)); }
-        ));
     }
 
     ProjectCreationPane::~ProjectCreationPane() noexcept = default;
+
+    void ProjectCreationPane::setStatus(std::string text) noexcept
+    {
+        impl_->status.setText(std::move(text));
+    }
 
     void ProjectCreationPane::createProject() noexcept
     {
@@ -112,14 +100,14 @@ namespace lux::editor
             }
         }
         CreateProjectRequest request{std::filesystem::u8path(impl_->path.value()), std::move(manifest)};
-        static_cast<void>(object::sendEvent(impl_->engine, request));
+        static_cast<void>(impl_->create_project(impl_->receiver, request));
         impl_->status.setText(request.rejection.type ? error::format(request.rejection) : "Preparing project...");
     }
 
     void ProjectCreationPane::openProject() noexcept
     {
         OpenProjectRequest request{std::filesystem::u8path(impl_->path.value())};
-        static_cast<void>(object::sendEvent(impl_->engine, request));
+        static_cast<void>(impl_->open_project(impl_->receiver, request));
         impl_->status.setText(request.rejection.type ? error::format(request.rejection) : "Opening project...");
     }
 } // namespace lux::editor

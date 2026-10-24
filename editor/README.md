@@ -1,14 +1,13 @@
 # Editor Framework v2 — Project / Scene foundation
 
 `editor/` builds the sole installed `lux_editor`. `editor_legacy/` remains frozen reference source.
-The architecture uses typed Project Events, complete Contexts and immediate UI replacement; Scene provider retirement is explicit. It does not yet open a project Scene
-in SceneRuntime, create SceneSession/EditorScene/SceneWorkspace, or install editing tools.
+The architecture uses typed Project Events, complete Contexts and atomic UI replacement. ProjectScenes opens authored Scenes through SceneRuntime; scene provider retirement is explicit.
 
 ## Ownership and lifetime
 
 | Owner | Responsibility |
 |---|---|
-| LuxEngine | Window, EngineContext, UI Scene transport, owning product assembly, optional project Context and owned pending adoption |
+| LuxEngine | Window, EngineContext, UI Scene transport, owning product assembly, one loaded project Context and finite candidate preparation |
 | EditorWindow / ui::Root | One native Input sample; Root uniquely owns mounted Panes and their UI routes |
 | EditorContext | Manifest and summary, independent AssetVfs, verified PluginManager and immutable SceneRegistrations, complete runtime registries, cancellation TaskScope |
 | EditorServices | Lazy unique services, destroyed in reverse successful construction order |
@@ -31,12 +30,11 @@ auto assembly = [](lux::editor::EditorComposition& composition) noexcept
 {
     return composition.registerSceneProfile(lux::editor::sceneProfile3D());
 };
+config.project_file = project_file; // Absolute path; empty is invalid for this SDK factory.
 auto host = lux::editor::LuxEngine::create(config, std::move(assembly));
-// Check host, then request an absolute path. Success here means request admission.
-lux::editor::OpenProjectRequest request{project_file};
-auto delivered = lux::object::sendEvent(**host, request);
-// Check delivery and request.rejection, then enter the sole public host loop.
+// Check host. project() is now a reference to the successfully adopted project.
 auto result = (*host)->run();
+// A later OpenProjectRequest/CreateProjectRequest prepares a replacement while the current project stays usable.
 ```
 
 Assembly belongs to the host lifetime, may own move-only captures, and builds EditorComposition before any candidate
@@ -46,17 +44,18 @@ EditorServices when a complete PreparedProject is adopted into a Context. No reg
 `CreateProjectRequest{absolute_root, manifest}` creates `Project.luxproj` in an empty directory. `OpenProjectRequest{path}` reads
 an existing manifest. Product configuration supplies plugin catalog locations and the default layout, separately
 from persisted project values. The product executable supports `lux_editor project.luxproj` and
-`lux_editor --create directory name`; a project-free launch displays instructions. New product projects select the
+`lux_editor --create directory name`; a project-free product launch runs ProjectCreationPane before publishing LuxEngine. Startup and the loaded session share the same Window, ExecutionRuntime, RenderExecution and UI Scene. New product projects select the
 existing `lux.builtin.scene_render` runtime plugin; this is product policy, not a framework branch.
 
 LuxEngine is an Object Event receiver. OpenProjectRequest/CreateProjectRequest carry owned inputs; CloseProjectRequest
 and the application close/cancel commands express intent. Newer requests invalidate older serials and request stop;
-accepted completion remains owned by Process/ObjectScheduler and is always settled. No public transition/status API exists.
+accepted preparation is owned by the existing TaskScope/stdexec operation and resumes on the shared MainScheduler. No public transition/status API exists.
+CloseProjectRequest ends the loaded session; it does not create a running editor with no project.
 projectChanged and projectOpenFailed are facts, not progress polling. A confirmed created manifest remains on disk even
 when subsequent plugin preparation fails. Cancellation and stale completion do not emit a false open failure.
 
-Preparation runs on the existing blocking scheduler with owned paths/configuration. ObjectScheduler protects the complete
-owner continuation. The Event builds a complete detached candidate while A remains intact; failed candidates clean up
+Preparation runs on the existing blocking scheduler with owned paths/configuration. The Main continuation builds a complete
+detached candidate while A remains intact; failed candidates clean up
 immediately without waiting for their cancellation scopes. Only the host safe point calls Root::replacePanes. Its commit
 publishes the new Context/mount before notifications; old Panes are destroyed before their old Context, without joining
 workers. Global UI remains mounted, and late requests from notifications enter the next batch. Window, Root, ImGui and

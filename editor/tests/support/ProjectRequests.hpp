@@ -8,6 +8,19 @@
 
 namespace fixture
 {
+    inline lux::editor::EditorConfig loadedConfig(std::string title, int width, int height, bool vsync = true)
+    {
+        using namespace lux::editor;
+        const auto directory = std::filesystem::temp_directory_path() / "lux-editor-session-fixtures";
+        std::filesystem::create_directories(directory);
+        auto file = directory / (title + ".luxproj");
+        ProjectManifest manifest{1, *uuids::uuid::from_string("189c1234-0000-4000-8000-000000000001"), title};
+        assert(writeProjectManifestAtomic(file, manifest, EProjectWrite::REPLACE));
+        EditorConfig config{std::move(title), width, height, vsync};
+        config.project_file = std::move(file);
+        return config;
+    }
+
     inline bool preparationsFinished(lux::editor::LuxEngine& host)
     {
         const auto infos = host.engine().execution().taskInfos();
@@ -15,8 +28,8 @@ namespace fixture
             infos,
             [](const auto& info)
             {
-                const bool active =
-                    info.state == lux::execution::ETaskState::QUEUED || info.state == lux::execution::ETaskState::RUNNING;
+                const bool active = info.state == lux::execution::ETaskState::QUEUED ||
+                                    info.state == lux::execution::ETaskState::RUNNING;
                 return info.category == "editor.project" && active;
             }
         );

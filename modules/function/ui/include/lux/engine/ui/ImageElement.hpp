@@ -62,6 +62,10 @@ namespace lux::ui
         SizeHint sizeHintContent() noexcept override;
         void draw() noexcept override;
 
+        // Called during draw only when the available logical rectangle or framebuffer scale changes.
+        // Record intent here; use Root::deferChange before changing application/UI structure.
+        virtual void geometryChanged() noexcept {}
+
     private:
         rdesc::UiImageToken image_;
         Vec2 uv_min_{};

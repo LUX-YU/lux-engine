@@ -546,6 +546,17 @@ namespace lux::editor
             co_return render::RenderResult<void>{};
         }
 
+        exec::task<render::RenderResult<void>> removeImage(Viewport& viewport) noexcept
+        {
+            const auto token = std::exchange(viewport.image, rdesc::UiImageToken{});
+            auto result = co_await ui->removeTargetImage(token);
+            if (!result)
+            {
+                viewport.image = token; // No release proof: preserve the Target and the current sampling identity.
+            }
+            co_return result;
+        }
+
         exec::task<render::RenderResult<void>> removeTarget(Viewport& viewport) noexcept
         {
             auto result = co_await requestRenderCommand<render::RemoveTarget>(rendering->mainClient(), viewport.target);
@@ -676,11 +687,7 @@ namespace lux::editor
                 {
                     if (viewport.image.value != 0)
                     {
-                        ui->removeTargetImage(viewport.image);
-                        viewport.image = {};
-                    }
-                    if (!ui->imagesApplied())
-                    {
+                        startViewportChange(viewport, removeImage(viewport));
                         return;
                     }
                     static_cast<void>(system.removeCameraTarget(viewport.camera, viewport.camera_target));
@@ -745,10 +752,10 @@ namespace lux::editor
             {
                 if (viewport.image.value != 0)
                 {
-                    ui->removeTargetImage(viewport.image);
-                    viewport.image = {};
+                    startViewportChange(viewport, removeImage(viewport));
+                    return false;
                 }
-                if (!ui->imagesApplied() || !updateCameraTarget(viewport))
+                if (!updateCameraTarget(viewport))
                 {
                     return false;
                 }
@@ -1621,7 +1628,7 @@ namespace lux::editor
         }
         const bool ready = !viewport->closing && !viewport->pending && error.type == 0 &&
                            viewport->applied == viewport->requested && viewport->image.value != 0 &&
-                           impl_->ui->imagesApplied();
+                           impl_->ui->imageReady(viewport->image);
         return {
             viewport->image,
             viewport->target,

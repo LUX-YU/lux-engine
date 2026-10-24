@@ -3,7 +3,6 @@
 #include <lux/engine/editor/EditorConfig.hpp>
 #include <lux/engine/editor/FrameworkResult.hpp>
 #include <lux/engine/editor/ProjectEvents.hpp>
-#include <lux/engine/editor/UiTargetImage.hpp>
 #include <lux/engine/object/LuxObject.hpp>
 #include <memory>
 
@@ -56,10 +55,6 @@ namespace lux::editor
         [[nodiscard]] rendering::RenderExecution& rendering() noexcept;
         [[nodiscard]] const rendering::RenderExecution& rendering() const noexcept;
         [[nodiscard]] rendering::RenderAssets& renderAssets() noexcept;
-        // Main-only desired image set. Old Targets remain borrowed until uiImagesApplied() after
-        // the corresponding replacement; only then may their owners remove those Targets.
-        [[nodiscard]] FrameworkResult<void> setUiImages(std::vector<UiTargetImage>) noexcept;
-        [[nodiscard]] bool uiImagesApplied() const noexcept;
         // The currently adopted project, valid throughout the running session. A failed switch preserves it.
         // CloseProjectRequest ends that session; do not borrow its Context during/after shutdown.
         [[nodiscard]] EditorContext& project() noexcept;

@@ -5,6 +5,7 @@
 #include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
+#include <lux/engine/render/execution/ResizeResources.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>
 #include <lux/engine/render/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
@@ -74,6 +75,10 @@ static void graphOutput(Validation& validation)
     auto physical = take(OffscreenTarget::create(*session, target, frames->frameCount()));
     auto execution = std::make_unique<RenderGraphInstance>(*session, frames->frameCount(), graph, physical->output());
     CHECK(execution->initialize());
+    auto incompatible_output = physical->output();
+    incompatible_output.description.format = lux::rdesc::ETextureFormat::BGRA8_UNORM;
+    auto rejected_resize = execution->prepareResize(incompatible_output, {});
+    CHECK(!rejected_resize && rejected_resize.error().type == kDeviceArgument);
     const std::array contexts{execution.get()};
     std::vector<StorageFrameUse> storage_preparation;
     nri::Buffer* output = nullptr;

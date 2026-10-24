@@ -177,7 +177,7 @@ namespace lux::editor
                 1,
                 render::ETargetKind::SURFACE
             };
-            auto ui_scene = EditorUiScene::create(**rendering, output, surface, std::move(*atlas));
+            auto ui_scene = EditorUiScene::create(**rendering, **window, output, surface, std::move(*atlas));
             if (!ui_scene)
             {
                 return cxx::unexpected(ui_scene.error());
@@ -354,10 +354,6 @@ namespace lux::editor
             }
             if (close_phase_ == EClosePhase::PROJECTS || close_phase_ == EClosePhase::ASSETS)
             {
-                if (auto ui = ui_scene_->maintain(); !ui)
-                {
-                    return cxx::unexpected(ui.error());
-                }
                 assets_->maintain();
                 if (auto frame = submitMaintenanceFrame(input); !frame)
                 {
@@ -642,7 +638,7 @@ namespace lux::editor
         {
             auto pump = [this]() noexcept
             {
-                updateSurfaceExtent();
+                window::LuxWindow::pollEvents();
                 if (auto completed = dispatchCompletions(); !completed)
                 {
                     return FrameworkResult<bool>{cxx::unexpected(completed.error())};
@@ -819,23 +815,8 @@ namespace lux::editor
             return true;
         }
 
-        void updateSurfaceExtent() noexcept
-        {
-            window::LuxWindow::pollEvents();
-            const auto& metrics = window_->metrics();
-            if (metrics.revision != applied_metrics_revision_)
-            {
-                ui_scene_->setExtent(metrics.framebuffer_width, metrics.framebuffer_height, !metrics.minimized);
-                applied_metrics_revision_ = metrics.revision;
-            }
-        }
-
         FrameworkResult<bool> prepareUiOutput() noexcept
         {
-            if (auto maintained = ui_scene_->maintain(); !maintained)
-            {
-                return cxx::unexpected(maintained.error());
-            }
             auto output = ui_scene_->outputReady();
             if (!output)
             {
@@ -845,34 +826,6 @@ namespace lux::editor
             const bool has_extent =
                 metrics.width && metrics.height && metrics.framebuffer_width && metrics.framebuffer_height;
             return has_extent && !metrics.minimized && *output;
-        }
-
-        FrameworkResult<bool> captureUi(rendering::FrameInput* frame, bool draw) noexcept
-        {
-            auto& root = window_->uiRoot();
-            const auto& metrics = window_->metrics();
-            const auto now = std::chrono::steady_clock::now();
-            const float elapsed =
-                std::max(std::chrono::duration<float>(now - last_frame_).count(), std::numeric_limits<float>::min());
-            auto* data = draw && frame ? &ui_scene_->captureBuffer(*frame) : nullptr;
-            ui::FrameInfo info{
-                {float(metrics.width), float(metrics.height)},
-                elapsed,
-                {metrics.width ? float(metrics.framebuffer_width) / metrics.width : 1.F,
-                 metrics.height ? float(metrics.framebuffer_height) / metrics.height : 1.F}
-            };
-            auto captured = data ? root.update(info, *data) : root.update();
-            if (!captured)
-            {
-                return cxx::unexpected(error::Error{Errors::UiCapture, {static_cast<std::uint64_t>(captured.error())}});
-            }
-            if (data)
-            {
-                last_frame_ = now;
-            }
-            const auto consumed = root.inputSnapshot();
-            window_->input().evaluate(elapsed, data && !consumed.keyboard_captured, data && !consumed.pointer_captured);
-            return data != nullptr;
         }
 
         FrameworkResult<ELoopState> pumpOnce(LuxEngine& application) noexcept
@@ -888,7 +841,7 @@ namespace lux::editor
                 beginClose();
                 return advanceClose();
             }
-            updateSurfaceExtent();
+            window::LuxWindow::pollEvents();
             if (auto dispatched = dispatchCompletions(); !dispatched)
             {
                 return cxx::unexpected(dispatched.error());
@@ -936,10 +889,10 @@ namespace lux::editor
                     }
                 }
             );
-            auto captured = captureUi(frame, can_draw);
-            if (!captured)
+            const auto ui = frame && can_draw ? ui_scene_->appendFrame(*frame) : window_->maintainUi();
+            if (!ui)
             {
-                return cxx::unexpected(captured.error());
+                return cxx::unexpected(ui.error());
             }
             const auto mode = frame && can_draw ? scene::ESceneDriveMode::ADVANCE : scene::ESceneDriveMode::MAINTENANCE;
             auto driven = engine_->sceneRuntime().driveFrame(mode);
@@ -952,14 +905,6 @@ namespace lux::editor
                 return cxx::unexpected(scene::toError(driven->front()));
             }
             collectProjects();
-            if (*captured)
-            {
-                auto appended = ui_scene_->appendFrameCommands(*frame);
-                if (!appended)
-                {
-                    return cxx::unexpected(appended.error());
-                }
-            }
             if (frame)
             {
                 auto* submitted = std::exchange(frame, nullptr);
@@ -988,8 +933,6 @@ namespace lux::editor
         std::unique_ptr<detail::EditorProject> project_;
         std::optional<execution::TaskId> project_prepare_;
         std::uint64_t project_request_serial_{};
-        std::uint64_t applied_metrics_revision_{};
-        std::chrono::steady_clock::time_point last_frame_{std::chrono::steady_clock::now()};
         bool pumping_{};
         error::Error failure_;
     };
@@ -1231,16 +1174,6 @@ namespace lux::editor
     rendering::RenderAssets& LuxEngine::renderAssets() noexcept
     {
         return *impl_->assets_;
-    }
-
-    FrameworkResult<void> LuxEngine::setUiImages(std::vector<UiTargetImage> images) noexcept
-    {
-        return impl_->ui_scene_->setTargetImages(std::move(images));
-    }
-
-    bool LuxEngine::uiImagesApplied() const noexcept
-    {
-        return impl_->ui_scene_->imagesApplied();
     }
 
     EditorContext& LuxEngine::project() noexcept

@@ -45,6 +45,13 @@ namespace lux::render::detail
         std::span<const ImageReplacement> inputs
     ) noexcept
     {
+        const bool has_output = !output.frames.empty();
+        const bool is_incompatible_output =
+            has_output && (output.frames.size() != frames_.size() || !plan_->compatible(output.description));
+        if (is_incompatible_output)
+        {
+            return cxx::unexpected(RenderError{kDeviceArgument});
+        }
         auto& session = *session_;
         ResizeResources result{session};
         result.output = output;

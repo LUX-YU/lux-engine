@@ -102,6 +102,14 @@ namespace lux::rendering
     // owns connected operations. consumeResponses() and start() run on the same application thread.
     class RenderRequester final
     {
+        struct SubmittedFrameWaiter
+        {
+            SubmittedFrameWaiter* next = nullptr;
+            std::uint64_t through = 0;
+            void (*complete)(SubmittedFrameWaiter&) noexcept = nullptr;
+            std::shared_ptr<const void> code_lifetime;
+        };
+
         struct ResponseNode
         {
             using Deliver = void (*)(ResponseNode&, platform::ipc::IpcMessage&&, render::RenderError) noexcept;
@@ -253,6 +261,56 @@ namespace lux::rendering
             FrameInput& input_;
         };
 
+        class SubmittedFramesSender final
+        {
+        public:
+            using sender_concept = stdexec::sender_t;
+            using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t()>;
+
+            template <class Receiver> struct Operation final : SubmittedFrameWaiter
+            {
+                using operation_state_concept = stdexec::operation_state_t;
+                RenderRequester& requester;
+                Receiver receiver;
+
+                Operation(RenderRequester& requester, Receiver receiver) noexcept
+                    : requester(requester), receiver(std::move(receiver))
+                {
+                    code_lifetime = execution::detail::getCompletionCode(stdexec::get_env(this->receiver));
+                    complete = [](SubmittedFrameWaiter& waiter) noexcept
+                    {
+                        auto& operation = static_cast<Operation&>(waiter);
+                        stdexec::set_value(std::move(operation.receiver));
+                    };
+                }
+
+                void start() & noexcept
+                {
+                    requester.awaitSubmittedFrames(*this);
+                }
+            };
+
+            template <class Receiver> [[nodiscard]] auto connect(Receiver receiver) const noexcept
+            {
+                return Operation<Receiver>{requester_, std::move(receiver)};
+            }
+
+        private:
+            friend class RenderRequester;
+
+            explicit SubmittedFramesSender(RenderRequester& requester) noexcept : requester_(requester) {}
+
+            RenderRequester& requester_;
+        };
+
+        // Start/consume on this Link's thread. Wait for terminal replies of frames submitted before start.
+        // Later frames do not extend the wait. This proves input consumption, not GPU completion or callback tails.
+        // Stopping the receiver cannot pretend outstanding frames have completed.
+        [[nodiscard]] SubmittedFramesSender whenSubmittedFramesComplete() noexcept
+        {
+            return SubmittedFramesSender{*this};
+        }
+
         // Acquire before preparing game-frame data. Capacity exhaustion means the game thread
         // consumes/waits at its normal safe point; it must not prepare another unbounded frame.
         [[nodiscard]] render::RenderResult<FrameInput*> beginFrame() noexcept;
@@ -321,6 +379,8 @@ namespace lux::rendering
         [[nodiscard]] render::RenderResult<void>
         queueFrameCommand(render::CommandId, render::RequestId, platform::ipc::IpcMessage&) noexcept;
         void sendFrame(FrameInput&, ResponseNode&) noexcept;
+        void awaitSubmittedFrames(SubmittedFrameWaiter&) noexcept;
+        static void deliverFrameWaiter(SubmittedFrameWaiter&) noexcept;
         static void deliverResponse(ResponseNode&, platform::ipc::IpcMessage&&, render::RenderError) noexcept;
 
         template <class Operation, render::RenderCommand C>

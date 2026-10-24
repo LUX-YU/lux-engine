@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <exec/task.hpp>
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
 #include <lux/engine/editor/detail/RenderCommandRequest.hpp>
 #include <lux/engine/render/features/UiRasterFeature.hpp>
@@ -19,9 +21,27 @@ namespace lux::editor
     {
         using Transaction = exec::task<RenderResult<void>>;
 
-        Impl(RenderExecution& input, TargetDesc description, SurfaceDescription surface)
-            : rendering(input), description(description), desired_description(description), surface(surface)
+        Impl(RenderExecution& input, EditorWindow& window, TargetDesc description, SurfaceDescription surface)
+            : rendering(input), window(window), description(description), desired_description(description),
+              surface(surface)
         {
+        }
+
+        void finishTransaction(bool cleanup, std::uint64_t revision, RenderError error) noexcept
+        {
+            transaction_pending = false;
+            failure = error;
+            failed_revision = revision;
+            if (closing && !cleanup)
+            {
+                failure = {}; // Configuration failure does not discharge the handles it already created.
+            }
+            completeImageRemovals(revision, closing ? RenderError{} : error);
+            if (error.type != 0 && !closing)
+            {
+                reportRenderFailure(error, "Configure UI output");
+            }
+            requestConfiguration();
         }
 
         RenderResult<void> startTransaction(Transaction work) noexcept
@@ -29,36 +49,107 @@ namespace lux::editor
             transaction_pending = true;
             const bool cleanup = closing;
             const auto revision = requested_revision;
-            auto operation = stdexec::starts_on(rendering.execution().mainScheduler(), std::move(work));
-            auto result = execution::taskResult(std::move(operation));
+            auto result =
+                execution::taskResult(stdexec::starts_on(rendering.execution().mainScheduler(), std::move(work)));
             auto accepted = rendering.execution().spawn(stdexec::then(
                 std::move(result),
                 [this, cleanup, revision](auto result) noexcept
                 {
-                    failure = result                           ? RenderError{}
-                              : result.error().domainFailure() ? *result.error().domainFailure()
-                                                               : RenderError{kRuntimeState};
-                    failed_revision = revision;
-                    retry_tick = rendering.stats().ticks;
-                    const bool retry = failure.type == kDeviceBusy || failure.type == kRuntimeCapacity;
-                    if (failure.type != 0 && !retry && !closing)
-                    {
-                        reportRenderFailure(failure, "Configure UI output");
-                    }
-                    if (closing && !cleanup && failure.type != 0)
-                    {
-                        reportRenderFailure(failure, "Configure closing UI output");
-                        failure = {}; // Still run cleanup of the handles created before this failure.
-                    }
-                    transaction_pending = false;
+                    const auto error = result                           ? RenderError{}
+                                       : result.error().domainFailure() ? *result.error().domainFailure()
+                                                                        : RenderError{kRuntimeState};
+                    finishTransaction(cleanup, revision, error);
                 }
             ));
             if (!accepted)
             {
                 transaction_pending = false;
-                return cxx::unexpected(execution::toError(accepted.error()));
+                failure = execution::toError(accepted.error());
+                failed_revision = revision;
+                completeImageRemovals(revision, failure);
+                return cxx::unexpected(failure);
             }
             return {};
+        }
+
+        bool needsConfiguration() const noexcept
+        {
+            if (closing)
+            {
+                return !scene.isNull() || !target.isNull() || !effect.isNull() || !effect_to_release.isNull() ||
+                       !font.isNull();
+            }
+            const bool needs_output =
+                desired_active && (target.isNull() || !output_available || description != desired_description);
+            const bool needs_pause = !desired_active && applied_active && !target.isNull();
+            const bool needs_images = !target.isNull() && desired_image_revision != applied_image_revision;
+            return needs_output || needs_pause || needs_images;
+        }
+
+        void requestConfiguration() noexcept
+        {
+            const bool rejected_intent = failure.type != 0 && failed_revision == requested_revision;
+            if (transaction_pending || rejected_intent || !needsConfiguration())
+            {
+                return;
+            }
+            failure = {};
+            static_cast<void>(startTransaction(configure()));
+        }
+
+        Transaction configure() noexcept
+        {
+            for (;;)
+            {
+                auto result = closing ? co_await close() : co_await reconfigure();
+                if (result || result.error().type != kDeviceBusy)
+                {
+                    co_return result;
+                }
+                // Resize/attachment mutations occupy a real submitted frame. Await its terminal
+                // responses rather than observing Server ticks; subsequent frames cannot extend this wait.
+                co_await rendering.mainClient().whenSubmittedFramesComplete();
+            }
+        }
+
+        bool referencesImage(rdesc::UiImageToken token) const noexcept
+        {
+            const bool adopted =
+                std::ranges::any_of(image_selections, [&](const auto& image) { return image.token == token; });
+            const bool preparing =
+                std::ranges::any_of(configuring_images, [&](const auto& image) { return image.token == token; });
+            return adopted || preparing;
+        }
+
+        void completeImageRemovals(std::uint64_t attempted_revision, RenderError error) noexcept
+        {
+            ImageRemoval* ready = nullptr;
+            auto** link = &image_removals;
+            while (*link)
+            {
+                auto* removal = *link;
+                const bool removed = !referencesImage(removal->token);
+                const bool failed = error.type != 0 && removal->revision <= attempted_revision;
+                if (removed || failed)
+                {
+                    *link = removal->next;
+                    removal->next = std::exchange(ready, removal);
+                }
+                else
+                {
+                    link = &removal->next;
+                }
+            }
+            while (ready)
+            {
+                auto* removal = ready;
+                ready = removal->next;
+                const bool removed = !referencesImage(removal->token);
+                EditorUiScene::deliverImageRemoval(
+                    *removal,
+                    removed ? FrameworkResult<void>{} : cxx::unexpected(error)
+                );
+            }
         }
 
         Transaction initialize(ui::FontAtlas atlas) noexcept
@@ -155,6 +246,18 @@ namespace lux::editor
         {
             const auto revision = desired_image_revision;
             const auto images = desired_images;
+            configuring_images = images;
+            cxx::scope_exit end_configuration([this]() noexcept { configuring_images = {}; });
+            if (!effect_to_release.isNull())
+            {
+                const auto removed =
+                    co_await requestRenderCommand<RemoveEffect>(rendering.mainClient(), {effect_to_release});
+                if (removed.error.type != 0)
+                {
+                    co_return cxx::unexpected(removed.error);
+                }
+                effect_to_release = {};
+            }
             UiRasterFeatureConfig ui{description};
             ui.images.push_back(UiTextureImage{font, font_description, "ui"});
             CreateEffectRequest program{description};
@@ -234,7 +337,7 @@ namespace lux::editor
             {
                 co_return active ? co_await createOutput() : RenderResult<void>{};
             }
-            if (active && (desired != description || resize_required))
+            if (active && (desired != description || !output_available))
             {
                 const auto resized = co_await requestRenderCommand<ResizeTarget>(client, {target, desired});
                 output_available = resized.output_available;
@@ -244,7 +347,6 @@ namespace lux::editor
                 }
                 description = resized.description;
                 target_epoch = resized.epoch;
-                resize_required = false;
                 applied_active = false;
             }
             if (!active && applied_active)
@@ -276,6 +378,8 @@ namespace lux::editor
                 scene = {};
                 view = {};
                 attachment = {};
+                image_selections.clear();
+                completeImageRemovals(desired_image_revision, {});
             }
             for (auto* handle : {&effect_to_release, &effect})
             {
@@ -312,6 +416,7 @@ namespace lux::editor
         }
 
         RenderExecution& rendering;
+        EditorWindow& window;
         TargetDesc description, desired_description;
         SurfaceDescription surface;
         FeatureId feature;
@@ -327,14 +432,15 @@ namespace lux::editor
         std::optional<BoundCommand<UpdateDrawList>> update_draws;
         ui::DrawData draw_data;
         std::vector<UiTargetImage> desired_images;
+        std::span<const UiTargetImage> configuring_images;
+        ImageRemoval* image_removals = nullptr;
         std::vector<UiImageSelection> image_selections;
         std::uint64_t next_image_token = 1;
         std::uint64_t desired_image_revision = 1, applied_image_revision = 0;
         bool desired_active = true, applied_active = true;
         bool transaction_pending = false, closing = false;
-        bool resize_required = false;
         bool output_available = false;
-        std::uint64_t requested_revision = 1, failed_revision = 0, retry_tick = 0;
+        std::uint64_t requested_revision = 1, failed_revision = 0;
         std::uint64_t resynchronization{};
         RenderError failure;
     };
@@ -343,12 +449,13 @@ namespace lux::editor
 
     FrameworkResult<std::unique_ptr<EditorUiScene>> EditorUiScene::create(
         RenderExecution& rendering,
+        EditorWindow& window,
         TargetDesc description,
         SurfaceDescription surface,
         ui::FontAtlas atlas
     ) noexcept
     {
-        auto impl = std::make_unique<Impl>(rendering, description, surface);
+        auto impl = std::make_unique<Impl>(rendering, window, description, surface);
         auto command = rendering.mainClient().bind<UpdateDrawList>();
         if (!command)
         {
@@ -359,12 +466,28 @@ namespace lux::editor
         {
             return cxx::unexpected(started.error());
         }
-        return std::unique_ptr<EditorUiScene>{new EditorUiScene(std::move(impl))};
+        auto result = std::unique_ptr<EditorUiScene>{new EditorUiScene(std::move(impl))};
+        if (description.kind == ETargetKind::SURFACE)
+        {
+            window.setMetricsReceiver(
+                result.get(),
+                [](void* value, const WindowMetrics& metrics) noexcept
+                {
+                    static_cast<EditorUiScene*>(value)
+                        ->setExtent(metrics.framebuffer_width, metrics.framebuffer_height, !metrics.minimized);
+                }
+            );
+        }
+        return result;
     }
 
     EditorUiScene::~EditorUiScene() noexcept
     {
-        if (impl_->transaction_pending || !impl_->scene.isNull() || !impl_->effect.isNull() ||
+        if (impl_->description.kind == ETargetKind::SURFACE)
+        {
+            impl_->window.setMetricsReceiver(nullptr, nullptr);
+        }
+        if (impl_->image_removals || impl_->transaction_pending || !impl_->scene.isNull() || !impl_->effect.isNull() ||
             !impl_->effect_to_release.isNull() || !impl_->target.isNull() || !impl_->font.isNull())
         {
             std::terminate();
@@ -384,111 +507,67 @@ namespace lux::editor
             impl_->desired_description.width = width;
             impl_->desired_description.height = height;
         }
-        if (changed)
+        if (changed || impl_->failure.type != 0)
         {
             ++impl_->requested_revision;
+            impl_->requestConfiguration();
         }
-    }
-
-    FrameworkResult<void> EditorUiScene::setTargetImages(std::vector<UiTargetImage> images) noexcept
-    {
-        std::ranges::sort(images, {}, &UiTargetImage::token);
-        for (std::size_t i = 0; i < images.size(); ++i)
-        {
-            const auto& image = images[i];
-            const bool duplicate = i != 0 && image.token == images[i - 1].token;
-            const bool invalid = image.token.value == 0 || image.target.isNull() || !image.description.sampled ||
-                                 image.description.kind != ETargetKind::OFFSCREEN || image.description.samples != 1;
-            if (duplicate || invalid)
-            {
-                return cxx::unexpected(RenderError{kCommandContract});
-            }
-        }
-        if (images != impl_->desired_images)
-        {
-            for (const auto& image : images)
-            {
-                const auto next = image.token.value == UINT64_MAX ? UINT64_MAX : image.token.value + 1;
-                impl_->next_image_token = std::max(impl_->next_image_token, next);
-            }
-            impl_->desired_images = std::move(images);
-            ++impl_->desired_image_revision;
-            ++impl_->requested_revision;
-        }
-        return {};
     }
 
     FrameworkResult<rdesc::UiImageToken> EditorUiScene::addTargetImage(TargetId target, TargetDesc description) noexcept
     {
-        auto images = impl_->desired_images;
+        const bool invalid = target.isNull() || !description.sampled || description.kind != ETargetKind::OFFSCREEN ||
+                             description.samples != 1;
+        if (invalid)
+        {
+            return cxx::unexpected(RenderError{kCommandContract});
+        }
         if (impl_->next_image_token == UINT64_MAX)
         {
             return cxx::unexpected(RenderError{kRuntimeCapacity});
         }
         const rdesc::UiImageToken token{impl_->next_image_token++};
-        images.push_back({token, target, description});
-        if (auto applied = setTargetImages(std::move(images)); !applied)
-        {
-            return cxx::unexpected(applied.error());
-        }
+        impl_->desired_images.push_back({token, target, description});
+        ++impl_->desired_image_revision;
+        ++impl_->requested_revision;
+        impl_->requestConfiguration();
         return token;
     }
 
-    void EditorUiScene::removeTargetImage(rdesc::UiImageToken token) noexcept
+    void EditorUiScene::deliverImageRemoval(ImageRemoval& removal, FrameworkResult<void> result) noexcept
     {
-        if (std::erase_if(impl_->desired_images, [&](const auto& image) noexcept { return image.token == token; }))
-        {
-            ++impl_->desired_image_revision;
-            ++impl_->requested_revision;
-        }
+        auto code_lifetime = std::move(removal.code_lifetime);
+        removal.complete(removal, std::move(result));
     }
 
-    bool EditorUiScene::imagesApplied() const noexcept
-    {
-        return (impl_->closing && impl_->scene.isNull() && !impl_->transaction_pending) ||
-               impl_->applied_image_revision == impl_->desired_image_revision;
-    }
-
-    FrameworkResult<void> EditorUiScene::maintain() noexcept
+    void EditorUiScene::beginImageRemoval(ImageRemoval& removal) noexcept
     {
         auto& state = *impl_;
-        if (state.transaction_pending)
+        if (removal.token.value == 0)
         {
-            return {};
+            deliverImageRemoval(removal, cxx::unexpected(RenderError{kCommandContract}));
+            return;
         }
-        if (state.closing)
+        if (std::erase_if(state.desired_images, [&](const auto& image) { return image.token == removal.token; }))
         {
-            if (state.failure.type != 0 && state.failure.type != kRuntimeCapacity && state.failure.type != kDeviceBusy)
-            {
-                return cxx::unexpected(state.failure);
-            }
-            if (!state.scene.isNull() || !state.target.isNull() || !state.effect.isNull() ||
-                !state.effect_to_release.isNull() || !state.font.isNull())
-            {
-                return state.startTransaction(state.close());
-            }
-            return {};
+            ++state.desired_image_revision;
+            ++state.requested_revision;
         }
-        if (state.failure.type != 0)
+        if (!state.referencesImage(removal.token))
         {
-            const bool retry = state.failure.type == kDeviceBusy || state.failure.type == kRuntimeCapacity;
-            const bool progressed = retry && state.rendering.stats().ticks != state.retry_tick;
-            const bool new_intent = state.requested_revision != state.failed_revision;
-            if (!progressed && !new_intent)
-            {
-                return state.target.isNull() ? FrameworkResult<void>{cxx::unexpected(state.failure)}
-                                             : FrameworkResult<void>{};
-            }
-            state.failure = {};
+            state.requestConfiguration();
+            deliverImageRemoval(removal, {});
+            return;
         }
-        if (state.target.isNull() && !state.desired_active)
-        {
-            return {}; // No swapchain exists yet; a window restore is the next real producer.
-        }
-        const bool resize = state.desired_active && (state.target.isNull() || state.resize_required ||
-                                                     state.description != state.desired_description);
-        const bool changed = resize || (!state.desired_active && state.applied_active) || !imagesApplied();
-        return changed ? state.startTransaction(state.reconfigure()) : FrameworkResult<void>{};
+        removal.revision = state.requested_revision;
+        removal.next = std::exchange(state.image_removals, &removal);
+        state.requestConfiguration();
+    }
+
+    bool EditorUiScene::imageReady(rdesc::UiImageToken token) const noexcept
+    {
+        return token.value != 0 &&
+               std::ranges::any_of(impl_->image_selections, [&](const auto& image) { return image.token == token; });
     }
 
     FrameworkResult<bool> EditorUiScene::outputReady() const noexcept
@@ -499,18 +578,22 @@ namespace lux::editor
             return cxx::unexpected(state.failure);
         }
         return state.output_available && !state.closing && !state.transaction_pending && state.desired_active &&
-               !state.resize_required && !state.attachment.isNull();
+               !state.attachment.isNull();
     }
 
-    ui::DrawData& EditorUiScene::captureBuffer(FrameInput& frame) noexcept
+    RenderError EditorUiScene::configurationError() const noexcept
     {
-        impl_->draw_data.setFrameMemory(frame.memory());
-        return impl_->draw_data;
+        return impl_->failure;
     }
 
-    FrameworkResult<void> EditorUiScene::appendFrameCommands(FrameInput& frame) noexcept
+    FrameworkResult<void> EditorUiScene::appendFrame(FrameInput& frame) noexcept
     {
         auto& state = *impl_;
+        state.draw_data.setFrameMemory(frame.memory());
+        if (auto updated = state.window.updateUi(state.draw_data); !updated)
+        {
+            return updated;
+        }
         auto input = makeUiDrawInput(frame, state.draw_data.data(), state.image_selections);
         if (!input)
         {
@@ -550,6 +633,8 @@ namespace lux::editor
         {
             impl_->closing = true;
             impl_->failure = {}; // A previous configuration failure does not discharge cleanup.
+            ++impl_->requested_revision;
+            impl_->requestConfiguration();
         }
     }
 

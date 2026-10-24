@@ -13,10 +13,12 @@
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/ImageElement.hpp>
 #include <lux/engine/ui/Layout.hpp>
+#include <lux/engine/ui/Root.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <utility>
 
 namespace lux::editor
@@ -105,6 +107,8 @@ namespace lux::editor
         class ViewportImage final : public ui::ImageElement
         {
         public:
+            explicit ViewportImage(SceneViewportPane& pane) noexcept : pane_(pane) {}
+
             struct Drop final
             {
                 ModelAssetReference asset;
@@ -121,6 +125,17 @@ namespace lux::editor
             SceneTransformGizmo gizmo;
 
         private:
+            void geometryChanged() noexcept override
+            {
+                pane_.root().deferChange(
+                    pane_,
+                    [](object::LuxObject& object) noexcept
+                    { static_cast<SceneViewportPane&>(object).applyViewportExtent(); }
+                );
+            }
+
+            SceneViewportPane& pane_;
+
             void draw() noexcept override
             {
                 ImageElement::draw();
@@ -168,8 +183,13 @@ namespace lux::editor
         std::uint64_t drag_revision{};
         Eigen::Vector3d last_translation{Eigen::Vector3d::Zero()};
 
-        Impl(ProjectScenes& scenes, ProjectAssets& assets, scene::SceneRuntime& runtime) noexcept
-            : scenes(scenes), assets(assets), runtime(runtime)
+        Impl(
+            SceneViewportPane& pane,
+            ProjectScenes& scenes,
+            ProjectAssets& assets,
+            scene::SceneRuntime& runtime
+        ) noexcept
+            : scenes(scenes), assets(assets), runtime(runtime), image(pane)
         {
             const auto add = [](auto& parent, auto& child)
             {
@@ -204,7 +224,7 @@ namespace lux::editor
         scene::SceneRuntime& runtime,
         std::string title
     )
-        : Pane(std::move(title)), impl_(std::make_unique<Impl>(scenes, assets, runtime))
+        : Pane(std::move(title)), impl_(std::make_unique<Impl>(*this, scenes, assets, runtime))
     {
         if (!addElement(impl_->layout))
         {
@@ -415,18 +435,6 @@ namespace lux::editor
         {
             updateCamera();
         }
-        const auto& interaction = impl_->image.interaction();
-        const auto size = interaction.available_size;
-        const auto width =
-            static_cast<std::uint32_t>(std::max(0.0F, std::ceil(size.width * interaction.framebuffer_scale.x)));
-        const auto height =
-            static_cast<std::uint32_t>(std::max(0.0F, std::ceil(size.height * interaction.framebuffer_scale.y)));
-        if (width != impl_->width || height != impl_->height)
-        {
-            impl_->width = width;
-            impl_->height = height;
-            static_cast<void>(impl_->scenes.updateViewport(impl_->viewport, width, height));
-        }
         const auto status = impl_->scenes.viewport(impl_->viewport);
         impl_->image.setImage(status.image);
         impl_->image.setImageExtent({float(status.description.width), float(status.description.height)});
@@ -435,6 +443,26 @@ namespace lux::editor
             : status.ready    ? impl_->editing_status
                               : "Preparing viewport..."
         );
+    }
+
+    void SceneViewportPane::applyViewportExtent() noexcept
+    {
+        const auto& geometry = impl_->image.interaction();
+        const double width = std::ceil(double(geometry.available_size.width) * geometry.framebuffer_scale.x);
+        const double height = std::ceil(double(geometry.available_size.height) * geometry.framebuffer_scale.y);
+        const bool invalid_extent = !std::isfinite(width) || !std::isfinite(height) || width < 0 || height < 0 ||
+                                    width > UINT32_MAX || height > UINT32_MAX;
+        if (invalid_extent)
+        {
+            impl_->editing_status = "Viewport extent is outside the supported pixel range";
+            return;
+        }
+        impl_->width = static_cast<std::uint32_t>(width);
+        impl_->height = static_cast<std::uint32_t>(height);
+        if (!impl_->viewport.isNull())
+        {
+            static_cast<void>(impl_->scenes.updateViewport(impl_->viewport, impl_->width, impl_->height));
+        }
     }
 
     void SceneViewportPane::updateGizmo() noexcept

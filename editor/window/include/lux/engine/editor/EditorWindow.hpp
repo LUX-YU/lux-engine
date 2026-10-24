@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <lux/engine/editor/FrameworkResult.hpp>
 #include <lux/engine/input/Input.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
@@ -6,7 +7,8 @@
 namespace lux::ui
 {
     class Root;
-}
+    class DrawData;
+} // namespace lux::ui
 
 namespace lux::editor
 {
@@ -36,6 +38,11 @@ namespace lux::editor
         }
 
         [[nodiscard]] FrameworkResult<void> sampleInput() noexcept;
+        // Exclusive borrowed receiver; registration folds in current metrics. Clear it before receiver destruction.
+        void setMetricsReceiver(void*, void (*changed)(void*, const WindowMetrics&) noexcept) noexcept;
+        // CPU UI and input only. The caller supplies this frame's storage; no Render dependency lives here.
+        [[nodiscard]] FrameworkResult<void> updateUi(ui::DrawData&) noexcept;
+        [[nodiscard]] FrameworkResult<void> maintainUi() noexcept;
 
         [[nodiscard]] const WindowMetrics& metrics() const noexcept
         {
@@ -49,7 +56,11 @@ namespace lux::editor
         using LuxWindow::on_resize;
         EditorWindow(NativeWindowOwner, std::unique_ptr<ui::Root>) noexcept;
         void metricsChanged() noexcept;
+        [[nodiscard]] FrameworkResult<void> updateUiFrame(ui::DrawData*) noexcept;
         WindowMetrics metrics_;
+        void* metrics_receiver_ = nullptr;
+        void (*metrics_changed_)(void*, const WindowMetrics&) noexcept = nullptr;
+        std::chrono::steady_clock::time_point last_ui_frame_{std::chrono::steady_clock::now()};
         input::Input input_;
         std::unique_ptr<ui::Root> root_;
     };

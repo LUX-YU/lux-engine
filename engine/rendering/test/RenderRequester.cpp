@@ -105,6 +105,16 @@ int main(int argc, char** argv)
     FrameCompletion result;
     bool frame_completed = false;
     auto frame_task = receive(execution, client.submitFrame(*input), result, frame_completed);
+    bool submitted_frames_complete = false;
+    check(bool(execution.spawn(stdexec::then(
+        client.whenSubmittedFramesComplete(),
+        [&]() noexcept
+        {
+            check(completed && rejected_completed && frame_completed);
+            submitted_frames_complete = true;
+        }
+    ))));
+    check(!submitted_frames_complete);
     check(bool(execution.waitUntil(
         [&]() noexcept
         {
@@ -116,6 +126,12 @@ int main(int argc, char** argv)
         completed && reply.error.type == 0 && rejected_completed && rejected.error.type == 0 && result.error.type == 0
     );
     check(bool(client.releaseFrame(*input)));
+    check(submitted_frames_complete);
+    bool immediate_complete = false;
+    check(bool(execution.spawn(
+        stdexec::then(client.whenSubmittedFramesComplete(), [&]() noexcept { immediate_complete = true; })
+    )));
+    check(immediate_complete);
 
     // A real stale identity produces a failed frame and requires explicit authoritative resynchronization.
     request = {scene, view};

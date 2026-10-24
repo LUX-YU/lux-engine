@@ -25,6 +25,7 @@ namespace lux::editor
         void selectDocument() noexcept;
         void refreshCameras() noexcept;
         void updateCamera() noexcept;
+        void applyViewportExtent() noexcept;
         void placeDroppedModel() noexcept;
         void pickObject() noexcept;
         void updateGizmo() noexcept;

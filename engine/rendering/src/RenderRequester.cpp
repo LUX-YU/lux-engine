@@ -57,6 +57,7 @@ namespace lux::rendering
         std::uint64_t next_frame = 1;
         FrameInput* building = nullptr;
         bool frame_input_requested = false;
+        SubmittedFrameWaiter* frame_waiters = nullptr;
         std::uint64_t resynchronization = 0;
         bool requires_resynchronization = false;
         enum class EConnectionState : std::uint8_t
@@ -119,7 +120,42 @@ namespace lux::rendering
                 ++resynchronization;
             }
             deliverResponse(*node, std::move(result), {});
-            // The receiver can release/reuse this carrier. Do not read frame afterwards.
+            // The receiver can release/reuse this carrier. Only inspect current carriers after returning.
+            dispatchFrameWaiters();
+        }
+
+        bool framesCompleteThrough(std::uint64_t boundary) const noexcept
+        {
+            return std::ranges::none_of(
+                frame_inputs,
+                [&](const auto& frame) noexcept
+                { return frame.sequence <= boundary && frame.state == EInputState::AWAITING_RESPONSE; }
+            );
+        }
+
+        void dispatchFrameWaiters() noexcept
+        {
+            SubmittedFrameWaiter* ready = nullptr;
+            auto** link = &frame_waiters;
+            while (*link)
+            {
+                auto* waiter = *link;
+                if (framesCompleteThrough(waiter->through))
+                {
+                    *link = waiter->next;
+                    waiter->next = std::exchange(ready, waiter);
+                }
+                else
+                {
+                    link = &waiter->next;
+                }
+            }
+            while (ready)
+            {
+                auto* waiter = ready;
+                ready = waiter->next;
+                RenderRequester::deliverFrameWaiter(*waiter);
+            }
         }
 
         void rejectCommands(FrameCarrier& frame, RenderError error) noexcept
@@ -156,11 +192,28 @@ namespace lux::rendering
         node.deliver(node, std::move(message), error);
     }
 
+    void RenderRequester::deliverFrameWaiter(SubmittedFrameWaiter& waiter) noexcept
+    {
+        auto code_lifetime = std::move(waiter.code_lifetime);
+        waiter.complete(waiter);
+    }
+
+    void RenderRequester::awaitSubmittedFrames(SubmittedFrameWaiter& waiter) noexcept
+    {
+        waiter.through = impl_->next_frame - 1;
+        if (impl_->framesCompleteThrough(waiter.through))
+        {
+            deliverFrameWaiter(waiter);
+            return;
+        }
+        waiter.next = std::exchange(impl_->frame_waiters, &waiter);
+    }
+
     RenderRequester::RenderRequester(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
     RenderRequester::~RenderRequester() noexcept
     {
-        if (!impl_->pending.empty())
+        if (!impl_->pending.empty() || impl_->frame_waiters)
         {
             std::terminate(); // Input borrows and connected receivers require actual settlement, not abandonment.
         }

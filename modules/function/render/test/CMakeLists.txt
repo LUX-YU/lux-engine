@@ -37,7 +37,10 @@ add_test(NAME render.sample.basic_mesh COMMAND render_basic_mesh "${shader}.spv"
 set_tests_properties(render.sample.basic_mesh PROPERTIES TIMEOUT 90)
 
 # Explicit project GPU diagnostic surface, never inherited by an installed application.
-target_include_directories(render_output_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
+target_include_directories(render_output_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../pinclude"
+)
 target_link_libraries(render_output_test PRIVATE NRI)
 
 set(graph_shader_headers)

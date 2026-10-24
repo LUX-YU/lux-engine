@@ -65,6 +65,8 @@ namespace lux::ui
         const auto available = rect().size;
         auto origin = ImGui::GetCursorScreenPos();
         const auto previous_size = interaction_.size;
+        const auto previous_available = interaction_.available_size;
+        const auto previous_scale = interaction_.framebuffer_scale;
         interaction_ = {};
         const auto framebuffer_scale = ImGui::GetIO().DisplayFramebufferScale;
         interaction_.framebuffer_scale = {framebuffer_scale.x, framebuffer_scale.y};
@@ -88,6 +90,10 @@ namespace lux::ui
         }
         interaction_.content_origin = {origin.x, origin.y};
         interaction_.resized = previous_size != interaction_.size;
+        if (previous_available != available || previous_scale != interaction_.framebuffer_scale)
+        {
+            geometryChanged();
+        }
         if (interaction_.size.width <= 0 || interaction_.size.height <= 0)
         {
             return;

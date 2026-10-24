@@ -1,7 +1,7 @@
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/editor/SceneDocument.hpp>
-#include <lux/engine/editor/ScenePackageFile.hpp>
 #include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
+#include <lux/engine/scene/ScenePackageFile.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
@@ -84,9 +84,9 @@ int main(int argc, char** argv)
     const auto revision = document->revision();
     auto saved = take(document->capture());
     auto bytes = take(scene::encodeScenePackage(saved, 1U << 20U));
-    assert(editor::writeScenePackageBytesAtomic(argv[1], bytes, editor::ESceneWrite::REPLACE));
+    assert(platform::writeFileAtomic(argv[1], bytes, platform::EFileWriteMode::REPLACE));
     assert(document->saved(saved, revision) && !document->dirty());
-    auto reopened = take(editor::readScenePackageFile(argv[1], 1U << 20U));
+    auto reopened = take(scene::readScenePackageFile(argv[1], 1U << 20U));
     assert(reopened.scene->id() == package.scene->id());
     assert(reopened.partitions.front()->objectAt(0).id() == entity);
     auto decoded = take(document->component(entity, schema.id));

@@ -4,25 +4,6 @@ find_package(nlohmann_json CONFIG REQUIRED)
 
 find_package(imgui REQUIRED COMPONENTS core)
 
-# A single file publication algorithm, with no installed support header or domain dependency.
-add_component(
-    COMPONENT_NAME lux_editor_file_io
-    NAMESPACE lux::engine::editor
-    STATIC
-    SOURCE_FILES files/src/FileIo.cpp
-)
-
-component_include_directories(
-    lux_editor_file_io
-    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/files/sinclude
-)
-
-target_link_libraries(lux_editor_file_io PRIVATE lux::cxx::compile_time)
-
-component_add_transitive_commands(lux_editor_file_io "find_package(lux-cxx REQUIRED COMPONENTS compile_time)")
-
-lux_classify_target(TARGET lux_editor_file_io LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
-
 add_component(
     COMPONENT_NAME lux_editor_project
     NAMESPACE lux::engine::editor
@@ -46,7 +27,7 @@ target_link_libraries(
         lux::engine::core::error
     PRIVATE
         nlohmann_json::nlohmann_json
-        lux_editor_file_io
+        lux::engine::platform::platform_file
         lux::engine::project::project_identity
 )
 
@@ -57,7 +38,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
     "find_package(nlohmann_json CONFIG REQUIRED)"
     "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_identity)"
-    "find_package(lux-engine-editor-framework REQUIRED COMPONENTS lux_editor_file_io)"
+    "find_package(lux-engine-platform REQUIRED COMPONENTS platform_file)"
 )
 
 lux_classify_target(TARGET lux_editor_project LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
@@ -200,30 +181,6 @@ component_add_transitive_commands(
 
 lux_classify_target(TARGET lux_editor_app LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
-# Pure package IO remains usable without an execution context or a live document.
-add_component(
-    COMPONENT_NAME lux_editor_scene
-    NAMESPACE lux::engine::editor
-    STATIC
-    SOURCE_FILES scene/src/ScenePackageFile.cpp
-)
-
-component_include_directories(
-    lux_editor_scene
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/scene/include
-    INSTALL_TIME include
-)
-
-target_link_libraries(lux_editor_scene PUBLIC lux::engine::scene::scene_asset PRIVATE lux_editor_file_io)
-
-component_add_transitive_commands(
-    lux_editor_scene
-    "find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)"
-    "find_package(lux-engine-editor-framework REQUIRED COMPONENTS lux_editor_file_io)"
-)
-
-lux_classify_target(TARGET lux_editor_scene LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
-
 add_component(
     COMPONENT_NAME lux_editor_scene_document
     NAMESPACE lux::engine::editor
@@ -261,7 +218,11 @@ component_add_transitive_commands(
 
 lux_classify_target(TARGET lux_editor_scene_document LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
-component_add_internal_dependencies(lux_editor_app lux_editor_scene_document lux_editor_scene)
+component_add_internal_dependencies(lux_editor_app lux_editor_scene_document)
+
+target_link_libraries(lux_editor_app PUBLIC lux::engine::scene::scene_asset)
+
+component_add_transitive_commands(lux_editor_app "find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)")
 
 
 # Concrete authoring preset; the host/context and generic scene provider do not reference it.
@@ -314,14 +275,19 @@ component_include_directories(
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/assets/pinclude
 )
 
-component_add_internal_dependencies(lux_editor_assets lux_editor_context lux_editor_file_io)
+component_add_internal_dependencies(lux_editor_assets lux_editor_context)
 
 target_link_libraries(lux_editor_assets
     PUBLIC lux::engine::toolchain::toolchain_model_cooker
-    PRIVATE nlohmann_json::nlohmann_json lux::cxx::algorithm lux::engine::scene::scene_mesh_query
+    PRIVATE
+        nlohmann_json::nlohmann_json
+        lux::cxx::algorithm
+        lux::engine::scene::scene_mesh_query
+        lux::engine::platform::platform_file
 )
 
 component_add_transitive_commands(lux_editor_assets
+    "find_package(lux-engine-platform REQUIRED COMPONENTS platform_file)"
     "find_package(lux-engine-toolchain-asset REQUIRED COMPONENTS toolchain_model_cooker)"
     "find_package(nlohmann_json CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm)"
@@ -432,8 +398,6 @@ lux_engine_install_components(
     VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor
     COMPONENTS
-        lux_editor_file_io
-        lux_editor_scene
         lux_editor_scene_document
         lux_editor_project
         lux_editor_context
@@ -494,7 +458,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     target_link_libraries(
         editor_scene_profiles_test
         PRIVATE
-            lux_editor_scene
+            lux::engine::scene::scene_asset
             lux_editor_scene_profiles
             lux::engine::engine_context
             lux::engine::scene::scene_render
@@ -532,14 +496,6 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
             editor_plugin_selection_test
             "${CMAKE_CURRENT_BINARY_DIR}/identity-data"
     )
-
-    add_executable(editor_scene_file_test tests/scene_file.cpp)
-
-    target_link_libraries(editor_scene_file_test PRIVATE lux_editor_scene)
-
-    lux_editor_test_options(editor_scene_file_test)
-
-    add_test(NAME framework.scene_file COMMAND editor_scene_file_test "${CMAKE_CURRENT_BINARY_DIR}/scene-file-data")
 
     add_executable(editor_project_manifest_test tests/project_manifest.cpp)
 

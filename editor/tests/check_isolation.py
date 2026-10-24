@@ -23,7 +23,7 @@ for config in model['configurations']:
                      if any(s['path'].replace('\\', '/') == path for s in t.get('sources', []))]
         assert providers == [owner], ('error catalog provider', path, providers, owner)
     for name in ('ui', 'lux_editor_project', 'lux_editor_context', 'lux_editor_ui', 'lux_editor_app',
-                 'lux_editor_scene', 'lux_editor_scene_document', 'lux_editor_file_io', 'lux_editor_scene_profiles', 'lux_editor'):
+                 'scene_asset', 'lux_editor_scene_document', 'platform_file', 'lux_editor_scene_profiles', 'lux_editor'):
         seen, pending = set(), [names[name]]
         while pending:
             key = pending.pop()
@@ -40,18 +40,18 @@ for config in model['configurations']:
             assert not any(value.startswith('lux_editor') for value in closure), 'UI depends on Editor'
         if name == 'lux_editor_project':
             assert 'lux_editor_context' not in closure, (name, 'Project depends on Context')
-        if name in ('lux_editor_project', 'lux_editor_scene', 'lux_editor_file_io'):
+        if name in ('lux_editor_project', 'scene_asset', 'platform_file'):
             for forbidden in ('core_execution', 'engine_context', 'scene_runtime', 'scene_render', 'ui'):
                 assert forbidden not in closure, (name, forbidden)
-        if name in ('lux_editor_project', 'lux_editor_context', 'lux_editor_ui', 'lux_editor_app', 'lux_editor_scene', 'lux_editor_file_io'):
+        if name in ('lux_editor_project', 'lux_editor_context', 'lux_editor_ui', 'lux_editor_app', 'scene_asset', 'platform_file'):
             assert 'lux_editor_scene_profiles' not in closure, (name, 'product profile in framework')
-        if name == 'lux_editor_scene':
+        if name == 'scene_asset':
             assert 'lux_editor_project' not in closure and 'lux_editor_context' not in closure
         if name == 'lux_editor_scene_document':
             for forbidden in ('render', 'scene_render', 'ui', 'window', 'lux_editor_scene_profiles'):
                 assert forbidden not in closure, (name, forbidden)
-        if name == 'lux_editor_file_io':
-            assert 'lux_editor_scene' not in closure and 'lux_editor_project' not in closure
+        if name == 'platform_file':
+            assert 'scene_asset' not in closure and 'lux_editor_project' not in closure
         if name == 'lux_editor_context':
             assert 'ui' not in closure and 'lux_editor_ui' not in closure
         if name == 'lux_editor_ui':
@@ -72,6 +72,8 @@ removed = (
 
     'editor/project/sinclude/lux/engine/editor/detail/ProjectFiles.hpp',
     'editor/scene/profiles/include/lux/engine/editor/ScenePackageFile.hpp',
+    'editor/scene/include/lux/engine/editor/ScenePackageFile.hpp',
+    'editor/files/sinclude/lux/engine/editor/detail/FileIo.hpp',
     'modules/core/object/include/lux/engine/object/ObjectDispatcher.hpp',
     'modules/core/object/include/lux/engine/object/ObjectIdentity.hpp',
     'modules/core/object/include/lux/engine/object/ObjectDeleter.hpp',

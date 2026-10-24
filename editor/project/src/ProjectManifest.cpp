@@ -1,6 +1,6 @@
 #include <algorithm>
 #include <lux/engine/editor/ProjectManifest.hpp>
-#include <lux/engine/editor/detail/FileIo.hpp>
+#include <lux/engine/platform/FileIo.hpp>
 #include <lux/engine/project/PluginIdentity.hpp>
 #include <nlohmann/json.hpp>
 #include <unordered_set>
@@ -9,21 +9,21 @@ namespace lux::editor
 {
     namespace
     {
-        ProjectFailure fileFailure(detail::FileIoFailure value) noexcept
+        ProjectFailure fileFailure(platform::FileFailure value) noexcept
         {
             switch (value.code)
             {
-            case detail::EFileIoError::INVALID_PATH:
+            case platform::EFileIoError::INVALID_PATH:
                 return {EProjectError::INVALID_PATH, 0, value.system};
-            case detail::EFileIoError::LIMIT:
+            case platform::EFileIoError::LIMIT:
                 return {EProjectError::LIMIT, 0, value.system};
-            case detail::EFileIoError::CANCELLED:
+            case platform::EFileIoError::CANCELLED:
                 return {EProjectError::CANCELLED, 0, value.system};
-            case detail::EFileIoError::IO:
+            case platform::EFileIoError::IO:
                 return {EProjectError::IO, 0, value.system};
-            case detail::EFileIoError::DESTINATION_EXISTS:
+            case platform::EFileIoError::DESTINATION_EXISTS:
                 return {EProjectError::DESTINATION_EXISTS, 0, value.system};
-            case detail::EFileIoError::PUBLICATION_UNKNOWN:
+            case platform::EFileIoError::PUBLICATION_UNKNOWN:
                 return {EProjectError::PUBLICATION_UNKNOWN, 0, value.system};
             }
             std::terminate();
@@ -356,7 +356,7 @@ namespace lux::editor
     }
     ProjectResult<ProjectManifest> readProjectManifest(const std::filesystem::path& path, std::stop_token stop) noexcept
     {
-        auto bytes = detail::readFileBounded(path, MaxManifestBytes, stop);
+        auto bytes = platform::readFileBounded(path, MaxManifestBytes, stop);
         if (!bytes)
         {
             return cxx::unexpected(fileFailure(bytes.error()));
@@ -375,10 +375,10 @@ namespace lux::editor
         {
             return cxx::unexpected(encoded.error());
         }
-        auto written = detail::writeFileAtomic(
+        auto written = platform::writeFileAtomic(
             path,
             std::as_bytes(std::span{*encoded}),
-            mode == EProjectWrite::CREATE ? detail::EFileWriteMode::CREATE : detail::EFileWriteMode::REPLACE,
+            mode == EProjectWrite::CREATE ? platform::EFileWriteMode::CREATE : platform::EFileWriteMode::REPLACE,
             stop
         );
         if (!written)

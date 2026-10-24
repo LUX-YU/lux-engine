@@ -268,7 +268,7 @@ ProjectScenes 与 EditorContext 的冷态装配沿现有项目操作完成；文
 
 `editor/scene/document` 的 `lux_editor_scene_document` 提供文档和事务；依赖真实
 SceneRuntime 与 WorldResidency，不链接 Render/UI。ProjectScenes 位于 `editor/app`：它是项目打开、
-运行服务与视口的实际装配点，独占文档和视口记录，但 Scene Lease 仍归 EditorContext。`lux_editor_scene` 只提供 ScenePackage 文件 IO，仍不链接
+运行服务与视口的实际装配点，独占文档和视口记录，但 Scene Lease 仍归 EditorContext。`scene_asset` 提供 ScenePackage 文件 IO，使用 Platform 的 `AtomicFileWriter`，不链接
 ExecutionRuntime、Context 或 Render。纯持久化工具不因编辑器新增能力而被迫加载运行系统。
 
 组件替换由 `DecodedComponent::replaceInto()` 发出 on_update；构造、删除仍使用原有 WorldResidency

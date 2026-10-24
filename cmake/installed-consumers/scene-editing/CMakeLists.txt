@@ -10,8 +10,9 @@ set(CMAKE_DISABLE_FIND_PACKAGE_NRI TRUE)
 set(CMAKE_DISABLE_FIND_PACKAGE_glfw3 TRUE)
 set(CMAKE_DISABLE_FIND_PACKAGE_imgui TRUE)
 
+find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)
 find_package(lux-engine-context REQUIRED COMPONENTS engine_context)
-find_package(lux-engine-editor-framework REQUIRED COMPONENTS lux_editor_scene_document lux_editor_scene)
+find_package(lux-engine-editor-framework REQUIRED COMPONENTS lux_editor_scene_document)
 find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS transform)
 find_package(lux-engine-process-world-loading REQUIRED COMPONENTS process_world_loading)
 
@@ -20,7 +21,7 @@ add_executable(scene_editing main.cpp)
 target_link_libraries(scene_editing PRIVATE
     lux::engine::engine_context
     lux::engine::editor::lux_editor_scene_document
-    lux::engine::editor::lux_editor_scene
+    lux::engine::scene::scene_asset
     lux::engine::simulation::ecs::transform
     lux::engine::process::process_world_loading
 )

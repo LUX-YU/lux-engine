@@ -1,4 +1,5 @@
 #include <lux/cxx/algorithm/sha256.hpp>
+#include <lux/engine/platform/FileIo.hpp>
 
 #include <lux/engine/resource/asset/CookedAssetImage.hpp>
 #include <lux/engine/resource/asset/shader/ShaderAsset.hpp>
@@ -31,11 +32,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#if defined(_WIN32)
-#define NOMINMAX
-#include <Windows.h>
-#endif
 
 namespace
 {
@@ -131,59 +127,35 @@ namespace
 
     [[nodiscard]] std::optional<lux::cxx::SharedBytes<>> readOwned(const fs::path& path)
     {
-        std::ifstream stream(path, std::ios::binary | std::ios::ate);
-        if (!stream)
+        auto bytes = lux::platform::readFileBounded(path, (std::numeric_limits<std::size_t>::max)());
+        if (!bytes || bytes->empty())
+        {
             return std::nullopt;
-        const auto end = stream.tellg();
-        if (end <= 0 || static_cast<std::uintmax_t>(end) > (std::numeric_limits<std::size_t>::max)())
-            return std::nullopt;
-        auto storage = std::make_shared<std::vector<std::byte>>(static_cast<std::size_t>(end));
-        stream.seekg(0, std::ios::beg);
-        stream.read(reinterpret_cast<char*>(storage->data()), static_cast<std::streamsize>(storage->size()));
-        if (!stream)
-            return std::nullopt;
+        }
+        auto storage = std::make_shared<const std::vector<std::byte>>(std::move(*bytes));
         return lux::cxx::SharedBytes<>::fromOwner(storage, *storage);
     }
 
     [[nodiscard]] bool publishFile(const fs::path& target, std::span<const std::byte> bytes)
     {
         std::error_code error;
-        if (!target.parent_path().empty())
-        {
-            fs::create_directories(target.parent_path(), error);
-            if (error)
-                return false;
-        }
-        auto temporary = target;
-        temporary += ".tmp";
-        {
-            std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-            if (!stream)
-                return false;
-            stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-            stream.flush();
-            if (!stream)
-            {
-                stream.close();
-                fs::remove(temporary, error);
-                return false;
-            }
-        }
-#if defined(_WIN32)
-        if (::MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) == 0)
-        {
-            fs::remove(temporary, error);
-            return false;
-        }
-#else
-        fs::rename(temporary, target, error);
+        const auto absolute = fs::absolute(target, error);
         if (error)
         {
-            fs::remove(temporary, error);
             return false;
         }
-#endif
-        return true;
+        fs::create_directories(absolute.parent_path(), error);
+        if (error)
+        {
+            return false;
+        }
+        const auto written = lux::platform::writeFileAtomic(absolute, bytes, lux::platform::EFileWriteMode::REPLACE);
+        if (!written)
+        {
+            std::cerr << "File publication failed: " << absolute << " (code=" << static_cast<int>(written.error().code)
+                      << ", system=" << written.error().system.value() << ")\n";
+        }
+        return written.has_value();
     }
 
     [[nodiscard]] lux::asset::AssetId deterministicId(

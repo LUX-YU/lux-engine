@@ -8,7 +8,7 @@ add_component(
     COMPONENT_NAME scene_asset
     NAMESPACE      lux::engine::scene
     OUTPUT_NAME    lux_engine_scene_asset
-    SOURCE_FILES src/SceneAssetCodec.cpp src/ScenePackage.cpp src/SceneConstruction.cpp
+    SOURCE_FILES src/SceneAssetCodec.cpp src/ScenePackage.cpp src/SceneConstruction.cpp src/ScenePackageFile.cpp
 )
 component_include_directories(
     scene_asset
@@ -25,7 +25,7 @@ target_link_libraries(
         lux::engine::resource::asset
         lux::engine::world::world_asset lux::engine::simulation::simulation_asset
         lux::engine::simulation::ecs::schema lux::engine::world::storage
-    PUBLIC lux::engine::core::serialization
+    PUBLIC lux::engine::core::serialization lux::engine::platform::platform_file
 )
 component_add_transitive_commands(
     scene_asset
@@ -36,6 +36,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS schema)"
     "find_package(lux-engine-world-storage REQUIRED COMPONENTS world_storage)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
+    "find_package(lux-engine-platform REQUIRED COMPONENTS platform_file)"
 )
 
 lux_engine_install_components(
@@ -47,3 +48,17 @@ lux_engine_install_components(
 
 # Codec implementation access; never propagate this internal header directory.
 target_include_directories(scene_asset PRIVATE "${PROJECT_SOURCE_DIR}/modules/resource/asset/sinclude")
+
+if(BUILD_TESTING)
+    add_executable(scene_file_test test/ScenePackageFile.cpp)
+
+    target_link_libraries(scene_file_test PRIVATE scene_asset)
+
+    if(MSVC)
+        target_compile_options(scene_file_test PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(scene_file_test PRIVATE -UNDEBUG)
+    endif()
+
+    add_test(NAME framework.scene_file COMMAND scene_file_test "${CMAKE_CURRENT_BINARY_DIR}/scene-file-data")
+endif()

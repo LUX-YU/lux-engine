@@ -1,4 +1,5 @@
 message("-------- Plaform Layer --------")
+add_subdirectory(file)
 add_subdirectory(process)
 add_subdirectory(ipc)
 if(LUX_BUILD_RENDER OR LUX_BUILD_WINDOW)
@@ -27,7 +28,7 @@ if(NOT ANDROID AND NOT LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
 endif()
 
 if(LUX_PLATFORM_COMPONENTS)
-    list(APPEND LUX_PLATFORM_COMPONENTS platform_process platform_ipc)
+    list(APPEND LUX_PLATFORM_COMPONENTS platform_file platform_process platform_ipc)
     lux_engine_install_components(
         PROJECT_NAME lux-engine-platform
         VERSION      0.0.1

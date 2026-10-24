@@ -90,8 +90,8 @@ and the typed deferred-rendering Scene projection. No editor camera, picking ent
 Missing capabilities and incompatible configuration fail without partial output. A test-only 2D profile uses the same
 public registration/creation path without changing the host.
 
-`ScenePackageFile` reuses the existing ScenePackage/Pak/world codecs and the same file-publication primitive as the
-manifest. It preserves unknown package entries. There is no second scene format. These synchronous helpers are intended
+`scene_asset` supplies `lux::scene::ScenePackageFile` functions using the existing ScenePackage/Pak/world codecs and
+the installed `platform_file` publication primitive. It preserves unknown package entries. There is no second scene format. These synchronous helpers are intended
 for worker-side IO; ProjectScenes schedules read/decode/adoption and snapshot save on the shared execution resources.
 
 Tools use the actual SceneDocument, ComponentSchema and product UI factories. Profiles do not create tools;
@@ -105,9 +105,7 @@ The installed package is `lux-engine-editor-framework` under `lux::engine::edito
 - `lux_editor_context`: composition declarations, complete runtime directories and Process cancellation scopes; no UI or rendering implementation.
 - `lux_editor_ui`: native window/input and detached UI factory invocation; no scene_render or app dependency.
 - `lux_editor_app`: typed Project Events, safe-point adoption, host and private UI Scene transport.
-- `lux_editor_scene`: generic ScenePackage file IO, independent of Project and concrete profiles.
 - `lux_editor_scene_profiles`: concrete 3D authoring preset.
-- `lux_editor_file_io`: shared internal file primitive; only its static library is installed, not its support header.
 
 These libraries are STATIC. The executable explicitly selects the concrete profile; Context and the host do not link
 it. UI Scene implementation remains private; UiTargetImage is the installed token/Target value contract. Product-owned factory layout names are not a workspace persistence protocol.
@@ -140,9 +138,10 @@ project switching does not block on a TaskScope or stop the application's shared
 Application panes remain mounted and continue maintenance. Root has no Project grouping or Project ownership tag.
 A pane removed/re-registered by an external owner has a different registration and is no longer part of that mount.
 
-`lux_editor_scene` supplies generic ScenePackage file IO; `lux_editor_scene_profiles` supplies the concrete 3D
-preset. Neither the generic scene provider nor project file IO depends on the other domain. Their domain errors
-map the single internal `lux_editor_file_io` publication algorithm; its support headers are not installed.
+`scene_asset` supplies generic ScenePackage file IO; `lux_editor_scene_profiles` supplies the concrete 3D
+preset. Neither the generic scene provider nor project file IO depends on the other domain. Scene errors retain
+the actual codec or `platform::FileFailure` cause. Platform file headers are installed independently of Editor;
+Pak and asset publication use the same streaming `AtomicFileWriter` implementation.
 Feature dependency order/conflicts remain owned by FeatureCatalog/RenderSystem, not by the profile.
 
 ## Host boundary

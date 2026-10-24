@@ -1,6 +1,7 @@
-#include <lux/engine/resource/asset/storage/pak/PakCodec.hpp>
 #include <exception>
+#include <lux/engine/platform/AtomicFileWriter.hpp>
 #include <lux/engine/resource/asset/storage/VirtualPath.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakCodec.hpp>
 #include <lux/engine/serialization/CodecByteIO.hpp>
 
 #include <algorithm>
@@ -469,7 +470,7 @@ namespace lux::asset::detail
 
         bool copyPayload(
             const PakWriteEntry& input,
-            std::ofstream& output,
+            platform::AtomicFileWriter& output,
             std::uint64_t& size,
             lux::cxx::algorithm::Sha256Digest& digest
         )
@@ -479,9 +480,10 @@ namespace lux::asset::detail
             if (!input.source_bytes.empty())
             {
                 const auto bytes = input.source_bytes.view();
-                output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-                if (!output)
+                if (!output.write(bytes))
+                {
                     return false;
+                }
                 hasher.update(bytes);
                 size = bytes.size();
             }
@@ -498,9 +500,10 @@ namespace lux::asset::detail
                     if (count <= 0)
                         break;
                     const auto bytes = std::span<const std::byte>{buffer.data(), static_cast<std::size_t>(count)};
-                    output.write(reinterpret_cast<const char*>(bytes.data()), count);
-                    if (!output)
+                    if (!output.write(bytes))
+                    {
                         return false;
+                    }
                     hasher.update(bytes);
                     size += static_cast<std::uint64_t>(count);
                 }
@@ -687,22 +690,28 @@ namespace lux::asset::detail
         }
 
         std::error_code ec;
-        std::filesystem::create_directories(out_pak.parent_path(), ec);
+        const auto destination = std::filesystem::absolute(out_pak, ec);
         if (ec)
+        {
+            return fail(error_out, "cannot resolve Pak output path");
+        }
+        std::filesystem::create_directories(destination.parent_path(), ec);
+        if (ec)
+        {
             return fail(error_out, "cannot create Pak output directory");
-        auto temporary = out_pak;
-        temporary += ".writing";
-        std::filesystem::remove(temporary, ec);
-        ec.clear();
-
-        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-        if (!output)
+        }
+        auto writer = platform::AtomicFileWriter::create(destination, platform::EFileWriteMode::REPLACE);
+        if (!writer)
+        {
             return fail(error_out, "cannot create temporary Pak");
+        }
+        auto& output = *writer;
         std::array<std::byte, kHeaderBytes> empty_header{};
-        output.write(
-            reinterpret_cast<const char*>(empty_header.data()),
-            static_cast<std::streamsize>(empty_header.size())
-        );
+        if (!output.write(empty_header))
+        {
+            return fail(error_out, "cannot write Pak header reservation");
+        }
+        std::uint64_t cursor = empty_header.size();
 
         std::vector<PakEntry> cooked_entries;
         cooked_entries.reserve(entries.size());
@@ -718,15 +727,14 @@ namespace lux::asset::detail
                 cooked_entries.push_back(std::move(entry));
                 continue;
             }
-            auto cursor = static_cast<std::uint64_t>(output.tellp());
             const auto aligned = (cursor + kPakPayloadAlign - 1u) & ~(kPakPayloadAlign - 1u);
             std::array<std::byte, kPakPayloadAlign> padding{};
             if (aligned != cursor)
             {
-                output.write(
-                    reinterpret_cast<const char*>(padding.data()),
-                    static_cast<std::streamsize>(aligned - cursor)
-                );
+                if (!output.write(std::span<const std::byte>{padding}.first(aligned - cursor)))
+                {
+                    return fail(error_out, "cannot write Pak alignment");
+                }
             }
             PakEntry entry;
             entry.id = input.id;
@@ -736,22 +744,24 @@ namespace lux::asset::detail
             entry.vpath = input.vpath;
             if (!copyPayload(input, output, entry.size, entry.content_digest))
             {
-                output.close();
-                std::filesystem::remove(temporary, ec);
                 return fail(error_out, "cannot read or write Pak payload");
             }
+            cursor = aligned + entry.size;
             entry.uncompressed_size = entry.size;
             cooked_entries.push_back(std::move(entry));
         }
 
-        const auto payload_end = static_cast<std::uint64_t>(output.tellp());
+        const auto payload_end = cursor;
         auto next_page_offset = payload_end;
         const auto remainder = next_page_offset % kPakPageSize;
         if (remainder != 0u)
         {
             const auto count = kPakPageSize - remainder;
             std::vector<std::byte> padding(count);
-            output.write(reinterpret_cast<const char*>(padding.data()), static_cast<std::streamsize>(padding.size()));
+            if (!output.write(padding))
+            {
+                return fail(error_out, "cannot write Pak page alignment");
+            }
             next_page_offset += count;
         }
 
@@ -761,17 +771,14 @@ namespace lux::asset::detail
         if (!appendEntryTree(cooked_entries, next_page_offset, pages, entry_root, error_out) ||
             !appendPathTree(path_rows, next_page_offset, pages, path_root, error_out))
         {
-            output.close();
-            std::filesystem::remove(temporary, ec);
             return false;
         }
         for (const auto& page : pages)
         {
-            output.seekp(static_cast<std::streamoff>(page.offset), std::ios::beg);
-            output.write(
-                reinterpret_cast<const char*>(page.page.data()),
-                static_cast<std::streamsize>(page.page.size())
-            );
+            if (!output.seek(page.offset) || !output.write(page.page))
+            {
+                return fail(error_out, "cannot write Pak index page");
+            }
         }
 
         PakHeader header{};
@@ -792,36 +799,21 @@ namespace lux::asset::detail
         const auto header_bytes = encodeHeader(header);
         if (!header_bytes)
         {
-            output.close();
-            std::filesystem::remove(temporary, ec);
             return serializationFailed(error_out, header_bytes.error());
         }
-        output.seekp(0, std::ios::beg);
-        output.write(
-            reinterpret_cast<const char*>(header_bytes->data()),
-            static_cast<std::streamsize>(header_bytes->size())
-        );
-        output.flush();
-        if (!output)
+        if (!output.seek(0) || !output.write(*header_bytes))
         {
-            output.close();
-            std::filesystem::remove(temporary, ec);
-            return fail(error_out, "cannot finalize Pak");
+            return fail(error_out, "cannot finalize Pak header");
         }
-        output.close();
-
-        std::filesystem::rename(temporary, out_pak, ec);
-        if (ec)
+        const auto published = output.commit();
+        if (!published)
         {
-            std::error_code remove_ec;
-            std::filesystem::remove(out_pak, remove_ec);
-            ec.clear();
-            std::filesystem::rename(temporary, out_pak, ec);
-        }
-        if (ec)
-        {
-            std::filesystem::remove(temporary, ec);
-            return fail(error_out, "cannot atomically publish Pak");
+            return fail(
+                error_out,
+                published.error().code == platform::EFileIoError::PUBLICATION_UNKNOWN
+                    ? "Pak was published but durability is unknown"
+                    : "cannot atomically publish Pak; previous destination retained"
+            );
         }
         return true;
     }

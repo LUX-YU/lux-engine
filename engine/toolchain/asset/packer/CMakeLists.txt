@@ -6,6 +6,7 @@ add_executable(
 target_link_libraries(
     lux_asset_packer
     PRIVATE
+        lux::engine::platform::platform_file
         lux::engine::resource::asset
         lux::engine::toolchain::toolchain_shader_asset_cooker
         lux::engine::toolchain::toolchain_texture_cooker

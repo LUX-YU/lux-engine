@@ -180,7 +180,7 @@ int main(int argc, char** argv)
     assert(host.engine().sceneRuntime().instanceCount() == 1);
     auto persisted = readProjectManifest(project_path);
     assert(persisted && persisted->scenes.size() == 1 && persisted->startup_scene == id);
-    auto package = readScenePackageFile(root / "Scenes/authored.luxscene", 1U << 24);
+    auto package = scene::readScenePackageFile(root / "Scenes/authored.luxscene", 1U << 24);
     assert(package && package->scene->id() == id);
     const auto editing_instance = scenes.find(id)->instance();
 

@@ -67,6 +67,7 @@ target_link_libraries(
         lux::engine::resource::identity
         lux::engine::resource::description
     PRIVATE
+        lux::engine::platform::platform_file
         lux::cxx::core
         lux::engine::core::serialization
 )
@@ -74,6 +75,7 @@ target_link_libraries(
 component_add_transitive_commands(
     asset
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time memory)"
+    "find_package(lux-engine-platform REQUIRED COMPONENTS platform_file)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity description)"
 )

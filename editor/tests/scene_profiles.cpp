@@ -5,12 +5,12 @@
 #include <cstdio>
 #include <fstream>
 #include <lux/engine/EngineContext.hpp>
-#include <lux/engine/editor/ScenePackageFile.hpp>
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/project/SceneRegistrations.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/ScenePackageFile.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>
 #include <lux/engine/scene/WorldLoadingConfiguration.hpp>
 #include <thread>
@@ -177,10 +177,10 @@ int main(int argc, char** argv)
     const auto file = directory / "profile.scene";
     std::filesystem::remove(file);
     constexpr std::size_t limit = 16U * 1024U * 1024U;
-    auto written = writeScenePackageAtomic(file, *package, ESceneWrite::CREATE, limit);
+    auto written = scene::writeScenePackageAtomic(file, *package, platform::EFileWriteMode::CREATE, limit);
     if (!written)
     {
-        if (auto* error = std::get_if<SceneFileFailure>(&written.error()))
+        if (auto* error = std::get_if<platform::FileFailure>(&written.error()))
         {
             std::fprintf(stderr, "Scene file IO: %u %s\n", unsigned(error->code), error->system.message().c_str());
         }
@@ -198,8 +198,8 @@ int main(int argc, char** argv)
         }
     }
     assert(written);
-    assert(!writeScenePackageAtomic(file, *package, ESceneWrite::CREATE, limit));
-    auto loaded = readScenePackageFile(file, limit);
+    assert(!scene::writeScenePackageAtomic(file, *package, platform::EFileWriteMode::CREATE, limit));
+    auto loaded = scene::readScenePackageFile(file, limit);
     assert(loaded);
     inspect3D(*loaded, scene_id);
     auto roundtrip = scene::encodeScenePackage(*loaded, limit);
@@ -209,14 +209,20 @@ int main(int argc, char** argv)
         [&](const auto& entry) { return entry.metadata.id == opaque_id; }
     );
     assert(found != loaded->package.entries.end() && std::ranges::equal(found->bytes.view(), *opaque));
-    assert(!writeScenePackageAtomic(file, *two_package, ESceneWrite::REPLACE, limit, stopped.get_token()));
-    assert(!writeScenePackageAtomic(file, *two_package, ESceneWrite::REPLACE, 1));
-    loaded = readScenePackageFile(file, limit);
+    assert(!scene::writeScenePackageAtomic(
+        file,
+        *two_package,
+        platform::EFileWriteMode::REPLACE,
+        limit,
+        stopped.get_token()
+    ));
+    assert(!scene::writeScenePackageAtomic(file, *two_package, platform::EFileWriteMode::REPLACE, 1));
+    loaded = scene::readScenePackageFile(file, limit);
     assert(loaded && scene::encodeScenePackage(*loaded, limit).value() == *roundtrip);
-    assert(!readScenePackageFile(file, 1));
-    assert(!readScenePackageFile(file, limit, stopped.get_token()));
-    assert(writeScenePackageAtomic(file, *two_package, ESceneWrite::REPLACE, limit));
-    loaded = readScenePackageFile(file, limit);
+    assert(!scene::readScenePackageFile(file, 1));
+    assert(!scene::readScenePackageFile(file, limit, stopped.get_token()));
+    assert(scene::writeScenePackageAtomic(file, *two_package, platform::EFileWriteMode::REPLACE, limit));
+    loaded = scene::readScenePackageFile(file, limit);
     assert(loaded && loaded->scene->data().systemCount() == 0);
     std::filesystem::remove(file);
     assert((*engine)->sceneRuntime().instanceCount() == 0);

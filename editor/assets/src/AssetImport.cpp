@@ -1,5 +1,5 @@
 #include <lux/engine/editor/AssetImport.hpp>
-#include <lux/engine/editor/detail/FileIo.hpp>
+#include <lux/engine/platform/FileIo.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 #include <lux/engine/toolchain/asset/model/ModelCooker.hpp>
@@ -80,7 +80,7 @@ namespace lux::editor::detail
 
         AssetImportResult<AssetCatalog> readCatalog(const std::filesystem::path& root, std::stop_token stop) noexcept
         {
-            auto bytes = readFileBounded(catalogPath(root), catalog_limit, stop);
+            auto bytes = platform::readFileBounded(catalogPath(root), catalog_limit, stop);
             if (!bytes)
             {
                 if (bytes.error().system == std::errc::no_such_file_or_directory)
@@ -88,8 +88,8 @@ namespace lux::editor::detail
                     return AssetCatalog{};
                 }
                 return cxx::unexpected(failed(
-                    bytes.error().code == EFileIoError::CANCELLED ? EAssetImportError::CANCELLED
-                                                                  : EAssetImportError::READ,
+                    bytes.error().code == platform::EFileIoError::CANCELLED ? EAssetImportError::CANCELLED
+                                                                            : EAssetImportError::READ,
                     "Asset catalog: " + bytes.error().system.message()
                 ));
             }
@@ -301,7 +301,7 @@ namespace lux::editor::detail
             {
                 return cxx::unexpected(failed(EAssetImportError::PUBLICATION, ec.message()));
             }
-            auto written = writeFileAtomic(file, package, EFileWriteMode::CREATE, stop);
+            auto written = platform::writeFileAtomic(file, package, platform::EFileWriteMode::CREATE, stop);
             if (!written)
             {
                 return cxx::unexpected(
@@ -309,15 +309,15 @@ namespace lux::editor::detail
                 );
             }
             const auto json = catalogJson(candidate).dump(2);
-            auto replaced = writeFileAtomic(
+            auto replaced = platform::writeFileAtomic(
                 catalogPath(root),
                 std::as_bytes(std::span(json.data(), json.size())),
-                expected.revision ? EFileWriteMode::REPLACE : EFileWriteMode::CREATE,
+                expected.revision ? platform::EFileWriteMode::REPLACE : platform::EFileWriteMode::CREATE,
                 {}
             );
             if (!replaced)
             {
-                const bool uncertain = replaced.error().code == EFileIoError::PUBLICATION_UNKNOWN;
+                const bool uncertain = replaced.error().code == platform::EFileIoError::PUBLICATION_UNKNOWN;
                 if (!uncertain)
                 {
                     std::filesystem::remove(file, ec); // Only this operation's unpublished candidate.

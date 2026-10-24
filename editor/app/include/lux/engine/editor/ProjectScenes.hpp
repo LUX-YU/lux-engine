@@ -4,9 +4,9 @@
 #include <lux/engine/description/UiDraw.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
 #include <lux/engine/editor/SceneDocument.hpp>
-#include <lux/engine/editor/ScenePackageFile.hpp>
 #include <lux/engine/editor/SceneProfileRegistry.hpp>
 #include <lux/engine/error/Error.hpp>
+#include <lux/engine/scene/ScenePackageFile.hpp>
 #include <lux/engine/scene/SceneViewRequest.hpp>
 
 #include <filesystem>
@@ -32,14 +32,14 @@ namespace lux::editor
     struct SceneCreationFailure final
     {
         std::filesystem::path scene_path;
-        std::variant<SceneFileFailure, ProjectFailure> cause;
+        std::variant<platform::FileFailure, ProjectFailure> cause;
         bool scene_published{};
     };
 
     using VProjectSceneFailure = std::variant<
         EProjectSceneError,
         error::Error,
-        SceneFileFailure,
+        platform::FileFailure,
         scene::ScenePackageFailure,
         scene::SceneRuntimeFailure,
         ProjectFailure,

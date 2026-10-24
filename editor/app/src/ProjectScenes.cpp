@@ -184,7 +184,8 @@ namespace lux::editor
             reporter.setPhase("Read Scene");
             auto bytes = co_await execution::taskResult(
                 stdexec::schedule(*blocking) |
-                stdexec::then([path, stop]() noexcept { return readScenePackageBytes(path, scene_byte_limit, stop); })
+                stdexec::then([path, stop]() noexcept
+                              { return platform::readFileBounded(path, scene_byte_limit, stop); })
             );
             if (!bytes)
             {
@@ -192,8 +193,14 @@ namespace lux::editor
             }
             reporter.setPhase("Decode Scene");
             auto decoded = co_await execution::taskResult(
-                stdexec::schedule(execution.cpu()) | stdexec::then([bytes = std::move(*bytes), stop]() noexcept
-                                                                   { return scene::decodeScenePackage(bytes, stop); })
+                stdexec::schedule(execution.cpu()) |
+                stdexec::then(
+                    [bytes = std::move(*bytes), stop]() noexcept
+                    {
+                        auto backing = std::make_shared<const std::vector<std::byte>>(std::move(bytes));
+                        return scene::decodeScenePackage(cxx::SharedBytes<>::fromOwner(backing, *backing), stop);
+                    }
+                )
             );
             if (!decoded)
             {
@@ -357,8 +364,10 @@ namespace lux::editor
             reporter.setPhase("Publish Scene file");
             auto written = co_await execution::taskResult(
                 stdexec::schedule(*blocking) |
-                stdexec::then([&]() noexcept
-                              { return writeScenePackageBytesAtomic(path, *bytes, ESceneWrite::REPLACE, stop); })
+                stdexec::then(
+                    [&]() noexcept
+                    { return platform::writeFileAtomic(path, *bytes, platform::EFileWriteMode::REPLACE, stop); }
+                )
             );
             if (!written)
             {
@@ -445,14 +454,15 @@ namespace lux::editor
                         {
                             return cxx::unexpected(SceneCreationFailure{
                                 path,
-                                SceneFileFailure{ESceneFileError::IO, directory_error},
+                                platform::FileFailure{platform::EFileIoError::IO, directory_error},
                                 false
                             });
                         }
-                        auto written = writeScenePackageBytesAtomic(path, *encoded, ESceneWrite::CREATE, stop);
+                        auto written =
+                            platform::writeFileAtomic(path, *encoded, platform::EFileWriteMode::CREATE, stop);
                         if (!written)
                         {
-                            const bool published = written.error().code == ESceneFileError::PUBLICATION_UNKNOWN;
+                            const bool published = written.error().code == platform::EFileIoError::PUBLICATION_UNKNOWN;
                             return cxx::unexpected(SceneCreationFailure{path, written.error(), published});
                         }
                         auto catalog = writeProjectManifestAtomic(manifest_path, candidate, EProjectWrite::REPLACE);

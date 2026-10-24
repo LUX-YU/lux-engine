@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.28)
 
 project(EditorFrameworkConsumer LANGUAGES CXX)
 
+find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)
+
 set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,7 +19,6 @@ find_package(
         lux_editor_context
         lux_editor_ui
         lux_editor_app
-        lux_editor_scene
         lux_editor_scene_profiles
         lux_editor_scene_tools
         lux_editor_scene_document
@@ -87,7 +88,7 @@ target_link_libraries(framework_profiles PRIVATE lux::engine::editor::lux_editor
 target_link_libraries(
     framework_profiles
     PRIVATE
-        lux::engine::editor::lux_editor_scene
+        lux::engine::scene::scene_asset
         lux::engine::editor::lux_editor_scene_profiles
         lux::engine::engine_context
         lux::engine::project::project_plugins
@@ -116,9 +117,9 @@ target_link_libraries(
         nlohmann_json::nlohmann_json
 )
 
-add_executable(framework_scene_file ../scene_file.cpp)
+add_executable(framework_scene_file ../../../engine/scene/asset/test/ScenePackageFile.cpp)
 
-target_link_libraries(framework_scene_file PRIVATE lux::engine::editor::lux_editor_scene)
+target_link_libraries(framework_scene_file PRIVATE lux::engine::scene::scene_asset)
 
 add_executable(framework_host host.cpp)
 
@@ -224,7 +225,6 @@ set(
     UiTargetImage
     SceneProfileRegistry
     SceneProfile3D
-    ScenePackageFile
     ProjectScenes
     ProjectAssets
     SceneDocument
@@ -244,7 +244,7 @@ foreach(header IN LISTS framework_headers)
         header_${header}
         PRIVATE
             lux::engine::editor::lux_editor_app
-            lux::engine::editor::lux_editor_scene
+            lux::engine::scene::scene_asset
             lux::engine::editor::lux_editor_scene_profiles
             lux::engine::editor::lux_editor_scene_tools
     )
@@ -258,6 +258,9 @@ endforeach()
 
 set(
     foundation_headers
+    platform/FileIo
+    platform/AtomicFileWriter
+    scene/ScenePackageFile
     project/PluginIdentity
     core/execution/TaskScope
     object/ObjectRuntime
@@ -299,6 +302,7 @@ foreach(header IN LISTS foundation_headers)
             lux::engine::editor::lux_editor_ui
             lux::engine::engine_rendering
             lux::engine::process::world_loading
+            lux::engine::scene::scene_asset
     )
 
     if(MSVC)

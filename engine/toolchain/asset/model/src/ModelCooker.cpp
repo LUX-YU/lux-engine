@@ -115,17 +115,9 @@ namespace lux::toolchain
                     return {};
                 }
             }
-            auto key = path.generic_string();
-#ifdef _WIN32
-            for (auto& value : key)
-            {
-                if (value >= 'A' && value <= 'Z')
-                {
-                    value = static_cast<char>(value + ('a' - 'A'));
-                }
-            }
-#endif
-            return key;
+            // Captured dependency names are logical, case-sensitive keys on every cook platform.
+            // Filesystem case handling belongs to readModelSourceFiles, not persistent references.
+            return path.generic_string();
         }
 
         struct CapturedFiles final

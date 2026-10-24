@@ -47,6 +47,7 @@ namespace lux::scene
         {
             if (!lifetime || lifetime->completed.load(std::memory_order_acquire))
             {
+                auto code_lifetime = std::move(waiter.code_lifetime);
                 waiter.complete(&waiter);
                 return;
             }
@@ -715,6 +716,7 @@ namespace lux::scene
                 while (waiter)
                 {
                     auto* next = waiter->next;
+                    auto code_lifetime = std::move(waiter->code_lifetime);
                     waiter->complete(waiter);
                     waiter = next;
                 }

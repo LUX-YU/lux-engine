@@ -18,6 +18,7 @@ namespace lux::execution
                 return;
             }
         }
+        auto code_lifetime = std::move(waiter.code_lifetime);
         waiter.complete(&waiter);
     }
 

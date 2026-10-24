@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/core/execution/RunLoop.hpp>
 #include <lux/engine/scene/SceneInstanceId.hpp>
 #include <lux/engine/scene/visibility.h>
 #include <memory>
@@ -14,6 +15,7 @@ namespace lux::scene
         struct RetirementWaiter
         {
             RetirementWaiter* next{};
+            std::shared_ptr<const void> code_lifetime;
             void (*complete)(RetirementWaiter*) noexcept {};
         };
 
@@ -58,6 +60,7 @@ namespace lux::scene
             Operation(std::shared_ptr<detail::InstanceLifetime> lifetime, Receiver receiver) noexcept
                 : lifetime_(std::move(lifetime)), receiver_(std::move(receiver))
             {
+                code_lifetime = execution::detail::getCompletionCode(stdexec::get_env(receiver_));
                 complete = [](detail::RetirementWaiter* waiter) noexcept
                 {
                     auto& operation = *static_cast<Operation*>(waiter);

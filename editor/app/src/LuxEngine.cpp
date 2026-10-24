@@ -445,7 +445,7 @@ namespace lux::editor
             }
         }
 
-        struct AdoptProject final
+        struct ProjectCandidate final
         {
             std::uint64_t request_serial{};
             std::filesystem::path manifest_file;
@@ -577,7 +577,7 @@ namespace lux::editor
             return {};
         }
 
-        FrameworkResult<AdoptProject> prepareProjectCandidate(
+        FrameworkResult<ProjectCandidate> prepareProjectCandidate(
             detail::PreparedProject prepared,
             std::uint64_t serial,
             std::filesystem::path manifest_file,
@@ -607,7 +607,7 @@ namespace lux::editor
             {
                 return cxx::unexpected(context.error());
             }
-            AdoptProject candidate{serial, manifest_file, published, std::move(*context), {}};
+            ProjectCandidate candidate{serial, manifest_file, published, std::move(*context), {}};
             cxx::scope_exit retire_candidate(
                 [&]() noexcept
                 {
@@ -736,7 +736,7 @@ namespace lux::editor
             window_->exit();
         }
 
-        FrameworkResult<bool> adoptProject(AdoptProject candidate) noexcept
+        FrameworkResult<bool> adoptProject(ProjectCandidate candidate) noexcept
         {
             cxx::scope_exit retire_candidate(
                 [&]() noexcept

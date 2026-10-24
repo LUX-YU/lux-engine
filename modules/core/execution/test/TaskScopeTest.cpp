@@ -206,6 +206,99 @@ namespace
         std::puts("PASS T05 explicit join waits for delivery and closes admission");
     }
 
+    struct CallbackCode final
+    {
+        std::atomic_bool* executing;
+
+        explicit CallbackCode(std::atomic_bool& active) noexcept : executing(&active) {}
+
+        ~CallbackCode() noexcept
+        {
+            assert(!executing->load());
+        }
+    };
+
+    struct DestroyingReceiver final
+    {
+        using receiver_concept = stdexec::receiver_t;
+        void** operation;
+        void (*destroy)(void*) noexcept;
+        std::shared_ptr<const void> code;
+        std::atomic_bool* executing;
+        std::atomic_bool* completed;
+
+        auto get_env() const noexcept
+        {
+            return stdexec::env{stdexec::prop{detail::getCompletionCode, code}};
+        }
+
+        void set_value() && noexcept
+        {
+            auto* active = executing;
+            auto* done = completed;
+            std::weak_ptr<const void> lifetime = code;
+            auto* state = std::exchange(*operation, nullptr);
+            const auto release = destroy;
+            active->store(true);
+            release(state);              // The receiver and its only owned code pin cease to exist here.
+            assert(!lifetime.expired()); // The publishing Core frame retains the callback code through return.
+            active->store(false);
+            done->store(true, std::memory_order_release);
+        }
+    };
+
+    void groupCompletionCodeLifetime(bool asynchronous)
+    {
+        auto runtime = ExecutionRuntime::create({1, 8, {16}});
+        assert(runtime);
+        TaskScope group{*runtime};
+        std::binary_semaphore entered{0}, release{0};
+        if (asynchronous)
+        {
+            assert(group.submit(
+                {},
+                [&](TaskReporter) noexcept
+                {
+                    return stdexec::schedule(runtime->cpu()) | stdexec::then(
+                                                                   [&]() noexcept
+                                                                   {
+                                                                       entered.release();
+                                                                       release.acquire();
+                                                                   }
+                                                               );
+                }
+            ));
+            entered.acquire();
+        }
+        std::atomic_bool executing{}, completed{};
+        auto code = std::make_shared<CallbackCode>(executing);
+        std::weak_ptr<const void> lifetime = code;
+        using Operation = stdexec::connect_result_t<TaskScope::CompletionSender, DestroyingReceiver>;
+        void* state = nullptr;
+        state = new Operation(stdexec::connect(
+            group.whenSettled(),
+            DestroyingReceiver{
+                &state,
+                [](void* value) noexcept { delete static_cast<Operation*>(value); },
+                code,
+                &executing,
+                &completed
+            }
+        ));
+        code.reset();
+        stdexec::start(*static_cast<Operation*>(state));
+        if (asynchronous)
+        {
+            assert(!completed.load());
+            release.release();
+        }
+        assert(runtime->waitUntil([&]() noexcept { return completed.load(std::memory_order_acquire); }));
+        runtime->requestStop();
+        assert(runtime->waitUntil([&]() noexcept { return runtime->settled(); }));
+        assert(runtime->join());
+        assert(lifetime.expired() && state == nullptr);
+    }
+
     void asynchronousGroupJoin()
     {
         auto runtime = ExecutionRuntime::create({1, 8, {16}});
@@ -325,5 +418,7 @@ int main()
     destroyedScope(true);
     explicitJoin();
     asynchronousGroupJoin();
+    groupCompletionCodeLifetime(false);
+    groupCompletionCodeLifetime(true);
     terminalReleasesCapacity();
 }

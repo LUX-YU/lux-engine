@@ -151,6 +151,7 @@ namespace lux::execution::detail
         while (waiters)
         {
             auto* next = waiters->next;
+            auto code_lifetime = std::move(waiters->code_lifetime);
             waiters->complete(waiters);
             waiters = next;
         }

@@ -9,6 +9,7 @@ namespace lux::execution
         struct TaskGroupWaiter
         {
             TaskGroupWaiter* next{};
+            std::shared_ptr<const void> code_lifetime;
             void (*complete)(TaskGroupWaiter*) noexcept {};
         };
 
@@ -88,6 +89,7 @@ namespace lux::execution
             Operation(detail::TaskRuntime& tasks, std::shared_ptr<detail::TaskGroup> group, Receiver receiver) noexcept
                 : tasks_(tasks), group_(std::move(group)), receiver_(std::move(receiver))
             {
+                code_lifetime = detail::getCompletionCode(stdexec::get_env(receiver_));
                 complete = [](detail::TaskGroupWaiter* waiter) noexcept
                 {
                     auto& operation = *static_cast<Operation*>(waiter);

@@ -1,3 +1,4 @@
+#include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
@@ -44,6 +45,17 @@ namespace lux::scene
             static_cast<std::uint32_t>(indices.size())
         );
         return std::shared_ptr<const MeshQueryGeometry>(std::move(geometry));
+    }
+
+    QueryResult<std::shared_ptr<const MeshQueryGeometry>> MeshQueryGeometry::build(const rdesc::Mesh& mesh)
+    {
+        std::vector<Eigen::Vector3f> positions;
+        positions.reserve(mesh.vertices.size());
+        for (const auto& vertex : mesh.vertices)
+        {
+            positions.push_back(vertex.position);
+        }
+        return build(positions, mesh.indices);
     }
 
     struct MeshQuery::Impl

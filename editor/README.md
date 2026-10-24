@@ -251,3 +251,8 @@ selected ECS camera and adopted image aspect that rendering uses.
 A viewport keeps its image token while Resize is pending. ImageElement fits the last adopted physical aspect
 inside its logical rectangle; framebuffer scale is applied exactly once when requesting pixels. Resize success
 is resumed in a complete frame carrying matching camera/UI data and the replied Target epoch.
+
+Application startup publishes a fully constructed LuxEngine::Impl; partial startup rollback is local to its factory.
+OpenProject retains its Context until Scene/UI retirement completes. The regular loop and destructor share one
+nonblocking close progression. Clients drain and close before RenderServer stops; the shared ExecutionRuntime is
+joined only outside a driven callback. There is no Main 1024-request limit or per-frame reserved correlation slot.

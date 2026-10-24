@@ -89,20 +89,26 @@ namespace lux::rendering
                 asset_started.count_down();
                 return;
             }
-            asset_client = std::move(*client);
-            if (auto bound = asset_client->setCommands(std::move(commands)); !bound)
+            if (auto bound = (*client)->setCommands(std::move(commands)); !bound)
             {
                 asset_start_error = bound.error();
                 asset_started.count_down();
                 return;
             }
+            asset_client = std::move(*client);
             asset_started.count_down();
             bool link_settled = false;
+            bool admission_closed = false;
             auto& notifications = ipc::IpcCore::instance();
             for (;;)
             {
                 const auto observed = notifications.workEpoch();
                 const auto publication = asset_loop.publicationEpoch();
+                if (asset_stopping.load(std::memory_order_acquire) && !admission_closed)
+                {
+                    asset_client->beginClose();
+                    admission_closed = true;
+                }
                 const auto ready = asset_loop.executeReady(128);
                 const auto responses = asset_client->consumeResponses();
                 if (render_joined.load(std::memory_order_acquire) && !link_settled)
@@ -112,14 +118,53 @@ namespace lux::rendering
                 }
                 const bool inputs_settled =
                     asset_client->pendingRequests() == 0 && asset_loop.empty() && asset_loop.activePublishers() == 0;
-                if (asset_stopping.load(std::memory_order_acquire) && inputs_settled)
+                if (admission_closed && inputs_settled)
                 {
+                    if (!asset_client->close())
+                    {
+                        std::terminate();
+                    }
+                    asset_finished.store(true, std::memory_order_release);
+                    execution.wake();
                     return;
                 }
                 if (ready == 0 && responses == 0 && asset_loop.canWait(publication))
                 {
                     notifications.waitUntil(observed, std::chrono::steady_clock::time_point::max());
                 }
+            }
+        }
+
+        // Factory rollback only. No application producer can have borrowed the unpublished clients.
+        void rollbackStartup() noexcept
+        {
+            server->stop();
+            if (render_thread.joinable())
+            {
+                render_thread.join();
+            }
+            render_joined.store(true, std::memory_order_release);
+            if (main_client)
+            {
+                main_client->settleClosed();
+            }
+            asset_stopping.store(true, std::memory_order_release);
+            ipc::IpcCore::instance().notifyWork();
+            if (asset_thread.joinable())
+            {
+                asset_thread.join();
+            }
+        }
+
+        void completeFrame(FrameInput& frame, FrameCompletion result) noexcept
+        {
+            if (result.error.type != 0)
+            {
+                reportRenderFailure(result.error, "Frame submission");
+            }
+            if (!main_client->releaseFrame(frame))
+            {
+                std::terminate();
             }
         }
 
@@ -136,6 +181,7 @@ namespace lux::rendering
         std::atomic_bool render_finished{};
         std::atomic_bool render_joined{};
         std::atomic_bool asset_stopping{};
+        std::atomic_bool asset_finished{};
     };
 
     RenderExecution::RenderExecution(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
@@ -192,7 +238,7 @@ namespace lux::rendering
         auto& state = *result->impl_;
         const auto fail_start = [&](RenderError error) noexcept -> CreateResult
         {
-            static_cast<void>(result->shutdown());
+            state.rollbackStartup();
             return cxx::unexpected(error);
         };
         try
@@ -203,8 +249,7 @@ namespace lux::rendering
             {
                 return fail_start(commands.error());
             }
-            auto main_client =
-                RenderRequester::create(std::move(*requester), {config.requests_per_client, max_frames_ahead});
+            auto main_client = RenderRequester::create(std::move(*requester), {{}, max_frames_ahead});
             if (!main_client)
             {
                 return fail_start(main_client.error());
@@ -214,10 +259,10 @@ namespace lux::rendering
             {
                 return fail_start(bound.error());
             }
-            state.asset_thread =
-                std::thread([&state, channel, commands = std::move(*commands), capacity = config.requests_per_client](
-                            ) mutable noexcept
-                            { state.runAssetProtocol(std::move(channel), std::move(commands), capacity); });
+            state.asset_thread = std::thread(
+                [&state, channel, commands = std::move(*commands), capacity = config.asset_pending_requests](
+                ) mutable noexcept { state.runAssetProtocol(std::move(channel), std::move(commands), capacity); }
+            );
             state.asset_started.wait();
             if (state.asset_start_error.type != 0)
             {
@@ -251,19 +296,62 @@ namespace lux::rendering
         return impl_->asset_loop.scheduler();
     }
 
-    std::size_t RenderExecution::consumeResponses() noexcept
+    RenderResult<FrameInput*> RenderExecution::beginFrame() noexcept
+    {
+        auto frame = impl_->main_client->beginFrame();
+        if (!frame && frame.error().type == kRuntimeCapacity)
+        {
+            return nullptr;
+        }
+        return frame;
+    }
+
+    RenderResult<void> RenderExecution::submitFrame(FrameInput& frame) noexcept
     {
         auto& state = *impl_;
-        const auto count = state.main_client ? state.main_client->consumeResponses() : 0;
+        auto accepted = state.execution.spawn(stdexec::then(
+            state.main_client->submitFrame(frame),
+            [&state, &frame](FrameCompletion result) noexcept { state.completeFrame(frame, std::move(result)); }
+        ));
+        if (!accepted)
+        {
+            if (!state.main_client->releaseFrame(frame))
+            {
+                std::terminate();
+            }
+            return cxx::unexpected(execution::toError(accepted.error()));
+        }
+        return {};
+    }
+
+    RenderResult<std::size_t> RenderExecution::consumeResponses() noexcept
+    {
+        auto& state = *impl_;
+        constexpr std::size_t response_batch = 128;
+        const auto count = state.main_client->consumeResponses(response_batch);
+        if (count == response_batch)
+        {
+            // A full batch can leave readable replies after Server has already gone idle. Reuse Main's
+            // wake epoch so a bounded consumer cannot sleep waiting for a publication that already happened.
+            state.execution.wake();
+        }
         if (state.render_finished.load(std::memory_order_acquire) && state.render_thread.joinable())
         {
             state.render_thread.join();
-            if (state.main_client)
-            {
-                state.main_client->settleClosed();
-            }
+            state.main_client->settleClosed();
             state.render_joined.store(true, std::memory_order_release);
             ipc::IpcCore::instance().notifyWork();
+        }
+        if (state.render_joined.load(std::memory_order_acquire))
+        {
+            if (!state.render_result)
+            {
+                return cxx::unexpected(state.render_result.error());
+            }
+            if (!state.asset_stopping.load(std::memory_order_acquire))
+            {
+                return cxx::unexpected(RenderError{kOutcomeUnknown});
+            }
         }
         return count;
     }
@@ -273,30 +361,66 @@ namespace lux::rendering
         return impl_->server->stats();
     }
 
-    RenderResult<void> RenderExecution::shutdown() noexcept
+    void RenderExecution::beginClose() noexcept
     {
         auto& state = *impl_;
-        state.server->stop();
-        if (state.render_thread.joinable())
+        if (state.asset_stopping.exchange(true, std::memory_order_acq_rel))
         {
-            const auto stopped = state.execution.waitUntil(
-                [&]() noexcept
-                {
-                    consumeResponses();
-                    return state.render_joined.load(std::memory_order_acquire);
-                }
-            );
-            if (!stopped)
-            {
-                return cxx::unexpected(RenderError{kRuntimeState});
-            }
+            return;
         }
-        state.asset_stopping.store(true, std::memory_order_release);
+        state.main_client->beginClose();
         ipc::IpcCore::instance().notifyWork();
-        if (state.asset_thread.joinable())
-        {
-            state.asset_thread.join();
-        }
-        return state.render_result;
     }
+
+    RenderResult<bool> RenderExecution::advanceClose() noexcept
+    {
+        auto& state = *impl_;
+        if (!state.asset_stopping.load(std::memory_order_acquire))
+        {
+            return cxx::unexpected(RenderError{kRuntimeState});
+        }
+        // An unexpected exit is joined and its missing responses are settled here. Normal Server shutdown
+        // starts only after both Links have closed; no wait blocks the Main continuation driver.
+        static_cast<void>(consumeResponses());
+        const bool clients_settled =
+            state.main_client->pendingRequests() == 0 && state.asset_finished.load(std::memory_order_acquire);
+        if (clients_settled && state.asset_thread.joinable())
+        {
+            if (!state.main_client->close())
+            {
+                std::terminate();
+            }
+            state.asset_thread.join();
+            state.server->stop();
+        }
+        if (!state.render_joined.load(std::memory_order_acquire) || state.asset_thread.joinable())
+        {
+            return false;
+        }
+        return state.render_result ? RenderResult<bool>{true} : cxx::unexpected(state.render_result.error());
+    }
+
+    RenderResult<void> RenderExecution::shutdown() noexcept
+    {
+        beginClose();
+        RenderError failure;
+        const auto waited = impl_->execution.waitUntil(
+            [&]() noexcept
+            {
+                auto result = advanceClose();
+                if (!result)
+                {
+                    failure = result.error();
+                    return true;
+                }
+                return *result;
+            }
+        );
+        if (!waited)
+        {
+            return cxx::unexpected(execution::toError(waited.error()));
+        }
+        return failure.type != 0 ? RenderResult<void>{cxx::unexpected(failure)} : RenderResult<void>{};
+    }
+
 } // namespace lux::rendering

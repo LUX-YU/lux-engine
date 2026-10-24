@@ -43,6 +43,98 @@ namespace lux::editor
         {
         }
 
+        using QueryGeometry = std::shared_ptr<const scene::MeshQueryGeometry>;
+        using QueryCompletion = execution::TTaskResult<QueryGeometry, AssetImportFailure>;
+
+        static AssetImportResult<QueryGeometry> buildQueryGeometry(
+            const asset::MeshAsset& asset,
+            std::stop_token stop
+        ) noexcept
+        {
+            if (stop.stop_requested())
+            {
+                return cxx::unexpected(AssetImportFailure{EAssetImportError::CANCELLED, "Mesh query cancelled"});
+            }
+            auto built = scene::MeshQueryGeometry::build(asset.data());
+            if (!built)
+            {
+                return cxx::unexpected(AssetImportFailure{
+                    EAssetImportError::COOK,
+                    "Mesh query geometry error " + std::to_string(static_cast<unsigned>(built.error().code))
+                });
+            }
+            return std::move(*built);
+        }
+
+        static auto loadQueryGeometry(
+            process::asset_loading::AssetReadPort read,
+            execution::CpuScheduler cpu,
+            asset::AssetId mesh,
+            asset::AssetVfsView snapshot,
+            std::stop_token stop
+        ) noexcept
+        {
+            auto loaded = process::asset_loading::loadAsset<asset::MeshAsset>(
+                read,
+                cpu,
+                mesh,
+                {256U << 20U, 512U << 20U, 32},
+                stop,
+                snapshot
+            );
+            auto normalized = stdexec::let_error(
+                std::move(loaded),
+                [](process::asset_loading::AssetLoadFailure failure) noexcept
+                {
+                    return stdexec::just_error(AssetImportFailure{
+                        EAssetImportError::READ,
+                        "Mesh read/decode stage " + std::to_string(static_cast<unsigned>(failure.code)) +
+                            ", storage result " + std::to_string(static_cast<unsigned>(failure.storage_error))
+                    });
+                }
+            );
+            // Decode and BVH construction stay on the same CPU continuation; no extra Main round-trip.
+            return stdexec::then(
+                std::move(normalized),
+                [stop](const auto& asset) noexcept { return buildQueryGeometry(*asset, stop); }
+            );
+        }
+
+        static execution::ETaskState finishGeometry(
+            object::ObjectId object,
+            asset::AssetId mesh,
+            std::uint64_t revision,
+            QueryCompletion result
+        ) noexcept
+        {
+            const auto resolved = object::ObjectRuntime::instance().resolve(object);
+            if (!resolved)
+            {
+                return execution::ETaskState::CANCELLED;
+            }
+            auto& state = *static_cast<ProjectAssets*>(*resolved)->impl_;
+            const auto found = state.geometry.find(mesh);
+            if (found == state.geometry.end() || found->second.revision != revision)
+            {
+                return execution::ETaskState::CANCELLED;
+            }
+            if (result)
+            {
+                found->second.value = std::move(*result);
+            }
+            else
+            {
+                const auto* domain = result.error().domainFailure();
+                found->second.failure = domain ? *domain
+                                               : AssetImportFailure{
+                                                     result.error().isCancelled() ? EAssetImportError::CANCELLED
+                                                                                  : EAssetImportError::EXECUTION,
+                                                     "Mesh query execution did not complete"
+                                                 };
+            }
+            return result ? execution::ETaskState::SUCCEEDED : execution::ETaskState::FAILED;
+        }
+
         AssetImportResult<void> adopt(detail::ImportedAssets result) noexcept
         {
             std::vector<asset::AssetId> removed_ids;
@@ -90,6 +182,48 @@ namespace lux::editor
             return {};
         }
 
+        static execution::ETaskState finishImport(
+            object::ObjectId id,
+            execution::TTaskResult<detail::ImportedAssets, AssetImportFailure> result
+        ) noexcept
+        {
+
+            auto outcome = result ? execution::ETaskState::SUCCEEDED : execution::ETaskState::FAILED;
+            // Main's existing generation check protects a closed project. No captured Context,
+            // second completion queue, or retained ProjectAssets pointer crosses the worker phase.
+            auto object = object::ObjectRuntime::instance().resolve(id);
+            if (!object)
+            {
+                return outcome;
+            }
+            auto& collection = *static_cast<ProjectAssets*>(*object);
+            auto& state = *collection.impl_;
+            state.pending = {};
+            if (result)
+            {
+                auto adopted = state.adopt(std::move(*result));
+                if (!adopted)
+                {
+                    state.failure = std::move(adopted.error());
+                    outcome = execution::ETaskState::FAILED;
+                }
+            }
+            else if (const auto* domain = result.error().domainFailure())
+            {
+                state.failure = *domain;
+            }
+            else
+            {
+                state.failure = AssetImportFailure{EAssetImportError::EXECUTION, "Asset execution failed"};
+            }
+            if (state.failure && state.failure->code == EAssetImportError::CANCELLED)
+            {
+                outcome = execution::ETaskState::CANCELLED;
+            }
+            static_cast<void>(collection.emit(collection.changed));
+            return outcome;
+        }
+
         AssetImportResult<execution::TaskId> start(
             ProjectAssets& collection,
             std::optional<ProjectAsset> input
@@ -123,44 +257,7 @@ namespace lux::editor
                     ));
                     return stdexec::then(
                         std::move(result),
-                        [id](auto result) noexcept
-                        {
-                            auto outcome = result ? execution::ETaskState::SUCCEEDED : execution::ETaskState::FAILED;
-                            // Main's existing generation check protects a closed project. No captured Context,
-                            // second completion queue, or retained ProjectAssets pointer crosses the worker phase.
-                            auto object = object::ObjectRuntime::instance().resolve(id);
-                            if (!object)
-                            {
-                                return outcome;
-                            }
-                            auto& collection = *static_cast<ProjectAssets*>(*object);
-                            auto& state = *collection.impl_;
-                            state.pending = {};
-                            if (result)
-                            {
-                                auto adopted = state.adopt(std::move(*result));
-                                if (!adopted)
-                                {
-                                    state.failure = std::move(adopted.error());
-                                    outcome = execution::ETaskState::FAILED;
-                                }
-                            }
-                            else if (const auto* domain = result.error().domainFailure())
-                            {
-                                state.failure = *domain;
-                            }
-                            else
-                            {
-                                state.failure =
-                                    AssetImportFailure{EAssetImportError::EXECUTION, "Asset execution failed"};
-                            }
-                            if (state.failure && state.failure->code == EAssetImportError::CANCELLED)
-                            {
-                                outcome = execution::ETaskState::CANCELLED;
-                            }
-                            static_cast<void>(collection.emit(collection.changed));
-                            return outcome;
-                        }
+                        [id](auto result) noexcept { return finishImport(id, std::move(result)); }
                     );
                 }
             );
@@ -207,88 +304,12 @@ namespace lux::editor
              cpu = state.execution.cpu(),
              main = state.execution.mainScheduler()](execution::TaskReporter reporter) noexcept
             {
-                auto loaded = process::asset_loading::loadAsset<asset::MeshAsset>(
-                    read,
-                    cpu,
-                    mesh,
-                    {256U << 20U, 512U << 20U, 32},
-                    reporter.stopToken(),
-                    snapshot
-                );
-                auto normalized = stdexec::let_error(
-                    std::move(loaded),
-                    [](process::asset_loading::AssetLoadFailure failure) noexcept
-                    {
-                        return stdexec::just_error(AssetImportFailure{
-                            EAssetImportError::READ,
-                            "Mesh read/decode stage " + std::to_string(static_cast<unsigned>(failure.code)) +
-                                ", storage result " + std::to_string(static_cast<unsigned>(failure.storage_error))
-                        });
-                    }
-                );
-                auto built = stdexec::then(
-                    std::move(normalized),
-                    [stop = reporter.stopToken()](const auto& asset
-                    ) noexcept -> AssetImportResult<std::shared_ptr<const scene::MeshQueryGeometry>>
-                    {
-                        if (stop.stop_requested())
-                        {
-                            return cxx::unexpected(
-                                AssetImportFailure{EAssetImportError::CANCELLED, "Mesh query cancelled"}
-                            );
-                        }
-                        const auto& mesh = asset->data();
-                        std::vector<Eigen::Vector3f> positions;
-                        positions.reserve(mesh.vertices.size());
-                        for (const auto& vertex : mesh.vertices)
-                        {
-                            positions.push_back(vertex.position);
-                        }
-                        auto built = scene::MeshQueryGeometry::build(positions, mesh.indices);
-                        if (!built)
-                        {
-                            return cxx::unexpected(AssetImportFailure{
-                                EAssetImportError::COOK,
-                                "Mesh query geometry error " + std::to_string(static_cast<unsigned>(built.error().code))
-                            });
-                        }
-                        return std::move(*built);
-                    }
-                );
-                auto result = execution::taskResult(std::move(built));
+                auto result =
+                    execution::taskResult(Impl::loadQueryGeometry(read, cpu, mesh, snapshot, reporter.stopToken()));
                 auto delivered = stdexec::then(
                     stdexec::continues_on(std::move(result), main),
                     [object, mesh, revision](auto result) noexcept
-                    {
-                        const auto resolved = object::ObjectRuntime::instance().resolve(object);
-                        if (!resolved)
-                        {
-                            return execution::ETaskState::CANCELLED;
-                        }
-                        auto& collection = *static_cast<ProjectAssets*>(*resolved);
-                        auto& state = *collection.impl_;
-                        const auto found = state.geometry.find(mesh);
-                        if (found == state.geometry.end() || found->second.revision != revision)
-                        {
-                            return execution::ETaskState::CANCELLED;
-                        }
-                        if (result)
-                        {
-                            found->second.value = std::move(*result);
-                        }
-                        else
-                        {
-                            const auto* domain = result.error().domainFailure();
-                            found->second.failure =
-                                domain ? *domain
-                                       : AssetImportFailure{
-                                             result.error().isCancelled() ? EAssetImportError::CANCELLED
-                                                                          : EAssetImportError::EXECUTION,
-                                             "Mesh query execution did not complete"
-                                         };
-                        }
-                        return result ? execution::ETaskState::SUCCEEDED : execution::ETaskState::FAILED;
-                    }
+                    { return Impl::finishGeometry(object, mesh, revision, std::move(result)); }
                 );
                 // Explicit stop governs the work; it must not cancel the final Main-thread status delivery.
                 return stdexec::write_env(

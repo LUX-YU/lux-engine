@@ -583,24 +583,32 @@ TaskScope、撤销文件读取入口，再等待已接纳业务任务结束。�
 ### 10.3 应用退出
 
 ```text
-关闭业务准入、取消项目任务、停止新普通帧
-  → Main/Asset/Render 继续推进，清偿已接纳 IO、CPU、上传与关闭维护帧
-  → 请求 RenderServer 停止；RenderThread 继续推进 GPU、RunLoop、Outbox、cleanup_scope_
-  → RenderThread join，确认其借用和 Producer 尾栈结束
-  → 各 Requester 在所属线程 settleClosed，缺失结果报告 Unknown
-  → Asset continuation/发布者清偿，Asset 线程 join
-  → 销毁渲染设施；再停止并 join 共享 Runtime 的其余任务/IO/CPU/Timer
-  → 收尾 Object，释放已经没有 Surface 使用的 Window，销毁 EngineContext
+关闭业务准入、取消项目准备任务、停止新普通帧
+  → OpenProject 关闭自己的 Scene/UI，清偿项目 IO/CPU 与关闭维护帧
+  → UI Scene 和 RenderAssets 结束；所有 FrameCompletion 及 Source 借用结清
+  → RenderExecution 在各 SPSC 线程关闭 Main/Asset Client，取消尚未发送的本地输入
+  → 请求 RenderServer 停止；RenderThread 推进 RunLoop、GPU、Outbox 和唯一 cleanup_scope_
+  → RenderThread 与 Asset 协议线程 join
+  → 停止共享 ExecutionRuntime，继续 Main/Object 完成交付直到 settled
+  → 在驱动回调之外 join ExecutionRuntime
+  → 按成员顺序销毁 UI/Assets/Source/RenderExecution/Engine，最后销毁原生窗口
 ```
 
-不能在共享 CPU/IO 资源已停止后，要求 Render/Asset 调度最后一次准备或清偿。
-不能在 Main 阻塞 sync_wait 一个必须靠 Main/Object 队列继续执行的关闭任务。
-Scope join、协议借用结束、Producer 退栈、GPU 完成、WSI 归还分别按真实依赖确认，
-不新增一个“都安全了”的冗余生命周期对象。
+正常关闭不依赖 IPC 先失效。实际 Server 异常退出在 RenderExecution 的完成入口集中报告，
+join Producer 后才把缺失终态结为 Unknown，不能以关闭意图提前释放输入。
 
-现有 `HostResources::drainAcceptedWork` 改为上述显式流程，
-同时将该私有聚合重命名为 `ApplicationResources`，表达应用组合成员而非笼统 Host。
-关闭期必要等待允许存在；不进入稳定渲染热路径。
+应用通过 RenderExecution::beginFrame 取得下一份输入；暂无可复用输入时返回空借用，不准备新帧。
+submitFrame 接手提交、失败诊断和实际回复后的回收。LuxEngine 不再保存待完成帧计数，Scene 继续通过
+Main Requester 的 buildingFrame 在同一安全段追加数据。直接使用 Requester 的 SDK 消费者保留显式完成/释放合同。
+
+LuxEngine::Impl 只持有已完整构造的必需成员，启动失败回滚留在工厂局部。旧 ApplicationResources 聚合
+已删除；OpenProject 保有其 Context 和 Scene 关闭责任，不把裸 Context 交回应用后每帧猜测服务状态。
+`advanceClose()` 与普通帧共用已有完成/维护通路，`run()` 与析构调用相同的关闭推进，不在主循环里
+嵌套一套关机事件泵。驱动返回 RUNNING / WAITING / STOPPED，等待前核对原有 wake epoch，删除
+hasImmediateWork 的重复呈现查询。Headless Scene 的真实时钟继续由 SceneRuntime 的现有 Timer 唤醒。
+
+Main 完整帧没有 1024 条请求上限，也不为 SubmitFrame 预留一个关联槽。仅在下一帧开始处检查
+领先帧数；独立 Asset Client 可以保留实际在途请求上限。两者都不替代真实 FIF 或 GPU 完成条件。
 
 ## 11. 类、函数、文件与 target 清单
 

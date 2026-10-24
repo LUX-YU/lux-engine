@@ -822,6 +822,65 @@ namespace lux::editor
             }
         }
 
+        using DocumentResult = execution::TTaskResult<asset::AssetId, VProjectSceneFailure>;
+        using SaveResult = execution::TTaskResult<void, VProjectSceneFailure>;
+
+        execution::ETaskState finishOpen(ProjectScenes& collection, DocumentResult result) noexcept
+        {
+            --operations;
+            if (!result)
+            {
+                failure = taskFailure(result.error());
+                const auto outcome =
+                    result.error().isCancelled() ? execution::ETaskState::CANCELLED : execution::ETaskState::FAILED;
+                static_cast<void>(collection.emit(collection.changed));
+                return outcome;
+            }
+            failure.reset();
+            active_document = *result;
+            static_cast<void>(collection.emit(collection.opened, *result));
+            return execution::ETaskState::SUCCEEDED;
+        }
+
+        execution::ETaskState finishCreate(ProjectScenes& collection, DocumentResult result) noexcept
+        {
+            --operations;
+            catalog_write_pending = false;
+            if (!result)
+            {
+                failure = taskFailure(result.error());
+                static_cast<void>(collection.emit(collection.changed));
+                return execution::ETaskState::FAILED;
+            }
+            failure.reset();
+            if (collection.find(*result))
+            {
+                active_document = *result;
+                static_cast<void>(collection.emit(collection.opened, *result));
+            }
+            else
+            {
+                static_cast<void>(collection.emit(collection.changed));
+            }
+            return execution::ETaskState::SUCCEEDED;
+        }
+
+        execution::ETaskState finishSave(ProjectScenes& collection, asset::AssetId id, SaveResult result) noexcept
+        {
+            --operations;
+            documents.find(id)->second->saving = false; // Close retains a document until its publication ends.
+            if (!result)
+            {
+                failure = taskFailure(result.error());
+            }
+            else
+            {
+                failure.reset();
+            }
+            static_cast<void>(collection.emit(collection.changed));
+            return result ? execution::ETaskState::SUCCEEDED : execution::ETaskState::FAILED;
+        }
+
         void maintainQueries(scene::SceneInstanceId instance, bool& invalidated) noexcept
         {
             auto& runtime = context.engine().sceneRuntime();
@@ -983,22 +1042,7 @@ namespace lux::editor
                 ));
                 return stdexec::then(
                     std::move(result),
-                    [this](auto result) noexcept
-                    {
-                        --impl_->operations;
-                        if (!result)
-                        {
-                            impl_->failure = taskFailure(result.error());
-                            const auto state = result.error().isCancelled() ? execution::ETaskState::CANCELLED
-                                                                            : execution::ETaskState::FAILED;
-                            static_cast<void>(emit(changed));
-                            return state;
-                        }
-                        impl_->failure.reset();
-                        impl_->active_document = *result;
-                        static_cast<void>(emit(opened, *result));
-                        return execution::ETaskState::SUCCEEDED;
-                    }
+                    [this](auto result) noexcept { return impl_->finishOpen(*this, std::move(result)); }
                 );
             }
         );
@@ -1071,28 +1115,7 @@ namespace lux::editor
                 ));
                 return stdexec::then(
                     std::move(result),
-                    [this](auto result) noexcept
-                    {
-                        --impl_->operations;
-                        impl_->catalog_write_pending = false;
-                        if (!result)
-                        {
-                            impl_->failure = taskFailure(result.error());
-                            static_cast<void>(emit(changed));
-                            return execution::ETaskState::FAILED;
-                        }
-                        impl_->failure.reset();
-                        if (find(*result))
-                        {
-                            impl_->active_document = *result;
-                            static_cast<void>(emit(opened, *result));
-                        }
-                        else
-                        {
-                            static_cast<void>(emit(changed));
-                        }
-                        return execution::ETaskState::SUCCEEDED;
-                    }
+                    [this](auto result) noexcept { return impl_->finishCreate(*this, std::move(result)); }
                 );
             }
         );
@@ -1190,21 +1213,7 @@ namespace lux::editor
                 ));
                 return stdexec::then(
                     std::move(result),
-                    [this, id](auto result) noexcept
-                    {
-                        --impl_->operations;
-                        impl_->documents.find(id)->second->saving = false; // close retains a saving document.
-                        if (!result)
-                        {
-                            impl_->failure = taskFailure(result.error());
-                        }
-                        else
-                        {
-                            impl_->failure.reset();
-                        }
-                        static_cast<void>(emit(changed));
-                        return result ? execution::ETaskState::SUCCEEDED : execution::ETaskState::FAILED;
-                    }
+                    [this, id](auto result) noexcept { return impl_->finishSave(*this, id, std::move(result)); }
                 );
             }
         );

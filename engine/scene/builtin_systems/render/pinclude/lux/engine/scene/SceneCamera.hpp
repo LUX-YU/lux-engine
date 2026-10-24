@@ -6,9 +6,19 @@
 
 namespace lux::scene::detail
 {
-    // Called only at Main's stable Scene point. Results own all shader input values.
+    // Stack preparation shared by this CameraMan's outputs at one Main stable point; no retained ECS borrow.
+    struct SceneCamera final
+    {
+        Eigen::Matrix4d view;
+        Eigen::Vector3d position, direction;
+        float near_distance, far_distance;
+    };
+
+    [[nodiscard]] render::RenderResult<SceneCamera> prepareSceneCamera(const Camera&, const Eigen::Affine3d&) noexcept;
+
+    // Each output supplies its own actual aspect/viewport. Returned shader values are owned.
     [[nodiscard]] render::RenderResult<SceneParameters>
-    sceneParameters(const Camera&, const Eigen::Affine3d&, const CameraTarget&) noexcept;
+    sceneParameters(const Camera&, const SceneCamera&, const CameraTarget&) noexcept;
 
     [[nodiscard]] bool sameParameters(const SceneParameters&, const SceneParameters&) noexcept;
 } // namespace lux::scene::detail

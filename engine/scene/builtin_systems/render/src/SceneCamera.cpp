@@ -4,9 +4,29 @@ namespace lux::scene::detail
 {
     using namespace render;
 
+    RenderResult<SceneCamera> prepareSceneCamera(const Camera& camera, const Eigen::Affine3d& transform) noexcept
+    {
+        auto view = cameraView(transform, Eigen::Vector3d::Zero());
+        if (!view)
+        {
+            return cxx::unexpected(RenderError{kCommandContract});
+        }
+        const auto [near_distance, far_distance] = std::visit(
+            [](const auto& value) noexcept { return std::pair{float(value.near_plane), float(value.far_plane)}; },
+            camera.projection
+        );
+        return SceneCamera{
+            *view,
+            transform.translation(),
+            -view->row(2).head<3>().transpose(),
+            near_distance,
+            far_distance
+        };
+    }
+
     RenderResult<SceneParameters> sceneParameters(
         const Camera& camera,
-        const Eigen::Affine3d& transform,
+        const SceneCamera& prepared,
         const CameraTarget& input
     ) noexcept
     {
@@ -19,22 +39,18 @@ namespace lux::scene::detail
         const auto aspect = double(input.description.width) * input.viewport.width /
                             (double(input.description.height) * input.viewport.height);
         const auto projection = cameraProjection(camera, aspect);
-        const auto view = cameraView(transform, Eigen::Vector3d::Zero());
-        if (!projection || !view)
+        if (!projection)
         {
             return cxx::unexpected(RenderError{kCommandContract});
         }
         SceneParameters result;
-        Eigen::Map<Eigen::Matrix4f>{result.mesh.view.data()} = view->cast<float>();
+        Eigen::Map<Eigen::Matrix4f>{result.mesh.view.data()} = prepared.view.cast<float>();
         Eigen::Map<Eigen::Matrix4f>{result.mesh.projection.data()} = projection->cast<float>();
         Eigen::Map<Eigen::Matrix4f>{result.lighting.inverse_view_projection.data()} =
-            (*projection * *view).inverse().cast<float>();
-        const auto position = transform.translation();
-        const auto forward = -view->row(2).head<3>();
-        const auto [near_distance, far_distance] = std::visit(
-            [](const auto& value) noexcept { return std::pair{float(value.near_plane), float(value.far_plane)}; },
-            camera.projection
-        );
+            (*projection * prepared.view).inverse().cast<float>();
+        const auto& position = prepared.position;
+        const auto& forward = prepared.direction;
+        const float near_distance = prepared.near_distance, far_distance = prepared.far_distance;
         result.lighting.camera_position = {float(position.x()), float(position.y()), float(position.z()), 1};
         result.lighting.background = input.background;
         result.lighting.viewport = {input.viewport.x, input.viewport.y, input.viewport.width, input.viewport.height};

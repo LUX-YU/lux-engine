@@ -59,314 +59,121 @@ namespace lux::editor
 
     struct LuxEngine::Impl final
     {
-        struct ApplicationResources final
+        struct OpenProject final
         {
-            std::unique_ptr<EditorWindow> window;
-            std::unique_ptr<engine::EngineContext> engine;
-            std::unique_ptr<rendering::RenderExecution> rendering;
-            std::unique_ptr<process::asset_loading::VfsAssetReadEndpoint> source;
-            std::unique_ptr<rendering::RenderAssets> assets;
-            std::unique_ptr<EditorUiScene> ui_scene;
-            std::vector<std::unique_ptr<EditorContext>> closing_projects;
-            std::size_t frames_pending = 0;
-            bool closed = false;
+            std::unique_ptr<EditorContext> context;
+            ProjectScenes* scenes{};
+            detail::ProjectUiMount ui;
 
-            void retire(std::unique_ptr<EditorContext> context) noexcept
+            void beginClose() noexcept
             {
-                if (!context)
-                {
-                    return;
-                }
-                if (auto* scenes = context->services().constructed<ProjectScenes>())
+                ui = {};
+                scenes = context->services().constructed<ProjectScenes>();
+                if (scenes)
                 {
                     scenes->closeAll();
+                }
+            }
+
+            bool advanceClose() noexcept
+            {
+                if (scenes)
+                {
                     scenes->maintain();
                     if (!scenes->settled())
                     {
-                        closing_projects.push_back(std::move(context));
-                        return;
+                        return false;
                     }
                 }
                 context->close();
-                if (!context->finishClose())
-                {
-                    closing_projects.push_back(std::move(context));
-                }
-            }
-
-            void collectProjects() noexcept
-            {
-                // Stop callbacks and service destructors may enqueue another retirement. Keep no
-                // vector iterator across them, and remove lookup ownership before running a destructor.
-                for (auto remaining = closing_projects.size(); remaining != 0;)
-                {
-                    const auto index = --remaining;
-                    auto* context = closing_projects[index].get();
-                    if (auto* scenes = context->services().constructed<ProjectScenes>())
-                    {
-                        scenes->maintain();
-                        if (!scenes->settled())
-                        {
-                            continue;
-                        }
-                        context->close();
-                    }
-                    if (!context->finishClose())
-                    {
-                        continue;
-                    }
-                    auto retired = std::move(closing_projects[index]);
-                    if (index + 1 != closing_projects.size())
-                    {
-                        closing_projects[index] = std::move(closing_projects.back());
-                    }
-                    closing_projects.pop_back();
-                }
-            }
-
-            ~ApplicationResources() noexcept
-            {
-                if (engine && !closed)
-                {
-                    close();
-                }
-            }
-
-            FrameworkResult<void> dispatchCompletions() noexcept
-            {
-                if (rendering)
-                {
-                    rendering->consumeResponses();
-                }
-                auto& execution = engine->execution();
-                auto completed = execution.dispatchMainCompletions();
-                if (!completed)
-                {
-                    return cxx::unexpected(execution::toError(completed.error()));
-                }
-                auto monitored = execution.dispatchTaskEvents();
-                if (!monitored)
-                {
-                    return cxx::unexpected(execution::toError(monitored.error()));
-                }
-                static_cast<void>(object::ObjectRuntime::instance().dispatchPending());
-                return {};
-            }
-
-            FrameworkResult<void> submitFrame(rendering::FrameInput& frame) noexcept
-            {
-                ++frames_pending;
-                auto accepted = engine->execution().spawn(stdexec::then(
-                    rendering->mainClient().submitFrame(frame),
-                    [this, &frame](render::FrameCompletion result) noexcept
-                    {
-                        if (result.error.type != 0)
-                        {
-                            rendering::reportRenderFailure(result.error, "Editor frame");
-                        }
-                        if (!rendering->mainClient().releaseFrame(frame))
-                        {
-                            std::terminate();
-                        }
-                        --frames_pending;
-                    }
-                ));
-                if (!accepted)
-                {
-                    --frames_pending;
-                    static_cast<void>(rendering->mainClient().releaseFrame(frame));
-                    return cxx::unexpected(execution::toError(accepted.error()));
-                }
-                return {};
-            }
-
-            void maintenanceFrame() noexcept
-            {
-                auto& client = rendering->mainClient();
-                if (!client.hasQueuedFrameCommands())
-                {
-                    return;
-                }
-                auto input = client.beginFrame();
-                if (input)
-                {
-                    if (!submitFrame(**input))
-                    {
-                        std::terminate();
-                    }
-                }
-                else if (input.error().type != render::kRuntimeCapacity && !client.closed())
-                {
-                    std::terminate();
-                }
-            }
-
-            void close() noexcept
-            {
-                // Keep CPU/IO, the Main protocol and the window alive while accepted work settles.
-                // Project Scene owners are retired by Impl before reaching this application boundary.
-                auto& execution = engine->execution();
-                auto& objects = object::ObjectRuntime::instance();
-                if (ui_scene)
-                {
-                    ui_scene->stopFrames();
-                }
-                bool assets_closing = false;
-                for (;;)
-                {
-                    const auto epoch = execution.wakeEpoch();
-                    if (!dispatchCompletions())
-                    {
-                        std::terminate();
-                    }
-                    if (!closing_projects.empty())
-                    {
-                        const auto driven = engine->sceneRuntime().driveFrame(scene::ESceneDriveMode::MAINTENANCE);
-                        if (!driven || !driven->empty())
-                        {
-                            std::terminate();
-                        }
-                        collectProjects();
-                    }
-                    if (assets && closing_projects.empty() && !assets_closing)
-                    {
-                        assets->close();
-                        assets_closing = true;
-                    }
-                    if (ui_scene && !ui_scene->maintain())
-                    {
-                        std::terminate();
-                    }
-                    if (assets)
-                    {
-                        assets->maintain();
-                    }
-                    if (rendering)
-                    {
-                        maintenanceFrame();
-                    }
-                    static_cast<void>(objects.collectRetired());
-                    const bool ui_closed = !ui_scene || ui_scene->settled();
-                    const bool assets_closed = !assets || assets->settled();
-                    if (ui_closed && assets_closed && frames_pending == 0 && closing_projects.empty())
-                    {
-                        break;
-                    }
-                    if (!execution.hasReadyWork() && execution.wakeEpoch() == epoch)
-                    {
-                        window::LuxWindow::waitEvents();
-                    }
-                }
-                if (rendering)
-                {
-                    const auto stopped = rendering->shutdown();
-                    if (!stopped)
-                    {
-                        rendering::reportRenderFailure(stopped.error(), "Render shutdown");
-                    }
-                }
-                ui_scene.reset();
-                assets.reset();
-                source.reset();
-                execution.requestStop();
-                for (;;)
-                {
-                    const auto epoch = execution.wakeEpoch();
-                    if (!dispatchCompletions())
-                    {
-                        std::terminate();
-                    }
-                    static_cast<void>(objects.collectRetired());
-                    if (execution.settled() && objects.statistics().pending == 0)
-                    {
-                        break;
-                    }
-                    if (!execution.hasReadyWork() && execution.wakeEpoch() == epoch)
-                    {
-                        window::LuxWindow::waitEvents();
-                    }
-                }
-                closed = true;
+                return context->finishClose();
             }
         };
 
-        Impl(EditorConfig config, EditorAssembly assembly) noexcept
-            : config_(std::move(config)), assembly_(std::move(assembly))
+        enum class EClosePhase : std::uint8_t
+        {
+            OPEN,
+            PROJECTS,
+            ASSETS,
+            RENDER,
+            EXECUTION,
+            CLOSED
+        };
+
+        Impl(
+            EditorConfig config,
+            EditorAssembly assembly,
+            std::unique_ptr<EditorWindow> window,
+            std::unique_ptr<engine::EngineContext> engine,
+            std::unique_ptr<rendering::RenderExecution> rendering,
+            std::unique_ptr<process::asset_loading::VfsAssetReadEndpoint> source,
+            std::unique_ptr<rendering::RenderAssets> assets,
+            std::unique_ptr<EditorUiScene> ui_scene
+        ) noexcept
+            : window_(std::move(window)), engine_(std::move(engine)), rendering_(std::move(rendering)),
+              source_(std::move(source)), assets_(std::move(assets)), ui_scene_(std::move(ui_scene)),
+              config_(std::move(config)), assembly_(std::move(assembly)), project_tasks_(engine_->execution())
         {
         }
 
         ~Impl() noexcept
         {
-            if (application_.window && !application_.window->uiRoot().clearPanes())
+            if (close_phase_ != EClosePhase::CLOSED)
             {
-                std::terminate();
+                std::terminate(); // The facade drains while all dependencies and its callback identity still exist.
             }
-            if (project_)
-            {
-                application_.retire(std::move(project_->context));
-            }
-            project_.reset();
-            if (pending_project_change_)
-            {
-                if (auto* candidate = std::get_if<AdoptProject>(&*pending_project_change_))
-                {
-                    candidate->panes.clear();
-                    application_.retire(std::move(candidate->context));
-                }
-                pending_project_change_.reset();
-            }
-            project_tasks_.reset();
-            // ApplicationResources performs the final synchronous barrier after project revocation.
         }
 
         static FrameworkResult<std::unique_ptr<Impl>> create(EditorConfig config, EditorAssembly assembly) noexcept
         {
-            auto impl = std::make_unique<Impl>(std::move(config), std::move(assembly));
-            auto& application = impl->application_;
-            auto window = EditorWindow::create({impl->config_.width, impl->config_.height, impl->config_.title});
+            auto window = EditorWindow::create({config.width, config.height, config.title});
             if (!window)
             {
                 return cxx::unexpected(window.error());
             }
-            application.window = std::move(*window);
-            auto engine = engine::EngineContext::create(impl->config_.execution, 2048);
+            auto engine = engine::EngineContext::create(config.execution, 2048);
             if (!engine)
             {
                 return cxx::unexpected(creationError(engine.error()));
             }
-            application.engine = std::move(*engine);
-            auto& execution = application.engine->execution();
+            auto& execution = (*engine)->execution();
             object::ObjectRuntime::instance().setWake(&window::LuxWindow::wakeEvents);
             execution.setWake(&window::LuxWindow::wakeEvents);
             render::SurfaceDescription surface;
-            if (!rendering::makeWindowSurface(application.window->nativeWindow(), impl->config_.enable_vsync, surface))
+            if (!rendering::makeWindowSurface((*window)->nativeWindow(), config.enable_vsync, surface))
             {
                 return cxx::unexpected(error::Error{Errors::EditorNativeUiOutputIsNotImplementedOnThisPlatform});
             }
             rendering::RenderExecutionConfig render_config;
             render_config.render.channel_name = "lux.editor.render";
-            render_config.render.validation = impl->config_.enable_validation;
+            render_config.render.validation = config.enable_validation;
             render_config.render.frames_in_flight = 3;
             render_config.render.max_frames_ahead = 1;
             render_config.render.uploads.emplace();
             render_config.device.texture_descriptors = true;
-            // Built-in model cooking emits BC7 color and BC5 normal textures. Request the real device
-            // capability at startup instead of accepting imports that cannot become render resources.
             render_config.device.texture_compression_bc = true;
             auto rendering = rendering::RenderExecution::create(std::move(render_config), execution);
             if (!rendering)
             {
                 return cxx::unexpected(rendering.error());
             }
-            application.rendering = std::move(*rendering);
-            impl->project_tasks_.emplace(execution);
+            // Only an unpublished startup failure uses this rollback. Later members have no accepted business work.
+            cxx::scope_exit stop_render(
+                [&]() noexcept
+                {
+                    if (auto stopped = (*rendering)->shutdown(); !stopped)
+                    {
+                        rendering::reportRenderFailure(stopped.error(), "Rollback Editor startup");
+                    }
+                }
+            );
             auto blocking = execution.blocking();
             if (!blocking)
             {
                 return cxx::unexpected(execution::toError(blocking.error()));
             }
             auto source = process::asset_loading::VfsAssetReadEndpoint::create(
-                application.engine->assets().view(),
+                (*engine)->assets().view(),
                 *blocking,
                 execution,
                 {16}
@@ -375,21 +182,19 @@ namespace lux::editor
             {
                 return cxx::unexpected(render::RenderError{render::kRuntimeState});
             }
-            application.source = std::move(*source);
-            auto assets = rendering::RenderAssets::create(*application.rendering, application.source->port());
+            auto assets = rendering::RenderAssets::create(**rendering, (*source)->port());
             if (!assets)
             {
                 return cxx::unexpected(assets.error());
             }
-            application.assets = std::move(*assets);
-            auto atlas = application.window->uiRoot().fontAtlas();
+            auto atlas = (*window)->uiRoot().fontAtlas();
             if (!atlas)
             {
                 return cxx::unexpected(
                     error::Error{Errors::UiRenderConfiguration, {static_cast<std::uint64_t>(atlas.error())}}
                 );
             }
-            const auto& metrics = application.window->metrics();
+            const auto& metrics = (*window)->metrics();
             render::TargetDesc output{
                 metrics.framebuffer_width,
                 metrics.framebuffer_height,
@@ -397,21 +202,240 @@ namespace lux::editor
                 1,
                 render::ETargetKind::SURFACE
             };
-            auto scene = EditorUiScene::create(*application.rendering, output, surface, std::move(*atlas));
-            if (!scene)
+            auto ui_scene = EditorUiScene::create(**rendering, output, surface, std::move(*atlas));
+            if (!ui_scene)
             {
-                return cxx::unexpected(scene.error());
+                return cxx::unexpected(ui_scene.error());
             }
-            application.ui_scene = std::move(*scene);
+            auto impl = std::make_unique<Impl>(
+                std::move(config),
+                std::move(assembly),
+                std::move(*window),
+                std::move(*engine),
+                std::move(*rendering),
+                std::move(*source),
+                std::move(*assets),
+                std::move(*ui_scene)
+            );
+            stop_render.release();
             return impl;
         }
 
-        struct OpenProject final
+        void retire(std::unique_ptr<OpenProject> project) noexcept
         {
-            std::unique_ptr<EditorContext> context;
-            ProjectScenes* scenes{};
-            detail::ProjectUiMount ui;
-        };
+            project->beginClose();
+            if (!project->advanceClose())
+            {
+                closing_projects_.push_back(std::move(project));
+            }
+        }
+
+        void retire(std::unique_ptr<EditorContext> context) noexcept
+        {
+            if (context)
+            {
+                auto project = std::make_unique<OpenProject>();
+                project->context = std::move(context);
+                retire(std::move(project));
+            }
+        }
+
+        void collectProjects() noexcept
+        {
+            // Destructors can enqueue a new retirement. Keep objects stable, and remove lookup before destruction.
+            for (auto remaining = closing_projects_.size(); remaining != 0;)
+            {
+                const auto index = --remaining;
+                if (!closing_projects_[index]->advanceClose())
+                {
+                    continue;
+                }
+                auto retired = std::move(closing_projects_[index]);
+                if (index + 1 != closing_projects_.size())
+                {
+                    closing_projects_[index] = std::move(closing_projects_.back());
+                }
+                closing_projects_.pop_back();
+            }
+        }
+
+        FrameworkResult<void> dispatchCompletions() noexcept
+        {
+            if (close_phase_ < EClosePhase::RENDER)
+            {
+                if (auto received = rendering_->consumeResponses(); !received)
+                {
+                    return cxx::unexpected(received.error());
+                }
+            }
+            auto& execution = engine_->execution();
+            if (auto completed = execution.dispatchMainCompletions(); !completed)
+            {
+                return cxx::unexpected(execution::toError(completed.error()));
+            }
+            if (auto monitored = execution.dispatchTaskEvents(); !monitored)
+            {
+                return cxx::unexpected(execution::toError(monitored.error()));
+            }
+            static_cast<void>(object::ObjectRuntime::instance().dispatchPending());
+            return {};
+        }
+
+        FrameworkResult<void> maintenanceFrame() noexcept
+        {
+            if (!rendering_->mainClient().hasQueuedFrameCommands())
+            {
+                return {};
+            }
+            auto input = rendering_->beginFrame();
+            if (!input)
+            {
+                return cxx::unexpected(input.error());
+            }
+            return *input ? rendering_->submitFrame(**input) : FrameworkResult<void>{};
+        }
+
+        void beginClose() noexcept
+        {
+            if (close_phase_ != EClosePhase::OPEN)
+            {
+                return;
+            }
+            close_phase_ = EClosePhase::PROJECTS;
+            invalidatePreparation();
+            project_tasks_.requestStop();
+            if (!window_->uiRoot().clearPanes())
+            {
+                std::terminate(); // Called outside Root dispatch, before any Context application is retired.
+            }
+            if (project_)
+            {
+                project_->ui.disarm();
+                retire(std::move(project_));
+            }
+        }
+
+        FrameworkResult<ELoopState> advanceClose() noexcept
+        {
+            if (auto dispatched = dispatchCompletions(); !dispatched)
+            {
+                return cxx::unexpected(dispatched.error());
+            }
+            if (close_phase_ == EClosePhase::PROJECTS)
+            {
+                auto driven = engine_->sceneRuntime().driveFrame(scene::ESceneDriveMode::MAINTENANCE);
+                if (!driven)
+                {
+                    return cxx::unexpected(scene::toError(driven.error()));
+                }
+                if (!driven->empty())
+                {
+                    return cxx::unexpected(scene::toError(driven->front()));
+                }
+                collectProjects();
+                if (closing_projects_.empty() && project_tasks_.settled())
+                {
+                    ui_scene_->stopFrames();
+                    assets_->close();
+                    close_phase_ = EClosePhase::ASSETS;
+                }
+            }
+            if (close_phase_ == EClosePhase::PROJECTS || close_phase_ == EClosePhase::ASSETS)
+            {
+                if (auto ui = ui_scene_->maintain(); !ui)
+                {
+                    return cxx::unexpected(ui.error());
+                }
+                assets_->maintain();
+                if (auto frame = maintenanceFrame(); !frame)
+                {
+                    return cxx::unexpected(frame.error());
+                }
+                const bool settled = close_phase_ == EClosePhase::ASSETS && ui_scene_->settled() &&
+                                     assets_->settled() && rendering_->mainClient().pendingRequests() == 0;
+                if (settled)
+                {
+                    rendering_->beginClose();
+                    close_phase_ = EClosePhase::RENDER;
+                }
+            }
+            if (close_phase_ == EClosePhase::RENDER)
+            {
+                auto stopped = rendering_->advanceClose();
+                if (!stopped)
+                {
+                    return cxx::unexpected(stopped.error());
+                }
+                if (*stopped)
+                {
+                    engine_->execution().requestStop();
+                    close_phase_ = EClosePhase::EXECUTION;
+                }
+            }
+            auto& objects = object::ObjectRuntime::instance();
+            static_cast<void>(objects.collectRetired());
+            if (close_phase_ == EClosePhase::EXECUTION && engine_->execution().settled() &&
+                objects.statistics().pending == 0)
+            {
+                return ELoopState::STOPPED;
+            }
+            const bool pending_frame = close_phase_ < EClosePhase::RENDER &&
+                                       rendering_->mainClient().hasQueuedFrameCommands() &&
+                                       rendering_->mainClient().hasFrameCapacity();
+            return pending_frame ? ELoopState::RUNNING : ELoopState::WAITING;
+        }
+
+        FrameworkResult<void> finishClose() noexcept
+        {
+            if (close_phase_ == EClosePhase::CLOSED)
+            {
+                return {};
+            }
+            // This barrier is outside pumpOnce's callback borrow and outside every counted Sender.
+            if (auto joined = engine_->execution().join(); !joined)
+            {
+                return cxx::unexpected(execution::toError(joined.error()));
+            }
+            close_phase_ = EClosePhase::CLOSED;
+            return {};
+        }
+
+        void waitIfIdle(std::uint64_t observed_epoch) noexcept
+        {
+            auto& execution = engine_->execution();
+            const bool notified = execution.wakeEpoch() != observed_epoch || execution.hasReadyWork() ||
+                                  object::ObjectRuntime::instance().statistics().pending != 0;
+            if (!notified)
+            {
+                window::LuxWindow::waitEvents();
+            }
+        }
+
+        FrameworkResult<void> close() noexcept
+        {
+            if (close_phase_ == EClosePhase::CLOSED)
+            {
+                return {};
+            }
+            beginClose();
+            for (;;)
+            {
+                const auto epoch = engine_->execution().wakeEpoch();
+                auto progress = advanceClose();
+                if (!progress)
+                {
+                    return cxx::unexpected(progress.error());
+                }
+                if (*progress == ELoopState::STOPPED)
+                {
+                    return finishClose();
+                }
+                if (*progress == ELoopState::WAITING)
+                {
+                    waitIfIdle(epoch);
+                }
+            }
+        }
 
         struct AdoptProject final
         {
@@ -438,7 +462,7 @@ namespace lux::editor
             ++project_request_serial_;
             if (project_prepare_)
             {
-                static_cast<void>(application_.engine->execution().requestStop(*project_prepare_));
+                static_cast<void>(engine_->execution().requestStop(*project_prepare_));
                 project_prepare_.reset();
             }
             // Move before cleanup: extension destructors may synchronously submit a newer intent.
@@ -449,18 +473,60 @@ namespace lux::editor
                 if (auto* candidate = std::get_if<AdoptProject>(&*discarded))
                 {
                     candidate->panes.clear();
-                    application_.retire(std::move(candidate->context));
+                    retire(std::move(candidate->context));
                 }
             }
         }
 
+        static auto prepareProjectTask(
+            LuxEngine& application,
+            execution::BlockingScheduler scheduler,
+            std::uint64_t serial,
+            std::filesystem::path file,
+            std::optional<ProjectManifest> create,
+            std::vector<ProjectPluginLocation> locations,
+            execution::TaskReporter reporter
+        ) noexcept
+        {
+            auto work =
+                stdexec::schedule(scheduler) |
+                stdexec::then([file, create = std::move(create), locations = std::move(locations), reporter]() noexcept
+                              { return detail::prepareProject(file, create, locations, reporter); }) |
+                stdexec::upon_error(
+                    [](execution::EExecutionError error) noexcept
+                    { return detail::ProjectPreparation{cxx::unexpected(execution::toError(error)), false}; }
+                ) |
+                stdexec::upon_stopped(
+                    []() noexcept
+                    {
+                        return detail::ProjectPreparation{
+                            cxx::unexpected(error::Error{Errors::ProjectCancelled}),
+                            false
+                        };
+                    }
+                );
+            return stdexec::continues_on(std::move(work), process::objectScheduler(application)) |
+                   stdexec::then(
+                       [&application, serial, task = reporter.id(), file = std::move(file)](
+                           detail::ProjectPreparation result
+                       ) mutable noexcept
+                       {
+                           const auto outcome =
+                               result.result ? execution::ETaskState::SUCCEEDED : execution::ETaskState::FAILED;
+                           detail::ProjectPrepared completion{serial, task, std::move(file), std::move(result)};
+                           static_cast<void>(object::sendEvent(application, completion));
+                           return outcome;
+                       }
+                   );
+        }
+
         FrameworkResult<void> admitProject(
-            LuxEngine& owner,
+            LuxEngine& application,
             std::filesystem::path file,
             std::optional<ProjectManifest> create
         ) noexcept
         {
-            if (application_.window->shouldClose())
+            if (close_phase_ != EClosePhase::OPEN || window_->shouldClose())
             {
                 return cxx::unexpected(error::Error{Errors::ProjectClosing});
             }
@@ -481,7 +547,7 @@ namespace lux::editor
                     });
                 }
             }
-            auto scheduler = application_.engine->execution().blocking();
+            auto scheduler = engine_->execution().blocking();
             if (!scheduler)
             {
                 return cxx::unexpected(execution::toError(scheduler.error()));
@@ -493,47 +559,24 @@ namespace lux::editor
             {
                 return {};
             }
-            auto submitted = project_tasks_->submit(
+            auto submitted = project_tasks_.submit(
                 {"Prepare project", "editor.project"},
-                [scheduler = *scheduler,
-                 destination = process::objectScheduler(owner),
-                 owner = &owner,
+                [this,
+                 &application,
+                 scheduler = *scheduler,
                  serial,
                  file = std::move(file),
-                 create = std::move(create),
-                 locations = config_.plugin_locations](execution::TaskReporter reporter) mutable noexcept
+                 create = std::move(create)](execution::TaskReporter reporter) mutable noexcept
                 {
-                    auto work =
-                        stdexec::schedule(scheduler) |
-                        stdexec::then([file, create = std::move(create), locations = std::move(locations), reporter](
-                                      ) noexcept { return detail::prepareProject(file, create, locations, reporter); }
-                        ) |
-                        stdexec::upon_error(
-                            [](execution::EExecutionError error) noexcept
-                            { return detail::ProjectPreparation{cxx::unexpected(execution::toError(error)), false}; }
-                        ) |
-                        stdexec::upon_stopped(
-                            []() noexcept
-                            {
-                                return detail::ProjectPreparation{
-                                    cxx::unexpected(error::Error{Errors::ProjectCancelled}),
-                                    false
-                                };
-                            }
-                        );
-                    return stdexec::continues_on(std::move(work), destination) |
-                           stdexec::then(
-                               [owner, serial, task = reporter.id(), file = std::move(file)](
-                                   detail::ProjectPreparation result
-                               ) mutable noexcept
-                               {
-                                   const auto outcome =
-                                       result.result ? execution::ETaskState::SUCCEEDED : execution::ETaskState::FAILED;
-                                   detail::ProjectPrepared completion{serial, task, std::move(file), std::move(result)};
-                                   static_cast<void>(object::sendEvent(*owner, completion));
-                                   return outcome;
-                               }
-                           );
+                    return prepareProjectTask(
+                        application,
+                        scheduler,
+                        serial,
+                        std::move(file),
+                        std::move(create),
+                        config_.plugin_locations,
+                        reporter
+                    );
                 }
             );
             if (!submitted)
@@ -544,10 +587,10 @@ namespace lux::editor
             return {};
         }
 
-        void receivePrepared(LuxEngine& owner, detail::ProjectPrepared& event) noexcept
+        void receivePrepared(LuxEngine& application, detail::ProjectPrepared& event) noexcept
         {
             const auto serial = event.request_serial;
-            if (serial != project_request_serial_ || application_.window->shouldClose())
+            if (serial != project_request_serial_ || window_->shouldClose())
             {
                 return;
             }
@@ -559,8 +602,8 @@ namespace lux::editor
             {
                 if (serial == project_request_serial_ && error.type != Errors::ProjectCancelled)
                 {
-                    static_cast<void>(owner.emit(
-                        owner.projectOpenFailed,
+                    static_cast<void>(application.emit(
+                        application.projectOpenFailed,
                         ProjectOpenFailure{event.manifest_file, error, event.result.published}
                     ));
                 }
@@ -571,8 +614,8 @@ namespace lux::editor
                 return;
             }
             EditorComposition composition;
-            if (!composition.bindExtension(*application_.rendering) ||
-                !composition.bindExtension(*application_.assets) || !composition.bindExtension(*application_.ui_scene))
+            if (!composition.bindExtension(*rendering_) || !composition.bindExtension(*assets_) ||
+                !composition.bindExtension(*ui_scene_))
             {
                 std::terminate();
             }
@@ -589,11 +632,8 @@ namespace lux::editor
             {
                 return;
             }
-            auto context = detail::createEditorContext(
-                *application_.engine,
-                std::move(*event.result.result),
-                std::move(composition)
-            );
+            auto context =
+                detail::createEditorContext(*engine_, std::move(*event.result.result), std::move(composition));
             if (!context)
             {
                 fail(context.error());
@@ -604,7 +644,7 @@ namespace lux::editor
                 [&]() noexcept
                 {
                     candidate.panes.clear();
-                    application_.retire(std::move(candidate.context));
+                    retire(std::move(candidate.context));
                 }
             );
             candidate.panes.reserve(config_.layout.size());
@@ -631,7 +671,7 @@ namespace lux::editor
             pending_project_change_.emplace(std::move(candidate));
         }
 
-        void requestClose() noexcept
+        void requestProjectClose() noexcept
         {
             const auto serial = project_request_serial_ + 1;
             invalidatePreparation();
@@ -641,7 +681,7 @@ namespace lux::editor
             }
         }
 
-        FrameworkResult<void> applyPendingProjectChanges(LuxEngine& owner) noexcept
+        FrameworkResult<void> applyPendingProjectChanges(LuxEngine& application) noexcept
         {
             if (!pending_project_change_)
             {
@@ -656,7 +696,7 @@ namespace lux::editor
                     if (auto* candidate = std::get_if<AdoptProject>(&pending))
                     {
                         candidate->panes.clear();
-                        application_.retire(std::move(candidate->context));
+                        retire(std::move(candidate->context));
                     }
                 }
             );
@@ -670,7 +710,7 @@ namespace lux::editor
             {
                 return {};
             }
-            auto& root = application_.window->uiRoot();
+            auto& root = window_->uiRoot();
             std::unique_ptr<OpenProject> next;
             if (adopt)
             {
@@ -713,8 +753,8 @@ namespace lux::editor
                 }
                 if (adopt && serial == project_request_serial_)
                 {
-                    static_cast<void>(owner.emit(
-                        owner.projectOpenFailed,
+                    static_cast<void>(application.emit(
+                        application.projectOpenFailed,
                         ProjectOpenFailure{
                             adopt->manifest_file,
                             {Errors::EditorCannotMountProjectWindows, {static_cast<std::uint64_t>(removed.error())}},
@@ -753,7 +793,7 @@ namespace lux::editor
                         }
                     }
                 }
-                const auto& metrics = application_.window->metrics();
+                const auto& metrics = window_->metrics();
                 tree.surfaces.push_back(
                     {0, {{0, 0}, {static_cast<float>(metrics.width), static_cast<float>(metrics.height)}}, false}
                 );
@@ -764,61 +804,49 @@ namespace lux::editor
             }
             if (old)
             {
-                application_.retire(std::move(old->context));
+                retire(std::move(old));
             }
             old.reset();
-            static_cast<void>(owner.emit(owner.projectChanged));
+            static_cast<void>(application.emit(application.projectChanged));
             return {};
         }
 
         void updateSurfaceExtent() noexcept
         {
             window::LuxWindow::pollEvents();
-            const auto& metrics = application_.window->metrics();
+            const auto& metrics = window_->metrics();
             if (metrics.revision != applied_metrics_revision_)
             {
-                application_.ui_scene
-                    ->setExtent(metrics.framebuffer_width, metrics.framebuffer_height, !metrics.minimized);
+                ui_scene_->setExtent(metrics.framebuffer_width, metrics.framebuffer_height, !metrics.minimized);
                 applied_metrics_revision_ = metrics.revision;
             }
         }
 
-        FrameworkResult<bool> maintainPresentation(bool closing) noexcept
+        FrameworkResult<bool> prepareUiOutput() noexcept
         {
-            if (auto maintained = application_.ui_scene->maintain(); !maintained)
+            if (auto maintained = ui_scene_->maintain(); !maintained)
             {
                 return cxx::unexpected(maintained.error());
             }
-            application_.assets->maintain();
-            auto output = application_.ui_scene->outputReady();
+            auto output = ui_scene_->outputReady();
             if (!output)
             {
                 return cxx::unexpected(output.error());
             }
-            const auto& metrics = application_.window->metrics();
+            const auto& metrics = window_->metrics();
             const bool has_extent =
                 metrics.width && metrics.height && metrics.framebuffer_width && metrics.framebuffer_height;
-            return !closing && has_extent && !metrics.minimized && *output;
-        }
-
-        FrameworkResult<rendering::FrameInput*> acquireFrame(bool draw) noexcept
-        {
-            auto& client = application_.rendering->mainClient();
-            if ((!draw && !client.hasQueuedFrameCommands()) || !client.hasFrameCapacity())
-            {
-                return nullptr;
-            }
-            return client.beginFrame();
+            return has_extent && !metrics.minimized && *output;
         }
 
         FrameworkResult<bool> captureUi(rendering::FrameInput* frame, bool draw) noexcept
         {
-            auto& root = application_.window->uiRoot();
-            const auto& metrics = application_.window->metrics();
+            auto& root = window_->uiRoot();
+            const auto& metrics = window_->metrics();
             const auto now = std::chrono::steady_clock::now();
             const float elapsed =
                 std::max(std::chrono::duration<float>(now - last_frame_).count(), std::numeric_limits<float>::min());
-            auto* data = draw && frame ? &application_.ui_scene->captureBuffer(*frame) : nullptr;
+            auto* data = draw && frame ? &ui_scene_->captureBuffer(*frame) : nullptr;
             ui::FrameInfo info{
                 {float(metrics.width), float(metrics.height)},
                 elapsed,
@@ -835,12 +863,11 @@ namespace lux::editor
                 last_frame_ = now;
             }
             const auto consumed = root.inputSnapshot();
-            application_.window->input()
-                .evaluate(elapsed, data && !consumed.keyboard_captured, data && !consumed.pointer_captured);
+            window_->input().evaluate(elapsed, data && !consumed.keyboard_captured, data && !consumed.pointer_captured);
             return data != nullptr;
         }
 
-        FrameworkResult<ELoopState> pumpOnce(LuxEngine& owner) noexcept
+        FrameworkResult<ELoopState> pumpOnce(LuxEngine& application) noexcept
         {
             if (pumping_)
             {
@@ -848,57 +875,48 @@ namespace lux::editor
             }
             pumping_ = true;
             cxx::scope_exit finish([this]() noexcept { pumping_ = false; });
+            if (window_->shouldClose() || close_phase_ != EClosePhase::OPEN)
+            {
+                beginClose();
+                return advanceClose();
+            }
             updateSurfaceExtent();
-            if (auto dispatched = application_.dispatchCompletions(); !dispatched)
+            if (auto dispatched = dispatchCompletions(); !dispatched)
             {
                 return cxx::unexpected(dispatched.error());
             }
-            if (application_.rendering->mainClient().closed())
-            {
-                return cxx::unexpected(render::RenderError{render::kOutcomeUnknown});
-            }
-            const bool closing = application_.window->shouldClose();
-            if (closing)
-            {
-                requestClose();
-            }
-            if (auto applied = applyPendingProjectChanges(owner); !applied)
+            if (auto applied = applyPendingProjectChanges(application); !applied)
             {
                 return cxx::unexpected(applied.error());
             }
-            if (closing)
+            if (auto input = window_->sampleInput(); !input)
             {
-                application_.ui_scene->stopFrames();
-            }
-            if (!closing)
-            {
-                auto input = application_.window->sampleInput();
-                if (!input)
-                {
-                    return cxx::unexpected(std::move(input.error()));
-                }
+                return cxx::unexpected(std::move(input.error()));
             }
             if (project_ && project_->scenes)
             {
                 project_->scenes->maintain();
             }
-            auto presentation = maintainPresentation(closing);
+            assets_->maintain();
+            auto presentation = prepareUiOutput();
             if (!presentation)
             {
                 return cxx::unexpected(presentation.error());
             }
             const bool can_draw = *presentation;
-            auto admitted = acquireFrame(can_draw);
+            auto& client = rendering_->mainClient();
+            auto admitted = can_draw || client.hasQueuedFrameCommands()
+                                ? rendering_->beginFrame()
+                                : FrameworkResult<rendering::FrameInput*>{nullptr};
             if (!admitted)
             {
                 return cxx::unexpected(admitted.error());
             }
-            auto& client = application_.rendering->mainClient();
             auto* frame = *admitted;
             cxx::scope_exit release_unsent(
                 [&]() noexcept
                 {
-                    if (frame && client.buildingFrame() == frame)
+                    if (frame)
                     {
                         static_cast<void>(client.releaseFrame(*frame));
                     }
@@ -910,7 +928,7 @@ namespace lux::editor
                 return cxx::unexpected(captured.error());
             }
             const auto mode = frame && can_draw ? scene::ESceneDriveMode::ADVANCE : scene::ESceneDriveMode::MAINTENANCE;
-            auto driven = application_.engine->sceneRuntime().driveFrame(mode);
+            auto driven = engine_->sceneRuntime().driveFrame(mode);
             if (!driven)
             {
                 return cxx::unexpected(scene::toError(driven.error()));
@@ -919,50 +937,40 @@ namespace lux::editor
             {
                 return cxx::unexpected(scene::toError(driven->front()));
             }
-            application_.collectProjects();
+            collectProjects();
             if (*captured)
             {
-                auto appended = application_.ui_scene->appendFrameCommands(*frame);
+                auto appended = ui_scene_->appendFrameCommands(*frame);
                 if (!appended)
                 {
-                    static_cast<void>(client.releaseFrame(*frame));
                     return cxx::unexpected(appended.error());
                 }
             }
             if (frame)
             {
-                if (auto sent = application_.submitFrame(*frame); !sent)
+                auto* submitted = std::exchange(frame, nullptr);
+                if (auto sent = rendering_->submitFrame(*submitted); !sent)
                 {
                     return cxx::unexpected(sent.error());
                 }
             }
             (void)object::ObjectRuntime::instance().collectRetired();
-            return closing ? ELoopState::EXIT_REQUESTED : ELoopState::RUNNING;
+            const bool another_frame = client.hasFrameCapacity() && (can_draw || client.hasQueuedFrameCommands());
+            return another_frame || pending_project_change_ ? ELoopState::RUNNING : ELoopState::WAITING;
         }
 
-        [[nodiscard]] FrameworkResult<bool> hasImmediateWork() noexcept
-        {
-            const auto& metrics = application_.window->metrics();
-            const bool has_extent =
-                metrics.width && metrics.height && metrics.framebuffer_width && metrics.framebuffer_height;
-            auto output = application_.ui_scene->outputReady();
-            if (!output)
-            {
-                return cxx::unexpected(output.error());
-            }
-            const bool can_produce = !application_.window->shouldClose() && has_extent && !metrics.minimized &&
-                                     *output && application_.rendering->mainClient().hasFrameCapacity();
-            return application_.window->shouldClose() || pending_project_change_.has_value() || can_produce ||
-                   (application_.rendering->mainClient().hasQueuedFrameCommands() &&
-                    application_.rendering->mainClient().hasFrameCapacity()) ||
-                   application_.engine->execution().hasReadyWork() ||
-                   object::ObjectRuntime::instance().statistics().pending != 0;
-        }
-
-        ApplicationResources application_;
+        // Reverse destruction: UI/assets/source, RenderExecution, Engine ExecutionRuntime, then native window.
+        std::unique_ptr<EditorWindow> window_;
+        std::unique_ptr<engine::EngineContext> engine_;
+        std::unique_ptr<rendering::RenderExecution> rendering_;
+        std::unique_ptr<process::asset_loading::VfsAssetReadEndpoint> source_;
+        std::unique_ptr<rendering::RenderAssets> assets_;
+        std::unique_ptr<EditorUiScene> ui_scene_;
         EditorConfig config_;
         EditorAssembly assembly_;
-        std::optional<execution::TaskScope> project_tasks_;
+        execution::TaskScope project_tasks_;
+        std::vector<std::unique_ptr<OpenProject>> closing_projects_;
+        EClosePhase close_phase_ = EClosePhase::OPEN;
         std::unique_ptr<OpenProject> project_;
         std::optional<VPendingProjectChange> pending_project_change_;
         std::optional<execution::TaskId> project_prepare_;
@@ -974,7 +982,7 @@ namespace lux::editor
 
     LuxEngine::LuxEngine(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl))
     {
-        impl_->application_.window->uiRoot().setCommandFallback(this);
+        impl_->window_->uiRoot().setCommandFallback(this);
     }
 
     LuxEngine::~LuxEngine() noexcept
@@ -983,8 +991,13 @@ namespace lux::editor
         {
             std::terminate();
         }
-        impl_->application_.window->uiRoot().setCommandFallback(nullptr);
+        impl_->window_->uiRoot().setCommandFallback(nullptr);
         beginDestruction();
+        if (auto closed = impl_->close(); !closed)
+        {
+            rendering::reportRenderFailure(closed.error(), "Close Editor");
+            std::terminate();
+        }
     }
 
     FrameworkResult<std::unique_ptr<LuxEngine>> LuxEngine::create(EditorConfig config, EditorAssembly assembly) noexcept
@@ -1065,7 +1078,7 @@ namespace lux::editor
         else if (event.getIf<CloseProjectRequest>())
         {
             event.accept();
-            impl_->requestClose();
+            impl_->requestProjectClose();
         }
         else if (auto* prepared = event.getIf<detail::ProjectPrepared>())
         {
@@ -1095,7 +1108,7 @@ namespace lux::editor
             {
                 if (close)
                 {
-                    impl_->requestClose();
+                    impl_->requestProjectClose();
                 }
                 else
                 {
@@ -1110,24 +1123,19 @@ namespace lux::editor
     {
         for (;;)
         {
+            const auto epoch = impl_->engine_->execution().wakeEpoch();
             auto state = pumpOnce();
             if (!state)
             {
                 return cxx::unexpected(state.error());
             }
-            if (*state == ELoopState::EXIT_REQUESTED)
+            if (*state == ELoopState::STOPPED)
             {
-                impl_->application_.close();
-                return {};
+                return impl_->finishClose();
             }
-            auto ready = impl_->hasImmediateWork();
-            if (!ready)
+            if (*state == ELoopState::WAITING)
             {
-                return cxx::unexpected(ready.error());
-            }
-            if (!*ready)
-            {
-                window::LuxWindow::waitEvents();
+                impl_->waitIfIdle(epoch);
             }
         }
     }
@@ -1151,47 +1159,47 @@ namespace lux::editor
         {
             return cxx::unexpected(state.error());
         }
-        return *state == LuxEngine::ELoopState::RUNNING;
+        return *state != LuxEngine::ELoopState::STOPPED;
     }
 
     EditorWindow& LuxEngine::window() noexcept
     {
-        return *impl_->application_.window;
+        return *impl_->window_;
     }
 
     engine::EngineContext& LuxEngine::engine() noexcept
     {
-        return *impl_->application_.engine;
+        return *impl_->engine_;
     }
 
     const engine::EngineContext& LuxEngine::engine() const noexcept
     {
-        return *impl_->application_.engine;
+        return *impl_->engine_;
     }
 
     rendering::RenderExecution& LuxEngine::rendering() noexcept
     {
-        return *impl_->application_.rendering;
+        return *impl_->rendering_;
     }
 
     const rendering::RenderExecution& LuxEngine::rendering() const noexcept
     {
-        return *impl_->application_.rendering;
+        return *impl_->rendering_;
     }
 
     rendering::RenderAssets& LuxEngine::renderAssets() noexcept
     {
-        return *impl_->application_.assets;
+        return *impl_->assets_;
     }
 
     FrameworkResult<void> LuxEngine::setUiImages(std::vector<UiTargetImage> images) noexcept
     {
-        return impl_->application_.ui_scene->setTargetImages(std::move(images));
+        return impl_->ui_scene_->setTargetImages(std::move(images));
     }
 
     bool LuxEngine::uiImagesApplied() const noexcept
     {
-        return impl_->application_.ui_scene->imagesApplied();
+        return impl_->ui_scene_->imagesApplied();
     }
 
     EditorContext* LuxEngine::project() noexcept

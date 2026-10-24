@@ -22,16 +22,27 @@ using namespace std::chrono_literals;
 
 namespace
 {
+    struct ProbeState final
+    {
+        std::size_t updates{};
+        bool changed{}, destroyed{};
+    };
+
     struct Probe final : ui::Pane
     {
-        Probe() : Pane("Pacing probe"), label("Actual rendered content")
+        explicit Probe(ProbeState& state) : Pane("Pacing probe"), label("Actual rendered content"), state(state)
         {
             assert(addElement(label));
         }
 
+        ~Probe() noexcept override
+        {
+            state.destroyed = true;
+        }
+
         void update() noexcept override
         {
-            ++updates;
+            ++state.updates;
             if (close_window)
             {
                 close_window->exit();
@@ -41,15 +52,15 @@ namespace
                 scheduled = true;
                 root().deferChange(
                     *this,
-                    [](object::LuxObject& target) noexcept { static_cast<Probe&>(target).changed = true; }
+                    [](object::LuxObject& target) noexcept { static_cast<Probe&>(target).state.changed = true; }
                 );
             }
         }
 
         ui::Label label;
         window::LuxWindow* close_window{};
-        std::size_t updates{};
-        bool scheduled{}, changed{};
+        ProbeState& state;
+        bool scheduled{};
     };
 
     struct Receiver final : object::LuxObject
@@ -115,8 +126,8 @@ namespace
         auto made = editor::LuxEngine::create({"Framework pacing", 640, 480, vsync});
         assert(made);
         auto host = std::move(*made);
-        auto pane = std::make_unique<Probe>();
-        auto* probe = pane.get();
+        ProbeState state;
+        auto pane = std::make_unique<Probe>(state);
         std::unique_ptr<ui::Pane> owner = std::move(pane);
         assert(host->window().uiRoot().addPane(std::move(owner)));
         Receiver receiver(*host);
@@ -161,9 +172,9 @@ namespace
              consume_result =
                  [&](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
              {
-                 assert(result && probe->changed);
+                 assert(result && state.changed);
                  warmed = true;
-                 before_updates = probe->updates;
+                 before_updates = state.updates;
                  before_frames = host->rendering().stats().presentations;
                  before_messages = object::ObjectRuntime::instance().statistics().posted;
                  started = std::chrono::steady_clock::now();
@@ -204,7 +215,7 @@ namespace
         assert(host->run());
         assert(warmed);
         const auto elapsed = std::chrono::steady_clock::now() - started;
-        const auto iterations = probe->updates - before_updates;
+        const auto iterations = state.updates - before_updates;
         const auto frames = host->rendering().stats().presentations - before_frames;
         std::printf(
             "PACING vsync=%d minimized=%d native=%d updates=%llu rendered=%llu elapsed_ms=%.3f\n",
@@ -227,6 +238,9 @@ namespace
             assert(frames > 0 && iterations > 0);
         }
         assert(host->engine().sceneRuntime().instanceCount() == 0);
+        // run() now finishes the application close protocol. Measurements outlive the retired Pane.
+        assert(state.destroyed);
+        // These counters describe the last UI update, not the remaining live objects.
         assert(host->window().uiRoot().statistics().panes == 1);
         assert(host->window().uiRoot().statistics().elements == 1);
     }
@@ -236,8 +250,8 @@ namespace
         auto made = editor::LuxEngine::create({"Close during maintenance", 640, 480});
         assert(made);
         auto host = std::move(*made);
-        auto pane = std::make_unique<Probe>();
-        auto* probe = pane.get();
+        ProbeState state;
+        auto pane = std::make_unique<Probe>(state);
         pane->close_window = &host->window();
         std::unique_ptr<ui::Pane> owner = std::move(pane);
         assert(host->window().uiRoot().addPane(std::move(owner)));
@@ -245,7 +259,7 @@ namespace
         ShowWindow(static_cast<HWND>(host->window().nativeHandle()), SW_MINIMIZE);
 #endif
         assert(host->run());
-        assert(probe->updates <= 2);
+        assert(state.destroyed && state.updates <= 2);
     }
 } // namespace
 

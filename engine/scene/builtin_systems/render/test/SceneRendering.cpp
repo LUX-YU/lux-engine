@@ -108,7 +108,7 @@ namespace
         CHECK(rendering.execution().waitUntil(
             [&]() noexcept
             {
-                rendering.consumeResponses();
+                static_cast<void>(rendering.consumeResponses());
                 return complete;
             }
         ));
@@ -209,7 +209,7 @@ int main()
     CHECK(execution.waitUntil(
         [&]() noexcept
         {
-            rendering->consumeResponses();
+            static_cast<void>(rendering->consumeResponses());
             return assets->texture({texture_id, 1}) != nullptr;
         }
     ));
@@ -268,7 +268,7 @@ int main()
     };
     const auto drive = [&](bool draw) noexcept
     {
-        rendering->consumeResponses();
+        static_cast<void>(rendering->consumeResponses());
         CHECK(execution.dispatchMainCompletions());
         CHECK(execution.dispatchTaskEvents());
         assets->maintain();

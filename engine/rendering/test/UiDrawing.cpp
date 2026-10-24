@@ -189,7 +189,7 @@ int main(int argc, char**)
         CHECK(execution.waitUntil(
             [&]() noexcept
             {
-                rendering->consumeResponses();
+                static_cast<void>(rendering->consumeResponses());
                 return completed;
             }
         ));

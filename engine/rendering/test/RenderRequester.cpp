@@ -2,9 +2,11 @@
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <source_location>
+#include <thread>
 
 using namespace lux;
 using namespace lux::render;
@@ -56,7 +58,7 @@ namespace
         check(bool(rendering.execution().waitUntil(
             [&]() noexcept
             {
-                rendering.consumeResponses();
+                static_cast<void>(rendering.consumeResponses());
                 return completed;
             }
         )));
@@ -65,17 +67,21 @@ namespace
     }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     auto execution = take(execution::ExecutionRuntime::create({2, 32, {8}}));
     RenderExecutionConfig config;
     config.render.channel_name = "engine.render.transport";
     config.render.validation = true;
-    config.requests_per_client = 2; // One child plus one reserved frame terminal.
+    const auto frame_lead = argc > 1 ? static_cast<std::uint32_t>(std::atoi(argv[1])) : 1U;
+    config.render.max_frames_ahead = frame_lead;
+    config.render.frames_in_flight = argc > 2 ? static_cast<std::uint32_t>(std::atoi(argv[2])) : 3U;
+    config.asset_pending_requests = 2; // This limit belongs only to independent streaming.
     auto rendering = take(RenderExecution::create(std::move(config), execution));
     auto& client = rendering->mainClient();
     const auto scene = call<CreateScene>(*rendering, {}).scene;
     const auto view = call<CreateView>(*rendering, {scene}).view;
+    const auto another_view = call<CreateView>(*rendering, {scene}).view;
     const auto remove = take(client.bind<RemoveView>());
     ViewRequest request{scene, view};
     AckResponse reply;
@@ -90,12 +96,11 @@ int main()
 
     request = {scene, view};
     auto accepted = receive(execution, client.request(remove, request), reply, completed);
-    ViewRequest rejected_request{scene, view};
+    ViewRequest rejected_request{scene, another_view};
     AckResponse rejected;
     bool rejected_completed = false;
     auto capacity = receive(execution, client.request(remove, rejected_request), rejected, rejected_completed);
-    check(rejected_completed && rejected.error.type == kRuntimeCapacity);
-    check(rejected_request.scene == scene && rejected_request.view == view);
+    check(!rejected_completed); // Main has no shared request-count budget or reserved terminal slot.
     input = take(client.beginFrame());
     FrameCompletion result;
     bool frame_completed = false;
@@ -103,11 +108,13 @@ int main()
     check(bool(execution.waitUntil(
         [&]() noexcept
         {
-            rendering->consumeResponses();
+            static_cast<void>(rendering->consumeResponses());
             return frame_completed;
         }
     )));
-    check(completed && reply.error.type == 0 && result.error.type == 0);
+    check(
+        completed && reply.error.type == 0 && rejected_completed && rejected.error.type == 0 && result.error.type == 0
+    );
     check(bool(client.releaseFrame(*input)));
 
     // A real stale identity produces a failed frame and requires explicit authoritative resynchronization.
@@ -118,7 +125,7 @@ int main()
     check(bool(execution.waitUntil(
         [&]() noexcept
         {
-            rendering->consumeResponses();
+            static_cast<void>(rendering->consumeResponses());
             return frame_completed;
         }
     )));
@@ -131,13 +138,115 @@ int main()
     check(bool(execution.waitUntil(
         [&]() noexcept
         {
-            rendering->consumeResponses();
+            static_cast<void>(rendering->consumeResponses());
             return frame_completed;
         }
     )));
     check(result.error.type == 0 && !result.requires_resynchronization);
     check(bool(client.releaseFrame(*input)));
 
+    // Each is a complete frame containing distinct commands, not one large vector-valued request.
+    const auto create_view = take(client.bind<CreateView>());
+    for (const std::size_t count : {1024U, 1025U, 4096U})
+    {
+        std::fprintf(stderr, "Complete frame: create %zu Views\n", count);
+        input = take(client.beginFrame());
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            check(bool(client.append(*input, create_view, CreateViewRequest{scene})));
+        }
+        input->group_ends.push_back(input->commands.size());
+        frame_task = receive(execution, client.submitFrame(*input), result, frame_completed);
+        // Let a response burst accumulate before Main consumes it; no future publication may be needed.
+        // This is a liveness control, not a latency sample or production pacing policy.
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        check(bool(execution.waitUntil(
+            [&]() noexcept
+            {
+                static_cast<void>(rendering->consumeResponses());
+                return frame_completed;
+            }
+        )));
+        check(result.error.type == 0 && input->responses.size() == count);
+        std::fprintf(stderr, "Complete frame: adopted %zu Views\n", count);
+        std::vector<ViewId> created;
+        for (auto& response : input->responses)
+        {
+            const auto& value = response.get<ViewCreated>();
+            check(value.error.type == 0 && !value.view.isNull());
+            created.push_back(value.view);
+        }
+        check(bool(client.releaseFrame(*input)));
+        input = take(client.beginFrame());
+        for (auto id : created)
+        {
+            check(bool(client.append(*input, remove, ViewRequest{scene, id})));
+        }
+        input->group_ends.push_back(input->commands.size());
+        frame_task = receive(execution, client.submitFrame(*input), result, frame_completed);
+        // Let a response burst accumulate before Main consumes it; no future publication may be needed.
+        // This is a liveness control, not a latency sample or production pacing policy.
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        check(bool(execution.waitUntil(
+            [&]() noexcept
+            {
+                static_cast<void>(rendering->consumeResponses());
+                return frame_completed;
+            }
+        )));
+        check(result.error.type == 0);
+        check(bool(client.releaseFrame(*input)));
+        std::fprintf(stderr, "Complete frame: removed %zu Views\n", count);
+    }
+
+    std::fputs("Bounded independent Link\n", stderr);
+    // A separate Link can still declare a real pending-request bound. Closing it does not stop Server.
+    auto bounded = take(RenderRequester::create(
+        take(platform::ipc::IpcCore::instance().createRequester("engine.render.transport")),
+        {2, {}}
+    ));
+    check(bool(bounded->setCommands(call<ListCommands>(*rendering, {}))));
+    const auto list = take(bounded->bind<ListFeatures>());
+    ListFeatures::Request list_input{};
+    ListFeatures::Response first_list, second_list, third_list;
+    bool first_done{}, second_done{}, third_done{};
+    auto first_task = receive(execution, bounded->request(list, list_input), first_list, first_done);
+    auto second_task = receive(execution, bounded->request(list, list_input), second_list, second_done);
+    auto third_task = receive(execution, bounded->request(list, list_input), third_list, third_done);
+    check(third_done && third_list.error.type == kRuntimeCapacity);
+    check(bool(execution.waitUntil(
+        [&]() noexcept
+        {
+            static_cast<void>(bounded->consumeResponses());
+            return first_done && second_done;
+        }
+    )));
+    check(first_list.error.type == 0 && second_list.error.type == 0);
+    bounded->beginClose();
+    check(bounded->close());
+    bounded.reset();
+
+    // Accepted frame replies, rather than GPU slots or request counts, permit another CPU input.
+    // Do not consume replies until all L+1 carriers are held; Server may already be idle by then.
+    for (std::uint32_t i = 0; i <= frame_lead; ++i)
+    {
+        auto* frame = take(rendering->beginFrame());
+        check(frame != nullptr);
+        check(bool(rendering->submitFrame(*frame)));
+    }
+    check(take(rendering->beginFrame()) == nullptr);
+    check(bool(execution.waitUntil(
+        [&]() noexcept
+        {
+            static_cast<void>(rendering->consumeResponses());
+            return client.pendingRequests() == 0;
+        }
+    )));
+    auto* recycled = take(rendering->beginFrame());
+    check(recycled != nullptr);
+    check(bool(client.releaseFrame(*recycled)));
+
+    std::fputs("Normal shutdown with an unsent command\n", stderr);
     // Unsent commands on close are cancelled, not reported as accepted unknown side effects.
     request = {scene, view};
     auto unsent = receive(execution, client.request(remove, request), reply, completed);
@@ -148,5 +257,5 @@ int main()
     rendering.reset();
     execution.requestStop();
     check(bool(execution.join()));
-    std::puts("PASS queued frame commands, capacity retention, cancellation, resynchronization and shutdown");
+    std::puts("PASS complete 1024/1025/4096-command frames, independent Asset bound, cancellation and shutdown");
 }

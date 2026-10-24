@@ -38,7 +38,7 @@ namespace lux::scene
         std::uint64_t epoch = 1;
     };
 
-    // Intent only; no Render identities, callbacks or persistence codec.
+    // Intent only; no adopted View/Effect identities, callbacks or persistence codec.
     struct CameraTargetsComponent final
     {
         std::vector<CameraTarget> targets;

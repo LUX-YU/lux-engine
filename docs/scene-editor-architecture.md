@@ -547,3 +547,15 @@ MAINTENANCE 下仍按自己的时钟推进；图形实例为 true。随后仍遍
 
 这些是有具体落点的推荐方案。更改其中一项时，应同步修改它影响的身份、调用顺序和验收，不靠
 额外长期状态或运行期补偿掩盖两种相互矛盾的合同。
+
+## 应用生命周期与完整帧边界
+
+共享 RenderExecution 持有协议设施；Scene 级 RenderSystem 仅投影自己的 ECS。Main 的请求关联按实际
+完整帧增长并复用，领先控制只在 beginFrame；独立 Asset 的可选在途量不成为主帧命令上限。
+
+LuxEngine 工厂在局部准备完整依赖后才构造 Impl。OpenProject 负责其 Context/Scene 的关闭，应用只推进
+这些实际拥有者。关闭时先清偿 Scene/UI/资产和 FrameCompletion，再关闭 Client、停止 Server，最后
+停止共享 ExecutionRuntime。Runtime join 在主循环回调之外，原生窗口始终晚于 SwapChain 结束。
+
+ProjectScenes 的 Camera 信号连接借用 Registry，开始 InstanceRetirement 前必须断开，不能等到 Play/文档
+记录析构时才断连。实体运行绑定的退出记录与这些观察连接是不同职责，不增加新的清理 Scope。

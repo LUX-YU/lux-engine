@@ -11,6 +11,11 @@
 #include <memory>
 #include <span>
 
+namespace lux::rdesc
+{
+    struct Mesh;
+}
+
 namespace lux::scene
 {
     enum class EMeshQueryError
@@ -42,6 +47,9 @@ namespace lux::scene
 
         [[nodiscard]] static LUX_ENGINE_SCENE_MESH_QUERY_PUBLIC QueryResult<std::shared_ptr<const MeshQueryGeometry>>
         build(std::span<const Eigen::Vector3f> positions, std::span<const std::uint32_t> indices);
+        // CPU-only conversion from an immutable decoded asset; no Render or Editor dependency.
+        [[nodiscard]] static LUX_ENGINE_SCENE_MESH_QUERY_PUBLIC QueryResult<std::shared_ptr<const MeshQueryGeometry>>
+        build(const rdesc::Mesh& mesh);
     };
 
     struct RayHit3D

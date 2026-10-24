@@ -42,7 +42,8 @@ namespace lux::rendering::detail
         const auto waited = rendering.execution().waitUntil(
             [&]() noexcept
             {
-                rendering.consumeResponses();
+                // The request's terminal response carries failure; an exited Server is joined and settled here.
+                static_cast<void>(rendering.consumeResponses());
                 return complete;
             }
         );

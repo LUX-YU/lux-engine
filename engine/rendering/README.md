@@ -1,6 +1,6 @@
 # Render request transport
 
-`RenderRequester` owns one application-thread IPC Link, its finite response correlations and reusable frame
+`RenderRequester` owns one application-thread IPC Link, its live response correlations and reusable frame
 message carriers. It creates no thread or task scope and owns no connected OperationState or GPU object.
 Requests are standard Senders; the application's existing scope retains their connected state.
 
@@ -29,8 +29,10 @@ For a complete game frame:
    input borrow and reports submission facts; it is not GPU completion or presentation.
 
 An Asset requester leaves `max_frames_ahead` absent. New immutable uploads can progress independently; visible
-table updates belong in the Game frame. Per-Link `request_capacity` limits actual outstanding correlations,
-including child commands. It does not split a frame or decide when the Server draws.
+table updates belong in the Game frame. An Asset Link can set `max_pending_requests` for its actual outstanding
+requests (`RenderExecutionConfig::asset_pending_requests` configures the built-in Asset Client). Main has no
+request-count limit or reserved terminal slot: 1024, 1025 and 4096 distinct commands remain whole frames.
+The only Main pacing gate is `beginFrame()` before preparing the next frame; the GPU's physical FIF is separate.
 
 `consumeResponses()` never drives ObjectRuntime, ECS or UI callbacks except the requested Sender receivers.
 The application invokes it at its normal completion/adoption boundary and retains its existing signal and
@@ -46,12 +48,18 @@ Destroying a requester with outstanding correlations is a contract violation.
 reuse this Requester; all CPU/IO work borrows the application's `ExecutionRuntime`. `create()` is synchronous
 startup on Main, outside a dispatched callback. It discovers commands and prepares the two actual Links.
 `consumeResponses()` runs at Main's normal safe point; the Asset thread drives its own Link and RunLoop.
+A full response service batch re-arms Main's existing wake epoch, because more already-published replies may
+remain even when Server is idle. This service chunk is not a request/frame admission budget. Direct Requester
+consumers must continue draining when the returned count reaches their requested limit.
 
 Frame-scoped `request()` inputs join the next `beginFrame()` in ordered groups. Their original standard Sender
 receives the typed child Response. This permits finite create/remove transactions without a second operation
 owner or a second frame source. Hot Transform/data batches still use direct `append`, not one Task per item.
 Continue maintenance frames when `hasQueuedFrameCommands()` is true, including when Simulation is paused.
-The application owns FrameCompletion handling: errors/resynchronization require refreshing authoritative inputs.
+The application's normal path uses `RenderExecution::beginFrame()` before preparing inputs; nullptr means wait.
+`RenderExecution::submitFrame()` takes over that carrier and recycles it after all real replies. Failed completion
+uses the existing diagnostic outlet and Requester's resynchronization revision; Scenes refresh their authority.
+Direct Requester consumers can still handle FrameCompletion themselves, with the same explicit release contract.
 A carrier released before submission cancels its queued commands; a lost response after submission stays Unknown.
 
 `FrameInput::allocate<T>()` allows writing actual frame arrays directly. `freeze()` is the optional copying path;
@@ -66,7 +74,10 @@ Different source revisions can coexist. `maintain()` visits pending release chan
 
 Close Scenes before closing their project task admission, drive their pending frame commands, then release asset
 references. After `RenderAssets::close()`, continue Main completion and maintenance frames until `settled()`.
-Only then call `RenderExecution::shutdown()` to drain/join Render, settle missing responses and join Asset.
+Then call `RenderExecution::beginClose()` and keep driving Main plus `advanceClose()`. Unsent inputs cancel
+locally; accepted requests retain their borrows until real replies. Each Client closes on its own SPSC thread
+before Server is stopped and joined. `shutdown()` is the synchronous standalone form of this same progression.
+`settleClosed()` is reserved for an abnormal, already joined Server, never used as normal cancellation.
 ExecutionRuntime, file providers, native windows and callback code outlive their respective accepted producers.
 Render diagnostics use the single Engine log bridge; this module never selects a console/output target.
 

@@ -66,7 +66,8 @@ namespace lux::editor
         enum class ELoopState : std::uint8_t
         {
             RUNNING,
-            EXIT_REQUESTED
+            WAITING,
+            STOPPED
         };
         [[nodiscard]] FrameworkResult<ELoopState> pumpOnce() noexcept;
         friend struct detail::LuxEngineTestAccess;

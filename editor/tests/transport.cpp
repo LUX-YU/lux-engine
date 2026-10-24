@@ -72,7 +72,7 @@ int main()
     auto drive = [&](bool capture)
     {
         window::LuxWindow::pollEvents();
-        rendering->consumeResponses();
+        static_cast<void>(rendering->consumeResponses());
         assert(execution.dispatchMainCompletions() && execution.dispatchTaskEvents());
         assert(ui_scene->maintain());
         const bool draw = capture && take(ui_scene->outputReady());

@@ -15,7 +15,7 @@ namespace lux::rendering
     {
         render::RenderServerConfig render;
         render::DeviceOptions device;
-        std::size_t requests_per_client = 1024;
+        std::size_t asset_pending_requests = 1024; // Independent streaming admission, never a Main frame limit.
         // Optional cold registration, before either protocol thread starts.
         void* feature_registration = nullptr;
         render::RenderResult<void> (*register_features)(void*, render::RenderServer&) noexcept = nullptr;
@@ -47,14 +47,24 @@ namespace lux::rendering
         [[nodiscard]] RenderRequester& assetClient() noexcept;
         [[nodiscard]] execution::RunLoop::Scheduler assetScheduler() noexcept;
 
-        // Main safe point. Consumes replies and joins an already terminated Server before settling
-        // missing responses. This also lets Asset pipelines finish after an unexpected Server exit.
-        std::size_t consumeResponses() noexcept;
+        // Main frame entry: nullptr means wait for a previous frame before preparing new inputs.
+        [[nodiscard]] render::RenderResult<FrameInput*> beginFrame() noexcept;
+        // Takes over the open carrier. Report failed completion, then recycle it after all replies.
+        // The application must not use/release this carrier after calling submitFrame, even on failure.
+        [[nodiscard]] render::RenderResult<void> submitFrame(FrameInput& frame) noexcept;
+
+        // Main safe point: consume replies and report an actual Server failure here, not by polling Link state.
+        // An unexpected exit is joined before missing responses release their borrowed inputs.
+        render::RenderResult<std::size_t> consumeResponses() noexcept;
         [[nodiscard]] render::RenderServerStats stats() const noexcept;
 
-        // Main-thread shutdown after all Asset pipelines/producers have settled and stopped publishing.
-        // Drains Server work, joins it, settles missing replies as Unknown, then joins the Asset thread.
-        // Main continuations remain driven while Server stops; the shared CPU/IO execution stays alive.
+        // Nonblocking application close. Drive Main continuations and advanceClose until it reports completion.
+        void beginClose() noexcept;
+        [[nodiscard]] render::RenderResult<bool> advanceClose() noexcept;
+
+        // Synchronous standalone shutdown after business producers stop. Cancel unsent inputs, drain accepted replies,
+        // close each Client on its SPSC thread, then stop/join Server. Unexpected Server failure retains
+        // Unknown settlement. Main continuations and the shared CPU/IO execution remain alive throughout.
         [[nodiscard]] render::RenderResult<void> shutdown() noexcept;
 
     private:

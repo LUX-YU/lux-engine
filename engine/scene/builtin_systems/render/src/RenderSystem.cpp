@@ -518,11 +518,10 @@ namespace lux::scene
             {
                 return cxx::unexpected(RenderError{kCommandContract});
             }
-            return detail::sceneParameters(
-                registry.get<Camera>(camera),
-                registry.get<WorldTransform3D>(camera).value,
-                target
-            );
+            const auto& definition = registry.get<Camera>(camera);
+            auto prepared = detail::prepareSceneCamera(definition, registry.get<WorldTransform3D>(camera).value);
+            return prepared ? detail::sceneParameters(definition, *prepared, target)
+                            : cxx::unexpected(prepared.error());
         }
 
         template <class F> void forEachBinding(F&& function) const
@@ -703,7 +702,8 @@ namespace lux::scene
 
         exec::task<RenderResult<void>> synchronizeViews(
             bool include_replacements = false,
-            bool* groups_adopted = nullptr
+            bool* groups_adopted = nullptr,
+            std::optional<std::vector<Entity>> selected_cameras = {}
         ) noexcept
         {
             auto retired = co_await retireViews();
@@ -722,15 +722,31 @@ namespace lux::scene
             const auto capacity =
                 std::bit_ceil(std::max<std::uint32_t>(128, static_cast<std::uint32_t>(meshes.size())));
             std::vector<std::pair<Entity, CameraTarget>> accepted;
-            forEachBinding(
-                [&](Entity camera, const RenderViewBinding& binding) noexcept
+            const auto accept = [&](Entity camera, const RenderViewBinding& binding) noexcept
+            {
+                if (const auto* target = cameraTarget(camera, binding.id))
                 {
-                    if (const auto* target = cameraTarget(camera, binding.id))
+                    accepted.emplace_back(camera, *target);
+                }
+            };
+            if (selected_cameras)
+            {
+                for (const auto camera : *selected_cameras)
+                {
+                    auto* views = registry.valid(camera) ? registry.try_get<RenderViewComponent>(camera) : nullptr;
+                    if (views)
                     {
-                        accepted.emplace_back(camera, *target);
+                        for (const auto& binding : views->bindings)
+                        {
+                            accept(camera, binding);
+                        }
                     }
                 }
-            );
+            }
+            else
+            {
+                forEachBinding(accept);
+            }
             for (const auto& [camera, input] : accepted)
             {
                 const auto* current = cameraTarget(camera, input.id);
@@ -806,7 +822,7 @@ namespace lux::scene
                 if (stale)
                 {
                     retiring_views.push_back({camera, RenderViewBinding{.id = input.id, .effect = compiled.effect}});
-                    rebuild_requested = true;
+                    rebuild_requested |= accepted_topology != topology_revision;
                     continue;
                 }
                 AttachmentRequest attach{
@@ -859,7 +875,8 @@ namespace lux::scene
             std::vector<LightInput> light_inputs
         ) noexcept
         {
-            if (!initialized)
+            const bool initialize_scene = !initialized;
+            if (initialize_scene)
             {
                 auto result = co_await initialize();
                 if (!result)
@@ -871,7 +888,7 @@ namespace lux::scene
             {
                 co_return RenderResult<void>{};
             }
-            bool changed = rebuild_requested;
+            bool changed = initialize_scene || rebuild_requested;
             bool groups_pruned = false;
             for (auto& [entity, entry] : meshes)
             {
@@ -1364,6 +1381,13 @@ namespace lux::scene
                 {
                     continue;
                 }
+                const bool available = registry.all_of<Camera, WorldTransform3D>(camera);
+                auto prepared = available
+                                    ? detail::prepareSceneCamera(
+                                          registry.get<Camera>(camera),
+                                          registry.get<WorldTransform3D>(camera).value
+                                      )
+                                    : RenderResult<detail::SceneCamera>{cxx::unexpected(RenderError{kCommandContract})};
                 for (auto& binding : views->bindings)
                 {
                     const auto* input = cameraTarget(camera, binding.id);
@@ -1374,7 +1398,9 @@ namespace lux::scene
                     const bool same_output = binding.adopted.target == input->target &&
                                              sameTargetRecipe(binding.adopted.description, input->description);
                     const auto& requested = same_output ? *input : binding.adopted;
-                    auto candidate = cameraParameters(camera, requested);
+                    auto candidate = prepared
+                                         ? detail::sceneParameters(registry.get<Camera>(camera), *prepared, requested)
+                                         : RenderResult<SceneParameters>{cxx::unexpected(prepared.error())};
                     if (!candidate)
                     {
                         binding.error = candidate.error();
@@ -1721,9 +1747,9 @@ namespace lux::scene
             return ESceneProgress::COMPLETE;
         }
         self.reconcileCameraTargets();
-        self.rebuild_requested |= self.needsViewSynchronization() || self.observed_topology != self.topology_revision;
+        const bool changed_views = self.needsViewSynchronization();
+        self.rebuild_requested |= self.observed_topology != self.topology_revision;
         self.observed_topology = self.topology_revision;
-        self.view_changes.clear();
         bool changed = !self.initialized || self.rebuild_requested;
         if (self.asset_revision != self.assets_input.revision)
         {
@@ -1767,7 +1793,18 @@ namespace lux::scene
                     inputs.push_back(value);
                 }
             }
+            self.view_changes.clear();
             self.startTransaction(self.synchronizeStructure(std::move(inputs), std::move(light_inputs)));
+        }
+        else if (changed_views)
+        {
+            std::vector<Entity> selected(self.view_changes.begin(), self.view_changes.end());
+            self.view_changes.clear();
+            self.startTransaction(self.synchronizeViews(false, nullptr, std::move(selected)));
+        }
+        else
+        {
+            self.view_changes.clear();
         }
         return ESceneProgress::COMPLETE;
     }

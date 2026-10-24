@@ -72,7 +72,7 @@ namespace integration_test
                 {
                     poll_events();
                 }
-                rendering.consumeResponses();
+                static_cast<void>(rendering.consumeResponses());
                 return complete;
             }
         )));
@@ -101,7 +101,7 @@ namespace integration_test
         ));
         while (!completed)
         {
-            rendering.consumeResponses();
+            static_cast<void>(rendering.consumeResponses());
             check(bool(rendering.execution().dispatchMainCompletions()));
             if constexpr (C::frame_scoped)
             {
@@ -112,7 +112,7 @@ namespace integration_test
                 check(bool(rendering.execution().waitUntil(
                     [&]() noexcept
                     {
-                        rendering.consumeResponses();
+                        static_cast<void>(rendering.consumeResponses());
                         return completed;
                     }
                 )));

@@ -45,7 +45,7 @@ namespace lux::rendering
         };
 
         ipc::IpcRequester requester;
-        std::size_t capacity;
+        std::optional<std::size_t> max_pending_requests;
         cxx::SlotMap<PendingResponse, CorrelationTag> pending;
         std::map<std::string, CommandInfo, std::less<>> commands;
         std::vector<FrameCommand> queued_frame_commands;
@@ -58,12 +58,21 @@ namespace lux::rendering
         FrameInput* building = nullptr;
         std::uint64_t resynchronization = 0;
         bool requires_resynchronization = false;
-        bool closed = false;
+        enum class EConnectionState : std::uint8_t
+        {
+            OPEN,
+            DRAINING,
+            CLOSED
+        };
+        EConnectionState connection_state = EConnectionState::OPEN;
 
         Impl(ipc::IpcRequester value, RenderRequesterConfig config) noexcept
-            : requester(std::move(value)), capacity(config.request_capacity)
+            : requester(std::move(value)), max_pending_requests(config.max_pending_requests)
         {
-            pending.reserve(capacity);
+            if (max_pending_requests)
+            {
+                pending.reserve(*max_pending_requests);
+            }
             if (config.max_frames_ahead)
             {
                 for (std::size_t i = 0; i <= *config.max_frames_ahead; ++i)
@@ -161,9 +170,11 @@ namespace lux::rendering
         RenderRequesterConfig config
     ) noexcept
     {
-        const bool invalid_capacity = config.request_capacity == 0 || config.request_capacity >= UINT32_MAX;
+        const bool invalid_capacity = config.max_pending_requests &&
+                                      (*config.max_pending_requests == 0 || *config.max_pending_requests >= UINT32_MAX);
+        const bool limited_main = config.max_frames_ahead && config.max_pending_requests;
         const bool invalid_lead = config.max_frames_ahead && *config.max_frames_ahead == UINT32_MAX;
-        if (requester.id().isNull() || invalid_capacity || invalid_lead)
+        if (requester.id().isNull() || invalid_capacity || invalid_lead || limited_main)
         {
             return cxx::unexpected(RenderError{kCommandContract});
         }
@@ -224,13 +235,11 @@ namespace lux::rendering
 
     RenderResult<RequestId> RenderRequester::admit(ResponseNode& node, ipc::RequesterId source) noexcept
     {
-        if (impl_->closed || source != id())
+        if (impl_->connection_state != Impl::EConnectionState::OPEN || source != id())
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
-        // Keep one correlation for the enclosing SubmitFrame. Deferred input must not consume it.
-        const auto request_limit = impl_->capacity - !impl_->frame_inputs.empty();
-        if (impl_->pending.size() >= request_limit)
+        if (impl_->max_pending_requests && impl_->pending.size() >= *impl_->max_pending_requests)
         {
             return cxx::unexpected(RenderError{kRuntimeCapacity});
         }
@@ -246,7 +255,10 @@ namespace lux::rendering
         auto result = impl_->requester.trySend(commandTag(command), request.value, message);
         if (!result)
         {
-            impl_->closed |= result.error() == ipc::EIpcError::CLOSED;
+            if (result.error() == ipc::EIpcError::CLOSED)
+            {
+                impl_->connection_state = Impl::EConnectionState::CLOSED;
+            }
             return cxx::unexpected(
                 RenderError{result.error() == ipc::EIpcError::WOULD_BLOCK ? kRuntimeCapacity : kRuntimeState}
             );
@@ -275,7 +287,7 @@ namespace lux::rendering
 
     RenderResult<FrameInput*> RenderRequester::beginFrame() noexcept
     {
-        if (impl_->closed || impl_->building)
+        if (impl_->connection_state != Impl::EConnectionState::OPEN || impl_->building)
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
@@ -315,7 +327,7 @@ namespace lux::rendering
 
     bool RenderRequester::hasFrameCapacity() const noexcept
     {
-        return !impl_->closed && !impl_->building &&
+        return impl_->connection_state == Impl::EConnectionState::OPEN && !impl_->building &&
                std::ranges::any_of(
                    impl_->frame_inputs,
                    [](const auto& frame) noexcept { return frame.state == Impl::EInputState::FREE; }
@@ -332,7 +344,7 @@ namespace lux::rendering
         const bool valid_carrier = input.slot_ < impl_->frame_inputs.size() &&
                                    &impl_->frame_inputs[input.slot_].input == &input &&
                                    impl_->frame_inputs[input.slot_].state == Impl::EInputState::BUILDING;
-        return valid_carrier && source == id() && !impl_->closed;
+        return valid_carrier && source == id() && impl_->connection_state == Impl::EConnectionState::OPEN;
     }
 
     RenderResult<void> RenderRequester::releaseFrame(FrameInput& input) noexcept
@@ -373,16 +385,6 @@ namespace lux::rendering
         if (impl_->submit_frame.isNull())
         {
             reject(RenderError{kRuntimeUnsupported});
-            return;
-        }
-        const auto additional = std::count_if(
-            input.commands.begin(),
-            input.commands.end(),
-            [](const FrameCommand& command) noexcept { return command.request_id.value == 0; }
-        );
-        if (static_cast<std::size_t>(additional) >= impl_->capacity - impl_->pending.size())
-        {
-            reject(RenderError{kRuntimeCapacity});
             return;
         }
         auto& frame = impl_->frame_inputs[input.slot_];
@@ -454,7 +456,10 @@ namespace lux::rendering
             const auto status = impl_->requester.tryReceive(correlation, message);
             if (status != ipc::EIpcReceive::RECEIVED)
             {
-                impl_->closed |= status == ipc::EIpcReceive::CLOSED;
+                if (status == ipc::EIpcReceive::CLOSED)
+                {
+                    impl_->connection_state = Impl::EConnectionState::CLOSED;
+                }
                 break;
             }
             const auto key = Impl::key({correlation});
@@ -470,7 +475,7 @@ namespace lux::rendering
             {
                 // A malformed reply cannot prove that the Server released its frame borrow.
                 // Retain this correlation until the application supplies the shutdown boundary.
-                impl_->closed = true;
+                impl_->connection_state = Impl::EConnectionState::CLOSED;
                 ++received;
                 break;
             }
@@ -510,7 +515,7 @@ namespace lux::rendering
 
     bool RenderRequester::closed() const noexcept
     {
-        return impl_->closed;
+        return impl_->connection_state == Impl::EConnectionState::CLOSED;
     }
 
     std::size_t RenderRequester::pendingRequests() const noexcept
@@ -523,19 +528,43 @@ namespace lux::rendering
         return !impl_->queued_frame_commands.empty();
     }
 
-    void RenderRequester::settleClosed() noexcept
+    void RenderRequester::beginClose() noexcept
     {
-        consumeResponses(SIZE_MAX);
-        impl_->closed = true;
-        impl_->requester.reset();
-        for (auto& command : impl_->queued_frame_commands)
+        if (impl_->connection_state == Impl::EConnectionState::OPEN)
+        {
+            impl_->connection_state = Impl::EConnectionState::DRAINING;
+        }
+        if (impl_->building)
+        {
+            static_cast<void>(releaseFrame(*impl_->building));
+        }
+        auto unsent = std::move(impl_->queued_frame_commands);
+        for (auto& command : unsent)
         {
             const auto entry = *impl_->pending.find(Impl::key(command.request_id));
             impl_->pending.erase(entry.key);
             command.request.reset();
             deliverResponse(*entry.node, {}, RenderError{kCommandCancelled});
         }
-        impl_->queued_frame_commands.clear();
+    }
+
+    bool RenderRequester::close() noexcept
+    {
+        if (!impl_->pending.empty())
+        {
+            return false;
+        }
+        impl_->requester.reset();
+        impl_->connection_state = Impl::EConnectionState::CLOSED;
+        return true;
+    }
+
+    void RenderRequester::settleClosed() noexcept
+    {
+        consumeResponses(SIZE_MAX);
+        beginClose();
+        impl_->connection_state = Impl::EConnectionState::CLOSED;
+        impl_->requester.reset();
         while (!impl_->pending.empty())
         {
             const auto entry = *impl_->pending.begin();

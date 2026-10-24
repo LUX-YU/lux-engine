@@ -31,7 +31,8 @@ namespace lux::rendering
 
     struct RenderRequesterConfig final
     {
-        std::size_t request_capacity = 1024;
+        // Optional Asset-side admission bound. The Game/Main client is bounded only by frame lead.
+        std::optional<std::size_t> max_pending_requests;
         // Absent for an independent Asset Client. The designated Game Client uses L + 1 carriers.
         std::optional<std::uint32_t> max_frames_ahead;
     };
@@ -294,8 +295,13 @@ namespace lux::rendering
         [[nodiscard]] std::size_t pendingRequests() const noexcept;
         [[nodiscard]] bool hasQueuedFrameCommands() const noexcept;
 
-        // The caller must first stop/join the Server and its producers. Delivers Unknown for missing
-        // terminal replies, then closes this Link. This is not GPU cancellation or an implicit wait.
+        // Stop local admission and cancel unsent commands. Keep consuming accepted replies while Server lives.
+        void beginClose() noexcept;
+        // Called on this Link's SPSC thread after producers stop. False means accepted replies remain.
+        [[nodiscard]] bool close() noexcept;
+
+        // Abnormal shutdown only: the caller must first stop/join the Server and its producers. Delivers Unknown for
+        // missing terminal replies, then closes this Link. This is not GPU cancellation or an implicit wait.
         void settleClosed() noexcept;
 
     private:

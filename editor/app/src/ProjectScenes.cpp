@@ -1346,6 +1346,11 @@ namespace lux::editor
                 auto& play = *value.play;
                 if (!has_play_view && !play.retirement)
                 {
+                    // These sinks borrow Registry storage, which retirement may destroy before Play is erased.
+                    for (auto& connection : play.camera_connections)
+                    {
+                        connection.release();
+                    }
                     auto retired = impl_->context.retireScene(play.instance);
                     if (retired)
                     {
@@ -1380,6 +1385,10 @@ namespace lux::editor
             }
             if (!value.retirement)
             {
+                for (auto& connection : value.camera_connections)
+                {
+                    connection.release();
+                }
                 auto retired = impl_->context.retireScene(value.document->instance());
                 if (!retired)
                 {

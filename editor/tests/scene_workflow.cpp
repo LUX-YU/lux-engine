@@ -42,6 +42,7 @@ int main(int argc, char** argv)
     EditorConfig config{"Scene product workflow", 900, 600};
     config.enable_validation = true;
     config.enable_vsync = false;
+    config.execution.task_capacity = 8;
     config.plugin_locations = {{argv[1], argv[2]}};
     config.layout = {{"scene.creation", "scenes", "Scenes"}, {"scene.viewport", "view", "View"}};
     auto made = LuxEngine::create(
@@ -232,6 +233,30 @@ int main(int argc, char** argv)
     std::fprintf(stderr, "Model imported: %zu products\n", imported.products.size());
     const auto* model = assets.model(imported.id);
     assert(model && model->data().primitives.size() == 2 && imported.products.size() >= 7);
+    // Keep admitted work on Main pending, then prove temporary admission pressure is not an asset failure.
+    std::size_t pending_tasks = 0;
+    for (;;)
+    {
+        auto task = context.tasks().submit(
+            {"Hold Main completion", "Verification"},
+            [main = context.engine().execution().mainScheduler()](execution::TaskReporter) noexcept
+            { return stdexec::schedule(main); }
+        );
+        if (!task)
+        {
+            assert(task.error() == execution::EExecutionError::CAPACITY_EXCEEDED);
+            break;
+        }
+        ++pending_tasks;
+        assert(pending_tasks <= 8);
+    }
+    assert(pending_tasks != 0);
+    const auto query_mesh = model->data().primitives.front().mesh;
+    const auto busy_geometry = assets.prepareMeshGeometry(query_mesh);
+    assert(!busy_geometry && busy_geometry.error().code == EAssetImportError::BUSY);
+    assert(context.engine().execution().dispatchMainCompletions());
+    assert(assets.prepareMeshGeometry(query_mesh));
+    until([&] { return assets.meshGeometry(query_mesh) != nullptr; });
     auto* document = scenes.find(id);
     auto placement = prepareModelPlacement(*document, *model, Eigen::Affine3d::Identity(), {0});
     std::fprintf(stderr, "Model placement prepared\n");

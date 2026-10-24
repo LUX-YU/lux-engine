@@ -299,6 +299,11 @@ namespace lux::editor
         );
         if (!admitted)
         {
+            if (admitted.error() == execution::EExecutionError::CAPACITY_EXCEEDED)
+            {
+                state.geometry.erase(mesh);
+                return cxx::unexpected(AssetImportFailure{EAssetImportError::BUSY, "Mesh query task capacity is full"});
+            }
             target.failure = AssetImportFailure{EAssetImportError::EXECUTION, "Mesh query task admission failed"};
             return cxx::unexpected(*target.failure);
         }

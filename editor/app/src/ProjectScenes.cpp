@@ -688,7 +688,10 @@ namespace lux::editor
                     }
                     else if (auto started = project_assets.prepareMeshGeometry(id); !started)
                     {
-                        query.setGeometryFailure(id, {scene::EMeshQueryError::ASSET_FAILURE, {}, id});
+                        if (started.error().code != EAssetImportError::BUSY)
+                        {
+                            query.setGeometryFailure(id, {scene::EMeshQueryError::ASSET_FAILURE, {}, id});
+                        }
                     }
                 }
             };

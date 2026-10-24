@@ -515,6 +515,11 @@ int main(int argc, char** argv)
         assert((*second)->update({{640, 480}, 0.016F, {1.5F, 2.0F}}, slot));
         assert(one.displayedSize() == (ui::Size{32, 24}));
         assert(one.interaction().framebuffer_scale == (ui::Vec2{1.5F, 2.0F}));
+        one.setImageExtent({200, 100});
+        assert((*second)->update({{640, 480}, 0.016F, {1.5F, 2.0F}}, slot));
+        assert(one.interaction().available_size == (ui::Size{32, 24}));
+        assert(one.displayedSize() == (ui::Size{32, 12})); // 48 x 24 physical pixels; bars are outside the image item.
+        one.setImageExtent({});
         one.setSize({40, 28});
         assert((*second)->update({{640, 480}, 0.016F}, slot));
         assert(one.interaction().resized && one.displayedSize() == (ui::Size{40, 28}));

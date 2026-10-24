@@ -4,8 +4,9 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/scene/CameraTargetsComponent.hpp>
+#include <lux/engine/scene/RenderAssetInput.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
-#include <lux/engine/scene/SceneRenderInputs.hpp>
 #include <lux/engine/scene/SceneSystem.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/scene/render/visibility.h>
@@ -29,7 +30,7 @@ namespace lux::scene
         rendering::RenderRequester& client;
         execution::ExecutionRuntime& execution;
         rendering::RenderAssets& assets;
-        SceneRenderInputs& inputs;
+        RenderAssetInput& assets_input;
         // Optional project VFS; copied into each accepted load, never selected globally by workers.
         process::asset_loading::AssetReadPort source;
     };
@@ -64,16 +65,23 @@ namespace lux::scene
         [[nodiscard]] SceneStageResult maintain(SceneStageContext&) noexcept;
         [[nodiscard]] SceneStageResult prepareInputs(SceneStageContext&) noexcept;
         [[nodiscard]] SceneStageResult publish(SceneStageContext&) noexcept;
+        // Call in a Main Scene edit safe point. These functions patch only intent; maintain adopts it later.
+        [[nodiscard]] render::RenderResult<CameraTargetId> addCameraTarget(
+            simulation::ecs::Entity,
+            CameraTarget
+        ) noexcept;
+        [[nodiscard]] bool updateCameraTarget(simulation::ecs::Entity, CameraTargetId, CameraTarget) noexcept;
+        [[nodiscard]] bool removeCameraTarget(simulation::ecs::Entity, CameraTargetId) noexcept;
         // Main-thread diagnostic/viewport association. Null until the candidate is actually attached;
         // this identity is a borrow, not a promise that a GPU frame has completed.
-        [[nodiscard]] render::AttachmentId attachment(SceneViewId) const noexcept;
-        [[nodiscard]] render::RenderError viewError(SceneViewId) const noexcept;
+        [[nodiscard]] render::AttachmentId attachment(simulation::ecs::Entity, CameraTargetId) const noexcept;
+        [[nodiscard]] render::RenderError cameraTargetError(simulation::ecs::Entity, CameraTargetId) const noexcept;
         // A failed asset candidate does not remove the previously adopted instance binding.
         [[nodiscard]] render::RenderError assetError(simulation::ecs::Entity) const noexcept;
         // True only after an actual instance has adopted the current asset binding.
         [[nodiscard]] bool visualReady(simulation::ecs::Entity) const noexcept;
         // After removing the input, keep its Target alive until this returns true.
-        [[nodiscard]] bool viewRetired(SceneViewId) const noexcept;
+        [[nodiscard]] bool cameraTargetRetired(simulation::ecs::Entity, CameraTargetId) const noexcept;
 
     private:
         struct Impl;

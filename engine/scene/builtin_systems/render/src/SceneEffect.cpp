@@ -2,6 +2,7 @@
 #include <lux/engine/render/features/MeshShadowFeature.hpp>
 #include <lux/engine/render/features/MeshVisibilityFeature.hpp>
 #include <lux/engine/scene/SceneEffect.hpp>
+#include <lux/engine/scene/SceneParameters.hpp>
 
 namespace lux::scene::detail
 {

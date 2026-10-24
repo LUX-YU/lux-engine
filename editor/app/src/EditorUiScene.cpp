@@ -28,15 +28,23 @@ namespace lux::editor
         {
             transaction_pending = true;
             const bool cleanup = closing;
+            const auto revision = requested_revision;
             auto operation = stdexec::starts_on(rendering.execution().mainScheduler(), std::move(work));
             auto result = execution::taskResult(std::move(operation));
             auto accepted = rendering.execution().spawn(stdexec::then(
                 std::move(result),
-                [this, cleanup](auto result) noexcept
+                [this, cleanup, revision](auto result) noexcept
                 {
                     failure = result                           ? RenderError{}
                               : result.error().domainFailure() ? *result.error().domainFailure()
                                                                : RenderError{kRuntimeState};
+                    failed_revision = revision;
+                    retry_tick = rendering.stats().ticks;
+                    const bool retry = failure.type == kDeviceBusy || failure.type == kRuntimeCapacity;
+                    if (failure.type != 0 && !retry && !closing)
+                    {
+                        reportRenderFailure(failure, "Configure UI output");
+                    }
                     if (closing && !cleanup && failure.type != 0)
                     {
                         reportRenderFailure(failure, "Configure closing UI output");
@@ -133,13 +141,11 @@ namespace lux::editor
                 co_await requestRenderCommand<CreateTarget>(client, {desired_description, surface});
             if (created_target.error.type != 0)
             {
-                if (!desired_active && created_target.error.type == kDeviceArgument)
-                {
-                    co_return RenderResult<void>{}; // Minimize raced the submitted creation; retry on restore.
-                }
                 co_return cxx::unexpected(created_target.error);
             }
             target = created_target.target;
+            target_epoch = created_target.epoch;
+            output_available = created_target.output_available;
             description = created_target.description;
             desired_description.format = description.format;
             co_return co_await rebuildImages();
@@ -231,19 +237,17 @@ namespace lux::editor
             if (active && (desired != description || resize_required))
             {
                 const auto resized = co_await requestRenderCommand<ResizeTarget>(client, {target, desired});
+                output_available = resized.output_available;
                 if (resized.error.type != 0)
                 {
-                    if (!desired_active && resized.error.type == kDeviceArgument)
-                    {
-                        resize_required = true;
-                        co_return RenderResult<void>{};
-                    }
                     co_return cxx::unexpected(resized.error);
                 }
                 description = resized.description;
+                target_epoch = resized.epoch;
                 resize_required = false;
+                applied_active = false;
             }
-            if (active != applied_active)
+            if (!active && applied_active)
             {
                 const auto changed = co_await requestRenderCommand<SetTargetActive>(client, {target, active});
                 if (changed.error.type != 0)
@@ -314,6 +318,7 @@ namespace lux::editor
         SceneId scene;
         ViewId view;
         TargetId target;
+        std::uint64_t target_epoch{};
         EffectId effect, effect_to_release;
         AttachmentId attachment;
         GraphPassId draw_pass;
@@ -328,6 +333,9 @@ namespace lux::editor
         bool desired_active = true, applied_active = true;
         bool transaction_pending = false, closing = false;
         bool resize_required = false;
+        bool output_available = false;
+        std::uint64_t requested_revision = 1, failed_revision = 0, retry_tick = 0;
+        std::uint64_t resynchronization{};
         RenderError failure;
     };
 
@@ -365,11 +373,20 @@ namespace lux::editor
 
     void EditorUiScene::setExtent(std::uint32_t width, std::uint32_t height, bool active) noexcept
     {
-        impl_->desired_active = active && width != 0 && height != 0;
+        const bool desired_active = active && width != 0 && height != 0;
+        const bool changed =
+            impl_->desired_active != desired_active ||
+            (width && height &&
+             (impl_->desired_description.width != width || impl_->desired_description.height != height));
+        impl_->desired_active = desired_active;
         if (width && height)
         {
             impl_->desired_description.width = width;
             impl_->desired_description.height = height;
+        }
+        if (changed)
+        {
+            ++impl_->requested_revision;
         }
     }
 
@@ -396,6 +413,7 @@ namespace lux::editor
             }
             impl_->desired_images = std::move(images);
             ++impl_->desired_image_revision;
+            ++impl_->requested_revision;
         }
         return {};
     }
@@ -421,6 +439,7 @@ namespace lux::editor
         if (std::erase_if(impl_->desired_images, [&](const auto& image) noexcept { return image.token == token; }))
         {
             ++impl_->desired_image_revision;
+            ++impl_->requested_revision;
         }
     }
 
@@ -439,7 +458,7 @@ namespace lux::editor
         }
         if (state.closing)
         {
-            if (state.failure.type != 0 && state.failure.type != kRuntimeCapacity)
+            if (state.failure.type != 0 && state.failure.type != kRuntimeCapacity && state.failure.type != kDeviceBusy)
             {
                 return cxx::unexpected(state.failure);
             }
@@ -452,7 +471,15 @@ namespace lux::editor
         }
         if (state.failure.type != 0)
         {
-            return cxx::unexpected(state.failure);
+            const bool retry = state.failure.type == kDeviceBusy || state.failure.type == kRuntimeCapacity;
+            const bool progressed = retry && state.rendering.stats().ticks != state.retry_tick;
+            const bool new_intent = state.requested_revision != state.failed_revision;
+            if (!progressed && !new_intent)
+            {
+                return state.target.isNull() ? FrameworkResult<void>{cxx::unexpected(state.failure)}
+                                             : FrameworkResult<void>{};
+            }
+            state.failure = {};
         }
         if (state.target.isNull() && !state.desired_active)
         {
@@ -460,19 +487,19 @@ namespace lux::editor
         }
         const bool resize = state.desired_active && (state.target.isNull() || state.resize_required ||
                                                      state.description != state.desired_description);
-        const bool changed = resize || state.desired_active != state.applied_active || !imagesApplied();
+        const bool changed = resize || (!state.desired_active && state.applied_active) || !imagesApplied();
         return changed ? state.startTransaction(state.reconfigure()) : FrameworkResult<void>{};
     }
 
     FrameworkResult<bool> EditorUiScene::outputReady() const noexcept
     {
         const auto& state = *impl_;
-        if (state.failure.type != 0)
+        if (state.failure.type != 0 && state.target.isNull())
         {
             return cxx::unexpected(state.failure);
         }
-        return !state.closing && !state.transaction_pending && state.desired_active && !state.resize_required &&
-               !state.attachment.isNull();
+        return state.output_available && !state.closing && !state.transaction_pending && state.desired_active &&
+               !state.resize_required && !state.attachment.isNull();
     }
 
     ui::DrawData& EditorUiScene::captureBuffer(FrameInput& frame) noexcept
@@ -494,6 +521,24 @@ namespace lux::editor
         if (!appended)
         {
             return appended;
+        }
+        const auto resynchronization = state.rendering.mainClient().resynchronization();
+        if (!state.applied_active || state.resynchronization != resynchronization)
+        {
+            auto active = state.rendering.mainClient().bind<SetTargetActive>();
+            if (!active)
+            {
+                return cxx::unexpected(active.error());
+            }
+            if (auto resumed =
+                    state.rendering.mainClient()
+                        .append(frame, *active, SetTargetActive::Request{state.target, true, state.target_epoch});
+                !resumed)
+            {
+                return resumed;
+            }
+            state.applied_active = true;
+            state.resynchronization = resynchronization;
         }
         frame.group_ends.push_back(frame.commands.size());
         return {};

@@ -214,11 +214,10 @@ int main()
         }
     ));
 
-    scene::SceneRenderInputs inputs;
-    scene::SceneViewRequest view_request;
+    scene::RenderAssetInput inputs;
+    scene::CameraTarget view_request;
     view_request.description = {64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1};
     view_request.target = call<CreateTarget>(*rendering, {view_request.description}).target;
-    const auto first_view = inputs.addView(view_request);
     scene::RenderSystemDependencies dependencies{rendering->mainClient(), execution, *assets, inputs};
     simulation::ecs::Registry registry;
     const auto camera = registry.create();
@@ -249,6 +248,9 @@ int main()
     CHECK(codec.decode(encoded_configuration, &decoded_configuration));
     CHECK(decoded_configuration.shadow_resolution == 64 && scene::validRenderConfiguration(decoded_configuration));
     auto scene = std::make_unique<scene::RenderSystem>(registry, dependencies, scene_configuration);
+    const auto first_added = scene->addCameraTarget(camera, view_request);
+    CHECK(first_added);
+    const auto first_view = *first_added;
     std::vector<std::pair<AttachmentId, MeshViewParameters>> published_views;
     std::uint64_t completed_frames = 0;
     std::stop_source scene_stop;
@@ -359,12 +361,13 @@ int main()
             }
         ));
     };
-    while (scene->attachment(first_view).isNull() || !published(scene->attachment(first_view)) || completed_frames < 12)
+    while (scene->attachment(camera, first_view).isNull() || !published(scene->attachment(camera, first_view)) ||
+           completed_frames < 12)
     {
         CHECK(std::chrono::steady_clock::now() < deadline);
         drive(true);
     }
-    const auto* initial_parameters = published(scene->attachment(first_view));
+    const auto* initial_parameters = published(scene->attachment(camera, first_view));
     CHECK(initial_parameters != nullptr);
     CHECK(std::abs(initial_parameters->view[14] + 3.F) < .0001F);
     const auto first_matrix = initial_parameters->view;
@@ -372,52 +375,57 @@ int main()
         camera,
         [](auto& pose) noexcept { pose.value.translation().x() = 1; }
     );
-    while (published(scene->attachment(first_view))->view == first_matrix)
+    while (published(scene->attachment(camera, first_view))->view == first_matrix)
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
-    CHECK(std::abs(published(scene->attachment(first_view))->view[12] + 1.F) < .0001F);
-    // An Editor observation works without a primary ECS Camera and uses its own aspect ratio.
-    scene::SceneCameraInput free_camera;
-    free_camera.transform = camera_transform;
-    scene::SceneViewRequest editor_view = view_request;
-    editor_view.camera = free_camera;
+    CHECK(std::abs(published(scene->attachment(camera, first_view))->view[12] + 1.F) < .0001F);
+    // A second ordinary ECS CameraMan has no author primary role and owns an independent output.
+    const auto editor_camera = registry.create();
+    registry.emplace<scene::Camera>(editor_camera);
+    registry.emplace<simulation::ecs::WorldTransform3D>(editor_camera, camera_transform);
+    scene::CameraTarget editor_view = view_request;
     editor_view.description.width = 128;
     editor_view.target = call<CreateTarget>(*rendering, {editor_view.description}).target;
-    const auto second_view = inputs.addView(editor_view);
-    while (scene->attachment(second_view).isNull() || !published(scene->attachment(second_view)))
+    const auto second_added = scene->addCameraTarget(editor_camera, editor_view);
+    CHECK(second_added);
+    const auto second_view = *second_added;
+    while (scene->attachment(editor_camera, second_view).isNull() ||
+           !published(scene->attachment(editor_camera, second_view)))
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
     CHECK(
         std::abs(
-            published(scene->attachment(first_view))->projection[0] /
-                published(scene->attachment(second_view))->projection[0] -
+            published(scene->attachment(camera, first_view))->projection[0] /
+                published(scene->attachment(editor_camera, second_view))->projection[0] -
             2.F
         ) < .0001F
     );
-    CHECK(std::abs(published(scene->attachment(second_view))->view[12]) < .0001F);
-    const auto first_attachment = scene->attachment(first_view);
-    const auto second_attachment = scene->attachment(second_view);
+    CHECK(std::abs(published(scene->attachment(editor_camera, second_view))->view[12]) < .0001F);
+    const auto first_attachment = scene->attachment(camera, first_view);
+    const auto second_attachment = scene->attachment(editor_camera, second_view);
     registry.patch<scene::Camera>(camera, [](auto& value) noexcept { value.primary = false; });
-    while (!scene->attachment(first_view).isNull())
+    drive(true);
+    CHECK(scene->attachment(camera, first_view) == first_attachment); // Selection belongs to Editor, not RenderSystem.
+    registry.remove<scene::Camera>(camera);
+    while (!scene->attachment(camera, first_view).isNull())
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
-    CHECK(scene->viewError(first_view).type != 0);
-    CHECK(scene->attachment(second_view) == second_attachment);
-    view_request.camera = scene::SceneEntityCamera{camera};
-    CHECK(inputs.updateView(first_view, view_request));
-    while (scene->attachment(first_view).isNull() || !published(scene->attachment(first_view)))
+    CHECK(scene->cameraTargetError(camera, first_view).type != 0);
+    CHECK(scene->attachment(editor_camera, second_view) == second_attachment);
+    registry.emplace<scene::Camera>(camera);
+    while (scene->attachment(camera, first_view).isNull() || !published(scene->attachment(camera, first_view)))
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
-    CHECK(scene->attachment(first_view) != first_attachment);
-    CHECK(scene->viewError(first_view).type == 0);
+    CHECK(scene->attachment(camera, first_view) != first_attachment);
+    CHECK(scene->cameraTargetError(camera, first_view).type == 0);
     const auto submission_start = rendering->stats().submissions;
     for (unsigned frame = 0; frame < 12; ++frame)
     {
@@ -453,9 +461,9 @@ int main()
     }
     cpu_entered.wait();
     compilation_held = true;
-    const auto previous_attachment = scene->attachment(first_view);
+    const auto previous_attachment = scene->attachment(camera, first_view);
     view_request.target = call<CreateTarget>(*rendering, {view_request.description}).target;
-    CHECK(inputs.updateView(first_view, view_request));
+    CHECK(scene->updateCameraTarget(camera, first_view, view_request));
     while (!projected_during_compile)
     {
         CHECK(std::chrono::steady_clock::now() < deadline);
@@ -468,7 +476,7 @@ int main()
     CHECK(projected_during_compile);
     compilation_held = false;
     release_cpu.release(2);
-    while (scene->attachment(first_view) == previous_attachment)
+    while (scene->attachment(camera, first_view) == previous_attachment)
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
@@ -497,7 +505,7 @@ int main()
         drive(false);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
-    CHECK(assets->mesh({mesh_id, inputs.asset_revision}) != nullptr);
+    CHECK(assets->mesh({mesh_id, inputs.revision}) != nullptr);
     // A valid layered asset reaches the real upload Handler, which rejects this single-layer
     // Storage contract. No previous instance/Effect is removed just because a candidate failed.
     auto rejected_provider = std::make_shared<CookedAssets>();
@@ -513,11 +521,11 @@ int main()
     std::array<asset::MountLease, 1> previous_mount{std::move(mount)};
     const std::array<asset::MountDesc, 1> rejected_mount{{{"/assets", rejected_provider}}};
     auto rejected_registration = take(vfs.replaceMounts(previous_mount, rejected_mount));
-    const auto last_good = scene->attachment(first_view);
-    const auto previous_asset_revision = inputs.asset_revision;
-    const auto last_mesh = assets->mesh({mesh_id, inputs.asset_revision})->mesh;
-    inputs.asset_revision += 2; // Revision one was preloaded by the independent Asset Client check.
-    inputs.asset_snapshot = vfs.view().capture();
+    const auto last_good = scene->attachment(camera, first_view);
+    const auto previous_asset_revision = inputs.revision;
+    const auto last_mesh = assets->mesh({mesh_id, inputs.revision})->mesh;
+    inputs.revision += 2; // Revision one was preloaded by the independent Asset Client check.
+    inputs.snapshot = vfs.view().capture();
     while (scene->assetError(first).type == 0)
     {
         drive(true);
@@ -525,7 +533,7 @@ int main()
     }
     CHECK(scene->assetError(first).type == kDeviceArgument);
     CHECK(
-        scene->attachment(first_view) == last_good &&
+        scene->attachment(camera, first_view) == last_good &&
         assets->mesh({mesh_id, previous_asset_revision})->mesh == last_mesh
     );
     const auto continued = rendering->stats().submissions;
@@ -536,10 +544,10 @@ int main()
     }
     const std::array<asset::MountDesc, 1> restored_mount{{{"/assets", provider}}};
     auto restored_registration = take(vfs.replaceMounts(rejected_registration, restored_mount));
-    ++inputs.asset_revision;
-    inputs.asset_snapshot = vfs.view().capture();
+    ++inputs.revision;
+    inputs.snapshot = vfs.view().capture();
     auto next_diagnostic = std::chrono::steady_clock::now() + 2s;
-    while (scene->attachment(first_view) == last_good || scene->assetError(first).type != 0)
+    while (scene->attachment(camera, first_view) == last_good || scene->assetError(first).type != 0)
     {
         drive(true);
         if (std::chrono::steady_clock::now() > next_diagnostic)
@@ -548,14 +556,14 @@ int main()
                 stderr,
                 "Candidate recovery: mesh=%d material=%d texture=%d error=%llu graphs=%llu queued=%d mesh_error=%llu "
                 "texture_error=%llu commands=%llu\n",
-                assets->mesh({mesh_id, inputs.asset_revision}) != nullptr,
-                assets->material({material_id, inputs.asset_revision}) != nullptr,
-                assets->texture({texture_id, inputs.asset_revision}) != nullptr,
+                assets->mesh({mesh_id, inputs.revision}) != nullptr,
+                assets->material({material_id, inputs.revision}) != nullptr,
+                assets->texture({texture_id, inputs.revision}) != nullptr,
                 static_cast<unsigned long long>(scene->assetError(first).type),
                 static_cast<unsigned long long>(rendering->stats().compiled_graphs),
                 rendering->mainClient().hasQueuedFrameCommands(),
-                static_cast<unsigned long long>(assets->failure({mesh_id, inputs.asset_revision}).type),
-                static_cast<unsigned long long>(assets->failure({texture_id, inputs.asset_revision}).type),
+                static_cast<unsigned long long>(assets->failure({mesh_id, inputs.revision}).type),
+                static_cast<unsigned long long>(assets->failure({texture_id, inputs.revision}).type),
                 static_cast<unsigned long long>(rendering->stats().commands)
             );
             next_diagnostic += 10s;
@@ -564,7 +572,7 @@ int main()
     }
     // Separate project generations must not alias the same revision in the shared upload cache.
     const RenderAssetVersion other_project{texture_id, 1, 9};
-    CHECK(assets->acquireTexture(other_project, endpoint->port(), inputs.asset_snapshot));
+    CHECK(assets->acquireTexture(other_project, endpoint->port(), inputs.snapshot));
     while (!assets->texture(other_project))
     {
         drive(true);
@@ -619,8 +627,8 @@ int main()
         drive(true);
     }
     CHECK(rendering->stats().compiled_graphs == compiled_before_removal);
-    CHECK(inputs.removeView(second_view));
-    while (!scene->viewRetired(second_view))
+    CHECK(scene->removeCameraTarget(editor_camera, second_view));
+    while (!scene->cameraTargetRetired(editor_camera, second_view))
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);

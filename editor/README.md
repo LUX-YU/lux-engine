@@ -233,7 +233,7 @@ across reimport; ambiguous source identities fail. AssetBrowserPane displays thi
 copied AssetId/revision drag payload. SceneViewportPane creates one author SceneEdit through ModelPlacement;
 RenderSystem performs the asynchronous GPU projection.
 
-SceneRenderInputs publishes one captured VFS table with its asset revision. Material and texture loads use
+RenderAssetInput publishes one captured VFS table with its asset revision. Material and texture loads use
 that same snapshot, while RenderAssetVersion distinguishes project generations. A failed unadopted upload
 candidate retains the existing Scene binding; it does not clear the old picture first. RenderSystem exposes
 per-entity pending/error queries for tools without exposing RenderServer or Storage instances.
@@ -242,3 +242,12 @@ The current viewport places imported models on the world Y=0 plane. General pick
 and isolated Play belong to the Scene tools workflow; their implementation status is recorded separately,
 not inferred from successful importing. Old published product files are retained until a reference-aware
 cleanup is provided; importing never deletes a prior published package that a reader may still need.
+
+Camera outputs are runtime components on ordinary ECS CameraMan entities. ProjectScenes owns each viewport
+Target and temporary editor camera; RenderSystem owns the derived View/Effect/Attachment records. The editor
+camera has no author WorldObjectId and is excluded from save/Undo/Play author snapshots. Picking reads the same
+selected ECS camera and adopted image aspect that rendering uses.
+
+A viewport keeps its image token while Resize is pending. ImageElement fits the last adopted physical aspect
+inside its logical rectangle; framebuffer scale is applied exactly once when requesting pixels. Resize success
+is resumed in a complete frame carrying matching camera/UI data and the replied Target epoch.

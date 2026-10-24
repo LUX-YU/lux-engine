@@ -228,12 +228,28 @@ not GPU completion; physical cleanup still uses only DeviceSession.cleanup_scope
 including inherited mip ranges. Distance 1 is supported. Image initial values are explicit; Buffer history currently
 starts at zero and requires a multiple-of-four byte size. The instance owns F+1 physical slots, chooses a free write
 slot by actual completion frontiers, and publishes only after the instance submission is accepted. A skipped writer
-does not publish a sample. Descriptor views are created at Attach, not on each rotation. Resize creates a fresh
-candidate; `InvalidateHistory` invalidates the selected attachment histories at the next preparation boundary.
+does not publish a sample. Descriptor views are created at Attach, not on each rotation. Resize replaces only
+History banks whose physical extent changed; other banks retain their allocation and invalidate their samples.
+`InvalidateHistory` invalidates the selected attachment histories at the next preparation boundary.
 An individual Previous read can name a compatible non-History resource as its first-sample fallback.
 Analysis retains both inputs and their hazards; Prepare selects existing views or copy sources without copying
 the fallback into a History slot. Different reads can declare different initial inputs. Fallback views are cached
 with their frame bindings and change only when their physical input changes.
+
+Resize keeps the `RenderGraphInstance`, its Storage subscriptions, Feature bindings, descriptor pools and immutable
+plan. Compiled reverse indexes locate the affected views, barriers, dispatches and copy layouts. A finite
+`ResizeResources` candidate owns only replacement physical objects; adoption exchanges those objects without
+recreating unrelated buffers or fixed-size images. Alias migration includes the connected closure of old and new
+allocation groups. Actual placement still uses `instantiatePlacements` and the existing batch-dependency proof.
+
+The Server coordinates a Target's producer and consumers as one resource adoption. Existing Queue completion
+Senders wait for their captured accepted frontiers while the RenderThread continues other completion work.
+Replaced objects use the sole `DeviceSession::cleanup_scope_`. WSI close retains its separate presentation
+requirement; a failed replacement after closing the old SwapChain leaves an unavailable surface, with old output
+borrows withdrawn. Resize replies describe adopted resources, not rendered pixels or completed presentation. Success pauses the
+Target. Publish matching inputs and `SetTargetActive{target, true, epoch}` in the next complete frame; activation
+checks the replied epoch so an older queued frame cannot resume resized output. A failed reply reports whether
+physical output remains available, including an unavailable SwapChain after failed replacement.
 
 `declareCondition` declares a dense Boolean input; `PassCondition` selects that input or History validity.
 Attachment conditions are zero/one bytes and are sampled once during preparation. Conditional writes require

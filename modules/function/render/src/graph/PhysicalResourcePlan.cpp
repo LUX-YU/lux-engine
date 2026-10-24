@@ -277,4 +277,44 @@ namespace lux::render::detail
         }
         return placements;
     }
+
+    void expandMemoryMigration(
+        std::span<const MemoryPlacement> previous,
+        std::span<const MemoryPlacement> next,
+        std::span<std::uint8_t> changed
+    ) noexcept
+    {
+        std::vector<std::uint32_t> parent(changed.size());
+        std::iota(parent.begin(), parent.end(), 0);
+        const auto root = [&](std::uint32_t index)
+        {
+            while (parent[index] != index)
+            {
+                parent[index] = parent[parent[index]];
+                index = parent[index];
+            }
+            return index;
+        };
+        std::vector<std::uint32_t> previous_roots(changed.size(), kGraphInvalidIndex);
+        for (std::uint32_t slot = 0; slot < changed.size(); ++slot)
+        {
+            auto& first = previous_roots[previous[slot].allocation];
+            if (first == kGraphInvalidIndex)
+            {
+                first = slot;
+            }
+            parent[root(slot)] = root(first);
+            parent[root(slot)] = root(next[slot].allocation);
+        }
+        std::vector<std::uint8_t> migrate(parent.size());
+        for (std::uint32_t slot = 0; slot < changed.size(); ++slot)
+        {
+            migrate[root(slot)] |= changed[slot];
+        }
+        for (std::uint32_t slot = 0; slot < changed.size(); ++slot)
+        {
+            changed[slot] = migrate[root(slot)];
+        }
+    }
+
 } // namespace lux::render::detail

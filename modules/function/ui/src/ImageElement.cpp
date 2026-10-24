@@ -31,6 +31,17 @@ namespace lux::ui
         uv_max_ = maximum;
     }
 
+    void ImageElement::setImageExtent(Size physical_pixels) noexcept
+    {
+        const bool invalid = !std::isfinite(physical_pixels.width) || !std::isfinite(physical_pixels.height) ||
+                             physical_pixels.width < 0 || physical_pixels.height < 0;
+        if (!isOnAffinityThread() || invalid)
+        {
+            detail::failContract();
+        }
+        image_extent_ = physical_pixels;
+    }
+
     void ImageElement::setSize(Size size) noexcept
     {
         const bool is_invalid_size =
@@ -52,13 +63,30 @@ namespace lux::ui
     void ImageElement::draw() noexcept
     {
         const auto available = rect().size;
-        const auto origin = ImGui::GetCursorScreenPos();
+        auto origin = ImGui::GetCursorScreenPos();
         const auto previous_size = interaction_.size;
         interaction_ = {};
         const auto framebuffer_scale = ImGui::GetIO().DisplayFramebufferScale;
         interaction_.framebuffer_scale = {framebuffer_scale.x, framebuffer_scale.y};
-        interaction_.content_origin = {origin.x, origin.y};
+        interaction_.available_size = available;
         interaction_.size = available;
+        if (image_extent_.width > 0 && image_extent_.height > 0)
+        {
+            const float aspect =
+                image_extent_.width * framebuffer_scale.y / (image_extent_.height * framebuffer_scale.x);
+            if (available.height > 0 && available.width / available.height > aspect)
+            {
+                interaction_.size.width = available.height * aspect;
+            }
+            else
+            {
+                interaction_.size.height = available.width / aspect;
+            }
+            origin.x += (available.width - interaction_.size.width) * 0.5F;
+            origin.y += (available.height - interaction_.size.height) * 0.5F;
+            ImGui::SetCursorScreenPos(origin);
+        }
+        interaction_.content_origin = {origin.x, origin.y};
         interaction_.resized = previous_size != interaction_.size;
         if (interaction_.size.width <= 0 || interaction_.size.height <= 0)
         {

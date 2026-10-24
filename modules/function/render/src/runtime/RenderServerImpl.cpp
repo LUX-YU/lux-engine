@@ -1,5 +1,6 @@
 #include <exec/variant_sender.hpp>
 #include <lux/engine/render/device/DescriptorTable.hpp>
+#include <lux/engine/render/execution/ResizeResources.hpp>
 #include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 #include <map>
@@ -230,7 +231,7 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        if (attachmentsSubmitting(effect->attachments))
+        if (!canChangeAttachments(effect->attachments))
         {
             output_response.error = RenderError{kDeviceBusy};
             return;
@@ -250,9 +251,7 @@ namespace lux::render
         StorageSet& scene,
         StorageSet& view,
         StorageSet& attachment,
-        std::span<const TargetImageInput> target_images,
-        TargetId replaced_target,
-        detail::TargetOutput replaced_output
+        std::span<const TargetImageInput> target_images
     ) noexcept
     {
         const auto& plan = *effect.plan;
@@ -314,7 +313,7 @@ namespace lux::render
         }
         candidate.instance =
             std::make_unique<detail::RenderGraphInstance>(*device, frames->frameCount(), plan, output, parameter_bytes);
-        candidate.target_images.assign(target_images.begin(), target_images.end());
+        candidate.target_images.reserve(target_images.size());
         std::vector<GraphResourceId> image_resources;
         for (const auto& input : target_images)
         {
@@ -358,7 +357,12 @@ namespace lux::render
             {
                 return cxx::unexpected(RenderError{kCommandContract});
             }
-            const auto images = input.target == replaced_target ? replaced_output : source->output();
+            if (source->resizing)
+            {
+                return cxx::unexpected(RenderError{kDeviceBusy});
+            }
+            candidate.target_images.push_back({input.target, id});
+            const auto images = source->output();
             const bool incompatible = !images.description.sampled || images.description.samples != image->samples ||
                                       images.description.format != image->format || image->layers != 1 ||
                                       image->mips != 1;
@@ -602,9 +606,22 @@ namespace lux::render
         output_response = {};
     }
 
-    bool RenderServer::Impl::attachmentsSubmitting(std::span<const AttachmentId> ids) const noexcept
+    bool RenderServer::Impl::canChangeAttachments(std::span<const AttachmentId> ids) const noexcept
     {
-        return std::ranges::any_of(ids, [&](auto id) { return frames->submitting(*attachments.find(id)->instance); });
+        return std::ranges::all_of(
+            ids,
+            [&](auto id)
+            {
+                const auto& attachment = *attachments.find(id);
+                auto* instance = attachment.instance.get();
+                const bool target_resizing = targets.find(attachment.target)->resizing ||
+                                             std::ranges::any_of(
+                                                 attachment.target_images,
+                                                 [&](const auto& input) { return targets.find(input.target)->resizing; }
+                                             );
+                return !target_resizing && frames->canChangeResources({&instance, 1});
+            }
+        );
     }
 
     void RenderServer::Impl::detachAttachment(AttachmentId id) noexcept
@@ -650,6 +667,11 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
+        if (target->resizing)
+        {
+            output_response.error = RenderError{kDeviceBusy};
+            return;
+        }
         if (target->surface() && !target->surface()->available())
         {
             output_response.error = RenderError{kRuntimeState};
@@ -675,7 +697,7 @@ namespace lux::render
                 return;
             }
             const bool different_view = previous->scene != scene_id || previous->view != view_id;
-            if (different_view || frames->submitting(*previous->instance))
+            if (different_view || !canChangeAttachments({&_request.replaces, 1}))
             {
                 output_response.error = RenderError{different_view ? kRuntimeIdentity : kDeviceBusy};
                 return;
@@ -799,60 +821,6 @@ namespace lux::render
         return false;
     }
 
-    RenderResult<void> RenderServer::Impl::replaceTargetResources(
-        TargetId id,
-        RenderTarget& target,
-        RenderTarget::VPhysicalTarget physical
-    ) noexcept
-    {
-        const auto output = std::visit([](const auto& value) noexcept { return value->output(); }, physical);
-        std::vector<std::pair<AttachmentId, EffectAttachment>> candidates;
-        auto affected = target.consumers;
-        if (!target.attachment.isNull())
-        {
-            affected.push_back(target.attachment);
-        }
-        candidates.reserve(affected.size());
-        for (auto attachment : affected)
-        {
-            auto& group = *attachments.find(attachment);
-            const auto& effect = *effects.find(group.effect);
-            auto candidate = prepareAttachment(
-                effect,
-                group.target == id ? output : targets.find(group.target)->output(),
-                scenes.find(group.scene)->storages,
-                scenes.find(group.scene)->views.find(group.view)->storages,
-                *group.storages,
-                group.target_images,
-                id,
-                output
-            );
-            if (!candidate)
-            {
-                return cxx::unexpected(candidate.error());
-            }
-            if (auto values =
-                    candidate->instance->setInputs(group.instance->instanceParameters(), group.instance->conditions());
-                !values)
-            {
-                return cxx::unexpected(values.error());
-            }
-            candidate->instance->setViewport(group.instance->viewport());
-            candidates.emplace_back(attachment, std::move(*candidate));
-        }
-        // Publish only after every affected descriptor bank and graph instance is prepared.
-        for (auto& [attachment, candidate] : candidates)
-        {
-            attachments.find(attachment)->swapResources(candidate);
-        }
-        target.physical = std::move(physical);
-        target.description = output.description;
-        ++target.epoch;
-        active_frame_inputs_dirty = true;
-        storages_created.store(resources->creations());
-        return {};
-    }
-
     exec::task<AckResponse> RenderServer::Impl::updateDrawList(UpdateDrawList::Request&& input) noexcept
     {
         auto* attachment = attachments.find(input.attachment);
@@ -887,7 +855,7 @@ namespace lux::render
         }
         for (auto& view : scene->views)
         {
-            if (attachmentsSubmitting(view.attachments))
+            if (!canChangeAttachments(view.attachments))
             {
                 output_response.error = RenderError{kDeviceBusy};
                 return;
@@ -977,7 +945,7 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        if (attachmentsSubmitting(view->attachments))
+        if (!canChangeAttachments(view->attachments))
         {
             output_response.error = RenderError{kDeviceBusy};
             return;
@@ -1025,98 +993,225 @@ namespace lux::render
             }
             id = targets.emplace(RenderTarget::VPhysicalTarget{std::move(*physical)});
         }
-        response = TargetCreated{{}, id, 1, targets.find(id)->description};
+        response = TargetCreated{{}, id, 1, targets.find(id)->description, true};
+    }
+
+    RenderResult<RenderServer::Impl::ResizeCandidates> RenderServer::Impl::prepareTargetResize(
+        TargetId target,
+        detail::TargetOutput output,
+        std::span<const AttachmentId> affected
+    ) noexcept
+    {
+        ResizeCandidates candidates;
+        candidates.reserve(affected.size());
+        for (auto id : affected)
+        {
+            auto& attachment = *attachments.find(id);
+            std::vector<detail::RenderGraphInstance::ImageReplacement> inputs;
+            for (const auto& image : attachment.target_images)
+            {
+                if (image.target == target)
+                {
+                    inputs.push_back({image.resource, output.frames});
+                }
+            }
+            auto changed = attachment.instance->prepareResize(
+                attachment.target == target ? output : targets.find(attachment.target)->output(),
+                inputs
+            );
+            if (!changed)
+            {
+                return cxx::unexpected(changed.error());
+            }
+            candidates.emplace_back(id, std::move(*changed));
+        }
+        return candidates;
     }
 
     exec::task<TargetCreated> RenderServer::Impl::resizeTarget(ResizeTarget::Request&& request) noexcept
     {
         const auto input = std::move(request);
+        const auto response = [this, id = input.target](RenderError error = {}) noexcept
+        {
+            const auto* current = targets.find(id);
+            if (!current)
+            {
+                return TargetCreated{error};
+            }
+            const bool available = !current->surface() || current->surface()->available();
+            return TargetCreated{error, id, current->epoch, current->description, available};
+        };
         if (auto valid = input.description.validate(); !valid)
         {
-            co_return TargetCreated{valid.error()};
+            co_return response(valid.error());
         }
         auto* target = targets.find(input.target);
         if (!target)
         {
-            co_return TargetCreated{RenderError{kRuntimeIdentity}};
+            co_return response(RenderError{kRuntimeIdentity});
         }
         const bool different_kind = input.description.kind != target->description.kind;
         const auto maximum = device->description().dimensions.attachmentMaxDim;
         const bool oversized = input.description.width > maximum || input.description.height > maximum;
-        if (different_kind || oversized)
+        const bool removes_sampling = !input.description.sampled && !target->consumers.empty();
+        if (different_kind || oversized || removes_sampling)
         {
-            co_return TargetCreated{RenderError{kCommandContract}};
+            co_return response(RenderError{kCommandContract});
         }
+        auto affected = target->consumers;
         if (!target->attachment.isNull())
         {
+            affected.push_back(target->attachment);
             const auto& attachment = *attachments.find(target->attachment);
-            if (frames->submitting(*attachment.instance))
-            {
-                co_return TargetCreated{RenderError{kDeviceBusy}};
-            }
             if (!effects.find(attachment.effect)->plan->compatible(input.description))
             {
-                co_return TargetCreated{RenderError{kDeviceArgument}};
+                co_return response(RenderError{kDeviceArgument});
             }
         }
-        if (attachmentsSubmitting(target->consumers))
+        if (target->resizing || !canChangeAttachments(affected))
         {
-            co_return TargetCreated{RenderError{kDeviceBusy}};
+            co_return response(RenderError{kDeviceBusy});
         }
         if (target->epoch == UINT64_MAX)
         {
-            co_return TargetCreated{RenderError{kRuntimeCapacity}};
+            co_return response(RenderError{kRuntimeCapacity});
         }
-        RenderTarget::VPhysicalTarget candidate;
-        if (auto* surface = target->surface())
+        std::vector<detail::RenderGraphInstance*> instances;
+        std::vector<TargetId> paused;
+        for (auto id : affected)
         {
-            const auto window = surface->surface();
-            active_targets.erase(input.target);
-            active_frame_inputs_dirty = true;
-            // NRI creates a new SwapChain for this native window. Retire the previous presentation
-            // first; unlike offscreen allocation, a WSI failure can leave an unavailable target.
-            auto closed = co_await surface->close();
-            if (!closed)
-            {
-                if (!target->attachment.isNull())
-                {
-                    detachAttachment(target->attachment);
-                }
-                co_return TargetCreated{closed.error()};
-            }
-            auto created = detail::SurfaceTarget::create(*device, input.description, window, frames->frameCount());
-            if (!created)
-            {
-                if (!target->attachment.isNull())
-                {
-                    detachAttachment(target->attachment);
-                }
-                co_return TargetCreated{created.error()};
-            }
-            candidate = std::move(*created);
+            const auto& attachment = *attachments.find(id);
+            instances.push_back(attachment.instance.get());
+            paused.push_back(attachment.target);
+            active_targets.erase(attachment.target);
         }
-        else
+        target->resizing = true;
+        active_frame_inputs_dirty = true;
+        cxx::scope_exit finish(
+            [&]() noexcept
+            {
+                targets.find(input.target)->resizing = false;
+                for (auto id : paused)
+                {
+                    const auto& output = *targets.find(id);
+                    const bool available = !output.surface() || output.surface()->available();
+                    if (output.enabled && !output.attachment.isNull() && available)
+                    {
+                        active_targets.emplace(id);
+                    }
+                }
+                active_frame_inputs_dirty = true;
+            }
+        );
+        const auto accepted = frames->acceptedUses(instances);
+        RenderTarget::VPhysicalTarget physical;
+        ResizeCandidates candidates;
+        const bool surface = target->surface() != nullptr;
+        if (!surface)
         {
             auto created = detail::OffscreenTarget::create(*device, input.description, frames->frameCount());
             if (!created)
             {
-                co_return TargetCreated{created.error()};
+                co_return response(created.error());
             }
-            candidate = std::move(*created);
-        }
-        if (auto changed = replaceTargetResources(input.target, *target, std::move(candidate)); !changed)
-        {
-            if (target->surface() && !target->attachment.isNull())
+            physical = std::move(*created);
+            auto prepared = prepareTargetResize(
+                input.target,
+                std::visit([](const auto& value) { return value->output(); }, physical),
+                affected
+            );
+            if (!prepared)
             {
-                detachAttachment(target->attachment);
+                co_return response(prepared.error());
             }
-            co_return TargetCreated{changed.error()};
+            candidates = std::move(*prepared);
         }
-        if (target->enabled && !target->attachment.isNull())
+        // Register all physical-queue frontiers before suspension; no device idle or per-pass wait.
+        RenderError wait_error;
+        const auto wait = [&](std::size_t q)
+        { return device->physicalQueue(q).whenSubmissionCompletes(accepted.serials[q]); };
+        const auto recordWaitFailure = [&](const RenderResult<void>& completed)
         {
-            active_targets.emplace(input.target);
+            if (!completed && wait_error.type == 0)
+            {
+                wait_error = completed.error();
+            }
+        };
+        switch (device->queueCount())
+        {
+        case 1:
+            recordWaitFailure(co_await wait(0));
+            break;
+        case 2:
+        {
+            auto [first, second] = co_await stdexec::when_all(wait(0), wait(1));
+            recordWaitFailure(first);
+            recordWaitFailure(second);
+            break;
         }
-        co_return TargetCreated{{}, input.target, target->epoch, target->description};
+        case 3:
+        {
+            auto [first, second, third] = co_await stdexec::when_all(wait(0), wait(1), wait(2));
+            recordWaitFailure(first);
+            recordWaitFailure(second);
+            recordWaitFailure(third);
+            break;
+        }
+        }
+        if (wait_error.type != 0)
+        {
+            co_return response(wait_error);
+        }
+        target = targets.find(input.target);
+        if (surface)
+        {
+            const auto window = target->surface()->surface();
+            if (!target->attachment.isNull())
+            {
+                attachments.find(target->attachment)->instance->releaseOutputReferences();
+            }
+            auto closed = co_await target->surface()->close();
+            if (!closed)
+            {
+                co_return response(closed.error());
+            }
+            target = targets.find(input.target);
+            auto created = detail::SurfaceTarget::create(*device, input.description, window, frames->frameCount());
+            if (!created)
+            {
+                co_return response(created.error());
+            }
+            physical = std::move(*created);
+            auto prepared = prepareTargetResize(
+                input.target,
+                std::visit([](const auto& value) { return value->output(); }, physical),
+                affected
+            );
+            if (!prepared)
+            {
+                co_return response(prepared.error());
+            }
+            candidates = std::move(*prepared);
+        }
+        // Every fallible GPU creation is finished. Publish all producer/consumer references without suspension.
+        for (auto& [id, candidate] : candidates)
+        {
+            if (auto ready = attachments.find(id)->instance->prepareResizeAdoption(candidate); !ready)
+            {
+                co_return response(ready.error());
+            }
+        }
+        for (auto& [id, candidate] : candidates)
+        {
+            attachments.find(id)->instance->commitResize(std::move(candidate));
+        }
+        target = targets.find(input.target);
+        target->physical = std::move(physical);
+        target->description = target->output().description;
+        ++target->epoch;
+        // The reply carries the adopted extent. Resume only with matching inputs in a later complete frame.
+        target->enabled = false;
+        co_return response();
     }
 
     exec::task<AckResponse> RenderServer::Impl::removeTarget(RemoveTarget::Request&& input) noexcept
@@ -1126,13 +1221,17 @@ namespace lux::render
         {
             co_return AckResponse{RenderError{kRuntimeIdentity}};
         }
+        if (target->resizing)
+        {
+            co_return AckResponse{RenderError{kDeviceBusy}};
+        }
         if (!target->consumers.empty())
         {
             co_return AckResponse{RenderError{kRuntimeState}};
         }
         if (!target->attachment.isNull())
         {
-            if (attachmentsSubmitting({&target->attachment, 1}))
+            if (!canChangeAttachments({&target->attachment, 1}))
             {
                 co_return AckResponse{RenderError{kDeviceBusy}};
             }
@@ -1162,6 +1261,16 @@ namespace lux::render
             response.error = RenderError{kRuntimeIdentity};
             return;
         }
+        if (target->resizing || (!target->attachment.isNull() && !canChangeAttachments({&target->attachment, 1})))
+        {
+            response.error = RenderError{kDeviceBusy};
+            return;
+        }
+        if (input.active && input.epoch != target->epoch)
+        {
+            response.error = RenderError{kRuntimeState};
+            return;
+        }
         if (input.active && target->surface() && !target->surface()->available())
         {
             response.error = RenderError{kRuntimeState};
@@ -1188,7 +1297,7 @@ namespace lux::render
             output_response.error = RenderError{kRuntimeIdentity};
             return;
         }
-        if (frames->submitting(*attachment->instance))
+        if (!canChangeAttachments({&_request, 1}))
         {
             output_response.error = RenderError{kDeviceBusy};
             return;

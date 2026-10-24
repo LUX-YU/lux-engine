@@ -107,16 +107,25 @@ int main(int argc, char**)
     const auto update = integration_test::take(client.bind<UpdateDrawList>());
     const std::array<UiImageSelection, 3> images{{{{0}, 0}, {{17}, 1}, {{19}, 2}}};
     bool resynchronize = false;
+    std::uint64_t viewport_epoch = 1;
     for (unsigned frame_number = 0; frame_number < 9; ++frame_number)
     {
         if (frame_number == 5)
         {
             auto resized = viewport_description;
             resized.width = resized.height = 32;
-            integration_test::call<ResizeTarget>(*rendering, {viewport_target, resized});
+            viewport_epoch = integration_test::call<ResizeTarget>(*rendering, {viewport_target, resized}).epoch;
         }
         auto* frame = integration_test::take(client.beginFrame());
         frame->resynchronize = resynchronize;
+        if (frame_number == 5)
+        {
+            integration_test::check(bool(client.append(
+                *frame,
+                integration_test::take(client.bind<SetTargetActive>()),
+                SetTargetActive::Request{viewport_target, true, viewport_epoch}
+            )));
+        }
         auto vertices = frame->allocate<rdesc::UiVertex>(vertex_base + 12);
         std::ranges::fill(vertices, rdesc::UiVertex{});
         for (unsigned quad = 0; quad < 3; ++quad)

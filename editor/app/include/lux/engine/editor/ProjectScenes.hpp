@@ -6,8 +6,10 @@
 #include <lux/engine/editor/SceneDocument.hpp>
 #include <lux/engine/editor/SceneProfileRegistry.hpp>
 #include <lux/engine/error/Error.hpp>
+#include <lux/engine/scene/Camera.hpp>
+#include <lux/engine/scene/CameraTargetsComponent.hpp>
 #include <lux/engine/scene/ScenePackageFile.hpp>
-#include <lux/engine/scene/SceneViewRequest.hpp>
+#include <lux/engine/simulation/ecs/Transform.hpp>
 
 #include <filesystem>
 #include <memory>
@@ -50,12 +52,30 @@ namespace lux::editor
     struct SceneViewportTag;
     using SceneViewportId = cxx::SlotKey<SceneViewportTag>;
 
+    enum class EViewportCamera : std::uint8_t
+    {
+        EDITOR,
+        PRIMARY,
+        SCENE
+    };
+
+    // Editor selection policy. RenderSystem only receives a resolved ECS CameraMan.
+    struct ViewportCameraSelection final
+    {
+        EViewportCamera kind{EViewportCamera::EDITOR};
+        world::WorldObjectId object;
+        bool operator==(const ViewportCameraSelection&) const noexcept = default;
+    };
+
     struct SceneViewportStatus final
     {
         rdesc::UiImageToken image;
         render::TargetId target;
+        render::TargetDesc description;
+        scene::SceneInstanceId instance;
+        simulation::ecs::Entity camera{simulation::ecs::NullEntity};
         render::RenderError error;
-        bool ready{};
+        bool ready{}, pending{};
     };
 
     enum class ESceneRunMode : std::uint8_t
@@ -101,17 +121,15 @@ namespace lux::editor
 
         [[nodiscard]] ProjectSceneResult<SceneViewportId> addViewport(
             asset::AssetId,
-            scene::VSceneCameraSource,
             std::uint32_t width,
             std::uint32_t height,
             bool play = false
         ) noexcept;
-        [[nodiscard]] bool updateViewport(
-            SceneViewportId,
-            scene::VSceneCameraSource,
-            std::uint32_t width,
-            std::uint32_t height
-        ) noexcept;
+        [[nodiscard]] bool updateViewport(SceneViewportId, std::uint32_t width, std::uint32_t height) noexcept;
+        // Selection is by author identity, never by an Entity from another Registry (including Play).
+        [[nodiscard]] bool selectViewportCamera(SceneViewportId, ViewportCameraSelection) noexcept;
+        // Writes the temporary ECS camera only, in SceneRuntime's edit safe point. No persistent pose mirror.
+        [[nodiscard]] bool setViewportCameraTransform(SceneViewportId, const simulation::ecs::Transform3D&) noexcept;
         void closeViewport(SceneViewportId) noexcept;
         [[nodiscard]] SceneViewportStatus viewport(SceneViewportId) const noexcept;
 

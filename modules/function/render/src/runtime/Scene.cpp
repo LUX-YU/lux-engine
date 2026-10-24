@@ -79,10 +79,4 @@ namespace lux::render::runtime_detail
         return {};
     }
 
-    void EffectAttachment::swapResources(EffectAttachment& candidate) noexcept
-    {
-        instance.swap(candidate.instance);
-        storage_inputs.swap(candidate.storage_inputs);
-        feature_bindings.swap(candidate.feature_bindings);
-    }
 } // namespace lux::render::runtime_detail

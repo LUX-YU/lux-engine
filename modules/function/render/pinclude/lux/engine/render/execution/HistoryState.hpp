@@ -7,21 +7,11 @@ namespace lux::render::detail
 {
     struct RenderGraphInstance::HistoryState final
     {
-        enum class EViewTarget : std::uint8_t
-        {
-            DESCRIPTOR,
-            COLOR,
-            DEPTH,
-            COLOR_RESOLVE,
-            DEPTH_RESOLVE,
-            CLEAR
-        };
-
         struct View final
         {
             GraphResourceId resource;
             std::uint32_t pass, index;
-            EViewTarget target;
+            EImageViewTarget target;
         };
 
         struct HistorySlot final

@@ -1,12 +1,14 @@
 #include <lux/engine/scene/SceneCamera.hpp>
-#include <lux/engine/simulation/ecs/Transform.hpp>
 
 namespace lux::scene::detail
 {
     using namespace render;
-    using namespace simulation::ecs;
 
-    RenderResult<SceneParameters> sceneParameters(const Registry& registry, const SceneViewRequest& input) noexcept
+    RenderResult<SceneParameters> sceneParameters(
+        const Camera& camera,
+        const Eigen::Affine3d& transform,
+        const CameraTarget& input
+    ) noexcept
     {
         const bool invalid_target =
             input.target.isNull() || input.description.width == 0 || input.description.height == 0;
@@ -14,55 +16,10 @@ namespace lux::scene::detail
         {
             return cxx::unexpected(RenderError{kCommandContract});
         }
-        const Camera* camera = nullptr;
-        const Eigen::Affine3d* transform = nullptr;
-        if (const auto* explicit_input = std::get_if<SceneCameraInput>(&input.camera))
-        {
-            camera = &explicit_input->camera;
-            transform = &explicit_input->transform;
-        }
-        else
-        {
-            Entity entity = NullEntity;
-            if (const auto* source = std::get_if<SceneEntityCamera>(&input.camera))
-            {
-                entity = source->entity;
-            }
-            else
-            {
-                for (const auto candidate : registry.view<const Camera, const WorldTransform3D>())
-                {
-                    if (!registry.get<const Camera>(candidate).primary)
-                    {
-                        continue;
-                    }
-                    if (entity != NullEntity)
-                    {
-                        return cxx::unexpected(RenderError{
-                            kCommandContract,
-                            {static_cast<std::uint64_t>(ECameraError::MULTIPLE_PRIMARY_CAMERAS)}
-                        });
-                    }
-                    entity = candidate;
-                }
-            }
-            if (registry.valid(entity))
-            {
-                camera = registry.try_get<const Camera>(entity);
-                const auto* world = registry.try_get<const WorldTransform3D>(entity);
-                transform = world ? &world->value : nullptr;
-            }
-        }
-        if (!camera || !transform)
-        {
-            return cxx::unexpected(
-                RenderError{kCommandContract, {static_cast<std::uint64_t>(ECameraError::NO_PRIMARY_CAMERA)}}
-            );
-        }
         const auto aspect = double(input.description.width) * input.viewport.width /
                             (double(input.description.height) * input.viewport.height);
-        const auto projection = cameraProjection(*camera, aspect);
-        const auto view = cameraView(*transform, Eigen::Vector3d::Zero());
+        const auto projection = cameraProjection(camera, aspect);
+        const auto view = cameraView(transform, Eigen::Vector3d::Zero());
         if (!projection || !view)
         {
             return cxx::unexpected(RenderError{kCommandContract});
@@ -72,11 +29,11 @@ namespace lux::scene::detail
         Eigen::Map<Eigen::Matrix4f>{result.mesh.projection.data()} = projection->cast<float>();
         Eigen::Map<Eigen::Matrix4f>{result.lighting.inverse_view_projection.data()} =
             (*projection * *view).inverse().cast<float>();
-        const auto position = transform->translation();
+        const auto position = transform.translation();
         const auto forward = -view->row(2).head<3>();
         const auto [near_distance, far_distance] = std::visit(
             [](const auto& value) noexcept { return std::pair{float(value.near_plane), float(value.far_plane)}; },
-            camera->projection
+            camera.projection
         );
         result.lighting.camera_position = {float(position.x()), float(position.y()), float(position.z()), 1};
         result.lighting.background = input.background;

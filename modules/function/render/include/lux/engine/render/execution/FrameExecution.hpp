@@ -128,6 +128,9 @@ namespace lux::render::detail
         [[nodiscard]] bool dumpSubmissions(DumpSink) const noexcept;
         [[nodiscard]] RenderResult<bool> waitForProgress(std::uint64_t timeout_ns) noexcept;
         [[nodiscard]] bool submitting(const RenderGraphInstance&) const noexcept;
+        // Cold structural boundary: a partially prepared frame must finish before resources can change.
+        [[nodiscard]] bool canChangeResources(std::span<RenderGraphInstance* const>) const noexcept;
+        [[nodiscard]] SubmissionFrontiers acceptedUses(std::span<RenderGraphInstance* const>) const noexcept;
         [[nodiscard]] bool submitting() const noexcept;
         void cancelSubmissions(RenderError) noexcept;
 

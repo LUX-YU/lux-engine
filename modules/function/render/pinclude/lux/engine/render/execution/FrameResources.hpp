@@ -11,6 +11,7 @@ namespace lux::render::detail
     struct RenderGraphInstance::FrameResources final
     {
         void release(const nri::CoreInterface&) noexcept;
+        void invalidateImportedBindings() noexcept;
 
         std::vector<Binding> bindings;
         // Changes when a potentially shared imported identity/range changes. Private presentation rotation

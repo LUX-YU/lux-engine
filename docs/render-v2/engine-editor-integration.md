@@ -404,7 +404,7 @@ Attach 可携带同 Scene/View 的待替换 AttachmentId；目的 Target 必须�
 失败保留旧实例，不能先 detach 再赌新 attach 成功。
 
 `RenderRequester::buildingFrame()` 是当前唯一正在构造的 Main 帧借用；Scene 从这里追加，
-不再由每个 SceneRenderInputs 保存/设置第二份帧指针。submit/release 结束该借用。
+CameraTargetsComponent 与 RenderAssetInput 都不保存第二份帧指针。submit/release 结束该借用。
 Requester 根据收到的 FrameCompletion 更新 resynchronization 版本，各 Scene 只重发自己的权威值。
 
 FrameInput 可以把平凡数组冻结到自身的分配区，直到真实 FrameCompletion 后再释放；
@@ -485,7 +485,7 @@ Resize/关闭先停止未来引用并更新关联；旧 image、descriptor 和�
 Target 只保存非拥有的消费者 Attachment 索引。Attach 拒绝循环；执行列表仅在关系或启用状态改变时
 按生产者顺序整理，随后复用原有物理访问摘要建立批次依赖。生产者未附着或被停用时，本轮也不执行
 依赖它的消费者，不能悄悄采样未初始化内容或上一帧内容。Client 应先解除消费者，再删除输入 Target；
-仍有消费者时 RemoveTarget 明确失败。Resize 先准备所有受影响实例和 Descriptor，再统一采用，
+仍有消费者时 RemoveTarget 明确失败。Resize 在现有实例中准备受影响的物理对象和 Descriptor，再统一采用，
 不会在旧 Descriptor 仍引用旧图像时提前销毁它。
 
 Surface 的 Acquire semaphore 按可复用 GPU slot 管理，Present semaphore 按交换链 image 管理。
@@ -780,7 +780,7 @@ Frame/Record/Submit、堆分配、切换次数和峰值；采样与正式时延�
   `EditorContext::prepareAssetReads()` 提供项目 VFS 端点，使用同一 ExecutionRuntime 的阻塞资源。
   RenderSystemDependencies 的 source 显式传入此端点，RenderAssets 每次 acquire 捕获它，
   不通过全局“当前项目”选择器路由。调用方用不同 asset_revision 区分来源代次。
-- SceneRenderInputs 只保存 Target/Viewport/Camera 相关输入，不拥有完整帧。
+- CameraTargetsComponent 在 CameraMan 上保存 Target/Viewport 意图；RenderAssetInput 单独提供资产版本。二者均不拥有完整帧。
   Scene 在 Requester 正在构建的 carrier 中直接写 K 项变化；UI 随后捕获并追加，应用提交一次。
 - `LuxEngine::setUiImages(vector<UiTargetImage>)` 建立 UI token 到 sampled offscreen Target 的冷态关系。
   移除图像后，要等 uiImagesApplied，再移除原 Target。Target 的创建/释放仍由实际视口消费者负责。
@@ -817,3 +817,12 @@ Scene 和 UI 的释放只在成功回执后清空句柄，退休 maintenance 结
 Surface 输出不能被其它实例采样，轮转只更新实际图像/View/Barrier，不使共享资源依赖缓存失效。
 共享 Offscreen 输出更换仍更新跨实例依赖。UI 唯一图片列表由 DrawData::textures() 显式查询，
 正常捕获不再为了 UpdateStatistics 做额外排序；顶点/索引的一次冻结仍由完整帧载体保活。
+
+### CameraMan 与尺寸采用
+
+CameraTargetsComponent 的输出项只保存借用 Target、实际回复的描述/epoch 与参数；RenderSystem 在私有
+RenderViewComponent 中拥有对应逻辑绑定的清偿责任，不再维护第二张活动观察表。组件不会序列化进作者世界。
+
+Resize 成功暂停目标。Client 用回复尺寸生成下一完整帧的相机/UI 数据，并在同一帧中按该 epoch 启用目标。
+旧帧的启用请求因 epoch 不匹配而拒绝，沿 FrameCompletion 的既有重同步处理，不增加帧队列。
+CPU 回复不表示新图像已有像素；producer→consumer 的实际 Graph 依赖保证 UI 首次采样发生在生产之后。

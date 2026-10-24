@@ -60,7 +60,8 @@ Editor 类型。无须新增 CompatibilityManager、SceneManager、TaskManager �
 | 运行相机引用 | SceneInstanceId 加实体代际；持久引用使用 WorldObjectId，不保存 EnTT 数值 |
 | Render View | 本次观察所需的渲染状态与 View Storage，由 RenderSystem 维护 |
 | Attachment | 将 Effect、Scene、View 与 Target 关联；仍由现有 Render 合同控制 |
-| `SceneViewRequest` | 显式选择相机、Target、viewport、渲染配方及设置；不执行、不拥有设备 |
+| `CameraTargetsComponent` | CameraMan 的运行期输出意图；Target、实际描述/epoch、viewport 和参数，不拥有 Render 对象 |
+| 私有 `RenderViewComponent` | 该实体唯一的 View/Effect/Attachment 派生绑定；不安装、不持久化 |
 | `SceneViewportPane` | 拥有视口输入与显示控件，借用 ProjectScenes 的 SceneViewportId；不持有 GPU 清理状态 |
 | `ProjectScenes` 的视口记录 | 独占 Target 的删除责任及 UI 图像关系，存活到撤销、观察退役和 RemoveTarget 完成 |
 
@@ -73,14 +74,13 @@ Editor 类型。无须新增 CompatibilityManager、SceneManager、TaskManager �
 
 ### 2.2 Editor 自由相机
 
-自由相机使用相同投影/姿态数据合同，通过 `SceneViewRequest` 的明确值来源提交；它不必成为作者
-ECS 中的假实体。Scene Camera 来源使用实体身份，Editor Camera 来源使用视口实际拥有的参数值。
-使用 `VSceneCameraSource` 区分这两种真实来源，不增加第二套相机服务。相机与矩阵解释只在
-Engine 渲染投影中完成，Render 仍只接收普通参数。
+自由相机也是 Scene Registry 中的普通 CameraMan：Camera + Transform3D，WorldTransform3D 由已有
+TransformSystem 生成。ProjectScenes 在安全段创建它，不加入 WorldEntityMap 的作者集合，保存/Undo/Play
+作者快照不包含它。Pane 保存操作控件和选择意图，不保留另一份作为渲染来源的相机姿态。
 
-自由相机不写入场景文件，不改变游戏主相机；“从当前视口创建 Camera”是显式编辑事务。
-Camera 删除、失效或出现多个未明确选择的主相机时，返回可见诊断，停止对应输出并撤销其 UI 采样，
-不能默默选择别的相机或持续显示未初始化图像。Editor 可显式切回其自由相机。
+Primary 与作者 WorldObjectId 的选择属于 ProjectScenes；Camera 信号使选择失效，RenderSystem 只消费
+已经解析的 ECS 实体。拾取与 Gizmo 读取同一个实体的 Camera/WorldTransform 和实际采用的图像尺寸。
+缺失或多个 Primary 明确报告错误；不会自动选择别的相机。Edit/Play 各自解析作者身份，自由相机各自创建。
 
 ### 2.3 输出与 UI
 
@@ -99,14 +99,22 @@ SceneDocument 不反向依赖 Render。这不是新的 GPU 清理 Scope。
 
 ### 2.4 观察输入 API
 
-`SceneRenderInputs::addView/updateView/removeView` 在 Main 修改观察意图，`SceneViewId` 只属于该集合。
-`RenderSystem::attachment(id)` 返回实际已采用的 Attachment；`viewError(id)` 报告该观察的错误。
-移除请求后，调用者等 `viewRetired(id)` 再释放 Target。观察集合的借用不得跨修改或异步挂起。
+`RenderSystem::addCameraTarget/updateCameraTarget/removeCameraTarget` 只在 Main 的 Scene 编辑安全段
+patch CameraTargetsComponent。CameraTargetId 在该 Scene 内单调生成，不复用，不是 vector 下标。
+调用方按 SceneInstanceId + Entity generation + CameraTargetId 路由，实际运行绑定只在该实体的
+私有 RenderViewComponent 中。`attachment(camera, id)`、`cameraTargetError(camera, id)` 为只读查询；
+移除意图后等待 `cameraTargetRetired(camera, id)` 再释放 Target。
 
-`PrimarySceneCamera` 选择唯一 primary；`SceneEntityCamera` 选择具体 ECS 身份；`SceneCameraInput`
-携带视口自己的相机值。多观察共享 Scene 资源，但不共享输出和相机参数。
-参数发布比较实际数组字段，不比较 C++ padding。Target/格式或阴影投影结构变化走冷态候选；仅尺寸变化通过 ResizeTarget 采用新资源，复用 TARGET-relative 配方；
-普通姿态、viewport 和曝光更新只发布参数。编译返回时重新核对观察身份和输入修订。
+观察者只记录变更；实体删除时把仍可读的绑定移动到 RenderSystem 的退出记录，不再活动查找。
+创建/编译 coroutine 仅保留身份与值，回 Main 后重新定位，不跨挂起借用组件或 vector 元素。
+零变化不重新计算相机参数；变更实体只准备自身输出。近远面配方判断不求整个逆矩阵。
+RenderAssetInput 单独提供稳定资产域和一起发布的 revision/VFS snapshot，不再混入相机集合。
+
+纯尺寸 Resize 保持实例、Feature/Storage 订阅、计划、Pipeline、DescriptorPool 和固定资源。
+成功回复后目标暂停，下一完整帧同时发布新参数和 `SetTargetActive{target, true, epoch}`。
+启用必须匹配实际 epoch，排在回复前的旧帧不能重新激活新尺寸。失败回复保留实际描述和
+output_available；关闭旧 SwapChain 后失败不会伪装旧输出仍可用。物理回收仍归唯一 cleanup_scope_。
+子视口按实际 framebuffer scale 一次换算到像素；旧图像保持同一个 token 并按旧宽高比 fit，留边不接受拾取。
 
 内置配方为 `lux.scene.deferred` 与 `lux.scene.clustered`，版本 1。阴影采用统一数组分辨率，
 由 Scene 的 `shadow_resolution` 指定；Light 的 `cast_shadow`、级联划分和偏移参与实际投影。
@@ -500,7 +508,7 @@ MAINTENANCE 下仍按自己的时钟推进；图形实例为 true。随后仍遍
 | `RenderSystem.hpp/.cpp` | 多观察记录、相机正确发布、明确配方配置；不认识 World 索引 |
 | `SceneEffect.hpp/.cpp` | 从明确配方和数据组合 Feature，保留端口协作 |
 | `Camera.hpp/.cpp` | 保留中立 Camera/姿态算法；删除注释中不必要的 Vulkan 身份，保留准确坐标约定 |
-| `SceneRenderInputs` | 迁为逐观察输入；删除单 target/唯一 primary 承担全部视图的假设，不留别名 |
+| `CameraTargetsComponent / RenderAssetInput` | 输出意图与资产版本分开；旧 SceneRenderInputs、SceneViewRequest 和来源 variant 已删除 |
 | `SceneDocument.hpp/.cpp` | 作者 revision、编辑/Play 实例身份、保存/撤销、选择和关闭；不拥有重复 Lease |
 | `ProjectScenes.hpp/.cpp` | 项目内已打开文档的唯一集合；沿现有 EditorServices 持有，不复制 SceneRuntime |
 | `SceneEdit.hpp` | 事务输入值；实际采用由 SceneDocument 执行，不引用 Runtime 来自行调度 |

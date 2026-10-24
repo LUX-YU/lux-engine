@@ -505,6 +505,38 @@ namespace lux::render::detail
                );
     }
 
+    bool FrameExecution::canChangeResources(std::span<RenderGraphInstance* const> instances) const noexcept
+    {
+        if (frames_[next_frame_].phase == EFramePhase::PREPARING)
+        {
+            return false;
+        }
+        return std::ranges::none_of(instances, [&](const auto* instance) { return submitting(*instance); });
+    }
+
+    SubmissionFrontiers FrameExecution::acceptedUses(std::span<RenderGraphInstance* const> instances) const noexcept
+    {
+        SubmissionFrontiers result;
+        for (std::uint32_t slot = 0; slot < frame_count_; ++slot)
+        {
+            const auto& frame = frames_[slot];
+            const bool used = frame.phase != EFramePhase::FREE &&
+                              std::ranges::any_of(
+                                  frame.instances,
+                                  [&](const auto& execution)
+                                  { return std::ranges::find(instances, execution.instance) != instances.end(); }
+                              );
+            if (used)
+            {
+                for (std::size_t q = 0; q < result.serials.size(); ++q)
+                {
+                    result.serials[q] = std::max(result.serials[q], frame.accepted.serials[q]);
+                }
+            }
+        }
+        return result;
+    }
+
     void FrameExecution::prepareSubmissions(std::span<RenderGraphInstance* const> instances) noexcept
     {
         auto& frame = frames_[next_frame_];

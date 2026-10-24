@@ -178,9 +178,79 @@ namespace lux::render::detail
                 deriveStore(*group.depth);
             }
         }
+        for (auto& resource : resources)
+        {
+            resource.image_views.clear();
+            resource.extent_uses.clear();
+        }
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
         {
-            const auto& batch = recording.passes[p].before;
+            const auto extent = [&](GraphResourceId resource)
+            {
+                auto& uses = resources[resource.index].extent_uses;
+                if (uses.empty() || uses.back() != p)
+                {
+                    uses.push_back(p);
+                }
+            };
+            const auto view = [&](const ResourceAccess& access, std::uint32_t index, EImageViewTarget target)
+            {
+                auto& resource = resources[access.version.resource.index];
+                resource.image_views.push_back({p, index, target, std::get<GraphImageRange>(access.range)});
+                extent(access.version.resource);
+            };
+            const auto& pass = recording.passes[p];
+            if (const auto* raster = std::get_if<RasterCommands>(&pass.work))
+            {
+                const auto& group = recording.groups[pass.rendering_group];
+                for (std::uint32_t i = 0; i < group.colors.size(); ++i)
+                {
+                    view(group.colors[i].access, i, EImageViewTarget::COLOR);
+                    if (group.colors[i].resolve)
+                    {
+                        view(*group.colors[i].resolve, i, EImageViewTarget::COLOR_RESOLVE);
+                    }
+                }
+                if (group.depth)
+                {
+                    view(group.depth->access, 0, EImageViewTarget::DEPTH);
+                    if (group.depth->resolve)
+                    {
+                        view(*group.depth->resolve, 0, EImageViewTarget::DEPTH_RESOLVE);
+                    }
+                }
+            }
+            else if (const auto* compute = std::get_if<ComputeCommands>(&pass.work))
+            {
+                if (const auto* dispatch = std::get_if<ImageDispatchArguments>(&compute->dispatch))
+                {
+                    extent(dispatch->resource);
+                }
+            }
+            else if (const auto* transfer = std::get_if<TransferWork>(&pass.work))
+            {
+                for (std::uint32_t i = 0; i < transfer->operations.size(); ++i)
+                {
+                    std::visit(
+                        [&](const auto& operation)
+                        {
+                            using Operation = std::remove_cvref_t<decltype(operation)>;
+                            if constexpr (std::same_as<Operation, ClearImage>)
+                            {
+                                view(operation.destination, i, EImageViewTarget::CLEAR);
+                            }
+                            else if constexpr (std::same_as<Operation, CopyImage> ||
+                                               std::same_as<Operation, CopyImageBuffer>)
+                            {
+                                extent(operation.source.version.resource);
+                                extent(operation.destination.version.resource);
+                            }
+                        },
+                        transfer->operations[i]
+                    );
+                }
+            }
+            const auto& batch = pass.before;
             for (std::uint32_t i = 0; i < batch.images.size(); ++i)
             {
                 resources[batch.images[i].resource].barrier_uses.emplace_back(p, i);

@@ -263,7 +263,10 @@ int main(int argc, char**)
     }
     image_description.width = 256;
     image_description.height = 144;
-    call<ResizeTarget>(*rendering, {image.target, image_description});
+    const auto image_resize = call<ResizeTarget>(*rendering, {image.target, image_description});
+    // A queued activation from the old epoch must not resume new output with stale parameters.
+    expected_frame_error = kRuntimeState;
+    call<SetTargetActive>(*rendering, {image.target, true, image.epoch}, kRuntimeState);
     // A cycle must not replace the valid producer or any of its descriptor banks.
     const auto cycle_program = make_consumer(image_description);
     AttachmentRequest cycle{scene, producer_view, image.target, cycle_program};
@@ -277,7 +280,7 @@ int main(int argc, char**)
     const auto missing_producer = rendering->stats().presentations;
     frame(*rendering);
     check(rendering->stats().presentations == missing_producer + 1);
-    call<SetTargetActive>(*rendering, {image.target, true});
+    call<SetTargetActive>(*rendering, {image.target, true, image_resize.epoch});
 
     call<SetTargetActive>(*rendering, {targets[0].target, false});
     const auto before = rendering->stats().presentations;
@@ -288,7 +291,8 @@ int main(int argc, char**)
     check(rendering->stats().presentations == before + 8);
     call<SetTargetActive>(*rendering, {targets[0].target, true});
     // Same-window rebuild exercises WSI retirement independently from ordinary GPU frame completion.
-    call<ResizeTarget>(*rendering, {targets[0].target, targets[0].description});
+    const auto surface_resize = call<ResizeTarget>(*rendering, {targets[0].target, targets[0].description});
+    call<SetTargetActive>(*rendering, {targets[0].target, true, surface_resize.epoch});
     for (unsigned i = 0; i < 8; ++i)
     {
         frame(*rendering);

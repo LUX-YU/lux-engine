@@ -11,6 +11,7 @@ namespace lux::ui
     struct ImageInteraction final
     {
         Size size;
+        Size available_size; // Layout rectangle, before fitting the adopted image aspect.
         // Physical pixels per UI unit from this Root's current FrameInfo, not the layout scale.
         Vec2 framebuffer_scale{1.0F, 1.0F};
         Point content_origin, local_pointer;
@@ -36,6 +37,8 @@ namespace lux::ui
         }
 
         void setUv(Vec2 minimum, Vec2 maximum) noexcept;
+        // Adopted image size in physical pixels. Zero disables aspect fitting. Letterbox bars are not interactive.
+        void setImageExtent(Size physical_pixels) noexcept;
         // Preferred size for layout. Zero uses the default hint; arrangement owns the displayed extent.
         void setSize(Size size) noexcept;
 
@@ -64,6 +67,7 @@ namespace lux::ui
         Vec2 uv_min_{};
         Vec2 uv_max_{1.0F, 1.0F};
         Size size_{};
+        Size image_extent_{};
         ImageInteraction interaction_;
     };
 } // namespace lux::ui

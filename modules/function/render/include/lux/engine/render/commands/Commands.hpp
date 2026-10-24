@@ -191,6 +191,9 @@ namespace lux::render
         TargetId target{};
         std::uint64_t epoch = 0;
         TargetDesc description; // Actual output format/extent selected by the backend.
+        // Physical output still exists after this attempt; false after an unsuccessful WSI replacement.
+        // This does not mean a new image has been rendered or presented.
+        bool output_available{};
     };
 
     struct EffectCreated final
@@ -383,6 +386,8 @@ namespace lux::render
         using Response = TargetCreated;
     };
 
+    // On success the Target is paused. Apply the replied dimensions and SetTargetActive(true)
+    // together in the next complete frame; earlier queued frames cannot draw with stale size-dependent inputs.
     struct ResizeTarget final
     {
         static constexpr std::string_view name{"render.target.resize"};
@@ -408,6 +413,7 @@ namespace lux::render
         {
             TargetId target;
             bool active = true;
+            std::uint64_t epoch = 1; // Enabling requires the actual CreateTarget/ResizeTarget epoch.
         };
 
         using Response = AckResponse;

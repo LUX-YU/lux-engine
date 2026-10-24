@@ -10,16 +10,6 @@
 
 namespace lux::scene::detail
 {
-    struct SceneParameters final
-    {
-        render::MeshViewParameters mesh;
-        render::DeferredLightingParameters lighting;
-        render::TonemapParameters tone;
-        std::array<float, 3> padding{};
-        render::ShadowCamera shadow;
-        render::ClusteredLightingParameters clusters;
-    };
-
     struct SceneEffectFeatures final
     {
         render::FeatureId gbuffer, lighting, tonemap, visibility, shadows, mesh_shadow, clusters;

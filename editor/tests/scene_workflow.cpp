@@ -1,3 +1,4 @@
+#include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include "support/ModelSource.hpp"
 #include "support/ProjectRequests.hpp"
 #include <lux/engine/editor/EditorComposition.hpp>
@@ -184,12 +185,14 @@ int main(int argc, char** argv)
     assert(package && package->scene->id() == id);
     const auto editing_instance = scenes.find(id)->instance();
 
-    scene::SceneCameraInput left, right;
-    left.transform.translation() = Eigen::Vector3d{0, 2, 8};
-    right.transform.translation() = Eigen::Vector3d{5, 3, 8};
-    auto a = scenes.addViewport(id, left, 320, 240);
-    auto b = scenes.addViewport(id, right, 480, 240);
+    simulation::ecs::Transform3D left, right;
+    left.translation = Eigen::Vector3d{0, 2, 8};
+    right.translation = Eigen::Vector3d{5, 3, 8};
+    auto a = scenes.addViewport(id, 320, 240);
+    auto b = scenes.addViewport(id, 480, 240);
     assert(a && b);
+    until([&] { return scenes.setViewportCameraTransform(*a, left); });
+    until([&] { return scenes.setViewportCameraTransform(*b, right); });
     until(
         [&]
         {
@@ -202,6 +205,8 @@ int main(int argc, char** argv)
                     static_cast<unsigned long long>(first.error.type),
                     static_cast<unsigned long long>(second.error.type)
                 );
+                rendering::reportRenderFailure(first.error, "First viewport");
+                rendering::reportRenderFailure(second.error, "Second viewport");
                 assert(false);
             }
             return first.ready && second.ready;
@@ -209,15 +214,16 @@ int main(int argc, char** argv)
     );
     const auto original_target = scenes.viewport(*a).target;
     assert(scenes.viewport(*b).target != original_target);
-    assert(scenes.updateViewport(*a, left, 640, 320));
+    assert(scenes.updateViewport(*a, 640, 320));
     assert(!scenes.viewport(*a).ready);
     until([&] { return scenes.viewport(*a).ready; });
     assert(
         scenes.viewport(*a).target == original_target
     ); // Resize adopts physical candidates, not new logical identity.
-    assert(scenes.updateViewport(*a, scene::PrimarySceneCamera{}, 640, 320));
+    assert(scenes.selectViewportCamera(*a, {EViewportCamera::PRIMARY}));
     until([&] { return scenes.viewport(*a).error.type != 0 && !scenes.viewport(*a).ready; });
-    assert(scenes.updateViewport(*a, left, 640, 320));
+    assert(scenes.updateViewport(*a, 640, 320));
+    assert(scenes.selectViewportCamera(*a, {}));
     until([&] { return scenes.viewport(*a).ready && scenes.viewport(*b).ready; });
 
     auto& assets = context.service<ProjectAssets>()->get();
@@ -400,8 +406,9 @@ int main(int argc, char** argv)
 
     auto graphical = scenes.startPlay(id, ESceneRunMode::GRAPHICAL);
     assert(graphical);
-    auto play_view = scenes.addViewport(id, left, 200, 150, true);
+    auto play_view = scenes.addViewport(id, 200, 150, true);
     assert(play_view);
+    until([&] { return scenes.setViewportCameraTransform(*play_view, left); });
     until([&] { return scenes.viewport(*play_view).ready; });
     scenes.stopPlay(id);
     until([&] { return !scenes.playInstance(id).valid(); });

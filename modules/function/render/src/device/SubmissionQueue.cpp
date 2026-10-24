@@ -343,6 +343,11 @@ namespace lux::render::detail
         return CompletionSender{*this, submitted_};
     }
 
+    SubmissionQueue::CompletionSender SubmissionQueue::whenSubmissionCompletes(std::uint64_t serial) noexcept
+    {
+        return CompletionSender{*this, serial};
+    }
+
     SubmissionQueue::CompletionSender SubmissionQueue::whenAvailable() noexcept
     {
         const auto serial = submitted_ < capacity() ? 0 : submitted_ - capacity() + 1;

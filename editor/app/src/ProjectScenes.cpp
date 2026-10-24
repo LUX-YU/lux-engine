@@ -16,6 +16,7 @@
 #include <lux/engine/scene/MeshQuery.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
+#include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
 #include <lux/engine/ui/Command.hpp>
 
 #include <algorithm>
@@ -114,9 +115,10 @@ namespace lux::editor
         struct Play final
         {
             scene::SceneInstanceId instance;
-            scene::SceneRenderInputs inputs;
+            scene::RenderAssetInput inputs;
             scene::RenderSystem* rendering{};
             std::optional<scene::InstanceRetirement> retirement;
+            std::array<entt::scoped_connection, 3> camera_connections;
             bool stopping{}, query_assets_changed{};
         };
 
@@ -124,9 +126,10 @@ namespace lux::editor
         {
             std::unique_ptr<SceneDocument> document;
             std::filesystem::path path;
-            scene::SceneRenderInputs inputs;
+            scene::RenderAssetInput inputs;
             scene::RenderSystem* rendering{};
             std::optional<scene::InstanceRetirement> retirement;
+            std::array<entt::scoped_connection, 3> camera_connections;
             std::optional<Play> play;
             bool closing{}, saving{};
             bool query_assets_changed{};
@@ -136,14 +139,19 @@ namespace lux::editor
         {
             SceneViewportId id;
             asset::AssetId document;
-            scene::VSceneCameraSource camera;
+            ViewportCameraSelection selection;
+            simulation::ecs::Entity camera{simulation::ecs::NullEntity};
+            simulation::ecs::Entity free_camera{simulation::ecs::NullEntity};
+            scene::CameraTargetId camera_target;
+            bool camera_dirty = true;
             render::TargetDesc requested;
             render::TargetDesc applied;
             render::TargetId target;
-            scene::SceneViewId view;
+            std::uint64_t target_epoch = 0;
             rdesc::UiImageToken image;
-            render::RenderError error;
+            render::RenderError error, camera_error;
             bool closing{}, pending{};
+            std::uint64_t retry_tick{}, failed_revision{}, requested_revision = 1;
             bool play{};
         };
 
@@ -217,8 +225,9 @@ namespace lux::editor
         ProjectSceneResult<scene::SceneInstanceId> buildInstance(
             const scene::ScenePackage& package,
             std::shared_ptr<const scene::SceneDescription> description,
-            scene::SceneRenderInputs& inputs,
-            scene::RenderSystem*& projection
+            scene::RenderAssetInput& inputs,
+            scene::RenderSystem*& projection,
+            std::array<entt::scoped_connection, 3>& camera_connections
         ) noexcept
         {
             const auto world = std::shared_ptr<const world::WorldDescription>{package.world, &package.world->data()};
@@ -295,6 +304,18 @@ namespace lux::editor
             {
                 std::terminate(); // Same uninterrupted open-Context construction segment.
             }
+            auto connect = [&](simulation::ecs::Registry& registry) noexcept
+            {
+                camera_connections = {
+                    registry.on_construct<scene::Camera>().connect<&Impl::camerasChanged>(*this),
+                    registry.on_update<scene::Camera>().connect<&Impl::camerasChanged>(*this),
+                    registry.on_destroy<scene::Camera>().connect<&Impl::camerasChanged>(*this)
+                };
+            };
+            if (auto connected = runtime.editInstance(instance, connect); !connected)
+            {
+                std::terminate(); // Newly constructed, unpublished instance has no running simulation.
+            }
             return instance;
         }
 
@@ -312,14 +333,15 @@ namespace lux::editor
             }
             auto entry = std::make_unique<Entry>();
             entry->path = std::move(path);
-            entry->inputs.asset_revision = asset_revision;
-            entry->inputs.asset_source = asset_source;
-            entry->inputs.asset_snapshot = context.assets().view().capture();
+            entry->inputs.revision = asset_revision;
+            entry->inputs.source = asset_source;
+            entry->inputs.snapshot = context.assets().view().capture();
             auto instance = buildInstance(
                 package,
                 std::shared_ptr<const scene::SceneDescription>{package.scene, &package.scene->data()},
                 entry->inputs,
-                entry->rendering
+                entry->rendering,
+                entry->camera_connections
             );
             if (!instance)
             {
@@ -500,15 +522,9 @@ namespace lux::editor
                 co_return cxx::unexpected(created.error);
             }
             viewport.target = created.target;
-            viewport.applied = candidate;
-            if (!viewport.closing)
-            {
-                scene::SceneViewRequest request;
-                request.camera = viewport.camera;
-                request.target = viewport.target;
-                request.description = candidate;
-                viewport.view = inputs(viewport).addView(std::move(request));
-            }
+            viewport.applied = created.description;
+            viewport.target_epoch = created.epoch;
+            viewport.camera_dirty = true;
             co_return render::RenderResult<void>{};
         }
 
@@ -524,13 +540,9 @@ namespace lux::editor
                 co_return cxx::unexpected(resized.error);
             }
             viewport.applied = resized.description;
-            if (!viewport.closing && !viewport.view.isNull())
-            {
-                auto& source = inputs(viewport);
-                auto request = source.findView(viewport.view)->request;
-                request.description = viewport.applied;
-                static_cast<void>(source.updateView(viewport.view, std::move(request)));
-            }
+            viewport.target_epoch = resized.epoch;
+            // Publish the replied extent through CameraTargets at the next Scene edit safe point.
+            viewport.camera_dirty = true;
             co_return render::RenderResult<void>{};
         }
 
@@ -548,13 +560,15 @@ namespace lux::editor
         void startViewportChange(Viewport& viewport, exec::task<render::RenderResult<void>> work) noexcept
         {
             viewport.pending = true;
+            const auto revision = viewport.requested_revision;
             auto result =
                 execution::taskResult(stdexec::starts_on(context.engine().execution().mainScheduler(), std::move(work))
                 );
             auto admitted = context.engine().execution().spawn(stdexec::then(
                 std::move(result),
-                [&viewport](auto result) noexcept
+                [this, &viewport, revision](auto result) noexcept
                 {
+                    viewport.failed_revision = revision;
                     viewport.error = result                           ? render::RenderError{}
                                      : result.error().domainFailure() ? *result.error().domainFailure()
                                                                       : render::RenderError{render::kRuntimeState};
@@ -562,7 +576,7 @@ namespace lux::editor
                         viewport.error.type == render::kDeviceBusy || viewport.error.type == render::kRuntimeCapacity;
                     if (transient)
                     {
-                        viewport.error = {};
+                        viewport.retry_tick = rendering->stats().ticks;
                     }
                     viewport.pending = false;
                 }
@@ -574,10 +588,10 @@ namespace lux::editor
             }
         }
 
-        scene::SceneRenderInputs& inputs(const Viewport& viewport) noexcept
+        scene::SceneInstanceId instance(const Viewport& viewport) const noexcept
         {
-            auto& entry = *documents.find(viewport.document)->second;
-            return viewport.play ? entry.play->inputs : entry.inputs;
+            const auto& entry = *documents.find(viewport.document)->second;
+            return viewport.play ? entry.play->instance : entry.document->instance();
         }
 
         scene::RenderSystem& projection(const Viewport& viewport) noexcept
@@ -586,27 +600,79 @@ namespace lux::editor
             return *(viewport.play ? entry.play->rendering : entry.rendering);
         }
 
-        void maintainViews() noexcept
+        void camerasChanged(simulation::ecs::Registry&, simulation::ecs::Entity) noexcept
         {
-            std::vector<SceneViewportId> removed;
-            const auto maintain = [&](Viewport& viewport)
+            // Selection is an Editor policy. RenderSystem never searches for a primary camera.
+            for (auto& viewport : viewports)
             {
-                const auto id = viewport.id;
-                if (viewport.pending || (viewport.error.type != 0 && !viewport.closing))
+                viewport.camera_dirty = true;
+            }
+        }
+
+        simulation::ecs::Entity selectCamera(simulation::ecs::Registry& registry, Viewport& viewport) noexcept
+        {
+            using namespace simulation::ecs;
+            viewport.camera_error = {};
+            if (viewport.selection.kind == EViewportCamera::EDITOR)
+            {
+                if (!registry.valid(viewport.free_camera))
                 {
-                    return;
+                    viewport.free_camera = registry.create();
+                    registry.emplace<scene::Camera>(viewport.free_camera);
+                    Transform3D pose;
+                    pose.translation = Eigen::Vector3d{0, 2, 8};
+                    registry.emplace<Transform3D>(viewport.free_camera, std::move(pose));
                 }
-                if (!viewport.closing && viewport.target.isNull())
+                return viewport.free_camera;
+            }
+            auto selected = NullEntity;
+            const auto* residency = registry.ctx().find<scene::WorldResidency>();
+            if (viewport.selection.kind == EViewportCamera::SCENE)
+            {
+                selected = residency ? residency->identities().entity(viewport.selection.object) : NullEntity;
+            }
+            else
+            {
+                for (const auto camera : registry.view<const scene::Camera>())
                 {
-                    startViewportChange(viewport, createTarget(viewport));
-                    return;
+                    if (!registry.get<const scene::Camera>(camera).primary)
+                    {
+                        continue;
+                    }
+                    if (selected != NullEntity)
+                    {
+                        viewport.camera_error = render::RenderError{
+                            render::kCommandContract,
+                            {static_cast<std::uint64_t>(scene::ECameraError::MULTIPLE_PRIMARY_CAMERAS)}
+                        };
+                        return NullEntity;
+                    }
+                    selected = camera;
                 }
-                if (!viewport.closing && viewport.applied != viewport.requested)
-                {
-                    startViewportChange(viewport, resizeTarget(viewport));
-                    return;
-                }
-                if (viewport.closing)
+            }
+            const bool available = registry.valid(selected) && registry.all_of<scene::Camera>(selected);
+            if (!available)
+            {
+                viewport.camera_error = render::RenderError{
+                    render::kCommandContract,
+                    {static_cast<std::uint64_t>(scene::ECameraError::NO_PRIMARY_CAMERA)}
+                };
+                return NullEntity;
+            }
+            return selected;
+        }
+
+        bool updateCameraTarget(Viewport& viewport) noexcept
+        {
+            using namespace simulation::ecs;
+            auto& system = projection(viewport);
+            auto& runtime = context.engine().sceneRuntime();
+            bool finished = false;
+            auto edit = [&](Registry& registry) noexcept
+            {
+                const auto selected = viewport.closing ? NullEntity : selectCamera(registry, viewport);
+                const bool change_camera = viewport.camera != selected;
+                if (viewport.camera_target.valid() && change_camera)
                 {
                     if (viewport.image.value != 0)
                     {
@@ -617,52 +683,138 @@ namespace lux::editor
                     {
                         return;
                     }
-                    if (!viewport.view.isNull())
+                    static_cast<void>(system.removeCameraTarget(viewport.camera, viewport.camera_target));
+                    if (!system.cameraTargetRetired(viewport.camera, viewport.camera_target))
                     {
-                        static_cast<void>(inputs(viewport).removeView(viewport.view));
-                        if (!projection(viewport).viewRetired(viewport.view))
+                        return;
+                    }
+                    viewport.camera_target = {};
+                }
+                viewport.camera = selected;
+                if (selected != NullEntity && !viewport.target.isNull())
+                {
+                    scene::CameraTarget desired;
+                    desired.target = viewport.target;
+                    desired.description = viewport.applied;
+                    desired.active = viewport.requested.width != 0 && viewport.requested.height != 0;
+                    desired.epoch = viewport.target_epoch;
+                    if (viewport.camera_target.valid())
+                    {
+                        const auto& targets = registry.get<scene::CameraTargetsComponent>(selected).targets;
+                        const auto found = std::ranges::find(targets, viewport.camera_target, &scene::CameraTarget::id);
+                        if (found->description != desired.description || found->active != desired.active ||
+                            found->epoch != desired.epoch)
                         {
+                            static_cast<void>(system.updateCameraTarget(selected, viewport.camera_target, desired));
+                        }
+                    }
+                    else
+                    {
+                        auto added = system.addCameraTarget(selected, desired);
+                        if (!added)
+                        {
+                            viewport.camera_error = added.error();
                             return;
                         }
-                        viewport.view = {};
+                        viewport.camera_target = *added;
                     }
-                    if (!viewport.target.isNull())
-                    {
-                        startViewportChange(viewport, removeTarget(viewport));
-                        return;
-                    }
-                    removed.push_back(id);
-                    return;
                 }
-                if (!viewport.view.isNull())
+                if (viewport.closing && registry.valid(viewport.free_camera))
                 {
-                    const auto error = projection(viewport).viewError(viewport.view);
-                    if (error.type != 0)
+                    registry.destroy(viewport.free_camera);
+                    viewport.free_camera = NullEntity;
+                }
+                finished = true;
+            };
+            const auto edited = runtime.editInstance(instance(viewport), edit);
+            if (edited && finished)
+            {
+                viewport.camera_dirty = false;
+                return true;
+            }
+            return false;
+        }
+
+        bool maintainViewport(Viewport& viewport) noexcept
+        {
+            if (viewport.pending)
+            {
+                return false;
+            }
+            if (viewport.closing)
+            {
+                if (viewport.image.value != 0)
+                {
+                    ui->removeTargetImage(viewport.image);
+                    viewport.image = {};
+                }
+                if (!ui->imagesApplied() || !updateCameraTarget(viewport))
+                {
+                    return false;
+                }
+                if (!viewport.target.isNull())
+                {
+                    startViewportChange(viewport, removeTarget(viewport));
+                    return false;
+                }
+                return true;
+            }
+            const bool retry =
+                viewport.error.type == render::kDeviceBusy || viewport.error.type == render::kRuntimeCapacity;
+            if ((retry && rendering->stats().ticks != viewport.retry_tick) ||
+                (viewport.error.type != 0 && viewport.failed_revision != viewport.requested_revision))
+            {
+                viewport.error = {};
+            }
+            const bool visible = viewport.requested.width != 0 && viewport.requested.height != 0;
+            if (visible && viewport.error.type == 0 && viewport.target.isNull())
+            {
+                startViewportChange(viewport, createTarget(viewport));
+                return false;
+            }
+            if (visible && viewport.error.type == 0 && viewport.applied != viewport.requested)
+            {
+                startViewportChange(viewport, resizeTarget(viewport));
+                return false;
+            }
+            if (viewport.camera_dirty && !updateCameraTarget(viewport))
+            {
+                return false;
+            }
+            if (viewport.camera_target.valid())
+            {
+                const auto& system = projection(viewport);
+                const auto error = system.cameraTargetError(viewport.camera, viewport.camera_target);
+                if (error.type != 0)
+                {
+                    viewport.camera_error = error;
+                    return false;
+                }
+                if (viewport.image.value == 0 && !system.attachment(viewport.camera, viewport.camera_target).isNull())
+                {
+                    auto image = ui->addTargetImage(viewport.target, viewport.applied);
+                    if (!image)
                     {
-                        if (viewport.image.value != 0)
-                        {
-                            ui->removeTargetImage(viewport.image);
-                            viewport.image = {};
-                        }
-                        return;
+                        viewport.error = image.error();
                     }
-                    if (viewport.image.value == 0 && !projection(viewport).attachment(viewport.view).isNull())
+                    else
                     {
-                        auto image = ui->addTargetImage(viewport.target, viewport.applied);
-                        if (!image)
-                        {
-                            viewport.error = image.error();
-                        }
-                        else
-                        {
-                            viewport.image = *image;
-                        }
+                        viewport.image = *image;
                     }
                 }
-            };
+            }
+            return false;
+        }
+
+        void maintainViews() noexcept
+        {
+            std::vector<SceneViewportId> removed;
             for (auto& viewport : viewports)
             {
-                maintain(viewport);
+                if (maintainViewport(viewport))
+                {
+                    removed.push_back(viewport.id);
+                }
             }
             for (auto id : removed)
             {
@@ -1088,10 +1240,16 @@ namespace lux::editor
             return cxx::unexpected(description.error());
         }
         auto& play = entry.play.emplace();
-        play.inputs.asset_source = entry.inputs.asset_source;
-        play.inputs.asset_revision = entry.inputs.asset_revision;
-        play.inputs.asset_snapshot = entry.inputs.asset_snapshot;
-        auto instance = impl_->buildInstance(*package, std::move(*description), play.inputs, play.rendering);
+        play.inputs.source = entry.inputs.source;
+        play.inputs.revision = entry.inputs.revision;
+        play.inputs.snapshot = entry.inputs.snapshot;
+        auto instance = impl_->buildInstance(
+            *package,
+            std::move(*description),
+            play.inputs,
+            play.rendering,
+            play.camera_connections
+        );
         if (!instance)
         {
             entry.play.reset();
@@ -1259,13 +1417,13 @@ namespace lux::editor
         auto snapshot = impl_->context.assets().view().capture();
         for (auto& [id, entry] : impl_->documents)
         {
-            entry->inputs.asset_revision = revision;
-            entry->inputs.asset_snapshot = snapshot;
+            entry->inputs.revision = revision;
+            entry->inputs.snapshot = snapshot;
             entry->query_assets_changed = true;
             if (entry->play)
             {
-                entry->play->inputs.asset_revision = revision;
-                entry->play->inputs.asset_snapshot = snapshot;
+                entry->play->inputs.revision = revision;
+                entry->play->inputs.snapshot = snapshot;
                 entry->play->query_assets_changed = true;
             }
         }
@@ -1283,7 +1441,6 @@ namespace lux::editor
 
     ProjectSceneResult<SceneViewportId> ProjectScenes::addViewport(
         asset::AssetId document,
-        scene::VSceneCameraSource camera,
         std::uint32_t width,
         std::uint32_t height,
         bool play
@@ -1294,14 +1451,13 @@ namespace lux::editor
         const bool unavailable =
             missing || (play ? !found->second->play || found->second->play->stopping || !found->second->play->rendering
                              : !found->second->rendering);
-        if (unavailable || !width || !height)
+        if (unavailable)
         {
             return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::RENDER_UNAVAILABLE});
         }
         Impl::Viewport viewport;
         viewport.document = document;
         viewport.play = play;
-        viewport.camera = std::move(camera);
         viewport
             .requested = {width, height, rdesc::ETextureFormat::RGBA8_UNORM, 1, render::ETargetKind::OFFSCREEN, true};
         const auto id = impl_->viewports.emplace(std::move(viewport));
@@ -1309,29 +1465,55 @@ namespace lux::editor
         return id;
     }
 
-    bool ProjectScenes::updateViewport(
-        SceneViewportId id,
-        scene::VSceneCameraSource camera,
-        std::uint32_t width,
-        std::uint32_t height
-    ) noexcept
+    bool ProjectScenes::updateViewport(SceneViewportId id, std::uint32_t width, std::uint32_t height) noexcept
     {
         auto* viewport = impl_->viewports.find(id);
-        if (!viewport || viewport->closing || !width || !height)
+        if (!viewport || viewport->closing)
         {
             return false;
         }
-        viewport->camera = std::move(camera);
-        viewport->requested.width = width;
-        viewport->requested.height = height;
-        if (!viewport->view.isNull())
+        if (viewport->requested.width != width || viewport->requested.height != height)
         {
-            auto& inputs = impl_->inputs(*viewport);
-            auto request = inputs.findView(viewport->view)->request;
-            request.camera = viewport->camera;
-            static_cast<void>(inputs.updateView(viewport->view, std::move(request)));
+            viewport->camera_dirty = true;
+            ++viewport->requested_revision;
+            viewport->error = {}; // A new size is a new attempt; the failed size is not retried every tick.
+            viewport->requested.width = width;
+            viewport->requested.height = height;
         }
         return true;
+    }
+
+    bool ProjectScenes::selectViewportCamera(SceneViewportId id, ViewportCameraSelection selection) noexcept
+    {
+        auto* viewport = impl_->viewports.find(id);
+        if (!viewport || viewport->closing)
+        {
+            return false;
+        }
+        if (viewport->selection != selection)
+        {
+            viewport->selection = selection;
+            viewport->camera_dirty = true;
+        }
+        return true;
+    }
+
+    bool ProjectScenes::setViewportCameraTransform(
+        SceneViewportId id,
+        const simulation::ecs::Transform3D& pose
+    ) noexcept
+    {
+        auto* viewport = impl_->viewports.find(id);
+        if (!viewport || viewport->closing || viewport->selection.kind != EViewportCamera::EDITOR)
+        {
+            return false;
+        }
+        auto apply = [&](simulation::ecs::Registry& registry) noexcept
+        {
+            const auto camera = impl_->selectCamera(registry, *viewport);
+            registry.patch<simulation::ecs::Transform3D>(camera, [&](auto& value) noexcept { value = pose; });
+        };
+        return impl_->context.engine().sceneRuntime().editInstance(impl_->instance(*viewport), apply).has_value();
     }
 
     void ProjectScenes::closeViewport(SceneViewportId id) noexcept
@@ -1414,17 +1596,23 @@ namespace lux::editor
         {
             return {};
         }
-        auto error = viewport->error;
-        if (!viewport->view.isNull() && error.type == 0)
+        auto error = viewport->error.type != 0 ? viewport->error : viewport->camera_error;
+        if (viewport->camera_target.valid() && error.type == 0)
         {
-            error = impl_->projection(*viewport).viewError(viewport->view);
+            error = impl_->projection(*viewport).cameraTargetError(viewport->camera, viewport->camera_target);
         }
+        const bool ready = !viewport->closing && !viewport->pending && error.type == 0 &&
+                           viewport->applied == viewport->requested && viewport->image.value != 0 &&
+                           impl_->ui->imagesApplied();
         return {
             viewport->image,
             viewport->target,
+            viewport->applied,
+            impl_->instance(*viewport),
+            viewport->camera,
             error,
-            !viewport->closing && !viewport->pending && error.type == 0 && viewport->applied == viewport->requested &&
-                viewport->image.value != 0 && impl_->ui->imagesApplied()
+            ready,
+            viewport->pending || viewport->applied != viewport->requested
         };
     }
 } // namespace lux::editor

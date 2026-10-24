@@ -29,6 +29,13 @@ namespace lux::render::detail
         EMemoryPlacement reason;
     };
 
+    // Resize transfers the connected closure of old/new allocation groups, including fixed-size members.
+    void expandMemoryMigration(
+        std::span<const MemoryPlacement> previous,
+        std::span<const MemoryPlacement> next,
+        std::span<std::uint8_t> changed
+    ) noexcept;
+
     // Resolve actual requirements at Attach/Resize; allocation initially names a physical slot.
     [[nodiscard]] std::vector<MemoryPlacement> instantiatePlacements(
         const PhysicalResourcePlan& physical,

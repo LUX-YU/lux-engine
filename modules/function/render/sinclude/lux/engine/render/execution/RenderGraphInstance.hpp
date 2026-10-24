@@ -26,6 +26,26 @@ namespace lux::render::detail
             std::uint32_t parameter_bytes = 0
         ) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;
+
+        struct ResizeResources;
+
+        struct ImageReplacement final
+        {
+            GraphResourceId resource;
+            std::span<const TargetFrame> frames;
+        };
+
+        // Cold candidate only; instance identity, subscriptions and Feature bindings remain unchanged.
+        [[nodiscard]] RenderResult<ResizeResources> prepareResize(
+            TargetOutput,
+            std::span<const ImageReplacement> inputs = {}
+        ) noexcept;
+        // Revalidate dependent extents after suspension; concurrent Storage publication may change buffer ranges.
+        [[nodiscard]] RenderResult<void> prepareResizeAdoption(ResizeResources&) noexcept;
+        // Called only after affected accepted GPU uses complete, with no intervening suspension.
+        void commitResize(ResizeResources&&) noexcept;
+        // After accepted uses complete, withdraw borrowed SwapChain objects before their presentation owner closes.
+        void releaseOutputReferences() noexcept;
         // Frame-scoped upload, using the caller's existing FrameExecution and ResourceUploader.
         // No private queue/scope: geometry belongs to this instance's actual reusable physical slice.
         [[nodiscard]] ResourceUploader::Task
@@ -127,6 +147,11 @@ namespace lux::render::detail
         void markInstanceParameters() noexcept;
         [[nodiscard]] RenderResult<void> prepareParameters(std::uint32_t slot) noexcept;
 
+        [[nodiscard]] RenderResult<void> prepareResizeHistories(ResizeResources&, const TargetDesc&) noexcept;
+        [[nodiscard]] RenderResult<void>
+        prepareResizePhysical(ResizeResources&, std::uint32_t, const TargetDesc&) noexcept;
+        [[nodiscard]] RenderResult<void> prepareResizeBindings(ResizeResources&, std::uint32_t) noexcept;
+
         struct Binding final
         {
             nri::Texture* image = nullptr;
@@ -142,10 +167,13 @@ namespace lux::render::detail
         struct HistoryState;
         struct FrameResources;
         [[nodiscard]] RenderResult<nri::TextureDesc> textureDescription(const CompiledResource&) const noexcept;
+        [[nodiscard]] RenderResult<nri::TextureDesc> textureDescription(const CompiledResource&, const TargetDesc&)
+            const noexcept;
         [[nodiscard]] RenderResult<void> createDrawListResources(std::uint32_t slot) noexcept;
         [[nodiscard]] RenderResult<void> allocatePhysicalResources(FrameResources&) noexcept;
         void prepareAliasBarriers(FrameResources&) noexcept;
         [[nodiscard]] RenderResult<void> createResource(std::uint32_t resource, Binding&) noexcept;
+        [[nodiscard]] RenderResult<void> createResource(std::uint32_t resource, Binding&, const TargetDesc&) noexcept;
         [[nodiscard]] RenderResult<void> createHistories() noexcept;
         [[nodiscard]] RenderResult<void> createHistoryViews(HistoryState&) noexcept;
         [[nodiscard]] bool selectHistory() noexcept;

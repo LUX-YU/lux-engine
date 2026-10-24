@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <atomic>
 #include <bit>
 #include <cmath>
 #include <cstring>
@@ -11,6 +10,7 @@
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/FrameResources.hpp>
+#include <lux/engine/render/execution/PassExtent.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/PhysicalResourcePlan.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
@@ -18,18 +18,6 @@
 
 namespace lux::render::detail
 {
-    namespace
-    {
-        // Cache revisions, not resource IDs. A new instance cannot accidentally match cached
-        // bindings of an older instance allocated at the same address. No registry or owner.
-        std::atomic<std::uint64_t> imported_revision{1};
-
-        std::uint64_t nextImportedRevision() noexcept
-        {
-            return imported_revision.fetch_add(1, std::memory_order_relaxed);
-        }
-    } // namespace
-
     ResourceInput RenderGraphInstance::resourceInput(GraphResourceId resource, std::uint32_t slot) const noexcept
     {
         const auto& input = frames_[slot].bindings[resource.index];
@@ -86,7 +74,7 @@ namespace lux::render::detail
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
             auto& frame = frames_[slot];
-            frame.imported_revision = nextImportedRevision();
+            frame.invalidateImportedBindings();
             frame.parameters = parameter_defaults_;
             frame.parameter_dirty.resize(plan.passes().size());
             frame.parameter_updates.reserve(plan.passes().size());
@@ -137,7 +125,7 @@ namespace lux::render::detail
         auto& binding = frames_[slot].bindings[resource.index];
         if (binding.image != &image)
         {
-            frames_[slot].imported_revision = nextImportedRevision();
+            frames_[slot].invalidateImportedBindings();
         }
         binding.image = &image;
     }
@@ -602,6 +590,14 @@ namespace lux::render::detail
     RenderResult<nri::TextureDesc> RenderGraphInstance::textureDescription(const CompiledResource& resource
     ) const noexcept
     {
+        return textureDescription(resource, target_);
+    }
+
+    RenderResult<nri::TextureDesc> RenderGraphInstance::textureDescription(
+        const CompiledResource& resource,
+        const TargetDesc& target
+    ) const noexcept
+    {
         auto& session = *session_;
         const auto max_extent = session.description().dimensions.texture2DMaxDim;
         const auto* image = &std::get<GraphImageDesc>(resource.description);
@@ -616,8 +612,8 @@ namespace lux::render::detail
                 (std::uint64_t(target) * expression.numerator + expression.denominator - 1) / expression.denominator;
             return (scaled + expression.alignment - 1) / expression.alignment * expression.alignment;
         };
-        const auto width = dimension(image->width, target_.width);
-        const auto height = dimension(image->height, target_.height);
+        const auto width = dimension(image->width, target.width);
+        const auto height = dimension(image->height, target.height);
         if (!width || !height || width > max_extent || height > max_extent)
         {
             return cxx::unexpected(RenderError{kInvalidTargetExtent});
@@ -643,12 +639,21 @@ namespace lux::render::detail
 
     RenderResult<void> RenderGraphInstance::createResource(std::uint32_t index, Binding& binding) noexcept
     {
+        return createResource(index, binding, target_);
+    }
+
+    RenderResult<void> RenderGraphInstance::createResource(
+        std::uint32_t index,
+        Binding& binding,
+        const TargetDesc& target
+    ) noexcept
+    {
         auto& session = *session_;
         const auto& core = session.nriCore();
         const auto& resource = plan_->resources()[index];
         if (std::holds_alternative<GraphImageDesc>(resource.description))
         {
-            auto description = textureDescription(resource);
+            auto description = textureDescription(resource, target);
             if (!description)
             {
                 return cxx::unexpected(description.error());
@@ -702,7 +707,7 @@ namespace lux::render::detail
 
     RenderResult<void> RenderGraphInstance::createHistoryViews(HistoryState& history) noexcept
     {
-        using Target = HistoryState::EViewTarget;
+        using Target = EImageViewTarget;
         const auto& core = session_->nriCore();
         const auto& description = history.plan->description;
         const auto belongs = [&](GraphResourceId id)
@@ -924,7 +929,7 @@ namespace lux::render::detail
 
     void RenderGraphInstance::updateHistoryViews(std::uint32_t frame_slot) noexcept
     {
-        using Target = HistoryState::EViewTarget;
+        using Target = EImageViewTarget;
         auto& frame = frames_[frame_slot];
         const auto& core = session_->nriCore();
         for (std::size_t h = 0; h < histories_.size(); ++h)
@@ -1121,21 +1126,17 @@ namespace lux::render::detail
         for (const auto& compiled_pass : plan.passes())
         {
             Pass pass{&compiled_pass};
-            if (const auto* compute = std::get_if<ComputeCommands>(&compiled_pass.work))
+            auto extent = preparePassExtent(
+                session,
+                plan,
+                compiled_pass,
+                [&](std::uint32_t resource) -> const Binding& { return frame.bindings[resource]; },
+                pass.dispatch_groups,
+                pass.copy_layouts
+            );
+            if (!extent)
             {
-                if (const auto* dispatch = std::get_if<ImageDispatchArguments>(&compute->dispatch))
-                {
-                    const auto& image = core.GetTextureDesc(*frame.bindings[dispatch->resource.index].image);
-                    const auto width = std::max(1u, std::uint32_t(image.width) >> dispatch->mip);
-                    const auto height = std::max(1u, std::uint32_t(image.height) >> dispatch->mip);
-                    pass.dispatch_groups =
-                        {(width - 1) / dispatch->group_size[0] + 1, (height - 1) / dispatch->group_size[1] + 1, 1};
-                    const auto& limit = session.description().shaderStage.compute.dispatchMaxDim;
-                    if (pass.dispatch_groups[0] > limit[0] || pass.dispatch_groups[1] > limit[1])
-                    {
-                        return cxx::unexpected(RenderError{kDeviceArgument});
-                    }
-                }
+                return extent;
             }
             for (const auto& barrier : compiled_pass.before.images)
             {
@@ -1161,24 +1162,6 @@ namespace lux::render::detail
             if (const auto* raster = std::get_if<RasterCommands>(&compiled_pass.work))
             {
                 const auto& group = plan.recording_.groups[compiled_pass.rendering_group];
-                const auto& reference = raster->colors.empty() ? *raster->depth : raster->colors.front();
-                const auto& reference_range = std::get<GraphImageRange>(reference.access.range);
-                const auto& reference_image =
-                    core.GetTextureDesc(*frame.bindings[reference.access.version.resource.index].image);
-                const auto matchesExtent = [&](const RasterAttachment& input)
-                {
-                    const auto& range = std::get<GraphImageRange>(input.access.range);
-                    const auto& image = core.GetTextureDesc(*frame.bindings[input.access.version.resource.index].image);
-                    return std::max(1u, std::uint32_t(image.width) >> range.first_mip) ==
-                               std::max(1u, std::uint32_t(reference_image.width) >> reference_range.first_mip) &&
-                           std::max(1u, std::uint32_t(image.height) >> range.first_mip) ==
-                               std::max(1u, std::uint32_t(reference_image.height) >> reference_range.first_mip);
-                };
-                if (!std::ranges::all_of(raster->colors, matchesExtent) ||
-                    (raster->depth && !matchesExtent(*raster->depth)))
-                {
-                    return cxx::unexpected(RenderError{kInvalidTargetExtent});
-                }
                 pass.colors.resize(group.colors.size());
                 for (std::size_t i = 0; i < group.colors.size(); ++i)
                 {
@@ -1201,29 +1184,6 @@ namespace lux::render::detail
             {
                 pass.copy_layouts.resize(transfer->operations.size());
                 pass.clear_views.resize(transfer->operations.size());
-                const auto regionValid =
-                    [&](const ResourceAccess& access, const std::optional<ImageCopyRegion>& rectangle)
-                {
-                    if (!rectangle)
-                    {
-                        return true;
-                    }
-                    const auto& range = std::get<GraphImageRange>(access.range);
-                    const auto& image = core.GetTextureDesc(*frame.bindings[access.version.resource.index].image);
-                    const auto format = imageFormat(
-                        std::get<GraphImageDesc>(plan.resources()[access.version.resource.index].description).format
-                    );
-                    const auto width = std::max(1u, std::uint32_t(image.width) >> range.first_mip);
-                    const auto height = std::max(1u, std::uint32_t(image.height) >> range.first_mip);
-                    const bool invalid =
-                        !rectangle->width || !rectangle->height || range.mip_count != 1 ||
-                        std::uint64_t(rectangle->x) + rectangle->width > width ||
-                        std::uint64_t(rectangle->y) + rectangle->height > height || rectangle->x % format.block ||
-                        rectangle->y % format.block ||
-                        (rectangle->width % format.block && rectangle->x + rectangle->width != width) ||
-                        (rectangle->height % format.block && rectangle->y + rectangle->height != height);
-                    return !invalid;
-                };
                 for (std::size_t i = 0; i < transfer->operations.size(); ++i)
                 {
                     const auto& operation = transfer->operations[i];
@@ -1241,62 +1201,6 @@ namespace lux::render::detail
                         {
                             return ready;
                         }
-                    }
-                    else if (const auto* copy = std::get_if<CopyImage>(&operation))
-                    {
-                        if (!regionValid(copy->source, copy->source_region) ||
-                            !regionValid(copy->destination, copy->destination_region))
-                        {
-                            return cxx::unexpected(RenderError{kDeviceArgument});
-                        }
-                    }
-                    else if (const auto* copy = std::get_if<CopyImageBuffer>(&operation))
-                    {
-                        const bool source_image = std::holds_alternative<GraphImageRange>(copy->source.range);
-                        const auto& image_access = source_image ? copy->source : copy->destination;
-                        const auto& buffer_access = source_image ? copy->destination : copy->source;
-                        const auto& image_range = std::get<GraphImageRange>(image_access.range);
-                        const auto& buffer_range = std::get<GraphBufferRange>(buffer_access.range);
-                        const auto& buffer = frame.bindings[buffer_access.version.resource.index];
-                        const auto& image =
-                            core.GetTextureDesc(*frame.bindings[image_access.version.resource.index].image);
-                        const auto format = imageFormat(
-                            std::get<GraphImageDesc>(plan.resources()[image_access.version.resource.index].description)
-                                .format
-                        );
-                        if (!regionValid(image_access, copy->image_region))
-                        {
-                            return cxx::unexpected(RenderError{kDeviceArgument});
-                        }
-                        const auto width = copy->image_region
-                                               ? copy->image_region->width
-                                               : std::max(1u, std::uint32_t(image.width) >> image_range.first_mip);
-                        const auto height = copy->image_region
-                                                ? copy->image_region->height
-                                                : std::max(1u, std::uint32_t(image.height) >> image_range.first_mip);
-                        const auto row_bytes = ((width + format.block - 1) / format.block) * format.bytes;
-                        const auto rows = (height + format.block - 1) / format.block;
-                        const auto& alignment = session.description().memoryAlignment;
-                        const auto row = copy->row_pitch
-                                             ? copy->row_pitch
-                                             : (row_bytes + alignment.uploadBufferTextureRow - 1) /
-                                                   alignment.uploadBufferTextureRow * alignment.uploadBufferTextureRow;
-                        const auto slice = copy->slice_pitch
-                                               ? copy->slice_pitch
-                                               : (std::uint64_t(row) * rows + alignment.uploadBufferTextureSlice - 1) /
-                                                     alignment.uploadBufferTextureSlice *
-                                                     alignment.uploadBufferTextureSlice;
-                        const bool invalid =
-                            image_range.mip_count != 1 || image_range.layer_count != 1 || row < row_bytes ||
-                            row % alignment.uploadBufferTextureRow || slice < std::uint64_t(row) * rows ||
-                            slice > UINT32_MAX || slice % alignment.uploadBufferTextureSlice ||
-                            slice > buffer_range.size ||
-                            (buffer.buffer_offset + buffer_range.offset) % alignment.uploadBufferTextureSlice;
-                        if (invalid)
-                        {
-                            return cxx::unexpected(RenderError{kDeviceArgument});
-                        }
-                        pass.copy_layouts[i] = {buffer_range.offset, row, static_cast<std::uint32_t>(slice)};
                     }
                 }
             }
@@ -1662,7 +1566,7 @@ namespace lux::render::detail
                                           binding.buffer_size != value.size || binding.image != value.image;
             if (changed_physical && plan_->resources()[resource].origin == EGraphOrigin::IMPORTED)
             {
-                frame.imported_revision = nextImportedRevision();
+                frame.invalidateImportedBindings();
             }
             if (plan_->resources()[resource].memory_used &&
                 std::holds_alternative<GraphBufferDesc>(plan_->resources()[resource].description))
@@ -1911,7 +1815,7 @@ namespace lux::render::detail
                 // Rotation changes this binding and its barriers, not the cross-instance dependency graph.
                 if (output_.description.kind != ETargetKind::SURFACE)
                 {
-                    frame.imported_revision = nextImportedRevision();
+                    frame.invalidateImportedBindings();
                 }
                 if (!binding.dirty)
                 {

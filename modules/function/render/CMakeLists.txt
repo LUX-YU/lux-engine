@@ -61,6 +61,7 @@ set(render_sources
     src/device/SubmissionQueue.cpp
     src/execution/FrameExecution.cpp
     src/execution/FrameResources.cpp
+    src/execution/ResizeResources.cpp
     src/execution/HistoryState.cpp
     src/execution/OffscreenTarget.cpp
     src/execution/SurfaceTarget.cpp

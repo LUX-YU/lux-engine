@@ -17,6 +17,23 @@ namespace lux::render::detail
     class RenderPlan;
     [[nodiscard]] LUX_RENDER_PUBLIC bool dumpPlan(const RenderPlan&, EGraphDumpFormat, DumpSink) noexcept;
 
+    enum class EImageViewTarget : std::uint8_t
+    {
+        DESCRIPTOR,
+        COLOR,
+        DEPTH,
+        COLOR_RESOLVE,
+        DEPTH_RESOLVE,
+        CLEAR
+    };
+
+    struct ImageViewUse final
+    {
+        std::uint32_t pass, index;
+        EImageViewTarget target;
+        GraphImageRange range;
+    };
+
     struct CompiledResource final
     {
         std::string key;
@@ -32,6 +49,8 @@ namespace lux::render::detail
         // Immutable reverse indexes shared by every Context frame slice.
         std::vector<std::pair<std::uint32_t, std::uint32_t>> barrier_uses, descriptor_uses;
         std::vector<std::uint32_t> final_barrier_uses;
+        std::vector<ImageViewUse> image_views;
+        std::vector<std::uint32_t> extent_uses;
     };
 
     enum class ETransitionBoundary : std::uint8_t

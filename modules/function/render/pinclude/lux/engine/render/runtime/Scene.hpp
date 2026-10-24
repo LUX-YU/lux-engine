@@ -48,6 +48,7 @@ namespace lux::render::runtime_detail
         AttachmentId attachment;
         std::vector<AttachmentId> consumers; // Non-owning sampled output relationships.
         bool enabled = true;
+        bool resizing = false; // One accepted structural transaction, not another physical resource owner.
 
         explicit RenderTarget(VPhysicalTarget value) noexcept : physical(std::move(value))
         {
@@ -100,7 +101,14 @@ namespace lux::render::runtime_detail
         // Destruction disconnects professional data and inputs before the graph instance and local StorageSet.
         std::vector<StorageInput> storage_inputs;
         std::vector<detail::FeatureBinding> feature_bindings;
-        std::vector<TargetImageInput> target_images;
+
+        struct TargetImage final
+        {
+            TargetId target;
+            GraphResourceId resource;
+        };
+
+        std::vector<TargetImage> target_images;
         [[nodiscard]] RenderResult<void> bindStorage(
             std::uint32_t resource,
             StorageId,
@@ -109,7 +117,6 @@ namespace lux::render::runtime_detail
             const void* argument,
             std::uint32_t frame_count
         ) noexcept;
-        void swapResources(EffectAttachment&) noexcept;
         std::size_t view_position = 0;
         std::size_t effect_position = 0;
     };

@@ -115,6 +115,8 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> poll() noexcept;
         [[nodiscard]] RenderResult<bool> waitIdle(std::uint64_t timeout_ns) noexcept;
         [[nodiscard]] CompletionSender whenSubmittedWorkCompletes() noexcept;
+        // An accepted frontier captured by FrameExecution; excludes later unrelated submissions.
+        [[nodiscard]] CompletionSender whenSubmissionCompletes(std::uint64_t serial) noexcept;
         [[nodiscard]] CompletionSender whenAvailable() noexcept;
         // Detach the ready prefix before invoking callbacks; a callback may destroy its own node.
         void dispatchCompleted() noexcept;

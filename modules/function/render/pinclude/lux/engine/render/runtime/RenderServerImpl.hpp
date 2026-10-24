@@ -14,6 +14,7 @@
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
+#include <lux/engine/render/execution/ResizeResources.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/resource/StorageCreateContext.hpp>
 #include <lux/engine/render/runtime/CommandRegistry.hpp>
@@ -106,7 +107,7 @@ namespace lux::render
         }
 
         void detachAttachment(AttachmentId id) noexcept;
-        [[nodiscard]] bool attachmentsSubmitting(std::span<const AttachmentId>) const noexcept;
+        [[nodiscard]] bool canChangeAttachments(std::span<const AttachmentId>) const noexcept;
 
         RenderResult<StorageSet*> findStorageSet(const VStorageLocation&) noexcept;
         void findStorage(const FindStorage::Request&, FindStorage::Response&) noexcept;
@@ -119,14 +120,15 @@ namespace lux::render
             StorageSet& scene,
             StorageSet& view,
             StorageSet& attachment,
-            std::span<const TargetImageInput> target_images,
-            TargetId replaced_target = {},
-            detail::TargetOutput replaced_output = {}
+            std::span<const TargetImageInput> target_images
         ) noexcept;
 
         void attachEffect(const Attach::Request&, Attach::Response&) noexcept;
 
-        RenderResult<void> replaceTargetResources(TargetId, RenderTarget&, RenderTarget::VPhysicalTarget) noexcept;
+        using ResizeCandidates = std::vector<std::pair<AttachmentId, detail::RenderGraphInstance::ResizeResources>>;
+        [[nodiscard]] RenderResult<ResizeCandidates>
+            prepareTargetResize(TargetId, detail::TargetOutput, std::span<const AttachmentId>) noexcept;
+
         [[nodiscard]] bool targetDependencyCycle(TargetId, std::span<const TargetImageInput>, AttachmentId)
             const noexcept;
 

@@ -23,64 +23,45 @@ namespace lux::editor
 {
     namespace
     {
-        std::optional<scene::SceneCameraInput> placementCamera(
+        struct CameraSnapshot final
+        {
+            scene::Camera camera;
+            Eigen::Affine3d transform;
+            double aspect;
+        };
+
+        std::optional<CameraSnapshot> viewportCamera(
             scene::SceneRuntime& runtime,
-            const SceneDocument& document,
-            const scene::VSceneCameraSource& source
+            const SceneViewportStatus& viewport
         ) noexcept
         {
-            if (const auto* free = std::get_if<scene::SceneCameraInput>(&source))
-            {
-                return *free;
-            }
-            auto borrowed = std::as_const(runtime).borrowInstance(document.instance());
+            auto borrowed = std::as_const(runtime).borrowInstance(viewport.instance);
             if (!borrowed)
             {
                 return {};
             }
             const auto& registry = borrowed->get();
-            auto entity = simulation::ecs::NullEntity;
-            if (const auto* selected = std::get_if<scene::SceneEntityCamera>(&source))
-            {
-                entity = selected->entity;
-            }
-            else
-            {
-                for (auto candidate : registry.view<const scene::Camera>())
-                {
-                    if (registry.get<scene::Camera>(candidate).primary)
-                    {
-                        if (entity != simulation::ecs::NullEntity)
-                        {
-                            return {};
-                        }
-                        entity = candidate;
-                    }
-                }
-            }
-            const bool available =
-                registry.valid(entity) && registry.all_of<scene::Camera, simulation::ecs::WorldTransform3D>(entity);
+            const bool available = registry.valid(viewport.camera) &&
+                                   registry.all_of<scene::Camera, simulation::ecs::WorldTransform3D>(viewport.camera) &&
+                                   viewport.description.height != 0;
             if (!available)
             {
                 return {};
             }
-            return scene::SceneCameraInput{
-                registry.get<scene::Camera>(entity),
-                registry.get<simulation::ecs::WorldTransform3D>(entity).value
+            return CameraSnapshot{
+                registry.get<scene::Camera>(viewport.camera),
+                registry.get<simulation::ecs::WorldTransform3D>(viewport.camera).value,
+                double(viewport.description.width) / viewport.description.height
             };
         }
 
-        std::optional<math::Ray3d> viewportRay(
-            const scene::SceneCameraInput& camera,
-            ui::Point pointer,
-            ui::Size size
-        ) noexcept
+        std::optional<math::Ray3d> viewportRay(const CameraSnapshot& camera, ui::Point pointer, ui::Size size) noexcept
         {
             if (size.width <= 0 || size.height <= 0)
             {
                 return {};
             }
-            const auto projection = scene::cameraProjection(camera.camera, double(size.width) / size.height);
+            const auto projection = scene::cameraProjection(camera.camera, camera.aspect);
             const auto view = scene::cameraView(camera.transform, Eigen::Vector3d::Zero());
             if (!projection || !view)
             {
@@ -100,7 +81,7 @@ namespace lux::editor
         }
 
         std::optional<Eigen::Vector3d> groundPosition(
-            const scene::SceneCameraInput& camera,
+            const CameraSnapshot& camera,
             ui::Point pointer,
             ui::Size size
         ) noexcept
@@ -173,14 +154,13 @@ namespace lux::editor
         ViewportImage image;
         std::string editing_status;
         std::vector<asset::AssetId> document_ids;
-        std::vector<simulation::ecs::Entity> camera_entities;
+        std::vector<world::WorldObjectId> camera_objects;
         std::vector<object::Connection> connections;
         object::Connection document_changed;
         SceneViewportId viewport;
         asset::AssetId document;
-        scene::VSceneCameraSource camera{scene::SceneCameraInput{}};
         std::uint32_t width{640}, height{360};
-        bool cameras_dirty{true};
+        bool cameras_dirty{true}, camera_controls_dirty{true};
         bool observing_play{};
         bool dragging{};
         std::optional<bool> end_drag;
@@ -329,15 +309,14 @@ namespace lux::editor
         impl_->cameras.setValue(0);
         updateCamera();
         impl_->observing_play = impl_->play.value();
-        auto viewport =
-            impl_->scenes
-                .addViewport(impl_->document, impl_->camera, impl_->width, impl_->height, impl_->observing_play);
+        auto viewport = impl_->scenes.addViewport(impl_->document, impl_->width, impl_->height, impl_->observing_play);
         if (!viewport)
         {
             impl_->status.setText(describeProjectSceneFailure(viewport.error()));
             return;
         }
         impl_->viewport = *viewport;
+        updateCamera();
         impl_->cameras_dirty = true;
     }
 
@@ -355,7 +334,7 @@ namespace lux::editor
         {
             return; // A previous simulation publication still owns its mutation interval.
         }
-        impl_->camera_entities.clear();
+        impl_->camera_objects.clear();
         std::vector<ui::ChoiceOption> options{{0, "Editor camera"}, {1, "Primary Scene camera"}};
         const auto& entities = registry->get();
         const auto* residency = entities.ctx().find<scene::WorldResidency>();
@@ -363,8 +342,13 @@ namespace lux::editor
         for (auto entity : entities.view<const scene::Camera>())
         {
             const auto object = identities ? identities->object(entity) : world::WorldObjectId{};
-            options.push_back({static_cast<std::int64_t>(options.size()), "Camera " + uuids::to_string(object.value)});
-            impl_->camera_entities.push_back(entity);
+            if (object.valid())
+            {
+                options.push_back(
+                    {static_cast<std::int64_t>(options.size()), "Camera " + uuids::to_string(object.value)}
+                );
+                impl_->camera_objects.push_back(object);
+            }
         }
         impl_->cameras.setOptions(std::move(options));
         impl_->cameras_dirty = false;
@@ -373,30 +357,34 @@ namespace lux::editor
     void SceneViewportPane::updateCamera() noexcept
     {
         const auto selected = impl_->cameras.value();
-        if (selected == 0)
+        ViewportCameraSelection selection;
+        if (selected == 1)
         {
-            scene::SceneCameraInput input;
-            input.transform.translation() = Eigen::Vector3d{
+            selection.kind = EViewportCamera::PRIMARY;
+        }
+        else if (selected >= 2 && static_cast<std::size_t>(selected - 2) < impl_->camera_objects.size())
+        {
+            selection = {EViewportCamera::SCENE, impl_->camera_objects[selected - 2]};
+        }
+        static_cast<void>(impl_->scenes.selectViewportCamera(impl_->viewport, selection));
+        if (selection.kind == EViewportCamera::EDITOR)
+        {
+            simulation::ecs::Transform3D pose;
+            pose.translation = Eigen::Vector3d{
                 std::get<double>(impl_->x.value()),
                 std::get<double>(impl_->y.value()),
                 std::get<double>(impl_->z.value())
             };
             constexpr double radians = 3.14159265358979323846 / 180.0;
-            input.transform.linear() =
-                (Eigen::AngleAxisd(std::get<double>(impl_->yaw.value()) * radians, Eigen::Vector3d::UnitY()) *
-                 Eigen::AngleAxisd(std::get<double>(impl_->pitch.value()) * radians, Eigen::Vector3d::UnitX()))
-                    .toRotationMatrix();
-            impl_->camera = std::move(input);
+            pose.rotation =
+                Eigen::AngleAxisd(std::get<double>(impl_->yaw.value()) * radians, Eigen::Vector3d::UnitY()) *
+                Eigen::AngleAxisd(std::get<double>(impl_->pitch.value()) * radians, Eigen::Vector3d::UnitX());
+            impl_->camera_controls_dirty = !impl_->scenes.setViewportCameraTransform(impl_->viewport, pose);
         }
-        else if (selected == 1)
+        else
         {
-            impl_->camera = scene::PrimarySceneCamera{};
+            impl_->camera_controls_dirty = false;
         }
-        else if (static_cast<std::size_t>(selected - 2) < impl_->camera_entities.size())
-        {
-            impl_->camera = scene::SceneEntityCamera{impl_->camera_entities[selected - 2]};
-        }
-        static_cast<void>(impl_->scenes.updateViewport(impl_->viewport, impl_->camera, impl_->width, impl_->height));
     }
 
     void SceneViewportPane::update() noexcept
@@ -423,17 +411,25 @@ namespace lux::editor
         {
             return;
         }
-        const auto size = impl_->image.displayedSize();
-        const auto width = static_cast<std::uint32_t>(std::max(1.0F, std::floor(size.width)));
-        const auto height = static_cast<std::uint32_t>(std::max(1.0F, std::floor(size.height)));
-        if (size.width > 0 && size.height > 0 && (width != impl_->width || height != impl_->height))
+        if (impl_->camera_controls_dirty)
+        {
+            updateCamera();
+        }
+        const auto& interaction = impl_->image.interaction();
+        const auto size = interaction.available_size;
+        const auto width =
+            static_cast<std::uint32_t>(std::max(0.0F, std::ceil(size.width * interaction.framebuffer_scale.x)));
+        const auto height =
+            static_cast<std::uint32_t>(std::max(0.0F, std::ceil(size.height * interaction.framebuffer_scale.y)));
+        if (width != impl_->width || height != impl_->height)
         {
             impl_->width = width;
             impl_->height = height;
-            static_cast<void>(impl_->scenes.updateViewport(impl_->viewport, impl_->camera, width, height));
+            static_cast<void>(impl_->scenes.updateViewport(impl_->viewport, width, height));
         }
         const auto status = impl_->scenes.viewport(impl_->viewport);
-        impl_->image.setImage(status.ready ? status.image : rdesc::UiImageToken{});
+        impl_->image.setImage(status.image);
+        impl_->image.setImageExtent({float(status.description.width), float(status.description.height)});
         impl_->status.setText(
             status.error.type ? error::format(status.error)
             : status.ready    ? impl_->editing_status
@@ -550,13 +546,13 @@ namespace lux::editor
                 inverse_parent = transform->value.linear().inverse();
             }
         }
-        const auto camera = placementCamera(state.runtime, *document, state.camera);
+        const auto camera = viewportCamera(state.runtime, state.scenes.viewport(state.viewport));
         if (!camera || !inverse_parent.allFinite())
         {
             gizmo.hide();
             return;
         }
-        const auto projection = scene::cameraProjection(camera->camera, double(state.width) / state.height);
+        const auto projection = scene::cameraProjection(camera->camera, camera->aspect);
         const auto view = scene::cameraView(camera->transform, Eigen::Vector3d::Zero());
         if (!projection || !view)
         {
@@ -588,7 +584,7 @@ namespace lux::editor
         {
             return;
         }
-        const auto camera = placementCamera(impl_->runtime, *document, impl_->camera);
+        const auto camera = viewportCamera(impl_->runtime, impl_->scenes.viewport(impl_->viewport));
         const auto ray = camera ? viewportRay(*camera, click->pointer, click->size) : std::nullopt;
         if (!ray)
         {
@@ -676,7 +672,7 @@ namespace lux::editor
             impl_->editing_status = "This indexed World needs an explicit placement partition";
             return;
         }
-        const auto camera = placementCamera(impl_->runtime, *document, impl_->camera);
+        const auto camera = viewportCamera(impl_->runtime, impl_->scenes.viewport(impl_->viewport));
         const auto position = camera ? groundPosition(*camera, drop->pointer, drop->size) : std::nullopt;
         if (!position)
         {

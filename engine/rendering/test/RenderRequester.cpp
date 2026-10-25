@@ -222,9 +222,9 @@ int main(int argc, char** argv)
         {2, {}}
     ));
     check(bool(bounded->setCommands(call<ListCommands>(*rendering, {}))));
-    const auto list = take(bounded->bind<ListFeatures>());
-    ListFeatures::Request list_input{};
-    ListFeatures::Response first_list, second_list, third_list;
+    const auto list = take(bounded->bind<ListCapabilities>());
+    ListCapabilities::Request list_input{};
+    ListCapabilities::Response first_list, second_list, third_list;
     bool first_done{}, second_done{}, third_done{};
     auto first_task = receive(execution, bounded->request(list, list_input), first_list, first_done);
     auto second_task = receive(execution, bounded->request(list, list_input), second_list, second_done);

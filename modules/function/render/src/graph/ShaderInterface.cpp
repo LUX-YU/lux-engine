@@ -1,5 +1,5 @@
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/graph/RenderGraph.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/ShaderInterface.hpp>
 
 namespace lux::render::detail

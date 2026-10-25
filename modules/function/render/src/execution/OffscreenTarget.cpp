@@ -1,7 +1,7 @@
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 
 namespace lux::render::detail
 {

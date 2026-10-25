@@ -1,4 +1,4 @@
-#include <lux/engine/render/graph/RenderGraphBuilder.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 
 #include <bit>
 #include <lux/engine/render/graph/Range.hpp>

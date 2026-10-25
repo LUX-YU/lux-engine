@@ -4,14 +4,14 @@
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
-#include <lux/engine/render/device/DescriptorTable.hpp>
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
-#include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/FrameResources.hpp>
 #include <lux/engine/render/execution/PassExtent.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
+#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
 #include <lux/engine/render/graph/PhysicalResourcePlan.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
 #include <numeric>
@@ -1746,18 +1746,30 @@ namespace lux::render::detail
 
     RenderResult<void> RenderGraphInstance::setInputs(
         std::span<const std::byte> parameters,
-        std::span<const std::uint8_t> conditions
+        std::span<const std::uint8_t> conditions,
+        cxx::TypeToken parameter_type,
+        FeatureGraphOps::Parameters project
     ) noexcept
     {
-        if (parameters.size() != instance_values_.size())
+        const bool invalid_parameters = !project && parameters.size() != instance_values_.size();
+        const bool invalid_conditions = conditions.size() != condition_values_.size() ||
+                                        std::ranges::any_of(conditions, [](auto value) { return value > 1; });
+        if (invalid_parameters || invalid_conditions)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        if (auto accepted = setConditions(conditions); !accepted)
+        if (project)
         {
-            return accepted;
+            if (auto projected = project(parameter_type, parameters, instance_values_); !projected)
+            {
+                return projected;
+            }
         }
-        std::ranges::copy(parameters, instance_values_.begin());
+        else
+        {
+            std::ranges::copy(parameters, instance_values_.begin());
+        }
+        std::ranges::copy(conditions, condition_values_.begin());
         markInstanceParameters();
         return {};
     }

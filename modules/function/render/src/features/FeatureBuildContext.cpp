@@ -1,6 +1,6 @@
 #include <algorithm>
-#include <lux/engine/render/features/FeatureBuildContext.hpp>
-#include <lux/engine/render/features/FeatureGraphOps.hpp>
+#include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
+#include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
 
 namespace lux::render
 {

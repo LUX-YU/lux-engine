@@ -1,13 +1,13 @@
-#include <lux/engine/render/resource/StorageSet.hpp>
 #include <algorithm>
 #include <bit>
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
+#include <lux/engine/render/resource/StorageSet.hpp>
 #include <lux/engine/render/storage/RasterMaterialTableStorage.hpp>
 #include <lux/engine/render/storage/SampledTexture2DStorage.hpp>
 
@@ -169,12 +169,12 @@ namespace lux::render::detail
     TextureGpuRef RasterMaterialTableStorage::resolveTextureReference(TextureId id) const noexcept
     {
         auto& registry = resources_;
-        const auto* storage_set = registry.storageSet(id.storage);
+        const auto* storage_set = registry.storageSet(extension_detail::ResourceIdentity::storage(id));
         if (!storage_set || (storage_set != registry.storageSet(id_) && !storage_set->isGlobal()))
         {
             return {};
         }
-        auto source = registry.borrow<SampledTexture2DStorage>(id.storage);
+        auto source = registry.borrow<SampledTexture2DStorage>(extension_detail::ResourceIdentity::storage(id));
         const auto* texture = source ? (*source)->find(id) : nullptr;
         return texture ? texture->gpuReference() : TextureGpuRef{};
     }
@@ -240,10 +240,6 @@ namespace lux::render::detail
         Table* selected = nullptr;
         if constexpr (std::same_as<Input, MaterialWrite>)
         {
-            if (input.storage != id_)
-            {
-                co_return cxx::unexpected(RenderError{kStorageIdentity});
-            }
             auto found = table(input.program);
             if (!found)
             {
@@ -253,7 +249,9 @@ namespace lux::render::detail
         }
         else
         {
-            existing = input.material.storage == id_ ? entries_.find(input.material.local) : nullptr;
+            existing = extension_detail::ResourceIdentity::storage(input.material) == id_
+                           ? entries_.find(extension_detail::ResourceIdentity::local(input.material))
+                           : nullptr;
             if (!existing)
             {
                 co_return cxx::unexpected(RenderError{kStorageIdentity});
@@ -412,8 +410,8 @@ namespace lux::render::detail
         MaterialId id;
         if constexpr (std::same_as<Input, MaterialWrite>)
         {
-            id = {id_, entries_.emplace()};
-            existing = entries_.find(id.local);
+            id = extension_detail::ResourceIdentity::make<MaterialId>(id_, entries_.emplace());
+            existing = entries_.find(extension_detail::ResourceIdentity::local(id));
             existing->table = &table;
             existing->slot = slot;
             if (!table.free_slots.empty())
@@ -455,7 +453,9 @@ namespace lux::render::detail
 
     RenderResult<std::uint32_t> RasterMaterialTableStorage::gpuIndex(MaterialId id) const noexcept
     {
-        const auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
+        const auto* entry = extension_detail::ResourceIdentity::storage(id) == id_
+                                ? entries_.find(extension_detail::ResourceIdentity::local(id))
+                                : nullptr;
         if (!entry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
@@ -465,8 +465,12 @@ namespace lux::render::detail
 
     bool RasterMaterialTableStorage::sameTable(MaterialId left, MaterialId right) const noexcept
     {
-        const auto* a = left.storage == id_ ? entries_.find(left.local) : nullptr;
-        const auto* b = right.storage == id_ ? entries_.find(right.local) : nullptr;
+        const auto* a = extension_detail::ResourceIdentity::storage(left) == id_
+                            ? entries_.find(extension_detail::ResourceIdentity::local(left))
+                            : nullptr;
+        const auto* b = extension_detail::ResourceIdentity::storage(right) == id_
+                            ? entries_.find(extension_detail::ResourceIdentity::local(right))
+                            : nullptr;
         return a && b && a->table == b->table;
     }
 
@@ -476,7 +480,9 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
+        auto* entry = extension_detail::ResourceIdentity::storage(id) == id_
+                          ? entries_.find(extension_detail::ResourceIdentity::local(id))
+                          : nullptr;
         if (!entry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
@@ -490,7 +496,7 @@ namespace lux::render::detail
         table.entries[entry->slot] = nullptr;
         table.free_slots.push_back(entry->slot);
         ++preparation_revision_;
-        entries_.erase(id.local);
+        entries_.erase(extension_detail::ResourceIdentity::local(id));
         if (table.free_slots.size() == table.entries.size())
         {
             releaseTable(table);
@@ -507,7 +513,9 @@ namespace lux::render::detail
         std::span<ResourceInput> output
     ) noexcept
     {
-        auto* entry = argument.material.storage == id_ ? entries_.find(argument.material.local) : nullptr;
+        auto* entry = extension_detail::ResourceIdentity::storage(argument.material) == id_
+                          ? entries_.find(extension_detail::ResourceIdentity::local(argument.material))
+                          : nullptr;
         if (!entry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});

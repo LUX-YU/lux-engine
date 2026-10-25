@@ -78,8 +78,11 @@ if(BUILD_TESTING)
     set_tests_properties(engine.render_transport PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 
     add_executable(engine_render_ui_test test/UiDrawing.cpp)
-    target_include_directories(engine_render_ui_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/function/render/test")
-    target_link_libraries(engine_render_ui_test PRIVATE engine_rendering)
+    target_include_directories(engine_render_ui_test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/function/render/test"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/function/render/sinclude"
+    )
+    target_link_libraries(engine_render_ui_test PRIVATE engine_rendering lux::engine::function::render_extensions)
     add_test(NAME engine.render_ui COMMAND engine_render_ui_test)
     add_test(NAME engine.render_ui32 COMMAND engine_render_ui_test uint32)
     set_tests_properties(engine.render_ui engine.render_ui32 PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
@@ -105,7 +108,9 @@ if(BUILD_TESTING)
 
         add_executable(engine_render_surface_test test/Surface.cpp ${surface_shader_headers})
         target_include_directories(engine_render_surface_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shaders")
-        target_link_libraries(engine_render_surface_test PRIVATE engine_rendering lux::engine::platform::window)
+        target_link_libraries(engine_render_surface_test PRIVATE
+            engine_rendering lux::engine::platform::window lux::engine::function::render_extensions
+        )
         add_test(NAME engine.render_surface COMMAND engine_render_surface_test)
         add_test(NAME engine.render_surface_uploads COMMAND engine_render_surface_test uploads)
         set_tests_properties(engine.render_surface engine.render_surface_uploads PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)

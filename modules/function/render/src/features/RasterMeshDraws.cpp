@@ -1,12 +1,12 @@
 #include <bit>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/features/RasterMeshDraws.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>
 #include <lux/engine/render/storage/RasterMaterialTableStorage.hpp>
-#include <lux/engine/render/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {
@@ -32,12 +32,16 @@ namespace lux::render::detail
     bool RasterMeshDraws::selected(const RasterMeshInstanceStorage::Selection& input) const noexcept
     {
         const bool different_geometry = input.mesh != selection_.mesh || input.submesh != selection_.submesh;
-        const bool different_material_storage = input.material.storage != selection_.material_table_source.storage;
+        const bool different_material_storage =
+            extension_detail::ResourceIdentity::storage(input.material) !=
+            extension_detail::ResourceIdentity::storage(selection_.material_table_source);
         if (different_geometry || different_material_storage)
         {
             return false;
         }
-        auto material = resources_.borrow<RasterMaterialTableStorage>(selection_.material_table_source.storage);
+        auto material = resources_.borrow<RasterMaterialTableStorage>(
+            extension_detail::ResourceIdentity::storage(selection_.material_table_source)
+        );
         return material && (*material)->sameTable(input.material, selection_.material_table_source);
     }
 
@@ -49,7 +53,7 @@ namespace lux::render::detail
             ++revision_;
             return;
         }
-        const auto index = id.local.index;
+        const auto index = extension_detail::ResourceIdentity::local(id).index;
         const bool present = index < positions_.size() && positions_[index] != UINT32_MAX;
         const bool include = description && selected(*description);
         if (present == include)
@@ -204,8 +208,11 @@ namespace lux::render::detail
         const auto& configuration = *static_cast<const MeshDrawConfiguration*>(argument);
         const auto& group = configuration.selection;
         auto instances = registry.borrow<RasterMeshInstanceStorage>(storages[configuration.instances.index]);
-        auto mesh = registry.borrow<IndexedTriangleMeshStorage>(group.mesh.storage);
-        auto material = registry.borrow<RasterMaterialTableStorage>(group.material_table_source.storage);
+        auto mesh =
+            registry.borrow<IndexedTriangleMeshStorage>(extension_detail::ResourceIdentity::storage(group.mesh));
+        auto material = registry.borrow<RasterMaterialTableStorage>(
+            extension_detail::ResourceIdentity::storage(group.material_table_source)
+        );
         if (!instances || !mesh || !material)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});

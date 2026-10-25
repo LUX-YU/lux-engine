@@ -1,10 +1,54 @@
 #include <exception>
-#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
 #include <lux/engine/render/resource/StorageSet.hpp>
 
 namespace lux::render
 {
     ResourceRegistry::ResourceRegistry(std::uint32_t capabilities) noexcept : capabilities_(capabilities) {}
+
+    ResourceRegistry::ScopeKey ResourceRegistry::scopeKey(const VRenderScope& scope) noexcept
+    {
+        const auto key = [](auto id) noexcept { return (static_cast<std::uint64_t>(id.gen) << 32) | id.index; };
+        return std::visit(
+            [&](const auto& value) noexcept -> ScopeKey
+            {
+                using T = std::remove_cvref_t<decltype(value)>;
+                if constexpr (std::same_as<T, GlobalRenderScope>)
+                {
+                    return {0};
+                }
+                else if constexpr (std::same_as<T, SceneId>)
+                {
+                    return {1, key(value)};
+                }
+                else if constexpr (std::same_as<T, ViewRequest>)
+                {
+                    return {2, key(value.scene), key(value.view)};
+                }
+                else
+                {
+                    return {3, key(value)};
+                }
+            },
+            scope
+        );
+    }
+
+    void ResourceRegistry::bindScope(const VRenderScope& scope, StorageSet& set) noexcept
+    {
+        scopes_.emplace(scopeKey(scope), &set);
+    }
+
+    void ResourceRegistry::unbindScope(const VRenderScope& scope) noexcept
+    {
+        scopes_.erase(scopeKey(scope));
+    }
+
+    StorageId ResourceRegistry::inputStorage(const CapabilityInput& input) const noexcept
+    {
+        const auto found = scopes_.find(scopeKey(input.scope));
+        return found == scopes_.end() ? StorageId{} : found->second->inputStorage(input.implementation, input.index);
+    }
 
     ResourceRegistry::~ResourceRegistry() noexcept
     {

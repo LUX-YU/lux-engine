@@ -3,12 +3,12 @@
 #include <chrono>
 #include <cstring>
 #include <fstream>
-#include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
+#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>
 #include <lux/engine/render/graph/PlanDiagnostics.hpp>
-#include <lux/engine/render/graph/RenderGraphBuilder.hpp>
 #include <string>
 #include <thread>
 

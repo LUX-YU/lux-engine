@@ -4,8 +4,8 @@
 #include <cmath>
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 
@@ -107,10 +107,6 @@ namespace lux::render::detail
     exec::task<RenderResult<std::vector<LightId>>> DirectLightingStorage::create(CreateDirectLights::Request input
     ) noexcept
     {
-        if (input.storage != id_)
-        {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
-        }
         if (updating_)
         {
             co_return cxx::unexpected(RenderError{kDeviceBusy});
@@ -153,7 +149,7 @@ namespace lux::render::detail
         {
             auto key = entries_.emplace(Entry{value.kind, value.position});
             arrays_[value.kind].identities.push_back(key);
-            result.push_back({id_, key});
+            result.push_back(extension_detail::ResourceIdentity::make<LightId>(id_, key));
         }
         ++revision_;
         co_return result;
@@ -161,10 +157,6 @@ namespace lux::render::detail
 
     exec::task<RenderResult<std::uint32_t>> DirectLightingStorage::update(UpdateDirectLights::Request input) noexcept
     {
-        if (input.storage != id_)
-        {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
-        }
         if (updating_)
         {
             co_return cxx::unexpected(RenderError{kDeviceBusy});
@@ -181,7 +173,9 @@ namespace lux::render::detail
         writes.reserve(input.values.size());
         for (const auto& value : input.values)
         {
-            const auto* entry = value.light.storage == id_ ? entries_.find(value.light.local) : nullptr;
+            const auto* entry = extension_detail::ResourceIdentity::storage(value.light) == id_
+                                    ? entries_.find(extension_detail::ResourceIdentity::local(value.light))
+                                    : nullptr;
             if (!entry)
             {
                 co_return cxx::unexpected(RenderError{kStorageIdentity});
@@ -202,7 +196,9 @@ namespace lux::render::detail
 
     exec::task<RenderResult<Ack>> DirectLightingStorage::remove(LightId light) noexcept
     {
-        auto* entry = light.storage == id_ ? entries_.find(light.local) : nullptr;
+        auto* entry = extension_detail::ResourceIdentity::storage(light) == id_
+                          ? entries_.find(extension_detail::ResourceIdentity::local(light))
+                          : nullptr;
         if (!entry)
         {
             co_return cxx::unexpected(RenderError{kStorageIdentity});
@@ -234,7 +230,7 @@ namespace lux::render::detail
             entries_.find(array.identities.back())->position = entry->position;
         }
         array.identities.pop_back();
-        entries_.erase(light.local);
+        entries_.erase(extension_detail::ResourceIdentity::local(light));
         ++revision_;
         co_return Ack{};
     }
@@ -250,7 +246,9 @@ namespace lux::render::detail
 
     bool DirectLightingStorage::read(LightId id, VDirectLight& result, std::uint32_t& dense_index) const noexcept
     {
-        const auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
+        const auto* entry = extension_detail::ResourceIdentity::storage(id) == id_
+                                ? entries_.find(extension_detail::ResourceIdentity::local(id))
+                                : nullptr;
         if (!entry)
         {
             return false;

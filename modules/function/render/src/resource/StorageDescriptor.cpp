@@ -1,5 +1,5 @@
 #include <array>
-#include <lux/engine/render/resource/StorageDescriptor.hpp>
+#include <lux/engine/render/extensions/storage/StorageDescriptor.hpp>
 
 namespace lux::render
 {

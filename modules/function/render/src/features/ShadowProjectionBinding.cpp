@@ -4,9 +4,9 @@
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
-#include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/storage/DirectLightingStorage.hpp>
 
 namespace lux::render::detail

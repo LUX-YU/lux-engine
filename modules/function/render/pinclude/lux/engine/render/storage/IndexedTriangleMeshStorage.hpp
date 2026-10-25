@@ -1,16 +1,16 @@
 #pragma once
 
-#include <lux/engine/render/execution/FrameExecution.hpp>
-#include <lux/engine/render/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/resource/StorageCreateContext.hpp>
+#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
+#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/storage/StorageCreateContext.hpp>
 
 #include <lux/cxx/container/StableSlotMap.hpp>
+#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
+#include <lux/engine/render/extensions/storage/StorageFactory.hpp>
+#include <lux/engine/render/extensions/storage/Upload.hpp>
+#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/memory/BufferArena.hpp>
-#include <lux/engine/render/resource/StorageBinding.hpp>
-#include <lux/engine/render/resource/StorageFactory.hpp>
-#include <lux/engine/render/resource/Upload.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {

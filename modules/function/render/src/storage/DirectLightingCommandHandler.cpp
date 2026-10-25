@@ -12,7 +12,7 @@ namespace lux::render::detail
         CreateDirectLights::Request input
     ) noexcept
     {
-        auto storage = resources_.borrow<DirectLightingStorage>(input.storage);
+        auto storage = resources_.borrowInput<DirectLightingStorage>(input.destination);
         if (!storage)
         {
             return rejected<std::vector<LightId>>(storage.error());
@@ -24,7 +24,7 @@ namespace lux::render::detail
         UpdateDirectLights::Request input
     ) noexcept
     {
-        auto storage = resources_.borrow<DirectLightingStorage>(input.storage);
+        auto storage = resources_.borrowInput<DirectLightingStorage>(input.destination);
         if (!storage)
         {
             return rejected<std::uint32_t>(storage.error());
@@ -34,7 +34,7 @@ namespace lux::render::detail
 
     exec::task<RenderResult<Ack>> DirectLightingCommandHandler::releaseLight(LightId input) noexcept
     {
-        auto storage = resources_.borrow<DirectLightingStorage>(input.storage);
+        auto storage = resources_.borrow<DirectLightingStorage>(extension_detail::ResourceIdentity::storage(input));
         if (!storage)
         {
             return rejected<Ack>(storage.error());

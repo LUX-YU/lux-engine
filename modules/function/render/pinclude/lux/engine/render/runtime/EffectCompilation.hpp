@@ -1,7 +1,8 @@
 #pragma once
 
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/GraphCommands.hpp>
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
 #include <lux/engine/render/runtime/Scene.hpp>
 
 namespace lux::render::runtime_detail
@@ -11,13 +12,18 @@ namespace lux::render::runtime_detail
         // Stable table construction binds views only after their owned metadata exists.
         FeatureId id;
         std::string name;
-        FeatureDescriptor descriptor;
+        cxx::TypeToken config_type;
         FeatureGraphOps graph;
+        const CapabilitySupport* capabilities;
 
-        FeatureEntry(const FeatureDescriptor& declaration, const FeatureGraphOps& contribution) noexcept
-            : name(declaration.type.name()), descriptor(declaration), graph(contribution)
+        FeatureEntry(
+            FeatureName type,
+            cxx::TypeToken config,
+            const FeatureGraphOps& contribution,
+            const CapabilitySupport* support
+        ) noexcept
+            : name(type.name()), config_type(config), graph(contribution), capabilities(support)
         {
-            descriptor.type = FeatureName(name);
         }
     };
 
@@ -31,7 +37,7 @@ namespace lux::render::runtime_detail
         std::uint32_t sampled_image_capacity,
         std::uint32_t sampler_capacity,
         std::span<const StorageNameView> storage_types,
-        const CreateEffectRequest& request,
+        const GraphEffectRequest& request,
         std::span<const FeatureEntry* const> registrations,
         std::size_t max_config_bytes
     ) noexcept;

@@ -1,8 +1,8 @@
 #pragma once
 
-#include <lux/engine/render/features/FeatureBinding.hpp>
+#include <lux/engine/render/extensions/features/FeatureBinding.hpp>
+#include <lux/engine/render/extensions/graph/Work.hpp>
 #include <lux/engine/render/features/ShadowProjection.hpp>
-#include <lux/engine/render/graph/Work.hpp>
 
 namespace lux::render::detail
 {

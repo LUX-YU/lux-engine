@@ -2,12 +2,12 @@
 #include "DeferredLightingClustered.hpp"
 #include "DeferredLightingClusteredShadow.hpp"
 #include "DeferredLightingShadow.hpp"
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
-#include <lux/engine/render/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/FullscreenRaster.hpp>
 #include <lux/engine/render/features/ParameterLayout.hpp>
-#include <lux/engine/render/storage/DirectLighting.hpp>
 
 namespace lux::render
 {
@@ -164,7 +164,7 @@ namespace lux::render
             work->colors.push_back({{context.resource("hdr_color")}});
             auto pass = context.graph.addRasterPass(
                 featureKey(
-                    DeferredLightingFeatureDescriptor::name,
+                    detail::DeferredLightingFeature::name,
                     key,
                     config.clusters ? "clustered lights" : "all lights"
                 ),
@@ -192,16 +192,9 @@ namespace lux::render
         return bytes;
     }
 
-    const FeatureDescriptor DeferredLightingFeatureDescriptor::descriptor{
-        name,
-        cxx::typeToken<Config>(),
-        "Deferred shading over light, optional cluster and shadow ports; full-light fallback is lossless.",
-        describeLighting
-    };
-
     const FeatureGraphOps& detail::DeferredLightingFeature::graph(bool) noexcept
     {
-        static const FeatureGraphOps graph{buildLighting};
+        static const FeatureGraphOps graph{describeLighting, buildLighting};
         return graph;
     }
 } // namespace lux::render

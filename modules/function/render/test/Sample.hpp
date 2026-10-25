@@ -1,6 +1,8 @@
 #pragma once
 
+#include <array>
 #include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/core/Ids.hpp>
 #include <string_view>
 
 namespace lux::platform::ipc
@@ -16,6 +18,7 @@ namespace mesh_sample
         lux::platform::ipc::IpcRequester& main,
         std::string_view channel,
         lux::render::CommandId list_commands,
-        const char* cooked_fragment
+        const char* cooked_fragment,
+        std::array<lux::render::FeatureId, 3> graph_features
     );
 } // namespace mesh_sample

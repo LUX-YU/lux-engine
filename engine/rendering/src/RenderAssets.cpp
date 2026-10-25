@@ -1,4 +1,5 @@
 #include <exec/task.hpp>
+#include <lux/engine/render/capabilities/RasterAssets.hpp>
 #include <lux/engine/rendering/Initialization.hpp>
 #include <lux/engine/rendering/RenderAssets.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
@@ -151,7 +152,7 @@ namespace lux::rendering
                 {
                     const auto& texture = decoded->data();
                     return TextureWrite{
-                        texture_storage,
+                        texture_input,
                         texture.info(),
                         {static_cast<const std::byte*>(texture.data()), texture.size()}
                     };
@@ -191,7 +192,7 @@ namespace lux::rendering
         {
             auto start = stdexec::then(
                 stdexec::schedule(rendering.assetScheduler()),
-                [this, &packed]() noexcept { return MeshWrite{mesh_storage, packed.description, packed.bytes}; }
+                [this, &packed]() noexcept { return MeshWrite{mesh_input, packed.description, packed.bytes}; }
             );
             return stdexec::let_value(
                 std::move(start),
@@ -398,7 +399,7 @@ namespace lux::rendering
         std::optional<BoundCommand<CreateTexture>> create_texture;
         std::optional<BoundCommand<ReleaseMesh>> release_mesh;
         std::optional<BoundCommand<ReleaseTexture>> release_texture;
-        StorageId mesh_storage, texture_storage;
+        CapabilityInput mesh_input, texture_input;
         std::size_t in_flight = 0;
         RenderError release_failure;
         AvailabilityConnection* availability_observers{};
@@ -479,30 +480,40 @@ namespace lux::rendering
         impl->create_texture = *texture_command;
         impl->release_mesh = *mesh_release;
         impl->release_texture = *texture_release;
-        const auto storages = detail::requestAtStartup<ListStorages>(rendering, {});
-        if (storages.error.type != 0)
+        const auto choices = detail::requestAtStartup<ListCapabilities>(
+            rendering,
+            {std::string(kRasterAssetsCapability), 1, "lux.render.assets.raster"}
+        );
+        if (choices.error.type != 0)
         {
-            return cxx::unexpected(storages.error);
+            return cxx::unexpected(choices.error);
         }
-        for (const auto& storage : storages.storages)
+        if (choices.implementations.size() != 1 || choices.implementations.front().unavailable.type != 0)
         {
-            const bool mesh = storage.name == kMeshStorageType.name();
-            const bool texture = storage.name == kTextureStorageType.name();
-            if (!mesh && !texture)
-            {
-                continue;
-            }
-            auto prepared = detail::requestAtStartup<PrepareStorage>(
-                rendering,
-                {{GlobalStorageLocation{}, storage.id, "assets"}, {}}
-            );
-            if (prepared.error.type != 0)
-            {
-                return cxx::unexpected(prepared.error);
-            }
-            (mesh ? impl->mesh_storage : impl->texture_storage) = prepared.storage;
+            return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
-        if (impl->mesh_storage.isNull() || impl->texture_storage.isNull())
+        const auto installed = detail::requestAtStartup<InstallCapabilities>(
+            rendering,
+            {choices.implementations.front().selection, GlobalRenderScope{}, {}}
+        );
+        if (installed.error.type != 0)
+        {
+            return cxx::unexpected(installed.error);
+        }
+        for (const auto& input : installed.inputs)
+        {
+            if (input.schema == kIndexedMeshInput)
+            {
+                impl->mesh_input = input.destination;
+            }
+            else if (input.schema == kSampledTextureInput)
+            {
+                impl->texture_input = input.destination;
+            }
+        }
+        const bool missing_input =
+            impl->mesh_input.implementation.isNull() || impl->texture_input.implementation.isNull();
+        if (missing_input)
         {
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }

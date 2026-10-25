@@ -1,15 +1,15 @@
 #pragma once
 
-#include <lux/engine/render/execution/FrameExecution.hpp>
-#include <lux/engine/render/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/resource/StorageCreateContext.hpp>
+#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
+#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/storage/StorageCreateContext.hpp>
 
 #include <exec/task.hpp>
 
-#include <lux/engine/render/device/DeviceSession.hpp>
-#include <lux/engine/render/resource/StorageBinding.hpp>
-#include <lux/engine/render/resource/StorageFactory.hpp>
-#include <lux/engine/render/storage/RasterMeshInstances.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/storage/RasterMeshInstances.hpp>
+#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
+#include <lux/engine/render/extensions/storage/StorageFactory.hpp>
 
 namespace lux::render::detail
 {
@@ -78,7 +78,7 @@ namespace lux::render::detail
             {
                 if (!entry.key.isNull())
                 {
-                    visitor(MeshInstanceId{id_, entry.key}, selection(entry));
+                    visitor(extension_detail::ResourceIdentity::make<MeshInstanceId>(id_, entry.key), selection(entry));
                 }
             }
         }

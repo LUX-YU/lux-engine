@@ -7,17 +7,18 @@
 #include <lux/engine/material/Compiler.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/execution/FrameExecution.hpp>
+#include <lux/engine/render/extensions/FeatureRegistration.hpp>
+#include <lux/engine/render/extensions/GraphCommands.hpp>
+#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
+#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
+#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
-#include <lux/engine/render/features/MeshDepthRaster.hpp>
 #include <lux/engine/render/features/MeshVisibilityFeature.hpp>
+#include <lux/engine/render/features/RasterMeshParameters.hpp>
 #include <lux/engine/render/features/TonemapFeature.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
-#include <lux/engine/render/resource/StorageBinding.hpp>
-#include <lux/engine/render/runtime/FeatureRegistration.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <lux/engine/render/storage/DirectLighting.hpp>
 #include <thread>
 
 using namespace foundation_test;
@@ -325,12 +326,12 @@ int main(int argc, char** argv)
         }
     }
     auto server = take(RenderServer::create(config, *runtime, device));
-    const auto visibility = take(server->featureId<MeshVisibilityFeatureDescriptor>());
-    const auto gbuffer = take(server->featureId<GBufferFeatureDescriptor>());
-    const auto lighting = take(server->featureId<DeferredLightingFeatureDescriptor>());
-    const auto tone = take(server->featureId<TonemapFeatureDescriptor>());
+    const auto visibility = take(server->featureId("lux.render.feature.MeshVisibilityFeature"));
+    const auto gbuffer = take(server->featureId("lux.render.feature.GBufferFeature"));
+    const auto lighting = take(server->featureId("lux.render.feature.DeferredLightingFeature"));
+    const auto tone = take(server->featureId("lux.render.feature.TonemapFeature"));
     const auto capture = take(server->registerFeature<CaptureFeature>());
-    const auto shadow = take(server->featureId<MeshDepthRasterDescriptor>());
+    const auto shadow = take(server->featureId("lux.render.feature.MeshDepthRaster"));
     CommandList bootstrap;
     bootstrap.commands.push_back({std::string(ListCommands::name), take(server->commandId<ListCommands>())});
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
@@ -339,10 +340,10 @@ int main(int argc, char** argv)
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = call<ListCommands>(*client, bootstrap, {});
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
-    const auto meshes = prepare(*client, commands, kMeshStorageType, "meshes");
-    const auto materials = prepare(*client, commands, kMaterialStorageType, "materials");
-    const auto instances = prepare(*client, commands, kMeshInstanceStorageType, "instances", scene);
-    const auto light_storage = prepare(*client, commands, kDirectLightingStorageType, "direct_lights", scene);
+    const auto meshes = installInput(*client, commands, kIndexedMeshInput);
+    const auto materials = installInput(*client, commands, kRasterMaterialInput);
+    const auto instances = installInput(*client, commands, kRasterInstancesInput, scene);
+    const auto light_storage = installInput(*client, commands, kDirectLightsInput, scene);
 
     struct Vertex
     {
@@ -419,7 +420,7 @@ int main(int argc, char** argv)
         light_config.extent.extent.source = EImageExtentSource::TARGET;
         light_config.input_layout = layout;
         TonemapFeatureConfig tonemap{target, EColorEncoding::LINEAR, layout};
-        CreateEffectRequest request{target};
+        GraphEffectRequest request{target};
         request.definition.features.push_back({gbuffer, "surfaces", take(ConfigValue::make(surface))});
         request.definition.features.push_back({lighting, "lighting", take(ConfigValue::make(light_config))});
         request.definition.features.push_back({tone, "tonemap", take(ConfigValue::make(tonemap))});
@@ -455,7 +456,7 @@ int main(int argc, char** argv)
             request.definition.connections.push_back({{4, "g1.commands"}, {5, "color"}});
             request.definition.outputs.push_back({{5, "pixels"}, {}});
         }
-        const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+        const auto effect = call<CreateGraphEffect>(*client, commands, std::move(request)).effect;
         const auto view = call<CreateView>(*client, commands, {scene}).view;
         const auto output = call<CreateTarget>(*client, commands, {target}).target;
         parameters.tone.exposure = exposure;
@@ -556,7 +557,12 @@ int main(int argc, char** argv)
     const auto all_candidates = run(0, false);
     CHECK(all_candidates == run(0));
     auto stale = light_ids.front();
-    ++stale.local.gen;
+    auto stale_key = extension_detail::ResourceIdentity::local(stale);
+    ++stale_key.gen;
+    stale = extension_detail::ResourceIdentity::make<decltype(stale)>(
+        extension_detail::ResourceIdentity::storage(stale),
+        stale_key
+    );
     const std::array invalid_light{DirectLightUpdate{stale, lights.front()}};
     auto rejected = call<UpdateDirectLights>(*client, commands, {light_storage, 8, invalid_light}, false);
     CHECK(rejected.error.type && rejected.sequence == 8);
@@ -582,7 +588,7 @@ int main(int argc, char** argv)
     const std::array changes{DirectLightUpdate{light_ids[1], lights[1]}};
     CHECK(call<UpdateDirectLights>(*client, commands, {light_storage, 3, changes}).changed == 1);
     run(1);
-    const auto texture_storage = prepare(*client, commands, kTextureStorageType, "textures");
+    const auto texture_storage = installInput(*client, commands, kSampledTextureInput);
     rdesc::TextureInfo texture_info{};
     texture_info.width = texture_info.height = texture_info.mip_count = 1;
     texture_info.channel = 4;
@@ -675,8 +681,11 @@ int main(int argc, char** argv)
     invalid.groups = {{geometry, pbr, {right_mesh, right_material}}};
     invalid.groups.front().textures = normal_textures;
     invalid.groups.front().geometry.attributes.pop_back();
-    FeaturePorts ignored;
-    CHECK(!GBufferFeatureDescriptor::descriptor.describe_ports(&invalid, {}, ignored));
+    GraphEffectRequest invalid_request{target};
+    invalid_request.definition.features.push_back({gbuffer, "invalid", take(ConfigValue::make(std::move(invalid)))});
+    invalid_request.definition.outputs.push_back({{0, "albedo_metallic"}, GraphOutputRequirements{target.format, 1}});
+    const auto invalid_effect = call<CreateGraphEffect>(*client, commands, std::move(invalid_request), false);
+    CHECK(invalid_effect.error.type == kFeatureContract && invalid_effect.effect.isNull());
     unlit = masked;
     auto masked_values = left_values;
     masked_values[2][0] = 0;
@@ -692,7 +701,7 @@ int main(int argc, char** argv)
         CapturedPixels pixels;
         MeshFeatureConfig depth_config{target, {geometry, unlit, {left_mesh, left_material}}};
         depth_config.mesh.front_counter_clockwise = false;
-        CreateEffectRequest request{target};
+        GraphEffectRequest request{target};
         request.definition.features.push_back({shadow, "coverage", take(ConfigValue::make(depth_config))});
         request.definition.features.push_back(
             {capture, "copy depth", take(ConfigValue::make(CaptureConfig{&pixels, rdesc::ETextureFormat::D32_SFLOAT}))}
@@ -700,7 +709,7 @@ int main(int argc, char** argv)
         request.definition.connections.push_back({{0, "depth"}, {1, "color"}});
         request.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{target.format, 1}});
         request.definition.outputs.push_back({{1, "pixels"}, {}});
-        auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+        auto effect = call<CreateGraphEffect>(*client, commands, std::move(request)).effect;
         auto view = call<CreateView>(*client, commands, {scene}).view;
         auto output = call<CreateTarget>(*client, commands, {target}).target;
         auto input = meshViewParameterBytes(parameters.mesh);

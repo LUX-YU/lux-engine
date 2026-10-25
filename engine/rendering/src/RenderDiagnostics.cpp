@@ -4,9 +4,6 @@
 #include <lux/engine/log/Log.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/commands/Error.hpp>
-#include <lux/engine/render/features/FeatureGraphOps.hpp>
-#include <lux/engine/render/graph/RenderGraph.hpp>
-#include <lux/engine/render/resource/StorageDescriptor.hpp>
 
 namespace lux::rendering
 {
@@ -37,16 +34,7 @@ namespace lux::rendering
 
     render::RenderResult<void> registerRenderErrors() noexcept
     {
-        const std::array tables{
-            render::renderCoreErrorDescriptors(),
-            render::renderCommandErrorDescriptors(),
-            render::renderRuntimeErrorDescriptors(),
-            render::renderResourceErrorDescriptors(),
-            render::renderFeatureErrorDescriptors(),
-            render::renderGraphErrorDescriptors(),
-            render::deviceErrorDescriptors()
-        };
-        for (const auto table : tables)
+        for (const auto table : render::renderErrorDescriptorTables())
         {
             if (auto registered = error::ErrorRegistry::instance().registerTypes(table); !registered)
             {

@@ -1,4 +1,4 @@
-#include <lux/engine/render/resource/StorageFactory.hpp>
+#include <lux/engine/render/extensions/storage/StorageFactory.hpp>
 
 namespace lux::render
 {

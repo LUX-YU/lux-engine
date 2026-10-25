@@ -58,7 +58,7 @@ Scene/Camera/View 关系、System 兼容、项目编辑闭环与 Headless 产品
 | EngineContext、Scene 和 EditorUiScene 已迁统一运输；旧 UiFrame/UiRenderSyncStage 删除 | 各模块 CMake 与 Editor app | 根 EDITOR 使用真实 Engine/Render 依赖，不加空 target/兼容别名 |
 | SurfaceTarget 已使用 NRI SwapChain；Target 图像输入与 Resize 有实际消费者关系 | [SurfaceTarget.cpp](../../modules/function/render/src/execution/SurfaceTarget.cpp)、RenderServerImpl | 窗口与 Scene 输出接入现有 FIF，不创建呈现调度层 |
 | CPU UI 捕获中立 UiDrawData，Editor 直接写入共同 FrameInput | [DrawData.hpp](../../modules/function/ui/include/lux/engine/ui/DrawData.hpp)、[EditorUiScene.cpp](../../editor/app/src/EditorUiScene.cpp) | 顶点与索引只捕获一次；Native 只补齐复制尾部 1–3 字节 |
-| Raster 已具有 IndexedDrawList、逐 draw 裁剪、图像选择与颜色混合 | [Draw.hpp](../../modules/function/render/include/lux/engine/render/graph/Draw.hpp)、[RenderExecutor.cpp](../../modules/function/render/src/execution/RenderExecutor.cpp) | UiRasterFeature 只消费中立数据，不链接 ImGui/Editor |
+| Raster 已具有 IndexedDrawList、逐 draw 裁剪、图像选择与颜色混合 | [Draw.hpp](../../modules/function/render/include/lux/engine/render/extensions/graph/Draw.hpp)、[RenderExecutor.cpp](../../modules/function/render/src/execution/RenderExecutor.cpp) | UiRasterFeature 只消费中立数据，不链接 ImGui/Editor |
 
 旧文档中“Asset Client 回主线程发送”“TaskExecutor 尚有私有池”“新建 RenderRequester”均被本版取代。
 历史 Root EDITOR 曾缺失 `engine_context_render`、`project_plugin_rendering`；活动配置已迁入真实

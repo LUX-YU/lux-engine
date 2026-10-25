@@ -78,6 +78,8 @@ namespace lux::execution
         // Retry submit after completion; another producer may acquire capacity first. Group/Runtime stop
         // completes with set_stopped. Use unmonitored execution.spawn: waiting must not consume a task slot.
         // The connected operation borrows ExecutionRuntime through completion, like accepted work.
+        // whenSettled() does not join this unmonitored pipeline or its downstream continuations;
+        // the enclosing operation must keep its consumer alive through their terminal delivery.
         [[nodiscard]] CapacitySender whenCapacityAvailable() noexcept;
         // Explicit synchronous barrier: closes admission and collects accepted work to completion.
         // Only shutdown, synchronous startup/APIs and tests may wait; object/project destruction must not.

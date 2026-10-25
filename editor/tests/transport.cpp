@@ -4,8 +4,8 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
-#include <lux/engine/render/device/DeviceSession.hpp>
-#include <lux/engine/render/runtime/FeatureRegistration.hpp>
+#include <lux/engine/render/extensions/FeatureRegistration.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
 #include <lux/engine/rendering/WindowSurface.hpp>
@@ -79,6 +79,39 @@ namespace
         }
     };
 
+    struct ViewFailureCapability final
+    {
+        using Config = void;
+        using Storages = std::tuple<ViewAllocationFailure>;
+        using Commands = std::tuple<>;
+        static constexpr FeatureName name{"test.ui.failure"};
+
+        static const FeatureGraphOps& graph(bool) noexcept
+        {
+            static const std::array inputs{CapabilityStorageInput{
+                "test.arm-view-failure",
+                1,
+                ECapabilityInputScope::GLOBAL,
+                ViewAllocationFailure::Descriptor::name,
+                "fault"
+            }};
+            static const FeatureGraphOps result{.storage_inputs = inputs};
+            return result;
+        }
+
+        static const CapabilitySupport& capabilities() noexcept
+        {
+            static const CapabilitySupport result = []
+            {
+                CapabilitySupport value;
+                value.implementation = name.name();
+                value.capabilities.push_back(RenderCapability{"test.arm-view-failure"});
+                return value;
+            }();
+            return result;
+        }
+    };
+
     template <class T> auto take(T result)
     {
         if constexpr (requires { result.error().type; })
@@ -114,16 +147,13 @@ int main()
     configuration.render.frames_in_flight = 3;
     configuration.render.uploads.emplace();
     configuration.device.texture_descriptors = true;
-    StorageTypeId fault_type;
-    configuration.feature_registration = &fault_type;
     configuration.register_features = [](void* value, RenderServer& server) noexcept -> RenderResult<void>
     {
-        auto installed = server.registerStorage<ViewAllocationFailure>();
+        auto installed = server.registerFeature<ViewFailureCapability>();
         if (!installed)
         {
             return cxx::unexpected(installed.error());
         }
-        *static_cast<StorageTypeId*>(value) = *installed;
         return {};
     };
     auto rendering = take(RenderExecution::create(std::move(configuration), execution));
@@ -211,7 +241,9 @@ int main()
         assert(response.error.type == 0);
         return response;
     };
-    call.operator()<PrepareStorage>({{GlobalStorageLocation{}, fault_type, "fault"}, {}});
+    const auto choices = call.operator()<ListCapabilities>({"test.arm-view-failure", 1, "test.ui.failure"});
+    assert(choices.implementations.size() == 1);
+    call.operator()<InstallCapabilities>({choices.implementations.front().selection, GlobalRenderScope{}, {}});
     auto placement = take(window->state()).placement;
     const auto original_placement = placement;
     placement.normal.width = 800;

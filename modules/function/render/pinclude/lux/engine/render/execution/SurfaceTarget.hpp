@@ -1,5 +1,8 @@
 #pragma once
 
+#include <Extensions/NRISwapChain.h>
+#include <NRI.h>
+
 #include <exec/create.hpp>
 #include <lux/engine/render/execution/TargetOutput.hpp>
 #include <memory>

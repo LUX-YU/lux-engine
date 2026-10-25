@@ -1,5 +1,8 @@
 #include "RenderTest.hpp"
 #include "SceneCapture.hpp"
+#include <lux/engine/render/capabilities/RasterAssets.hpp>
+#include <lux/engine/render/capabilities/UiScene.hpp>
+#include <lux/engine/render/extensions/GraphCommands.hpp>
 #include <lux/engine/render/features/UiRasterFeature.hpp>
 #include <lux/engine/rendering/UiDrawInput.hpp>
 
@@ -18,26 +21,39 @@ int main(int argc, char**)
     config.render.frames_in_flight = 3;
     config.render.uploads.emplace();
     config.device.texture_descriptors = true;
-    config.register_features = [](void*, RenderServer& server) noexcept -> RenderResult<void>
+    std::array<FeatureId, 2> graph_features;
+    config.feature_registration = &graph_features;
+    config.register_features = [](void* destination, RenderServer& server) noexcept -> RenderResult<void>
     {
         auto registration = server.registerFeature<CaptureFeature>();
-        return registration ? RenderResult<void>{} : RenderResult<void>{cxx::unexpected(registration.error())};
+        if (!registration)
+        {
+            return cxx::unexpected(registration.error());
+        }
+        auto ui = server.featureId("lux.render.feature.UiRasterFeature");
+        if (!ui)
+        {
+            return cxx::unexpected(ui.error());
+        }
+        *static_cast<std::array<FeatureId, 2>*>(destination) = {*ui, *registration};
+        return {};
     };
     auto rendering = integration_test::take(RenderExecution::create(std::move(config), execution));
     auto& client = rendering->mainClient();
-    const auto catalog = integration_test::call<ListFeatures>(*rendering, {});
-    const auto find_feature = [&](std::string_view name)
-    {
-        const auto found = std::ranges::find(catalog.features, name, &FeatureInfo::name);
-        CHECK(found != catalog.features.end());
-        return found->id;
-    };
-    const auto types = integration_test::call<ListStorages>(*rendering, {});
-    const auto texture_type = std::ranges::find(types.storages, kTextureStorageType.name(), &StorageInfo::name);
-    CHECK(texture_type != types.storages.end());
-    const auto type = texture_type->id;
-    const auto storage =
-        integration_test::call<PrepareStorage>(*rendering, {{{GlobalStorageLocation{}}, type, "ui"}, {}}).storage;
+    const auto choices = integration_test::call<ListCapabilities>(
+        *rendering,
+        {std::string(kUiSceneCapability), 1, "lux.render.scene.ui"}
+    );
+    CHECK(choices.implementations.size() == 1);
+    const auto installed = integration_test::call<InstallCapabilities>(
+        *rendering,
+        {choices.implementations.front().selection,
+         GlobalRenderScope{},
+         integration_test::take(ConfigValue::make(UiConfiguration{}))}
+    );
+    const auto input = std::ranges::find(installed.inputs, kSampledTextureInput, &CapabilitiesInstalled::Input::schema);
+    CHECK(input != installed.inputs.end());
+    const auto storage = input->destination;
     rdesc::TextureInfo description{};
     description.width = description.height = 1;
     description.channel = 4;
@@ -61,16 +77,15 @@ int main(int argc, char**)
     UiRasterFeatureConfig viewport{viewport_description};
     viewport.clear = {0, 0.5f, 0, 1};
     viewport.images = {UiTextureImage{font, GraphImageDesc{1, 1}, "ui"}};
-    CreateEffectRequest viewport_program{viewport_description};
+    GraphEffectRequest viewport_program{viewport_description};
     viewport_program.definition.features.push_back(
-        {find_feature(UiRasterFeatureDescriptor::name.name()),
-         "viewport",
-         integration_test::take(ConfigValue::make(viewport))}
+        {graph_features[0], "viewport", integration_test::take(ConfigValue::make(viewport))}
     );
     viewport_program.definition.outputs.push_back(
         {{0, "color"}, GraphOutputRequirements{viewport_description.format, 1}}
     );
-    const auto viewport_effect = integration_test::call<CreateEffect>(*rendering, std::move(viewport_program)).effect;
+    const auto viewport_effect =
+        integration_test::call<CreateGraphEffect>(*rendering, std::move(viewport_program)).effect;
     integration_test::call<Attach>(*rendering, {viewport_scene, viewport_view, viewport_target, viewport_effect});
     GraphImageDesc sampled_viewport{1, 1, 1, 1, viewport_description.format};
     sampled_viewport.extent.source = EImageExtentSource::IMPORTED;
@@ -83,14 +98,10 @@ int main(int argc, char**)
         UiTargetImage{sampled_viewport}
     };
     CapturedPixels pixels;
-    CreateEffectRequest effect{target_description};
+    GraphEffectRequest effect{target_description};
+    effect.definition.features.push_back({graph_features[0], "ui", integration_test::take(ConfigValue::make(ui))});
     effect.definition.features.push_back(
-        {find_feature(UiRasterFeatureDescriptor::name.name()), "ui", integration_test::take(ConfigValue::make(ui))}
-    );
-    effect.definition.features.push_back(
-        {find_feature("test.deferred.Copy"),
-         "capture",
-         integration_test::take(ConfigValue::make(CaptureConfig{&pixels}))}
+        {graph_features[1], "capture", integration_test::take(ConfigValue::make(CaptureConfig{&pixels}))}
     );
     effect.definition.connections.push_back({{0, "color"}, {1, "color"}});
     effect.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{target_description.format, 1}});
@@ -99,7 +110,7 @@ int main(int argc, char**)
         {{0, uiImagePort(2)},
          {"viewport", sampled_viewport, EGraphOrigin::IMPORTED, {GraphImageRange{}}, EGraphUse::SAMPLED}}
     );
-    const auto program = integration_test::call<CreateEffect>(*rendering, std::move(effect)).effect;
+    const auto program = integration_test::call<CreateGraphEffect>(*rendering, std::move(effect)).effect;
     AttachmentRequest attachment{scene, view, target, program};
     attachment.target_images.push_back({"viewport", viewport_target});
     const auto attached = integration_test::call<Attach>(*rendering, std::move(attachment));

@@ -1,4 +1,4 @@
-#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/storage/RasterMeshInstanceCommandHandler.hpp>
 #include <lux/engine/render/storage/RasterMeshInstanceStorage.hpp>
 
@@ -13,7 +13,7 @@ namespace lux::render::detail
         CreateMeshInstance::Request&& input
     ) noexcept
     {
-        auto storage = resources_.borrow<RasterMeshInstanceStorage>(input.storage);
+        auto storage = resources_.borrowInput<RasterMeshInstanceStorage>(input.destination);
         if (!storage)
         {
             return rejected<RenderResult<MeshInstanceId>>(storage.error());
@@ -25,7 +25,7 @@ namespace lux::render::detail
         CreateMeshInstances::Request&& input
     ) noexcept
     {
-        auto storage = resources_.borrow<RasterMeshInstanceStorage>(input.storage);
+        auto storage = resources_.borrowInput<RasterMeshInstanceStorage>(input.destination);
         if (!storage)
         {
             return rejected<RenderResult<std::vector<MeshInstanceId>>>(storage.error());
@@ -37,7 +37,7 @@ namespace lux::render::detail
         UpdateTransforms::Request&& input
     ) noexcept
     {
-        auto storage = resources_.borrow<RasterMeshInstanceStorage>(input.storage);
+        auto storage = resources_.borrowInput<RasterMeshInstanceStorage>(input.destination);
         if (!storage)
         {
             return rejected<RenderResult<TransformApplied>>(storage.error());
@@ -49,7 +49,7 @@ namespace lux::render::detail
         UpdateMeshInstances::Request&& input
     ) noexcept
     {
-        auto storage = resources_.borrow<RasterMeshInstanceStorage>(input.storage);
+        auto storage = resources_.borrowInput<RasterMeshInstanceStorage>(input.destination);
         if (!storage)
         {
             return rejected<RenderResult<TransformApplied>>(storage.error());
@@ -61,7 +61,7 @@ namespace lux::render::detail
         ReleaseMeshInstance::Request&& input
     ) noexcept
     {
-        auto storage = resources_.borrow<RasterMeshInstanceStorage>(input.storage);
+        auto storage = resources_.borrow<RasterMeshInstanceStorage>(extension_detail::ResourceIdentity::storage(input));
         if (!storage)
         {
             return rejected<RenderResult<Ack>>(storage.error());

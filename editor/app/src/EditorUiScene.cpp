@@ -5,7 +5,8 @@
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
 #include <lux/engine/editor/detail/RenderCommandRequest.hpp>
-#include <lux/engine/render/features/UiRasterFeature.hpp>
+#include <lux/engine/render/capabilities/RasterAssets.hpp>
+#include <lux/engine/render/capabilities/UiScene.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
 #include <lux/engine/rendering/UiDrawInput.hpp>
@@ -170,34 +171,39 @@ namespace lux::editor
         Transaction initialize(ui::FontAtlas atlas) noexcept
         {
             auto& client = rendering.mainClient();
-            const auto features = co_await requestRenderCommand<ListFeatures>(client, {});
-            if (features.error.type != 0)
+            const auto choices = co_await requestRenderCommand<ListCapabilities>(
+                client,
+                {std::string(kUiSceneCapability), 1, "lux.render.scene.ui"}
+            );
+            if (choices.error.type != 0)
             {
-                co_return cxx::unexpected(features.error);
+                co_return cxx::unexpected(choices.error);
             }
-            const auto selected =
-                std::ranges::find(features.features, UiRasterFeatureDescriptor::name.name(), &FeatureInfo::name);
-            if (selected == features.features.end())
+            if (choices.implementations.size() != 1 || choices.implementations.front().unavailable.type != 0)
             {
                 co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
             }
-            feature = selected->id;
-            const auto storages = co_await requestRenderCommand<ListStorages>(client, {});
-            if (storages.error.type != 0)
+            implementation = choices.implementations.front().selection;
+            auto settings = ConfigValue::make(UiConfiguration{});
+            if (!settings)
             {
-                co_return cxx::unexpected(storages.error);
+                co_return cxx::unexpected(settings.error());
             }
-            const auto type = std::ranges::find(storages.storages, kTextureStorageType.name(), &StorageInfo::name);
-            if (type == storages.storages.end())
+            const auto installed = co_await requestRenderCommand<InstallCapabilities>(
+                client,
+                {implementation, GlobalRenderScope{}, std::move(*settings)}
+            );
+            if (installed.error.type != 0)
             {
-                co_return cxx::unexpected(RenderError{kStorageFactory});
+                co_return cxx::unexpected(installed.error);
             }
-            const auto storage =
-                co_await requestRenderCommand<PrepareStorage>(client, {{GlobalStorageLocation{}, type->id, "ui"}, {}});
-            if (storage.error.type != 0)
+            const auto input =
+                std::ranges::find(installed.inputs, kSampledTextureInput, &CapabilitiesInstalled::Input::schema);
+            if (input == installed.inputs.end())
             {
-                co_return cxx::unexpected(storage.error);
+                co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
             }
+            const auto texture_input = input->destination;
             rdesc::TextureInfo texture{};
             texture.width = atlas.width;
             texture.height = atlas.height;
@@ -213,7 +219,7 @@ namespace lux::editor
             font_description = {static_cast<std::uint32_t>(atlas.width), static_cast<std::uint32_t>(atlas.height)};
             auto upload = requestRenderCommand<CreateTexture>(
                 rendering.assetClient(),
-                {storage.storage, texture, std::as_bytes(std::span(atlas.pixels))}
+                {texture_input, texture, std::as_bytes(std::span(atlas.pixels))}
             );
             const auto uploaded = co_await stdexec::continues_on(
                 stdexec::starts_on(rendering.assetScheduler(), std::move(upload)),
@@ -273,32 +279,24 @@ namespace lux::editor
                 }
                 effect_to_release = {};
             }
-            UiRasterFeatureConfig ui{description};
-            ui.images.push_back(UiTextureImage{font, font_description, "ui"});
-            CreateEffectRequest program{description};
+            UiSceneInputs ui;
+            ui.images.push_back(UiSampledImage{font, font_description});
             AttachmentRequest binding{scene, view, target};
             std::vector<UiImageSelection> selections{{{0}, 0}};
             for (std::uint32_t i = 0; i < images.size(); ++i)
             {
                 const auto& image = images[i];
-                GraphImageDesc source{1, 1, 1, 1, image.description.format};
-                source.extent.source = EImageExtentSource::IMPORTED;
-                ui.images.push_back(render::UiTargetImage{source});
-                const auto resource = "ui.target." + std::to_string(i);
-                program.definition.inputs.push_back(
-                    {{0, uiImagePort(i + 1)},
-                     {resource, source, EGraphOrigin::IMPORTED, {GraphImageRange{}}, EGraphUse::SAMPLED}}
-                );
-                binding.target_images.push_back({resource, image.target});
+                ui.images.push_back(ImageShape{1, 1, 1, 1, image.description.format});
+                binding.target_images.push_back({uiImageInput(i + 1), image.target});
                 selections.push_back({image.token, i + 1});
             }
-            auto configuration = ConfigValue::make(std::move(ui));
-            if (!configuration)
+            auto settings = ConfigValue::make(UiConfiguration{});
+            auto inputs = ConfigValue::make(std::move(ui));
+            if (!settings || !inputs)
             {
-                co_return cxx::unexpected(configuration.error());
+                co_return cxx::unexpected(settings ? inputs.error() : settings.error());
             }
-            program.definition.features.push_back({feature, "ui", std::move(*configuration)});
-            program.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{description.format, 1}});
+            CreateEffectRequest program{description, implementation, std::move(*settings), std::move(*inputs)};
             auto& client = rendering.mainClient();
             const auto compiled = co_await requestRenderCommand<CreateEffect>(client, std::move(program));
             if (compiled.error.type != 0)
@@ -434,7 +432,7 @@ namespace lux::editor
         EditorWindow& window;
         TargetDesc description, desired_description;
         SurfaceDescription surface;
-        FeatureId feature;
+        CapabilitySelection implementation;
         SceneId scene;
         ViewId view;
         TargetId target;
@@ -443,7 +441,7 @@ namespace lux::editor
         AttachmentId attachment;
         GraphPassId draw_pass;
         TextureId font;
-        GraphImageDesc font_description;
+        ImageShape font_description;
         std::optional<BoundCommand<UpdateDrawList>> update_draws;
         ui::DrawData draw_data;
         std::vector<UiTargetImage> desired_images;

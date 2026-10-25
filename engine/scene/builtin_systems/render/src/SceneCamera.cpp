@@ -47,7 +47,7 @@ namespace lux::scene::detail
         };
     }
 
-    RenderResult<SceneParameters> sceneParameters(
+    RenderResult<CameraInput> sceneParameters(
         const Camera& camera,
         const SceneCamera& prepared,
         const CameraTarget& input
@@ -66,35 +66,26 @@ namespace lux::scene::detail
         {
             return cxx::unexpected(RenderError{kCommandContract});
         }
-        SceneParameters result;
-        Eigen::Map<Eigen::Matrix4f>{result.mesh.view.data()} = prepared.view.cast<float>();
-        Eigen::Map<Eigen::Matrix4f>{result.mesh.projection.data()} = projection->cast<float>();
-        Eigen::Map<Eigen::Matrix4f>{result.lighting.inverse_view_projection.data()} =
+        CameraInput result;
+        Eigen::Map<Eigen::Matrix4f>{result.view.data()} = prepared.view.cast<float>();
+        Eigen::Map<Eigen::Matrix4f>{result.projection.data()} = projection->cast<float>();
+        Eigen::Map<Eigen::Matrix4f>{result.inverse_view_projection.data()} =
             (*projection * prepared.view).inverse().cast<float>();
         const auto& position = prepared.position;
         const auto& forward = prepared.direction;
         const float near_distance = prepared.near_distance, far_distance = prepared.far_distance;
-        result.lighting.camera_position = {float(position.x()), float(position.y()), float(position.z()), 1};
-        result.lighting.background = input.background;
-        result.lighting.viewport = {input.viewport.x, input.viewport.y, input.viewport.width, input.viewport.height};
-        result.tone.exposure = input.exposure;
-        result.shadow.inverse_view_projection = result.lighting.inverse_view_projection;
-        result.shadow.position_near = {float(position.x()), float(position.y()), float(position.z()), near_distance};
-        result.shadow.direction_far = {float(forward.x()), float(forward.y()), float(forward.z()), far_distance};
-        result.clusters.inverse_view_projection = result.shadow.inverse_view_projection;
-        result.clusters.position_near = result.shadow.position_near;
-        result.clusters.direction_far = result.shadow.direction_far;
+        result.position = {float(position.x()), float(position.y()), float(position.z())};
+        result.background = input.background;
+        result.viewport = {input.viewport.x, input.viewport.y, input.viewport.width, input.viewport.height};
+        result.exposure = input.exposure;
+        result.direction = {float(forward.x()), float(forward.y()), float(forward.z())};
+        result.near_distance = near_distance;
+        result.far_distance = far_distance;
         return result;
     }
 
-    bool sameParameters(const SceneParameters& left, const SceneParameters& right) noexcept
+    bool sameParameters(const CameraInput& left, const CameraInput& right) noexcept
     {
-        return left.mesh.view == right.mesh.view && left.mesh.projection == right.mesh.projection &&
-               left.lighting.inverse_view_projection == right.lighting.inverse_view_projection &&
-               left.lighting.camera_position == right.lighting.camera_position &&
-               left.lighting.viewport == right.lighting.viewport &&
-               left.lighting.background == right.lighting.background &&
-               left.lighting.environment == right.lighting.environment && left.tone.exposure == right.tone.exposure &&
-               left.shadow == right.shadow;
+        return left == right;
     }
 } // namespace lux::scene::detail

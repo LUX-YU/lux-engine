@@ -4,10 +4,10 @@
 
 #include <NRI.h>
 #include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/device/SubmissionQueue.hpp>
-#include <lux/engine/render/graph/Diagnostics.hpp>
-#include <lux/engine/render/graph/RenderGraphAnalysis.hpp>
-#include <lux/engine/render/graph/Work.hpp>
+#include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
+#include <lux/engine/render/extensions/graph/Diagnostics.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/extensions/graph/Work.hpp>
 #include <memory>
 
 namespace lux::render::detail

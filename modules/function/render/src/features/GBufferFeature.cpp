@@ -1,12 +1,12 @@
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/storage/RasterMaterialTable.hpp>
+#include <lux/engine/render/extensions/storage/RasterMeshInstances.hpp>
+#include <lux/engine/render/extensions/storage/SampledTexture2D.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
-#include <lux/engine/render/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
 #include <lux/engine/render/features/ParameterLayout.hpp>
 #include <lux/engine/render/features/RasterMesh.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/storage/RasterMaterialTable.hpp>
-#include <lux/engine/render/storage/RasterMeshInstances.hpp>
-#include <lux/engine/render/storage/SampledTexture2D.hpp>
 
 namespace lux::render
 {
@@ -78,7 +78,7 @@ namespace lux::render
                     work.operations.push_back(ClearImage{{version}});
                 }
                 auto pass = context.graph.addTransferPass(
-                    featureKey(GBufferFeatureDescriptor::name, key, "clear"),
+                    featureKey(detail::GBufferFeature::name, key, "clear"),
                     std::move(work)
                 );
                 if (!pass)
@@ -117,7 +117,7 @@ namespace lux::render
                     }
                     draw->depth = RasterAttachment{{versions[3]}, load};
                     auto pass = context.graph.addRasterPass(
-                        featureKey(GBufferFeatureDescriptor::name, key, prefix + "winding" + std::to_string(winding)),
+                        featureKey(detail::GBufferFeature::name, key, prefix + "winding" + std::to_string(winding)),
                         std::move(*draw)
                     );
                     if (!pass)
@@ -155,16 +155,10 @@ namespace lux::render
         return bytes;
     }
 
-    const FeatureDescriptor GBufferFeatureDescriptor::descriptor{
-        name,
-        cxx::typeToken<Config>(),
-        "World-space material surfaces in a linear MRT GBuffer with forward depth.",
-        describeGBuffer
-    };
-
     const FeatureGraphOps& detail::GBufferFeature::graph(bool paged_instances) noexcept
     {
-        static const FeatureGraphOps contiguous{buildGBuffer<false>}, paged{buildGBuffer<true>};
+        static const FeatureGraphOps contiguous{describeGBuffer, buildGBuffer<false>},
+            paged{describeGBuffer, buildGBuffer<true>};
         return paged_instances ? paged : contiguous;
     }
 } // namespace lux::render

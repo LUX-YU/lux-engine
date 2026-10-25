@@ -5,9 +5,9 @@
 #include <bit>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/storage/SampledTexture2DStorage.hpp>
@@ -251,7 +251,9 @@ namespace lux::render::detail
 
     const SampledTexture2DStorage::SampledImage* SampledTexture2DStorage::find(TextureId id) const noexcept
     {
-        return id.storage == id_ ? textures_.find(id.local) : nullptr;
+        return extension_detail::ResourceIdentity::storage(id) == id_
+                   ? textures_.find(extension_detail::ResourceIdentity::local(id))
+                   : nullptr;
     }
 
     RenderResult<SampledTexture2DStorage::SampledImage> SampledTexture2DStorage::sampledImage(
@@ -304,10 +306,6 @@ namespace lux::render::detail
 
     SampledTexture2DStorage::UploadResult SampledTexture2DStorage::upload(TextureWrite input) noexcept
     {
-        if (input.storage != id_)
-        {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
-        }
         auto prepared = prepareImage(input.info, input.source);
         if (!prepared)
         {
@@ -329,7 +327,7 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(RenderError{kUploadStopped});
         }
-        co_return TextureId{id_, textures_.emplace(std::move(*candidate))};
+        co_return extension_detail::ResourceIdentity::make<TextureId>(id_, textures_.emplace(std::move(*candidate)));
     }
 
     SampledTexture2DStorage::UploadResult SampledTexture2DStorage::upload(TextureRegionWrite input) noexcept
@@ -363,7 +361,7 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(RenderError{kUploadStopped});
         }
-        co_return TextureId{id_, textures_.emplace(std::move(*candidate))};
+        co_return extension_detail::ResourceIdentity::make<TextureId>(id_, textures_.emplace(std::move(*candidate)));
     }
 
     RenderResult<void> SampledTexture2DStorage::release(TextureId id) noexcept
@@ -372,13 +370,15 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        auto* value = id.storage == id_ ? textures_.find(id.local) : nullptr;
+        auto* value = extension_detail::ResourceIdentity::storage(id) == id_
+                          ? textures_.find(extension_detail::ResourceIdentity::local(id))
+                          : nullptr;
         if (!value)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
         retire(*value);
-        textures_.erase(id.local);
+        textures_.erase(extension_detail::ResourceIdentity::local(id));
         return {};
     }
 

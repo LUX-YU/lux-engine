@@ -1,4 +1,4 @@
-#include <lux/engine/render/storage/RasterMaterialTable.hpp>
+#include <lux/engine/render/extensions/storage/RasterMaterialTable.hpp>
 
 namespace lux::render
 {

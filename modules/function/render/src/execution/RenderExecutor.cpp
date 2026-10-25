@@ -1,12 +1,12 @@
 #include <algorithm>
 #include <cstring>
 #include <lux/engine/render/device/BufferAccess.hpp>
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/execution/BindingState.hpp>
 #include <lux/engine/render/execution/FrameResources.hpp>
 #include <lux/engine/render/execution/HistoryState.hpp>
 #include <lux/engine/render/execution/RenderExecutor.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
 
 namespace lux::render::detail

@@ -1,6 +1,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
+#include <lux/engine/render/capabilities/LitScene.hpp>
+#include <lux/engine/render/capabilities/UiScene.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <vector>
 
@@ -35,6 +37,9 @@ struct ExternalCommand final
 };
 
 static_assert(RenderCommand<ExternalCommand>);
+static_assert(sizeof(TransformBatch) <= ipc::IpcMessage::typed_inline_capacity);
+static_assert(std::is_trivially_copyable_v<MeshId> && std::is_standard_layout_v<MeshId>);
+static_assert(sizeof(MeshId) == 16);
 static_assert(sizeof(RequestId) == sizeof(std::uint64_t));
 static_assert(!std::is_copy_constructible_v<ipc::IpcMessage>);
 

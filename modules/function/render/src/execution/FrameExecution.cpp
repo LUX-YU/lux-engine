@@ -1,14 +1,14 @@
 #include <algorithm>
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/execution/BindingState.hpp>
-#include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/FrameResources.hpp>
 #include <lux/engine/render/execution/RenderExecutor.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
-#include <lux/engine/render/features/FeatureBinding.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
+#include <lux/engine/render/extensions/features/FeatureBinding.hpp>
+#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/graph/DumpText.hpp>
 #include <lux/engine/render/graph/Range.hpp>
-#include <lux/engine/render/upload/ResourceUploader.hpp>
 #include <tuple>
 
 namespace lux::render::detail

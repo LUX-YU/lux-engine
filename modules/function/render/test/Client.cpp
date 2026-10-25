@@ -8,10 +8,12 @@
 #include <fstream>
 #include <latch>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
+#include <lux/engine/render/capabilities/LitScene.hpp>
+#include <lux/engine/render/capabilities/RasterAssets.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/extensions/GraphCommands.hpp>
 #include <lux/engine/render/features/HzbFeature.hpp>
-#include <lux/engine/render/features/MaterialMeshRaster.hpp>
-#include <lux/engine/render/features/MeshDepthRaster.hpp>
+#include <lux/engine/render/features/RasterMeshParameters.hpp>
 #include <source_location>
 #include <thread>
 
@@ -206,34 +208,30 @@ namespace mesh_sample
             return std::move(*created);
         }
 
-        StorageId prepare(
+        CapabilityInput installInput(
             ipc::IpcRequester& client,
             const CommandList& commands,
             std::uint64_t& next,
-            StorageNameView name,
-            std::string key,
-            VStorageLocation location = {}
+            std::string_view schema,
+            VRenderScope scope = {}
         )
         {
-            const auto directory = coldCall<ListStorages>(client, commands, next, {});
-            const auto found = std::ranges::find(directory.storages, name.name(), &StorageInfo::name);
-            check(found != directory.storages.end());
-            check(!found->description.empty());
-            return coldCall<PrepareStorage>(
-                       client,
-                       commands,
-                       next,
-                       {{std::move(location), found->id, std::move(key)}, {}}
-            ).storage;
-        }
-
-        FeatureId feature(ipc::IpcRequester& client, const CommandList& commands, std::uint64_t& next, FeatureName name)
-        {
-            const auto directory = coldCall<ListFeatures>(client, commands, next, {});
-            const auto found = std::ranges::find(directory.features, name.name(), &FeatureInfo::name);
-            check(found != directory.features.end());
-            check(!found->description.empty());
-            return found->id;
+            const auto choices = coldCall<ListCapabilities>(
+                client,
+                commands,
+                next,
+                {std::string(kLitSceneCapability), 1, "lux.render.scene.clustered"}
+            );
+            check(choices.implementations.size() == 1);
+            const auto installed = coldCall<InstallCapabilities>(
+                client,
+                commands,
+                next,
+                {choices.implementations.front().selection, scope, take(ConfigValue::make(LitSceneConfiguration{}))}
+            );
+            const auto found = std::ranges::find(installed.inputs, schema, &CapabilitiesInstalled::Input::schema);
+            check(found != installed.inputs.end());
+            return found->destination;
         }
 
         rdesc::MaterialProgramSet materialProgram(const char* path)
@@ -272,7 +270,7 @@ namespace mesh_sample
             return program;
         }
 
-        TextureWrite textureInput(StorageId storage, unsigned green, std::vector<std::byte>& bytes)
+        TextureWrite textureInput(CapabilityInput storage, unsigned green, std::vector<std::byte>& bytes)
         {
             bytes.assign(16 * 16 * 4, std::byte{});
             for (std::size_t i = 0; i < bytes.size(); i += 4)
@@ -297,9 +295,9 @@ namespace mesh_sample
             MaterialId material;
             TextureId texture;
             TextureId old_texture;
-            StorageId mesh_storage;
-            StorageId texture_storage;
-            StorageId material_storage;
+            CapabilityInput mesh_input;
+            CapabilityInput texture_input;
+            CapabilityInput material_input;
             MeshDescription description;
             rdesc::MaterialProgramSet program;
         };
@@ -310,7 +308,8 @@ namespace mesh_sample
         ipc::IpcRequester& main,
         std::string_view channel,
         CommandId list_commands,
-        const char* cooked_fragment
+        const char* cooked_fragment,
+        std::array<FeatureId, 3> graph_features
     )
     {
         std::uint64_t main_next = 1;
@@ -324,12 +323,12 @@ namespace mesh_sample
                 auto client = connect(channel);
                 std::uint64_t next = 1;
                 const auto commands = call<ListCommands>(client, next, list_commands, {});
-                const auto mesh_storage = prepare(client, commands, next, kMeshStorageType, "meshes");
-                const auto material_storage = prepare(client, commands, next, kMaterialStorageType, "materials");
-                const auto texture_storage = prepare(client, commands, next, kTextureStorageType, "textures");
-                assets.mesh_storage = mesh_storage;
-                assets.texture_storage = texture_storage;
-                assets.material_storage = material_storage;
+                const auto mesh_input = installInput(client, commands, next, kIndexedMeshInput);
+                const auto material_input = installInput(client, commands, next, kRasterMaterialInput);
+                const auto texture_input = installInput(client, commands, next, kSampledTextureInput);
+                assets.mesh_input = mesh_input;
+                assets.texture_input = texture_input;
+                assets.material_input = material_input;
                 const auto set_texture = command<CreateTexture>(commands);
                 const std::array<float, 20> vertices{-.22f, -.2f, .3f, 0,   0, .22f, -.2f, .3f, 1,   0,
                                                      0,     .23f, .3f, .5f, 1, 0,    0,    .8f, .5f, .5f};
@@ -347,15 +346,15 @@ namespace mesh_sample
                     {{0, 12, 0}}
                 };
                 assets.mesh =
-                    coldCall<CreateMesh>(client, commands, next, {mesh_storage, assets.description, bytes}).mesh;
+                    coldCall<CreateMesh>(client, commands, next, {mesh_input, assets.description, bytes}).mesh;
                 bytes.clear(); // CreateMesh Response ended the source borrow.
                 assets.texture =
-                    call<CreateTexture>(client, next, set_texture, textureInput(texture_storage, 0, bytes)).texture;
+                    call<CreateTexture>(client, next, set_texture, textureInput(texture_input, 0, bytes)).texture;
                 assets.program = materialProgram(cooked_fragment);
                 loaded.count_down();
 
                 replace_texture.wait();
-                auto changed = textureInput(texture_storage, 255, bytes);
+                auto changed = textureInput(texture_input, 255, bytes);
                 assets.old_texture = assets.texture;
                 assets.texture = call<CreateTexture>(client, next, set_texture, std::move(changed)).texture;
                 texture_ready.count_down();
@@ -368,19 +367,18 @@ namespace mesh_sample
                               main,
                               main_commands,
                               main_next,
-                              {assets.material_storage, assets.program, {{1, 1, 1, 1}}, {assets.texture}}
+                              {assets.material_input, assets.program, {{1, 1, 1, 1}}, {assets.texture}}
         ).material;
         check(!assets.mesh.isNull() && !assets.material.isNull() && !assets.texture.isNull());
         const auto scene = coldCall<CreateScene>(main, main_commands, main_next, {}).scene;
-        const auto instance_storage =
-            prepare(main, main_commands, main_next, kMeshInstanceStorageType, "instances", scene);
+        const auto instance_input = installInput(main, main_commands, main_next, kRasterInstancesInput, scene);
         MeshInstanceDescription description{assets.mesh, assets.material};
         description.transform[12] = -.45f;
         std::vector<MeshInstanceDescription> instance_descriptions{description};
         description.transform[12] = .45f;
         instance_descriptions.push_back(description);
         auto created =
-            coldCall<CreateMeshInstances>(main, main_commands, main_next, {instance_storage, instance_descriptions});
+            coldCall<CreateMeshInstances>(main, main_commands, main_next, {instance_input, instance_descriptions});
         instance_descriptions.clear(); // Response ended the source borrow; capacity remains available to the Client.
         check(created.instances.size() == 2);
         const auto left = created.instances[0];
@@ -398,15 +396,15 @@ namespace mesh_sample
         config.mesh.program = assets.program;
         config.mesh.group = {assets.mesh, assets.material};
         config.mesh.textures = {{16, 16, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}};
-        const auto basic = feature(main, main_commands, main_next, MaterialMeshRasterDescriptor::name);
-        const auto depth_feature = feature(main, main_commands, main_next, MeshDepthRasterDescriptor::name);
-        CreateEffectRequest first_request{config.target}, second_request{config.target};
+        const auto basic = graph_features[0];
+        const auto depth_feature = graph_features[1];
+        GraphEffectRequest first_request{config.target}, second_request{config.target};
         first_request.definition.features.push_back({basic, "main", take(ConfigValue::make(config))});
         auto depth_config = config;
         depth_config.mesh.program = {};
         depth_config.mesh.textures.clear();
         second_request.definition.features.push_back({depth_feature, "main", take(ConfigValue::make(depth_config))});
-        const auto hzb = feature(main, main_commands, main_next, HzbFeatureDescriptor::name);
+        const auto hzb = graph_features[2];
         HzbFeatureConfig hzb_config{{64, 64, 1, 1, rdesc::ETextureFormat::D32_SFLOAT}, 6};
         hzb_config.depth.extent.source = EImageExtentSource::TARGET;
         second_request.definition.features.push_back({hzb, "depth pyramid", take(ConfigValue::make(hzb_config))});
@@ -420,9 +418,9 @@ namespace mesh_sample
         second_request.definition.outputs.push_back({{0, "depth"}, {}});
 
         const auto first_effect =
-            coldCall<CreateEffect>(main, main_commands, main_next, std::move(first_request)).effect;
+            coldCall<CreateGraphEffect>(main, main_commands, main_next, std::move(first_request)).effect;
         const auto second_effect =
-            coldCall<CreateEffect>(main, main_commands, main_next, std::move(second_request)).effect;
+            coldCall<CreateGraphEffect>(main, main_commands, main_next, std::move(second_request)).effect;
         const auto first_target = coldCall<CreateTarget>(main, main_commands, main_next, {config.target}).target;
         const auto second_target = coldCall<CreateTarget>(main, main_commands, main_next, {config.target}).target;
         const AttachmentRequest first{
@@ -441,17 +439,11 @@ namespace mesh_sample
         };
         const auto first_bindings = coldCall<Attach>(main, main_commands, main_next, first);
         const auto second_bindings = coldCall<Attach>(main, main_commands, main_next, second);
-        for (const auto* bindings : {&first_bindings, &second_bindings})
-        {
-            check(std::ranges::any_of(
-                bindings->storages,
-                [&](const auto& binding) { return binding.storage == assets.mesh.storage; }
-            ));
-            check(std::ranges::any_of(
-                bindings->storages,
-                [&](const auto& binding) { return binding.storage == instance_storage; }
-            ));
-        }
+        check(!first_bindings.attachment.isNull() && !second_bindings.attachment.isNull());
+        // Reinstalling at the same business scope returns identical input addresses, and both
+        // attachments consume the already-uploaded resources in the frames below.
+        check(installInput(main, main_commands, main_next, kRasterInstancesInput, scene) == instance_input);
+        check(installInput(main, main_commands, main_next, kIndexedMeshInput) == assets.mesh_input);
         const auto await_frame = [&]
         {
             const auto result = coldCall<SubmitFrame>(main, main_commands, main_next, {main_next, {}});
@@ -461,19 +453,19 @@ namespace mesh_sample
         const auto original_compiles = coldCall<QueryRenderStats>(main, main_commands, main_next, {}).compiled_graphs;
 
         // The application submits an already coalesced sparse update. The Scene retains the authoritative record.
-        std::vector<lux::cxx::SlotKey<MeshInstanceTag>> changed_instances;
+        std::vector<MeshInstanceId> changed_instances;
         std::vector<TransformMatrix> changed_transforms;
         changed_instances.reserve(8);
         changed_transforms.reserve(8);
         auto matrix = description.transform;
         matrix[12] = -.2f;
-        changed_instances.push_back(left.local);
+        changed_instances.push_back(left);
         changed_transforms.push_back(matrix);
         auto applied = coldCall<UpdateTransforms>(
             main,
             main_commands,
             main_next,
-            {instance_storage, 7, changed_instances, changed_transforms}
+            {instance_input, 7, changed_instances, changed_transforms}
         );
         changed_instances.clear();
         changed_transforms.clear();
@@ -482,7 +474,7 @@ namespace mesh_sample
 
         // Two Client input carriers can be in flight while GPU FIF is independently occupied.
         // Each packet borrows its own matrix until both its child and frame terminal arrive.
-        const std::array keys{left.local};
+        const std::array keys{left};
         std::array<TransformMatrix, 2> matrices{matrix, matrix};
         matrices[0][12] = -.1f;
         matrices[1][12] = -.3f;
@@ -495,7 +487,7 @@ namespace mesh_sample
             frame_command.command = command<UpdateTransforms>(main_commands);
             frame_command.request_id = {main_next++};
             frame_command.request.emplace<TransformBatch>(
-                TransformBatch{instance_storage, 8 + i, keys, std::span(&matrices[i], 1)}
+                TransformBatch{instance_input, 8 + i, keys, std::span(&matrices[i], 1)}
             );
             groups[i] = {std::span(&frame_command, 1)};
             frame_requests[i] = {main_next++};
@@ -562,10 +554,6 @@ namespace mesh_sample
         (void)coldCall<ReleaseMaterial>(main, main_commands, main_next, assets.material);
         (void)coldCall<ReleaseTexture>(main, main_commands, main_next, assets.texture);
         (void)coldCall<ReleaseMesh>(main, main_commands, main_next, assets.mesh);
-        for (const auto id : {assets.material_storage, assets.texture_storage, assets.mesh_storage})
-        {
-            (void)coldCall<RemoveStorage>(main, main_commands, main_next, id);
-        }
         release.count_down();
         asset_thread.join();
     }

@@ -1,8 +1,8 @@
 #pragma once
 
+#include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/scene/CameraTargetsComponent.hpp>
 #include <lux/engine/scene/SceneCamera.hpp>
-#include <lux/engine/scene/SceneParameters.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 
 namespace lux::scene::detail
@@ -16,10 +16,10 @@ namespace lux::scene::detail
         render::AttachmentId attachment;
         CameraTarget adopted;
         CameraRecipeKey recipe;
-        SceneParameters parameters;
+        render::CameraInput parameters;
         render::RenderError error;
-        std::vector<render::MeshInstanceDrawGroup> groups;
-        std::vector<render::ShadowLightSelection> casters;
+        std::vector<render::RasterGeometrySelection> groups;
+        std::vector<render::SceneLightInput> light_inputs;
         std::uint32_t capacity{};
         bool parameters_changed = true;
         bool output_changed = true;

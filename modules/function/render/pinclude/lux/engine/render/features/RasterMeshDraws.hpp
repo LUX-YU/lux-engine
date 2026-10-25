@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/features/FeatureBinding.hpp>
+#include <lux/engine/render/extensions/features/FeatureBinding.hpp>
 #include <lux/engine/render/features/RasterMeshParameters.hpp>
 #include <lux/engine/render/storage/RasterMeshInstanceStorage.hpp>
 

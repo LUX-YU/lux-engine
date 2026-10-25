@@ -1,4 +1,4 @@
-#include <lux/engine/render/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
 
 #include <lux/engine/render/graph/Range.hpp>
 #include <queue>

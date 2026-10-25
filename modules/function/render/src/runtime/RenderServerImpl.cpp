@@ -1,7 +1,8 @@
 #include <exec/variant_sender.hpp>
-#include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/execution/ResizeResources.hpp>
-#include <lux/engine/render/resource/StorageBinding.hpp>
+#include <lux/engine/render/extensions/GraphCommands.hpp>
+#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
+#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 #include <map>
 #include <ranges>
@@ -30,11 +31,8 @@ namespace lux::render
         bindFrameworkCommand<Stop, &Impl::stopCommand>();
         bindFrameworkCommand<QueryRenderStats, &Impl::queryRenderStats>();
         bindFrameworkCommand<QueryExecutionProgress, &Impl::queryExecutionProgress>();
-        bindFrameworkCommand<ListFeatures, &Impl::listFeatures>();
-        bindFrameworkCommand<ListStorages, &Impl::listStorages>();
-        bindFrameworkCommand<FindStorage, &Impl::findStorage>();
-        bindFrameworkCommand<PrepareStorage, &Impl::prepareStorage>();
-        bindFrameworkCommand<RemoveStorage, &Impl::removeStorage>();
+        bindFrameworkCommand<ListCapabilities, &Impl::listCapabilities>();
+        bindFrameworkCommand<InstallCapabilities, &Impl::installCapabilities>();
         bindFrameworkCommand<ListCommands, &Impl::listCommands>();
         bindFrameworkCommand<ListCommandBindings, &Impl::listCommandBindings>();
         bindFrameworkCommand<SelectCommandBinding, &Impl::selectCommandBinding>();
@@ -109,21 +107,31 @@ namespace lux::render
             (s.device->descriptors().imageCapacity() ? 1u : 0u) | (enabled.texture_compression_bc ? 2u : 0u)
         );
         s.global_storages.emplace(*s.resources, true);
+        s.global_storages->bindScope(GlobalRenderScope{});
         s.paged_instances = device_options.buffer_device_address;
         return {};
     }
 
-    auto RenderServer::Impl::createEffect(CreateEffect::Request&& input) noexcept
+    auto RenderServer::Impl::compileGraphEffect(
+        GraphEffectRequest&& input,
+        FeatureGraphOps::Parameters project_parameters,
+        RenderError initial_error,
+        CapabilitySelection implementation,
+        std::vector<ConfigValue> installation_configurations
+    ) noexcept
     {
-        RenderError initial_error;
         std::vector<const FeatureEntry*> registrations;
-        if (input.definition.features.empty())
+        if (initial_error.type == 0 && input.definition.features.empty())
         {
             initial_error = {kFeatureContract};
         }
         registrations.reserve(input.definition.features.size());
         for (const auto& selection : input.definition.features)
         {
+            if (initial_error.type != 0)
+            {
+                break;
+            }
             const auto* found = features.find(selection.feature);
             if (!found)
             {
@@ -188,11 +196,20 @@ namespace lux::render
                         ) |
                         stdexec::continues_on(render_loop_.scheduler()) |
                         stdexec::let_value(
-                            [server = this](RenderResult<RenderEffect>& candidate) noexcept
+                            [server = this,
+                             project_parameters,
+                             implementation,
+                             configurations = std::move(installation_configurations
+                             )](RenderResult<RenderEffect>& candidate) mutable noexcept
                             {
                                 return stdexec::read_env(stdexec::get_stop_token) |
                                        stdexec::then(
-                                           [server, &candidate](auto stop) noexcept -> CreateEffect::Response
+                                           [server,
+                                            &candidate,
+                                            project_parameters,
+                                            implementation,
+                                            configurations = std::move(configurations)](auto stop
+                                           ) mutable noexcept -> CreateGraphEffect::Response
                                            {
                                                if (!candidate)
                                                {
@@ -202,6 +219,9 @@ namespace lux::render
                                                {
                                                    return {RenderError{kCommandCancelled}};
                                                }
+                                               candidate->project_parameters = project_parameters;
+                                               candidate->implementation = implementation;
+                                               candidate->installation_configurations = std::move(configurations);
                                                const auto effect = server->effects.emplace(std::move(*candidate));
                                                ++server->compiled_graphs;
                                                return EffectCreated{{}, effect};
@@ -209,14 +229,123 @@ namespace lux::render
                                        );
                             }
                         );
-        auto invalid = stdexec::just(CreateEffect::Response{initial_error});
+        auto invalid = stdexec::just(CreateGraphEffect::Response{initial_error});
         using VSource = exec::variant_sender<decltype(invalid), decltype(compiled)>;
         return initial_error.type != error::ErrorId{} ? VSource{std::move(invalid)} : VSource{std::move(compiled)};
     }
 
+    auto RenderServer::Impl::createGraphEffect(CreateGraphEffect::Request&& input) noexcept
+    {
+        return compileGraphEffect(std::move(input), nullptr);
+    }
+
+    auto RenderServer::Impl::createCapabilityEffect(CreateEffect::Request&& input) noexcept
+    {
+        GraphEffectRequest graph{input.description};
+        RenderError error;
+        FeatureGraphOps::Parameters project_parameters = nullptr;
+        std::vector<ConfigValue> installation_configurations;
+        const auto* entry = features.find(input.implementation.implementation_);
+        if (!entry || !entry->capabilities)
+        {
+            error = RenderError{kRuntimeIdentity};
+        }
+        else
+        {
+            const bool invalid_configuration = input.configuration.type() != entry->config_type ||
+                                               input.configuration.retainedBytes() > config.max_config_bytes;
+            const bool invalid_inputs = input.inputs.type() != entry->graph.effect_input_type ||
+                                        input.inputs.retainedBytes() > config.max_config_bytes;
+            if (invalid_configuration || invalid_inputs)
+            {
+                error = RenderError{kInvalidConfig};
+            }
+            else
+            {
+                if (std::ranges::any_of(
+                        entry->graph.storage_inputs,
+                        [](const auto& dependency) noexcept { return dependency.configuration != nullptr; }
+                    ))
+                {
+                    for (const auto& dependency : entry->graph.storage_inputs)
+                    {
+                        auto configuration = dependency.configuration
+                                                 ? dependency.configuration(input.configuration.data())
+                                                 : RenderResult<ConfigValue>{ConfigValue{}};
+                        if (!configuration)
+                        {
+                            error = configuration.error();
+                            break;
+                        }
+                        installation_configurations.push_back(std::move(*configuration));
+                    }
+                }
+                if (error.type == 0 && entry->graph.expand)
+                {
+                    std::vector<FeatureId> dependencies{entry->id};
+                    for (auto name : entry->graph.dependencies)
+                    {
+                        const auto found = features_by_name.find(name.name());
+                        if (found == features_by_name.end())
+                        {
+                            error = RenderError{kFeatureMissingProvider};
+                            break;
+                        }
+                        dependencies.push_back(found->second);
+                    }
+                    if (error.type == 0)
+                    {
+                        const auto expanded = entry->graph.expand(
+                            input.description,
+                            input.configuration.data(),
+                            input.inputs.data(),
+                            dependencies,
+                            graph.definition
+                        );
+                        if (!expanded)
+                        {
+                            error = expanded.error();
+                        }
+                    }
+                }
+                else if (error.type == 0 && entry->graph.describe_ports)
+                {
+                    // A single implementation uses the same compiler as a composition. Public output
+                    // semantics name its declared ports; no synthetic wrapper Feature is registered.
+                    graph.definition.features.push_back({entry->id, "root", std::move(input.configuration)});
+                    std::vector<std::string_view> outputs;
+                    for (const auto& capability : entry->capabilities->capabilities)
+                    {
+                        for (const auto& output : capability.outputs)
+                        {
+                            if (std::ranges::find(outputs, output) == outputs.end())
+                            {
+                                outputs.push_back(output);
+                                graph.definition.outputs.push_back({{0, output}});
+                            }
+                        }
+                    }
+                }
+                else if (error.type == 0)
+                {
+                    error = RenderError{kRuntimeUnsupported}; // Resource-only capabilities install inputs, not effects.
+                }
+                project_parameters = entry->graph.parameters;
+            }
+        }
+        return compileGraphEffect(
+            std::move(graph),
+            project_parameters,
+            error,
+            input.implementation,
+            std::move(installation_configurations)
+        );
+    }
+
     void RenderServer::Impl::bindCreateEffectCommand() noexcept
     {
-        bindFrameworkCommand<CreateEffect, &Impl::createEffect>();
+        bindFrameworkCommand<CreateGraphEffect, &Impl::createGraphEffect>();
+        bindFrameworkCommand<CreateEffect, &Impl::createCapabilityEffect>();
     }
 
     void RenderServer::Impl::removeEffect(
@@ -251,9 +380,10 @@ namespace lux::render
         StorageSet& scene,
         StorageSet& view,
         StorageSet& attachment,
-        std::span<const TargetImageInput> target_images
+        const AttachmentRequest& input
     ) noexcept
     {
+        const auto target_images = std::span(input.target_images);
         const auto& plan = *effect.plan;
         auto dependencies = storageContext();
         std::vector<const StorageArgument*> resolved_arguments(plan.resources().size());
@@ -296,12 +426,39 @@ namespace lux::render
         cxx::scope_exit rollback(
             [&]() noexcept
             {
-                for (const auto& [set, id] : created_storages)
+                for (const auto& [set, id] : created_storages | std::views::reverse)
                 {
                     (void)set->remove(id);
                 }
             }
         );
+        const auto* implementation =
+            effect.implementation.isNull() ? nullptr : features.find(effect.implementation.implementation_);
+        const std::array scope_sets{&*global_storages, &scene, &view, &attachment};
+        std::vector<StorageId> capability_inputs;
+        const ConfigValue default_configuration;
+        if (implementation)
+        {
+            const auto declarations = implementation->graph.storage_inputs;
+            capability_inputs.reserve(declarations.size());
+            for (std::size_t i = 0; i < declarations.size(); ++i)
+            {
+                const auto& declaration = declarations[i];
+                auto id = ensureStorage(
+                    *scope_sets[static_cast<std::size_t>(declaration.scope)],
+                    resources->typeId(declaration.storage_type),
+                    declaration.storage_key,
+                    effect.installation_configurations.empty() ? default_configuration
+                                                               : effect.installation_configurations[i],
+                    created_storages
+                );
+                if (!id)
+                {
+                    return cxx::unexpected(id.error());
+                }
+                capability_inputs.push_back(*id);
+            }
+        }
         EffectAttachment candidate;
         std::uint32_t parameter_bytes = 0;
         for (const auto& binding : effect.bindings)
@@ -404,17 +561,12 @@ namespace lux::render
                 const auto* value = argument ? argument->data() : nullptr;
                 const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->binding_ops);
                 const auto storage_type = dependencies.resources.typeId(binding.storage.type.view());
-                const auto previous = set->find(storage_type, key);
-                auto instance = set->getOrCreate(dependencies, storage_type, key, binding.storage.config);
+                auto instance = ensureStorage(*set, storage_type, key, binding.storage.config, created_storages);
                 if (!instance)
                 {
                     return cxx::unexpected(instance.error());
                 }
                 const auto id = *instance;
-                if (previous.isNull() && set != &attachment)
-                {
-                    created_storages.emplace_back(set, id);
-                }
                 resolved[i] = id;
                 if (auto bound =
                         candidate.bindStorage(i, id, *ops, resources->storageInstance(id), value, frames->frameCount());
@@ -486,124 +638,24 @@ namespace lux::render
         {
             return cxx::unexpected(ready.error());
         }
+        if (auto values =
+                candidate.instance
+                    ->setInputs(input.parameters, input.conditions, input.parameter_type, effect.project_parameters);
+            !values)
+        {
+            return cxx::unexpected(values.error());
+        }
+        candidate.instance->setViewport(input.viewport);
+        if (implementation)
+        {
+            for (std::uint32_t i = 0; i < capability_inputs.size(); ++i)
+            {
+                const auto scope = implementation->graph.storage_inputs[i].scope;
+                scope_sets[static_cast<std::size_t>(scope)]->bindInput(effect.implementation, i, capability_inputs[i]);
+            }
+        }
         rollback.release();
         return candidate;
-    }
-
-    RenderResult<StorageSet*> RenderServer::Impl::findStorageSet(const VStorageLocation& address) noexcept
-    {
-        return std::visit(
-            [&](const auto& location) -> RenderResult<StorageSet*>
-            {
-                using T = std::decay_t<decltype(location)>;
-                if constexpr (std::same_as<T, GlobalStorageLocation>)
-                {
-                    return &*global_storages;
-                }
-                else if constexpr (std::same_as<T, SceneId>)
-                {
-                    auto* scene = scenes.find(location);
-                    if (!scene)
-                    {
-                        return cxx::unexpected(RenderError{kRuntimeIdentity});
-                    }
-                    return &scene->storages;
-                }
-                else if constexpr (std::same_as<T, ViewRequest>)
-                {
-                    auto* scene = scenes.find(location.scene);
-                    auto* view = scene ? scene->views.find(location.view) : nullptr;
-                    if (!view)
-                    {
-                        return cxx::unexpected(RenderError{kRuntimeIdentity});
-                    }
-                    return &view->storages;
-                }
-                else
-                {
-                    auto* attachment = attachments.find(location);
-                    if (!attachment)
-                    {
-                        return cxx::unexpected(RenderError{kRuntimeIdentity});
-                    }
-                    return attachment->storages.get();
-                }
-            },
-            address
-        );
-    }
-
-    void RenderServer::Impl::findStorage(
-        const FindStorage::Request& _request,
-        FindStorage::Response& output_response
-    ) noexcept
-    {
-        const auto& input = _request;
-        auto storage_set = findStorageSet(input.location);
-        if (!storage_set)
-        {
-            output_response.error = storage_set.error();
-            return;
-        }
-        if (!resources->factory(input.type))
-        {
-            output_response.error = RenderError{kStorageFactory};
-            return;
-        }
-        const auto id = (*storage_set)->find(input.type, input.key);
-        if (id.isNull())
-        {
-            output_response.error = RenderError{kStorageIdentity};
-            return;
-        }
-        output_response = {{}, id};
-    }
-
-    void RenderServer::Impl::prepareStorage(
-        const PrepareStorage::Request& _request,
-        PrepareStorage::Response& output_response
-    ) noexcept
-    {
-        const auto& input = _request;
-        auto storage_set = findStorageSet(input.location.location);
-        if (!storage_set)
-        {
-            output_response.error = storage_set.error();
-            return;
-        }
-        auto dependencies = storageContext();
-        auto id = (*storage_set)->getOrCreate(dependencies, input.location.type, input.location.key, input.config);
-        if (!id)
-        {
-            output_response.error = id.error();
-            return;
-        }
-        output_response = {{}, *id};
-    }
-
-    void RenderServer::Impl::removeStorage(
-        const RemoveStorage::Request& _request,
-        RemoveStorage::Response& output_response
-    ) noexcept
-    {
-        const auto id = _request;
-        auto* storage_set = resources->storageSet(id);
-        if (!storage_set)
-        {
-            output_response.error = RenderError{kStorageIdentity};
-            return;
-        }
-        if (frames->submitting())
-        {
-            output_response.error = RenderError{kDeviceBusy};
-            return;
-        }
-        if (auto result = storage_set->remove(id); !result)
-        {
-            output_response.error = result.error();
-            return;
-        }
-        output_response = {};
     }
 
     bool RenderServer::Impl::canChangeAttachments(std::span<const AttachmentId> ids) const noexcept
@@ -714,30 +766,14 @@ namespace lux::render
             return;
         }
         auto local_storages = std::make_unique<StorageSet>(*resources);
-        auto prepared = prepareAttachment(
-            *effect,
-            target->output(),
-            scene->storages,
-            view->storages,
-            *local_storages,
-            _request.target_images
-        );
+        auto prepared =
+            prepareAttachment(*effect, target->output(), scene->storages, view->storages, *local_storages, _request);
         if (!prepared)
         {
             output_response.error = prepared.error();
             return;
         }
-        if (auto values = prepared->instance->setInputs(_request.parameters, _request.conditions); !values)
-        {
-            output_response.error = values.error();
-            return;
-        }
-        prepared->instance->setViewport(_request.viewport);
         output_response = {};
-        for (const auto& input : prepared->storage_inputs)
-        {
-            output_response.storages.push_back({effect->plan->resources()[input.resource].key, input.storage_id});
-        }
         for (const auto& pass : effect->plan->passes())
         {
             const auto* raster = std::get_if<detail::RasterCommands>(&pass.work);
@@ -759,6 +795,7 @@ namespace lux::render
             detachAttachment(_request.replaces);
         }
         const auto id = attachments.emplace(std::move(*prepared));
+        attachments.find(id)->storages->bindScope(id);
         auto& attachment = *attachments.find(id);
         attachment.view_position = view->attachments.size();
         attachment.effect_position = effect->attachments.size();
@@ -774,6 +811,34 @@ namespace lux::render
             }
         }
         output_response.attachment = id;
+        if (!effect->implementation.isNull())
+        {
+            const auto& implementation = *features.find(effect->implementation.implementation_);
+            for (std::uint32_t i = 0; i < implementation.graph.storage_inputs.size(); ++i)
+            {
+                const auto& declaration = implementation.graph.storage_inputs[i];
+                VRenderScope scope;
+                switch (declaration.scope)
+                {
+                case ECapabilityInputScope::GLOBAL:
+                    scope = GlobalRenderScope{};
+                    break;
+                case ECapabilityInputScope::SCENE:
+                    scope = scene_id;
+                    break;
+                case ECapabilityInputScope::VIEW:
+                    scope = ViewRequest{scene_id, view_id};
+                    break;
+                case ECapabilityInputScope::ATTACHMENT:
+                    scope = id;
+                    break;
+                }
+                output_response.inputs.push_back(
+                    {std::string(declaration.schema), declaration.version, {effect->implementation, std::move(scope), i}
+                    }
+                );
+            }
+        }
         if (target->enabled)
         {
             active_targets.emplace(target_id);
@@ -838,6 +903,7 @@ namespace lux::render
     ) noexcept
     {
         output_response = SceneCreated{{}, scenes.emplace(*resources)};
+        scenes.find(output_response.scene)->storages.bindScope(output_response.scene);
     }
 
     void RenderServer::Impl::removeScene(
@@ -885,6 +951,7 @@ namespace lux::render
             return;
         }
         output_response = ViewCreated{{}, scene->views.emplace(*resources)};
+        scene->views.find(output_response.view)->storages.bindScope(ViewRequest{input->scene, output_response.view});
     }
 
     void RenderServer::Impl::updateAttachmentInputs(
@@ -904,7 +971,11 @@ namespace lux::render
             return;
         }
         // Native validates the complete input size before changing any parameter bytes.
-        if (auto applied = attachment->instance->setInputs(input.parameters, input.conditions); !applied)
+        const auto& effect = *effects.find(attachment->effect);
+        if (auto applied =
+                attachment->instance
+                    ->setInputs(input.parameters, input.conditions, input.parameter_type, effect.project_parameters);
+            !applied)
         {
             output_response.error = applied.error();
             return;
@@ -1306,42 +1377,6 @@ namespace lux::render
         }
         detachAttachment(_request);
         output_response = {};
-    }
-
-    void RenderServer::Impl::listFeatures(
-        const ListFeatures::Request& _request,
-        ListFeatures::Response& output_response
-    ) noexcept
-    {
-        FeatureList result;
-        result.features.reserve(features.size());
-        for (const auto& entry : features)
-        {
-            result.features.push_back(
-                {entry.id,
-                 std::string(entry.descriptor.type.name()),
-                 std::string(entry.descriptor.config.name()),
-                 std::string(entry.descriptor.description)}
-            );
-        }
-        output_response = std::move(result);
-    }
-
-    void RenderServer::Impl::listStorages(
-        const ListStorages::Request& _request,
-        ListStorages::Response& output_response
-    ) noexcept
-    {
-        StorageList result;
-        resources->forEachType(
-            [&](StorageTypeId id, const StorageDescriptor& type, std::uint32_t capabilities) noexcept
-            {
-                result.storages.push_back(
-                    {id, std::string(type.type.name()), capabilities, std::string(type.description)}
-                );
-            }
-        );
-        output_response = std::move(result);
     }
 
     void RenderServer::Impl::listCommands(

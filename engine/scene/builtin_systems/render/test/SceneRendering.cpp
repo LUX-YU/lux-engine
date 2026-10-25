@@ -3,8 +3,8 @@
 #include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/material/Compiler.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
-#include <lux/engine/render/features/RasterMeshParameters.hpp>
-#include <lux/engine/render/storage/RasterMeshInstances.hpp>
+#include <lux/engine/render/capabilities/LitScene.hpp>
+#include <lux/engine/render/inputs/RasterInstanceInputs.hpp>
 #include <lux/engine/rendering/RenderAssets.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
@@ -251,7 +251,7 @@ int main()
     const auto first_added = scene->addCameraTarget(camera, view_request);
     CHECK(first_added);
     const auto first_view = *first_added;
-    std::vector<std::pair<AttachmentId, MeshViewParameters>> published_views;
+    std::vector<std::pair<AttachmentId, CameraInput>> published_views;
     std::uint64_t completed_frames = 0;
     std::stop_source scene_stop;
     bool scene_retired = false;
@@ -260,10 +260,9 @@ int main()
         std::ranges::find(catalog.commands, UpdateTransforms::name, &CommandInfo::name)->id;
     const auto inputs_command_id =
         std::ranges::find(catalog.commands, UpdateAttachmentInputs::name, &CommandInfo::name)->id;
-    const auto published = [&](AttachmentId attachment) -> const MeshViewParameters*
+    const auto published = [&](AttachmentId attachment) -> const CameraInput*
     {
-        auto found =
-            std::ranges::find(published_views, attachment, &std::pair<AttachmentId, MeshViewParameters>::first);
+        auto found = std::ranges::find(published_views, attachment, &std::pair<AttachmentId, CameraInput>::first);
         return found == published_views.end() ? nullptr : &found->second;
     };
     const auto drive = [&](bool draw) noexcept
@@ -302,14 +301,11 @@ int main()
                     continue;
                 }
                 const auto& input = command.request.get<AttachmentInputs>();
-                CHECK(input.parameters.size() >= sizeof(MeshViewParameters));
-                MeshViewParameters value;
+                CHECK(input.parameters.size() >= sizeof(CameraInput));
+                CameraInput value;
                 std::memcpy(&value, input.parameters.data(), sizeof(value));
-                auto found = std::ranges::find(
-                    published_views,
-                    input.attachment,
-                    &std::pair<AttachmentId, MeshViewParameters>::first
-                );
+                auto found =
+                    std::ranges::find(published_views, input.attachment, &std::pair<AttachmentId, CameraInput>::first);
                 if (found == published_views.end())
                 {
                     published_views.push_back({input.attachment, value});

@@ -21,6 +21,7 @@ generate_visibility_header(
 
 set(render_sources
     src/core/Target.cpp
+    src/core/Error.cpp
     src/core/RasterViewport.cpp
     src/commands/Command.cpp
     src/resource/StorageDescriptor.cpp
@@ -49,6 +50,9 @@ set(render_sources
     src/features/MeshShadowFeature.cpp
     src/features/TonemapFeature.cpp
     src/features/UiRasterFeature.cpp
+    src/features/RasterAssets.cpp
+    src/features/LitScene.cpp
+    src/features/UiScene.cpp
     src/features/FullscreenRaster.cpp
     src/features/ParameterLayout.cpp
     src/storage/DirectLightingStorage.cpp
@@ -92,6 +96,7 @@ set(render_sources
     src/runtime/RenderServer.cpp
     src/runtime/CommandRegistry.cpp
     src/runtime/RenderServerImpl.cpp
+    src/runtime/CapabilityInstallation.cpp
     src/runtime/Scene.cpp
     src/runtime/EffectCompilation.cpp
     src/runtime/CommandDispatchContext.cpp
@@ -271,9 +276,25 @@ component_include_directories(
         "${CMAKE_CURRENT_BINARY_DIR}/shaders" "${LUX_NRI_VMA_HEADERS}" "${LUX_NRI_VULKAN_HEADERS}"
 )
 
-# Extension code uses the same versioned NRI declarations as this library, never a second NRI binary.
-# Neutral Command/Client headers do not include them or require a Vulkan SDK.
-target_include_directories(render PUBLIC
+add_interface_component(
+    COMPONENT_NAME render_extensions
+    NAMESPACE lux::engine::function
+)
+
+component_include_directories(
+    render_extensions
+    BUILD_TIME_EXPORT "${CMAKE_CURRENT_SOURCE_DIR}/include" "${LUX_GENERATE_HEADER_DIR}"
+    INSTALL_TIME include
+)
+
+# Authors borrow the existing runtime/backend. This target compiles no Render implementation.
+target_link_libraries(render_extensions INTERFACE render STDEXEC::stdexec lux::engine::core::core_execution)
+
+target_include_directories(render PRIVATE
+    "${LUX_NRI_SOURCE_DIR}/Include"
+)
+
+target_include_directories(render_extensions INTERFACE
     "$<BUILD_INTERFACE:${LUX_NRI_SOURCE_DIR}/Include>"
     "$<INSTALL_INTERFACE:include/lux/engine/render/nri>"
 )
@@ -288,9 +309,8 @@ target_compile_features(render PUBLIC cxx_std_20)
 target_link_libraries(render
     PUBLIC lux::cxx::container lux::cxx::compile_time lux::cxx::algorithm lux::cxx::core
         lux::engine::core::error_values lux::engine::resource::description_types
-        lux::engine::resource::shader_metadata STDEXEC::stdexec
-        lux::engine::core::core_execution lux::engine::platform::platform_ipc
-    PRIVATE NRI Eigen3::Eigen
+        lux::engine::resource::shader_metadata lux::engine::platform::platform_ipc
+    PRIVATE NRI Eigen3::Eigen STDEXEC::stdexec lux::engine::core::core_execution
         lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared
         lux::engine::platform::platform_process
 )
@@ -309,18 +329,22 @@ endif()
 
 component_add_transitive_commands(render
     "find_package(lux-cxx CONFIG REQUIRED COMPONENTS container compile_time algorithm core)"
-    "find_package(stdexec CONFIG REQUIRED GLOBAL)"
     "find_package(lux-engine-core CONFIG REQUIRED COMPONENTS error_values)"
     "find_package(lux-engine-resource CONFIG REQUIRED COMPONENTS description_types shader_metadata)"
-    "find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)"
     "find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_ipc)"
+)
+
+component_add_transitive_commands(render_extensions
+    "find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render)"
+    "find_package(stdexec CONFIG REQUIRED GLOBAL)"
+    "find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)"
 )
 
 lux_engine_install_components(
     PROJECT_NAME lux-engine-render
     VERSION 0.0.1
     NAMESPACE lux::engine::function
-    COMPONENTS render
+    COMPONENTS render render_extensions
 )
 
 if(BUILD_TESTING)

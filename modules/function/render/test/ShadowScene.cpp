@@ -6,6 +6,7 @@
 #include <cmath>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/material/Compiler.hpp>
+#include <lux/engine/render/extensions/GraphCommands.hpp>
 #include <lux/engine/render/features/ClusteredLightingFeature.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
@@ -16,10 +17,11 @@
 
 struct SamplerProbe
 {
-    using Descriptor = SamplerProbe;
+    using Config = void;
+    static constexpr FeatureName name{"test.SamplerProbe"};
     using Storages = std::tuple<>;
     using Commands = std::tuple<>;
-    static const FeatureDescriptor descriptor;
+
     static const FeatureGraphOps& graph(bool) noexcept;
 
     static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
@@ -79,16 +81,9 @@ struct SamplerProbe
     }
 };
 
-inline const FeatureDescriptor SamplerProbe::descriptor{
-    FeatureName{"test.SamplerProbe"},
-    {},
-    "Ordinary and comparison array samplers",
-    SamplerProbe::describe
-};
-
 inline const FeatureGraphOps& SamplerProbe::graph(bool) noexcept
 {
-    static const FeatureGraphOps value{SamplerProbe::build};
+    static const FeatureGraphOps value{SamplerProbe::describe, SamplerProbe::build};
     return value;
 }
 
@@ -105,12 +100,12 @@ static void verifySamplers(RenderServer& server, const RenderServerConfig& confi
     const auto commands = call<ListCommands>(*client, bootstrap, {});
     CapturedPixels pixels;
     const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
-    CreateEffectRequest request{target};
+    GraphEffectRequest request{target};
     request.definition.features.push_back({probe, "samplers", {}});
     request.definition.features.push_back({capture, "pixels", take(ConfigValue::make(CaptureConfig{&pixels}))});
     request.definition.connections.push_back({{0, "color"}, {1, "color"}});
     request.definition.outputs = {{{0, "color"}, GraphOutputRequirements{target.format, 1}}, {{1, "pixels"}, {}}};
-    const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+    const auto effect = call<CreateGraphEffect>(*client, commands, std::move(request)).effect;
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto view = call<CreateView>(*client, commands, {scene}).view;
     const auto output = call<CreateTarget>(*client, commands, {target}).target;
@@ -273,14 +268,14 @@ int main(int argc, char** argv)
         CHECK(runtime->join());
         return 0;
     }
-    const auto gbuffer = take(server->featureId<GBufferFeatureDescriptor>());
-    const auto lighting = take(server->featureId<DeferredLightingFeatureDescriptor>());
-    const auto tonemap = take(server->featureId<TonemapFeatureDescriptor>());
-    const auto projection = take(server->featureId<ShadowMapFeatureDescriptor>());
-    const auto visibility = take(server->featureId<MeshVisibilityFeatureDescriptor>());
-    const auto shadow = take(server->featureId<MeshShadowFeatureDescriptor>());
+    const auto gbuffer = take(server->featureId("lux.render.feature.GBufferFeature"));
+    const auto lighting = take(server->featureId("lux.render.feature.DeferredLightingFeature"));
+    const auto tonemap = take(server->featureId("lux.render.feature.TonemapFeature"));
+    const auto projection = take(server->featureId("lux.render.feature.ShadowMapFeature"));
+    const auto visibility = take(server->featureId("lux.render.feature.MeshVisibilityFeature"));
+    const auto shadow = take(server->featureId("lux.render.feature.MeshShadowFeature"));
     const auto capture = take(server->registerFeature<CaptureFeature>());
-    const auto cluster_feature = take(server->featureId<ClusteredLightingFeatureDescriptor>());
+    const auto cluster_feature = take(server->featureId("lux.render.feature.ClusteredLightingFeature"));
     const auto comparison = take(server->registerFeature<SceneComparison>());
     CommandList bootstrap;
     bootstrap.commands.push_back({std::string(ListCommands::name), take(server->commandId<ListCommands>())});
@@ -290,10 +285,10 @@ int main(int argc, char** argv)
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = call<ListCommands>(*client, bootstrap, {});
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
-    const auto meshes = prepare(*client, commands, kMeshStorageType, "meshes");
-    const auto materials = prepare(*client, commands, kMaterialStorageType, "materials");
-    const auto instances = prepare(*client, commands, kMeshInstanceStorageType, "instances", scene);
-    const auto light_storage = prepare(*client, commands, kDirectLightingStorageType, "direct_lights", scene);
+    const auto meshes = installInput(*client, commands, kIndexedMeshInput);
+    const auto materials = installInput(*client, commands, kRasterMaterialInput);
+    const auto instances = installInput(*client, commands, kRasterInstancesInput, scene);
+    const auto light_storage = installInput(*client, commands, kDirectLightsInput, scene);
 
     struct Vertex
     {
@@ -463,7 +458,7 @@ int main(int argc, char** argv)
         light_config.input_layout = layout;
         light_config.shadows = shape;
         CapturedPixels pixels, view_bytes, counts, surface_pixels, depth_pixels, indirect, differences, cluster_status;
-        CreateEffectRequest request{target};
+        GraphEffectRequest request{target};
         request.definition.features.push_back({gbuffer, "gbuffer", take(ConfigValue::make(surface))});
         request.definition.features.push_back({projection, "projection", take(ConfigValue::make(projections))});
         request.definition.features.push_back({visibility, "visibility", take(ConfigValue::make(visibility_config))});
@@ -584,7 +579,7 @@ int main(int argc, char** argv)
                 connections.push_back({{visibility_index, source + from}, {0, destination + to}});
             }
         }
-        auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+        auto effect = call<CreateGraphEffect>(*client, commands, std::move(request)).effect;
         const auto view = call<CreateView>(*client, commands, {scene}).view;
         const auto output = call<CreateTarget>(*client, commands, {target}).target;
         auto attachment =

@@ -66,6 +66,8 @@ borrows it. A release detaches pending nodes before calling receivers and wakes 
 Completion can be synchronous or on the releasing thread; use `continues_on(mainScheduler())` before adopting
 application state. Group closure/stop or Runtime stop delivers `set_stopped`, never successful admission.
 Like `whenSettled`, this wait uses the group's lifetime/stop boundary, not a second cancellation domain.
+It is not a monitored task: group settlement does not join a continuation scheduled after the notification.
+The enclosing operation must retain its consumer until that continuation has ended.
 
 `TaskScope::submit(options, factory)` admits one finite sender pipeline. The factory receives a borrowed
 TaskReporter for identity, progress and its real cancellation token. The pipeline chooses its own scheduling

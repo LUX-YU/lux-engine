@@ -1,9 +1,9 @@
 #include <lux/engine/render/features/ShadowMapFeature.hpp>
 
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
-#include <lux/engine/render/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/ShadowProjectionBinding.hpp>
-#include <lux/engine/render/storage/DirectLighting.hpp>
 
 namespace lux::render
 {
@@ -113,16 +113,9 @@ namespace lux::render
         return bytes;
     }
 
-    const FeatureDescriptor ShadowMapFeatureDescriptor::descriptor{
-        name,
-        cxx::typeToken<Config>(),
-        "Explicit shadow light selection, projections and dense-light mapping; no raster work.",
-        describeShadows
-    };
-
     const FeatureGraphOps& detail::ShadowMapFeature::graph(bool) noexcept
     {
-        static const FeatureGraphOps graph{buildShadows};
+        static const FeatureGraphOps graph{describeShadows, buildShadows};
         return graph;
     }
 } // namespace lux::render

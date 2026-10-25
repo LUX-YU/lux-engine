@@ -611,6 +611,7 @@ endif()
 
 if(LUX_EDITOR_BUILD_GPU_TESTS)
     add_executable(editor_framework_transport_test tests/transport.cpp)
+    target_link_libraries(editor_framework_transport_test PRIVATE lux::engine::function::render_extensions)
 
     target_include_directories(editor_framework_transport_test PRIVATE app/pinclude)
 

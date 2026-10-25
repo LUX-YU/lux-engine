@@ -11,8 +11,8 @@ remain structured Render errors.
 
 ## Public and project contracts
 
-- `include/` contains installed values, Commands, graph declarations, Server APIs and typed extension contracts.
-  Device, upload and GPU binding headers deliberately opt into NRI and Execution dependencies.
+- `include/` contains installed values, Commands and Server APIs. `include/.../extensions` contains graph,
+  Storage, Handler, device and upload author contracts; the implementation is still compiled only once.
 - `sinclude/` contains uninstalled graph compiler, execution-instance and built-in composition contracts.
 - `pinclude/` contains concrete built-in Storage/Handler implementations and private algorithms.
 - `src/` follows the same responsibilities. A single target compiles each production source once.
@@ -21,34 +21,47 @@ Neutral Command and resource declarations require neither NRI nor stdexec. Async
 stdexec; GPU extension contracts use the NRI declarations installed with this SDK. Extensions compile against the
 same selected backend and C++ ABI and use the existing device through these contracts, without linking a second NRI.
 
-Server creation registers the supported built-in Features and their dependencies. Applications discover their IDs:
+Extension authors select `render_extensions` in `find_package(lux-engine-render ...)` and link
+`lux::engine::function::render_extensions`. This INTERFACE target adds author dependencies to the existing Render
+library; it produces no second DLL. NRI and execution-template includes do not propagate from the ordinary Render
+target. An application that creates ExecutionRuntime also declares its own Core Execution dependency.
 
-```cpp
-#include <lux/engine/render/features/MaterialMeshRaster.hpp>
-#include <lux/engine/render/runtime/RenderServer.hpp>
+Server creation registers built-in implementations and their construction/call entries. Applications query
+`ListCapabilities` with a capability schema/version and, optionally, a saved implementation name. The response
+owns its strings and describes the actual inputs, outputs and unsupported choices. A resolved selection belongs
+only to that Server; persist names/versions instead of identities.
 
-auto server = lux::render::RenderServer::create(config, execution, device_options);
-if (!server)
-{
-    return server.error();
-}
-auto feature = (*server)->featureId<lux::render::MaterialMeshRasterDescriptor>();
-```
+`InstallCapabilities` resolves input destinations in an existing Global/Scene/View/Attachment scope and creates
+the actual required Storage instances. For example, raster assets can be installed and uploaded before any
+Effect exists. Instances share only when implementation requirements, key and actual scope agree. A failed
+installation removes only its newly created objects. Reinstalling compatible inputs is idempotent.
 
-`IndexedTriangleMeshStorageDescriptor`, `RasterMeshInstanceStorageDescriptor`,
-`RasterMaterialTableStorageDescriptor` and `SampledTexture2DStorageDescriptor` describe distinct data and binding
-contracts. Their descriptions explain intended use; description text does not participate in identity or ABI
-comparison. Different contracts use different semantic names. Instance keys only select instances of one type.
-`ListFeatures` and `ListStorages` return independently owned names and descriptions.
+Applications send `MeshWrite`, `TextureWrite`, `MaterialWrite`, instance and light requests to the advertised
+`CapabilityInput`. Handlers resolve that input once per batch and continue through the existing Storage Sender
+and ResourceUploader. Logical resource IDs are opaque, comparable values; only extension authors can encode or
+inspect their Storage/local generations. Transform batches carry qualified IDs and retain the contiguous-input
+and dirty-word paths; the batch still fits IPC's inline storage.
+
+`CreateEffect` takes the selected capability, its typed configuration and cold input data. A composition expands
+inside Render into the existing Feature graph. A single Feature uses the same compiler directly. Applications
+supply public Camera/UI frame data instead of concatenating implementation shader blocks. Attach installs late
+scope dependencies and returns logical input destinations and streaming draw identities, never a Storage list.
+The old ListFeatures and ListStorages/FindStorage/PrepareStorage/RemoveStorage control commands are removed.
+
+Built-in lit-scene port composition, cascade selection and shader parameter projection live in Render. Engine
+produces geometry/light/camera facts. Built-in port configurations are project-only headers; extension authors
+provide their own declarations through the author SDK, not through private built-in classes.
 
 Private `BuiltinFeatures` declares each Feature's `Storages` and `Commands` tuples. The setup template walks types,
 never objects, and writes factories/call thunks directly into the existing ResourceRegistry, CommandRegistry and
 Feature directory. Known built-ins do not use external validation or rollback. Required capabilities still select
 which declarations are usable; automatic registration never enables unrequested device features.
 
-Installed SDK extensions include `runtime/FeatureRegistration.hpp`. A Feature supplies `Descriptor`, `Storages`,
-`Commands` and `graph(bool paged_instances)`. A command-only Feature can return empty FeatureGraphOps; no dummy
-graph callback is required. Each Storage supplies its typed `factory()`. Each CommandMethod names
+Installed SDK extensions include `extensions/FeatureRegistration.hpp`. A Feature supplies its stable `name`,
+`Config`, `Storages`, `Commands` and `graph(bool paged_instances)`. Name/config qualification is recorded directly
+in the existing Feature entry; there is no separate FeatureDescriptor wrapper. Port declaration, graph building and optional composition expansion are cold callbacks in FeatureGraphOps.
+An optional `capabilities()` publishes supported payload contracts. `storage_inputs` maps those contracts to
+private dependency declarations; optional configuration projection supplies actual late-scope creation values. Command-only extensions use `registerHandler` directly. Each Storage supplies its typed `factory()`. Each CommandMethod names
 one Command and Handler method; the Handler supplies an explicit `create(ResourceRegistry&) noexcept` factory
 returning a valid new object. No constructor-shape inference is performed. External registration checks the full
 closure before publishing, including conflicts between incoming declarations. Repeated compatible registration
@@ -58,14 +71,14 @@ reuses identities and never takes over a selected binding. Failed registration i
 Registration before `run()` creates no Handler or Storage. Startup activates selected Handlers once; selecting an
 unused implementation activates it at that control safe point. A running Server may register extensions only at
 its rendering-thread safe point; after publication it activates newly selected bindings before dispatch resumes.
-Storage instances are created only by PrepareStorage/Attach and owned by their StorageSet. Handler objects survive
+Actual Storage instances belong only to their StorageSet; registering a constructor does not instantiate them. Handler objects survive
 selection changes until all accepted work is settled during shutdown. Ordinary Command dispatch stays `{invoke, object}`.
 
 Command/configuration/binding C++ identities use `cxx::TypeToken` directly. This is semantic type agreement for
 compatible builds, not cross-ABI serialization. Modules supplying names, callbacks and destructors must outlive
 the Server, accepted work and any message/configuration values that use them.
 
-`FeatureDescriptor::describe_ports` exposes config-dependent port information without building a graph or creating
+`FeatureGraphOps::describe_ports` exposes config-dependent port information without building a graph or creating
 device objects. Composition calls that same cold entry. Imported ports carry their initial use; selected exports
 carry their exact range and final use. Concrete graph building remains in the project-level Feature implementation.
 

@@ -6,9 +6,9 @@
 #include "ClusterFill.hpp"
 #include "ClusterScan.hpp"
 #include <cstring>
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
-#include <lux/engine/render/features/FeatureAssembly.hpp>
-#include <lux/engine/render/storage/DirectLighting.hpp>
 
 namespace lux::render
 {
@@ -103,7 +103,7 @@ namespace lux::render
                 );
             }
             auto reset = context.graph.addTransferPass(
-                featureKey(ClusteredLightingFeatureDescriptor::name, key, "reset"),
+                featureKey(detail::ClusteredLightingFeature::name, key, "reset"),
                 TransferWork{{FillBuffer{{context.resource("status")}, 0}, FillBuffer{{context.resource("indices")}, 0}}
                 }
             );
@@ -140,7 +140,7 @@ namespace lux::render
             build.dispatch = DispatchArguments{{dispatch, 1, 1}};
             build.allow_async_compute = true;
             auto built = context.graph.addComputePass(
-                featureKey(ClusteredLightingFeatureDescriptor::name, key, "build"),
+                featureKey(detail::ClusteredLightingFeature::name, key, "build"),
                 std::move(build)
             );
             if (!built)
@@ -166,7 +166,7 @@ namespace lux::render
             counting.dispatch = DispatchArguments{{dispatch, 1, 1}};
             counting.allow_async_compute = true;
             auto counted = context.graph.addComputePass(
-                featureKey(ClusteredLightingFeatureDescriptor::name, key, "count"),
+                featureKey(detail::ClusteredLightingFeature::name, key, "count"),
                 std::move(counting)
             );
             if (!counted)
@@ -187,7 +187,7 @@ namespace lux::render
             scan.dispatch = DispatchArguments{{1, 1, 1}};
             scan.allow_async_compute = true;
             auto scanned = context.graph.addComputePass(
-                featureKey(ClusteredLightingFeatureDescriptor::name, key, "scan"),
+                featureKey(detail::ClusteredLightingFeature::name, key, "scan"),
                 std::move(scan)
             );
             if (!scanned)
@@ -208,7 +208,7 @@ namespace lux::render
             fill.dispatch = DispatchArguments{{dispatch, 1, 1}};
             fill.allow_async_compute = true;
             auto filled = context.graph.addComputePass(
-                featureKey(ClusteredLightingFeatureDescriptor::name, key, "fill"),
+                featureKey(detail::ClusteredLightingFeature::name, key, "fill"),
                 std::move(fill)
             );
             if (!filled)
@@ -248,16 +248,9 @@ namespace lux::render
         return bytes;
     }
 
-    const FeatureDescriptor ClusteredLightingFeatureDescriptor::descriptor{
-        name,
-        cxx::typeToken<Config>(),
-        "Independent conservative Cluster Build/Count/Scan/Fill with full-light overflow fallback.",
-        describeClusters
-    };
-
     const FeatureGraphOps& detail::ClusteredLightingFeature::graph(bool) noexcept
     {
-        static const FeatureGraphOps graph{buildClusters};
+        static const FeatureGraphOps graph{describeClusters, buildClusters};
         return graph;
     }
 } // namespace lux::render

@@ -2,8 +2,8 @@
 
 #include <algorithm>
 
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 
 namespace lux::render::detail

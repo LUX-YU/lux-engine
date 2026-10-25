@@ -6,10 +6,11 @@
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
 #include <lux/engine/render/execution/SurfaceTarget.hpp>
-#include <lux/engine/render/features/FeatureBinding.hpp>
-#include <lux/engine/render/graph/RenderGraphAnalysis.hpp>
-#include <lux/engine/render/graph/Sampler.hpp>
-#include <lux/engine/render/resource/Binding.hpp>
+#include <lux/engine/render/extensions/features/FeatureBinding.hpp>
+#include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/extensions/graph/Sampler.hpp>
+#include <lux/engine/render/extensions/storage/Binding.hpp>
 #include <lux/engine/render/resource/StorageSet.hpp>
 #include <memory>
 #include <vector>
@@ -72,6 +73,9 @@ namespace lux::render::runtime_detail
         std::vector<detail::FeatureFrameContribution> bindings;
         std::vector<SamplerDescription> samplers;
         std::vector<AttachmentId> attachments;
+        FeatureGraphOps::Parameters project_parameters = nullptr;
+        CapabilitySelection implementation;
+        std::vector<ConfigValue> installation_configurations; // Only projected creation values needed by late scopes.
     };
 
     struct EffectAttachment final

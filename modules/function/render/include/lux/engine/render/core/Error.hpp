@@ -36,4 +36,8 @@ namespace lux::render
 
     // Static descriptors for application registration. Core does not own a registry or log sink.
     [[nodiscard]] LUX_RENDER_PUBLIC std::span<const error::ErrorDescriptor> renderCoreErrorDescriptors() noexcept;
+    // Complete immutable diagnostic catalog for application outlet assembly. No Graph/Storage
+    // author headers are needed to format failures received from ordinary commands.
+    [[nodiscard]] LUX_RENDER_PUBLIC std::span<const std::span<const error::ErrorDescriptor>>
+    renderErrorDescriptorTables() noexcept;
 } // namespace lux::render

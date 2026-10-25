@@ -4,8 +4,8 @@
 #include <lux/engine/render/graph/ShaderInterface.hpp>
 
 #include <NRI.h>
-#include <lux/engine/render/graph/RenderGraphAnalysis.hpp>
-#include <lux/engine/render/graph/Work.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphAnalysis.hpp>
+#include <lux/engine/render/extensions/graph/Work.hpp>
 
 namespace lux::render::detail
 {

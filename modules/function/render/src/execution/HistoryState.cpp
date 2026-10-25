@@ -1,5 +1,5 @@
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/execution/HistoryState.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 
 namespace lux::render::detail
 {

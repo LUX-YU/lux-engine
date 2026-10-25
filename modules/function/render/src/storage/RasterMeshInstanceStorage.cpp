@@ -1,17 +1,17 @@
-#include <lux/engine/render/resource/StorageSet.hpp>
 #include <algorithm>
 #include <bit>
 #include <cstddef>
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
+#include <lux/engine/render/resource/StorageSet.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>
 #include <lux/engine/render/storage/RasterMaterialTableStorage.hpp>
 #include <lux/engine/render/storage/RasterMeshInstanceStorage.hpp>
-#include <lux/engine/render/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {
@@ -449,7 +449,11 @@ namespace lux::render::detail
         const auto description = selection(entry);
         for (auto* observer : observers_)
         {
-            observer->changed(observer->receiver, {id_, entry.key}, removed ? nullptr : &description);
+            observer->changed(
+                observer->receiver,
+                extension_detail::ResourceIdentity::make<MeshInstanceId>(id_, entry.key),
+                removed ? nullptr : &description
+            );
         }
     }
 
@@ -463,7 +467,9 @@ namespace lux::render::detail
     ) const noexcept
     {
         auto& registry = resources_;
-        for (auto source : {input.mesh.storage, input.material.storage})
+        for (auto source :
+             {extension_detail::ResourceIdentity::storage(input.mesh),
+              extension_detail::ResourceIdentity::storage(input.material)})
         {
             const auto* storage_set = registry.storageSet(source);
             if (!storage_set || (storage_set != registry.storageSet(id_) && !storage_set->isGlobal()))
@@ -471,8 +477,12 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kStorageIdentity});
             }
         }
-        auto mesh = registry.borrow<detail::IndexedTriangleMeshStorage>(input.mesh.storage);
-        auto material = registry.borrow<detail::RasterMaterialTableStorage>(input.material.storage);
+        auto mesh =
+            registry.borrow<detail::IndexedTriangleMeshStorage>(extension_detail::ResourceIdentity::storage(input.mesh)
+            );
+        auto material = registry.borrow<detail::RasterMaterialTableStorage>(
+            extension_detail::ResourceIdentity::storage(input.material)
+        );
         if (!mesh || !material)
         {
             return cxx::unexpected(!mesh ? mesh.error() : material.error());
@@ -483,7 +493,11 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        return MeshInstanceGpuProperty{input.mesh.local.index, *material_slot, input.submesh};
+        return MeshInstanceGpuProperty{
+            extension_detail::ResourceIdentity::local(input.mesh).index,
+            *material_slot,
+            input.submesh
+        };
     }
 
     exec::task<RenderResult<MeshInstanceId>> RasterMeshInstanceStorage::create(MeshInstanceDescription input) noexcept
@@ -556,7 +570,7 @@ namespace lux::render::detail
             {
                 for (std::size_t i = 0; i < reserved; ++i)
                 {
-                    entries_.erase(ids[i].local);
+                    entries_.erase(extension_detail::ResourceIdentity::local(ids[i]));
                 }
                 for (std::uint32_t frame = 0; frame < frame_execution_.frameCount(); ++frame)
                 {
@@ -565,9 +579,10 @@ namespace lux::render::detail
                     // are restored before a later Draw; no business state is rolled forward on failure.
                     for (std::size_t i = 0; i < reserved; ++i)
                     {
-                        if (ids[i].local.index < old_pages * kMeshInstancePageSlots)
+                        if (extension_detail::ResourceIdentity::local(ids[i]).index <
+                            old_pages * kMeshInstancePageSlots)
                         {
-                            mark(frame, ids[i].local.index, 7);
+                            mark(frame, extension_detail::ResourceIdentity::local(ids[i]).index, 7);
                         }
                     }
                     if (pages_.size() != old_pages)
@@ -632,7 +647,7 @@ namespace lux::render::detail
         {
             const auto& description = descriptions[i];
             const auto key = entries_.emplace(Entry{description.mesh, description.material, description.submesh});
-            ids[i] = {id_, key};
+            ids[i] = extension_detail::ResourceIdentity::make<MeshInstanceId>(id_, key);
             ++reserved;
             while (pages_.size() <= key.index / kMeshInstancePageSlots)
             {
@@ -666,14 +681,18 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(prepared.error());
         }
-        data.order(descriptions.size(), capacity(), [&](std::size_t i) noexcept { return ids[i].local.index; });
+        data.order(
+            descriptions.size(),
+            capacity(),
+            [&](std::size_t i) noexcept { return extension_detail::ResourceIdentity::local(ids[i]).index; }
+        );
         data.writes.clear();
         data.writes.reserve(descriptions.size() * 3);
         const std::uint32_t alive = 1;
         for (std::size_t field = 0; field < kStride.size(); ++field)
         {
             data.forEachOrdered(
-                [&](std::size_t i) noexcept { return ids[i].local.index; },
+                [&](std::size_t i) noexcept { return extension_detail::ResourceIdentity::local(ids[i]).index; },
                 [&](std::uint32_t record, std::size_t i) noexcept
                 {
                     const auto bytes = field == 0   ? std::as_bytes(std::span(descriptions[i].transform))
@@ -693,13 +712,14 @@ namespace lux::render::detail
         }
         for (std::size_t i = 0; i < descriptions.size(); ++i)
         {
-            const auto record = ids[i].local.index;
+            const auto record = extension_detail::ResourceIdentity::local(ids[i]).index;
             auto& page = *pages_[record / kMeshInstancePageSlots];
             const auto local = record % kMeshInstancePageSlots;
             page.transforms[local] = descriptions[i].transform;
             page.properties[local] = data.properties[i];
             page.alive[local] = 1;
-            entries_.find(ids[i].local)->key = ids[i].local;
+            entries_.find(extension_detail::ResourceIdentity::local(ids[i]))->key =
+                extension_detail::ResourceIdentity::local(ids[i]);
             for (std::uint32_t other = 0; other < frame_execution_.frameCount(); ++other)
             {
                 if (other != frame)
@@ -715,7 +735,7 @@ namespace lux::render::detail
         live_records_ += static_cast<std::uint32_t>(descriptions.size());
         for (const auto id : ids)
         {
-            notify(*entries_.find(id.local), false);
+            notify(*entries_.find(extension_detail::ResourceIdentity::local(id)), false);
         }
         data.clearOrder();
         updating_ = false;
@@ -743,13 +763,14 @@ namespace lux::render::detail
             co_return cxx::unexpected(RenderError{kStorageContract});
         }
         const auto count = input.instances.size();
-        const auto first_record = count ? input.instances.front().index : 0u;
+        const auto first_record = count ? extension_detail::ResourceIdentity::local(input.instances.front()).index : 0u;
         std::uint64_t next_record = first_record;
         bool contiguous = true;
-        for (const auto key : input.instances)
+        for (const auto identity : input.instances)
         {
+            const auto key = extension_detail::ResourceIdentity::local(identity);
             const auto* entry = entries_.find(key);
-            if (!entry || entry->key.isNull())
+            if (extension_detail::ResourceIdentity::storage(identity) != id_ || !entry || entry->key.isNull())
             {
                 co_return cxx::unexpected(RenderError{kStorageIdentity});
             }
@@ -800,7 +821,7 @@ namespace lux::render::detail
         {
             for (std::size_t i = 0; i < count;)
             {
-                const auto record = input.instances[i].index;
+                const auto record = extension_detail::ResourceIdentity::local(input.instances[i]).index;
                 const auto length =
                     std::min<std::size_t>(count - i, kMeshInstancePageSlots - record % kMeshInstancePageSlots);
                 data.writes.push_back(
@@ -813,9 +834,15 @@ namespace lux::render::detail
         }
         else
         {
-            data.order(count, capacity(), [&](std::size_t i) noexcept { return input.instances[i].index; });
+            data.order(
+                count,
+                capacity(),
+                [&](std::size_t i) noexcept
+                { return extension_detail::ResourceIdentity::local(input.instances[i]).index; }
+            );
             data.forEachOrdered(
-                [&](std::size_t i) noexcept { return input.instances[i].index; },
+                [&](std::size_t i) noexcept
+                { return extension_detail::ResourceIdentity::local(input.instances[i]).index; },
                 [&](std::uint32_t record, std::size_t i) noexcept
                 {
                     data.writes.push_back(
@@ -852,7 +879,7 @@ namespace lux::render::detail
         {
             for (std::size_t i = 0; i < count;)
             {
-                const auto record = input.instances[i].index;
+                const auto record = extension_detail::ResourceIdentity::local(input.instances[i]).index;
                 const auto local = record % kMeshInstancePageSlots;
                 const auto length = std::min<std::size_t>(count - i, kMeshInstancePageSlots - local);
                 std::memcpy(
@@ -867,7 +894,7 @@ namespace lux::render::detail
         {
             for (std::size_t i = 0; i < count; ++i)
             {
-                const auto record = input.instances[i].index;
+                const auto record = extension_detail::ResourceIdentity::local(input.instances[i]).index;
                 pages_[record / kMeshInstancePageSlots]->transforms[record % kMeshInstancePageSlots] =
                     input.transforms[i];
             }
@@ -897,7 +924,7 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        if (input.storage != id_ || input.updates.size() > UINT32_MAX)
+        if (input.updates.size() > UINT32_MAX)
         {
             co_return cxx::unexpected(RenderError{kStorageIdentity});
         }
@@ -906,7 +933,9 @@ namespace lux::render::detail
         data.properties.reserve(input.updates.size());
         for (const auto& value : input.updates)
         {
-            const auto* entry = value.instance.storage == id_ ? entries_.find(value.instance.local) : nullptr;
+            const auto* entry = extension_detail::ResourceIdentity::storage(value.instance) == id_
+                                    ? entries_.find(extension_detail::ResourceIdentity::local(value.instance))
+                                    : nullptr;
             if (!entry || entry->key.isNull())
             {
                 co_return cxx::unexpected(RenderError{kStorageIdentity});
@@ -951,12 +980,14 @@ namespace lux::render::detail
         data.order(
             input.updates.size(),
             capacity(),
-            [&](std::size_t i) noexcept { return input.updates[i].instance.local.index; }
+            [&](std::size_t i) noexcept
+            { return extension_detail::ResourceIdentity::local(input.updates[i].instance).index; }
         );
         for (std::size_t field = 0; field < 2; ++field)
         {
             data.forEachOrdered(
-                [&](std::size_t i) noexcept { return input.updates[i].instance.local.index; },
+                [&](std::size_t i) noexcept
+                { return extension_detail::ResourceIdentity::local(input.updates[i].instance).index; },
                 [&](std::uint32_t record, std::size_t i) noexcept
                 {
                     const auto bytes = field == 0 ? std::as_bytes(std::span(input.updates[i].description.transform))
@@ -973,18 +1004,18 @@ namespace lux::render::detail
         {
             for (const auto& value : input.updates)
             {
-                mark(frame, value.instance.local.index, 3);
+                mark(frame, extension_detail::ResourceIdentity::local(value.instance).index, 3);
             }
             co_return cxx::unexpected(accepted.error());
         }
         for (std::size_t i = 0; i < input.updates.size(); ++i)
         {
             const auto& value = input.updates[i];
-            auto& entry = *entries_.find(value.instance.local);
+            auto& entry = *entries_.find(extension_detail::ResourceIdentity::local(value.instance));
             entry.mesh = value.description.mesh;
             entry.material = value.description.material;
             entry.submesh = value.description.submesh;
-            const auto record = value.instance.local.index;
+            const auto record = extension_detail::ResourceIdentity::local(value.instance).index;
             auto& page = *pages_[record / kMeshInstancePageSlots];
             page.transforms[record % kMeshInstancePageSlots] = value.description.transform;
             page.properties[record % kMeshInstancePageSlots] = data.properties[i];
@@ -1010,7 +1041,9 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        const auto* entry = input.storage == id_ ? entries_.find(input.local) : nullptr;
+        const auto* entry = extension_detail::ResourceIdentity::storage(input) == id_
+                                ? entries_.find(extension_detail::ResourceIdentity::local(input))
+                                : nullptr;
         if (!entry || entry->key.isNull())
         {
             co_return cxx::unexpected(RenderError{kStorageIdentity});
@@ -1033,7 +1066,7 @@ namespace lux::render::detail
         {
             co_return cxx::unexpected(prepared.error());
         }
-        const auto record = input.local.index;
+        const auto record = extension_detail::ResourceIdentity::local(input).index;
         const std::uint32_t dead = 0;
         const BufferWrite write{
             fieldBuffer(frame, record / kMeshInstancePageSlots, 2),
@@ -1055,7 +1088,7 @@ namespace lux::render::detail
             }
         }
         frames_->slices[frame].dirty[2].acknowledge({record / 64, std::uint64_t{1} << (record % 64)});
-        entries_.erase(input.local);
+        entries_.erase(extension_detail::ResourceIdentity::local(input));
         --live_records_;
         co_return Ack{};
     }

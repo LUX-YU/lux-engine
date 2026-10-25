@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/features/FeatureBuildContext.hpp>
+#include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
 
 namespace lux::render::detail
 {

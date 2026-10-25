@@ -87,7 +87,7 @@ ExecutionRuntime::create（应用已有）
 | `BuiltinFeatures` | 私有编译期类型清单；Feature 用 tuple 声明 Storage 和 Command 依赖，不持有实例 | `pinclude/.../features/BuiltinFeatures.hpp` |
 | `HandlerRecord` | 保存构造入口和唯一实例；登记时对象为空，激活后供 Command 借用 | `include/.../runtime/detail/HandlerRecord.hpp` |
 | `FeatureEntry` | 稳定的 Feature 描述和构建函数；编译任务可借用已安装条目 | [EffectCompilation.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/EffectCompilation.hpp) |
-| `DeviceSession` | 设备能力、NRI 设施、唯一物理 Queue 集合、DescriptorTable、唯一物理清理 scope | [DeviceSession.hpp](../../modules/function/render/include/lux/engine/render/device/DeviceSession.hpp) / [实现](../../modules/function/render/src/device/DeviceSession.cpp) |
+| `DeviceSession` | 设备能力、NRI 设施、唯一物理 Queue 集合、DescriptorTable、唯一物理清理 scope | [DeviceSession.hpp](../../modules/function/render/include/lux/engine/render/extensions/device/DeviceSession.hpp) / [实现](../../modules/function/render/src/device/DeviceSession.cpp) |
 | `DeviceBackend` | 选定后端的设备初始化及专属能力适配；不承担帧调度 | [DeviceBackend.cpp](../../modules/function/render/src/device/vulkan/DeviceBackend.cpp) |
 | `DescriptorTable` | 设备级 sampled-image/sampler 索引和 Native 描述符；不拥有材质业务依赖 | [DescriptorTable.cpp](../../modules/function/render/src/device/DescriptorTable.cpp) |
 
@@ -142,7 +142,7 @@ Client 构造真实 C++ Request → IpcMessage → IpcRequester::trySend
 完成可发生在 Worker；错误与停止先归一化为 Response，再由 `continues_on(renderScheduler)` 将结果转交
 RenderThread，随后 `ResponseOutbox::flushTo(responder, budget)` 发布。
 
-源码：[CommandBinding.hpp](../../modules/function/render/include/lux/engine/render/runtime/CommandBinding.hpp)、
+源码：[CommandBinding.hpp](../../modules/function/render/include/lux/engine/render/extensions/CommandBinding.hpp)、
 [CommandDispatchContext.cpp](../../modules/function/render/src/runtime/CommandDispatchContext.cpp)、
 [ResponseOutbox.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/ResponseOutbox.hpp)。
 
@@ -154,7 +154,7 @@ Response 使用显式 `RenderError error` 和业务字段，内部函数可以�
 ### 5.1 实例归属
 
 [StorageSet](../../modules/function/render/sinclude/lux/engine/render/resource/StorageSet.hpp) 独占实际 Storage；
-[ResourceRegistry](../../modules/function/render/include/lux/engine/render/resource/ResourceRegistry.hpp) 拥有类型目录、
+[ResourceRegistry](../../modules/function/render/include/lux/engine/render/extensions/storage/ResourceRegistry.hpp) 拥有类型目录、
 生成式 StorageId 和非拥有实例定位。Global StorageSet 在 Runtime；Scene/View/Attachment 各有自己的集合。
 `PrepareStorage` 可先创建并取得 ID；Attach 也可按声明创建缺少的实例并返回逻辑资源到 StorageId 的对应。
 
@@ -196,7 +196,7 @@ typed CommandHandler
   → continues_on(RenderThread Scheduler) → ResponseOutbox
 ```
 
-[ResourceUploader](../../modules/function/render/include/lux/engine/render/upload/ResourceUploader.hpp) 拥有 Staging 和
+[ResourceUploader](../../modules/function/render/include/lux/engine/render/extensions/upload/ResourceUploader.hpp) 拥有 Staging 和
 上传设施，不拥有专业 Storage 候选，也不拥有另一套 running-task 表。`BufferWrite/BufferCopy` 只是借用范围记录。
 `StagingArena` 以真实 Queue 完成复用页；`BufferArena` 管几何区间，最终物理释放仍走 Session。
 
@@ -251,7 +251,7 @@ Effect 留下不可变计划和 Attach 所需数据，不需要实例化一个�
 
 | 类型/算法 | 责任 | 源码 |
 |---|---|---|
-| `EffectDefinition` | FeatureId、局部贡献键、配置、显式端口连线及输出 | [定义](../../modules/function/render/include/lux/engine/render/features/EffectDefinition.hpp) |
+| `EffectDefinition` | FeatureId、局部贡献键、配置、显式端口连线及输出 | [定义](../../modules/function/render/include/lux/engine/render/extensions/features/EffectDefinition.hpp) |
 | `FeatureBuildContext` | 冷态构图时提供已经解析的端口/资源与贡献入口 | [实现](../../modules/function/render/src/features/FeatureBuildContext.cpp) |
 | `composeFeatures` | 声明解析、连接/贡献验证、拓扑构建及唯一 Graph 装配 | [FeatureAssembly.cpp](../../modules/function/render/src/features/FeatureAssembly.cpp) |
 | `RenderGraphBuilder` | 建立逻辑资源版本、typed Work、访问范围和输出 | [实现](../../modules/function/render/src/graph/RenderGraphBuilder.cpp) |
@@ -416,7 +416,7 @@ Graphics/Compute/Transfer 是角色，可能映射同一物理 Queue，不能按
 
 ## 10. GPU 完成与释放
 
-[SubmissionQueue](../../modules/function/render/include/lux/engine/render/device/SubmissionQueue.hpp) 拥有 Native Queue 的
+[SubmissionQueue](../../modules/function/render/include/lux/engine/render/extensions/device/SubmissionQueue.hpp) 拥有 Native Queue 的
 提交槽、serial、完成前沿和就绪回调；`poll()` 观察，`dispatchCompleted()` 在 RenderThread 分发。
 回调节点先摘除再执行，执行后不读取可能已销毁的节点。
 

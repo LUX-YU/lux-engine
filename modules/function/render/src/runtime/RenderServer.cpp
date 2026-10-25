@@ -1,6 +1,6 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/render/extensions/FeatureRegistration.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
-#include <lux/engine/render/runtime/FeatureRegistration.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 
 namespace lux::render
@@ -81,7 +81,18 @@ namespace lux::render
                 }(static_cast<StorageTypes*>(nullptr));
                 if ((required & ~resources->capabilities()) != 0)
                 {
-                    return; // Unsupported hardware is not an invalid built-in declaration.
+                    // Keep selectable metadata so applications can distinguish an unsupported implementation
+                    // from an unknown name. No unsupported factory or handler is installed.
+                    if (featureCapabilities<Feature>())
+                    {
+                        publishFeature(
+                            Feature::name.name(),
+                            featureConfigType<Feature>(),
+                            Feature::graph(paged_instances),
+                            featureCapabilities<Feature>()
+                        );
+                    }
+                    return;
                 }
                 cxx::tuple_traits::for_each_type<StorageTypes>(
                     [&]<class Type, std::size_t>() noexcept
@@ -108,22 +119,29 @@ namespace lux::render
                 {
                     command_registry_.publishBinding(command_registry_.handlerId(binding.handlerType(), {}), binding);
                 }
-                publishFeature(Feature::Descriptor::descriptor, Feature::graph(paged_instances));
+                publishFeature(
+                    Feature::name.name(),
+                    featureConfigType<Feature>(),
+                    Feature::graph(paged_instances),
+                    featureCapabilities<Feature>()
+                );
             }
         );
     }
 
     FeatureId RenderServer::Impl::publishFeature(
-        const FeatureDescriptor& descriptor,
-        const FeatureGraphOps& graph
+        std::string_view name,
+        cxx::TypeToken config_type,
+        const FeatureGraphOps& graph,
+        const CapabilitySupport* capabilities
     ) noexcept
     {
-        const auto found = features_by_name.find(descriptor.type.name());
+        const auto found = features_by_name.find(name);
         if (found != features_by_name.end())
         {
             return found->second;
         }
-        const auto id = features.emplace(descriptor, graph);
+        const auto id = features.emplace(FeatureName{name}, config_type, graph, capabilities);
         auto& entry = *features.find(id);
         entry.id = id;
         features_by_name.emplace(entry.name, id);
@@ -131,22 +149,82 @@ namespace lux::render
     }
 
     RenderResult<void> RenderServer::Impl::validateFeature(
-        const FeatureDescriptor& descriptor,
-        const FeatureGraphOps& graph
+        std::string_view name,
+        cxx::TypeToken config_type,
+        const FeatureGraphOps& graph,
+        const CapabilitySupport* capabilities
     ) const noexcept
     {
-        const bool is_invalid_declaration = descriptor.type.name().empty() || !descriptor.describe_ports;
+        const bool is_invalid_declaration =
+            name.empty() || (!graph.describe_ports && !graph.expand && graph.storage_inputs.empty());
         if (is_invalid_declaration)
         {
             return cxx::unexpected(RenderError{kFeatureContract});
         }
-        const auto found = features_by_name.find(descriptor.type.name());
+        for (auto dependency : graph.dependencies)
+        {
+            if (dependency.name() == name || !features_by_name.contains(dependency.name()))
+            {
+                return cxx::unexpected(RenderError{kFeatureMissingProvider});
+            }
+        }
+        if (capabilities)
+        {
+            const bool invalid_support =
+                capabilities->implementation != name || capabilities->implementation_version == 0 ||
+                capabilities->capabilities.empty() || capabilities->configuration.cppType() != config_type;
+            if (invalid_support)
+            {
+                return cxx::unexpected(RenderError{kFeatureContract});
+            }
+            for (const auto& capability : capabilities->capabilities)
+            {
+                const bool invalid_capability =
+                    capability.name.empty() || capability.version == 0 ||
+                    std::ranges::any_of(
+                        capability.inputs,
+                        [](const auto& input) noexcept
+                        { return input.schema.empty() || input.version == 0 || !input.cppType().isValid(); }
+                    );
+                if (invalid_capability)
+                {
+                    return cxx::unexpected(RenderError{kFeatureContract});
+                }
+                for (const auto& previous : features)
+                {
+                    if (!previous.capabilities)
+                    {
+                        continue;
+                    }
+                    for (const auto& published : previous.capabilities->capabilities)
+                    {
+                        const bool same_contract =
+                            published.name == capability.name && published.version == capability.version;
+                        const bool mismatched_payload =
+                            same_contract &&
+                            (published.inputs != capability.inputs || published.outputs != capability.outputs ||
+                             published.target_formats != capability.target_formats ||
+                             published.target_samples != capability.target_samples ||
+                             published.target_kinds != capability.target_kinds);
+                        if (mismatched_payload)
+                        {
+                            return cxx::unexpected(RenderError{kFeatureResourceMismatch});
+                        }
+                    }
+                }
+            }
+        }
+        const auto found = features_by_name.find(name);
         if (found != features_by_name.end())
         {
             const auto& previous = *features.find(found->second);
-            const bool is_incompatible = previous.descriptor.config != descriptor.config ||
-                                         previous.descriptor.describe_ports != descriptor.describe_ports ||
-                                         previous.graph.build != graph.build;
+            const bool is_incompatible = previous.config_type != config_type ||
+                                         previous.graph.describe_ports != graph.describe_ports ||
+                                         previous.graph.build != graph.build || previous.graph.expand != graph.expand ||
+                                         previous.graph.parameters != graph.parameters ||
+                                         previous.graph.effect_input_type != graph.effect_input_type ||
+                                         !std::ranges::equal(previous.graph.dependencies, graph.dependencies) ||
+                                         previous.capabilities != capabilities;
             if (is_incompatible)
             {
                 return cxx::unexpected(RenderError{kFeatureDuplicate});
@@ -222,8 +300,10 @@ namespace lux::render
     }
 
     RenderResult<FeatureId> RenderServer::registerFeature(
-        const FeatureDescriptor& descriptor,
+        std::string_view name,
+        cxx::TypeToken config_type,
         const FeatureGraphOps& graph,
+        const CapabilitySupport* capabilities,
         std::span<const StorageFactory> factories,
         std::span<HandlerRecord> handlers,
         std::span<const CommandBinding> bindings
@@ -234,7 +314,7 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kRuntimeState});
         }
-        if (auto valid = state.validateFeature(descriptor, graph); !valid)
+        if (auto valid = state.validateFeature(name, config_type, graph, capabilities); !valid)
         {
             return cxx::unexpected(valid.error());
         }
@@ -242,8 +322,23 @@ namespace lux::render
         {
             return cxx::unexpected(valid.error());
         }
+        for (const auto& input : graph.storage_inputs)
+        {
+            const bool invalid_address = input.schema.empty() || input.version == 0 || input.storage_key.empty() ||
+                                         input.scope > ECapabilityInputScope::ATTACHMENT;
+            const bool known_factory =
+                state.resources->factory(input.storage_type) ||
+                std::ranges::any_of(
+                    factories,
+                    [&](const auto& factory) noexcept { return factory.descriptor->type == input.storage_type; }
+                );
+            if (invalid_address || !known_factory)
+            {
+                return cxx::unexpected(RenderError{invalid_address ? kFeatureContract : kStorageFactory});
+            }
+        }
         state.publishRegistration(factories, handlers, bindings);
-        const auto id = state.publishFeature(descriptor, graph);
+        const auto id = state.publishFeature(name, config_type, graph, capabilities);
         // A running Server may be extended only at its control safe point. Finish activation
         // before dispatch resumes; the registration templates themselves invoke no constructors.
         if (state.running.load())
@@ -296,16 +391,12 @@ namespace lux::render
         return impl_->paged_instances;
     }
 
-    RenderResult<FeatureId> RenderServer::findFeature(const FeatureDescriptor& descriptor) const noexcept
+    RenderResult<FeatureId> RenderServer::featureId(std::string_view implementation) const noexcept
     {
-        const auto found = impl_->features_by_name.find(descriptor.type.name());
+        const auto found = impl_->features_by_name.find(implementation);
         if (found == impl_->features_by_name.end())
         {
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
-        }
-        if (impl_->features.find(found->second)->descriptor.config != descriptor.config)
-        {
-            return cxx::unexpected(RenderError{kFeatureContract});
         }
         return found->second;
     }

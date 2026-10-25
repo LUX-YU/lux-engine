@@ -14,7 +14,7 @@ namespace lux::rendering
             return false;
         }
         surface = {};
-        surface.window.windows.hwnd = win32->window;
+        surface.window = render::Win32Surface{win32->window};
         surface.vertical_sync = vertical_sync;
         return true;
     }

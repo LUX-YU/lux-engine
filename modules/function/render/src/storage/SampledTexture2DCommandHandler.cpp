@@ -1,4 +1,4 @@
-#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/storage/SampledTexture2DCommandHandler.hpp>
 #include <lux/engine/render/storage/SampledTexture2DStorage.hpp>
 
@@ -12,7 +12,7 @@ namespace lux::render::detail
     exec::task<RenderResult<TextureId>> SampledTexture2DCommandHandler::uploadTexture(CreateTexture::Request&& input
     ) noexcept
     {
-        auto storage = resources_.borrow<SampledTexture2DStorage>(input.storage);
+        auto storage = resources_.borrowInput<SampledTexture2DStorage>(input.destination);
         if (!storage)
         {
             return rejected<RenderResult<TextureId>>(storage.error());
@@ -24,7 +24,8 @@ namespace lux::render::detail
         CreatePatchedTexture::Request&& input
     ) noexcept
     {
-        auto storage = resources_.borrow<SampledTexture2DStorage>(input.texture.storage);
+        auto storage =
+            resources_.borrow<SampledTexture2DStorage>(extension_detail::ResourceIdentity::storage(input.texture));
         if (!storage)
         {
             return rejected<RenderResult<TextureId>>(storage.error());
@@ -37,7 +38,7 @@ namespace lux::render::detail
         ReleaseTexture::Response& response
     ) noexcept
     {
-        auto storage = resources_.borrow<SampledTexture2DStorage>(input.storage);
+        auto storage = resources_.borrow<SampledTexture2DStorage>(extension_detail::ResourceIdentity::storage(input));
         if (!storage)
         {
             response.error = storage.error();

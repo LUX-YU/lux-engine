@@ -4,7 +4,7 @@
 #include <limits>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/memory/BufferArena.hpp>
@@ -136,10 +136,6 @@ namespace lux::render::detail
 
     IndexedTriangleMeshStorage::UploadResult IndexedTriangleMeshStorage::upload(MeshWrite input) noexcept
     {
-        if (input.storage != id_)
-        {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
-        }
         if (auto valid = validate(input.description, input.source); !valid)
         {
             co_return cxx::unexpected(valid.error());
@@ -201,12 +197,14 @@ namespace lux::render::detail
         auto& entry = *entries_.find(key);
         entry.geometry = std::move(geometry);
         entry.description = std::move(input.description);
-        co_return MeshId{id_, key};
+        co_return extension_detail::ResourceIdentity::make<MeshId>(id_, key);
     }
 
     const MeshDescription* IndexedTriangleMeshStorage::find(MeshId id) const noexcept
     {
-        const auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
+        const auto* entry = extension_detail::ResourceIdentity::storage(id) == id_
+                                ? entries_.find(extension_detail::ResourceIdentity::local(id))
+                                : nullptr;
         return entry ? &entry->description : nullptr;
     }
 
@@ -216,20 +214,24 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        auto* entry = id.storage == id_ ? entries_.find(id.local) : nullptr;
+        auto* entry = extension_detail::ResourceIdentity::storage(id) == id_
+                          ? entries_.find(extension_detail::ResourceIdentity::local(id))
+                          : nullptr;
         if (!entry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
         retire(entry->geometry);
-        entries_.erase(id.local);
+        entries_.erase(extension_detail::ResourceIdentity::local(id));
         return {};
     }
 
     RenderResult<ResourceInput> IndexedTriangleMeshStorage::
         resolve(const VGraphResourceDesc& plan, const MeshBinding& argument, StorageSubscription&) noexcept
     {
-        auto* entry = argument.mesh.storage == id_ ? entries_.find(argument.mesh.local) : nullptr;
+        auto* entry = extension_detail::ResourceIdentity::storage(argument.mesh) == id_
+                          ? entries_.find(extension_detail::ResourceIdentity::local(argument.mesh))
+                          : nullptr;
         if (!entry)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});

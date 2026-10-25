@@ -4,7 +4,7 @@
 
 #include <NRI.h>
 #include <array>
-#include <lux/engine/render/graph/Work.hpp>
+#include <lux/engine/render/extensions/graph/Work.hpp>
 
 namespace lux::render::detail
 {

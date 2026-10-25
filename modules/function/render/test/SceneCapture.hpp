@@ -1,3 +1,5 @@
+#include <lux/engine/render/capabilities/LitScene.hpp>
+#include <lux/engine/render/capabilities/RasterAssets.hpp>
 #pragma once
 
 #include "Support.hpp"
@@ -6,10 +8,10 @@
 #include <cstring>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/execution/FrameExecution.hpp>
-#include <lux/engine/render/features/FeatureBuildContext.hpp>
-#include <lux/engine/render/resource/StorageBinding.hpp>
-#include <lux/engine/render/runtime/FeatureRegistration.hpp>
+#include <lux/engine/render/extensions/FeatureRegistration.hpp>
+#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
+#include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
+#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <thread>
 
@@ -152,10 +154,10 @@ private:
 
 struct CaptureFeature
 {
-    using Descriptor = CaptureFeature;
+    using Config = CaptureConfig;
+    static constexpr FeatureName name{"test.deferred.Copy"};
     using Storages = std::tuple<CaptureBuffer>;
     using Commands = std::tuple<>;
-    static const FeatureDescriptor descriptor;
     static const FeatureGraphOps& graph(bool) noexcept;
 
     static RenderResult<void> describe(const void* value, std::string_view key, FeaturePorts& ports) noexcept
@@ -222,16 +224,9 @@ struct CaptureFeature
     }
 };
 
-inline const FeatureDescriptor CaptureFeature::descriptor{
-    FeatureName{"test.deferred.Copy"},
-    lux::cxx::typeToken<CaptureConfig>(),
-    "Terminal test capture",
-    CaptureFeature::describe
-};
-
 inline const FeatureGraphOps& CaptureFeature::graph(bool) noexcept
 {
-    static const FeatureGraphOps value{CaptureFeature::build};
+    static const FeatureGraphOps value{CaptureFeature::describe, CaptureFeature::build};
     return value;
 }
 
@@ -352,16 +347,22 @@ static void detach(ipc::IpcRequester& client, const CommandList& commands, Attac
     }
 }
 
-static StorageId prepare(
+static CapabilityInput installInput(
     ipc::IpcRequester& client,
     const CommandList& commands,
-    StorageNameView type,
-    std::string key,
-    VStorageLocation location = GlobalStorageLocation{}
+    std::string_view schema,
+    VRenderScope scope = GlobalRenderScope{}
 )
 {
-    auto types = call<ListStorages>(client, commands, {});
-    auto found = std::ranges::find(types.storages, type.name(), &StorageInfo::name);
-    CHECK(found != types.storages.end());
-    return call<PrepareStorage>(client, commands, {{location, found->id, key}, {}}).storage;
+    const auto choices =
+        call<ListCapabilities>(client, commands, {std::string(kLitSceneCapability), 1, "lux.render.scene.clustered"});
+    CHECK(choices.implementations.size() == 1);
+    const auto result = call<InstallCapabilities>(
+        client,
+        commands,
+        {choices.implementations.front().selection, scope, take(ConfigValue::make(LitSceneConfiguration{}))}
+    );
+    const auto found = std::ranges::find(result.inputs, schema, &CapabilitiesInstalled::Input::schema);
+    CHECK(found != result.inputs.end());
+    return found->destination;
 }

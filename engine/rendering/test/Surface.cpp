@@ -2,10 +2,11 @@
 #include "RenderTest.hpp"
 #include "SurfaceSample.hpp"
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/render/device/DeviceSession.hpp>
-#include <lux/engine/render/features/FeatureBinding.hpp>
-#include <lux/engine/render/features/FeatureBuildContext.hpp>
-#include <lux/engine/render/runtime/FeatureRegistration.hpp>
+#include <lux/engine/render/extensions/FeatureRegistration.hpp>
+#include <lux/engine/render/extensions/GraphCommands.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/features/FeatureBinding.hpp>
+#include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
 #include <lux/engine/rendering/WindowSurface.hpp>
@@ -44,50 +45,43 @@ namespace
         }
     };
 
-    struct ClearDescriptor final
-    {
-        using Config = ClearConfiguration;
-        static inline constexpr FeatureName name{"test.presentation.clear"};
-        static inline const FeatureDescriptor descriptor{
-            name,
-            cxx::typeToken<Config>(),
-            "A real clear, with Target extent and presentation supplied by Runtime.",
-            [](const void* input, std::string_view, FeaturePorts& ports) noexcept -> RenderResult<void>
-            {
-                const auto& target = static_cast<const Config*>(input)->target;
-                GraphImageDesc color{target.width, target.height, 1, 1, target.format};
-                color.extent.source = EImageExtentSource::TARGET;
-                ports.resources.push_back({"color", EFeaturePort::OUTPUT, color});
-                if (static_cast<const Config*>(input)->sample_input)
-                {
-                    GraphImageDesc source{1, 1, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM};
-                    source.extent.source = EImageExtentSource::IMPORTED;
-                    ports.resources.push_back({"source", EFeaturePort::INPUT, source});
-                }
-                if (static_cast<const Config*>(input)->fail_preparation)
-                {
-                    ports.resources.push_back(
-                        {"preparation",
-                         EFeaturePort::OUTPUT,
-                         GraphBufferDesc{4},
-                         EGraphOrigin::IMPORTED,
-                         {GraphBufferRange{0, 4}}}
-                    );
-                }
-                return {};
-            }
-        };
-    };
-
     struct ClearFeature final
     {
-        using Descriptor = ClearDescriptor;
+        using Config = ClearConfiguration;
+        static constexpr FeatureName name{"test.presentation.clear"};
+
+        static RenderResult<void> describe(const void* input, std::string_view, FeaturePorts& ports) noexcept
+        {
+            const auto& target = static_cast<const Config*>(input)->target;
+            GraphImageDesc color{target.width, target.height, 1, 1, target.format};
+            color.extent.source = EImageExtentSource::TARGET;
+            ports.resources.push_back({"color", EFeaturePort::OUTPUT, color});
+            if (static_cast<const Config*>(input)->sample_input)
+            {
+                GraphImageDesc source{1, 1, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM};
+                source.extent.source = EImageExtentSource::IMPORTED;
+                ports.resources.push_back({"source", EFeaturePort::INPUT, source});
+            }
+            if (static_cast<const Config*>(input)->fail_preparation)
+            {
+                ports.resources.push_back(
+                    {"preparation",
+                     EFeaturePort::OUTPUT,
+                     GraphBufferDesc{4},
+                     EGraphOrigin::IMPORTED,
+                     {GraphBufferRange{0, 4}}}
+                );
+            }
+            return {};
+        }
+
         using Storages = std::tuple<>;
         using Commands = std::tuple<>;
 
         static const FeatureGraphOps& graph(bool) noexcept
         {
             static const FeatureGraphOps ops{
+                describe,
                 [](const void* value, std::string_view, FeatureBuildContext& context) noexcept -> RenderResult<void>
                 {
                     if (static_cast<const ClearConfiguration*>(value)->fail_preparation)
@@ -185,14 +179,19 @@ int main(int argc, char**)
         config.render.uploads.emplace();
     }
     config.render.frames_in_flight = 3;
-    config.register_features = [](void*, RenderServer& server) noexcept -> RenderResult<void>
+    FeatureId feature;
+    config.feature_registration = &feature;
+    config.register_features = [](void* destination, RenderServer& server) noexcept -> RenderResult<void>
     {
         auto feature = server.registerFeature<ClearFeature>();
-        return feature ? RenderResult<void>{} : RenderResult<void>{cxx::unexpected(feature.error())};
+        if (!feature)
+        {
+            return cxx::unexpected(feature.error());
+        }
+        *static_cast<FeatureId*>(destination) = *feature;
+        return {};
     };
     auto rendering = take(RenderExecution::create(std::move(config), execution));
-    const auto features = call<ListFeatures>(*rendering, {});
-    const auto feature = std::ranges::find(features.features, ClearDescriptor::name.name(), &FeatureInfo::name)->id;
     const auto scene = call<CreateScene>(*rendering, {}).scene;
     std::vector<TargetCreated> targets;
     std::vector<EffectId> effects;
@@ -206,12 +205,12 @@ int main(int argc, char**)
         check(makeWindowSurface(window->nativeWindow(), false, surface));
         auto target = call<CreateTarget>(*rendering, {description, surface});
         targets.push_back(target);
-        CreateEffectRequest effect{target.description};
+        GraphEffectRequest effect{target.description};
         effect.definition.features.push_back(
             {feature, "clear", take(ConfigValue::make(ClearConfiguration{target.description}))}
         );
         effect.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{target.description.format, 1}});
-        auto compiled = call<CreateEffect>(*rendering, std::move(effect)).effect;
+        auto compiled = call<CreateGraphEffect>(*rendering, std::move(effect)).effect;
         effects.push_back(compiled);
         const auto view = call<CreateView>(*rendering, {scene}).view;
         views.push_back(view);
@@ -226,19 +225,19 @@ int main(int argc, char**)
     // relationship, never TargetId order. UI and Scene use the same physical FIF slot.
     TargetDesc image_description{128, 96, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN, true};
     auto image = call<CreateTarget>(*rendering, {image_description});
-    CreateEffectRequest producer{image_description};
+    GraphEffectRequest producer{image_description};
     producer.definition.features.push_back(
         {feature, "producer", take(ConfigValue::make(ClearConfiguration{image_description}))}
     );
     producer.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{image_description.format, 1}});
-    const auto producer_program = call<CreateEffect>(*rendering, std::move(producer)).effect;
+    const auto producer_program = call<CreateGraphEffect>(*rendering, std::move(producer)).effect;
     effects.push_back(producer_program);
     const auto producer_view = call<CreateView>(*rendering, {scene}).view;
     const auto producer_attachment =
         call<Attach>(*rendering, {scene, producer_view, image.target, producer_program}).attachment;
     const auto make_consumer = [&](TargetDesc target)
     {
-        CreateEffectRequest consumer{target};
+        GraphEffectRequest consumer{target};
         consumer.definition.features.push_back(
             {feature, "consumer", take(ConfigValue::make(ClearConfiguration{target, false, true}))}
         );
@@ -248,7 +247,7 @@ int main(int argc, char**)
         consumer.definition.inputs.push_back(
             {{0, "source"}, {"scene-output", source, EGraphOrigin::IMPORTED, {GraphImageRange{}}, EGraphUse::SAMPLED}}
         );
-        auto program = call<CreateEffect>(*rendering, std::move(consumer)).effect;
+        auto program = call<CreateGraphEffect>(*rendering, std::move(consumer)).effect;
         effects.push_back(program);
         return program;
     };
@@ -307,14 +306,14 @@ int main(int argc, char**)
     SurfaceDescription abandoned_surface;
     check(makeWindowSurface(first->nativeWindow(), false, abandoned_surface));
     auto abandoned = call<CreateTarget>(*rendering, {targets[0].description, abandoned_surface});
-    CreateEffectRequest failed_effect{abandoned.description};
+    GraphEffectRequest failed_effect{abandoned.description};
     failed_effect.definition.features.push_back(
         {feature, "clear", take(ConfigValue::make(ClearConfiguration{abandoned.description, true}))}
     );
     failed_effect.definition.outputs.push_back({{0, "color"}, GraphOutputRequirements{abandoned.description.format, 1}}
     );
     failed_effect.definition.outputs.push_back({{0, "preparation"}});
-    const auto failed_program = call<CreateEffect>(*rendering, std::move(failed_effect)).effect;
+    const auto failed_program = call<CreateGraphEffect>(*rendering, std::move(failed_effect)).effect;
     const auto abandoned_view = call<CreateView>(*rendering, {scene}).view;
     expected_frame_error = kDeviceArgument;
     call<Attach>(*rendering, {scene, abandoned_view, abandoned.target, failed_program});

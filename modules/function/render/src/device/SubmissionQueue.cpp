@@ -1,8 +1,8 @@
-#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
 
 #include <limits>
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <optional>
 #include <vector>
 

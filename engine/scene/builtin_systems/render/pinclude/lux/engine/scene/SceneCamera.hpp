@@ -1,8 +1,8 @@
 #pragma once
 
+#include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/CameraTargetsComponent.hpp>
-#include <lux/engine/scene/SceneParameters.hpp>
 
 namespace lux::scene::detail
 {
@@ -31,8 +31,8 @@ namespace lux::scene::detail
     [[nodiscard]] render::RenderResult<SceneCamera> prepareSceneCamera(const Camera&, const Eigen::Affine3d&) noexcept;
 
     // Each output supplies its own actual aspect/viewport. Returned shader values are owned.
-    [[nodiscard]] render::RenderResult<SceneParameters>
+    [[nodiscard]] render::RenderResult<render::CameraInput>
     sceneParameters(const Camera&, const SceneCamera&, const CameraTarget&) noexcept;
 
-    [[nodiscard]] bool sameParameters(const SceneParameters&, const SceneParameters&) noexcept;
+    [[nodiscard]] bool sameParameters(const render::CameraInput&, const render::CameraInput&) noexcept;
 } // namespace lux::scene::detail

@@ -1,9 +1,9 @@
 #pragma once
 
 #include <lux/engine/process/asset_loading/AssetRead.hpp>
-#include <lux/engine/render/graph/GraphResource.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/storage/SampledTexture2D.hpp>
+#include <lux/engine/render/inputs/ImageShape.hpp>
+#include <lux/engine/render/inputs/IndexedTriangleMeshInputs.hpp>
+#include <lux/engine/render/inputs/SampledTextureInputs.hpp>
 #include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 
 namespace lux::rendering
@@ -46,7 +46,7 @@ namespace lux::rendering
     struct RenderTexture final
     {
         render::TextureId texture;
-        render::GraphImageDesc description;
+        render::ImageShape description;
     };
 
     // Main-thread asset/version authority. Reads and decode use the shared ExecutionRuntime;
@@ -76,7 +76,7 @@ namespace lux::rendering
 
         using CreateResult = render::RenderResult<std::unique_ptr<RenderAssets>>;
 
-        // Cold startup: installs the two global Storage instances through ordinary typed commands.
+        // Cold startup: installs raster asset inputs through the ordinary capability API.
         [[nodiscard]] static CreateResult create(
             RenderExecution& rendering,
             process::asset_loading::AssetReadPort source,

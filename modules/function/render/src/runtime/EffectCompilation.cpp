@@ -1,6 +1,7 @@
 #include <algorithm>
+#include <lux/engine/render/extensions/GraphCommands.hpp>
+#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>
-#include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/runtime/EffectCompilation.hpp>
 #include <map>
 
@@ -16,7 +17,7 @@ namespace lux::render::runtime_detail
         std::uint32_t sampled_image_capacity,
         std::uint32_t sampler_capacity,
         std::span<const StorageNameView> storage_types,
-        const CreateEffectRequest& request,
+        const GraphEffectRequest& request,
         std::span<const FeatureEntry* const> registrations,
         std::size_t max_config_bytes
     ) noexcept
@@ -30,7 +31,8 @@ namespace lux::render::runtime_detail
             const auto& selection = input->definition.features[i];
             const auto* registration = registrations[i];
             selected.push_back(
-                {&registration->descriptor,
+                {FeatureName{registration->name},
+                 registration->config_type,
                  &registration->graph,
                  selection.config ? &selection.config : nullptr,
                  selection.contribution_key}

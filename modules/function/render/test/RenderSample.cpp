@@ -5,8 +5,7 @@
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/features/HzbFeature.hpp>
-#include <lux/engine/render/features/MaterialMeshRaster.hpp>
-#include <lux/engine/render/features/MeshDepthRaster.hpp>
+#include <lux/engine/render/features/RasterMeshParameters.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <thread>
 
@@ -73,9 +72,11 @@ int main(int argc, char** argv)
         }
     }
     auto server = require(RenderServer::create(config, execution, options));
-    (void)require(server->featureId<MaterialMeshRasterDescriptor>());
-    (void)require(server->featureId<MeshDepthRasterDescriptor>());
-    (void)require(server->featureId<HzbFeatureDescriptor>());
+    const std::array graph_features{
+        require(server->featureId("lux.render.feature.MaterialMeshRaster")),
+        require(server->featureId("lux.render.feature.MeshDepthRaster")),
+        require(server->featureId("lux.render.feature.Hzb"))
+    };
 
     const auto directory_id = require(server->commandId<lux::render::ListCommands>());
     auto main_client = lux::platform::ipc::IpcCore::instance().createRequester(config.channel_name);
@@ -100,7 +101,7 @@ int main(int argc, char** argv)
             }
         }
     );
-    mesh_sample::runClients(*main_client, config.channel_name, directory_id, argv[1]);
+    mesh_sample::runClients(*main_client, config.channel_name, directory_id, argv[1], graph_features);
     server->stop();
     render.join();
     const auto stats = server->stats();

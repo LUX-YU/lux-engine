@@ -1,7 +1,7 @@
-#include <lux/engine/render/device/DescriptorTable.hpp>
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
+#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/BarrierPlan.hpp>
 #include <lux/engine/render/graph/ConditionalPlan.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>

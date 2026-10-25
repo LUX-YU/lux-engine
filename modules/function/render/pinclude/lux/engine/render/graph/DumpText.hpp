@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/graph/GraphResource.hpp>
+#include <lux/engine/render/extensions/graph/GraphResource.hpp>
 #include <string>
 #include <string_view>
 

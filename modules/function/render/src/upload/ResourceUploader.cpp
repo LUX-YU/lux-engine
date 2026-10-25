@@ -5,11 +5,11 @@
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/memory/StagingArena.hpp>
 #include <lux/engine/render/upload/ImageTransfer.hpp>
-#include <lux/engine/render/upload/ResourceUploader.hpp>
 #include <numeric>
 
 namespace lux::render::detail
@@ -145,10 +145,10 @@ namespace lux::render::detail
         execution::CpuScheduler cpu_scheduler_
     ) noexcept
     {
-        const bool invalid = options_.chunk_bytes < 256 ||
-                             options_.chunk_bytes > 16 * 1024 * 1024 || options_.staging_pages == 0 ||
-                             options_.staging_pages > 16 || options_.pending_bytes < options_.chunk_bytes ||
-                             options_.batch_entries == 0 || options_.window_regions == 0;
+        const bool invalid = options_.chunk_bytes < 256 || options_.chunk_bytes > 16 * 1024 * 1024 ||
+                             options_.staging_pages == 0 || options_.staging_pages > 16 ||
+                             options_.pending_bytes < options_.chunk_bytes || options_.batch_entries == 0 ||
+                             options_.window_regions == 0;
         if (invalid)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});

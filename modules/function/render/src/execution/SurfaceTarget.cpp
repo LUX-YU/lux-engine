@@ -1,7 +1,7 @@
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/execution/SurfaceTarget.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 
 namespace lux::render::detail
 {
@@ -24,11 +24,41 @@ namespace lux::render::detail
         const bool invalid_kind = description.kind != ETargetKind::SURFACE;
         const auto maximum = session.description().dimensions.attachmentMaxDim;
         const bool invalid_extent = description.width > maximum || description.height > maximum;
-        const auto windows = unsigned(surface.window.windows.hwnd != nullptr) +
-                             unsigned(surface.window.x11.dpy && surface.window.x11.window) +
-                             unsigned(surface.window.wayland.display && surface.window.wayland.surface) +
-                             unsigned(surface.window.metal.caMetalLayer != nullptr);
-        const bool invalid_window = windows != 1;
+        nri::Window window{};
+        const bool valid_window = std::visit(
+            [&](const auto& value) noexcept
+            {
+                using T = std::remove_cvref_t<decltype(value)>;
+                if constexpr (std::same_as<T, Win32Surface>)
+                {
+                    window.windows.hwnd = value.window;
+                    return value.window != nullptr;
+                }
+                else if constexpr (std::same_as<T, X11Surface>)
+                {
+                    window.x11.dpy = value.display;
+                    window.x11.window = value.window;
+                    return value.display && value.window;
+                }
+                else if constexpr (std::same_as<T, WaylandSurface>)
+                {
+                    window.wayland.display = value.display;
+                    window.wayland.surface = value.surface;
+                    return value.display && value.surface;
+                }
+                else if constexpr (std::same_as<T, MetalSurface>)
+                {
+                    window.metal.caMetalLayer = value.layer;
+                    return value.layer != nullptr;
+                }
+                else
+                {
+                    return false;
+                }
+            },
+            surface.window
+        );
+        const bool invalid_window = !valid_window;
         if (invalid_kind || invalid_window || invalid_extent)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
@@ -44,7 +74,7 @@ namespace lux::render::detail
             return cxx::unexpected(nativeError(status));
         }
         nri::SwapChainDesc swap_chain{};
-        swap_chain.window = surface.window;
+        swap_chain.window = window;
         swap_chain.queue = &session.queue().native();
         swap_chain.width = static_cast<nri::Dim_t>(description.width);
         swap_chain.height = static_cast<nri::Dim_t>(description.height);

@@ -3,7 +3,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
-#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <source_location>
 #include <utility>
 

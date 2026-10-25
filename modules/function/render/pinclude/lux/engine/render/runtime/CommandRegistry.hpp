@@ -2,8 +2,8 @@
 
 #include <limits>
 #include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/runtime/CommandBinding.hpp>
-#include <lux/engine/render/runtime/detail/HandlerRecord.hpp>
+#include <lux/engine/render/extensions/CommandBinding.hpp>
+#include <lux/engine/render/extensions/detail/HandlerRecord.hpp>
 #include <map>
 
 namespace lux::render::runtime_detail

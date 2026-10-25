@@ -1,4 +1,4 @@
-#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/storage/RasterMaterialTableCommandHandler.hpp>
 #include <lux/engine/render/storage/RasterMaterialTableStorage.hpp>
 
@@ -13,7 +13,7 @@ namespace lux::render::detail
         CreateMaterial::Request&& input
     ) noexcept
     {
-        auto storage = resources_.borrow<RasterMaterialTableStorage>(input.storage);
+        auto storage = resources_.borrowInput<RasterMaterialTableStorage>(input.destination);
         if (!storage)
         {
             return rejected<RenderResult<MaterialId>>(storage.error());
@@ -25,7 +25,8 @@ namespace lux::render::detail
         UpdateMaterial::Request&& input
     ) noexcept
     {
-        auto storage = resources_.borrow<RasterMaterialTableStorage>(input.material.storage);
+        auto storage =
+            resources_.borrow<RasterMaterialTableStorage>(extension_detail::ResourceIdentity::storage(input.material));
         if (!storage)
         {
             return rejected<RenderResult<Ack>>(storage.error());
@@ -38,7 +39,8 @@ namespace lux::render::detail
         ReleaseMaterial::Response& response
     ) noexcept
     {
-        auto storage = resources_.borrow<RasterMaterialTableStorage>(input.storage);
+        auto storage =
+            resources_.borrow<RasterMaterialTableStorage>(extension_detail::ResourceIdentity::storage(input));
         if (!storage)
         {
             response.error = storage.error();

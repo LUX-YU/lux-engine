@@ -6,10 +6,10 @@
 // Exact comparison of the actual RGBA16F images before exposure, quantization or Tonemap.
 struct SceneComparison
 {
-    using Descriptor = SceneComparison;
+    using Config = void;
+    static constexpr FeatureName name{"test.Compare"};
     using Storages = std::tuple<>;
     using Commands = std::tuple<>;
-    static const FeatureDescriptor descriptor;
     static const FeatureGraphOps& graph(bool) noexcept;
 
     static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
@@ -47,12 +47,9 @@ struct SceneComparison
     }
 };
 
-inline const FeatureDescriptor
-    SceneComparison::descriptor{FeatureName{"test.Compare"}, {}, "HDR pixel comparison", SceneComparison::describe};
-
 inline const FeatureGraphOps& SceneComparison::graph(bool) noexcept
 {
-    static const FeatureGraphOps value{SceneComparison::build};
+    static const FeatureGraphOps value{SceneComparison::describe, SceneComparison::build};
     return value;
 }
 

@@ -5,8 +5,6 @@
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RenderErrorSink.hpp>
-#include <lux/engine/render/features/FeatureDescriptor.hpp>
-#include <lux/engine/render/resource/StorageDescriptor.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/runtime/DeviceOptions.hpp>
 #include <lux/engine/render/visibility.h>
@@ -29,6 +27,7 @@ namespace lux::render
 {
     struct StorageFactory;
     struct FeatureGraphOps;
+    struct CapabilitySupport;
     class CommandBinding;
 
     namespace runtime_detail
@@ -75,7 +74,7 @@ namespace lux::render
         using CreateResult = RenderResult<std::unique_ptr<RenderServer>>;
 
         // Creates the device, IPC responder and supported built-in declarations, but starts no thread.
-        // Registration stores factories only. run() constructs selected Handlers; PrepareStorage/Attach create Storage.
+        // Registration stores factories only. run() constructs selected Handlers; installation/Attach create Storage.
         [[nodiscard]] static CreateResult create(
             RenderServerConfig config,
             execution::ExecutionRuntime& execution,
@@ -92,13 +91,10 @@ namespace lux::render
             return findCommand(commandDescriptor<C>());
         }
 
-        // Cold built-in discovery; does not register a dependency or construct an implementation.
-        template <class Descriptor> [[nodiscard]] RenderResult<FeatureId> featureId() const noexcept
-        {
-            return findFeature(Descriptor::descriptor);
-        }
+        // Graph-author cold lookup. Ordinary applications use ListCapabilities instead.
+        [[nodiscard]] RenderResult<FeatureId> featureId(std::string_view implementation) const noexcept;
 
-        // Project extensions include runtime/FeatureRegistration.hpp for these template definitions.
+        // Extension authors include extensions/FeatureRegistration.hpp for these template definitions.
         // Metadata and callback code must outlive the Server and all accepted work. Register before
         // run() or at a frame-boundary RenderThread safe point. Validation failure changes no directory.
         template <class Feature> [[nodiscard]] RenderResult<FeatureId> registerFeature() noexcept;
@@ -134,14 +130,13 @@ namespace lux::render
 
     private:
         [[nodiscard]] RenderResult<FeatureId>
-        registerFeature(const FeatureDescriptor&, const FeatureGraphOps&, std::span<const StorageFactory>, std::span<runtime_detail::HandlerRecord>, std::span<const CommandBinding>) noexcept;
+        registerFeature(std::string_view, cxx::TypeToken, const FeatureGraphOps&, const CapabilitySupport*, std::span<const StorageFactory>, std::span<runtime_detail::HandlerRecord>, std::span<const CommandBinding>) noexcept;
 
         [[nodiscard]] RenderResult<StorageTypeId> registerStorage(StorageFactory, ConfigValue) noexcept;
         [[nodiscard]] RenderResult<
             HandlerId> registerHandler(runtime_detail::HandlerRecord, std::span<const CommandBinding>) noexcept;
 
         [[nodiscard]] bool pagedInstances() const noexcept;
-        [[nodiscard]] RenderResult<FeatureId> findFeature(const FeatureDescriptor&) const noexcept;
         [[nodiscard]] RenderResult<CommandId> findCommand(const CommandDescriptor&) const noexcept;
         struct Impl;
         explicit RenderServer(std::unique_ptr<Impl> state) noexcept;

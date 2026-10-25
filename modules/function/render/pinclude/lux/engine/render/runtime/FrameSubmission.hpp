@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/commands/Frame.hpp>
-#include <lux/engine/render/runtime/CommandBinding.hpp>
+#include <lux/engine/render/extensions/CommandBinding.hpp>
 #include <vector>
 
 namespace lux::render::runtime_detail

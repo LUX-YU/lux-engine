@@ -1,11 +1,12 @@
-# Formal SDK consumers only. Mechanism/fault/installation/performance probes live in the external verification suite.
+# Ordinary Client contracts and graph/implementation regression fixtures. Installed role boundaries are
+# independently exercised by cmake/installed-consumers/render-client and render-extension.
 add_executable(render_sync_client SyncClient.cpp)
 target_link_libraries(render_sync_client PRIVATE render lux::engine::platform::platform_ipc)
 add_test(NAME render.client.sync_source COMMAND render_sync_client)
 
 
 add_executable(render_output_test Output.cpp)
-target_link_libraries(render_output_test PRIVATE render)
+target_link_libraries(render_output_test PRIVATE render_extensions)
 add_test(NAME render.native.output COMMAND render_output_test)
 set_tests_properties(render.native.output PROPERTIES TIMEOUT 30)
 
@@ -32,6 +33,7 @@ add_library(render_basic_mesh_client OBJECT Client.cpp)
 target_link_libraries(render_basic_mesh_client PRIVATE render lux::engine::platform::platform_ipc lux::engine::resource::shader_metadata)
 add_executable(render_basic_mesh RenderSample.cpp $<TARGET_OBJECTS:render_basic_mesh_client>)
 target_link_libraries(render_basic_mesh PRIVATE render lux::engine::core::core_execution lux::engine::resource::shader_metadata)
+target_link_libraries(render_basic_mesh PRIVATE render_extensions)
 add_dependencies(render_basic_mesh render_sample_assets)
 add_test(NAME render.sample.basic_mesh COMMAND render_basic_mesh "${shader}.spv")
 set_tests_properties(render.sample.basic_mesh PROPERTIES TIMEOUT 90)
@@ -69,7 +71,7 @@ target_include_directories(render_graph_chain PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/shaders"
     "${CMAKE_CURRENT_BINARY_DIR}/../shaders"
 )
-target_link_libraries(render_graph_chain PRIVATE render NRI)
+target_link_libraries(render_graph_chain PRIVATE render_extensions NRI)
 add_test(NAME render.graph.chain COMMAND render_graph_chain)
 # The combined matrix creates 74 independent devices. ASan + validation exceeds 90 seconds;
 # per-scenario progress assertions remain unchanged by this outer process budget.
@@ -79,6 +81,7 @@ add_executable(render_deferred_scene DeferredScene.cpp)
 target_include_directories(render_deferred_scene PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
 target_link_libraries(render_deferred_scene PRIVATE render NRI lux::engine::core::core_execution
     lux::engine::toolchain::toolchain_material_compiler)
+target_link_libraries(render_deferred_scene PRIVATE render_extensions)
 add_test(NAME render.sample.deferred COMMAND render_deferred_scene)
 set_tests_properties(render.sample.deferred PROPERTIES TIMEOUT 90)
 
@@ -95,6 +98,7 @@ target_link_libraries(render_shadow_scene PRIVATE
 )
 
 add_test(NAME render.sample.shadow COMMAND render_shadow_scene)
+target_link_libraries(render_shadow_scene PRIVATE render_extensions)
 set_tests_properties(render.sample.shadow PROPERTIES TIMEOUT 120)
 
 add_test(NAME render.sample.clustered_shadow COMMAND render_shadow_scene 3 --clustered)
@@ -113,6 +117,7 @@ target_link_libraries(render_clustered_scene PRIVATE
 )
 
 add_test(NAME render.sample.clustered COMMAND render_clustered_scene)
+target_link_libraries(render_clustered_scene PRIVATE render_extensions)
 set_tests_properties(render.sample.clustered PROPERTIES TIMEOUT 120)
 
 # Render Command contracts live with Render; Platform IPC remains independently buildable.
@@ -120,8 +125,17 @@ set(ipc_test_source "${CMAKE_CURRENT_SOURCE_DIR}/../../../platform/ipc/test")
 find_package(lux-cxx CONFIG REQUIRED COMPONENTS memory)
 add_executable(render_ipc_commands_test IpcCommands.cpp "${ipc_test_source}/Allocation.cpp")
 target_include_directories(render_ipc_commands_test PRIVATE "${ipc_test_source}" "${ipc_test_source}/../pinclude")
-target_link_libraries(render_ipc_commands_test PRIVATE render lux::engine::platform::platform_ipc lux::cxx::memory)
+target_link_libraries(render_ipc_commands_test PRIVATE
+    render lux::engine::platform::platform_ipc lux::cxx::memory
+)
 # Preserve the original contract name; the cost case is now distinct from the raw IPC queue measurement.
 add_test(NAME platform.ipc.protocol COMMAND render_ipc_commands_test protocol)
 add_test(NAME render.ipc.command_cost COMMAND render_ipc_commands_test cost)
 set_tests_properties(platform.ipc.protocol render.ipc.command_cost PROPERTIES TIMEOUT 90)
+
+# These fixtures author explicit graphs to compare implementation algorithms. Ordinary capability
+# consumers (Engine/Editor) use no built-in port/configuration headers.
+target_link_libraries(render_basic_mesh_client PRIVATE render_extensions)
+foreach(consumer IN ITEMS render_basic_mesh_client render_basic_mesh)
+    target_include_directories(${consumer} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude")
+endforeach()

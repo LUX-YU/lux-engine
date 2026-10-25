@@ -11,7 +11,6 @@ add_component(
     OUTPUT_NAME lux_engine_scene_render
     SOURCE_FILES
         src/RenderSystem.cpp
-        src/SceneEffect.cpp
         src/SceneCamera.cpp
         src/RenderSystemConfiguration.cpp
 )

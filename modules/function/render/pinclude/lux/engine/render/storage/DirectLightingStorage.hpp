@@ -2,12 +2,12 @@
 
 #include <exec/task.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/render/execution/FrameExecution.hpp>
+#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
+#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
+#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
+#include <lux/engine/render/extensions/storage/StorageFactory.hpp>
+#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
-#include <lux/engine/render/resource/StorageBinding.hpp>
-#include <lux/engine/render/resource/StorageFactory.hpp>
-#include <lux/engine/render/storage/DirectLighting.hpp>
-#include <lux/engine/render/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {

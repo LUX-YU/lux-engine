@@ -60,7 +60,7 @@ namespace lux::render
                 };
                 work.dispatch = ImageDispatchArguments{current.resource, mip};
                 auto pass = context.graph.addComputePass(
-                    featureKey(HzbFeatureDescriptor::name, key, "mip" + std::to_string(mip)),
+                    featureKey(detail::HzbFeature::name, key, "mip" + std::to_string(mip)),
                     std::move(work)
                 );
                 if (!pass)
@@ -73,16 +73,9 @@ namespace lux::render
         }
     } // namespace
 
-    const FeatureDescriptor HzbFeatureDescriptor::descriptor{
-        name,
-        cxx::typeToken<Config>(),
-        "Forward-depth hierarchical maximum with instance-local history.",
-        describeHzb
-    };
-
     const FeatureGraphOps& detail::HzbFeature::graph(bool) noexcept
     {
-        static const FeatureGraphOps graph{buildHzb};
+        static const FeatureGraphOps graph{describeHzb, buildHzb};
         return graph;
     }
 } // namespace lux::render

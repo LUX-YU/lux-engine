@@ -4,13 +4,13 @@
 #include "MeshFrustumCull.hpp"
 #include "MeshFrustumCullPaged.hpp"
 #include "MeshView.hpp"
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/storage/RasterMaterialTable.hpp>
+#include <lux/engine/render/extensions/storage/RasterMeshInstances.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
-#include <lux/engine/render/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/ParameterLayout.hpp>
 #include <lux/engine/render/features/RasterMeshDraws.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/storage/RasterMaterialTable.hpp>
-#include <lux/engine/render/storage/RasterMeshInstances.hpp>
 
 namespace lux::render
 {
@@ -153,7 +153,7 @@ namespace lux::render
                 work.dispatch = DispatchArguments{{1, 1, 1}};
                 work.allow_async_compute = true;
                 auto built = context.graph.addComputePass(
-                    featureKey(MeshVisibilityFeatureDescriptor::name, key, "view"),
+                    featureKey(detail::MeshVisibilityFeature::name, key, "view"),
                     std::move(work)
                 );
                 if (!built)
@@ -202,7 +202,7 @@ namespace lux::render
                 TransferWork reset;
                 reset.operations.push_back(FillBuffer{{visible}, 0});
                 auto cleared = context.graph.addTransferPass(
-                    featureKey(MeshVisibilityFeatureDescriptor::name, key, prefix + "reset"),
+                    featureKey(detail::MeshVisibilityFeature::name, key, prefix + "reset"),
                     std::move(reset)
                 );
                 if (!cleared)
@@ -230,7 +230,7 @@ namespace lux::render
                 cull.dispatch = DispatchArguments{{(config.candidate_capacity + 63) / 64, config.view_count, 1}};
                 cull.allow_async_compute = true;
                 auto culled = context.graph.addComputePass(
-                    featureKey(MeshVisibilityFeatureDescriptor::name, key, prefix + "frustum"),
+                    featureKey(detail::MeshVisibilityFeature::name, key, prefix + "frustum"),
                     std::move(cull)
                 );
                 if (!culled)
@@ -250,7 +250,7 @@ namespace lux::render
                 compact.dispatch = DispatchArguments{{(config.view_count * kMeshWindingCount + 63) / 64, 1, 1}};
                 compact.allow_async_compute = true;
                 auto completed = context.graph.addComputePass(
-                    featureKey(MeshVisibilityFeatureDescriptor::name, key, prefix + "compact"),
+                    featureKey(detail::MeshVisibilityFeature::name, key, prefix + "compact"),
                     std::move(compact)
                 );
                 if (!completed)
@@ -283,16 +283,10 @@ namespace lux::render
                (value.view_parameters ? detail::parameterLayoutBytes(*value.view_parameters) : 0);
     }
 
-    const FeatureDescriptor MeshVisibilityFeatureDescriptor::descriptor{
-        name,
-        cxx::typeToken<Config>(),
-        "GPU frustum visibility and indexed indirect counts over explicit geometric views.",
-        describeVisibility
-    };
-
     const FeatureGraphOps& detail::MeshVisibilityFeature::graph(bool paged_instances) noexcept
     {
-        static const FeatureGraphOps contiguous{buildVisibility<false>}, paged{buildVisibility<true>};
+        static const FeatureGraphOps contiguous{describeVisibility, buildVisibility<false>},
+            paged{describeVisibility, buildVisibility<true>};
         return paged_instances ? paged : contiguous;
     }
 } // namespace lux::render

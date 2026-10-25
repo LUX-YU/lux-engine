@@ -1,5 +1,5 @@
 #include "FullscreenVertex.hpp"
-#include <lux/engine/render/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/FullscreenRaster.hpp>
 
 namespace lux::render::detail

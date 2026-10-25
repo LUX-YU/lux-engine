@@ -4,8 +4,8 @@
 #include <Extensions/NRIRayTracing.h>
 #include <Extensions/NRIWrapperVK.h>
 #include <lux/engine/render/device/DeviceBackend.hpp>
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 
 #include <algorithm>
 #include <limits>

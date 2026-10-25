@@ -11,19 +11,20 @@
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/commands/Error.hpp>
-#include <lux/engine/render/device/DeviceSession.hpp>
-#include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/execution/ResizeResources.hpp>
-#include <lux/engine/render/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/resource/StorageCreateContext.hpp>
+#include <lux/engine/render/extensions/GraphCommands.hpp>
+#include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
+#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/storage/StorageCreateContext.hpp>
 #include <lux/engine/render/runtime/CommandRegistry.hpp>
 #include <lux/engine/render/runtime/EffectCompilation.hpp>
 #include <lux/engine/render/runtime/FrameSubmission.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/runtime/ResponseOutbox.hpp>
 #include <lux/engine/render/runtime/Scene.hpp>
-#include <lux/engine/render/runtime/detail/CommandDispatchContext.hpp>
 #include <thread>
 
 namespace lux::render
@@ -35,8 +36,11 @@ namespace lux::render
     {
         [[nodiscard]] RenderResult<void> initialize(DeviceOptions options) noexcept;
         void registerBuiltinFeatures() noexcept;
-        FeatureId publishFeature(const FeatureDescriptor&, const FeatureGraphOps&) noexcept;
-        RenderResult<void> validateFeature(const FeatureDescriptor&, const FeatureGraphOps&) const noexcept;
+        FeatureId
+        publishFeature(std::string_view, cxx::TypeToken, const FeatureGraphOps&, const CapabilitySupport*) noexcept;
+        RenderResult<void>
+        validateFeature(std::string_view, cxx::TypeToken, const FeatureGraphOps&, const CapabilitySupport*)
+            const noexcept;
         RenderResult<void>
             validateRegistration(std::span<const StorageFactory>, std::span<const HandlerRecord>, std::span<const CommandBinding>)
                 const noexcept;
@@ -110,18 +114,13 @@ namespace lux::render
         void detachAttachment(AttachmentId id) noexcept;
         [[nodiscard]] bool canChangeAttachments(std::span<const AttachmentId>) const noexcept;
 
-        RenderResult<StorageSet*> findStorageSet(const VStorageLocation&) noexcept;
-        void findStorage(const FindStorage::Request&, FindStorage::Response&) noexcept;
-        void prepareStorage(const PrepareStorage::Request&, PrepareStorage::Response&) noexcept;
-        void removeStorage(const RemoveStorage::Request&, RemoveStorage::Response&) noexcept;
-
         RenderResult<runtime_detail::EffectAttachment> prepareAttachment(
             const runtime_detail::RenderEffect&,
             detail::TargetOutput,
             StorageSet& scene,
             StorageSet& view,
             StorageSet& attachment,
-            std::span<const TargetImageInput> target_images
+            const AttachmentRequest& input
         ) noexcept;
 
         void attachEffect(const Attach::Request&, Attach::Response&) noexcept;
@@ -169,8 +168,27 @@ namespace lux::render
         exec::task<AckResponse> removeTarget(RemoveTarget::Request&&) noexcept;
         void setTargetActive(const SetTargetActive::Request&, SetTargetActive::Response&) noexcept;
 
-        auto createEffect(CreateEffect::Request&&) noexcept;
+        auto createGraphEffect(CreateGraphEffect::Request&&) noexcept;
+        auto compileGraphEffect(
+            GraphEffectRequest&&,
+            FeatureGraphOps::Parameters,
+            RenderError = {},
+            CapabilitySelection = {},
+            std::vector<ConfigValue> = {}
+        ) noexcept;
+        auto createCapabilityEffect(CreateEffect::Request&&) noexcept;
         void bindCreateEffectCommand() noexcept;
+
+        void listCapabilities(const ListCapabilities::Request&, ListCapabilities::Response&) noexcept;
+        void installCapabilities(const InstallCapabilities::Request&, InstallCapabilities::Response&) noexcept;
+        [[nodiscard]] RenderResult<StorageSet*> findScope(const VRenderScope&) noexcept;
+        [[nodiscard]] RenderResult<StorageId> ensureStorage(
+            StorageSet&,
+            StorageTypeId,
+            std::string_view,
+            const ConfigValue&,
+            std::vector<std::pair<StorageSet*, StorageId>>& created
+        ) noexcept;
 
         void removeEffect(const RemoveEffect::Request&, RemoveEffect::Response&) noexcept;
 
@@ -178,9 +196,6 @@ namespace lux::render
 
         void queryRenderStats(const QueryRenderStats::Request&, QueryRenderStats::Response&) noexcept;
         void queryExecutionProgress(const QueryExecutionProgress::Request&, QueryExecutionProgress::Response&) noexcept;
-
-        void listFeatures(const ListFeatures::Request&, ListFeatures::Response&) noexcept;
-        void listStorages(const ListStorages::Request&, ListStorages::Response&) noexcept;
 
         void listCommands(const ListCommands::Request&, ListCommands::Response&) noexcept;
         void listCommandBindings(const ListCommandBindings::Request&, ListCommandBindings::Response&) noexcept;

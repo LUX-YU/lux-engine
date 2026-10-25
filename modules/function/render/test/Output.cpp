@@ -1,14 +1,14 @@
 #include "Support.hpp"
 #include <array>
 #include <cstring>
-#include <lux/engine/render/device/DeviceSession.hpp>
-#include <lux/engine/render/execution/FrameExecution.hpp>
 #include <lux/engine/render/execution/OffscreenTarget.hpp>
 #include <lux/engine/render/execution/RenderGraphInstance.hpp>
 #include <lux/engine/render/execution/ResizeResources.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/execution/FrameExecution.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraphBuilder.hpp>
+#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
 #include <lux/engine/render/graph/GraphCompiler.hpp>
-#include <lux/engine/render/graph/RenderGraphBuilder.hpp>
-#include <lux/engine/render/resource/ResourceRegistry.hpp>
 using namespace foundation_test;
 
 static void copyBuffer(DeviceSession& session, nri::Buffer& source, nri::Buffer& output, std::uint64_t bytes)

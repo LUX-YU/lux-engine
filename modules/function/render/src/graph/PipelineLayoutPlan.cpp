@@ -1,6 +1,6 @@
 #include <algorithm>
 #include <limits>
-#include <lux/engine/render/device/DescriptorTable.hpp>
+#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <map>

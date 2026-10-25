@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/render/capabilities/RenderCapability.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/commands/Frame.hpp>
@@ -8,8 +9,7 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
 #include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/features/EffectDefinition.hpp>
-#include <lux/engine/render/graph/Draw.hpp>
+#include <lux/engine/render/inputs/DrawInputs.hpp>
 #include <memory>
 #include <optional>
 #include <span>
@@ -32,12 +32,6 @@ namespace lux::render
     struct CreateViewRequest final
     {
         SceneId scene{};
-    };
-
-    struct ViewRequest final
-    {
-        SceneId scene{};
-        ViewId view{};
     };
 
     struct CreateTargetRequest final
@@ -79,6 +73,7 @@ namespace lux::render
         // the old writer; this also supports moving a view to another output without a detach gap.
         AttachmentId replaces;
         std::vector<TargetImageInput> target_images;
+        cxx::TypeToken parameter_type; // Public semantic input type, projected by the selected capability.
     };
 
     struct AttachmentInputs final
@@ -87,38 +82,14 @@ namespace lux::render
         std::vector<std::byte> parameters;
         RasterViewport viewport;
         std::vector<std::uint8_t> conditions;
-    };
-
-    struct GlobalStorageLocation final
-    {
-    };
-
-    using VStorageLocation = std::variant<GlobalStorageLocation, SceneId, ViewRequest, AttachmentId>;
-
-    struct StorageSelection final
-    {
-        VStorageLocation location;
-        StorageTypeId type;
-        std::string key;
-    };
-
-    struct PrepareStorageRequest final
-    {
-        StorageSelection location;
-        ConfigValue config;
-    };
-
-    struct StorageBindingInfo final
-    {
-        std::string resource_key;
-        StorageId storage;
+        cxx::TypeToken parameter_type;
     };
 
     struct AttachmentCreated final
     {
         RenderError error{};
         AttachmentId attachment;
-        std::vector<StorageBindingInfo> storages;
+        std::vector<CapabilitiesInstalled::Input> inputs; // Actual late-scope capability destinations.
         // Cold pass names/IDs for streaming geometry. IDs belong to this attachment's compiled graph.
         std::vector<std::pair<std::string, GraphPassId>> draw_lists;
     };
@@ -136,42 +107,6 @@ namespace lux::render
         static constexpr std::string_view name{"render.attachment.draw_list"};
         static constexpr bool frame_scoped = true;
         using Request = DrawListUpdate;
-        using Response = AckResponse;
-    };
-
-    struct FindStorage final
-    {
-        static constexpr bool failure_safe = true;
-        static constexpr std::string_view name{"render.storage.find"};
-        static constexpr bool frame_scoped = false;
-        using Request = StorageSelection;
-
-        struct Response final
-        {
-            RenderError error{};
-            StorageId storage{};
-        };
-    };
-
-    struct PrepareStorage final
-    {
-        static constexpr std::string_view name{"render.storage.prepare"};
-        static constexpr bool frame_scoped = false;
-        using Request = PrepareStorageRequest;
-
-        struct Response final
-        {
-            RenderError error{};
-            StorageId storage{};
-        };
-    };
-
-    struct RemoveStorage final
-    {
-        static constexpr bool failure_safe = true;
-        static constexpr std::string_view name{"render.storage.remove"};
-        static constexpr bool frame_scoped = true;
-        using Request = StorageId;
         using Response = AckResponse;
     };
 
@@ -213,53 +148,26 @@ namespace lux::render
     struct CreateEffectRequest final
     {
         TargetDesc description;
-        EffectDefinition definition;
+        CapabilitySelection implementation;
+        ConfigValue configuration;
+        ConfigValue inputs;
     };
 
-    struct FeatureInfo final
-    {
-        FeatureId id;
-        std::string name;
-        std::string config_type;
-        std::string description;
-    };
-
-    struct FeatureList final
-    {
-        RenderError error{};
-        std::vector<FeatureInfo> features;
-    };
-
-    struct StorageInfo final
-    {
-        StorageTypeId id;
-        std::string name;
-        std::uint32_t capabilities = 0;
-        std::string description;
-    };
-
-    struct StorageList final
-    {
-        RenderError error{};
-        std::vector<StorageInfo> storages;
-    };
-
-    struct ListStorages final
+    struct ListCapabilities final
     {
         static constexpr bool failure_safe = true;
-        static constexpr std::string_view name{"render.storages.list"};
+        static constexpr std::string_view name = "render.capabilities.list";
         static constexpr bool frame_scoped = false;
-        using Request = EmptyRequest;
-        using Response = StorageList;
+        using Request = CapabilityQuery;
+        using Response = CapabilityList;
     };
 
-    struct ListFeatures final
+    struct InstallCapabilities final
     {
-        static constexpr bool failure_safe = true;
-        static constexpr std::string_view name{"render.features.list"};
+        static constexpr std::string_view name = "render.capabilities.install";
         static constexpr bool frame_scoped = false;
-        using Request = EmptyRequest;
-        using Response = FeatureList;
+        using Request = CapabilityInstallation;
+        using Response = CapabilitiesInstalled;
     };
 
     struct CommandInfo final

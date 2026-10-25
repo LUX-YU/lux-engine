@@ -4,11 +4,12 @@
 #include <cmath>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/material/Compiler.hpp>
+#include <lux/engine/render/extensions/GraphCommands.hpp>
+#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
 #include <lux/engine/render/features/ClusteredLightingFeature.hpp>
 #include <lux/engine/render/features/DeferredLightingFeature.hpp>
 #include <lux/engine/render/features/GBufferFeature.hpp>
 #include <lux/engine/render/features/MeshVisibilityFeature.hpp>
-#include <lux/engine/render/storage/DirectLighting.hpp>
 
 struct ClusterCaptureConfig
 {
@@ -27,10 +28,11 @@ static auto sizes(const ClusterGrid& grid)
 
 struct ClusterCapture
 {
-    using Descriptor = ClusterCapture;
+    using Config = ClusterCaptureConfig;
+    static constexpr FeatureName name{"test.ClusterCapture"};
     using Storages = std::tuple<CaptureBuffer>;
     using Commands = std::tuple<>;
-    static const FeatureDescriptor descriptor;
+
     static const FeatureGraphOps& graph(bool) noexcept;
 
     static RenderResult<void> describe(const void* data, std::string_view key, FeaturePorts& ports) noexcept
@@ -85,10 +87,11 @@ struct ClusterCapture
 
 struct ScanProbe
 {
-    using Descriptor = ScanProbe;
+    using Config = void;
+    static constexpr FeatureName name{"test.Scan"};
     using Storages = std::tuple<>;
     using Commands = std::tuple<>;
-    static const FeatureDescriptor descriptor;
+
     static const FeatureGraphOps& graph(bool) noexcept;
 
     static RenderResult<void> describe(const void*, std::string_view, FeaturePorts& ports) noexcept
@@ -131,25 +134,15 @@ struct ScanProbe
     }
 };
 
-inline const FeatureDescriptor ClusterCapture::descriptor{
-    FeatureName{"test.ClusterCapture"},
-    lux::cxx::typeToken<ClusterCaptureConfig>(),
-    "One-frame cluster data capture",
-    ClusterCapture::describe
-};
-
 inline const FeatureGraphOps& ClusterCapture::graph(bool) noexcept
 {
-    static const FeatureGraphOps value{ClusterCapture::build};
+    static const FeatureGraphOps value{ClusterCapture::describe, ClusterCapture::build};
     return value;
 }
 
-inline const FeatureDescriptor
-    ScanProbe::descriptor{FeatureName{"test.Scan"}, {}, "Production scan overflow input", ScanProbe::describe};
-
 inline const FeatureGraphOps& ScanProbe::graph(bool) noexcept
 {
-    static const FeatureGraphOps value{ScanProbe::build};
+    static const FeatureGraphOps value{ScanProbe::describe, ScanProbe::build};
     return value;
 }
 
@@ -348,10 +341,10 @@ int main(int argc, char** argv)
         device.buffer_device_address = true;
     }
     auto server = take(RenderServer::create(config, *execution, device));
-    auto gbuffer = take(server->featureId<GBufferFeatureDescriptor>());
-    auto visibility = take(server->featureId<MeshVisibilityFeatureDescriptor>());
-    auto lighting = take(server->featureId<DeferredLightingFeatureDescriptor>());
-    auto cluster = take(server->featureId<ClusteredLightingFeatureDescriptor>());
+    auto gbuffer = take(server->featureId("lux.render.feature.GBufferFeature"));
+    auto visibility = take(server->featureId("lux.render.feature.MeshVisibilityFeature"));
+    auto lighting = take(server->featureId("lux.render.feature.DeferredLightingFeature"));
+    auto cluster = take(server->featureId("lux.render.feature.ClusteredLightingFeature"));
     auto capture = take(server->registerFeature<CaptureFeature>());
     auto cluster_capture = take(server->registerFeature<ClusterCapture>());
     auto compare = take(server->registerFeature<SceneComparison>());
@@ -363,8 +356,8 @@ int main(int argc, char** argv)
     CHECK(server->setFrameSource(client->id()));
     std::thread thread([&] { CHECK(server->run()); });
     const auto commands = call<ListCommands>(*client, bootstrap, {});
-    const auto meshes = prepare(*client, commands, kMeshStorageType, "meshes");
-    const auto materials = prepare(*client, commands, kMaterialStorageType, "materials");
+    const auto meshes = installInput(*client, commands, kIndexedMeshInput);
+    const auto materials = installInput(*client, commands, kRasterMaterialInput);
 
     struct Vertex
     {
@@ -412,10 +405,10 @@ int main(int argc, char** argv)
     {
         const bool perspective = scenario % 2 != 0;
         const auto scene = call<CreateScene>(*client, commands, {}).scene;
-        auto instances = prepare(*client, commands, kMeshInstanceStorageType, "instances", scene);
+        auto instances = installInput(*client, commands, kRasterInstancesInput, scene);
         const std::array descriptions{MeshInstanceDescription{mesh, material}};
         call<CreateMeshInstances>(*client, commands, {instances, descriptions});
-        auto light_storage = prepare(*client, commands, kDirectLightingStorageType, "direct_lights", scene);
+        auto light_storage = installInput(*client, commands, kDirectLightsInput, scene);
         std::vector<VDirectLight> lights;
         if (scenario)
         {
@@ -462,7 +455,7 @@ int main(int argc, char** argv)
         clustered.input_layout = block;
         CaptureConfig capture_diff{&differences};
         capture_diff.bytes = 64 * 64 * 4;
-        CreateEffectRequest request{target};
+        GraphEffectRequest request{target};
         request.definition.features.push_back({gbuffer, "surface", take(ConfigValue::make(surface))});
         request.definition.features.push_back({lighting, "reference", take(ConfigValue::make(reference))});
         request.definition.features.push_back({cluster, "cluster", take(ConfigValue::make(clustered))});
@@ -513,7 +506,7 @@ int main(int argc, char** argv)
                 connections.push_back({{visibility_index, source + from}, {0, destination + to}});
             }
         }
-        auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
+        auto effect = call<CreateGraphEffect>(*client, commands, std::move(request)).effect;
         std::array<AttachmentId, 2> attachments;
         for (unsigned i = 0; i < 2; ++i)
         {
@@ -562,13 +555,13 @@ int main(int argc, char** argv)
     offset_config.bytes = 130 * 4;
     CaptureConfig status_config{&status};
     status_config.bytes = 16;
-    CreateEffectRequest scan_request{target};
+    GraphEffectRequest scan_request{target};
     scan_request.definition.features.push_back({scan_probe, "scan", {}});
     scan_request.definition.features.push_back({capture, "offsets", take(ConfigValue::make(offset_config))});
     scan_request.definition.features.push_back({capture, "status", take(ConfigValue::make(status_config))});
     scan_request.definition.connections = {{{0, "offsets"}, {1, "color"}}, {{0, "status"}, {2, "color"}}};
     scan_request.definition.outputs = {{{1, "pixels"}, {}}, {{2, "pixels"}, {}}};
-    auto scan_effect = call<CreateEffect>(*client, commands, std::move(scan_request)).effect;
+    auto scan_effect = call<CreateGraphEffect>(*client, commands, std::move(scan_request)).effect;
     auto scan_scene = call<CreateScene>(*client, commands, {}).scene;
     auto scan_view = call<CreateView>(*client, commands, {scan_scene}).view;
     auto scan_target = call<CreateTarget>(*client, commands, {target}).target;

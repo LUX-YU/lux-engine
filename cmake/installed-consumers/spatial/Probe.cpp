@@ -1,4 +1,4 @@
-#include <lux/engine/render/runtime/FeatureRegistration.hpp>
+#include <lux/engine/render/extensions/FeatureRegistration.hpp>
 #include <probe/Probe.hpp>
 
 namespace probe

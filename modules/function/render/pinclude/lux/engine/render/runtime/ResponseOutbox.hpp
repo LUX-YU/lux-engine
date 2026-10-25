@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/runtime/detail/ResponseRoute.hpp>
+#include <lux/engine/render/extensions/detail/ResponseRoute.hpp>
 #include <utility>
 #include <vector>
 

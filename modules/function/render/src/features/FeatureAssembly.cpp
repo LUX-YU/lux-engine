@@ -1,4 +1,4 @@
-#include <lux/engine/render/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
 
 #include <algorithm>
 #include <numeric>
@@ -58,27 +58,24 @@ namespace lux::render
         for (std::size_t i = 0; i < inputs.size(); ++i)
         {
             const auto& input = inputs[i];
-            const bool invalid_definition = !input.descriptor || !input.graph || !input.descriptor->describe_ports;
+            const bool invalid_definition = !input.graph || !input.graph->describe_ports;
             if (invalid_definition)
             {
                 return cxx::unexpected(failure(kFeatureContract, i));
             }
-            const bool invalid_identity = !input.descriptor->type.isValid() || input.contribution_key.empty();
+            const bool invalid_identity = !input.type.isValid() || input.contribution_key.empty();
             const bool has_config = input.config && *input.config;
-            const bool requires_config = !input.descriptor->config.name().empty();
+            const bool requires_config = !input.config_type.name().empty();
             const bool invalid_config =
-                has_config != requires_config || (has_config && (input.descriptor->config != input.config->type() ||
+                has_config != requires_config || (has_config && (input.config_type != input.config->type() ||
                                                                  input.config->retainedBytes() > config_byte_limit));
             if (invalid_identity || invalid_config)
             {
                 return cxx::unexpected(failure(invalid_config ? kInvalidConfig : kFeatureContract, i));
             }
             FeaturePorts ports;
-            auto described = input.descriptor->describe_ports(
-                has_config ? input.config->data() : nullptr,
-                input.contribution_key,
-                ports
-            );
+            auto described =
+                input.graph->describe_ports(has_config ? input.config->data() : nullptr, input.contribution_key, ports);
             if (!described)
             {
                 return cxx::unexpected(described.error());
@@ -118,16 +115,16 @@ namespace lux::render
             order,
             [&](auto a, auto b)
             {
-                return std::tuple{inputs[a].descriptor->type.name(), inputs[a].contribution_key} <
-                       std::tuple{inputs[b].descriptor->type.name(), inputs[b].contribution_key};
+                return std::tuple{inputs[a].type.name(), inputs[a].contribution_key} <
+                       std::tuple{inputs[b].type.name(), inputs[b].contribution_key};
             }
         );
         for (std::size_t i = 1; i < order.size(); ++i)
         {
             const auto& a = inputs[order[i - 1]];
             const auto& b = inputs[order[i]];
-            const bool same_type = a.descriptor->type == b.descriptor->type;
-            const bool conflicting = same_type && (a.descriptor != b.descriptor || a.graph != b.graph ||
+            const bool same_type = a.type == b.type;
+            const bool conflicting = same_type && (a.config_type != b.config_type || a.graph != b.graph ||
                                                    a.contribution_key == b.contribution_key);
             if (conflicting)
             {
@@ -215,7 +212,7 @@ namespace lux::render
                     return cxx::unexpected(failure(kFeatureContract, i));
                 }
                 auto pair = builder.declareHistory(
-                    featureKey(inputs[i].descriptor->type, inputs[i].contribution_key, history.current),
+                    featureKey(inputs[i].type, inputs[i].contribution_key, history.current),
                     b.description,
                     history.initial,
                     history.canonical_use,
@@ -246,7 +243,7 @@ namespace lux::render
                     continue;
                 }
                 auto resource = builder.declareResource(
-                    {featureKey(inputs[i].descriptor->type, inputs[i].contribution_key, d.key),
+                    {featureKey(inputs[i].type, inputs[i].contribution_key, d.key),
                      d.description,
                      d.origin,
                      d.initial_ranges,

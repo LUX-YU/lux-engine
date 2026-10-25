@@ -106,7 +106,7 @@ namespace lux::render
             if (!valid_vertex || !valid_fragment || vertex.push_constants.size() != 1 ||
                 shader.interface.push_constants.size() != 1 ||
                 vertex.push_constants[0].block != shader.interface.push_constants[0].block ||
-                vertex.push_constants[0].size != sizeof(UiRasterParameters))
+                vertex.push_constants[0].size != sizeof(UiDrawParameters))
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
@@ -121,7 +121,7 @@ namespace lux::render
             }
             RasterWork work;
             work.interface.program = *program;
-            work.interface.parameters.values.resize(sizeof(UiRasterParameters));
+            work.interface.parameters.values.resize(sizeof(UiDrawParameters));
             ResourceParameter images{"source_images", {context.resource(uiImagePort(0))}};
             images.descriptor_count = static_cast<std::uint32_t>(config.images.size());
             for (std::uint32_t i = 0; i < config.images.size(); ++i)
@@ -164,7 +164,7 @@ namespace lux::render
                 {{context.resource("linear_color")}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, config.clear}
             );
             auto pass =
-                context.graph.addRasterPass(featureKey(UiRasterFeatureDescriptor::name, key, "draw"), std::move(work));
+                context.graph.addRasterPass(featureKey(detail::UiRasterFeature::name, key, "draw"), std::move(work));
             if (!pass)
             {
                 return cxx::unexpected(pass.error());
@@ -183,7 +183,7 @@ namespace lux::render
             output->interface.resources = {{"linear_color", {pass->written.front()}}};
             output->colors.push_back({{context.resource("color")}});
             auto encoded = context.graph.addRasterPass(
-                featureKey(UiRasterFeatureDescriptor::name, key, "output"),
+                featureKey(detail::UiRasterFeature::name, key, "output"),
                 std::move(*output)
             );
             if (!encoded)
@@ -214,16 +214,9 @@ namespace lux::render
         return bytes;
     }
 
-    const FeatureDescriptor UiRasterFeatureDescriptor::descriptor{
-        name,
-        cxx::typeToken<Config>(),
-        "Frame-scoped UI geometry with clipping, linear alpha blending and one display encoding.",
-        describeUi
-    };
-
     const FeatureGraphOps& detail::UiRasterFeature::graph(bool) noexcept
     {
-        static const FeatureGraphOps operations{buildUi};
+        static const FeatureGraphOps operations{describeUi, buildUi};
         return operations;
     }
 } // namespace lux::render

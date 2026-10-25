@@ -2,9 +2,9 @@
 #include <lux/engine/render/execution/ResizeResources.hpp>
 
 #include <algorithm>
-#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/PipelineLayoutPlan.hpp>
 #include <utility>
 

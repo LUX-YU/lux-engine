@@ -5,10 +5,11 @@
 #include <lux/engine/render/core/Execution.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/RasterViewport.hpp>
-#include <lux/engine/render/execution/ResourceInput.hpp>
 #include <lux/engine/render/execution/TargetOutput.hpp>
+#include <lux/engine/render/extensions/execution/ResourceInput.hpp>
+#include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
+#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <lux/engine/render/graph/RenderPlan.hpp>
-#include <lux/engine/render/upload/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {
@@ -89,7 +90,12 @@ namespace lux::render::detail
 
         [[nodiscard]] RenderResult<void> setInstanceParameters(std::span<const std::byte>) noexcept;
         [[nodiscard]] RenderResult<void> setConditions(std::span<const std::uint8_t>) noexcept;
-        [[nodiscard]] RenderResult<void> setInputs(std::span<const std::byte>, std::span<const std::uint8_t>) noexcept;
+        [[nodiscard]] RenderResult<void> setInputs(
+            std::span<const std::byte>,
+            std::span<const std::uint8_t>,
+            cxx::TypeToken = {},
+            FeatureGraphOps::Parameters = nullptr
+        ) noexcept;
 
         [[nodiscard]] std::span<const std::uint8_t> conditions() const noexcept
         {

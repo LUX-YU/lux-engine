@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
 #include <lux/engine/render/runtime/CommandRegistry.hpp>
 #include <tuple>
 

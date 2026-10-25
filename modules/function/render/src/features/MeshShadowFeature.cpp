@@ -1,13 +1,13 @@
 #include <lux/engine/render/features/MeshShadowFeature.hpp>
 
 #include <cmath>
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/storage/RasterMaterialTable.hpp>
+#include <lux/engine/render/extensions/storage/RasterMeshInstances.hpp>
+#include <lux/engine/render/extensions/storage/SampledTexture2D.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
-#include <lux/engine/render/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/RasterMesh.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMesh.hpp>
-#include <lux/engine/render/storage/RasterMaterialTable.hpp>
-#include <lux/engine/render/storage/RasterMeshInstances.hpp>
-#include <lux/engine/render/storage/SampledTexture2D.hpp>
 
 namespace lux::render
 {
@@ -72,7 +72,7 @@ namespace lux::render
             auto depth = context.resource("depth");
             // Clear is explicit even for zero groups or zero visible instances; no stale prior-FIF shadow data.
             auto clear = context.graph.addTransferPass(
-                featureKey(MeshShadowFeatureDescriptor::name, key, "clear"),
+                featureKey(detail::MeshShadowFeature::name, key, "clear"),
                 TransferWork{{ClearImage{{depth}, {}, 1}}}
             );
             if (!clear)
@@ -118,7 +118,7 @@ namespace lux::render
                             RasterAttachment{{depth, GraphImageRange{2, 0, 1, view, 1}}, EAttachmentLoad::LOAD};
                         auto pass = context.graph.addRasterPass(
                             featureKey(
-                                MeshShadowFeatureDescriptor::name,
+                                detail::MeshShadowFeature::name,
                                 key,
                                 prefix + "slice" + std::to_string(view) + ".winding" + std::to_string(winding)
                             ),
@@ -153,16 +153,10 @@ namespace lux::render
         return bytes;
     }
 
-    const FeatureDescriptor MeshShadowFeatureDescriptor::descriptor{
-        name,
-        cxx::typeToken<Config>(),
-        "Shadow-purpose raster over explicit views and GPU-visible groups; owns only its depth output.",
-        describeShadowRaster
-    };
-
     const FeatureGraphOps& detail::MeshShadowFeature::graph(bool paged_instances) noexcept
     {
-        static const FeatureGraphOps contiguous{buildShadowRaster<false>}, paged{buildShadowRaster<true>};
+        static const FeatureGraphOps contiguous{describeShadowRaster, buildShadowRaster<false>},
+            paged{describeShadowRaster, buildShadowRaster<true>};
         return paged_instances ? paged : contiguous;
     }
 } // namespace lux::render

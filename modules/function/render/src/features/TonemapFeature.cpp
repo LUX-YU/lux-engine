@@ -1,7 +1,7 @@
 #include "TonemapLinear.hpp"
 #include "TonemapSrgb.hpp"
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
-#include <lux/engine/render/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/FullscreenRaster.hpp>
 #include <lux/engine/render/features/ParameterLayout.hpp>
 #include <lux/engine/render/features/TonemapFeature.hpp>
@@ -54,10 +54,8 @@ namespace lux::render
             work->interface.parameters.fields = {{"exposure", {}, "exposure"}};
             work->interface.resources = {{"hdr_color", {context.resource("hdr_color")}}};
             work->colors.push_back({{context.resource("color")}});
-            auto pass = context.graph.addRasterPass(
-                featureKey(TonemapFeatureDescriptor::name, key, "tonemap"),
-                std::move(*work)
-            );
+            auto pass =
+                context.graph.addRasterPass(featureKey(detail::TonemapFeature::name, key, "tonemap"), std::move(*work));
             if (!pass)
             {
                 return cxx::unexpected(pass.error());
@@ -72,16 +70,9 @@ namespace lux::render
         return sizeof(value) + detail::parameterLayoutBytes(value.input_layout);
     }
 
-    const FeatureDescriptor TonemapFeatureDescriptor::descriptor{
-        name,
-        cxx::typeToken<Config>(),
-        "ACES-fit SDR output with explicit exposure and exactly one sRGB encoding.",
-        describeTonemap
-    };
-
     const FeatureGraphOps& detail::TonemapFeature::graph(bool) noexcept
     {
-        static const FeatureGraphOps graph{buildTonemap};
+        static const FeatureGraphOps graph{describeTonemap, buildTonemap};
         return graph;
     }
 } // namespace lux::render

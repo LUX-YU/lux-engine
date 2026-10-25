@@ -1,4 +1,4 @@
-#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshCommandHandler.hpp>
 #include <lux/engine/render/storage/IndexedTriangleMeshStorage.hpp>
 
@@ -11,7 +11,7 @@ namespace lux::render::detail
 
     exec::task<RenderResult<MeshId>> IndexedTriangleMeshCommandHandler::uploadMesh(CreateMesh::Request&& input) noexcept
     {
-        auto storage = resources_.borrow<IndexedTriangleMeshStorage>(input.storage);
+        auto storage = resources_.borrowInput<IndexedTriangleMeshStorage>(input.destination);
         if (!storage)
         {
             return rejected<RenderResult<MeshId>>(storage.error());
@@ -24,7 +24,8 @@ namespace lux::render::detail
         ReleaseMesh::Response& response
     ) noexcept
     {
-        auto storage = resources_.borrow<IndexedTriangleMeshStorage>(input.storage);
+        auto storage =
+            resources_.borrow<IndexedTriangleMeshStorage>(extension_detail::ResourceIdentity::storage(input));
         if (!storage)
         {
             response.error = storage.error();

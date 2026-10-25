@@ -1,9 +1,9 @@
 #pragma once
 
 #include <exec/task.hpp>
-#include <lux/engine/render/commands/CommandMethod.hpp>
-#include <lux/engine/render/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/storage/DirectLighting.hpp>
+#include <lux/engine/render/extensions/CommandMethod.hpp>
+#include <lux/engine/render/extensions/storage/DirectLighting.hpp>
+#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
 
 namespace lux::render::detail
 {

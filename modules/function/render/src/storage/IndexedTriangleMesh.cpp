@@ -1,5 +1,5 @@
 #include <lux/cxx/core/CheckedArithmetic.hpp>
-#include <lux/engine/render/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
 
 namespace lux::render
 {

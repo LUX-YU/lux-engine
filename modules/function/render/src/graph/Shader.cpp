@@ -1,12 +1,12 @@
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/graph/RenderGraph.hpp>
+#include <lux/engine/render/extensions/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 
 #include <algorithm>
 #include <bit>
 #include <cmath>
 #include <exception>
-#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <memory>
 #include <spirv-tools/libspirv.h>
 #include <spirv_cross/spirv_cross_c.h>

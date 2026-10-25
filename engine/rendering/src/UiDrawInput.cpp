@@ -1,6 +1,6 @@
 #include <algorithm>
 #include <cmath>
-#include <lux/engine/render/features/UiRasterFeature.hpp>
+#include <lux/engine/render/capabilities/UiScene.hpp>
 #include <lux/engine/rendering/RenderRequester.hpp>
 #include <lux/engine/rendering/UiDrawInput.hpp>
 
@@ -29,7 +29,7 @@ namespace lux::rendering
         {
             return cxx::unexpected(render::RenderError{render::kCommandContract});
         }
-        auto parameters = frame.allocate<render::UiRasterParameters>(1);
+        auto parameters = frame.allocate<render::UiDrawParameters>(1);
         // RenderExecutor explicitly uses NRI's originBottomLeft viewport option, preserving
         // the renderer's positive-height raster convention. Match imgui_impl_vulkan exactly once.
         parameters[0] = {

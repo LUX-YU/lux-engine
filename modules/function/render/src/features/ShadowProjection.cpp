@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <lux/engine/render/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
 
 namespace lux::render::detail
 {

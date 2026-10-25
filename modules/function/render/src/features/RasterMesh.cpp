@@ -1,10 +1,10 @@
-#include <lux/engine/render/features/MaterialMeshRaster.hpp>
-#include <lux/engine/render/features/MeshDepthRaster.hpp>
+#include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/RasterMesh.hpp>
+#include <lux/engine/render/features/RasterMeshParameters.hpp>
 
 #include <algorithm>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
-#include <lux/engine/render/features/FeatureAssembly.hpp>
+#include <lux/engine/render/extensions/features/FeatureAssembly.hpp>
 #include <lux/engine/render/features/MeshVisibilityInputs.hpp>
 #include <lux/engine/render/features/RasterMeshDraws.hpp>
 
@@ -538,7 +538,7 @@ namespace lux::render::detail
         const auto purpose = Depth ? rdesc::EMaterialPurpose::SHADOW : rdesc::EMaterialPurpose::FORWARD;
         auto depth = context.resource("depth");
         auto color = context.resource("color");
-        const auto name = Depth ? MeshDepthRasterDescriptor::name : MaterialMeshRasterDescriptor::name;
+        const auto name = Depth ? detail::MeshDepthRaster::name : detail::MaterialMeshRaster::name;
         for (unsigned winding = 0; winding < 2; ++winding)
         {
             auto draw = buildMeshGroup(config.mesh, {}, purpose, Paged, context, true, winding != 0);

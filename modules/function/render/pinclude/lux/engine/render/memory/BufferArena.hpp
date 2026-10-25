@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <vk_mem_alloc.h>
 
 namespace lux::render::detail

@@ -1,12 +1,12 @@
 #pragma once
 
-#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
 
 #include <exec/task.hpp>
-#include <lux/engine/render/commands/CommandMethod.hpp>
+#include <lux/engine/render/extensions/CommandMethod.hpp>
 
-#include <lux/engine/render/resource/StorageFactory.hpp>
-#include <lux/engine/render/storage/SampledTexture2D.hpp>
+#include <lux/engine/render/extensions/storage/SampledTexture2D.hpp>
+#include <lux/engine/render/extensions/storage/StorageFactory.hpp>
 
 namespace lux::render::detail
 {

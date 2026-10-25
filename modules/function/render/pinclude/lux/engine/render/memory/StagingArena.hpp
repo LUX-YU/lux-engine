@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
 #include <vector>
 
 namespace lux::render::detail

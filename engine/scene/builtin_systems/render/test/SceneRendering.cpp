@@ -43,6 +43,8 @@ template <class T> auto take(T result, std::source_location source = std::source
     return std::move(*result);
 }
 
+lux::render::RenderResult<void> registerNoGeometryCapabilities(void*, lux::render::RenderServer&) noexcept;
+
 namespace
 {
     class CookedAssets final : public asset::IAssetProvider
@@ -186,6 +188,7 @@ int main()
     ));
     RenderExecutionConfig config;
     config.render.channel_name = "engine.scene.integration";
+    config.register_features = registerNoGeometryCapabilities;
     config.render.validation = true;
     config.render.frames_in_flight = 3;
     config.render.max_frames_ahead = 2;
@@ -289,6 +292,7 @@ int main()
     const auto first_added = scene->addCameraTarget(camera, view_request);
     CHECK(first_added);
     const auto first_view = *first_added;
+    bool expects_camera_parameters = true;
     std::vector<std::pair<AttachmentId, CameraInput>> published_views;
     std::uint64_t completed_frames = 0;
     std::stop_source scene_stop;
@@ -339,6 +343,11 @@ int main()
                     continue;
                 }
                 const auto& input = command.request.get<AttachmentInputs>();
+                if (!expects_camera_parameters)
+                {
+                    CHECK(input.parameters.empty() && !input.parameter_type.isValid());
+                    continue;
+                }
                 CHECK(input.parameters.size() >= sizeof(CameraInput));
                 CameraInput value;
                 std::memcpy(&value, input.parameters.data(), sizeof(value));
@@ -724,6 +733,40 @@ int main()
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
     scene.reset();
+    // Two independently registered implementations with no geometry/light/frame input producer.
+    // The same Scene system and ordinary capability API must work without any Mesh/Light components.
+    expects_camera_parameters = false;
+    simulation::ecs::Registry no_geometry;
+    const auto only_camera = no_geometry.create();
+    no_geometry.emplace<scene::Camera>(only_camera);
+    no_geometry.emplace<simulation::ecs::WorldTransform3D>(only_camera, Eigen::Affine3d::Identity());
+    for (const char* implementation : {"test.scene.no_geometry.a", "test.scene.no_geometry.b"})
+    {
+        scene::RenderSystemConfiguration selected;
+        selected.capability = "test.scene.no_geometry";
+        selected.implementation = implementation;
+        scene_stop = std::stop_source{};
+        scene_retired = false;
+        scene = std::make_unique<scene::RenderSystem>(no_geometry, dependencies, std::move(selected));
+        auto output = scene::CameraTarget{};
+        output.description = view_request.description;
+        output.target = call<CreateTarget>(*rendering, {output.description}).target;
+        const auto observation = take(scene->addCameraTarget(only_camera, output));
+        const auto before = completed_frames;
+        while (scene->attachment(only_camera, observation).isNull() || completed_frames < before + 3)
+        {
+            drive(true);
+            CHECK(std::chrono::steady_clock::now() < deadline);
+        }
+        scene_stop.request_stop();
+        while (!scene_retired)
+        {
+            drive(false);
+            CHECK(std::chrono::steady_clock::now() < deadline);
+        }
+        scene.reset();
+    }
+
     while (!project_tasks.settled() || !frames.settled())
     {
         drive(false);

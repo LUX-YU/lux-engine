@@ -56,10 +56,13 @@ lux_engine_install_components(
 )
 
 if(BUILD_TESTING)
-    add_executable(engine_scene_render_test test/SceneRendering.cpp)
+    add_executable(engine_scene_render_test test/SceneRendering.cpp test/NoGeometryFeature.cpp)
     target_link_libraries(
         engine_scene_render_test
-        PRIVATE scene_render lux::engine::toolchain::toolchain_material_compiler
+        PRIVATE
+            scene_render
+            lux::engine::toolchain::toolchain_material_compiler
+            lux::engine::function::render_extensions
     )
     add_test(NAME engine.scene_render COMMAND engine_scene_render_test)
     set_tests_properties(engine.scene_render PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)

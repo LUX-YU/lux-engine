@@ -58,7 +58,7 @@ namespace lux::scene::detail
 
     bool bindingReady(
         const MeshBinding& binding,
-        const rendering::RenderAssets& assets,
+        const engine::render::RenderAssets& assets,
         const SceneMaterials& materials,
         std::uint64_t source,
         RenderError& failure
@@ -77,7 +77,7 @@ namespace lux::scene::detail
     static std::vector<RasterGeometryInput> prepareGeometryInputs(
         const SceneMeshes& meshes,
         const SceneMaterials& materials,
-        const rendering::RenderAssets& assets,
+        const engine::render::RenderAssets& assets,
         std::uint64_t source,
         bool include_replacements
     ) noexcept
@@ -187,7 +187,7 @@ namespace lux::scene::detail
         const SceneMaterials& materials,
         const SceneLights& lights,
         const simulation::ecs::Registry& registry,
-        const rendering::RenderAssets& assets,
+        const engine::render::RenderAssets& assets,
         std::uint64_t source,
         std::uint32_t previous_capacity,
         bool include_replacements

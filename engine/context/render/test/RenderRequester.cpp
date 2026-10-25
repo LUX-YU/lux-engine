@@ -1,6 +1,6 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/rendering/RenderDiagnostics.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 
 #include <chrono>
 #include <cstdio>
@@ -10,7 +10,7 @@
 
 using namespace lux;
 using namespace lux::render;
-using namespace lux::rendering;
+using namespace lux::engine::render;
 
 namespace
 {
@@ -218,7 +218,7 @@ int main(int argc, char** argv)
     std::fputs("Bounded independent Link\n", stderr);
     // A separate Link can still declare a real pending-request bound. Closing it does not stop Server.
     auto bounded = take(RenderRequester::create(
-        take(platform::ipc::IpcCore::instance().createRequester("engine.render.transport")),
+        take(lux::platform::ipc::IpcCore::instance().createRequester("engine.render.transport")),
         {2, {}}
     ));
     check(bool(bounded->setCommands(call<ListCommands>(*rendering, {}))));

@@ -12,8 +12,8 @@
 #include <lux/engine/editor/SceneViewportPane.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/render/capabilities/LitScene.hpp>
-#include <lux/engine/rendering/RenderDiagnostics.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
@@ -328,8 +328,8 @@ int main(int argc, char** argv)
                     static_cast<unsigned long long>(first.error.type),
                     static_cast<unsigned long long>(second.error.type)
                 );
-                rendering::reportRenderFailure(first.error, "First viewport");
-                rendering::reportRenderFailure(second.error, "Second viewport");
+                engine::render::reportRenderFailure(first.error, "First viewport");
+                engine::render::reportRenderFailure(second.error, "Second viewport");
                 assert(false);
             }
             return first.ready && second.ready;
@@ -603,7 +603,7 @@ int main(int argc, char** argv)
     );
     scene::RenderSystemConfiguration migrated_config;
     assert(scene::renderConfigurationCodec().decode(saved_system.configurationPayload(), &migrated_config));
-    const auto migrated_lighting = render::decodeLitSceneConfiguration(migrated_config.configuration.bytes);
+    const auto migrated_lighting = lux::render::decodeLitSceneConfiguration(migrated_config.configuration.bytes);
     assert(
         migrated_lighting && migrated_lighting->shadow_resolution == 64 &&
         migrated_lighting->shadow_filter_radius == 2 && migrated_lighting->shadow_distance == 37.F &&
@@ -620,20 +620,20 @@ int main(int argc, char** argv)
         // No test backdoor fabricates a successful release or destroys a borrowed Registry.
         auto& rendering = host.rendering();
         auto& client = rendering.mainClient();
-        const auto stop = client.bind<render::Stop>();
+        const auto stop = client.bind<lux::render::Stop>();
         assert(stop);
-        render::EmptyRequest input;
+        lux::render::EmptyRequest input;
         bool acknowledged = false;
         assert(rendering.execution().spawn(stdexec::then(
             client.request(*stop, input),
-            [&](render::AckResponse response) noexcept
+            [&](lux::render::AckResponse response) noexcept
             {
                 assert(response.error.type == 0);
                 acknowledged = true;
             }
         )));
         const auto closed = host.run();
-        assert(!closed && closed.error().type == render::kCommandCancelled && acknowledged);
+        assert(!closed && closed.error().type == lux::render::kCommandCancelled && acknowledged);
         assert(client.pendingRequests() == 0);
     }
     else

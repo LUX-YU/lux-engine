@@ -7,14 +7,14 @@
 #include <lux/engine/editor/detail/RenderCommandRequest.hpp>
 #include <lux/engine/render/capabilities/RasterAssets.hpp>
 #include <lux/engine/render/capabilities/UiScene.hpp>
-#include <lux/engine/rendering/RenderDiagnostics.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
-#include <lux/engine/rendering/UiDrawInput.hpp>
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
+#include <lux/engine/editor/UiDrawInput.hpp>
 
 namespace lux::editor
 {
-    using namespace render;
-    using namespace rendering;
+    using namespace lux::render;
+    using namespace engine::render;
 
     using detail::requestRenderCommand;
 

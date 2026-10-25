@@ -1,13 +1,13 @@
 #include <algorithm>
 #include <deque>
 #include <limits>
-#include <lux/engine/rendering/RenderRequester.hpp>
+#include <lux/engine/context/render/RenderRequester.hpp>
 #include <map>
 
-namespace lux::rendering
+namespace lux::engine::render
 {
-    namespace ipc = platform::ipc;
-    using namespace render;
+    namespace ipc = lux::platform::ipc;
+    using namespace lux::render;
 
     struct RenderRequester::Impl final
     {
@@ -683,4 +683,4 @@ namespace lux::rendering
             }
         }
     }
-} // namespace lux::rendering
+} // namespace lux::engine::render

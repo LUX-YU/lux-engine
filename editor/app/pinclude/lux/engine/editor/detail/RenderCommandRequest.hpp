@@ -1,13 +1,13 @@
 #pragma once
 
 #include <exec/variant_sender.hpp>
-#include <lux/engine/rendering/RenderRequester.hpp>
+#include <lux/engine/context/render/RenderRequester.hpp>
 
 namespace lux::editor::detail
 {
     // Cold lifecycle request: the Sender owns the request through its response. Frame updates use bound IDs.
-    template <render::RenderCommand C>
-    auto requestRenderCommand(rendering::RenderRequester& client, typename C::Request input) noexcept
+    template <lux::render::RenderCommand C>
+    auto requestRenderCommand(engine::render::RenderRequester& client, typename C::Request input) noexcept
     {
         return stdexec::let_value(
             stdexec::just(std::move(input), client.bind<C>()),

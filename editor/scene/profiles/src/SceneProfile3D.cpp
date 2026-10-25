@@ -249,9 +249,9 @@ namespace lux::editor
                 return cxx::unexpected(std::move(result.error()));
             }
             scene::RenderSystemConfiguration rendering;
-            rendering.capability = render::kLitSceneCapability;
+            rendering.capability = lux::render::kLitSceneCapability;
             rendering.implementation = "lux.render.scene.clustered";
-            rendering.configuration = *render::encodeLitSceneConfiguration(render::LitSceneConfiguration{});
+            rendering.configuration = *lux::render::encodeLitSceneConfiguration(lux::render::LitSceneConfiguration{});
             if (auto result =
                     addSystem(builder, info.registrations, scene::RenderSystem::Description, {3}, "render", &rendering);
                 !result)

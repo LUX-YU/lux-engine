@@ -11,9 +11,9 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/inputs/DirectLightInputs.hpp>
-#include <lux/engine/rendering/RenderAssets.hpp>
-#include <lux/engine/rendering/RenderDiagnostics.hpp>
-#include <lux/engine/rendering/RenderRequester.hpp>
+#include <lux/engine/context/render/RenderAssets.hpp>
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderRequester.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -29,8 +29,8 @@
 
 namespace lux::scene
 {
-    using namespace render;
-    using namespace rendering;
+    using namespace lux::render;
+    using namespace engine::render;
     using namespace simulation::ecs;
     using detail::RenderViewBinding;
     using detail::RenderViewComponent;

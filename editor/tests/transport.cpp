@@ -7,9 +7,9 @@
 #include <lux/engine/render/extensions/FeatureRegistration.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/inputs/SampledTextureInputs.hpp>
-#include <lux/engine/rendering/RenderDiagnostics.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
-#include <lux/engine/rendering/WindowSurface.hpp>
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
+#include <lux/engine/context/render/WindowSurface.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -17,7 +17,7 @@
 
 using namespace lux;
 using namespace lux::render;
-using namespace lux::rendering;
+using namespace lux::engine::render;
 using namespace lux::editor;
 using namespace std::chrono_literals;
 

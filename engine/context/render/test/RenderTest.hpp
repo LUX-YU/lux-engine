@@ -2,15 +2,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/rendering/RenderDiagnostics.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 #include <source_location>
 
 namespace integration_test
 {
     using namespace lux;
     using namespace lux::render;
-    using namespace lux::rendering;
+    using namespace lux::engine::render;
 
     inline void check(bool result, std::source_location source = std::source_location::current()) noexcept
     {

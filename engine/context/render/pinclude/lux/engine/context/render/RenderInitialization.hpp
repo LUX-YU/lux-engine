@@ -1,12 +1,12 @@
 #pragma once
 
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 
-namespace lux::rendering::detail
+namespace lux::engine::render::detail
 {
     // Only synchronous application startup uses this barrier. Ordinary requests stay lazy senders.
-    template <render::RenderCommand C>
+    template <lux::render::RenderCommand C>
     typename C::Response requestAtStartup(RenderExecution& rendering, typename C::Request input) noexcept
     {
         typename C::Response response{};
@@ -36,7 +36,7 @@ namespace lux::rendering::detail
         );
         if (!task)
         {
-            response.error = render::RenderError{render::kRuntimeCapacity};
+            response.error = lux::render::RenderError{lux::render::kRuntimeCapacity};
             return response;
         }
         const auto waited = rendering.execution().waitUntil(
@@ -53,4 +53,4 @@ namespace lux::rendering::detail
         }
         return response;
     }
-} // namespace lux::rendering::detail
+} // namespace lux::engine::render::detail

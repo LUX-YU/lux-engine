@@ -9,7 +9,7 @@
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <map>

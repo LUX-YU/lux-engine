@@ -6,7 +6,7 @@
 #include <lux/engine/editor/RenderConfigurationEditor.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/render/capabilities/LitScene.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -21,14 +21,14 @@ namespace lux::editor
             RenderConfigurationEditor(EditorContext& context, std::span<const std::byte> bytes) noexcept
             {
                 valid_ = scene::renderConfigurationCodec().decode(bytes, &configuration_).has_value();
-                auto rendering = context.extensions().find<rendering::RenderExecution>();
+                auto rendering = context.extensions().find<engine::render::RenderExecution>();
                 if (!rendering)
                 {
                     status_ = "Render is unavailable in this session; the stored configuration is preserved";
                     return;
                 }
                 auto& client = rendering->mainClient();
-                auto command = client.bind<render::ListCapabilities>();
+                auto command = client.bind<lux::render::ListCapabilities>();
                 if (!command)
                 {
                     status_ = "Capability discovery is unavailable";
@@ -75,13 +75,13 @@ namespace lux::editor
             }
 
         private:
-            static exec::task<render::RenderResult<std::vector<render::CapabilitySupport>>> query(
-                rendering::RenderRequester& client,
-                rendering::BoundCommand<render::ListCapabilities> command
+            static exec::task<lux::render::RenderResult<std::vector<lux::render::CapabilitySupport>>> query(
+                engine::render::RenderRequester& client,
+                engine::render::BoundCommand<lux::render::ListCapabilities> command
             ) noexcept
             {
                 // The coroutine owns its request; no pane/Context borrow crosses the response wait.
-                render::CapabilityQuery input;
+                lux::render::CapabilityQuery input;
                 auto result = co_await client.request(command, input);
                 if (result.error.type != 0)
                 {
@@ -91,8 +91,8 @@ namespace lux::editor
             }
 
             static const char* unavailable(
-                const render::CapabilitySupport& support,
-                const render::RenderCapability& capability
+                const lux::render::CapabilitySupport& support,
+                const lux::render::RenderCapability& capability
             ) noexcept
             {
                 if (support.unavailable.type != 0)
@@ -103,7 +103,7 @@ namespace lux::editor
                 {
                     return "This implementation has no portable configuration codec";
                 }
-                if (capability.kind != render::ERenderCapabilityKind::EFFECT)
+                if (capability.kind != lux::render::ERenderCapabilityKind::EFFECT)
                 {
                     return "Resource capability; it does not produce a Scene output";
                 }
@@ -120,12 +120,12 @@ namespace lux::editor
             void drawConfiguration() noexcept
             {
                 const auto& encoded = configuration_.configuration;
-                if (encoded.schema != render::kLitSceneConfigurationSchema || encoded.version != 1)
+                if (encoded.schema != lux::render::kLitSceneConfigurationSchema || encoded.version != 1)
                 {
                     ImGui::TextWrapped("No field editor installed; existing configuration bytes are preserved.");
                     return;
                 }
-                auto value = render::decodeLitSceneConfiguration(encoded.bytes);
+                auto value = lux::render::decodeLitSceneConfiguration(encoded.bytes);
                 if (!value)
                 {
                     ImGui::TextWrapped("Stored configuration is invalid; choose a supported default to replace it.");
@@ -139,7 +139,7 @@ namespace lux::editor
                     ImGui::InputScalar("Cluster index capacity", ImGuiDataType_U32, &value->cluster_index_capacity);
                 if (edited)
                 {
-                    auto replacement = render::encodeLitSceneConfiguration(*value);
+                    auto replacement = lux::render::encodeLitSceneConfiguration(*value);
                     if (replacement)
                     {
                         configuration_.configuration = std::move(*replacement);
@@ -236,7 +236,7 @@ namespace lux::editor
             }
 
             scene::RenderSystemConfiguration configuration_;
-            std::vector<render::CapabilitySupport> supports_;
+            std::vector<lux::render::CapabilitySupport> supports_;
             std::string status_ = "Reading Server capabilities...";
             bool valid_ = false;
         };

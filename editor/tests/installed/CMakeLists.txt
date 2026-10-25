@@ -27,7 +27,7 @@ find_package(
 
 find_package(lux-engine-context REQUIRED COMPONENTS engine_context)
 
-find_package(lux-engine-rendering REQUIRED COMPONENTS engine_rendering)
+find_package(lux-engine-context-render REQUIRED COMPONENTS engine_render_context)
 
 find_package(lux-engine-core REQUIRED COMPONENTS object error)
 find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)
@@ -103,7 +103,7 @@ target_link_libraries(framework_manifest PRIVATE lux::engine::editor::lux_editor
 
 add_executable(framework_pacing ../pacing.cpp)
 
-target_link_libraries(framework_pacing PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_rendering)
+target_link_libraries(framework_pacing PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_render_context)
 
 find_package(nlohmann_json CONFIG REQUIRED)
 
@@ -123,7 +123,7 @@ target_link_libraries(framework_scene_file PRIVATE lux::engine::scene::scene_ass
 
 add_executable(framework_host host.cpp)
 
-target_link_libraries(framework_host PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_rendering)
+target_link_libraries(framework_host PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_render_context)
 
 add_executable(framework_shutdown ../shutdown.cpp)
 
@@ -306,7 +306,7 @@ foreach(header IN LISTS foundation_headers)
         header_${name}
         PRIVATE
             lux::engine::editor::lux_editor_ui
-            lux::engine::engine_rendering
+            lux::engine::engine_render_context
             lux::engine::process::world_loading
             lux::engine::scene::scene_asset
     )

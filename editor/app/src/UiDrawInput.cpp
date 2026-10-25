@@ -1,13 +1,13 @@
 #include <algorithm>
 #include <cmath>
 #include <lux/engine/render/capabilities/UiScene.hpp>
-#include <lux/engine/rendering/RenderRequester.hpp>
-#include <lux/engine/rendering/UiDrawInput.hpp>
+#include <lux/engine/context/render/RenderRequester.hpp>
+#include <lux/engine/editor/UiDrawInput.hpp>
 
-namespace lux::rendering
+namespace lux::editor
 {
-    render::RenderResult<render::DrawListData> makeUiDrawInput(
-        FrameInput& frame,
+    lux::render::RenderResult<lux::render::DrawListData> makeUiDrawInput(
+        engine::render::FrameInput& frame,
         const rdesc::UiDrawData& input,
         std::span<const UiImageSelection> images
     ) noexcept
@@ -21,15 +21,15 @@ namespace lux::rendering
         const bool invalid_index = input.index_stride != 2 && input.index_stride != 4;
         if (invalid_extent || invalid_position || invalid_index)
         {
-            return cxx::unexpected(render::RenderError{render::kCommandContract});
+            return cxx::unexpected(lux::render::RenderError{lux::render::kCommandContract});
         }
         const auto width = input.display_size[0] * input.framebuffer_scale[0];
         const auto height = input.display_size[1] * input.framebuffer_scale[1];
         if (!std::isfinite(width) || !std::isfinite(height) || width > UINT16_MAX || height > UINT16_MAX)
         {
-            return cxx::unexpected(render::RenderError{render::kCommandContract});
+            return cxx::unexpected(lux::render::RenderError{lux::render::kCommandContract});
         }
-        auto parameters = frame.allocate<render::UiDrawParameters>(1);
+        auto parameters = frame.allocate<lux::render::UiDrawParameters>(1);
         // RenderExecutor explicitly uses NRI's originBottomLeft viewport option, preserving
         // the renderer's positive-height raster convention. Match imgui_impl_vulkan exactly once.
         parameters[0] = {
@@ -37,18 +37,18 @@ namespace lux::rendering
             {-1 - 2 * input.display_position[0] / input.display_size[0],
              -1 - 2 * input.display_position[1] / input.display_size[1]}
         };
-        auto ranges = frame.allocate<render::IndexedDrawRange>(input.commands.size());
+        auto ranges = frame.allocate<lux::render::IndexedDrawRange>(input.commands.size());
         std::size_t count = 0;
         for (const auto& command : input.commands)
         {
             if (!std::ranges::all_of(command.clip, [](float value) noexcept { return std::isfinite(value); }))
             {
-                return cxx::unexpected(render::RenderError{render::kCommandContract});
+                return cxx::unexpected(lux::render::RenderError{lux::render::kCommandContract});
             }
             const auto image = std::ranges::lower_bound(images, command.image, {}, &UiImageSelection::token);
             if (image == images.end() || image->token != command.image)
             {
-                return cxx::unexpected(render::RenderError{render::kRuntimeIdentity});
+                return cxx::unexpected(lux::render::RenderError{lux::render::kRuntimeIdentity});
             }
             const auto left =
                 std::clamp((command.clip[0] - input.display_position[0]) * input.framebuffer_scale[0], 0.0f, width);
@@ -73,11 +73,11 @@ namespace lux::rendering
                 image->index
             };
         }
-        return render::DrawListData{
+        return lux::render::DrawListData{
             std::as_bytes(input.vertices),
             input.indices,
             std::as_bytes(parameters),
             ranges.first(count)
         };
     }
-} // namespace lux::rendering
+} // namespace lux::editor

@@ -25,10 +25,10 @@
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/process/ObjectScheduler.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
-#include <lux/engine/rendering/RenderAssets.hpp>
-#include <lux/engine/rendering/RenderDiagnostics.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
-#include <lux/engine/rendering/WindowSurface.hpp>
+#include <lux/engine/context/render/RenderAssets.hpp>
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
+#include <lux/engine/context/render/WindowSurface.hpp>
 #include <lux/engine/scene/SceneError.hpp>
 #include <lux/engine/ui/Command.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -77,9 +77,9 @@ namespace lux::editor
             EditorAssembly assembly,
             std::unique_ptr<EditorWindow> window,
             std::unique_ptr<engine::EngineContext> engine,
-            std::unique_ptr<rendering::RenderExecution> rendering,
+            std::unique_ptr<engine::render::RenderExecution> rendering,
             std::unique_ptr<process::asset_loading::VfsAssetReadEndpoint> source,
-            std::unique_ptr<rendering::RenderAssets> assets,
+            std::unique_ptr<engine::render::RenderAssets> assets,
             std::unique_ptr<EditorUiScene> ui_scene
         ) noexcept
             : window_(std::move(window)), engine_(std::move(engine)), rendering_(std::move(rendering)),
@@ -115,12 +115,12 @@ namespace lux::editor
             auto& execution = (*engine)->execution();
             object::ObjectRuntime::instance().setWake(&window::LuxWindow::wakeEvents);
             execution.setWake(&window::LuxWindow::wakeEvents);
-            render::SurfaceDescription surface;
-            if (!rendering::makeWindowSurface((*window)->nativeWindow(), config.enable_vsync, surface))
+            lux::render::SurfaceDescription surface;
+            if (!engine::render::makeWindowSurface((*window)->nativeWindow(), config.enable_vsync, surface))
             {
                 return cxx::unexpected(error::Error{Errors::EditorNativeUiOutputIsNotImplementedOnThisPlatform});
             }
-            rendering::RenderExecutionConfig render_config;
+            engine::render::RenderExecutionConfig render_config;
             render_config.render.channel_name = "lux.editor.render";
             render_config.render.validation = config.enable_validation;
             render_config.render.frames_in_flight = 3;
@@ -128,7 +128,7 @@ namespace lux::editor
             render_config.render.uploads.emplace();
             render_config.device.texture_descriptors = true;
             render_config.device.texture_compression_bc = true;
-            auto rendering = rendering::RenderExecution::create(std::move(render_config), execution);
+            auto rendering = engine::render::RenderExecution::create(std::move(render_config), execution);
             if (!rendering)
             {
                 return cxx::unexpected(rendering.error());
@@ -139,7 +139,7 @@ namespace lux::editor
                 {
                     if (auto stopped = (*rendering)->shutdown(); !stopped)
                     {
-                        rendering::reportRenderFailure(stopped.error(), "Rollback Editor startup");
+                        engine::render::reportRenderFailure(stopped.error(), "Rollback Editor startup");
                     }
                 }
             );
@@ -156,9 +156,9 @@ namespace lux::editor
             );
             if (!source)
             {
-                return cxx::unexpected(render::RenderError{render::kRuntimeState});
+                return cxx::unexpected(lux::render::RenderError{lux::render::kRuntimeState});
             }
-            auto assets = rendering::RenderAssets::create(**rendering, (*source)->port(), config.asset_capability);
+            auto assets = engine::render::RenderAssets::create(**rendering, (*source)->port(), config.asset_capability);
             if (!assets)
             {
                 return cxx::unexpected(assets.error());
@@ -171,12 +171,12 @@ namespace lux::editor
                 );
             }
             const auto& metrics = (*window)->metrics();
-            render::TargetDesc output{
+            lux::render::TargetDesc output{
                 metrics.framebuffer_width,
                 metrics.framebuffer_height,
                 rdesc::ETextureFormat::RGBA8_UNORM,
                 1,
-                render::ETargetKind::SURFACE
+                lux::render::ETargetKind::SURFACE
             };
             auto ui_scene = EditorUiScene::create(**rendering, **window, output, surface, std::move(*atlas));
             if (!ui_scene)
@@ -247,7 +247,7 @@ namespace lux::editor
                 {
                     if (!result)
                     {
-                        recordFailure(error::Error{render::kRuntimeState});
+                        recordFailure(error::Error{lux::render::kRuntimeState});
                     } // Shared execution remains available through final project cleanup.
                     --closing_project_count_;
                 }
@@ -936,9 +936,9 @@ namespace lux::editor
         // Reverse destruction: UI/assets/source, RenderExecution, Engine ExecutionRuntime, then native window.
         std::unique_ptr<EditorWindow> window_;
         std::unique_ptr<engine::EngineContext> engine_;
-        std::unique_ptr<rendering::RenderExecution> rendering_;
+        std::unique_ptr<engine::render::RenderExecution> rendering_;
         std::unique_ptr<process::asset_loading::VfsAssetReadEndpoint> source_;
-        std::unique_ptr<rendering::RenderAssets> assets_;
+        std::unique_ptr<engine::render::RenderAssets> assets_;
         std::unique_ptr<EditorUiScene> ui_scene_;
         EditorConfig config_;
         EditorAssembly assembly_;
@@ -968,7 +968,7 @@ namespace lux::editor
         beginDestruction();
         if (auto closed = impl_->close(); !closed)
         {
-            rendering::reportRenderFailure(closed.error(), "Close Editor");
+            engine::render::reportRenderFailure(closed.error(), "Close Editor");
             if (impl_->close_phase_ != Impl::EClosePhase::CLOSED)
             {
                 std::terminate(); // An actual incomplete close, never merely the reported device failure.
@@ -1197,17 +1197,17 @@ namespace lux::editor
         return *impl_->engine_;
     }
 
-    rendering::RenderExecution& LuxEngine::rendering() noexcept
+    engine::render::RenderExecution& LuxEngine::rendering() noexcept
     {
         return *impl_->rendering_;
     }
 
-    const rendering::RenderExecution& LuxEngine::rendering() const noexcept
+    const engine::render::RenderExecution& LuxEngine::rendering() const noexcept
     {
         return *impl_->rendering_;
     }
 
-    rendering::RenderAssets& LuxEngine::renderAssets() noexcept
+    engine::render::RenderAssets& LuxEngine::renderAssets() noexcept
     {
         return *impl_->assets_;
     }

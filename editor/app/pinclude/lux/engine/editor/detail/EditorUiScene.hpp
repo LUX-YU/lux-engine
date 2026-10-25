@@ -9,11 +9,11 @@
 #include <lux/engine/ui/FontAtlas.hpp>
 #include <memory>
 
-namespace lux::rendering
+namespace lux::engine::render
 {
     class RenderExecution;
     struct FrameInput;
-} // namespace lux::rendering
+} // namespace lux::engine::render
 
 namespace lux::editor
 {
@@ -84,10 +84,10 @@ namespace lux::editor
         };
 
         [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorUiScene>> create(
-            rendering::RenderExecution&,
+            engine::render::RenderExecution&,
             EditorWindow&,
-            render::TargetDesc,
-            render::SurfaceDescription,
+            lux::render::TargetDesc,
+            lux::render::SurfaceDescription,
             ui::FontAtlas
         ) noexcept;
         ~EditorUiScene() noexcept;
@@ -97,8 +97,8 @@ namespace lux::editor
         // Record desired window state; zero/minimized extents disable presentation until restored.
         void setExtent(std::uint32_t width, std::uint32_t height, bool active) noexcept;
         [[nodiscard]] FrameworkResult<rdesc::UiImageToken> addTargetImage(
-            render::TargetId,
-            render::TargetDesc
+            lux::render::TargetId,
+            lux::render::TargetDesc
         ) noexcept;
 
         // The terminal result certifies only this token's old sampling relation; retain its Target until success.
@@ -115,13 +115,13 @@ namespace lux::editor
 
         [[nodiscard]] bool imageReady(rdesc::UiImageToken) const noexcept;
         [[nodiscard]] FrameworkResult<bool> outputReady() const noexcept;
-        [[nodiscard]] render::RenderError configurationError() const noexcept;
-        [[nodiscard]] FrameworkResult<void> appendFrame(rendering::FrameInput&) noexcept;
+        [[nodiscard]] lux::render::RenderError configurationError() const noexcept;
+        [[nodiscard]] FrameworkResult<void> appendFrame(engine::render::FrameInput&) noexcept;
         void stopFrames() noexcept;
         // Only protocol work has settled. Native-window lifetime ends at successful RemoveTarget
         // or after RenderExecution shutdown; an error never claims an unavailable response succeeded.
         [[nodiscard]] bool settled() const noexcept;
-        [[nodiscard]] render::RenderError cleanupFailure() const noexcept;
+        [[nodiscard]] lux::render::RenderError cleanupFailure() const noexcept;
         // Clears only discharged logical identities after Server joins and this Scene's continuations end.
         [[nodiscard]] bool finishCloseAfterServerStop() noexcept;
 

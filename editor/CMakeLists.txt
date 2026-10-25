@@ -149,6 +149,7 @@ add_component(
         app/src/ProjectPreparation.cpp
         app/src/ProjectScenes.cpp
         app/src/EditorUiScene.cpp
+        app/src/UiDrawInput.cpp
 )
 
 component_include_directories(
@@ -168,7 +169,7 @@ target_link_libraries(
     PRIVATE
         lux::engine::process::object_execution
         lux::engine::project::project_plugins
-        lux::engine::engine_rendering
+        lux::engine::engine_render_context
 )
 
 component_add_internal_dependencies(lux_editor_app lux_editor_context lux_editor_ui)
@@ -179,7 +180,7 @@ target_compile_options(lux_editor_app PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>
 component_add_transitive_commands(
     lux_editor_app
     "find_package(lux-engine-process-object-execution REQUIRED COMPONENTS object_execution)"
-    "find_package(lux-engine-rendering REQUIRED COMPONENTS engine_rendering)"
+    "find_package(lux-engine-context-render REQUIRED COMPONENTS engine_render_context)"
     "find_package(lux-engine-render REQUIRED COMPONENTS render)"
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
 )
@@ -261,13 +262,13 @@ component_add_internal_dependencies(lux_editor_scene_profiles lux_editor_context
 target_link_libraries(lux_editor_scene_profiles
     PRIVATE
         imgui::core
-        lux::engine::engine_rendering
+        lux::engine::engine_render_context
         lux::engine::function::ui
 )
 
 component_add_transitive_commands(lux_editor_scene_profiles
     "find_package(imgui REQUIRED COMPONENTS core)"
-    "find_package(lux-engine-rendering REQUIRED COMPONENTS engine_rendering)"
+    "find_package(lux-engine-context-render REQUIRED COMPONENTS engine_render_context)"
     "find_package(lux-engine-function REQUIRED COMPONENTS ui)"
 )
 
@@ -635,7 +636,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
         editor_framework_transport_test
         PRIVATE
             lux_editor_app
-            lux::engine::engine_rendering
+            lux::engine::engine_render_context
     )
 
     lux_editor_test_options(editor_framework_transport_test)
@@ -646,7 +647,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
         editor_framework_gpu_test
         PRIVATE
             lux_editor_app
-            lux::engine::engine_rendering
+            lux::engine::engine_render_context
             lux::engine::project::project_plugins
     )
 
@@ -662,7 +663,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
         add_executable(editor_scene_workflow_test tests/scene_workflow.cpp)
 
         target_link_libraries(editor_scene_workflow_test PRIVATE
-            lux_editor_app lux_editor_scene_profiles lux_editor_scene_tools lux::engine::engine_rendering
+            lux_editor_app lux_editor_scene_profiles lux_editor_scene_tools lux::engine::engine_render_context
             lux::engine::scene::scene_mesh_query
         )
 
@@ -708,7 +709,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         add_executable(editor_public_host_test tests/installed/host.cpp)
 
-        target_link_libraries(editor_public_host_test PRIVATE lux_editor_app lux::engine::engine_rendering)
+        target_link_libraries(editor_public_host_test PRIVATE lux_editor_app lux::engine::engine_render_context)
 
         lux_editor_test_options(editor_public_host_test)
 
@@ -718,7 +719,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         add_executable(editor_project_requests_test tests/project_requests.cpp)
 
-        target_link_libraries(editor_project_requests_test PRIVATE lux_editor_app lux::engine::engine_rendering)
+        target_link_libraries(editor_project_requests_test PRIVATE lux_editor_app lux::engine::engine_render_context)
 
         target_include_directories(editor_project_requests_test PRIVATE app/pinclude)
 
@@ -735,7 +736,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         add_executable(editor_project_lifecycle_test tests/project_lifecycle.cpp)
 
-        target_link_libraries(editor_project_lifecycle_test PRIVATE lux_editor_app lux::engine::engine_rendering)
+        target_link_libraries(editor_project_lifecycle_test PRIVATE lux_editor_app lux::engine::engine_render_context)
 
         target_include_directories(editor_project_lifecycle_test PRIVATE app/pinclude)
 
@@ -755,7 +756,7 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         add_executable(editor_framework_pacing_test tests/pacing.cpp)
 
-        target_link_libraries(editor_framework_pacing_test PRIVATE lux_editor_app lux::engine::engine_rendering)
+        target_link_libraries(editor_framework_pacing_test PRIVATE lux_editor_app lux::engine::engine_render_context)
 
         lux_editor_test_options(editor_framework_pacing_test)
 
@@ -774,4 +775,20 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         set_tests_properties(framework.desktop PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE LABELS "gpu;desktop")
     endif()
+endif()
+
+if(BUILD_TESTING)
+    add_executable(engine_render_ui_test tests/render_ui.cpp)
+    target_include_directories(engine_render_ui_test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/pinclude"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../engine/context/render/test"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../modules/function/render/test"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../modules/function/render/sinclude"
+    )
+    target_link_libraries(engine_render_ui_test PRIVATE
+        lux_editor_app lux::engine::engine_render_context lux::engine::function::render_extensions
+    )
+    add_test(NAME engine.render_ui COMMAND engine_render_ui_test)
+    add_test(NAME engine.render_ui32 COMMAND engine_render_ui_test uint32)
+    set_tests_properties(engine.render_ui engine.render_ui32 PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
 endif()

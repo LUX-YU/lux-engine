@@ -4,11 +4,13 @@
 #include <lux/engine/render/capabilities/UiScene.hpp>
 #include <lux/engine/render/extensions/GraphCommands.hpp>
 #include <lux/engine/render/features/UiRasterFeature.hpp>
-#include <lux/engine/rendering/UiDrawInput.hpp>
+#include <lux/engine/editor/UiDrawInput.hpp>
 
 using namespace lux;
 using namespace lux::render;
-using namespace lux::rendering;
+using namespace lux::engine::render;
+using lux::editor::makeUiDrawInput;
+using lux::editor::UiImageSelection;
 
 int main(int argc, char**)
 {

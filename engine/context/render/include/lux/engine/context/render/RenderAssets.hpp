@@ -6,7 +6,7 @@
 #include <lux/engine/render/inputs/SampledTextureInputs.hpp>
 #include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 
-namespace lux::rendering
+namespace lux::engine::render
 {
     class RenderExecution;
 
@@ -39,14 +39,14 @@ namespace lux::rendering
 
     struct RenderMesh final
     {
-        render::MeshId mesh;
-        render::MeshDescription geometry;
+        lux::render::MeshId mesh;
+        lux::render::MeshDescription geometry;
     };
 
     struct RenderTexture final
     {
-        render::TextureId texture;
-        render::ImageShape description;
+        lux::render::TextureId texture;
+        lux::render::ImageShape description;
     };
 
     // Main-thread asset/version authority. Reads and decode use the shared ExecutionRuntime;
@@ -87,20 +87,20 @@ namespace lux::rendering
             void disconnectCapacity() noexcept;
         };
 
-        using CreateResult = render::RenderResult<std::unique_ptr<RenderAssets>>;
+        using CreateResult = lux::render::RenderResult<std::unique_ptr<RenderAssets>>;
 
         // Cold startup: the application selects the asset implementation. Its Mesh/Texture payload
         // contracts are checked before installation; startup performs no asset read or upload.
         [[nodiscard]] static CreateResult create(
             RenderExecution& rendering,
             process::asset_loading::AssetReadPort source,
-            render::CapabilityQuery capability,
-            render::VCapabilityConfiguration configuration = {},
+            lux::render::CapabilityQuery capability,
+            lux::render::VCapabilityConfiguration configuration = {},
             RenderAssetLimits limits = {}
         ) noexcept;
 
         // Public producer destinations for cold consumer installation, never Storage identities.
-        [[nodiscard]] std::span<const render::CapabilitiesInstalled::Input> inputs() const noexcept;
+        [[nodiscard]] std::span<const lux::render::CapabilitiesInstalled::Input> inputs() const noexcept;
 
         // close(), continue maintenance frames and wait for settled() before destroying this object.
         // RenderExecution and the file provider outlive all accepted source reads and protocol replies.
@@ -110,17 +110,17 @@ namespace lux::rendering
 
         // An explicit project source is captured by this acquisition, so project candidates and old
         // generations can load concurrently without mutating a shared current-source selector.
-        [[nodiscard]] render::RenderResult<void> acquireMesh(
+        [[nodiscard]] lux::render::RenderResult<void> acquireMesh(
             RenderAssetVersion,
             process::asset_loading::AssetReadPort source = {},
             asset::AssetVfsView snapshot = {}
         ) noexcept;
-        [[nodiscard]] render::RenderResult<void> acquireTexture(
+        [[nodiscard]] lux::render::RenderResult<void> acquireTexture(
             RenderAssetVersion,
             process::asset_loading::AssetReadPort source = {},
             asset::AssetVfsView snapshot = {}
         ) noexcept;
-        [[nodiscard]] render::RenderResult<void> acquireMaterial(
+        [[nodiscard]] lux::render::RenderResult<void> acquireMaterial(
             RenderAssetVersion,
             process::asset_loading::AssetReadPort source = {},
             asset::AssetVfsView snapshot = {}
@@ -134,7 +134,7 @@ namespace lux::rendering
         [[nodiscard]] const RenderMesh* mesh(RenderAssetVersion) const noexcept;
         [[nodiscard]] const RenderTexture* texture(RenderAssetVersion) const noexcept;
         [[nodiscard]] const rdesc::MaterialDescription* material(RenderAssetVersion) const noexcept;
-        [[nodiscard]] render::RenderError failure(RenderAssetVersion) const noexcept;
+        [[nodiscard]] lux::render::RenderError failure(RenderAssetVersion) const noexcept;
 
         // Stops new demands and decoding, not accepted GPU work. Successful late uploads are released
         // through Main frames. Existing Scene material/instance references must already be removed.
@@ -146,11 +146,11 @@ namespace lux::rendering
         // No outstanding reads or replies. Failed release records remain owned until final Server cleanup;
         // completion is not success: inspect releaseFailure() before ending the rendering session.
         [[nodiscard]] bool settled() const noexcept;
-        [[nodiscard]] render::RenderError releaseFailure() const noexcept;
+        [[nodiscard]] lux::render::RenderError releaseFailure() const noexcept;
 
     private:
         struct Impl;
         explicit RenderAssets(std::unique_ptr<Impl>) noexcept;
         std::unique_ptr<Impl> impl_;
     };
-} // namespace lux::rendering
+} // namespace lux::engine::render

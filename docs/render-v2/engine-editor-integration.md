@@ -46,7 +46,7 @@ Scene/Camera/View 关系、System 兼容、项目编辑闭环与 Headless 产品
 | TaskExecutor 已无私有池，整图 Sender 使用 CSR 后继算法 | [TaskExecutor.hpp](../../modules/core/task/include/lux/engine/task/TaskExecutor.hpp) | 保留 O(V+E)、affinity 和 workspace；不以 worker_count=0 规避接线 |
 | RenderServer::create 已接收 ExecutionRuntime&，不创建 CPU 池 | [RenderServer.cpp](../../modules/function/render/src/runtime/RenderServer.cpp) | 实际应用组合根尚需接入 |
 | Render 已有标准 Scope、完成调度、完整 SubmitFrame 和真正 FIF | [FrameSubmission.cpp](../../modules/function/render/src/runtime/FrameSubmission.cpp) | 复用，不能再造 PendingOperation 或外层帧循环 |
-| RenderRequester 已有 typed RequestSender/FrameSender、关联表和 L+1 输入载体 | [RenderRequester.hpp](../../engine/rendering/include/lux/engine/rendering/RenderRequester.hpp) | 扩展实际装配，不能再次实现同名桥接 |
+| RenderRequester 已有 typed RequestSender/FrameSender、关联表和 L+1 输入载体 | [RenderRequester.hpp](../../engine/context/render/include/lux/engine/context/render/RenderRequester.hpp) | 扩展实际装配，不能再次实现同名桥接 |
 | TaskScope 的 connected operation 已交给 stdexec；结果交付由 Sender 显式表达 | [Task.hpp](../../modules/core/execution/include/lux/engine/core/execution/Task.hpp)、[Task.cpp](../../modules/core/execution/src/Task.cpp) | 任务监控、逐任务取消和实际代码寿命仍保留 |
 | TaskScope 只有一个工厂式 submit，已删除隐式 Completion 参数 | [TaskScope.hpp](../../modules/core/execution/include/lux/engine/core/execution/TaskScope.hpp) | 业务结果在流水线消费，Runtime 只记录终态 |
 | VFS read 在有限 IO Sender 内直接完成端口交付 | [VfsAssetReadEndpoint.cpp](../../engine/process/asset_loading/src/VfsAssetReadEndpoint.cpp) | Main 只承担确有需要的业务采用 |
@@ -61,7 +61,7 @@ Scene/Camera/View 关系、System 兼容、项目编辑闭环与 Headless 产品
 
 旧文档中“Asset Client 回主线程发送”“TaskExecutor 尚有私有池”“新建 RenderRequester”均被本版取代。
 历史 Root EDITOR 曾缺失 `engine_context_render`、`project_plugin_rendering`；活动配置已迁入真实
-`engine_rendering`/`scene_render`，旧包不再作为依赖。历史失败不回写，产品验收绑定最终精确提交。
+`engine_render_context`/`scene_render`，旧包不再作为依赖。历史失败不回写，产品验收绑定最终精确提交。
 
 ## 3. 线程、执行资源与唯一权威
 

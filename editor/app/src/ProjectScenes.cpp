@@ -11,8 +11,8 @@
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
 #include <lux/engine/project/SceneRegistrations.hpp>
-#include <lux/engine/rendering/RenderAssets.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/context/render/RenderAssets.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/SceneError.hpp>
@@ -312,12 +312,12 @@ namespace lux::editor
             simulation::ecs::Entity free_camera{simulation::ecs::NullEntity};
             scene::CameraTargetId camera_target;
             bool camera_dirty = true;
-            render::TargetDesc requested;
-            render::TargetDesc applied;
-            render::TargetId target;
+            lux::render::TargetDesc requested;
+            lux::render::TargetDesc applied;
+            lux::render::TargetId target;
             std::uint64_t target_epoch = 0;
             rdesc::UiImageToken image;
-            render::RenderError error, camera_error;
+            lux::render::RenderError error, camera_error;
             bool closing{}, pending{};
             std::uint64_t failed_revision{}, requested_revision = 1;
             const simulation::ecs::Registry* registry{};
@@ -329,8 +329,8 @@ namespace lux::editor
         ProjectAssets& project_assets;
         object::Connection assets_changed, geometry_changed;
         std::map<asset::AssetId, std::vector<scene::SceneInstanceId>> geometry_consumers;
-        rendering::RenderExecution* rendering;
-        rendering::RenderAssets* assets;
+        engine::render::RenderExecution* rendering;
+        engine::render::RenderAssets* assets;
         EditorUiScene* ui;
         std::map<asset::AssetId, std::unique_ptr<Entry>> documents;
         cxx::StableSlotMap<Viewport, SceneViewportTag> viewports;
@@ -345,8 +345,8 @@ namespace lux::editor
 
         Impl(ProjectScenes& collection, EditorContext& context, ProjectAssets& project_assets) noexcept
             : collection(collection), context(context), project_assets(project_assets),
-              rendering(context.extensions().find<rendering::RenderExecution>()),
-              assets(context.extensions().find<rendering::RenderAssets>()),
+              rendering(context.extensions().find<engine::render::RenderExecution>()),
+              assets(context.extensions().find<engine::render::RenderAssets>()),
               ui(context.extensions().find<EditorUiScene>())
         {
         }
@@ -714,10 +714,10 @@ namespace lux::editor
             co_return adoptPackage(std::move(*prepared), path);
         }
 
-        exec::task<render::RenderResult<void>> createTarget(Viewport& viewport) noexcept
+        exec::task<lux::render::RenderResult<void>> createTarget(Viewport& viewport) noexcept
         {
             const auto candidate = viewport.requested;
-            auto created = co_await requestRenderCommand<render::CreateTarget>(rendering->mainClient(), {candidate});
+            auto created = co_await requestRenderCommand<lux::render::CreateTarget>(rendering->mainClient(), {candidate});
             if (created.error.type != 0)
             {
                 co_return cxx::unexpected(created.error);
@@ -726,13 +726,13 @@ namespace lux::editor
             viewport.applied = created.description;
             viewport.target_epoch = created.epoch;
             viewport.camera_dirty = true;
-            co_return render::RenderResult<void>{};
+            co_return lux::render::RenderResult<void>{};
         }
 
-        exec::task<render::RenderResult<void>> resizeTarget(Viewport& viewport) noexcept
+        exec::task<lux::render::RenderResult<void>> resizeTarget(Viewport& viewport) noexcept
         {
             const auto candidate = viewport.requested;
-            const auto resized = co_await requestRenderCommand<render::ResizeTarget>(
+            const auto resized = co_await requestRenderCommand<lux::render::ResizeTarget>(
                 rendering->mainClient(),
                 {viewport.target, candidate}
             );
@@ -744,10 +744,10 @@ namespace lux::editor
             viewport.target_epoch = resized.epoch;
             // Publish the replied extent through CameraTargets at the next Scene edit safe point.
             viewport.camera_dirty = true;
-            co_return render::RenderResult<void>{};
+            co_return lux::render::RenderResult<void>{};
         }
 
-        exec::task<render::RenderResult<void>> removeImage(Viewport& viewport) noexcept
+        exec::task<lux::render::RenderResult<void>> removeImage(Viewport& viewport) noexcept
         {
             const auto token = std::exchange(viewport.image, rdesc::UiImageToken{});
             auto result = co_await ui->removeTargetImage(token);
@@ -758,15 +758,15 @@ namespace lux::editor
             co_return result;
         }
 
-        exec::task<render::RenderResult<void>> removeTarget(Viewport& viewport) noexcept
+        exec::task<lux::render::RenderResult<void>> removeTarget(Viewport& viewport) noexcept
         {
-            auto result = co_await requestRenderCommand<render::RemoveTarget>(rendering->mainClient(), viewport.target);
+            auto result = co_await requestRenderCommand<lux::render::RemoveTarget>(rendering->mainClient(), viewport.target);
             if (result.error.type != 0)
             {
                 co_return cxx::unexpected(result.error);
             }
             viewport.target = {};
-            co_return render::RenderResult<void>{};
+            co_return lux::render::RenderResult<void>{};
         }
 
         void requestViewportChange(Viewport& viewport) noexcept
@@ -787,9 +787,9 @@ namespace lux::editor
                 {
                     viewport.pending = false;
                     viewport.failed_revision = viewport.requested_revision;
-                    viewport.error = result                           ? render::RenderError{}
+                    viewport.error = result                           ? lux::render::RenderError{}
                                      : result.error().domainFailure() ? *result.error().domainFailure()
-                                                                      : render::RenderError{render::kRuntimeState};
+                                                                      : lux::render::RenderError{lux::render::kRuntimeState};
                     const auto id = viewport.id;
                     if (!result && viewport.closing && close_failure.type == 0)
                     {
@@ -934,8 +934,8 @@ namespace lux::editor
                 }
                 if (cached.entities.size() > 1)
                 {
-                    viewport.camera_error = render::RenderError{
-                        render::kCommandContract,
+                    viewport.camera_error = lux::render::RenderError{
+                        lux::render::kCommandContract,
                         {static_cast<std::uint64_t>(scene::ECameraError::MULTIPLE_PRIMARY_CAMERAS)}
                     };
                     return NullEntity;
@@ -945,8 +945,8 @@ namespace lux::editor
             const bool available = registry.valid(selected) && registry.all_of<scene::Camera>(selected);
             if (!available)
             {
-                viewport.camera_error = render::RenderError{
-                    render::kCommandContract,
+                viewport.camera_error = lux::render::RenderError{
+                    lux::render::kCommandContract,
                     {static_cast<std::uint64_t>(scene::ECameraError::NO_PRIMARY_CAMERA)}
                 };
                 return NullEntity;
@@ -954,7 +954,7 @@ namespace lux::editor
             return selected;
         }
 
-        exec::task<render::RenderResult<void>> synchronizeCamera(Viewport& viewport) noexcept
+        exec::task<lux::render::RenderResult<void>> synchronizeCamera(Viewport& viewport) noexcept
         {
             using namespace simulation::ecs;
             auto& system = projection(viewport);
@@ -963,7 +963,7 @@ namespace lux::editor
             {
                 bool remove_image = false;
                 std::optional<std::pair<Entity, scene::CameraTargetId>> removed_target;
-                render::RenderError error;
+                lux::render::RenderError error;
                 auto apply = [&](Registry& registry) noexcept
                 {
                     const auto selected = viewport.closing ? NullEntity : selectCamera(registry, viewport);
@@ -1037,7 +1037,7 @@ namespace lux::editor
                         }
                         // Failed Scene maintenance owns withdrawal; its Registry retains the temporary camera
                         // until retirement. No mutation of a stopped Scene is needed to release the output.
-                        co_return render::RenderResult<void>{};
+                        co_return lux::render::RenderResult<void>{};
                     }
                     co_return cxx::unexpected(scene::toError(edited.error()));
                 }
@@ -1069,11 +1069,11 @@ namespace lux::editor
                 {
                     co_return co_await system.whenCameraTargetReady(viewport.camera, viewport.camera_target);
                 }
-                co_return render::RenderResult<void>{};
+                co_return lux::render::RenderResult<void>{};
             }
         }
 
-        exec::task<render::RenderResult<void>> configureViewport(Viewport& viewport) noexcept
+        exec::task<lux::render::RenderResult<void>> configureViewport(Viewport& viewport) noexcept
         {
             if (viewport.closing)
             {
@@ -1090,7 +1090,7 @@ namespace lux::editor
                 {
                     co_return detached;
                 }
-                co_return viewport.target.isNull() ? render::RenderResult<void>{} : co_await removeTarget(viewport);
+                co_return viewport.target.isNull() ? lux::render::RenderResult<void>{} : co_await removeTarget(viewport);
             }
             const bool visible = viewport.requested.width != 0 && viewport.requested.height != 0;
             if (visible && viewport.target.isNull())
@@ -1127,16 +1127,16 @@ namespace lux::editor
                 viewport.image = *image;
                 co_return co_await ui->whenImageReady(*image);
             }
-            co_return render::RenderResult<void>{};
+            co_return lux::render::RenderResult<void>{};
         }
 
-        exec::task<render::RenderResult<void>> synchronizeViewport(Viewport& viewport) noexcept
+        exec::task<lux::render::RenderResult<void>> synchronizeViewport(Viewport& viewport) noexcept
         {
             for (;;)
             {
                 const auto revision = viewport.requested_revision;
                 auto result = co_await configureViewport(viewport);
-                if (!result && result.error().type == render::kDeviceBusy)
+                if (!result && result.error().type == lux::render::kDeviceBusy)
                 {
                     co_await rendering->mainClient().whenSubmittedFramesComplete();
                     co_await stdexec::schedule(context.engine().execution().mainScheduler());
@@ -1262,7 +1262,7 @@ namespace lux::editor
                     if (!result)
                     {
                         const auto cause = result.error().domainFailure() ? *result.error().domainFailure()
-                                                                          : render::RenderError{render::kRuntimeState};
+                                                                          : lux::render::RenderError{lux::render::kRuntimeState};
                         failure = cause;
                         if (close_failure.type == 0)
                         {
@@ -1406,7 +1406,7 @@ namespace lux::editor
                     --operations;
                     if (!result)
                     {
-                        failure = render::RenderError{render::kRuntimeState};
+                        failure = lux::render::RenderError{lux::render::kRuntimeState};
                     }
                     completeClosures();
                 }
@@ -2002,7 +2002,7 @@ namespace lux::editor
         viewport.document = document;
         viewport.play = play;
         viewport
-            .requested = {width, height, rdesc::ETextureFormat::RGBA8_UNORM, 1, render::ETargetKind::OFFSCREEN, true};
+            .requested = {width, height, rdesc::ETextureFormat::RGBA8_UNORM, 1, lux::render::ETargetKind::OFFSCREEN, true};
         const auto id = impl_->viewports.emplace(std::move(viewport));
         auto& installed = *impl_->viewports.find(id);
         installed.id = id;

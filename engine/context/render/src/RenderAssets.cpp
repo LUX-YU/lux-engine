@@ -1,8 +1,8 @@
 #include <exec/task.hpp>
 #include <lux/engine/render/capabilities/RasterAssets.hpp>
-#include <lux/engine/rendering/Initialization.hpp>
-#include <lux/engine/rendering/RenderAssets.hpp>
-#include <lux/engine/rendering/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderInitialization.hpp>
+#include <lux/engine/context/render/RenderAssets.hpp>
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
 
 #include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
@@ -14,9 +14,9 @@
 #include <cstring>
 #include <map>
 
-namespace lux::rendering
+namespace lux::engine::render
 {
-    using namespace render;
+    using namespace lux::render;
     namespace loading = process::asset_loading;
 
     namespace
@@ -824,4 +824,4 @@ namespace lux::rendering
     {
         return impl_->release_failure;
     }
-} // namespace lux::rendering
+} // namespace lux::engine::render

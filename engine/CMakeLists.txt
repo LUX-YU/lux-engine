@@ -1,7 +1,7 @@
 add_subdirectory(domain)
 add_subdirectory(process)
 if(TARGET lux::engine::function::render)
-    add_subdirectory(rendering)
+    add_subdirectory(context/render)
 endif()
 add_subdirectory(scene)
 add_subdirectory(context)

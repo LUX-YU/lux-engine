@@ -1,7 +1,7 @@
-include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/TargetClassification.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/../../../cmake/TargetClassification.cmake)
 
 add_component(
-    COMPONENT_NAME engine_rendering
+    COMPONENT_NAME engine_render_context
     NAMESPACE lux::engine
     STATIC
     SOURCE_FILES
@@ -9,11 +9,10 @@ add_component(
         src/RenderExecution.cpp
         src/RenderDiagnostics.cpp
         src/RenderAssets.cpp
-        src/UiDrawInput.cpp
 )
 
 component_include_directories(
-    engine_rendering
+    engine_render_context
     BUILD_TIME_SHARED "${CMAKE_CURRENT_SOURCE_DIR}/include"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pinclude"
     INSTALL_TIME include
@@ -23,28 +22,28 @@ component_include_directories(
 install(
     DIRECTORY include/
     DESTINATION include
-    COMPONENT lux_engine_rendering
+    COMPONENT lux_engine_render_context
     PATTERN WindowSurface.hpp EXCLUDE
 )
 
 if(LUX_BUILD_WINDOW)
-    target_sources(engine_rendering PRIVATE src/WindowSurface.cpp)
+    target_sources(engine_render_context PRIVATE src/WindowSurface.cpp)
 
-    target_link_libraries(engine_rendering PUBLIC lux::engine::platform::window)
+    target_link_libraries(engine_render_context PUBLIC lux::engine::platform::window)
 
-    component_add_transitive_commands(engine_rendering "find_package(lux-engine-platform REQUIRED COMPONENTS window)")
+    component_add_transitive_commands(engine_render_context "find_package(lux-engine-platform REQUIRED COMPONENTS window)")
 
     install(
-        FILES include/lux/engine/rendering/WindowSurface.hpp
-        DESTINATION include/lux/engine/rendering
-        COMPONENT lux_engine_rendering
+        FILES include/lux/engine/context/render/WindowSurface.hpp
+        DESTINATION include/lux/engine/context/render
+        COMPONENT lux_engine_render_context
     )
 endif()
 
-target_compile_features(engine_rendering PUBLIC cxx_std_20)
+target_compile_features(engine_render_context PUBLIC cxx_std_20)
 
 target_link_libraries(
-    engine_rendering
+    engine_render_context
     PUBLIC
         lux::engine::function::render
         lux::engine::core::core_execution
@@ -55,42 +54,33 @@ target_link_libraries(
 )
 
 component_add_transitive_commands(
-    engine_rendering
+    engine_render_context
     "find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render)"
     "find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)"
     "find_package(lux-engine-core CONFIG REQUIRED COMPONENTS log error)"
     "find_package(lux-engine-process-asset-loading CONFIG REQUIRED COMPONENTS process_asset_loading)"
 )
 
-lux_classify_target(TARGET engine_rendering LAYER ENGINE PRODUCT RUNTIME ROLE LIBRARY)
+lux_classify_target(TARGET engine_render_context LAYER ENGINE PRODUCT RUNTIME ROLE LIBRARY)
 
 lux_engine_install_components(
-    PROJECT_NAME lux-engine-rendering
+    PROJECT_NAME lux-engine-context-render
     VERSION 0.0.1
     NAMESPACE lux::engine
-    COMPONENTS engine_rendering
+    COMPONENTS engine_render_context
 )
 
 if(BUILD_TESTING)
     add_executable(engine_render_transport_test test/RenderRequester.cpp)
-    target_link_libraries(engine_render_transport_test PRIVATE engine_rendering)
+    target_link_libraries(engine_render_transport_test PRIVATE engine_render_context)
     add_test(NAME engine.render_transport COMMAND engine_render_transport_test)
     set_tests_properties(engine.render_transport PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 
-    add_executable(engine_render_ui_test test/UiDrawing.cpp)
-    target_include_directories(engine_render_ui_test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/function/render/test"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/function/render/sinclude"
-    )
-    target_link_libraries(engine_render_ui_test PRIVATE engine_rendering lux::engine::function::render_extensions)
-    add_test(NAME engine.render_ui COMMAND engine_render_ui_test)
-    add_test(NAME engine.render_ui32 COMMAND engine_render_ui_test uint32)
-    set_tests_properties(engine.render_ui engine.render_ui32 PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
     if(WIN32 AND TARGET window)
         set(surface_shader_headers)
         foreach(source IN ITEMS
             "${CMAKE_CURRENT_SOURCE_DIR}/test/SurfaceSample.frag"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/function/render/test/shaders/GraphTriangle.vert"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/function/render/test/shaders/GraphTriangle.vert"
         )
             get_filename_component(shader_name "${source}" NAME_WE)
             set(binary "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.spv")
@@ -109,7 +99,7 @@ if(BUILD_TESTING)
         add_executable(engine_render_surface_test test/Surface.cpp ${surface_shader_headers})
         target_include_directories(engine_render_surface_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shaders")
         target_link_libraries(engine_render_surface_test PRIVATE
-            engine_rendering lux::engine::platform::window lux::engine::function::render_extensions
+            engine_render_context lux::engine::platform::window lux::engine::function::render_extensions
         )
         add_test(NAME engine.render_surface COMMAND engine_render_surface_test)
         add_test(NAME engine.render_surface_uploads COMMAND engine_render_surface_test uploads)

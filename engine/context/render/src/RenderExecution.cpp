@@ -1,16 +1,16 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/rendering/RenderDiagnostics.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 
 #include <atomic>
 #include <latch>
 #include <system_error>
 #include <thread>
 
-namespace lux::rendering
+namespace lux::engine::render
 {
-    namespace ipc = platform::ipc;
-    using namespace render;
+    namespace ipc = lux::platform::ipc;
+    using namespace lux::render;
 
     namespace
     {
@@ -464,4 +464,4 @@ namespace lux::rendering
         return error.type != 0 ? RenderResult<void>{cxx::unexpected(error)} : RenderResult<void>{};
     }
 
-} // namespace lux::rendering
+} // namespace lux::engine::render

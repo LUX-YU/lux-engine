@@ -11,11 +11,11 @@ namespace lux::engine
     class EngineContext;
 }
 
-namespace lux::rendering
+namespace lux::engine::render
 {
     class RenderExecution;
     class RenderAssets;
-} // namespace lux::rendering
+} // namespace lux::engine::render
 
 namespace lux::editor
 {
@@ -54,9 +54,9 @@ namespace lux::editor
         [[nodiscard]] engine::EngineContext& engine() noexcept;
         [[nodiscard]] const engine::EngineContext& engine() const noexcept;
         // Application facilities borrowed on Main; project closure never stops these resources.
-        [[nodiscard]] rendering::RenderExecution& rendering() noexcept;
-        [[nodiscard]] const rendering::RenderExecution& rendering() const noexcept;
-        [[nodiscard]] rendering::RenderAssets& renderAssets() noexcept;
+        [[nodiscard]] engine::render::RenderExecution& rendering() noexcept;
+        [[nodiscard]] const engine::render::RenderExecution& rendering() const noexcept;
+        [[nodiscard]] engine::render::RenderAssets& renderAssets() noexcept;
         // The currently adopted project, valid throughout the running session. A failed switch preserves it.
         // CloseProjectRequest ends that session; do not borrow its Context during/after shutdown.
         [[nodiscard]] EditorContext& project() noexcept;

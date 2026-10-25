@@ -1,22 +1,22 @@
-#include <lux/engine/rendering/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
 
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/log/Log.hpp>
 #include <lux/engine/render/commands/Command.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 
-namespace lux::rendering
+namespace lux::engine::render
 {
     namespace
     {
-        void report(void*, const render::RenderDiagnostic& diagnostic) noexcept
+        void report(void*, const lux::render::RenderDiagnostic& diagnostic) noexcept
         {
             auto level = log::ELevel::LOG_INFO;
-            if (diagnostic.severity == render::ERenderDiagnosticSeverity::WARNING)
+            if (diagnostic.severity == lux::render::ERenderDiagnosticSeverity::WARNING)
             {
                 level = log::ELevel::LOG_WARN;
             }
-            else if (diagnostic.severity == render::ERenderDiagnosticSeverity::ERROR_MESSAGE)
+            else if (diagnostic.severity == lux::render::ERenderDiagnosticSeverity::ERROR_MESSAGE)
             {
                 level = log::ELevel::LOG_ERROR;
             }
@@ -32,9 +32,9 @@ namespace lux::rendering
         }
     } // namespace
 
-    render::RenderResult<void> registerRenderErrors() noexcept
+    lux::render::RenderResult<void> registerRenderErrors() noexcept
     {
-        for (const auto table : render::renderErrorDescriptorTables())
+        for (const auto table : lux::render::renderErrorDescriptorTables())
         {
             if (auto registered = error::ErrorRegistry::instance().registerTypes(table); !registered)
             {
@@ -44,14 +44,14 @@ namespace lux::rendering
         return {};
     }
 
-    render::RenderErrorSink renderDiagnostics() noexcept
+    lux::render::RenderErrorSink renderDiagnostics() noexcept
     {
         return {nullptr, report};
     }
 
-    void reportRenderFailure(render::RenderError failure, std::string_view operation) noexcept
+    void reportRenderFailure(lux::render::RenderError failure, std::string_view operation) noexcept
     {
         const auto text = error::format(failure);
         log::error("Render", "{}: {}", operation, text);
     }
-} // namespace lux::rendering
+} // namespace lux::engine::render

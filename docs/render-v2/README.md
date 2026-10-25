@@ -50,7 +50,7 @@ FrameExecution 负责帧准备、批次依赖和提交合并，RenderExecutor �
 具体内置实现不公开，不需要应用构造 Provider 或包含专业 Storage 实现头。
 
 Client 直接使用 `IpcRequester` 和 `IpcMessage`，自行生成 RequestId，通过普通目录请求取得 CommandId。
-Render 库没有 RenderClient 包装。Engine 可使用 `engine/rendering/RenderRequester` 复用有限帧载体、
+Render 库没有 RenderClient 包装。Engine 可使用 `engine/context/render/RenderRequester` 复用有限帧载体、
 类型化 Sender、RequestId 关联和回复消费；它不拥有 connected OperationState 或 GPU 对象。两个 Client 的 RequestId 数值可以相同，回复仍沿原 Link 返回。
 发送成功转移消息值；发送失败保留原消息。Response 包含显式 `RenderError error` 和业务字段，
 业务字段只在成功时消费。回复不自动返还原 Request。

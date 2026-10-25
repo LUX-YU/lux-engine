@@ -2,23 +2,23 @@
 
 #include <lux/engine/core/execution/RunLoop.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <lux/engine/rendering/RenderRequester.hpp>
+#include <lux/engine/context/render/RenderRequester.hpp>
 
 namespace lux::execution
 {
     class ExecutionRuntime;
 }
 
-namespace lux::rendering
+namespace lux::engine::render
 {
     struct RenderExecutionConfig final
     {
-        render::RenderServerConfig render;
-        render::DeviceOptions device;
+        lux::render::RenderServerConfig render;
+        lux::render::DeviceOptions device;
         std::size_t asset_pending_requests = 1024; // Independent streaming admission, never a Main frame limit.
         // Optional cold registration, before either protocol thread starts.
         void* feature_registration = nullptr;
-        render::RenderResult<void> (*register_features)(void*, render::RenderServer&) noexcept = nullptr;
+        lux::render::RenderResult<void> (*register_features)(void*, lux::render::RenderServer&) noexcept = nullptr;
     };
 
     // Application rendering facilities: one Server, one RenderThread and one fixed Asset protocol thread.
@@ -75,7 +75,7 @@ namespace lux::rendering
             RenderExecution& rendering_;
         };
 
-        using CreateResult = render::RenderResult<std::unique_ptr<RenderExecution>>;
+        using CreateResult = lux::render::RenderResult<std::unique_ptr<RenderExecution>>;
 
         // Synchronous startup on Main, including command discovery. Installs execution.wake() as the
         // Server's reply-publication notification; window wakeup belongs to ExecutionRuntime::setWake().
@@ -97,19 +97,19 @@ namespace lux::rendering
         [[nodiscard]] execution::RunLoop::Scheduler assetScheduler() noexcept;
 
         // Main frame entry: nullptr means no input demand or no reusable carrier; maintenance still progresses.
-        [[nodiscard]] render::RenderResult<FrameInput*> beginFrame(bool draw = true) noexcept;
+        [[nodiscard]] lux::render::RenderResult<FrameInput*> beginFrame(bool draw = true) noexcept;
         // After maintenance, newly queued requests are admitted at the next iteration's single safe point.
         [[nodiscard]] bool frameReady(bool draw) const noexcept;
         // Takes over the open carrier. Report failed completion, then recycle it after all replies.
         // The application must not use/release this carrier after calling submitFrame, even on failure.
-        [[nodiscard]] render::RenderResult<void> submitFrame(FrameInput& frame) noexcept;
+        [[nodiscard]] lux::render::RenderResult<void> submitFrame(FrameInput& frame) noexcept;
 
         // Main safe point: consume replies and report an actual Server failure here, not by polling Link state.
         // An unexpected exit is joined before missing responses release their borrowed inputs.
-        render::RenderResult<std::size_t> consumeResponses() noexcept;
+        lux::render::RenderResult<std::size_t> consumeResponses() noexcept;
         // Main-thread observation. Failure stops production, but does not stop completion/close progress.
-        [[nodiscard]] render::RenderError failure() const noexcept;
-        [[nodiscard]] render::RenderServerStats stats() const noexcept;
+        [[nodiscard]] lux::render::RenderError failure() const noexcept;
+        [[nodiscard]] lux::render::RenderServerStats stats() const noexcept;
 
         // Nonblocking application close. Drive Main continuations and advanceClose until it reports completion.
         void beginClose() noexcept;
@@ -125,7 +125,7 @@ namespace lux::rendering
         // Synchronous standalone shutdown after business producers stop. Cancel unsent inputs, drain accepted replies,
         // close each Client on its SPSC thread, then stop/join Server. Unexpected Server failure retains
         // Unknown settlement. Main continuations and the shared CPU/IO execution remain alive throughout.
-        [[nodiscard]] render::RenderResult<void> shutdown() noexcept;
+        [[nodiscard]] lux::render::RenderResult<void> shutdown() noexcept;
 
     private:
         struct Impl;
@@ -134,4 +134,4 @@ namespace lux::rendering
         static void deliverShutdown(ShutdownWaiter&) noexcept;
         std::unique_ptr<Impl> impl_;
     };
-} // namespace lux::rendering
+} // namespace lux::engine::render

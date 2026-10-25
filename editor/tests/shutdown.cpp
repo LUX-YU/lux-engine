@@ -9,7 +9,7 @@
 #include <lux/engine/editor/ProjectManifest.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 #include <thread>
 
 namespace
@@ -40,9 +40,9 @@ namespace
         assert(application.project().project().name == "Shutdown");
         rejected_recursive_drive = true;
         auto& client = rendering.mainClient();
-        auto command = client.bind<render::Stop>();
+        auto command = client.bind<lux::render::Stop>();
         assert(command);
-        render::EmptyRequest input;
+        lux::render::EmptyRequest input;
         const auto reply = co_await client.request(*command, input);
         assert(reply.error.type == 0);
         acknowledged = true;
@@ -89,7 +89,7 @@ int main(int argc, char** argv)
         stdexec::then(execution::taskResult(std::move(work)), [](auto&& result) noexcept { assert(result); })
     ));
     const auto stopped = (*host)->run();
-    assert(!stopped && stopped.error().type == render::kCommandCancelled && acknowledged && rejected_recursive_drive);
+    assert(!stopped && stopped.error().type == lux::render::kCommandCancelled && acknowledged && rejected_recursive_drive);
     assert(client.pendingRequests() == 0 && rendering.stats().validation_errors == 0);
     host->reset();
     std::puts("execution failure reported after UI/Clients/Server cleanup; destructor completed");

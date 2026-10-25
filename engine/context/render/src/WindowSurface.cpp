@@ -1,11 +1,11 @@
-#include <lux/engine/rendering/WindowSurface.hpp>
+#include <lux/engine/context/render/WindowSurface.hpp>
 
-namespace lux::rendering
+namespace lux::engine::render
 {
     bool makeWindowSurface(
         const window::VNativeWindowHandle& native_window,
         bool vertical_sync,
-        render::SurfaceDescription& surface
+        lux::render::SurfaceDescription& surface
     ) noexcept
     {
         const auto* win32 = std::get_if<window::Win32WindowHandle>(&native_window);
@@ -14,8 +14,8 @@ namespace lux::rendering
             return false;
         }
         surface = {};
-        surface.window = render::Win32Surface{win32->window};
+        surface.window = lux::render::Win32Surface{win32->window};
         surface.vertical_sync = vertical_sync;
         return true;
     }
-} // namespace lux::rendering
+} // namespace lux::engine::render

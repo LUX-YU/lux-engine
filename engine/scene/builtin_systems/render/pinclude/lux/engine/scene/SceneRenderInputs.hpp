@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/capabilities/LitScene.hpp>
-#include <lux/engine/rendering/RenderAssets.hpp>
+#include <lux/engine/context/render/RenderAssets.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 #include <Eigen/Geometry>
@@ -11,8 +11,8 @@
 
 namespace lux::scene::detail
 {
-    using namespace render;
-    using rendering::RenderAssetVersion;
+    using namespace lux::render;
+    using engine::render::RenderAssetVersion;
 
     struct MaterialEntry final
     {
@@ -79,7 +79,7 @@ namespace lux::scene::detail
     lightValue(const rdesc::LightDescription&, const Eigen::Affine3d&) noexcept;
     [[nodiscard]] bool bindingReady(
         const MeshBinding&,
-        const rendering::RenderAssets&,
+        const engine::render::RenderAssets&,
         const SceneMaterials&,
         std::uint64_t source,
         RenderError& failure
@@ -89,7 +89,7 @@ namespace lux::scene::detail
         const SceneMaterials&,
         const SceneLights&,
         const simulation::ecs::Registry&,
-        const rendering::RenderAssets&,
+        const engine::render::RenderAssets&,
         std::uint64_t source,
         std::uint32_t previous_capacity,
         bool include_replacements

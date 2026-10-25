@@ -5,9 +5,9 @@
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
 #include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/render/inputs/RasterInstanceInputs.hpp>
-#include <lux/engine/rendering/RenderAssets.hpp>
-#include <lux/engine/rendering/RenderDiagnostics.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/context/render/RenderAssets.hpp>
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 #include <lux/engine/scene/Camera.hpp>
@@ -25,7 +25,7 @@
 
 using namespace lux;
 using namespace lux::render;
-using namespace lux::rendering;
+using namespace lux::engine::render;
 using namespace std::chrono_literals;
 
 #define CHECK(value) material_test::check(static_cast<bool>(value))
@@ -275,12 +275,12 @@ int main()
     registry.emplace<simulation::ecs::Light3D>(light, sunlight);
     registry.emplace<simulation::ecs::WorldTransform3D>(light, camera_transform);
     scene::RenderSystemConfiguration scene_configuration;
-    scene_configuration.capability = render::kLitSceneCapability;
+    scene_configuration.capability = lux::render::kLitSceneCapability;
     scene_configuration.implementation = "lux.render.scene.clustered";
-    render::LitSceneConfiguration lighting;
+    lux::render::LitSceneConfiguration lighting;
     lighting.shadow_resolution = 64;
     lighting.shadow_distance = 20;
-    scene_configuration.configuration = *render::encodeLitSceneConfiguration(lighting);
+    scene_configuration.configuration = *lux::render::encodeLitSceneConfiguration(lighting);
     auto codec = scene::renderConfigurationCodec();
     std::vector<std::byte> encoded_configuration;
     CHECK(codec.encode(&scene_configuration, encoded_configuration));

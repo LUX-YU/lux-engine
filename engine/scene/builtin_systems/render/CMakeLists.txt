@@ -32,7 +32,7 @@ target_compile_options(scene_render PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>)
 target_link_libraries(
     scene_render
     PUBLIC
-        lux::engine::engine_rendering
+        lux::engine::engine_render_context
         lux::engine::scene::scene_composition
         lux::engine::scene::scene_camera
         lux::engine::simulation::ecs::transform
@@ -41,7 +41,7 @@ target_link_libraries(
 
 component_add_transitive_commands(
     scene_render
-    "find_package(lux-engine-rendering REQUIRED COMPONENTS engine_rendering)"
+    "find_package(lux-engine-context-render REQUIRED COMPONENTS engine_render_context)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-scene-camera REQUIRED COMPONENTS scene_camera)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS transform visual)"

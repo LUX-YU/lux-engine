@@ -13,7 +13,7 @@ add_subdirectory(integration/script)
 add_subdirectory(builtin_systems/transform)
 add_subdirectory(builtin_systems/mesh_query)
 add_subdirectory(components/camera)
-if(TARGET engine_rendering)
+if(TARGET engine_render_context)
     add_subdirectory(builtin_systems/render)
 endif()
 

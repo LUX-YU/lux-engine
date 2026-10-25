@@ -11,22 +11,22 @@
 #include <stdexec/execution.hpp>
 #include <vector>
 
-namespace lux::rendering
+namespace lux::engine::render
 {
     class RenderRequester;
 
-    template <render::RenderCommand C> class BoundCommand final
+    template <lux::render::RenderCommand C> class BoundCommand final
     {
     private:
         friend class RenderRequester;
 
-        BoundCommand(render::CommandId command, platform::ipc::RequesterId source) noexcept
+        BoundCommand(lux::render::CommandId command, lux::platform::ipc::RequesterId source) noexcept
             : command_(command), source_(source)
         {
         }
 
-        render::CommandId command_;
-        platform::ipc::RequesterId source_;
+        lux::render::CommandId command_;
+        lux::platform::ipc::RequesterId source_;
     };
 
     struct RenderRequesterConfig final
@@ -41,10 +41,10 @@ namespace lux::rendering
     // borrowed frame data; retain them until completion, or until settleClosed() after host shutdown.
     struct FrameInput final
     {
-        std::vector<render::FrameCommand> commands;
+        std::vector<lux::render::FrameCommand> commands;
         // Exclusive command end indices, increasing; the last end equals commands.size().
         std::vector<std::size_t> group_ends;
-        std::vector<platform::ipc::IpcMessage> responses;
+        std::vector<lux::platform::ipc::IpcMessage> responses;
         bool resynchronize = false;
 
         // Trivial arrays can be filled directly while building this carrier. Their lifetime ends
@@ -112,7 +112,7 @@ namespace lux::rendering
 
         struct ResponseNode
         {
-            using Deliver = void (*)(ResponseNode&, platform::ipc::IpcMessage&&, render::RenderError) noexcept;
+            using Deliver = void (*)(ResponseNode&, lux::platform::ipc::IpcMessage&&, lux::render::RenderError) noexcept;
 
             ResponseNode(Deliver deliver, std::shared_ptr<const void> code) noexcept
                 : deliver(deliver), code(std::move(code))
@@ -126,22 +126,22 @@ namespace lux::rendering
         };
 
     public:
-        using CreateResult = render::RenderResult<std::unique_ptr<RenderRequester>>;
+        using CreateResult = lux::render::RenderResult<std::unique_ptr<RenderRequester>>;
 
-        [[nodiscard]] static CreateResult create(platform::ipc::IpcRequester, RenderRequesterConfig) noexcept;
+        [[nodiscard]] static CreateResult create(lux::platform::ipc::IpcRequester, RenderRequesterConfig) noexcept;
         ~RenderRequester() noexcept;
         RenderRequester(const RenderRequester&) = delete;
         RenderRequester& operator=(const RenderRequester&) = delete;
 
-        [[nodiscard]] platform::ipc::RequesterId id() const noexcept;
+        [[nodiscard]] lux::platform::ipc::RequesterId id() const noexcept;
 
         // Cold catalog adoption, normally from ListCommands obtained through the host bootstrap.
         // Existing bound IDs retain their source qualification; refresh does not mutate a sent Request.
-        [[nodiscard]] render::RenderResult<void> setCommands(render::CommandList) noexcept;
+        [[nodiscard]] lux::render::RenderResult<void> setCommands(lux::render::CommandList) noexcept;
 
-        template <render::RenderCommand C> [[nodiscard]] render::RenderResult<BoundCommand<C>> bind() const noexcept
+        template <lux::render::RenderCommand C> [[nodiscard]] lux::render::RenderResult<BoundCommand<C>> bind() const noexcept
         {
-            auto command = findCommand(render::commandDescriptor<C>());
+            auto command = findCommand(lux::render::commandDescriptor<C>());
             if (!command)
             {
                 return cxx::unexpected(command.error());
@@ -149,7 +149,7 @@ namespace lux::rendering
             return BoundCommand<C>{*command, id()};
         }
 
-        template <render::RenderCommand C> class RequestSender final
+        template <lux::render::RenderCommand C> class RequestSender final
         {
         public:
             using sender_concept = stdexec::sender_t;
@@ -178,7 +178,7 @@ namespace lux::rendering
                 {
                     if (stdexec::get_stop_token(stdexec::get_env(receiver)).stop_requested())
                     {
-                        deliverResponse(*this, {}, render::RenderError{render::kCommandCancelled});
+                        deliverResponse(*this, {}, lux::render::RenderError{lux::render::kCommandCancelled});
                         return;
                     }
                     requester.send<C>(command, input, *this);
@@ -208,8 +208,8 @@ namespace lux::rendering
         // must keep producing maintenance frames while these requests are pending, including on close.
         // Failed admission/send leaves input intact. Once accepted, actual Response (or joined Server
         // shutdown) ends borrowed payload lifetime; requesting cancellation alone does not.
-        template <render::RenderCommand C>
-            requires(!std::same_as<C, render::SubmitFrame>)
+        template <lux::render::RenderCommand C>
+            requires(!std::same_as<C, lux::render::SubmitFrame>)
         [[nodiscard]] RequestSender<C> request(BoundCommand<C> command, typename C::Request& input) noexcept
         {
             return {*this, command, input};
@@ -219,7 +219,7 @@ namespace lux::rendering
         {
         public:
             using sender_concept = stdexec::sender_t;
-            using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(render::FrameCompletion)>;
+            using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(lux::render::FrameCompletion)>;
 
             template <class Receiver> struct Operation final : ResponseNode
             {
@@ -229,7 +229,7 @@ namespace lux::rendering
                 Receiver receiver;
 
                 Operation(RenderRequester& requester, FrameInput& input, Receiver receiver) noexcept
-                    : ResponseNode{&finish<Operation, render::SubmitFrame>, execution::detail::getCompletionCode(stdexec::get_env(receiver))},
+                    : ResponseNode{&finish<Operation, lux::render::SubmitFrame>, execution::detail::getCompletionCode(stdexec::get_env(receiver))},
                       requester(requester), input(input), receiver(std::move(receiver))
                 {
                 }
@@ -238,7 +238,7 @@ namespace lux::rendering
                 {
                     if (stdexec::get_stop_token(stdexec::get_env(receiver)).stop_requested())
                     {
-                        deliverResponse(*this, {}, render::RenderError{render::kCommandCancelled});
+                        deliverResponse(*this, {}, lux::render::RenderError{lux::render::kCommandCancelled});
                         return;
                     }
                     requester.sendFrame(input, *this);
@@ -313,7 +313,7 @@ namespace lux::rendering
 
         // Acquire before preparing game-frame data. Capacity exhaustion means the game thread
         // consumes/waits at its normal safe point; it must not prepare another unbounded frame.
-        [[nodiscard]] render::RenderResult<FrameInput*> beginFrame() noexcept;
+        [[nodiscard]] lux::render::RenderResult<FrameInput*> beginFrame() noexcept;
 
         // Main safe-point borrows only. Scene systems append to the application's single open
         // carrier; submit/release ends this borrow. Sent carriers remain isolated until their replies.
@@ -322,8 +322,8 @@ namespace lux::rendering
         // Incremented after a received unsuccessful frame. Each Scene republishes its own authority.
         [[nodiscard]] std::uint64_t resynchronization() const noexcept;
 
-        template <render::RenderCommand C>
-        [[nodiscard]] render::RenderResult<void> append(
+        template <lux::render::RenderCommand C>
+        [[nodiscard]] lux::render::RenderResult<void> append(
             FrameInput& frame,
             BoundCommand<C> command,
             typename C::Request input
@@ -331,7 +331,7 @@ namespace lux::rendering
         {
             if (!isBuildingInput(frame, command.source_))
             {
-                return cxx::unexpected(render::RenderError{render::kRuntimeState});
+                return cxx::unexpected(lux::render::RenderError{lux::render::kRuntimeState});
             }
             auto& entry = frame.commands.emplace_back();
             entry.command = command.command_;
@@ -345,7 +345,7 @@ namespace lux::rendering
         }
 
         // Retains vector capacities. Only an unsubmitted or completed carrier can be released.
-        [[nodiscard]] render::RenderResult<void> releaseFrame(FrameInput&) noexcept;
+        [[nodiscard]] lux::render::RenderResult<void> releaseFrame(FrameInput&) noexcept;
 
         // Completes only received responses. Link closure is observable but does not end payload borrows.
         std::size_t consumeResponses(std::size_t limit = 128) noexcept;
@@ -372,22 +372,22 @@ namespace lux::rendering
     private:
         struct Impl;
         explicit RenderRequester(std::unique_ptr<Impl>) noexcept;
-        [[nodiscard]] render::RenderResult<render::CommandId> findCommand(const render::CommandDescriptor&)
+        [[nodiscard]] lux::render::RenderResult<lux::render::CommandId> findCommand(const lux::render::CommandDescriptor&)
             const noexcept;
-        [[nodiscard]] bool isBuildingInput(const FrameInput&, platform::ipc::RequesterId) const noexcept;
-        [[nodiscard]] render::RenderResult<render::RequestId> admit(ResponseNode&, platform::ipc::RequesterId) noexcept;
-        [[nodiscard]] render::RenderResult<void>
-        sendMessage(render::CommandId, render::RequestId, platform::ipc::IpcMessage&) noexcept;
-        void revoke(render::RequestId) noexcept;
-        [[nodiscard]] render::RenderResult<void>
-        queueFrameCommand(render::CommandId, render::RequestId, platform::ipc::IpcMessage&) noexcept;
+        [[nodiscard]] bool isBuildingInput(const FrameInput&, lux::platform::ipc::RequesterId) const noexcept;
+        [[nodiscard]] lux::render::RenderResult<lux::render::RequestId> admit(ResponseNode&, lux::platform::ipc::RequesterId) noexcept;
+        [[nodiscard]] lux::render::RenderResult<void>
+        sendMessage(lux::render::CommandId, lux::render::RequestId, lux::platform::ipc::IpcMessage&) noexcept;
+        void revoke(lux::render::RequestId) noexcept;
+        [[nodiscard]] lux::render::RenderResult<void>
+        queueFrameCommand(lux::render::CommandId, lux::render::RequestId, lux::platform::ipc::IpcMessage&) noexcept;
         void sendFrame(FrameInput&, ResponseNode&) noexcept;
         void awaitSubmittedFrames(SubmittedFrameWaiter&) noexcept;
         static void deliverFrameWaiter(SubmittedFrameWaiter&) noexcept;
-        static void deliverResponse(ResponseNode&, platform::ipc::IpcMessage&&, render::RenderError) noexcept;
+        static void deliverResponse(ResponseNode&, lux::platform::ipc::IpcMessage&&, lux::render::RenderError) noexcept;
 
-        template <class Operation, render::RenderCommand C>
-        static void finish(ResponseNode& node, platform::ipc::IpcMessage&& message, render::RenderError error) noexcept
+        template <class Operation, lux::render::RenderCommand C>
+        static void finish(ResponseNode& node, lux::platform::ipc::IpcMessage&& message, lux::render::RenderError error) noexcept
         {
             auto& operation = static_cast<Operation&>(node);
             auto response = [&]() noexcept -> typename C::Response
@@ -397,14 +397,14 @@ namespace lux::rendering
                     return std::move(message.get<typename C::Response>());
                 }
                 typename C::Response failed{};
-                failed.error = error.type != 0 ? error : render::RenderError{render::kCommandContract};
+                failed.error = error.type != 0 ? error : lux::render::RenderError{lux::render::kCommandContract};
                 return failed;
             }();
             stdexec::set_value(std::move(operation.receiver), std::move(response));
             // Terminal completion may destroy the operation. No further access to it.
         }
 
-        template <render::RenderCommand C>
+        template <lux::render::RenderCommand C>
         void send(BoundCommand<C> command, typename C::Request& input, ResponseNode& node) noexcept
         {
             auto admitted = admit(node, command.source_);
@@ -413,7 +413,7 @@ namespace lux::rendering
                 deliverResponse(node, {}, admitted.error());
                 return;
             }
-            platform::ipc::IpcMessage message;
+            lux::platform::ipc::IpcMessage message;
             message.emplace<typename C::Request>(std::move(input));
             auto sent = [&]() noexcept
             {
@@ -438,4 +438,4 @@ namespace lux::rendering
 
         std::unique_ptr<Impl> impl_;
     };
-} // namespace lux::rendering
+} // namespace lux::engine::render

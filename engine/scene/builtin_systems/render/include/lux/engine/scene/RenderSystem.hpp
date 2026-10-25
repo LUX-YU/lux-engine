@@ -18,19 +18,19 @@ namespace lux::execution
     class ExecutionRuntime;
 }
 
-namespace lux::rendering
+namespace lux::engine::render
 {
     class RenderRequester;
     class RenderAssets;
-} // namespace lux::rendering
+} // namespace lux::engine::render
 
 namespace lux::scene
 {
     struct RenderSystemDependencies final
     {
-        rendering::RenderRequester& client;
+        engine::render::RenderRequester& client;
         execution::ExecutionRuntime& execution;
-        rendering::RenderAssets& assets;
+        engine::render::RenderAssets& assets;
         RenderAssetInput& assets_input;
         // Optional project VFS; copied into each accepted load, never selected globally by workers.
         process::asset_loading::AssetReadPort source;

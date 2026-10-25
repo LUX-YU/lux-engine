@@ -7,9 +7,9 @@
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/features/FeatureBinding.hpp>
 #include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
-#include <lux/engine/rendering/RenderDiagnostics.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
-#include <lux/engine/rendering/WindowSurface.hpp>
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
+#include <lux/engine/context/render/WindowSurface.hpp>
 #include <lux/engine/window/GlfwRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 
@@ -19,7 +19,7 @@
 
 using namespace lux;
 using namespace lux::render;
-using namespace lux::rendering;
+using namespace lux::engine::render;
 using namespace integration_test;
 
 namespace

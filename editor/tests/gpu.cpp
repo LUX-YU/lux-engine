@@ -14,7 +14,7 @@
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/project/SceneRegistrations.hpp>
-#include <lux/engine/rendering/RenderExecution.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>

@@ -363,6 +363,87 @@ namespace
         assert(runtime->join());
     }
 
+    void capacityWaitDoesNotCloseAdmission()
+    {
+        auto runtime = ExecutionRuntime::create({1, 1, {16}});
+        assert(runtime);
+        TaskScope tasks{*runtime};
+        TaskScope waiting{*runtime};
+        std::binary_semaphore entered{0}, release{0};
+        assert(tasks.submit(
+            {"Occupy task capacity", "test"},
+            [&](TaskReporter) noexcept
+            {
+                return stdexec::schedule(runtime->cpu()) | stdexec::then(
+                                                               [&]() noexcept
+                                                               {
+                                                                   entered.release();
+                                                                   release.acquire();
+                                                               }
+                                                           );
+            }
+        ));
+        entered.acquire();
+        std::atomic<unsigned> ready{}, stopped{};
+        auto wait = [&]() noexcept
+        {
+            return waiting.whenCapacityAvailable() | stdexec::then([&]() noexcept { ready.fetch_add(1); }) |
+                   stdexec::upon_stopped([&]() noexcept { stopped.fetch_add(1); });
+        };
+        assert(runtime->spawn(wait()));
+        assert(ready.load() == 0 && stopped.load() == 0);
+        release.release();
+        assert(runtime->waitUntil([&]() noexcept { return ready.load() == 1; }));
+        assert(waiting.submit({"Admission remains open", "test"}, [](TaskReporter) noexcept { return stdexec::just(); })
+        );
+        // Available capacity completes in start(), including destruction of the spawned operation.
+        assert(runtime->spawn(wait()));
+        assert(ready.load() == 2 && stopped.load() == 0);
+        waiting.requestStop();
+        assert(runtime->spawn(wait()));
+        assert(ready.load() == 2 && stopped.load() == 1);
+    }
+
+    void capacityWaitStops(bool stop_runtime)
+    {
+        auto runtime = ExecutionRuntime::create({1, 1, {16}});
+        assert(runtime);
+        TaskScope tasks{*runtime};
+        auto waiting = std::make_unique<TaskScope>(*runtime);
+        std::binary_semaphore entered{0}, release{0};
+        assert(tasks.submit(
+            {"Capacity remains occupied", "test"},
+            [&](TaskReporter) noexcept
+            {
+                return stdexec::schedule(runtime->cpu()) | stdexec::then(
+                                                               [&]() noexcept
+                                                               {
+                                                                   entered.release();
+                                                                   release.acquire();
+                                                               }
+                                                           );
+            }
+        ));
+        entered.acquire();
+        unsigned ready{}, stopped{};
+        assert(runtime->spawn(
+            waiting->whenCapacityAvailable() | stdexec::then([&]() noexcept { ++ready; }) |
+            stdexec::upon_stopped([&]() noexcept { ++stopped; })
+        ));
+        if (stop_runtime)
+        {
+            runtime->requestStop();
+        }
+        else
+        {
+            waiting.reset();
+        }
+        assert(ready == 0 && stopped == 1);
+        release.release();
+        assert(runtime->waitUntil([&]() noexcept { return tasks.settled(); }));
+        assert(ready == 0 && stopped == 1);
+    }
+
     void terminalReleasesCapacity()
     {
         auto runtime = ExecutionRuntime::create({1, 1, {16}, {}, 2});
@@ -439,4 +520,7 @@ int main()
     groupCompletionCodeLifetime(false);
     groupCompletionCodeLifetime(true);
     terminalReleasesCapacity();
+    capacityWaitDoesNotCloseAdmission();
+    capacityWaitStops(false);
+    capacityWaitStops(true);
 }

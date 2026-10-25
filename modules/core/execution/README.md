@@ -58,6 +58,15 @@ are unchanged. stdexec's pool may use locks when idle; only the Lux RunLoop publ
 
 ## Finite tasks
 
+`TaskScope::whenCapacityAvailable()` observes the Runtime's shared task-record capacity without closing
+the group or reserving admission. Start it with unmonitored `ExecutionRuntime::spawn`, then retry `submit`;
+another producer may have acquired the free slot before that retry. A capacity wait must not itself consume
+the capacity it needs. The connected sender owns its notification node; the existing task runtime only
+borrows it. A release detaches pending nodes before calling receivers and wakes the application after delivery.
+Completion can be synchronous or on the releasing thread; use `continues_on(mainScheduler())` before adopting
+application state. Group closure/stop or Runtime stop delivers `set_stopped`, never successful admission.
+Like `whenSettled`, this wait uses the group's lifetime/stop boundary, not a second cancellation domain.
+
 `TaskScope::submit(options, factory)` admits one finite sender pipeline. The factory receives a borrowed
 TaskReporter for identity, progress and its real cancellation token. The pipeline chooses its own scheduling
 and consumes business values; its terminal value is void, expected<void, E>, or a terminal ETaskState.

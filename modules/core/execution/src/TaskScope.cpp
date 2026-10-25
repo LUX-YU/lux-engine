@@ -3,23 +3,46 @@
 
 namespace lux::execution
 {
+    void detail::waitForTaskCapacity(TaskRuntime& tasks, TaskCapacityWaiter& waiter) noexcept
+    {
+        bool stopped{};
+        {
+            std::lock_guard lock{tasks.mutex};
+            stopped = !tasks.accepting || !waiter.group->accepting;
+            if (!stopped && tasks.records.size() == tasks.capacity)
+            {
+                waiter.next = std::exchange(tasks.capacity_waiters, &waiter);
+                return;
+            }
+        }
+        auto code_lifetime = std::move(waiter.code_lifetime);
+        waiter.complete(&waiter, stopped);
+    }
+
     void detail::closeTaskGroup(
         TaskRuntime& tasks,
         const std::shared_ptr<TaskGroup>& group,
         TaskGroupWaiter& waiter
     ) noexcept
     {
+        TaskCapacityWaiter* capacity_waiters{};
+        bool settled{};
         {
             std::lock_guard lock{tasks.mutex};
             group->accepting = false;
-            if (group->outstanding != 0)
+            capacity_waiters = tasks.takeCapacityWaiters(group.get());
+            settled = group->outstanding == 0;
+            if (!settled)
             {
                 waiter.next = std::exchange(group->waiters, &waiter);
-                return;
             }
         }
-        auto code_lifetime = std::move(waiter.code_lifetime);
-        waiter.complete(&waiter);
+        completeCapacityWaiters(capacity_waiters, true);
+        if (settled)
+        {
+            auto code_lifetime = std::move(waiter.code_lifetime);
+            waiter.complete(&waiter);
+        }
     }
 
     TaskScope::TaskScope(ExecutionRuntime& execution) noexcept
@@ -38,9 +61,11 @@ namespace lux::execution
         auto& tasks = *execution.tasks_;
         auto group = group_;
         std::vector<std::stop_source> stops;
+        detail::TaskCapacityWaiter* capacity_waiters{};
         {
             std::lock_guard lock{tasks.mutex};
             group->accepting = false;
+            capacity_waiters = tasks.takeCapacityWaiters(group.get());
             stops.reserve(group->outstanding);
             for (auto& record : tasks.records)
             {
@@ -58,6 +83,7 @@ namespace lux::execution
         {
             stop.request_stop();
         }
+        detail::completeCapacityWaiters(capacity_waiters, true);
         execution.wake();
     }
 
@@ -78,41 +104,53 @@ namespace lux::execution
         return CompletionSender{*execution_.tasks_, group_};
     }
 
+    TaskScope::CapacitySender TaskScope::whenCapacityAvailable() noexcept
+    {
+        return CapacitySender{*execution_.tasks_, group_};
+    }
+
     lux::cxx::expected<void, EExecutionError> TaskScope::join() noexcept
     {
-        auto& tasks = *execution_.tasks_;
+        auto& execution = execution_;
+        auto& tasks = *execution.tasks_;
+        auto group = group_;
         if (tasks.main_thread != std::this_thread::get_id())
         {
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
         }
+        detail::TaskCapacityWaiter* capacity_waiters{};
+        bool settled{};
         {
             std::lock_guard lock{tasks.mutex};
-            group_->accepting = false;
-            if (group_->outstanding == 0)
-            {
-                return {};
-            }
+            group->accepting = false;
+            capacity_waiters = tasks.takeCapacityWaiters(group.get());
+            settled = group->outstanding == 0;
         }
-        const auto valid = execution_.validateWait();
+        detail::completeCapacityWaiters(capacity_waiters, true);
+        if (settled)
+        {
+            return {};
+        }
+        const auto valid = execution.validateWait();
         if (!valid)
         {
             return lux::cxx::unexpected(valid.error());
         }
         for (;;)
         {
-            const auto epoch = execution_.wakeEpoch();
-            if (!execution_.dispatchMainCompletions())
+            const auto epoch = execution.wakeEpoch();
+            if (!execution.dispatchMainCompletions())
             {
                 std::terminate();
             }
             {
                 std::lock_guard lock{tasks.mutex};
-                if (group_->outstanding == 0)
+                if (group->outstanding == 0)
                 {
                     return {};
                 }
             }
-            execution_.waitForWork(epoch);
+            execution.waitForWork(epoch);
         }
     }
 

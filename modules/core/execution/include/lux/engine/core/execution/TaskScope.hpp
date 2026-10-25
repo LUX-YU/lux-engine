@@ -15,12 +15,23 @@ namespace lux::execution
 
         LUX_CORE_EXECUTION_PUBLIC void
         closeTaskGroup(TaskRuntime&, const std::shared_ptr<TaskGroup>&, TaskGroupWaiter&) noexcept;
+
+        struct TaskCapacityWaiter
+        {
+            TaskCapacityWaiter* next{};
+            std::shared_ptr<TaskGroup> group;
+            std::shared_ptr<const void> code_lifetime;
+            void (*complete)(TaskCapacityWaiter*, bool stopped) noexcept {};
+        };
+
+        LUX_CORE_EXECUTION_PUBLIC void waitForTaskCapacity(TaskRuntime&, TaskCapacityWaiter&) noexcept;
     } // namespace detail
 
     class LUX_CORE_EXECUTION_PUBLIC TaskScope final
     {
     public:
         class CompletionSender;
+        class CapacitySender;
         explicit TaskScope(ExecutionRuntime& execution) noexcept;
         ~TaskScope() noexcept;
         TaskScope(const TaskScope&) = delete;
@@ -63,6 +74,11 @@ namespace lux::execution
         // Close admission when started; complete after the accepted operation states have ended.
         // No cancellation or nested loop. The waiting operation must be outside this group.
         [[nodiscard]] CompletionSender whenSettled() noexcept;
+        // Observe available Runtime task capacity without closing this group's admission or reserving a slot.
+        // Retry submit after completion; another producer may acquire capacity first. Group/Runtime stop
+        // completes with set_stopped. Use unmonitored execution.spawn: waiting must not consume a task slot.
+        // The connected operation borrows ExecutionRuntime through completion, like accepted work.
+        [[nodiscard]] CapacitySender whenCapacityAvailable() noexcept;
         // Explicit synchronous barrier: closes admission and collects accepted work to completion.
         // Only shutdown, synchronous startup/APIs and tests may wait; object/project destruction must not.
         [[nodiscard]] lux::cxx::expected<void, EExecutionError> join() noexcept;
@@ -117,6 +133,70 @@ namespace lux::execution
         friend class TaskScope;
 
         CompletionSender(detail::TaskRuntime& tasks, std::shared_ptr<detail::TaskGroup> group) noexcept
+            : tasks_(&tasks), group_(std::move(group))
+        {
+        }
+
+        detail::TaskRuntime* tasks_;
+        std::shared_ptr<detail::TaskGroup> group_;
+    };
+
+    class TaskScope::CapacitySender final
+    {
+    public:
+        using sender_concept = stdexec::sender_t;
+        using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(), stdexec::set_stopped_t()>;
+
+        [[nodiscard]] stdexec::env<> get_env() const noexcept
+        {
+            return {};
+        }
+
+        template <class Receiver> class Operation final : private detail::TaskCapacityWaiter
+        {
+        public:
+            Operation(
+                detail::TaskRuntime& tasks,
+                std::shared_ptr<detail::TaskGroup> task_group,
+                Receiver receiver
+            ) noexcept
+                : tasks_(tasks), receiver_(std::move(receiver))
+            {
+                group = std::move(task_group);
+                code_lifetime = detail::getCompletionCode(stdexec::get_env(receiver_));
+                complete = [](detail::TaskCapacityWaiter* waiter, bool stopped) noexcept
+                {
+                    auto& operation = *static_cast<Operation*>(waiter);
+                    if (stopped)
+                    {
+                        stdexec::set_stopped(std::move(operation.receiver_));
+                    }
+                    else
+                    {
+                        stdexec::set_value(std::move(operation.receiver_));
+                    }
+                };
+            }
+
+            void start() & noexcept
+            {
+                detail::waitForTaskCapacity(tasks_, *this);
+            }
+
+        private:
+            detail::TaskRuntime& tasks_;
+            Receiver receiver_;
+        };
+
+        template <class Receiver> [[nodiscard]] auto connect(Receiver receiver) const noexcept
+        {
+            return Operation<Receiver>{*tasks_, group_, std::move(receiver)};
+        }
+
+    private:
+        friend class TaskScope;
+
+        CapacitySender(detail::TaskRuntime& tasks, std::shared_ptr<detail::TaskGroup> group) noexcept
             : tasks_(&tasks), group_(std::move(group))
         {
         }

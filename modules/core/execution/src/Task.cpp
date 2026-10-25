@@ -132,6 +132,7 @@ namespace lux::execution::detail
         auto& runtime = *record.runtime;
         std::shared_ptr<const void> pin;
         TaskGroupWaiter* waiters{};
+        TaskCapacityWaiter* capacity_waiters{};
         {
             std::lock_guard lock{runtime.mutex};
             if (record.group)
@@ -144,6 +145,7 @@ namespace lux::execution::detail
             }
             pin = std::move(record.code_lifetime);
             runtime.retire(record);
+            capacity_waiters = runtime.takeCapacityWaiters();
         }
         while (waiters)
         {
@@ -152,10 +154,47 @@ namespace lux::execution::detail
             waiters->complete(waiters);
             waiters = next;
         }
+        completeCapacityWaiters(capacity_waiters, false);
         // Publish after the receivers: waking before delivery can let Main observe an unfinished result
         // and sleep past its final completion. Scope association covers this tail until deallocation returns.
         // No TaskRecord access follows retirement or a receiver callback.
         execution.wake();
+    }
+
+    TaskCapacityWaiter* TaskRuntime::takeCapacityWaiters(const TaskGroup* group) noexcept
+    {
+        // Caller holds mutex. Only stopped-group removal scans; ordinary capacity release detaches in O(1).
+        if (!group)
+        {
+            return std::exchange(capacity_waiters, nullptr);
+        }
+        TaskCapacityWaiter* selected{};
+        auto** link = &capacity_waiters;
+        while (*link)
+        {
+            auto* waiter = *link;
+            if (waiter->group.get() == group)
+            {
+                *link = waiter->next;
+                waiter->next = std::exchange(selected, waiter);
+            }
+            else
+            {
+                link = &waiter->next;
+            }
+        }
+        return selected;
+    }
+
+    void completeCapacityWaiters(TaskCapacityWaiter* waiters, bool stopped) noexcept
+    {
+        while (waiters)
+        {
+            auto* next = waiters->next;
+            auto code_lifetime = std::move(waiters->code_lifetime);
+            waiters->complete(waiters, stopped);
+            waiters = next;
+        }
     }
 
     void completeTask(TaskRecord& record, ETaskState state) noexcept
@@ -265,9 +304,11 @@ namespace lux::execution::detail
     {
         requireMainThread();
         std::vector<std::stop_source> stops;
+        TaskCapacityWaiter* waiters{};
         {
             std::lock_guard lock{mutex};
             accepting = false;
+            waiters = takeCapacityWaiters();
             stops.reserve(records.size());
             for (auto& record : records)
             {
@@ -284,6 +325,7 @@ namespace lux::execution::detail
         {
             stop.request_stop();
         }
+        completeCapacityWaiters(waiters, true);
     }
 
     bool TaskRuntime::settled() const noexcept

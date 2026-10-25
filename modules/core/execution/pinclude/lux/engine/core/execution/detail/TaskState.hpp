@@ -7,6 +7,7 @@
 namespace lux::execution::detail
 {
     struct TaskGroupWaiter;
+    struct TaskCapacityWaiter;
 
     struct TaskGroup final
     {
@@ -35,7 +36,8 @@ namespace lux::execution::detail
         ~TaskRuntime();
         void moveTo(ExecutionRuntime&) noexcept;
         void requireMainThread() const noexcept;
-        void changed(TaskRecord&) noexcept;                    // Caller holds mutex.
+        void changed(TaskRecord&) noexcept; // Caller holds mutex.
+        [[nodiscard]] TaskCapacityWaiter* takeCapacityWaiters(const TaskGroup* group = nullptr) noexcept;
         [[nodiscard]] TaskRecord* find(TaskId) const noexcept; // Caller holds mutex.
         void retire(TaskRecord&) noexcept;
         void stop() noexcept;
@@ -63,5 +65,9 @@ namespace lux::execution::detail
         bool resync{};
         void* observer_context{};
         ExecutionRuntime::TaskObserver observer{};
+        TaskCapacityWaiter* capacity_waiters{};
     };
+
+    // Detached before invocation; receivers may destroy their connected operation.
+    void completeCapacityWaiters(TaskCapacityWaiter*, bool stopped) noexcept;
 } // namespace lux::execution::detail

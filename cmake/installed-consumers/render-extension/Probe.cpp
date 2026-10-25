@@ -5,7 +5,9 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/capabilities/RenderCapability.hpp>
+#include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/extensions/FeatureRegistration.hpp>
+#include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <thread>
 

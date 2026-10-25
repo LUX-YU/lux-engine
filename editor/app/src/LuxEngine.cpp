@@ -67,6 +67,7 @@ namespace lux::editor
             PROJECTS,
             ASSETS,
             RENDER,
+            DEPENDENCIES,
             EXECUTION,
             CLOSED
         };
@@ -203,12 +204,26 @@ namespace lux::editor
             return impl;
         }
 
-        static exec::task<void> closeProject(
+        exec::task<void> closeProject(
             std::unique_ptr<detail::EditorProject> project,
-            exec::task<void> completion
+            exec::task<FrameworkResult<void>> completion
         ) noexcept
         {
-            co_await std::move(completion);
+            if (auto closed = co_await std::move(completion); !closed)
+            {
+                recordFailure(closed.error());
+                render_cleanup_failed_ = true;
+                // The coroutine still owns this exact project while Server discharges failed native releases.
+                co_await rendering_->whenStopped();
+                if (project->scenes)
+                {
+                    co_await project->scenes->finishCloseAfterServerStop();
+                }
+                else
+                {
+                    co_await project->context->closeAsync();
+                }
+            }
         }
 
         void retire(std::unique_ptr<detail::EditorProject> project) noexcept
@@ -232,8 +247,8 @@ namespace lux::editor
                 {
                     if (!result)
                     {
-                        std::terminate();
-                    } // Execution outlives the non-cancellable project cleanup.
+                        recordFailure(error::Error{render::kRuntimeState});
+                    } // Shared execution remains available through final project cleanup.
                     --closing_project_count_;
                 }
             ));
@@ -326,6 +341,22 @@ namespace lux::editor
                     recordFailure(frame.error());
                 }
             }
+            if (close_phase_ == EClosePhase::PROJECTS || close_phase_ == EClosePhase::ASSETS)
+            {
+                recordFailure(ui_scene_->cleanupFailure());
+                render_cleanup_failed_ |= failure_.type != 0;
+                if (render_cleanup_failed_)
+                {
+                    assets_->stopLoads();
+                    if (assets_->loadsSettled())
+                    {
+                        // No CPU producer can post a later Asset request. Main close cancels unsent commands;
+                        // accepted requests retain their payload until terminal delivery or joined-Server proof.
+                        rendering_->beginClose();
+                        close_phase_ = EClosePhase::RENDER;
+                    }
+                }
+            }
             if (close_phase_ == EClosePhase::PROJECTS)
             {
                 if (closing_project_count_ == 0 && project_tasks_.settled())
@@ -350,8 +381,25 @@ namespace lux::editor
                 if (rendering_->advanceClose())
                 {
                     recordFailure(rendering_->failure());
-                    engine_->execution().requestStop();
-                    close_phase_ = EClosePhase::EXECUTION;
+                    close_phase_ = EClosePhase::DEPENDENCIES;
+                }
+            }
+            if (close_phase_ == EClosePhase::DEPENDENCIES)
+            {
+                const auto progressed = engine_->sceneRuntime().driveFrame(scene::ESceneDriveMode::MAINTENANCE);
+                if (!progressed)
+                {
+                    recordFailure(scene::toError(progressed.error()));
+                }
+                const bool ui_settled = ui_scene_->finishCloseAfterServerStop();
+                if (closing_project_count_ == 0 && project_tasks_.settled() && ui_settled)
+                {
+                    assets_->close();
+                    if (assets_->settled())
+                    {
+                        engine_->execution().requestStop();
+                        close_phase_ = EClosePhase::EXECUTION;
+                    }
                 }
             }
             auto& objects = object::ObjectRuntime::instance();
@@ -792,7 +840,7 @@ namespace lux::editor
 
         FrameworkResult<ELoopState> advance() noexcept
         {
-            if (window_->shouldClose() || close_phase_ != EClosePhase::OPEN)
+            if (window_->shouldClose() || render_cleanup_failed_ || close_phase_ != EClosePhase::OPEN)
             {
                 beginClose();
                 return advanceClose();
@@ -903,6 +951,7 @@ namespace lux::editor
         std::optional<execution::TaskId> project_prepare_;
         std::uint64_t project_request_serial_{};
         error::Error failure_;
+        bool render_cleanup_failed_ = false;
     };
 
     LuxEngine::LuxEngine(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl))

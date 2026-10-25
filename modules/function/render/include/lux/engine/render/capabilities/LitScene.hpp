@@ -8,6 +8,7 @@
 namespace lux::render
 {
     inline constexpr std::string_view kLitSceneCapability = "lux.render.capability.lit_scene";
+    inline constexpr std::string_view kLitSceneConfigurationSchema = "lux.render.config.lit_scene";
     inline constexpr std::string_view kSceneGeometryInput = "lux.render.input.raster_scene_geometry";
     inline constexpr std::string_view kCameraInput = "lux.render.input.camera";
 
@@ -22,6 +23,10 @@ namespace lux::render
         std::uint32_t cluster_index_capacity = 65536;
         bool operator==(const LitSceneConfiguration&) const noexcept = default;
     };
+
+    // Portable configuration for project persistence, validated before encoding.
+    [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<SerializedRenderConfiguration>
+    encodeLitSceneConfiguration(const LitSceneConfiguration&) noexcept;
 
     struct RasterGeometrySelection final
     {

@@ -350,6 +350,8 @@ namespace lux::rendering
         // Completes only received responses. Link closure is observable but does not end payload borrows.
         std::size_t consumeResponses(std::size_t limit = 128) noexcept;
         [[nodiscard]] bool closed() const noexcept;
+        // Host proof established by settleClosed after Server/producers join, not merely a closed IPC Link.
+        [[nodiscard]] bool serverStopped() const noexcept;
         [[nodiscard]] std::size_t pendingRequests() const noexcept;
         [[nodiscard]] bool hasQueuedFrameCommands() const noexcept;
         // Main-only publication demand. A Scene may need an input before it can construct any Command.
@@ -362,8 +364,9 @@ namespace lux::rendering
         // Called on this Link's SPSC thread after producers stop. False means accepted replies remain.
         [[nodiscard]] bool close() noexcept;
 
-        // Abnormal shutdown only: the caller must first stop/join the Server and its producers. Delivers Unknown for
-        // missing terminal replies, then closes this Link. This is not GPU cancellation or an implicit wait.
+        // The caller must first stop/join the Server and its producers. Establishes final cleanup proof and delivers
+        // Unknown for missing terminal replies, then closes this Link. This is not GPU cancellation or an implicit
+        // wait.
         void settleClosed() noexcept;
 
     private:

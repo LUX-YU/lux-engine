@@ -76,6 +76,18 @@ namespace lux::render
         bool operator==(const RenderCapability&) const noexcept = default;
     };
 
+    // Portable configuration from a saved project. Bytes are decoded by the selected implementation;
+    // they are never reinterpreted as a C++ object. The typed alternative remains available in-process.
+    struct SerializedRenderConfiguration final
+    {
+        std::string schema;
+        std::uint32_t version = 1;
+        std::vector<std::byte> bytes;
+        bool operator==(const SerializedRenderConfiguration&) const noexcept = default;
+    };
+
+    using VCapabilityConfiguration = std::variant<ConfigValue, SerializedRenderConfiguration>;
+
     struct CapabilitySupport final
     {
         CapabilitySelection selection;
@@ -84,6 +96,7 @@ namespace lux::render
         std::string description;
         std::vector<RenderCapability> capabilities;
         RenderPayloadContract configuration;
+        std::vector<std::byte> default_configuration;
         RenderError unavailable;
     };
 
@@ -106,7 +119,7 @@ namespace lux::render
     {
         CapabilitySelection selection;
         VRenderScope scope;
-        ConfigValue configuration;
+        VCapabilityConfiguration configuration;
     };
 
     struct CapabilitiesInstalled final

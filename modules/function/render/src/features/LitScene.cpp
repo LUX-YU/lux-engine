@@ -5,6 +5,7 @@
 #include <lux/engine/render/extensions/GraphCommands.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/render/features/LitSceneParameters.hpp>
+#include <lux/engine/serialization/PortableValueCodec.hpp>
 #include <ranges>
 
 namespace lux::render::detail
@@ -16,6 +17,38 @@ namespace lux::render::detail
 
     namespace
     {
+        bool validConfiguration(const LitSceneConfiguration& value) noexcept
+        {
+            const bool valid_resolution =
+                value.shadow_filter_radius <= 4 && value.shadow_resolution > 2 * (value.shadow_filter_radius + 2);
+            const bool valid_distance = std::isfinite(value.shadow_distance) && value.shadow_distance > 0;
+            return valid_resolution && valid_distance && value.cluster_index_capacity != 0;
+        }
+
+        auto configurationFields(auto& value) noexcept
+        {
+            return std::tie(
+                value.shadows,
+                value.shadow_resolution,
+                value.shadow_filter_radius,
+                value.shadow_distance,
+                value.cluster_index_capacity
+            );
+        }
+
+        RenderResult<ConfigValue> decodeConfiguration(std::span<const std::byte> bytes) noexcept
+        {
+            LitSceneConfiguration value;
+            serialization::BinaryReader reader(bytes);
+            auto fields = configurationFields(value);
+            const auto decoded = serialization::read(reader, fields, serialization::kPortableMetadataBudget);
+            if (!decoded || reader.remaining() != 0 || !validConfiguration(value))
+            {
+                return cxx::unexpected(RenderError{kInvalidConfig});
+            }
+            return ConfigValue::make(value);
+        }
+
         rdesc::ShaderBlock sceneParameterLayout() noexcept
         {
             auto layout = meshViewParameterBlock();
@@ -289,7 +322,7 @@ namespace lux::render::detail
                 for (const auto& texture : source.textures)
                 {
                     group.textures.push_back(
-                        {texture.width, texture.height, texture.layers, texture.mips, texture.format}
+                        {texture.width, texture.height, texture.mips, texture.layers, texture.format}
                     );
                 }
                 groups.push_back(std::move(group));
@@ -407,7 +440,8 @@ namespace lux::render::detail
                 .dependencies = dependencies,
                 .effect_input_type = cxx::typeToken<LitSceneInputs>(),
                 .parameters = projectCamera,
-                .storage_inputs = inputs
+                .storage_inputs = inputs,
+                .decode_configuration = decodeConfiguration
             };
             return graph;
         }
@@ -431,10 +465,11 @@ namespace lux::render::detail
             result.implementation = name;
             result.description = "Lit raster scene with GPU visibility, cooked materials and optional basic shadows.";
             result.configuration = payload<LitSceneConfiguration>(
-                "lux.render.config.lit_scene",
+                kLitSceneConfigurationSchema,
                 ERenderPayloadUse::CONFIGURATION,
                 "Shadow and light-list configuration."
             );
+            result.default_configuration = encodeLitSceneConfiguration(LitSceneConfiguration{})->bytes;
             RenderCapability capability;
             capability.name = kLitSceneCapability;
             capability.description = result.description;
@@ -498,6 +533,23 @@ namespace lux::render::detail
 
 namespace lux::render
 {
+    RenderResult<SerializedRenderConfiguration> encodeLitSceneConfiguration(const LitSceneConfiguration& value) noexcept
+    {
+        if (!detail::validConfiguration(value))
+        {
+            return cxx::unexpected(RenderError{kInvalidConfig});
+        }
+        SerializedRenderConfiguration result{std::string(kLitSceneConfigurationSchema)};
+        serialization::BinaryWriter writer(result.bytes);
+        const auto encoded =
+            serialization::write(writer, detail::configurationFields(value), serialization::kPortableMetadataBudget);
+        if (!encoded)
+        {
+            return cxx::unexpected(RenderError{kInvalidConfig});
+        }
+        return result;
+    }
+
     RenderResult<std::size_t> ConfigValueTraits<LitSceneInputs>::retainedBytes(const LitSceneInputs& value) noexcept
     {
         std::size_t total = sizeof(value);

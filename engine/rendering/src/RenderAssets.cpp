@@ -46,6 +46,7 @@ namespace lux::rendering
             std::size_t references = 1;
             bool loading = true;
             bool releasing = false;
+            std::vector<RenderAssets::AvailabilityConnection*> observers;
         };
 
         struct PackedVertex final
@@ -178,8 +179,8 @@ namespace lux::rendering
                                 response.texture,
                                 {static_cast<std::uint32_t>(info.width),
                                  static_cast<std::uint32_t>(info.height),
-                                 info.mip_count,
                                  info.layers,
+                                 info.mip_count,
                                  format}
                             };
                         }
@@ -258,11 +259,12 @@ namespace lux::rendering
                             {
                                 record.value.emplace(std::move(*result));
                             }
-                            notifyAvailability(key);
+                            notifyVersion(record.observers, key);
                             if (record.references == 0)
                             {
                                 scheduleRelease(records, key);
                             }
+                            notifyCapacity();
                             return execution::taskState(result);
                         }
                     );
@@ -272,6 +274,7 @@ namespace lux::rendering
             {
                 --in_flight;
                 records.erase(entry);
+                awaitTaskCapacity();
                 return cxx::unexpected(RenderError{kRuntimeCapacity});
             }
             return {};
@@ -339,7 +342,7 @@ namespace lux::rendering
                     {
                         records.erase(key);
                     }
-                    notifyAvailability(key);
+                    notifyCapacity();
                 }
             ));
             if (!accepted)
@@ -352,6 +355,11 @@ namespace lux::rendering
         {
             auto found = records.find(key);
             auto& record = found->second;
+            if (rendering.mainClient().serverStopped())
+            {
+                records.erase(found); // Server teardown, not a fabricated successful Release response.
+                return;
+            }
             if (!record.value)
             {
                 records.erase(found);
@@ -402,13 +410,62 @@ namespace lux::rendering
         CapabilityInput mesh_input, texture_input;
         std::size_t in_flight = 0;
         RenderError release_failure;
-        AvailabilityConnection* availability_observers{};
+        AvailabilityConnection* capacity_waiters{};
+        std::size_t connection_count = 0;
+        bool capacity_notification_pending = false;
 
-        void notifyAvailability(RenderAssetVersion key) noexcept
+        void awaitTaskCapacity() noexcept
         {
-            for (auto* observer = availability_observers; observer; observer = observer->next_)
+            if (capacity_notification_pending)
             {
+                return;
+            }
+            capacity_notification_pending = true;
+            auto completion = stdexec::upon_stopped(
+                stdexec::then(tasks.whenCapacityAvailable(), []() noexcept { return true; }),
+                []() noexcept { return false; }
+            );
+            auto accepted = rendering.execution().spawn(stdexec::then(
+                stdexec::continues_on(std::move(completion), rendering.execution().mainScheduler()),
+                [this](bool available) noexcept
+                {
+                    capacity_notification_pending = false;
+                    if (available)
+                    {
+                        notifyCapacity();
+                    }
+                }
+            ));
+            if (!accepted)
+            {
+                std::terminate(); // Shared execution outlives all RenderAssets operations.
+            }
+        }
+
+        static void notifyVersion(std::vector<AvailabilityConnection*>& observers, RenderAssetVersion key) noexcept
+        {
+            while (!observers.empty())
+            {
+                auto* observer = observers.back();
+                observers.pop_back();
+                std::erase(observer->versions_, &observers);
                 observer->completed_(observer->receiver_, key);
+            }
+        }
+
+        void notifyCapacity() noexcept
+        {
+            // Detach this generation before invoking callbacks; a new wait belongs to the next release.
+            auto* ready = std::exchange(capacity_waiters, nullptr);
+            if (ready)
+            {
+                ready->previous_ = &ready;
+            }
+            while (ready)
+            {
+                auto* observer = ready;
+                observer->disconnectCapacity();
+                observer->capacity_available_(observer->receiver_);
             }
         }
 
@@ -420,11 +477,46 @@ namespace lux::rendering
     RenderAssets::AvailabilityConnection::AvailabilityConnection(
         RenderAssets& assets,
         void* receiver,
-        void (*completed)(void*, RenderAssetVersion) noexcept
+        void (*completed)(void*, RenderAssetVersion) noexcept,
+        void (*capacity_available)(void*) noexcept
     ) noexcept
-        : assets_(assets), receiver_(receiver), completed_(completed)
+        : assets_(assets), receiver_(receiver), completed_(completed), capacity_available_(capacity_available)
     {
-        auto& head = assets_.impl_->availability_observers;
+        ++assets_.impl_->connection_count;
+    }
+
+    void RenderAssets::AvailabilityConnection::observe(RenderAssetVersion key) noexcept
+    {
+        auto subscribe = [&](auto& records) noexcept
+        {
+            const auto found = records.find(key);
+            if (found == records.end())
+            {
+                return false;
+            }
+            auto& record = found->second;
+            if (!record.loading)
+            {
+                completed_(receiver_, key);
+            }
+            else if (std::ranges::find(record.observers, this) == record.observers.end())
+            {
+                record.observers.push_back(this);
+                versions_.push_back(&record.observers);
+            }
+            return true;
+        };
+        auto& state = *assets_.impl_;
+        (void)(subscribe(state.meshes) || subscribe(state.textures) || subscribe(state.materials));
+    }
+
+    void RenderAssets::AvailabilityConnection::whenCapacityAvailable() noexcept
+    {
+        if (previous_)
+        {
+            return;
+        }
+        auto& head = assets_.impl_->capacity_waiters;
         next_ = head;
         previous_ = &head;
         if (head)
@@ -434,18 +526,34 @@ namespace lux::rendering
         head = this;
     }
 
-    RenderAssets::AvailabilityConnection::~AvailabilityConnection() noexcept
+    void RenderAssets::AvailabilityConnection::disconnectCapacity() noexcept
     {
+        if (!previous_)
+        {
+            return;
+        }
         *previous_ = next_;
         if (next_)
         {
             next_->previous_ = previous_;
         }
+        previous_ = nullptr;
+        next_ = nullptr;
+    }
+
+    RenderAssets::AvailabilityConnection::~AvailabilityConnection() noexcept
+    {
+        disconnectCapacity();
+        for (auto* observers : versions_)
+        {
+            std::erase(*observers, this);
+        }
+        --assets_.impl_->connection_count;
     }
 
     RenderAssets::~RenderAssets() noexcept
     {
-        if (!settled() || impl_->availability_observers)
+        if (!settled() || impl_->connection_count != 0)
         {
             std::terminate();
         }
@@ -636,8 +744,7 @@ namespace lux::rendering
     void RenderAssets::close() noexcept
     {
         auto& state = *impl_;
-        state.closing = true;
-        state.stop.request_stop();
+        stopLoads();
         for (auto entry = state.meshes.begin(); entry != state.meshes.end();)
         {
             auto& [key, value] = *entry++;
@@ -661,6 +768,18 @@ namespace lux::rendering
         std::erase_if(state.materials, [](const auto& entry) noexcept { return !entry.second.loading; });
     }
 
+    void RenderAssets::stopLoads() noexcept
+    {
+        impl_->closing = true;
+        impl_->stop.request_stop();
+        impl_->tasks.requestStop();
+    }
+
+    bool RenderAssets::loadsSettled() const noexcept
+    {
+        return impl_->in_flight == 0 && !impl_->capacity_notification_pending && impl_->tasks.settled();
+    }
+
     bool RenderAssets::settled() const noexcept
     {
         const auto ended = [](const auto& records) noexcept
@@ -674,7 +793,8 @@ namespace lux::rendering
                 }
             );
         };
-        return impl_->tasks.settled() && ended(impl_->meshes) && ended(impl_->textures) && impl_->materials.empty();
+        return !impl_->capacity_notification_pending && impl_->tasks.settled() && ended(impl_->meshes) &&
+               ended(impl_->textures) && impl_->materials.empty();
     }
 
     RenderError RenderAssets::releaseFailure() const noexcept

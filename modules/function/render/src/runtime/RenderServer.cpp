@@ -222,6 +222,7 @@ namespace lux::render
                                          previous.graph.describe_ports != graph.describe_ports ||
                                          previous.graph.build != graph.build || previous.graph.expand != graph.expand ||
                                          previous.graph.parameters != graph.parameters ||
+                                         previous.graph.decode_configuration != graph.decode_configuration ||
                                          previous.graph.effect_input_type != graph.effect_input_type ||
                                          !std::ranges::equal(previous.graph.dependencies, graph.dependencies) ||
                                          previous.capabilities != capabilities;

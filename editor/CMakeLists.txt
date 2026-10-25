@@ -662,6 +662,17 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
 
         set_tests_properties(framework.scene_workflow PROPERTIES TIMEOUT 150 RUN_SERIAL TRUE LABELS "gpu;desktop")
 
+        add_test(
+            NAME framework.scene_failed_close
+            COMMAND editor_scene_workflow_test
+                "${CMAKE_BINARY_DIR}/share/lux-engine/plugins/catalog.json"
+                "${CMAKE_BINARY_DIR}"
+                "${CMAKE_CURRENT_BINARY_DIR}/scene-workflow"
+                --fault-close
+        )
+
+        set_tests_properties(framework.scene_failed_close PROPERTIES TIMEOUT 150 RUN_SERIAL TRUE LABELS "gpu;desktop")
+
         add_executable(editor_host_shutdown_test tests/shutdown.cpp)
 
         target_link_libraries(editor_host_shutdown_test PRIVATE lux_editor_app)

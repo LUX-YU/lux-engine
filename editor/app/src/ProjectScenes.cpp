@@ -46,7 +46,8 @@ namespace lux::editor
 
         ProjectSceneResult<std::shared_ptr<const scene::SceneDescription>> previewSystems(
             const scene::ScenePackage& package,
-            ESceneRunMode mode
+            ESceneRunMode mode,
+            const project::SceneRegistrations& registrations
         ) noexcept
         {
             const auto& source = package.scene->data();
@@ -57,8 +58,17 @@ namespace lux::editor
             scene::SceneDescriptionBuilder builder;
             builder.setWorld(source.world());
             builder.setSimulation(source.simulation());
-            const auto is_presentation = [](scene::SceneSystemDescription system) noexcept
-            { return system.type().name == scene::RenderSystem::Description.canonical_name; };
+            const auto is_presentation = [&](scene::SceneSystemDescription system) noexcept
+            {
+                const auto registration = std::ranges::find(
+                    registrations.scene_systems,
+                    system.type(),
+                    &scene::SceneSystemRegistration::type
+                );
+                return registration != registrations.scene_systems.end() &&
+                       std::ranges::find(registration->description->capabilities, "lux.scene.optional_presentation") !=
+                           registration->description->capabilities.end();
+            };
             for (std::size_t i = 0; i < source.systemCount(); ++i)
             {
                 const auto system = source.systemAt(i);
@@ -118,7 +128,8 @@ namespace lux::editor
             VIEWPORT,
             PLAY,
             SAVE,
-            ALL
+            ALL,
+            OPERATIONS
         };
 
         struct CloseWaiter
@@ -127,14 +138,14 @@ namespace lux::editor
             ECloseCondition kind;
             SceneViewportId viewport;
             asset::AssetId document;
-            void (*complete)(CloseWaiter&) noexcept {};
+            void (*complete)(CloseWaiter&, FrameworkResult<void>) noexcept {};
             std::shared_ptr<const void> code_lifetime;
         };
 
         struct CloseCompletionSender final
         {
             using sender_concept = stdexec::sender_t;
-            using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t()>;
+            using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t(FrameworkResult<void>)>;
             Impl& collection;
             ECloseCondition kind;
             SceneViewportId viewport{};
@@ -153,10 +164,10 @@ namespace lux::editor
                     this->viewport = sender.viewport;
                     this->document = sender.document;
                     this->code_lifetime = execution::detail::getCompletionCode(stdexec::get_env(this->receiver));
-                    this->complete = [](CloseWaiter& waiter) noexcept
+                    this->complete = [](CloseWaiter& waiter, FrameworkResult<void> result) noexcept
                     {
                         auto& operation = static_cast<Operation&>(waiter);
-                        stdexec::set_value(std::move(operation.receiver));
+                        stdexec::set_value(std::move(operation.receiver), std::move(result));
                     };
                 }
 
@@ -172,32 +183,65 @@ namespace lux::editor
             }
         };
 
-        bool closeConditionSatisfied(const CloseWaiter& waiter) const noexcept
+        std::optional<FrameworkResult<void>> closeResult(const CloseWaiter& waiter) const noexcept
         {
             if (waiter.kind == ECloseCondition::VIEWPORT)
             {
-                return !viewports.find(waiter.viewport);
+                const auto* viewport = viewports.find(waiter.viewport);
+                if (!viewport)
+                {
+                    return FrameworkResult<void>{};
+                }
+                if (!viewport->pending && viewport->closing && viewport->error.type != 0)
+                {
+                    return FrameworkResult<void>{cxx::unexpected(viewport->error)};
+                }
+                return {};
             }
-            if (waiter.kind == ECloseCondition::ALL)
+            if (waiter.kind == ECloseCondition::ALL && close_failure.type != 0)
             {
-                return operations == 0 && documents.empty() && viewports.empty();
+                return FrameworkResult<void>{cxx::unexpected(close_failure)};
+            }
+            if (waiter.kind == ECloseCondition::ALL || waiter.kind == ECloseCondition::OPERATIONS)
+            {
+                const bool operations_done =
+                    operations == 0 &&
+                    std::ranges::none_of(viewports, [](const auto& viewport) noexcept { return viewport.pending; });
+                const bool objects_done =
+                    waiter.kind == ECloseCondition::OPERATIONS || (documents.empty() && viewports.empty());
+                return operations_done && objects_done ? std::optional{FrameworkResult<void>{}} : std::nullopt;
             }
             const auto entry = documents.find(waiter.document);
-            return entry == documents.end() ||
-                   (waiter.kind == ECloseCondition::PLAY ? !entry->second->play : !entry->second->saving);
+            if (entry == documents.end())
+            {
+                return FrameworkResult<void>{};
+            }
+            if (waiter.kind == ECloseCondition::PLAY)
+            {
+                if (!entry->second->play)
+                {
+                    return FrameworkResult<void>{};
+                }
+                if (entry->second->play->close_failure.type != 0)
+                {
+                    return FrameworkResult<void>{cxx::unexpected(entry->second->play->close_failure)};
+                }
+                return {};
+            }
+            return !entry->second->saving ? std::optional{FrameworkResult<void>{}} : std::nullopt;
         }
 
-        static void deliverClose(CloseWaiter& waiter) noexcept
+        static void deliverClose(CloseWaiter& waiter, FrameworkResult<void> result) noexcept
         {
             auto code_lifetime = std::move(waiter.code_lifetime);
-            waiter.complete(waiter);
+            waiter.complete(waiter, std::move(result));
         }
 
         void awaitClose(CloseWaiter& waiter) noexcept
         {
-            if (closeConditionSatisfied(waiter))
+            if (auto ready = closeResult(waiter))
             {
-                deliverClose(waiter);
+                deliverClose(waiter, std::move(*ready));
                 return;
             }
             waiter.next = std::exchange(close_waiters, &waiter);
@@ -209,13 +253,14 @@ namespace lux::editor
             while (*link)
             {
                 auto* waiter = *link;
-                if (!closeConditionSatisfied(*waiter))
+                auto ready = closeResult(*waiter);
+                if (!ready)
                 {
                     link = &waiter->next;
                     continue;
                 }
                 *link = waiter->next;
-                deliverClose(*waiter);
+                deliverClose(*waiter, std::move(*ready));
             }
         }
 
@@ -232,6 +277,7 @@ namespace lux::editor
             scene::RenderSystem* rendering{};
             std::array<entt::scoped_connection, 3> camera_connections;
             bool stopping{};
+            error::Error close_failure;
             GeometryRequests geometry;
         };
 
@@ -280,6 +326,7 @@ namespace lux::editor
         cxx::StableSlotMap<Viewport, SceneViewportTag> viewports;
         std::map<const simulation::ecs::Registry*, std::vector<SceneViewportId>> camera_viewports;
         std::optional<VProjectSceneFailure> failure;
+        error::Error close_failure;
         std::size_t operations{};
         CloseWaiter* close_waiters{};
         std::uint64_t asset_revision{}, asset_source{};
@@ -364,10 +411,24 @@ namespace lux::editor
             providers.push_back(
                 scene::makeSceneCapabilityProvider<scene::WorldLoadingServices>("loading", "lux.world.loading", loading)
             );
+            const auto& registrations = context.sceneRegistrations();
             bool renders = false;
             for (std::size_t i = 0; i < description->systemCount(); ++i)
             {
-                renders |= description->systemAt(i).type().name == scene::RenderSystem::Description.canonical_name;
+                const auto registration = std::ranges::find(
+                    registrations.scene_systems,
+                    description->systemAt(i).type(),
+                    &scene::SceneSystemRegistration::type
+                );
+                if (registration == registrations.scene_systems.end())
+                {
+                    return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
+                }
+                renders |= std::ranges::any_of(
+                    registration->requirements,
+                    [](const auto& requirement) noexcept
+                    { return requirement.capability == "lux.scene.rendering" && !requirement.optional; }
+                );
             }
             std::optional<scene::RenderSystemDependencies> render_dependencies;
             if (renders)
@@ -389,7 +450,6 @@ namespace lux::editor
                     *render_dependencies
                 ));
             }
-            const auto& registrations = context.sceneRegistrations();
             auto& runtime = context.engine().sceneRuntime();
             auto lease = runtime.builder()
                              .setDescription(description)
@@ -721,6 +781,10 @@ namespace lux::editor
                                      : result.error().domainFailure() ? *result.error().domainFailure()
                                                                       : render::RenderError{render::kRuntimeState};
                     const auto id = viewport.id;
+                    if (!result && viewport.closing && close_failure.type == 0)
+                    {
+                        close_failure = viewport.error;
+                    }
                     if (result && viewport.closing)
                     {
                         auto& related = camera_viewports.find(viewport.registry)->second;
@@ -1061,10 +1125,14 @@ namespace lux::editor
             }
             for (auto viewport : outputs)
             {
-                co_await stdexec::continues_on(
-                    CloseCompletionSender{*this, ECloseCondition::VIEWPORT, viewport},
-                    context.engine().execution().mainScheduler()
-                );
+                if (auto closed = co_await stdexec::continues_on(
+                        CloseCompletionSender{*this, ECloseCondition::VIEWPORT, viewport},
+                        context.engine().execution().mainScheduler()
+                    );
+                    !closed)
+                {
+                    co_return cxx::unexpected(closed.error());
+                }
             }
             auto& play = *entry.play;
             for (auto& connection : play.camera_connections)
@@ -1097,19 +1165,31 @@ namespace lux::editor
             }
             for (auto viewport : outputs)
             {
-                co_await stdexec::continues_on(
-                    CloseCompletionSender{*this, ECloseCondition::VIEWPORT, viewport},
+                if (auto closed = co_await stdexec::continues_on(
+                        CloseCompletionSender{*this, ECloseCondition::VIEWPORT, viewport},
+                        context.engine().execution().mainScheduler()
+                    );
+                    !closed)
+                {
+                    co_return cxx::unexpected(closed.error());
+                }
+            }
+            if (auto closed = co_await stdexec::continues_on(
+                    CloseCompletionSender{*this, ECloseCondition::PLAY, {}, id},
                     context.engine().execution().mainScheduler()
                 );
+                !closed)
+            {
+                co_return cxx::unexpected(closed.error());
             }
-            co_await stdexec::continues_on(
-                CloseCompletionSender{*this, ECloseCondition::PLAY, {}, id},
-                context.engine().execution().mainScheduler()
-            );
-            co_await stdexec::continues_on(
-                CloseCompletionSender{*this, ECloseCondition::SAVE, {}, id},
-                context.engine().execution().mainScheduler()
-            );
+            if (auto closed = co_await stdexec::continues_on(
+                    CloseCompletionSender{*this, ECloseCondition::SAVE, {}, id},
+                    context.engine().execution().mainScheduler()
+                );
+                !closed)
+            {
+                co_return cxx::unexpected(closed.error());
+            }
             for (auto& connection : entry.camera_connections)
             {
                 connection.release();
@@ -1130,7 +1210,7 @@ namespace lux::editor
             co_return FrameworkResult<void>{};
         }
 
-        void startClose(exec::task<FrameworkResult<void>> work) noexcept
+        void startClose(exec::task<FrameworkResult<void>> work, asset::AssetId document, bool play) noexcept
         {
             // These ordinary close operations borrow the collection; its enclosing close waits on this count.
             ++operations;
@@ -1139,13 +1219,23 @@ namespace lux::editor
                 );
             auto accepted = context.engine().execution().spawn(stdexec::then(
                 std::move(result),
-                [this](auto result) noexcept
+                [this, document, play](auto result) noexcept
                 {
                     --operations;
                     if (!result)
                     {
-                        failure = result.error().domainFailure() ? *result.error().domainFailure()
-                                                                 : render::RenderError{render::kRuntimeState};
+                        const auto cause = result.error().domainFailure() ? *result.error().domainFailure()
+                                                                          : render::RenderError{render::kRuntimeState};
+                        failure = cause;
+                        if (close_failure.type == 0)
+                        {
+                            close_failure = cause;
+                        }
+                        const auto found = documents.find(document);
+                        if (play && found != documents.end() && found->second->play)
+                        {
+                            found->second->play->close_failure = cause;
+                        }
                     }
                     completeClosures();
                 }
@@ -1311,9 +1401,7 @@ namespace lux::editor
                 consumers.push_back(instance);
                 if (auto prepared = project_assets.prepareMeshGeometry(mesh); !prepared)
                 {
-                    const auto error = prepared.error().code == EAssetImportError::BUSY
-                                           ? scene::EMeshQueryError::CAPACITY
-                                           : scene::EMeshQueryError::ASSET_FAILURE;
+                    const auto error = scene::EMeshQueryError::ASSET_FAILURE;
                     startQueryWork(adoptGeometry(instance, mesh, asset_revision, {}, error));
                     std::erase(consumers, instance);
                     if (consumers.empty())
@@ -1680,7 +1768,7 @@ namespace lux::editor
         {
             return cxx::unexpected(VProjectSceneFailure{package.error()});
         }
-        auto description = previewSystems(*package, mode);
+        auto description = previewSystems(*package, mode, impl_->context.sceneRegistrations());
         if (!description)
         {
             return cxx::unexpected(description.error());
@@ -1726,7 +1814,7 @@ namespace lux::editor
                 impl_->requestViewportChange(viewport);
             }
         }
-        impl_->startClose(impl_->closePlay(id));
+        impl_->startClose(impl_->closePlay(id), id, true);
         static_cast<void>(emit(changed));
     }
 
@@ -1768,7 +1856,7 @@ namespace lux::editor
                 impl_->requestViewportChange(viewport);
             }
         }
-        impl_->startClose(impl_->closeDocument(id));
+        impl_->startClose(impl_->closeDocument(id), id, false);
         static_cast<void>(emit(changed));
         return {};
     }
@@ -1782,17 +1870,46 @@ namespace lux::editor
         }
     }
 
-    exec::task<void> ProjectScenes::closeAsync() noexcept
+    exec::task<FrameworkResult<void>> ProjectScenes::closeAsync() noexcept
     {
         closeAll();
-        if (settled())
-        {
-            co_return;
-        }
-        co_await stdexec::continues_on(
+        co_return co_await stdexec::continues_on(
             Impl::CloseCompletionSender{*impl_, Impl::ECloseCondition::ALL},
             impl_->context.engine().execution().mainScheduler()
         );
+    }
+
+    exec::task<void> ProjectScenes::finishCloseAfterServerStop() noexcept
+    {
+        auto& state = *impl_;
+        if (!state.rendering->mainClient().serverStopped())
+        {
+            std::terminate(); // This is a physical cleanup proof, never a fallback for a failed response.
+        }
+        (void)co_await stdexec::continues_on(
+            Impl::CloseCompletionSender{state, Impl::ECloseCondition::OPERATIONS},
+            state.context.engine().execution().mainScheduler()
+        );
+        for (auto& [id, entry] : state.documents)
+        {
+            for (auto& connection : entry->camera_connections)
+            {
+                connection.release();
+            }
+            if (entry->play)
+            {
+                for (auto& connection : entry->play->camera_connections)
+                {
+                    connection.release();
+                }
+            }
+        }
+        state.viewports.clear();
+        state.camera_viewports.clear();
+        co_await state.context.closeAsync();
+        state.documents.clear();
+        state.geometry_consumers.clear();
+        state.completeClosures();
     }
 
     void ProjectScenes::setAssetRevision(std::uint64_t revision) noexcept

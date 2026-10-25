@@ -1,24 +1,21 @@
 #pragma once
 
+#include <lux/engine/render/capabilities/RenderCapability.hpp>
 #include <lux/engine/scene/render/visibility.h>
 #include <lux/engine/serialization/PortableValueCodec.hpp>
 
-#include <cstdint>
-#include <string>
-
 namespace lux::scene
 {
-    // Persistent recipe selection. Feature IDs are discovered per Render connection, never serialized.
+    // Persistent demand and explicit implementation choice. Session-local selection IDs are resolved on open.
+    // Algorithm-specific configuration belongs to the selected Render implementation's versioned codec.
     struct RenderSystemConfiguration final
     {
         RenderSystemConfiguration() noexcept = default;
-        std::string recipe = "lux.scene.clustered";
-        std::uint32_t recipe_version = 1;
-        bool shadows = true;
-        std::uint32_t shadow_resolution = 1024;
-        std::uint32_t shadow_filter_radius = 1;
-        float shadow_distance = 100;
-        std::uint32_t cluster_index_capacity = 65536;
+        std::string capability;
+        std::uint32_t capability_version = 1;
+        std::string implementation;
+        std::uint32_t implementation_version = 1;
+        render::SerializedRenderConfiguration configuration;
     };
 
     [[nodiscard]] LUX_ENGINE_SCENE_RENDER_PUBLIC bool

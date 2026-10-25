@@ -137,6 +137,100 @@ namespace lux::editor
             return result ? execution::ETaskState::SUCCEEDED : execution::ETaskState::FAILED;
         }
 
+        AssetImportResult<void> admitGeometry(
+            object::ObjectId object,
+            asset::AssetId mesh,
+            std::uint64_t revision
+        ) noexcept
+        {
+            auto& state = *this;
+            auto reads = state.context.prepareAssetReads();
+            if (!reads)
+            {
+                return cxx::unexpected(AssetImportFailure{EAssetImportError::READ, "Project asset endpoint unavailable"}
+                );
+            }
+            auto& target = state.geometry.find(mesh)->second;
+            auto admitted = state.tasks.submit(
+                {"Prepare mesh query", "Assets"},
+                [object,
+                 mesh,
+                 revision,
+                 read = *reads,
+                 snapshot = state.assets.view().capture(),
+                 cpu = state.execution.cpu(),
+                 main = state.execution.mainScheduler()](execution::TaskReporter reporter) noexcept
+                {
+                    auto result =
+                        execution::taskResult(loadQueryGeometry(read, cpu, mesh, snapshot, reporter.stopToken()));
+                    auto delivered = stdexec::then(
+                        stdexec::continues_on(std::move(result), main),
+                        [object, mesh, revision](auto result) noexcept
+                        { return finishGeometry(object, mesh, revision, std::move(result)); }
+                    );
+                    // Explicit stop governs the work; it must not cancel the final Main-thread status delivery.
+                    return stdexec::write_env(
+                        std::move(delivered),
+                        stdexec::prop{stdexec::get_stop_token, stdexec::never_stop_token{}}
+                    );
+                }
+            );
+            if (!admitted)
+            {
+                if (admitted.error() == execution::EExecutionError::CAPACITY_EXCEEDED)
+                {
+                    state.awaitGeometryCapacity(object, mesh, revision);
+                    return {}; // The accepted demand remains pending; capacity is not a content failure.
+                }
+                target.failure = AssetImportFailure{EAssetImportError::EXECUTION, "Mesh query task admission failed"};
+                return cxx::unexpected(*target.failure);
+            }
+            return {};
+        }
+
+        void awaitGeometryCapacity(object::ObjectId object, asset::AssetId mesh, std::uint64_t revision) noexcept
+        {
+            auto capacity = stdexec::upon_stopped(
+                stdexec::then(tasks.whenCapacityAvailable(), []() noexcept { return true; }),
+                []() noexcept { return false; }
+            );
+            auto completion = stdexec::continues_on(std::move(capacity), execution.mainScheduler());
+            // Only the existing ObjectId survives the unmonitored wait. Closing the TaskScope can
+            // precede this final Main continuation: it never borrows the Context or ProjectAssets.
+            auto accepted = execution.spawn(stdexec::then(
+                std::move(completion),
+                [object, mesh, revision](bool available) noexcept
+                {
+                    const auto resolved = object::ObjectRuntime::instance().resolve(object);
+                    if (!resolved)
+                    {
+                        return;
+                    }
+                    auto& collection = *static_cast<ProjectAssets*>(*resolved);
+                    auto& state = *collection.impl_;
+                    const auto found = state.geometry.find(mesh);
+                    if (found == state.geometry.end() || found->second.revision != revision)
+                    {
+                        return;
+                    }
+                    AssetImportResult<void> admitted =
+                        available ? state.admitGeometry(object, mesh, revision)
+                                  : cxx::unexpected(
+                                        AssetImportFailure{EAssetImportError::CANCELLED, "Mesh query admission stopped"}
+                                    );
+                    if (!admitted)
+                    {
+                        found->second.failure = admitted.error();
+                        (void)collection.emit(collection.geometryChanged, MeshGeometryChanged{mesh, revision});
+                    }
+                }
+            ));
+            if (!accepted)
+            {
+                std::terminate(); // Project tasks stop before shared ExecutionRuntime closes admission.
+            }
+        }
+
         AssetImportResult<void> adopt(detail::ImportedAssets result) noexcept
         {
             std::vector<asset::AssetId> removed_ids;
@@ -282,55 +376,17 @@ namespace lux::editor
         auto found = state.geometry.find(mesh);
         if (found != state.geometry.end() && found->second.revision == state.catalog.revision)
         {
-            if (found->second.failure)
-            {
-                return cxx::unexpected(*found->second.failure);
-            }
-            return {};
-        }
-        auto reads = state.context.prepareAssetReads();
-        if (!reads)
-        {
-            return cxx::unexpected(AssetImportFailure{EAssetImportError::READ, "Project asset endpoint unavailable"});
+            return found->second.failure ? AssetImportResult<void>{cxx::unexpected(*found->second.failure)}
+                                         : AssetImportResult<void>{};
         }
         const auto revision = state.catalog.revision;
-        auto& target = state.geometry[mesh];
-        target = Impl::Geometry{revision};
-        auto admitted = state.tasks.submit(
-            {"Prepare mesh query", "Assets"},
-            [object = objectId(),
-             mesh,
-             revision,
-             read = *reads,
-             snapshot = state.assets.view().capture(),
-             cpu = state.execution.cpu(),
-             main = state.execution.mainScheduler()](execution::TaskReporter reporter) noexcept
-            {
-                auto result =
-                    execution::taskResult(Impl::loadQueryGeometry(read, cpu, mesh, snapshot, reporter.stopToken()));
-                auto delivered = stdexec::then(
-                    stdexec::continues_on(std::move(result), main),
-                    [object, mesh, revision](auto result) noexcept
-                    { return Impl::finishGeometry(object, mesh, revision, std::move(result)); }
-                );
-                // Explicit stop governs the work; it must not cancel the final Main-thread status delivery.
-                return stdexec::write_env(
-                    std::move(delivered),
-                    stdexec::prop{stdexec::get_stop_token, stdexec::never_stop_token{}}
-                );
-            }
-        );
+        state.geometry[mesh] = Impl::Geometry{revision};
+        auto admitted = state.admitGeometry(objectId(), mesh, revision);
         if (!admitted)
         {
-            if (admitted.error() == execution::EExecutionError::CAPACITY_EXCEEDED)
-            {
-                state.geometry.erase(mesh);
-                return cxx::unexpected(AssetImportFailure{EAssetImportError::BUSY, "Mesh query task capacity is full"});
-            }
-            target.failure = AssetImportFailure{EAssetImportError::EXECUTION, "Mesh query task admission failed"};
-            return cxx::unexpected(*target.failure);
+            state.geometry.find(mesh)->second.failure = admitted.error();
         }
-        return {};
+        return admitted;
     }
 
     std::shared_ptr<const scene::MeshQueryGeometry> ProjectAssets::meshGeometry(asset::AssetId mesh) const noexcept

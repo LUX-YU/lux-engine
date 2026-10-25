@@ -6,19 +6,20 @@
 
 namespace lux::scene::detail
 {
-    // Only facts baked into the Scene recipe. Pose/FOV, viewport and target extent remain frame inputs.
-    struct CameraRecipeKey final
+    // Cold public camera/target inputs used by effect construction. Pose/FOV, viewport and target extent remain frame
+    // inputs.
+    struct CameraGraphInputs final
     {
         render::TargetId target;
         rdesc::ETextureFormat format{};
         render::ETargetKind kind{};
         std::uint32_t samples{};
         bool sampled{};
-        float shadow_near{}, shadow_far{};
-        bool operator==(const CameraRecipeKey&) const noexcept = default;
+        float near_distance{}, far_distance{};
+        bool operator==(const CameraGraphInputs&) const noexcept = default;
     };
 
-    [[nodiscard]] CameraRecipeKey cameraRecipeKey(const Camera&, const CameraTarget&, bool shadows) noexcept;
+    [[nodiscard]] CameraGraphInputs cameraGraphInputs(const Camera&, const CameraTarget&) noexcept;
 
     // Stack preparation shared by this CameraMan's outputs at one Main stable point; no retained ECS borrow.
     struct SceneCamera final

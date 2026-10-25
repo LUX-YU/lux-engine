@@ -1,6 +1,7 @@
 #include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/render/capabilities/RasterAssets.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderSystemConfigurationImpl.hpp>
 #include <lux/engine/scene/RenderViewComponent.hpp>
 #include <lux/engine/scene/SceneCamera.hpp>
 
@@ -35,7 +36,7 @@ namespace lux::scene
 
     namespace
     {
-        bool sameTargetRecipe(const TargetDesc& left, const TargetDesc& right) noexcept
+        bool sameTargetLayout(const TargetDesc& left, const TargetDesc& right) noexcept
         {
             // Built-in Scene recipes declare target-relative extents; dimensions belong to ResizeTarget.
             return left.kind == right.kind && left.format == right.format && left.samples == right.samples &&
@@ -226,6 +227,7 @@ namespace lux::scene
         bool cameraTargetRetired(Entity camera, CameraTargetId id) const noexcept
         {
             const bool active = changing_camera_target == std::pair{camera, id} ||
+                                retiring_camera_target == std::pair{camera, id} ||
                                 (!closing && cameraTarget(camera, id)) || cameraBinding(camera, id);
             return !active &&
                    std::ranges::none_of(
@@ -240,7 +242,7 @@ namespace lux::scene
             {
                 return RenderResult<void>{};
             }
-            if (error.type != 0 && (!waiter.retiring || (closing && !transaction_pending)))
+            if (error.type != 0 && (!waiter.retiring || (closing && !transaction_pending && !retirement_pending)))
             {
                 return RenderResult<void>{cxx::unexpected(error)};
             }
@@ -301,15 +303,76 @@ namespace lux::scene
             }
         }
 
-        LitSceneConfiguration litConfiguration() const noexcept
+        RenderResult<void> bindInputProducers(const CapabilitySupport& support) noexcept
         {
-            return {
-                configuration.shadows,
-                configuration.shadow_resolution,
-                configuration.shadow_filter_radius,
-                configuration.shadow_distance,
-                configuration.cluster_index_capacity
+            // This table describes Engine data producers, not Render implementation names.
+            // New implementations of these contracts require no new SceneSystem or routing branch.
+            struct Producer final
+            {
+                std::string_view schema;
+                cxx::TypeToken type;
+                ERenderPayloadUse use;
+                bool Impl::* enabled = nullptr;
             };
+
+            const std::array producers{
+                Producer{kIndexedMeshInput, cxx::typeToken<MeshWrite>(), ERenderPayloadUse::RESOURCE_INPUT},
+                Producer{kSampledTextureInput, cxx::typeToken<TextureWrite>(), ERenderPayloadUse::RESOURCE_INPUT},
+                Producer{
+                    kRasterMaterialInput,
+                    cxx::typeToken<MaterialWrite>(),
+                    ERenderPayloadUse::RESOURCE_INPUT,
+                    &Impl::material_input_enabled
+                },
+                Producer{
+                    kRasterInstancesInput,
+                    cxx::typeToken<MeshInstancesCreate>(),
+                    ERenderPayloadUse::RESOURCE_INPUT,
+                    &Impl::instance_input_enabled
+                },
+                Producer{
+                    kDirectLightsInput,
+                    cxx::typeToken<CreateDirectLights::Request>(),
+                    ERenderPayloadUse::RESOURCE_INPUT,
+                    &Impl::light_input_enabled
+                },
+                Producer{
+                    kSceneGeometryInput,
+                    cxx::typeToken<LitSceneInputs>(),
+                    ERenderPayloadUse::EFFECT_INPUT,
+                    &Impl::geometry_input_enabled
+                },
+                Producer{
+                    kCameraInput,
+                    cxx::typeToken<CameraInput>(),
+                    ERenderPayloadUse::FRAME_INPUT,
+                    &Impl::camera_input_enabled
+                }
+            };
+            const auto capability = std::ranges::find_if(
+                support.capabilities,
+                [this](const auto& value) noexcept
+                { return value.name == configuration.capability && value.version == configuration.capability_version; }
+            );
+            for (const auto& input : capability->inputs)
+            {
+                const auto producer = std::ranges::find(producers, input.schema, &Producer::schema);
+                const bool supported = producer != producers.end() && input.version == 1 &&
+                                       input.cppType() == producer->type && input.use == producer->use;
+                if (!supported)
+                {
+                    if (input.required)
+                    {
+                        return cxx::unexpected(RenderError{kRuntimeUnsupported});
+                    }
+                    continue;
+                }
+                if (producer->enabled)
+                {
+                    this->*(producer->enabled) = true;
+                }
+            }
+            return {};
         }
 
         exec::task<RenderResult<void>> initialize() noexcept
@@ -322,27 +385,27 @@ namespace lux::scene
             }
             scene = created.scene;
             CapabilityQuery query{
-                std::string(kLitSceneCapability),
-                1,
-                configuration.recipe == "lux.scene.clustered" ? "lux.render.scene.clustered"
-                                                              : "lux.render.scene.deferred"
+                configuration.capability,
+                configuration.capability_version,
+                configuration.implementation
             };
             const auto choices = co_await request<ListCapabilities>(client, query);
             if (choices.error.type != 0)
             {
                 co_return cxx::unexpected(choices.error);
             }
-            if (choices.implementations.size() != 1 || choices.implementations.front().unavailable.type != 0)
+            if (choices.implementations.size() != 1 || choices.implementations.front().unavailable.type != 0 ||
+                choices.implementations.front().implementation_version != configuration.implementation_version)
             {
                 co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
             }
-            implementation = choices.implementations.front().selection;
-            auto config = ConfigValue::make(litConfiguration());
-            if (!config)
+            auto producers = bindInputProducers(choices.implementations.front());
+            if (!producers)
             {
-                co_return cxx::unexpected(config.error());
+                co_return producers;
             }
-            CapabilityInstallation install{implementation, scene, std::move(*config)};
+            implementation = choices.implementations.front().selection;
+            CapabilityInstallation install{implementation, scene, configuration.configuration};
             const auto installed = co_await request<InstallCapabilities>(client, install);
             if (installed.error.type != 0)
             {
@@ -363,8 +426,9 @@ namespace lux::scene
                     light_input = input.destination;
                 }
             }
-            const bool missing_input = instance_input.implementation.isNull() ||
-                                       material_input.implementation.isNull() || light_input.implementation.isNull();
+            const bool missing_input = (instance_input_enabled && instance_input.implementation.isNull()) ||
+                                       (material_input_enabled && material_input.implementation.isNull()) ||
+                                       (light_input_enabled && light_input.implementation.isNull());
             if (missing_input)
             {
                 co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
@@ -406,6 +470,8 @@ namespace lux::scene
                 pending_materials.insert(material_key);
             }
             ++material->second.references;
+            asset_availability.observe(mesh_key);
+            asset_availability.observe(material_key);
             return {};
         }
 
@@ -457,6 +523,7 @@ namespace lux::scene
                         auto acquired = assets.acquireTexture(texture, source, entry.snapshot);
                         if (!acquired && acquired.error().type == kRuntimeCapacity)
                         {
+                            asset_availability.whenCapacityAvailable();
                             break;
                         }
                         if (!acquired)
@@ -466,6 +533,10 @@ namespace lux::scene
                         }
                     }
                     entry.textures.push_back(texture);
+                    if (!texture.asset.isNull())
+                    {
+                        asset_availability.observe(texture);
+                    }
                 }
                 if (entry.textures.size() != cooked->texture_slot_ids.size())
                 {
@@ -713,6 +784,7 @@ namespace lux::scene
             {
                 EffectRequest remove{binding.effect};
                 const auto result = co_await request<RemoveEffect>(client, remove);
+
                 if (result.error.type != 0)
                 {
                     co_return cxx::unexpected(result.error);
@@ -729,6 +801,7 @@ namespace lux::scene
             {
                 ViewRequest remove{scene, binding.view};
                 const auto result = co_await request<RemoveView>(client, remove);
+
                 if (result.error.type != 0)
                 {
                     co_return cxx::unexpected(result.error);
@@ -744,11 +817,22 @@ namespace lux::scene
             while (!retiring_views.empty())
             {
                 // A signal can append while a request is suspended. The coroutine owns this one exit record.
-                auto retired = std::move(retiring_views.back());
-                retiring_views.pop_back();
-                changing_camera_target = std::pair{retired.camera, retired.binding.id};
-                cxx::scope_exit finish([this]() noexcept { changing_camera_target.reset(); });
+                const auto candidate = std::ranges::find_if(
+                    retiring_views,
+                    [this](const auto& value) noexcept
+                    { return changing_camera_target != std::pair{value.camera, value.binding.id}; }
+                );
+                if (candidate == retiring_views.end())
+                {
+                    break;
+                }
+                auto retired = std::move(*candidate);
+                retiring_views.erase(candidate);
+                retiring_camera_target = std::pair{retired.camera, retired.binding.id};
+                cxx::scope_exit finish([this]() noexcept { retiring_camera_target.reset(); });
+
                 auto result = co_await withdrawView(retired.binding);
+
                 if (!result)
                 {
                     retiring_views.push_back(std::move(retired));
@@ -760,15 +844,10 @@ namespace lux::scene
 
         exec::task<RenderResult<void>> synchronizeViews(
             bool include_replacements = false,
-            bool* groups_adopted = nullptr,
+            bool* inputs_adopted = nullptr,
             std::optional<std::vector<Entity>> selected_cameras = {}
         ) noexcept
         {
-            auto retired = co_await retireViews();
-            if (!retired)
-            {
-                co_return retired;
-            }
             const auto accepted_topology = topology_revision;
             auto groups = prepareGeometryInputs(include_replacements);
             std::vector<RasterGeometrySelection> selection;
@@ -777,8 +856,21 @@ namespace lux::scene
             {
                 selection.push_back(group.selection);
             }
-            const auto capacity =
-                std::bit_ceil(std::max<std::uint32_t>(128, static_cast<std::uint32_t>(meshes.size())));
+            const auto capacity = std::max(
+                effect_input_capacity,
+                std::bit_ceil(std::max<std::uint32_t>(128, static_cast<std::uint32_t>(meshes.size())))
+            );
+            const auto light_descriptions = collectLightInputs();
+            const bool changed_input = effect_geometry != selection || effect_lights != light_descriptions ||
+                                       effect_input_capacity != capacity;
+            if (changed_input)
+            {
+                effect_geometry = std::move(selection);
+                effect_lights = light_descriptions;
+                effect_input_capacity = capacity;
+                ++effect_input_revision;
+            }
+            const auto accepted_input_revision = effect_input_revision;
             std::vector<std::pair<Entity, CameraTarget>> accepted;
             const auto accept = [&](Entity camera, const RenderViewBinding& binding) noexcept
             {
@@ -807,6 +899,13 @@ namespace lux::scene
             }
             for (const auto& [camera, input] : accepted)
             {
+                if (retiring_camera_target == std::pair{camera, input.id})
+                {
+                    // This relation's old handles are still being revoked. Other relations may advance;
+                    // its replacement resumes after retirement, without sharing the suspended exit record.
+                    view_changes.insert(camera);
+                    continue;
+                }
                 const auto* current = cameraTarget(camera, input.id);
                 auto* binding = cameraBinding(camera, input.id);
                 if (!current || current->revision != input.revision || !binding)
@@ -823,12 +922,10 @@ namespace lux::scene
                     *binding = RenderViewBinding{.id = id, .error = parameters.error()};
                     continue;
                 }
-                auto light_descriptions = collectLightInputs();
-                const auto key = detail::cameraRecipeKey(registry.get<Camera>(camera), input, configuration.shadows);
-                const bool same_recipe = !binding->attachment.isNull() && binding->recipe == key &&
-                                         binding->capacity >= capacity && binding->groups == selection &&
-                                         binding->light_inputs == light_descriptions;
-                if (same_recipe)
+                const auto key = detail::cameraGraphInputs(registry.get<Camera>(camera), input);
+                const bool same_inputs = !binding->attachment.isNull() && binding->graph_inputs == key &&
+                                         binding->input_revision == accepted_input_revision;
+                if (same_inputs)
                 {
                     binding->parameters_changed |= !detail::sameParameters(binding->parameters, *parameters) ||
                                                    binding->adopted.viewport != input.viewport;
@@ -856,20 +953,23 @@ namespace lux::scene
                     }
                     binding->view = result.view;
                 }
-                auto config = ConfigValue::make(litConfiguration());
-                auto data = ConfigValue::make(LitSceneInputs{
-                    groups,
-                    light_descriptions,
-                    capacity,
-                    parameters->near_distance,
-                    parameters->far_distance
-                });
-                if (!config || !data)
+                const auto accepted_view = binding->view;
+                auto data = geometry_input_enabled ? ConfigValue::make(LitSceneInputs{
+                                                         groups,
+                                                         light_descriptions,
+                                                         capacity,
+                                                         parameters->near_distance,
+                                                         parameters->far_distance
+                                                     })
+                                                   : RenderResult<ConfigValue>{ConfigValue{}};
+                if (!data)
                 {
-                    co_return cxx::unexpected(config ? data.error() : config.error());
+                    co_return cxx::unexpected(data.error());
                 }
-                CreateEffectRequest recipe{input.description, implementation, std::move(*config), std::move(*data)};
-                const auto compiled = co_await request<CreateEffect>(client, recipe);
+                CreateEffectRequest
+                    create_effect{input.description, implementation, configuration.configuration, std::move(*data)};
+
+                const auto compiled = co_await request<CreateEffect>(client, create_effect);
                 if (compiled.error.type != 0)
                 {
                     co_return cxx::unexpected(compiled.error);
@@ -879,11 +979,11 @@ namespace lux::scene
                 binding = cameraBinding(camera, input.id);
                 auto latest_parameters = cameraParameters(camera, input);
                 const bool valid_camera = registry.valid(camera) && registry.all_of<Camera>(camera);
-                const bool changed_recipe =
-                    !valid_camera ||
-                    detail::cameraRecipeKey(registry.get<Camera>(camera), input, configuration.shadows) != key;
+                const bool changed_graph_inputs =
+                    !valid_camera || detail::cameraGraphInputs(registry.get<Camera>(camera), input) != key;
                 const bool stale = !current || current->revision != input.revision || !binding || !latest_parameters ||
-                                   accepted_topology != topology_revision || changed_recipe || closing;
+                                   binding->view != accepted_view || accepted_topology != topology_revision ||
+                                   changed_graph_inputs || closing;
                 if (stale)
                 {
                     retiring_views.push_back({camera, RenderViewBinding{.id = input.id, .effect = compiled.effect}});
@@ -892,25 +992,25 @@ namespace lux::scene
                 }
                 AttachmentRequest attach{
                     scene,
-                    binding->view,
+                    accepted_view,
                     input.target,
                     compiled.effect,
-                    parameterBytes(*latest_parameters),
+                    camera_input_enabled ? parameterBytes(*latest_parameters) : std::vector<std::byte>{},
                     input.viewport,
                     {},
                     binding->attachment
                 };
-                attach.parameter_type = cxx::typeToken<CameraInput>();
+                attach.parameter_type = camera_input_enabled ? cxx::typeToken<CameraInput>() : cxx::TypeToken{};
                 const auto adopted = co_await request<Attach>(client, attach);
                 binding = cameraBinding(camera, input.id);
                 current = cameraTarget(camera, input.id);
                 auto adopted_parameters = cameraParameters(camera, input);
                 const bool still_available =
                     current && binding && registry.valid(camera) && registry.all_of<Camera>(camera);
-                const bool obsolete =
-                    !still_available || !adopted_parameters || closing || current->revision != input.revision ||
-                    accepted_topology != topology_revision ||
-                    detail::cameraRecipeKey(registry.get<Camera>(camera), input, configuration.shadows) != key;
+                const bool obsolete = !still_available || !adopted_parameters || closing ||
+                                      binding->view != accepted_view || current->revision != input.revision ||
+                                      accepted_topology != topology_revision ||
+                                      detail::cameraGraphInputs(registry.get<Camera>(camera), input) != key;
                 if (adopted.error.type != 0 || obsolete)
                 {
                     retiring_views.push_back({camera, RenderViewBinding{.id = input.id, .effect = compiled.effect}});
@@ -943,22 +1043,25 @@ namespace lux::scene
                 binding->effect = compiled.effect;
                 binding->attachment = adopted.attachment;
                 binding->adopted = input;
-                binding->recipe = key;
+                binding->graph_inputs = key;
                 binding->parameters = *adopted_parameters;
                 binding->parameters_changed = true;
                 binding->output_changed = true;
-                binding->capacity = capacity;
-                binding->groups = selection;
-                binding->light_inputs = std::move(light_descriptions);
+                binding->input_revision = accepted_input_revision;
                 binding->error = {};
             }
-            if (groups_adopted)
+            if (inputs_adopted)
             {
-                *groups_adopted = true;
-                forEachBinding([&](Entity, const RenderViewBinding& binding) noexcept
-                               { *groups_adopted &= binding.attachment.isNull() || binding.groups == selection; });
+                *inputs_adopted = true;
+                forEachBinding(
+                    [&](Entity, const RenderViewBinding& binding) noexcept
+                    {
+                        *inputs_adopted &=
+                            binding.attachment.isNull() || binding.input_revision == accepted_input_revision;
+                    }
+                );
             }
-            co_return co_await retireViews();
+            co_return RenderResult<void>{};
         }
 
         exec::task<RenderResult<void>> synchronizeStructure(
@@ -966,21 +1069,12 @@ namespace lux::scene
             std::vector<LightInput> light_inputs
         ) noexcept
         {
-            const bool initialize_scene = !initialized;
-            if (initialize_scene)
-            {
-                auto result = co_await initialize();
-                if (!result)
-                {
-                    co_return result;
-                }
-            }
             if (closing)
             {
                 co_return RenderResult<void>{};
             }
-            bool changed = initialize_scene || rebuild_requested;
-            bool groups_pruned = false;
+            bool changed = rebuild_requested;
+            bool previous_inputs_removed = false;
             for (auto& [entity, entry] : meshes)
             {
                 if (entry.present || entry.instance.isNull())
@@ -1109,16 +1203,16 @@ namespace lux::scene
                 const auto accepted_topology = topology_revision;
                 // A temporary recipe accepts both old and candidate groups. It changes no instance:
                 // every observation can keep drawing the old binding until the single frame update.
-                bool groups_adopted = false;
-                auto rebuilt = co_await synchronizeViews(!replacements.empty(), &groups_adopted);
+                bool inputs_adopted = false;
+                auto rebuilt = co_await synchronizeViews(!replacements.empty(), &inputs_adopted);
                 if (!rebuilt)
                 {
                     co_return rebuilt;
                 }
                 const bool changed_during_compile =
-                    !groups_adopted || accepted_views != camera_revision || accepted_topology != topology_revision;
+                    !inputs_adopted || accepted_views != camera_revision || accepted_topology != topology_revision;
                 rebuild_requested = changed_during_compile;
-                groups_pruned = replacements.empty() && groups_adopted;
+                previous_inputs_removed = replacements.empty() && inputs_adopted;
                 if (!replacements.empty() && !changed_during_compile)
                 {
                     MeshInstanceBatch update{instance_input, ++sequence, replacements};
@@ -1134,7 +1228,7 @@ namespace lux::scene
                             pending_instances.erase(entity);
                             new_instances.push_back(entity);
                         }
-                        auto pruned = co_await synchronizeViews(false, &groups_pruned);
+                        auto pruned = co_await synchronizeViews(false, &previous_inputs_removed);
                         if (!pruned)
                         {
                             co_return pruned; // Previous resource references still belong to MeshEntry.
@@ -1155,12 +1249,12 @@ namespace lux::scene
                                      meshes,
                                      [](const auto& value) noexcept { return value.second.previous.has_value(); }
                                  ) &&
-                                 !groups_pruned;
+                                 !previous_inputs_removed;
             // All current recipes have stopped mentioning these resources. Native retirement still
             // governs actual GPU use; this only releases the Engine's asset reference.
             for (auto& [entity, entry] : meshes)
             {
-                if (entry.previous && groups_pruned)
+                if (entry.previous && previous_inputs_removed)
                 {
                     releaseBinding(*entry.previous);
                     entry.previous.reset();
@@ -1168,7 +1262,7 @@ namespace lux::scene
             }
             for (auto entry = meshes.begin(); entry != meshes.end();)
             {
-                if (entry->second.present || !groups_pruned)
+                if (entry->second.present || !previous_inputs_removed)
                 {
                     ++entry;
                     continue;
@@ -1212,6 +1306,29 @@ namespace lux::scene
 
         exec::task<RenderResult<void>> closeScene() noexcept
         {
+            if (client.serverStopped())
+            {
+                // The joined Server has discharged all native objects. Only Client reference pairs remain.
+                scene = {};
+                forEachBinding(
+                    [](Entity, RenderViewBinding& binding) noexcept
+                    {
+                        binding.view = {};
+                        binding.attachment = {};
+                        binding.effect = {};
+                    }
+                );
+                for (auto& retired : retiring_views)
+                {
+                    retired.binding.view = {};
+                    retired.binding.attachment = {};
+                    retired.binding.effect = {};
+                }
+                for (auto& [key, material] : materials)
+                {
+                    material.material = {};
+                }
+            }
             if (!scene.isNull())
             {
                 SceneRequest remove{scene};
@@ -1281,6 +1398,47 @@ namespace lux::scene
             co_return RenderResult<void>{};
         }
 
+        void startViewRetirement() noexcept
+        {
+            const bool available = std::ranges::any_of(
+                retiring_views,
+                [this](const auto& value) noexcept
+                { return changing_camera_target != std::pair{value.camera, value.binding.id}; }
+            );
+            if (retirement_pending || !available)
+            {
+                return;
+            }
+            retirement_pending = true;
+            auto ready = execution::taskResult(stdexec::starts_on(execution.mainScheduler(), retireViews()));
+            const auto accepted = execution.spawn(stdexec::then(
+                std::move(ready),
+                [this](auto result) noexcept
+                {
+                    retirement_pending = false;
+
+                    if (!result)
+                    {
+                        const auto failure = result.error().domainFailure();
+                        error = failure ? *failure : RenderError{kRuntimeState};
+                        if (error.type == kDeviceBusy || error.type == kRuntimeCapacity)
+                        {
+                            error = {};
+                        }
+                        else
+                        {
+                            reportRenderFailure(error, "Retire Camera Target");
+                        }
+                    }
+                    completeCameraTargets();
+                }
+            ));
+            if (!accepted)
+            {
+                std::terminate(); // Shared execution remains open through Scene retirement.
+            }
+        }
+
         void startTransaction(exec::task<RenderResult<void>> work) noexcept
         {
             transaction_pending = true;
@@ -1289,9 +1447,11 @@ namespace lux::scene
                 std::move(ready),
                 [this](auto result) noexcept
                 {
-                    error = result                           ? RenderError{}
-                            : result.error().domainFailure() ? *result.error().domainFailure()
-                                                             : RenderError{kRuntimeState};
+                    if (!result && error.type == 0)
+                    {
+                        error = result.error().domainFailure() ? *result.error().domainFailure()
+                                                               : RenderError{kRuntimeState};
+                    }
                     const bool retry = error.type == kDeviceBusy || error.type == kRuntimeCapacity;
                     if (retry)
                     {
@@ -1317,6 +1477,11 @@ namespace lux::scene
 
         RenderResult<bool> collectMeshChanges() noexcept
         {
+            if (!instance_input_enabled)
+            {
+                structure.clear();
+                return false;
+            }
             if (asset_capacity_blocked && !assets_changed)
             {
                 return false;
@@ -1361,6 +1526,7 @@ namespace lux::scene
                     if (acquired.error().type == kRuntimeCapacity)
                     {
                         asset_capacity_blocked = true;
+                        asset_availability.whenCapacityAvailable();
                         continue;
                     }
                     return cxx::unexpected(acquired.error());
@@ -1392,6 +1558,11 @@ namespace lux::scene
 
         RenderResult<bool> collectLightChanges(std::vector<LightInput>& light_inputs) noexcept
         {
+            if (!light_input_enabled)
+            {
+                light_changes.clear();
+                return false;
+            }
             bool changed = false;
             for (const auto entity : light_changes)
             {
@@ -1452,9 +1623,8 @@ namespace lux::scene
                     {
                         continue;
                     }
-                    const auto key =
-                        detail::cameraRecipeKey(registry.get<Camera>(camera), *target, configuration.shadows);
-                    if (binding.recipe != key || binding.attachment.isNull())
+                    const auto key = detail::cameraGraphInputs(registry.get<Camera>(camera), *target);
+                    if (binding.graph_inputs != key || binding.attachment.isNull())
                     {
                         return true;
                     }
@@ -1486,16 +1656,15 @@ namespace lux::scene
                     {
                         continue;
                     }
-                    const bool recipe_pending =
+                    const bool graph_inputs_changed =
                         available &&
-                        detail::cameraRecipeKey(registry.get<Camera>(camera), *input, configuration.shadows) !=
-                            binding.recipe;
-                    if (recipe_pending)
+                        detail::cameraGraphInputs(registry.get<Camera>(camera), *input) != binding.graph_inputs;
+                    if (graph_inputs_changed)
                     {
                         continue; // Keep the complete last-good parameter set until its replacement recipe adopts.
                     }
                     const bool same_output = binding.adopted.target == input->target &&
-                                             sameTargetRecipe(binding.adopted.description, input->description);
+                                             sameTargetLayout(binding.adopted.description, input->description);
                     const auto& requested = same_output ? *input : binding.adopted;
                     auto candidate = prepared
                                          ? detail::sceneParameters(registry.get<Camera>(camera), *prepared, requested)
@@ -1531,10 +1700,14 @@ namespace lux::scene
                   this,
                   [](void* value, RenderAssetVersion) noexcept
                   {
+                      // Delivery comes only from a version this Scene explicitly observed.
+                      static_cast<Impl*>(value)->assets_changed = true;
+                  },
+                  [](void* value) noexcept
+                  {
                       auto& system = *static_cast<Impl*>(value);
-                      // Loads share the process admission limit. Only Scenes with actual pending demands resume.
-                      system.assets_changed |= !system.pending_instances.empty() || !system.pending_materials.empty() ||
-                                               !system.structure.empty();
+                      system.asset_capacity_blocked = false;
+                      system.assets_changed = true;
                   }
               ),
               source(dependencies.source), configuration(std::move(selected)),
@@ -1589,8 +1762,8 @@ namespace lux::scene
 
         ~Impl() noexcept
         {
-            if (camera_target_waiters || transaction_pending || !scene.isNull() || hasViews() || !meshes.empty() ||
-                !materials.empty())
+            if (camera_target_waiters || transaction_pending || retirement_pending || !scene.isNull() || hasViews() ||
+                !meshes.empty() || !materials.empty())
             {
                 std::terminate(); // Retirement maintenance finishes before the System is destroyed.
             }
@@ -1683,9 +1856,16 @@ namespace lux::scene
         CapabilityInput instance_input, material_input, light_input;
         CapabilitySelection implementation;
         RenderSystemConfiguration configuration;
+        // Cold input identity is shared by this Scene's views. Bindings retain only the adopted revision.
+        std::vector<RasterGeometrySelection> effect_geometry;
+        std::vector<SceneLightInput> effect_lights;
+        std::uint32_t effect_input_capacity = 128;
+        std::uint64_t effect_input_revision = 0;
+        bool material_input_enabled = false, instance_input_enabled = false, light_input_enabled = false;
+        bool geometry_input_enabled = false, camera_input_enabled = false;
         RenderError error;
-        bool initialized = false, transaction_pending = false, closing = false;
-        std::optional<std::pair<Entity, CameraTargetId>> changing_camera_target;
+        bool initialized = false, transaction_pending = false, retirement_pending = false, closing = false;
+        std::optional<std::pair<Entity, CameraTargetId>> changing_camera_target, retiring_camera_target;
         CameraTargetWaiter* camera_target_waiters{};
         bool rebuild_requested = false;
 
@@ -1838,7 +2018,7 @@ namespace lux::scene
         auto& self = *impl_;
         if (context.stop.stop_requested())
         {
-            if (self.transaction_pending)
+            if (self.transaction_pending || self.retirement_pending)
             {
                 return ESceneProgress::PENDING;
             }
@@ -1846,6 +2026,10 @@ namespace lux::scene
             {
                 self.closing = true;
                 self.error = {}; // Structural failure does not discharge its created handles.
+            }
+            if (self.client.serverStopped())
+            {
+                self.error = {}; // The SceneRuntime/App retains the failure; final physical cleanup is now proved.
             }
             if (self.error.type != 0 && self.error.type != kRuntimeCapacity)
             {
@@ -1868,12 +2052,22 @@ namespace lux::scene
                                     self.resynchronization != self.client.resynchronization();
         context.publication_needed |= !self.structure.empty() || !self.transformed.empty() ||
                                       !self.light_changes.empty() || changed_inputs || self.transaction_pending;
-        if (self.transaction_pending || !context.allow_structure)
+        if (!context.allow_structure)
         {
             return ESceneProgress::COMPLETE;
         }
         self.reconcileCameraTargets();
+        self.startViewRetirement();
         self.completeCameraTargets();
+        if (self.transaction_pending)
+        {
+            return ESceneProgress::COMPLETE;
+        }
+        if (!self.initialized)
+        {
+            self.startTransaction(self.initialize());
+            return ESceneProgress::PENDING;
+        }
         const bool changed_views = self.needsViewSynchronization();
         self.rebuild_requested |= self.observed_topology != self.topology_revision;
         self.observed_topology = self.topology_revision;
@@ -2105,10 +2299,11 @@ namespace lux::scene
                 {
                     AttachmentInputs inputs{
                         binding.attachment,
-                        parameterBytes(binding.parameters),
+                        self.camera_input_enabled ? parameterBytes(binding.parameters) : std::vector<std::byte>{},
                         binding.adopted.viewport
                     };
-                    inputs.parameter_type = cxx::typeToken<CameraInput>();
+                    inputs.parameter_type =
+                        self.camera_input_enabled ? cxx::typeToken<CameraInput>() : cxx::TypeToken{};
                     if (auto appended = client.append(*frame, *self.attachment_inputs, std::move(inputs)); !appended)
                     {
                         publication_error = appended.error();
@@ -2196,7 +2391,8 @@ namespace lux::scene
                     input.instanceId(),
                     [](auto& system, auto& context) noexcept { return system.publish(context); }
                 );
-            }
+            },
+            .configuration_migrations = detail::renderConfigurationMigrations()
         };
     }
 } // namespace lux::scene

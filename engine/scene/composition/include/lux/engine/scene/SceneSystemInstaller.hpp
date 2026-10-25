@@ -1,6 +1,6 @@
 #pragma once
-#include <lux/engine/scene/SceneInstanceId.hpp>
 #include <exception>
+#include <lux/engine/scene/SceneInstanceId.hpp>
 
 #include <lux/engine/scene/SceneSystem.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
@@ -51,7 +51,7 @@ namespace lux::scene
                 !description || type.configuration_schema_name.empty() ||
                 description.configurationSchemaName() != type.configuration_schema_name ||
                 description.configurationSchemaHash() != lux::cxx::Fnv1a64::hash(type.configuration_schema_name) ||
-                description.configurationSchemaVersion() != type.configuration_schema_version;
+                !registration->configurationDecoder(description.configurationSchemaVersion());
             if (invalid_description)
             {
                 return lux::cxx::unexpected(
@@ -59,7 +59,10 @@ namespace lux::scene
                 );
             }
             Configuration value{};
-            auto decoded = registration->configuration.decode(description.configurationPayload(), &value);
+            auto decoded = registration->configurationDecoder(description.configurationSchemaVersion())(
+                description.configurationPayload(),
+                &value
+            );
             if (!decoded)
             {
                 return lux::cxx::unexpected(SceneSystemBuildFailure{
@@ -172,6 +175,7 @@ namespace lux::scene
 
     private:
         struct Impl;
+
         explicit SceneSystemInstaller(Impl& impl) noexcept : impl_(&impl) {}
 
         template <SceneSystem Type, class Callable>
@@ -200,8 +204,10 @@ namespace lux::scene
                     [object = static_cast<Type*>(system),
                      instance,
                      function = Function(std::forward<Callable>(callable))](SceneStageContext& context
-                    ) noexcept -> SceneStageResult {
-                        auto result = [&]() -> SceneStageResult {
+                    ) noexcept -> SceneStageResult
+                    {
+                        auto result = [&]() -> SceneStageResult
+                        {
                             if constexpr (std::is_nothrow_invocable_r_v<
                                               SceneStageResult,
                                               const Function&,

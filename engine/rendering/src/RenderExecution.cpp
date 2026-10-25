@@ -191,6 +191,7 @@ namespace lux::rendering
         std::atomic_bool render_joined{};
         std::atomic_bool asset_stopping{};
         std::atomic_bool asset_finished{};
+        ShutdownWaiter* shutdown_waiters = nullptr;
     };
 
     RenderExecution::RenderExecution(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
@@ -415,7 +416,31 @@ namespace lux::rendering
         {
             return false;
         }
+        auto* waiter = std::exchange(state.shutdown_waiters, nullptr);
+        while (waiter)
+        {
+            auto* next = waiter->next;
+            deliverShutdown(*waiter);
+            waiter = next;
+        }
         return true;
+    }
+
+    void RenderExecution::awaitShutdown(ShutdownWaiter& waiter) noexcept
+    {
+        auto& state = *impl_;
+        if (state.render_joined.load(std::memory_order_acquire) && !state.asset_thread.joinable())
+        {
+            deliverShutdown(waiter);
+            return;
+        }
+        waiter.next = std::exchange(state.shutdown_waiters, &waiter);
+    }
+
+    void RenderExecution::deliverShutdown(ShutdownWaiter& waiter) noexcept
+    {
+        auto code_lifetime = std::move(waiter.code_lifetime);
+        waiter.complete(waiter);
     }
 
     RenderResult<void> RenderExecution::shutdown() noexcept

@@ -2,11 +2,26 @@
 #include <lux/engine/render/capabilities/RasterAssets.hpp>
 #include <lux/engine/render/extensions/features/EffectDefinition.hpp>
 #include <lux/engine/render/features/BuiltinFeatures.hpp>
+#include <lux/engine/serialization/PortableValueCodec.hpp>
 
 namespace lux::render::detail
 {
     namespace
     {
+        RenderResult<ConfigValue> decodeConfiguration(std::span<const std::byte> bytes) noexcept
+        {
+            UiConfiguration value;
+            serialization::BinaryReader reader(bytes);
+            auto fields = std::tie(value.index_type, value.clear);
+            const auto decoded = serialization::read(reader, fields, serialization::kPortableMetadataBudget);
+            const bool valid_index = value.index_type == EIndexType::UINT16 || value.index_type == EIndexType::UINT32;
+            if (!decoded || reader.remaining() != 0 || !valid_index)
+            {
+                return cxx::unexpected(RenderError{kInvalidConfig});
+            }
+            return ConfigValue::make(value);
+        }
+
         RenderResult<void> expandUi(
             const TargetDesc& target,
             const void* settings,
@@ -37,7 +52,7 @@ namespace lux::render::detail
                                 return image;
                             }
                         }();
-                        GraphImageDesc description{shape.width, shape.height, shape.layers, shape.mips, shape.format};
+                        GraphImageDesc description{shape.width, shape.height, shape.mips, shape.layers, shape.format};
                         if constexpr (std::same_as<Image, UiSampledImage>)
                         {
                             ui.images.push_back(UiTextureImage{image.texture, description, "ui"});
@@ -80,7 +95,8 @@ namespace lux::render::detail
             .expand = expandUi,
             .dependencies = dependencies,
             .effect_input_type = cxx::typeToken<UiSceneInputs>(),
-            .storage_inputs = inputs
+            .storage_inputs = inputs,
+            .decode_configuration = decodeConfiguration
         };
         return graph;
     }
@@ -97,6 +113,13 @@ namespace lux::render::detail
             result.configuration.lifetime = ERenderPayloadLifetime::MOVED_VALUE;
             result.configuration.changes_graph = true;
             result.configuration.setCppType(cxx::typeToken<UiConfiguration>());
+            const UiConfiguration defaults;
+            serialization::BinaryWriter writer(result.default_configuration);
+            (void)serialization::write(
+                writer,
+                std::tie(defaults.index_type, defaults.clear),
+                serialization::kPortableMetadataBudget
+            );
             RenderCapability capability;
             capability.name = kUiSceneCapability;
             capability.description = result.description;

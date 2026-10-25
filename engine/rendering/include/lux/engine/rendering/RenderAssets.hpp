@@ -55,15 +55,25 @@ namespace lux::rendering
     class RenderAssets final
     {
     public:
-        // Main-thread fact subscription. Callback records intent only; it may not mutate connections.
-        // Scene owns the connection and disconnects before destruction; RenderAssets outlives all Scenes.
+        // Main-thread one-shot notifications, registered against an actual pending version or capacity wait.
+        // Delivery unlinks first; callbacks only record intent. The connection may disconnect during delivery.
         class AvailabilityConnection final
         {
         public:
-            AvailabilityConnection(RenderAssets&, void*, void (*)(void*, RenderAssetVersion) noexcept) noexcept;
+            AvailabilityConnection(
+                RenderAssets&,
+                void*,
+                void (*)(void*, RenderAssetVersion) noexcept,
+                void (*capacity_available)(void*) noexcept
+            ) noexcept;
             ~AvailabilityConnection() noexcept;
             AvailabilityConnection(const AvailabilityConnection&) = delete;
             AvailabilityConnection& operator=(const AvailabilityConnection&) = delete;
+
+            // Call after a successful acquire. Already completed versions deliver immediately.
+            void observe(RenderAssetVersion) noexcept;
+            // Only after a capacity rejection. A wake observes capacity; it does not reserve admission.
+            void whenCapacityAvailable() noexcept;
 
         private:
             friend class RenderAssets;
@@ -72,6 +82,9 @@ namespace lux::rendering
             AvailabilityConnection** previous_{};
             void* receiver_;
             void (*completed_)(void*, RenderAssetVersion) noexcept;
+            void (*capacity_available_)(void*) noexcept;
+            std::vector<std::vector<AvailabilityConnection*>*> versions_;
+            void disconnectCapacity() noexcept;
         };
 
         using CreateResult = render::RenderResult<std::unique_ptr<RenderAssets>>;
@@ -120,6 +133,10 @@ namespace lux::rendering
         // Stops new demands and decoding, not accepted GPU work. Successful late uploads are released
         // through Main frames. Existing Scene material/instance references must already be removed.
         void close() noexcept;
+        // Fault shutdown first ends reads/CPU preparation without discarding Scene reference pairs.
+        // Once loadsSettled(), no late producer can enqueue work on the Asset protocol thread.
+        void stopLoads() noexcept;
+        [[nodiscard]] bool loadsSettled() const noexcept;
         // No outstanding reads or replies. Failed release records remain owned until final Server cleanup;
         // completion is not success: inspect releaseFailure() before ending the rendering session.
         [[nodiscard]] bool settled() const noexcept;

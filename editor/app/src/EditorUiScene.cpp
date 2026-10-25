@@ -28,17 +28,13 @@ namespace lux::editor
         {
         }
 
-        void finishTransaction(bool cleanup, std::uint64_t revision, RenderError error) noexcept
+        void finishTransaction(std::uint64_t revision, RenderError error) noexcept
         {
             transaction_pending = false;
             failure = error;
             failed_revision = revision;
-            if (closing && !cleanup)
-            {
-                failure = {}; // Configuration failure does not discharge the handles it already created.
-            }
-            completeImageChanges(revision, closing ? RenderError{} : error);
-            if (error.type != 0 && !closing)
+            completeImageChanges(revision, error);
+            if (error.type != 0)
             {
                 reportRenderFailure(error, "Configure UI output");
             }
@@ -48,18 +44,17 @@ namespace lux::editor
         RenderResult<void> startTransaction(Transaction work) noexcept
         {
             transaction_pending = true;
-            const bool cleanup = closing;
             const auto revision = requested_revision;
             auto result =
                 execution::taskResult(stdexec::starts_on(rendering.execution().mainScheduler(), std::move(work)));
             auto accepted = rendering.execution().spawn(stdexec::then(
                 std::move(result),
-                [this, cleanup, revision](auto result) noexcept
+                [this, revision](auto result) noexcept
                 {
                     const auto error = result                           ? RenderError{}
                                        : result.error().domainFailure() ? *result.error().domainFailure()
                                                                         : RenderError{kRuntimeState};
-                    finishTransaction(cleanup, revision, error);
+                    finishTransaction(revision, error);
                 }
             ));
             if (!accepted)
@@ -659,6 +654,36 @@ namespace lux::editor
             ++impl_->requested_revision;
             impl_->requestConfiguration();
         }
+    }
+
+    RenderError EditorUiScene::cleanupFailure() const noexcept
+    {
+        return impl_->closing && !impl_->transaction_pending ? impl_->failure : RenderError{};
+    }
+
+    bool EditorUiScene::finishCloseAfterServerStop() noexcept
+    {
+        auto& state = *impl_;
+        if (!state.rendering.mainClient().serverStopped())
+        {
+            std::terminate();
+        }
+        if (state.transaction_pending)
+        {
+            return false;
+        }
+        state.scene = {};
+        state.view = {};
+        state.attachment = {};
+        state.target = {};
+        state.effect = {};
+        state.effect_to_release = {};
+        state.font = {};
+        state.image_selections.clear();
+        state.configuring_images = {};
+        state.desired_images.clear();
+        state.completeImageChanges(state.desired_image_revision, state.failure);
+        return true;
     }
 
     bool EditorUiScene::settled() const noexcept

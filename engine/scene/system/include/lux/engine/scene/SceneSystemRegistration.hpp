@@ -81,6 +81,7 @@ namespace lux::scene
         SceneSystemInstaller& builder,
         SceneSystemDescription description
     ) noexcept;
+
     struct SceneSystemCapabilityProjection final
     {
         lux::cxx::TypeToken type;
@@ -91,10 +92,19 @@ namespace lux::scene
         requires std::derived_from<Concrete, Capability>
     [[nodiscard]] consteval SceneSystemCapabilityProjection sceneSystemCapabilityProjection() noexcept
     {
-        return {lux::cxx::typeToken<Capability>(), +[](void* object) noexcept -> void* {
-                    return static_cast<Capability*>(static_cast<Concrete*>(object));
-                }};
+        return {
+            lux::cxx::typeToken<Capability>(),
+            +[](void* object) noexcept -> void* { return static_cast<Capability*>(static_cast<Concrete*>(object)); }
+        };
     }
+
+    // Explicit old-schema decoders produce the current configuration value. They neither publish
+    // a system nor mutate a saved description; saving writes the current schema through its codec.
+    struct SceneConfigurationMigration final
+    {
+        std::uint32_t version;
+        serialization::DecodePortableValueFn decode;
+    };
 
     struct SceneSystemRegistration final
     {
@@ -107,13 +117,33 @@ namespace lux::scene
         InstallSceneSystemFn install{};
         std::span<const SceneSystemCapabilityProjection> projections;
         std::shared_ptr<const void> code_lifetime;
+        std::span<const SceneConfigurationMigration> configuration_migrations;
+
+        [[nodiscard]] serialization::DecodePortableValueFn configurationDecoder(std::uint32_t version) const noexcept
+        {
+            if (version == description->configuration_schema_version)
+            {
+                return configuration.decode;
+            }
+            for (const auto& migration : configuration_migrations)
+            {
+                if (migration.version == version)
+                {
+                    return migration.decode;
+                }
+            }
+            return nullptr;
+        }
     };
+
     [[nodiscard]] inline bool validSceneSystemRegistration(const SceneSystemRegistration& registration) noexcept
     {
         const bool invalid_identity = !registration.type.valid() || !registration.cpp_type.isValid() ||
                                       !registration.description || !registration.install;
         if (invalid_identity)
+        {
             return false;
+        }
         const auto& description = *registration.description;
         const bool invalid_description = !system::validSystemTypeDescription(description) ||
                                          description.canonical_name != registration.type.name ||
@@ -121,24 +151,55 @@ namespace lux::scene
         const bool invalid_configuration =
             description.configuration_schema_name.empty() == registration.configuration.valid();
         if (invalid_description || invalid_configuration)
+        {
             return false;
+        }
+        for (std::size_t i = 0; i < registration.configuration_migrations.size(); ++i)
+        {
+            const auto& migration = registration.configuration_migrations[i];
+            const bool invalid_version =
+                migration.version == 0 || migration.version == description.configuration_schema_version;
+            if (invalid_version || !migration.decode)
+            {
+                return false;
+            }
+            for (std::size_t previous = 0; previous < i; ++previous)
+            {
+                if (registration.configuration_migrations[previous].version == migration.version)
+                {
+                    return false;
+                }
+            }
+        }
         for (std::size_t i{}; i < registration.requirements.size(); ++i)
         {
             const auto& value = registration.requirements[i];
             if (value.name.empty() || value.capability.empty() || !value.expected_type.isValid())
+            {
                 return false;
+            }
             for (std::size_t previous{}; previous < i; ++previous)
+            {
                 if (registration.requirements[previous].name == value.name)
+                {
                     return false;
+                }
+            }
         }
         for (std::size_t i{}; i < registration.projections.size(); ++i)
         {
             const auto& value = registration.projections[i];
             if (!value.type.isValid() || !value.project)
+            {
                 return false;
+            }
             for (std::size_t previous{}; previous < i; ++previous)
+            {
                 if (registration.projections[previous].type == value.type)
+                {
                     return false;
+                }
+            }
         }
         return true;
     }

@@ -344,7 +344,8 @@ namespace lux::scene
                 const auto& description = *registration->description;
                 const bool invalid_schema =
                     system.configurationSchemaName() != description.configuration_schema_name ||
-                    system.configurationSchemaVersion() != description.configuration_schema_version ||
+                    (system.configurationSchemaVersion() != description.configuration_schema_version &&
+                     !registration->configurationDecoder(system.configurationSchemaVersion())) ||
                     system.configurationSchemaHash() !=
                         (description.configuration_schema_name.empty()
                              ? 0U

@@ -8,6 +8,7 @@
 #include <lux/engine/ui/Layout.hpp>
 
 #include <algorithm>
+#include <lux/engine/render/capabilities/LitScene.hpp>
 #include <random>
 
 namespace lux::editor
@@ -220,8 +221,11 @@ namespace lux::editor
                 if (registration.type.name == scene::RenderSystem::Description.canonical_name)
                 {
                     scene::RenderSystemConfiguration rendering;
-                    rendering.recipe = recipe.value() == 0 ? "lux.scene.clustered" : "lux.scene.deferred";
-                    rendering.shadows = shadows.value();
+                    rendering.capability = render::kLitSceneCapability;
+                    rendering.implementation = recipe.value() == 0 ? "lux.render.scene.clustered" : "lux.render.scene.deferred";
+                    render::LitSceneConfiguration settings;
+                    settings.shadows = shadows.value();
+                    rendering.configuration = *render::encodeLitSceneConfiguration(settings);
                     if (!registration.configuration.encode(&rendering, configuration))
                     {
                         return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});

@@ -6,6 +6,7 @@
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
 #include <lux/engine/render/extensions/FeatureRegistration.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/inputs/SampledTextureInputs.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
 #include <lux/engine/rendering/WindowSurface.hpp>
@@ -79,11 +80,28 @@ namespace
         }
     };
 
+    struct CleanupRejection final
+    {
+        static constexpr std::string_view name = "test.ui.cleanup-rejection";
+
+        static CleanupRejection* create(ResourceRegistry&) noexcept
+        {
+            return new CleanupRejection;
+        }
+
+        void remove(const ReleaseTexture::Request&, ReleaseTexture::Response& response) noexcept
+        {
+            response.error = RenderError{kRuntimeUnsupported}; // Definite refusal; no native side effect.
+        }
+
+        using Bindings = std::tuple<CommandMethod<ReleaseTexture, &CleanupRejection::remove>>;
+    };
+
     struct ViewFailureCapability final
     {
         using Config = void;
         using Storages = std::tuple<ViewAllocationFailure>;
-        using Commands = std::tuple<>;
+        using Commands = CleanupRejection::Bindings;
         static constexpr FeatureName name{"test.ui.failure"};
 
         static const FeatureGraphOps& graph(bool) noexcept
@@ -171,7 +189,7 @@ int main()
     assert(root.addPane(std::move(content)));
     auto& client = rendering->mainClient();
     std::size_t completed = 0, captured_vertices = 0, injected_frame_failures = 0;
-    bool expect_allocation_failure = false;
+    bool expect_allocation_failure = false, expect_cleanup_failure = false;
     auto drive = [&](bool capture)
     {
         window::LuxWindow::pollEvents();
@@ -201,7 +219,11 @@ int main()
                         {
                             reportRenderFailure(response.error, "UI frame");
                         }
-                        if (response.error.type != 0)
+                        if (response.error.type != 0 && expect_cleanup_failure)
+                        {
+                            assert(response.error.type == kRuntimeUnsupported);
+                        }
+                        else if (response.error.type != 0)
                         {
                             assert(expect_allocation_failure && ViewAllocationFailure::failures == 1);
                             assert(response.error.type == kDeviceFailure && injected_frame_failures++ == 0);
@@ -308,6 +330,39 @@ int main()
     until([&] { return take(ui_scene->outputReady()) && completed >= before + 10; }, true);
     ui_scene->stopFrames();
     until([&] { return ui_scene->settled() && client.pendingRequests() == 0; }, false);
+    ui_scene.reset();
+    // A second real UI scene keeps its font texture identity after a definite cleanup refusal.
+    ui_scene = take(EditorUiScene::create(
+        *rendering,
+        *window,
+        {640, 480, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::SURFACE},
+        surface,
+        take(root.fontAtlas())
+    ));
+    until([&] { return take(ui_scene->outputReady()); }, true);
+    const auto commands = call.operator()<ListCommands>({});
+    const auto command = std::ranges::find(commands.commands, ReleaseTexture::name, &CommandInfo::name);
+    assert(command != commands.commands.end());
+    const auto bindings = call.operator()<ListCommandBindings>(command->id);
+    const auto rejection = std::ranges::find(bindings.handlers, CleanupRejection::name, &HandlerInfo::name);
+    assert(rejection != bindings.handlers.end());
+    call.operator()<SelectCommandBinding>({command->id, rejection->id});
+    expect_cleanup_failure = true;
+    ui_scene->stopFrames();
+    until([&] { return ui_scene->cleanupFailure().type != 0; }, false);
+    assert(ui_scene->cleanupFailure().type == kRuntimeUnsupported && !ui_scene->settled());
+    bool joined = false;
+    assert(execution.spawn(stdexec::then(
+        rendering->whenStopped(),
+        [&]() noexcept
+        {
+            assert(client.serverStopped());
+            joined = true;
+        }
+    )));
+    rendering->beginClose();
+    until([&] { return rendering->advanceClose() && joined; }, false);
+    assert(ui_scene->finishCloseAfterServerStop() && ui_scene->settled());
     assert(rendering->shutdown());
     assert(rendering->stats().validation_errors == 0);
     ui_scene.reset();

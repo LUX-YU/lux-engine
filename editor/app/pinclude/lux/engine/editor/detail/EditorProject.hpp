@@ -1,6 +1,7 @@
 #pragma once
 
 #include <exec/task.hpp>
+#include <lux/engine/editor/FrameworkResult.hpp>
 #include <lux/engine/editor/detail/ProjectUiMount.hpp>
 #include <memory>
 #include <optional>
@@ -21,13 +22,13 @@ namespace lux::editor::detail
 
         // Start teardown on Main. No pending Scene/producer borrow means immediate destruction is safe;
         // otherwise the caller keeps this project until the returned continuation finishes.
-        [[nodiscard]] std::optional<exec::task<void>> close() noexcept;
+        [[nodiscard]] std::optional<exec::task<FrameworkResult<void>>> close() noexcept;
 
         std::unique_ptr<EditorContext> context;
         ProjectScenes* scenes{}; // Optional service, resolved at construction/close boundaries only.
         ProjectUiMount ui;
 
     private:
-        [[nodiscard]] exec::task<void> completeClose() noexcept;
+        [[nodiscard]] exec::task<FrameworkResult<void>> completeClose() noexcept;
     };
 } // namespace lux::editor::detail

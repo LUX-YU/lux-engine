@@ -3,6 +3,47 @@
 
 namespace lux::render
 {
+    RenderResult<const ConfigValue*> RenderServer::Impl::qualifyConfiguration(
+        const FeatureEntry& feature,
+        const VCapabilityConfiguration& input,
+        ConfigValue& decoded
+    ) const noexcept
+    {
+        const auto* value = std::get_if<ConfigValue>(&input);
+        if (!value)
+        {
+            const auto& serialized = std::get<SerializedRenderConfiguration>(input);
+            const auto& contract = feature.capabilities->configuration;
+            const bool invalid_schema = serialized.schema != contract.schema || serialized.version != contract.version;
+            const bool invalid_size = serialized.bytes.size() > config.max_config_bytes;
+            if (invalid_schema || invalid_size)
+            {
+                return cxx::unexpected(RenderError{kInvalidConfig});
+            }
+            if (feature.graph.decode_configuration)
+            {
+                auto result = feature.graph.decode_configuration(serialized.bytes);
+                if (!result)
+                {
+                    return cxx::unexpected(result.error());
+                }
+                decoded = std::move(*result);
+            }
+            else if (feature.config_type.isValid() || !serialized.bytes.empty())
+            {
+                return cxx::unexpected(RenderError{kInvalidConfig});
+            }
+            value = &decoded;
+        }
+        const bool invalid_type = feature.config_type != value->type();
+        const bool invalid_size = value->retainedBytes() > config.max_config_bytes;
+        if (invalid_type || invalid_size)
+        {
+            return cxx::unexpected(RenderError{kInvalidConfig});
+        }
+        return value;
+    }
+
     RenderResult<StorageSet*> RenderServer::Impl::findScope(const VRenderScope& scope) noexcept
     {
         return std::visit(
@@ -154,11 +195,11 @@ namespace lux::render
             result.error = RenderError{kRuntimeIdentity};
             return;
         }
-        const bool invalid_configuration = feature->config_type != input.configuration.type() ||
-                                           input.configuration.retainedBytes() > config.max_config_bytes;
-        if (invalid_configuration)
+        ConfigValue decoded;
+        auto configuration = qualifyConfiguration(*feature, input.configuration, decoded);
+        if (!configuration)
         {
-            result.error = RenderError{kInvalidConfig};
+            result.error = configuration.error();
             return;
         }
         if (auto destination = findScope(input.scope); !destination)
@@ -240,14 +281,14 @@ namespace lux::render
             }
             auto* set = *findScope(scope); // The enclosing scope and all ancestors were qualified above.
             const auto type = resources->typeId(declaration.storage_type);
-            auto configuration = declaration.configuration ? declaration.configuration(input.configuration.data())
-                                                           : RenderResult<ConfigValue>{ConfigValue{}};
-            if (!configuration)
+            auto dependency_config = declaration.configuration ? declaration.configuration((*configuration)->data())
+                                                               : RenderResult<ConfigValue>{ConfigValue{}};
+            if (!dependency_config)
             {
-                result.error = configuration.error();
+                result.error = dependency_config.error();
                 return;
             }
-            auto storage = ensureStorage(*set, type, declaration.storage_key, *configuration, created);
+            auto storage = ensureStorage(*set, type, declaration.storage_key, *dependency_config, created);
             if (!storage)
             {
                 result.error = storage.error();

@@ -7,6 +7,7 @@
 #include <lux/engine/scene/TransformSystem.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <map>
+#include <lux/engine/render/capabilities/LitScene.hpp>
 
 namespace lux::editor
 {
@@ -219,8 +220,7 @@ namespace lux::editor
                 schemas.push_back(world::worldDataSchemaId(schema->id.name));
             }
 
-            // The profile chooses Scene systems. Application startup registers Render factories;
-            // RenderSystem composes an Effect from actual cooked material/geometry groups.
+            // The profile chooses default capability demand and implementation. Render owns its effect composition.
             const scene::TransformSystemConfiguration transform{4096, 32768, 1U << 20U};
             const scene::WorldLoadingConfiguration world_loading{{partition::PartitionOrdinal{0}}};
             scene::SceneDescriptionBuilder builder;
@@ -248,7 +248,10 @@ namespace lux::editor
             {
                 return cxx::unexpected(std::move(result.error()));
             }
-            const scene::RenderSystemConfiguration rendering;
+            scene::RenderSystemConfiguration rendering;
+            rendering.capability = render::kLitSceneCapability;
+            rendering.implementation = "lux.render.scene.clustered";
+            rendering.configuration = *render::encodeLitSceneConfiguration(render::LitSceneConfiguration{});
             if (auto result =
                     addSystem(builder, info.registrations, scene::RenderSystem::Description, {3}, "render", &rendering);
                 !result)

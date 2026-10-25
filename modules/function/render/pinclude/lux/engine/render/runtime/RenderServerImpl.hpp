@@ -177,6 +177,11 @@ namespace lux::render
             std::vector<ConfigValue> = {}
         ) noexcept;
         auto createCapabilityEffect(CreateEffect::Request&&) noexcept;
+        [[nodiscard]] RenderResult<const ConfigValue*> qualifyConfiguration(
+            const FeatureEntry&,
+            const VCapabilityConfiguration&,
+            ConfigValue& decoded
+        ) const noexcept;
         void bindCreateEffectCommand() noexcept;
 
         void listCapabilities(const ListCapabilities::Request&, ListCapabilities::Response&) noexcept;

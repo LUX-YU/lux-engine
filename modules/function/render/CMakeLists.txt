@@ -4,6 +4,10 @@ find_package(stdexec CONFIG REQUIRED GLOBAL)
 
 find_package(Eigen3 CONFIG REQUIRED)
 
+if(NOT TARGET lux::engine::core::serialization)
+    find_package(lux-engine CONFIG REQUIRED COMPONENTS core::serialization)
+endif()
+
 find_package(Vulkan 1.3 REQUIRED)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../core/error/cmake/Values.cmake")
@@ -311,6 +315,7 @@ target_link_libraries(render
         lux::engine::core::error_values lux::engine::resource::description_types
         lux::engine::resource::shader_metadata lux::engine::platform::platform_ipc
     PRIVATE NRI Eigen3::Eigen STDEXEC::stdexec lux::engine::core::core_execution
+        lux::engine::core::serialization
         lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared
         lux::engine::platform::platform_process
 )

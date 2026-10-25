@@ -69,7 +69,7 @@ namespace
         assert(render.configurationSchemaName() == scene::RenderSystem::Description.configuration_schema_name);
         scene::RenderSystemConfiguration render_config;
         assert(scene::renderConfigurationCodec().decode(render.configurationPayload(), &render_config));
-        assert(scene::validRenderConfiguration(render_config) && render_config.recipe == "lux.scene.clustered");
+        assert(scene::validRenderConfiguration(render_config) && render_config.implementation == "lux.render.scene.clustered");
     }
 } // namespace
 

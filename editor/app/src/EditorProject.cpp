@@ -11,7 +11,7 @@ namespace lux::editor::detail
 
     EditorProject::~EditorProject() noexcept = default;
 
-    std::optional<exec::task<void>> EditorProject::close() noexcept
+    std::optional<exec::task<FrameworkResult<void>>> EditorProject::close() noexcept
     {
         ui = {};
         scenes = context->services().constructed<ProjectScenes>();
@@ -27,12 +27,16 @@ namespace lux::editor::detail
         return context->finishClose() ? std::nullopt : std::optional{completeClose()};
     }
 
-    exec::task<void> EditorProject::completeClose() noexcept
+    exec::task<FrameworkResult<void>> EditorProject::completeClose() noexcept
     {
         if (scenes)
         {
-            co_await scenes->closeAsync();
+            if (auto closed = co_await scenes->closeAsync(); !closed)
+            {
+                co_return cxx::unexpected(closed.error());
+            }
         }
         co_await context->closeAsync();
+        co_return FrameworkResult<void>{};
     }
 } // namespace lux::editor::detail

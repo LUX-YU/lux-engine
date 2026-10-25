@@ -1,7 +1,6 @@
+#include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
-#include <lux/engine/serialization/Serialization.hpp>
-
-#include <cmath>
+#include <lux/engine/scene/RenderSystemConfigurationImpl.hpp>
 #include <tuple>
 
 namespace lux::serialization
@@ -10,6 +9,19 @@ namespace lux::serialization
     {
         static constexpr EWireExtent wire_extent = EWireExtent::VARIABLE;
 
+        static auto fields(auto& value) noexcept
+        {
+            return std::tie(
+                value.capability,
+                value.capability_version,
+                value.implementation,
+                value.implementation_version,
+                value.configuration.schema,
+                value.configuration.version,
+                value.configuration.bytes
+            );
+        }
+
         template <class Writer>
         static SerializationResult write(
             Writer& writer,
@@ -17,19 +29,7 @@ namespace lux::serialization
             const SerializationContext& context
         ) noexcept
         {
-            return serialization::write(
-                writer,
-                std::tie(
-                    value.recipe,
-                    value.recipe_version,
-                    value.shadows,
-                    value.shadow_resolution,
-                    value.shadow_filter_radius,
-                    value.shadow_distance,
-                    value.cluster_index_capacity
-                ),
-                context
-            );
+            return serialization::write(writer, fields(value), context);
         }
 
         template <class Reader>
@@ -40,16 +40,8 @@ namespace lux::serialization
         ) noexcept
         {
             scene::RenderSystemConfiguration candidate;
-            auto fields = std::tie(
-                candidate.recipe,
-                candidate.recipe_version,
-                candidate.shadows,
-                candidate.shadow_resolution,
-                candidate.shadow_filter_radius,
-                candidate.shadow_distance,
-                candidate.cluster_index_capacity
-            );
-            auto result = serialization::read(reader, fields, context);
+            auto members = fields(candidate);
+            auto result = serialization::read(reader, members, context);
             if (result)
             {
                 value = std::move(candidate);
@@ -63,10 +55,8 @@ namespace lux::scene
 {
     bool validRenderConfiguration(const RenderSystemConfiguration& value) noexcept
     {
-        const bool has_known_recipe = value.recipe == "lux.scene.deferred" || value.recipe == "lux.scene.clustered";
-        const bool has_valid_shadow = value.shadow_filter_radius <= 4 && value.shadow_resolution > 2 * (value.shadow_filter_radius + 2) &&
-                                      std::isfinite(value.shadow_distance) && value.shadow_distance > 0;
-        return has_known_recipe && value.recipe_version == 1 && has_valid_shadow && value.cluster_index_capacity != 0;
+        return !value.capability.empty() && value.capability_version != 0 && !value.implementation.empty() &&
+               value.implementation_version != 0 && value.configuration.version != 0;
     }
 
     serialization::PortableValueCodec renderConfigurationCodec() noexcept
@@ -74,3 +64,54 @@ namespace lux::scene
         return serialization::makePortableValueCodec<RenderSystemConfiguration>();
     }
 } // namespace lux::scene
+
+namespace lux::scene::detail
+{
+    namespace
+    {
+        serialization::SerializationResult decodeVersion1(std::span<const std::byte> bytes, void* output) noexcept
+        {
+            // Version 1 had two closed recipes. This is the only compatibility translation;
+            // live selection and version 2 encoding contain no algorithm whitelist.
+            std::string recipe;
+            std::uint32_t version{};
+            render::LitSceneConfiguration old;
+            auto fields = std::tie(
+                recipe,
+                version,
+                old.shadows,
+                old.shadow_resolution,
+                old.shadow_filter_radius,
+                old.shadow_distance,
+                old.cluster_index_capacity
+            );
+            serialization::BinaryReader reader(bytes);
+            auto decoded = serialization::read(reader, fields, serialization::kPortableMetadataBudget);
+            if (!decoded)
+            {
+                return decoded;
+            }
+            const bool known_recipe = recipe == "lux.scene.clustered" || recipe == "lux.scene.deferred";
+            auto configuration = render::encodeLitSceneConfiguration(old);
+            if (!known_recipe || version != 1 || reader.remaining() != 0 || !configuration)
+            {
+                return cxx::unexpected(serialization::SerializationFailure{
+                    serialization::ESerializationError::INVALID_VALUE,
+                    reader.offset()
+                });
+            }
+            auto& result = *static_cast<RenderSystemConfiguration*>(output);
+            result.capability = render::kLitSceneCapability;
+            result.implementation =
+                recipe == "lux.scene.clustered" ? "lux.render.scene.clustered" : "lux.render.scene.deferred";
+            result.configuration = std::move(*configuration);
+            return {};
+        }
+    } // namespace
+
+    std::span<const SceneConfigurationMigration> renderConfigurationMigrations() noexcept
+    {
+        static constexpr SceneConfigurationMigration migrations[]{{1, decodeVersion1}};
+        return migrations;
+    }
+} // namespace lux::scene::detail

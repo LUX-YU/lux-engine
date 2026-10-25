@@ -2,6 +2,7 @@
 
 #include <lux/engine/core/execution/TaskInfo.hpp>
 #include <lux/engine/description/UiDraw.hpp>
+#include <lux/engine/editor/FrameworkResult.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
 #include <lux/engine/editor/SceneDocument.hpp>
 #include <lux/engine/editor/SceneProfileRegistry.hpp>
@@ -113,7 +114,10 @@ namespace lux::editor
         [[nodiscard]] ProjectSceneResult<void> close(asset::AssetId) noexcept;
         void closeAll() noexcept;
         // Finite Main-thread close. Continues actual viewport/Scene/producer work; no nested event pump.
-        [[nodiscard]] exec::task<void> closeAsync() noexcept;
+        [[nodiscard]] exec::task<FrameworkResult<void>> closeAsync() noexcept;
+        // Failed close keeps its actual records. Call only after RenderExecution has joined Server;
+        // waits for outstanding callbacks before discarding discharged logical handles.
+        [[nodiscard]] exec::task<void> finishCloseAfterServerStop() noexcept;
         [[nodiscard]] bool settled() const noexcept;
         [[nodiscard]] const std::optional<VProjectSceneFailure>& failure() const noexcept;
         // Called after the project publishes a complete VFS version, independently of viewport changes.

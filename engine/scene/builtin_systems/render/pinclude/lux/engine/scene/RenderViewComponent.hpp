@@ -15,12 +15,10 @@ namespace lux::scene::detail
         render::EffectId effect;
         render::AttachmentId attachment;
         CameraTarget adopted;
-        CameraRecipeKey recipe;
+        CameraGraphInputs graph_inputs;
         render::CameraInput parameters;
         render::RenderError error;
-        std::vector<render::RasterGeometrySelection> groups;
-        std::vector<render::SceneLightInput> light_inputs;
-        std::uint32_t capacity{};
+        std::uint64_t input_revision{};
         bool parameters_changed = true;
         bool output_changed = true;
     };

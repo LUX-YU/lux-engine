@@ -41,9 +41,11 @@ namespace lux::scene
     class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderSystem final
     {
     public:
+        inline static constexpr std::string_view Capabilities[]{"lux.scene.optional_presentation"};
+        // Mesh/Light inputs are optional authored streams. The selected capability binds their producers;
+        // a camera-only program must not require a Mesh schema just to create an output.
         inline static constexpr system::SystemDataContract DataInputs[]{
             {"lux.ecs.Transform3D"},
-            {"lux.ecs.Mesh3D", 2},
             {"lux.scene.Camera"},
             {"lux.transform.world3d.ready", 1, system::ESystemDataKind::PREPARED_DATA, system::ESystemDataPhase::STABLE}
         };
@@ -51,12 +53,13 @@ namespace lux::scene
             .canonical_name = "lux.scene.render",
             .version = 2,
             .configuration_schema_name = "lux.scene.render.Configuration",
-            .configuration_schema_version = 1,
+            .configuration_schema_version = 2,
+            .capabilities = Capabilities,
             .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER,
             .data_inputs = DataInputs
         };
 
-        RenderSystem(simulation::ecs::Registry&, const RenderSystemDependencies&, RenderSystemConfiguration = {});
+        RenderSystem(simulation::ecs::Registry&, const RenderSystemDependencies&, RenderSystemConfiguration);
         // Retire through maintain(context.stop): continue Main maintenance frames until COMPLETE.
         // Destruction never starts asynchronous work; Registry and dependencies remain alive until then.
         ~RenderSystem() noexcept;

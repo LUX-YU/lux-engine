@@ -197,22 +197,34 @@ int main()
     auto assets = take(RenderAssets::create(*rendering, endpoint->port()));
     const auto catalog = call<ListCommands>(*rendering, {});
     const auto before_upload = rendering->stats().commands;
-    CHECK(assets->acquireTexture({texture_id, 1}));
     const auto deadline = std::chrono::steady_clock::now() + 60s;
-    // Deliberately do not dispatch Main. Blocking read, CPU decode and Asset transport must still advance.
-    while (rendering->stats().commands == before_upload)
+    std::size_t matching_notifications = 0, unrelated_notifications = 0;
     {
-        CHECK(std::chrono::steady_clock::now() < deadline);
-        std::this_thread::sleep_for(1ms);
-    }
-    CHECK(!assets->texture({texture_id, 1}));
-    CHECK(execution.waitUntil(
-        [&]() noexcept
+        const auto completed = +[](void* count, RenderAssetVersion) noexcept { ++*static_cast<std::size_t*>(count); };
+        const auto capacity = +[](void*) noexcept {};
+        RenderAssets::AvailabilityConnection matching{*assets, &matching_notifications, completed, capacity};
+        RenderAssets::AvailabilityConnection unrelated{*assets, &unrelated_notifications, completed, capacity};
+        CHECK(assets->acquireTexture({texture_id, 1}));
+        matching.observe({texture_id, 1});
+        // Deliberately do not dispatch Main. Blocking read, CPU decode and Asset transport must still advance.
+        while (rendering->stats().commands == before_upload)
         {
-            static_cast<void>(rendering->consumeResponses());
-            return assets->texture({texture_id, 1}) != nullptr;
+            CHECK(std::chrono::steady_clock::now() < deadline);
+            std::this_thread::sleep_for(1ms);
         }
-    ));
+        CHECK(!assets->texture({texture_id, 1}));
+        CHECK(execution.waitUntil(
+            [&]() noexcept
+            {
+                static_cast<void>(rendering->consumeResponses());
+                return assets->texture({texture_id, 1}) != nullptr;
+            }
+        ));
+
+        CHECK(matching_notifications == 1 && unrelated_notifications == 0);
+        matching.observe({texture_id, 1}); // Fold the already completed fact into a new subscription.
+        CHECK(matching_notifications == 2 && unrelated_notifications == 0);
+    }
 
     scene::RenderAssetInput inputs;
     scene::CameraTarget view_request;
@@ -239,14 +251,40 @@ int main()
     registry.emplace<simulation::ecs::Light3D>(light, sunlight);
     registry.emplace<simulation::ecs::WorldTransform3D>(light, camera_transform);
     scene::RenderSystemConfiguration scene_configuration;
-    scene_configuration.shadow_resolution = 64;
-    scene_configuration.shadow_distance = 20;
+    scene_configuration.capability = render::kLitSceneCapability;
+    scene_configuration.implementation = "lux.render.scene.clustered";
+    render::LitSceneConfiguration lighting;
+    lighting.shadow_resolution = 64;
+    lighting.shadow_distance = 20;
+    scene_configuration.configuration = *render::encodeLitSceneConfiguration(lighting);
     auto codec = scene::renderConfigurationCodec();
     std::vector<std::byte> encoded_configuration;
     CHECK(codec.encode(&scene_configuration, encoded_configuration));
     scene::RenderSystemConfiguration decoded_configuration;
     CHECK(codec.decode(encoded_configuration, &decoded_configuration));
-    CHECK(decoded_configuration.shadow_resolution == 64 && scene::validRenderConfiguration(decoded_configuration));
+    CHECK(
+        decoded_configuration.configuration == scene_configuration.configuration &&
+        scene::validRenderConfiguration(decoded_configuration)
+    );
+    // Decode the exact old schema through its registered migration; every algorithm setting is preserved.
+    std::vector<std::byte> version1;
+    serialization::BinaryWriter old_writer(version1);
+    const auto old_fields = std::tuple{
+        std::string{"lux.scene.clustered"},
+        std::uint32_t{1},
+        lighting.shadows,
+        lighting.shadow_resolution,
+        lighting.shadow_filter_radius,
+        lighting.shadow_distance,
+        lighting.cluster_index_capacity
+    };
+    CHECK(serialization::write(old_writer, old_fields, serialization::kPortableMetadataBudget));
+    const auto registration = scene::renderSystemRegistration();
+    CHECK(registration.configurationDecoder(1) && !registration.configurationDecoder(999));
+    scene::RenderSystemConfiguration migrated;
+    CHECK(registration.configurationDecoder(1)(version1, &migrated));
+    CHECK(migrated.configuration == scene_configuration.configuration);
+    CHECK(migrated.implementation == scene_configuration.implementation);
     auto scene = std::make_unique<scene::RenderSystem>(registry, dependencies, scene_configuration);
     const auto first_added = scene->addCameraTarget(camera, view_request);
     CHECK(first_added);
@@ -337,9 +375,12 @@ int main()
                             reportRenderFailure(result.error, "Scene frame");
                             std::fprintf(
                                 stderr,
-                                "Frame error %llu, outcome %u\n",
+                                "Frame error %llu, outcome %u; args %llu %llu %llu\n",
                                 static_cast<unsigned long long>(result.error.type),
-                                unsigned(result.outcome)
+                                unsigned(result.outcome),
+                                result.error.args[0],
+                                result.error.args[1],
+                                result.error.args[2]
                             );
                             for (const auto& input : carrier->commands)
                             {
@@ -357,7 +398,7 @@ int main()
         ));
     };
     while (scene->attachment(camera, first_view).isNull() || !published(scene->attachment(camera, first_view)) ||
-           completed_frames < 12)
+           !scene->visualReady(first) || !scene->visualReady(second) || completed_frames < 12)
     {
         CHECK(std::chrono::steady_clock::now() < deadline);
         drive(true);
@@ -473,6 +514,51 @@ int main()
     // its CreateEffect request, while both actual CPU workers remain blocked by the test latches.
     CHECK(execution.dispatchMainCompletions());
     const auto before_replacement_compile = call<QueryRenderStats>(*rendering, {}).compiled_graphs;
+    // An unrelated output must retire while the replacement graph is waiting on CPU compilation.
+    const auto remove_target = take(rendering->mainClient().bind<RemoveTarget>());
+    CHECK(scene->removeCameraTarget(editor_camera, second_view));
+    bool output_retired = false;
+    auto retired = execution::taskResult(
+        stdexec::starts_on(execution.mainScheduler(), scene->whenCameraTargetRetired(editor_camera, second_view))
+    );
+    CHECK(execution.spawn(stdexec::then(
+        std::move(retired),
+        [&](auto&& result) noexcept
+        {
+            CHECK(result && scene->cameraTargetRetired(editor_camera, second_view));
+            output_retired = true;
+        }
+    )));
+    while (!scene->cameraTargetRetired(editor_camera, second_view))
+    {
+        drive(true);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    while (!output_retired)
+    {
+        drive(false);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
+    bool second_target_released = false;
+    auto second_removal = take(execution.submit(
+        {},
+        [&](execution::TaskReporter) noexcept
+        {
+            return stdexec::then(
+                rendering->mainClient().request(remove_target, editor_view.target),
+                [&](AckResponse response) noexcept
+                {
+                    CHECK(response.error.type == 0);
+                    second_target_released = true;
+                }
+            );
+        }
+    ));
+    while (!second_target_released)
+    {
+        drive(false);
+        CHECK(std::chrono::steady_clock::now() < deadline);
+    }
     registry.patch<scene::Camera>(
         camera,
         [](auto& value) noexcept { std::get<scene::PerspectiveProjection>(value.projection).near_plane = 0.5; }
@@ -488,7 +574,6 @@ int main()
     // Moving the view prepares the new output before revoking the previous writer.
     // The old Target is now independently releasable, without recreating Mesh/Material assets.
     auto old_target = previous_target;
-    const auto remove_target = take(rendering->mainClient().bind<RemoveTarget>());
     bool target_released = false;
     auto removal = take(execution.submit(
         {},
@@ -631,49 +716,6 @@ int main()
         drive(true);
     }
     CHECK(rendering->stats().compiled_graphs == compiled_before_removal);
-    CHECK(scene->removeCameraTarget(editor_camera, second_view));
-    bool output_retired = false;
-    auto retired = execution::taskResult(
-        stdexec::starts_on(execution.mainScheduler(), scene->whenCameraTargetRetired(editor_camera, second_view))
-    );
-    CHECK(execution.spawn(stdexec::then(
-        std::move(retired),
-        [&](auto&& result) noexcept
-        {
-            CHECK(result && scene->cameraTargetRetired(editor_camera, second_view));
-            output_retired = true;
-        }
-    )));
-    while (!scene->cameraTargetRetired(editor_camera, second_view))
-    {
-        drive(true);
-        CHECK(std::chrono::steady_clock::now() < deadline);
-    }
-    while (!output_retired)
-    {
-        drive(false);
-        CHECK(std::chrono::steady_clock::now() < deadline);
-    }
-    bool second_target_released = false;
-    auto second_removal = take(execution.submit(
-        {},
-        [&](execution::TaskReporter) noexcept
-        {
-            return stdexec::then(
-                rendering->mainClient().request(remove_target, editor_view.target),
-                [&](AckResponse response) noexcept
-                {
-                    CHECK(response.error.type == 0);
-                    second_target_released = true;
-                }
-            );
-        }
-    ));
-    while (!second_target_released)
-    {
-        drive(false);
-        CHECK(std::chrono::steady_clock::now() < deadline);
-    }
     project_tasks.requestStop(); // Scene cleanup no longer depends on fresh monitored-task admission.
     scene_stop.request_stop();
     while (!scene_retired)

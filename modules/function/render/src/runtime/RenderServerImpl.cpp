@@ -252,13 +252,13 @@ namespace lux::render
         }
         else
         {
-            const bool invalid_configuration = input.configuration.type() != entry->config_type ||
-                                               input.configuration.retainedBytes() > config.max_config_bytes;
+            ConfigValue decoded;
+            auto configuration = qualifyConfiguration(*entry, input.configuration, decoded);
             const bool invalid_inputs = input.inputs.type() != entry->graph.effect_input_type ||
                                         input.inputs.retainedBytes() > config.max_config_bytes;
-            if (invalid_configuration || invalid_inputs)
+            if (!configuration || invalid_inputs)
             {
-                error = RenderError{kInvalidConfig};
+                error = configuration ? RenderError{kInvalidConfig} : configuration.error();
             }
             else
             {
@@ -269,15 +269,15 @@ namespace lux::render
                 {
                     for (const auto& dependency : entry->graph.storage_inputs)
                     {
-                        auto configuration = dependency.configuration
-                                                 ? dependency.configuration(input.configuration.data())
-                                                 : RenderResult<ConfigValue>{ConfigValue{}};
-                        if (!configuration)
+                        auto dependency_config = dependency.configuration
+                                                     ? dependency.configuration((*configuration)->data())
+                                                     : RenderResult<ConfigValue>{ConfigValue{}};
+                        if (!dependency_config)
                         {
-                            error = configuration.error();
+                            error = dependency_config.error();
                             break;
                         }
-                        installation_configurations.push_back(std::move(*configuration));
+                        installation_configurations.push_back(std::move(*dependency_config));
                     }
                 }
                 if (error.type == 0 && entry->graph.expand)
@@ -297,7 +297,7 @@ namespace lux::render
                     {
                         const auto expanded = entry->graph.expand(
                             input.description,
-                            input.configuration.data(),
+                            (*configuration)->data(),
                             input.inputs.data(),
                             dependencies,
                             graph.definition
@@ -312,7 +312,10 @@ namespace lux::render
                 {
                     // A single implementation uses the same compiler as a composition. Public output
                     // semantics name its declared ports; no synthetic wrapper Feature is registered.
-                    graph.definition.features.push_back({entry->id, "root", std::move(input.configuration)});
+                    auto* typed = std::get_if<ConfigValue>(&input.configuration);
+                    graph.definition.features.push_back(
+                        {entry->id, "root", typed ? std::move(*typed) : std::move(decoded)}
+                    );
                     std::vector<std::string_view> outputs;
                     for (const auto& capability : entry->capabilities->capabilities)
                     {

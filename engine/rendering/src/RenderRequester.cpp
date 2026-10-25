@@ -57,6 +57,7 @@ namespace lux::rendering
         std::uint64_t next_frame = 1;
         FrameInput* building = nullptr;
         bool frame_input_requested = false;
+        bool server_stopped = false;
         SubmittedFrameWaiter* frame_waiters = nullptr;
         std::uint64_t resynchronization = 0;
         bool requires_resynchronization = false;
@@ -580,6 +581,11 @@ namespace lux::rendering
         return impl_->connection_state == Impl::EConnectionState::CLOSED;
     }
 
+    bool RenderRequester::serverStopped() const noexcept
+    {
+        return impl_->server_stopped;
+    }
+
     std::size_t RenderRequester::pendingRequests() const noexcept
     {
         return impl_->pending.size();
@@ -634,6 +640,7 @@ namespace lux::rendering
 
     void RenderRequester::settleClosed() noexcept
     {
+        impl_->server_stopped = true;
         consumeResponses(SIZE_MAX);
         beginClose();
         impl_->connection_state = Impl::EConnectionState::CLOSED;

@@ -32,7 +32,7 @@ using namespace std::chrono_literals;
 
 int main(int argc, char** argv)
 {
-    assert(argc == 4);
+    assert(argc == 4 || argc == 5);
     std::mt19937 random{std::random_device{}()};
     uuids::uuid_random_generator generate{random};
     const auto root = std::filesystem::absolute(argv[3]) / uuids::to_string(generate());
@@ -296,10 +296,10 @@ int main(int argc, char** argv)
     }
     assert(pending_tasks != 0);
     const auto query_mesh = model->data().primitives.front().mesh;
-    const auto busy_geometry = assets.prepareMeshGeometry(query_mesh);
-    assert(!busy_geometry && busy_geometry.error().code == EAssetImportError::BUSY);
+    assert(assets.prepareMeshGeometry(query_mesh)); // Demand accepted, actual task waits for capacity.
+    assert(!assets.meshGeometry(query_mesh));
     assert(context.engine().execution().dispatchMainCompletions());
-    assert(assets.prepareMeshGeometry(query_mesh));
+    // No second prepare call: the production capacity continuation must resume this demand.
     until([&] { return assets.meshGeometry(query_mesh) != nullptr; });
     auto* document = scenes.find(id);
     auto placement = prepareModelPlacement(*document, *model, Eigen::Affine3d::Identity(), {0});
@@ -470,8 +470,33 @@ int main(int argc, char** argv)
     assert(scenes.open(root / "Scenes/authored.luxscene"));
     fixture::modelSource(root / "Sources");
     assert(assets.reimport(imported.id));
-    fixture::close(host); // A decode may return after closure; it cannot adopt into the next Context.
-    assert(host.run());
+    if (argc == 5)
+    {
+        // A real Server execution failure while a project and an accepted source decode are alive.
+        // No test backdoor fabricates a successful release or destroys a borrowed Registry.
+        auto& rendering = host.rendering();
+        auto& client = rendering.mainClient();
+        const auto stop = client.bind<render::Stop>();
+        assert(stop);
+        render::EmptyRequest input;
+        bool acknowledged = false;
+        assert(rendering.execution().spawn(stdexec::then(
+            client.request(*stop, input),
+            [&](render::AckResponse response) noexcept
+            {
+                assert(response.error.type == 0);
+                acknowledged = true;
+            }
+        )));
+        const auto closed = host.run();
+        assert(!closed && closed.error().type == render::kCommandCancelled && acknowledged);
+        assert(client.pendingRequests() == 0);
+    }
+    else
+    {
+        fixture::close(host); // A decode may return after closure; it cannot adopt into the next Context.
+        assert(host.run());
+    }
     assert(host.engine().sceneRuntime().instanceCount() == 0);
     made->reset();
     std::puts("Scene creation, incompatibility, multi-view, resize, reopen and late close passed");

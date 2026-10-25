@@ -57,6 +57,9 @@ namespace lux::render
         // Projection writes the instance's existing parameter memory, with no temporary heap buffer.
         Parameters parameters = nullptr;
         std::span<const CapabilityStorageInput> storage_inputs;
+        // Optional portable codec for the configuration schema advertised by this implementation.
+        // Decode is cold and synchronous, before dependency allocation or graph construction.
+        RenderResult<ConfigValue> (*decode_configuration)(std::span<const std::byte>) noexcept = nullptr;
     };
 
     // Arguments: canonical feature index, resource/group index, related index.

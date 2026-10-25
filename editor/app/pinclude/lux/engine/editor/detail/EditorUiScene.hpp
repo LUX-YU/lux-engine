@@ -121,6 +121,9 @@ namespace lux::editor
         // Only protocol work has settled. Native-window lifetime ends at successful RemoveTarget
         // or after RenderExecution shutdown; an error never claims an unavailable response succeeded.
         [[nodiscard]] bool settled() const noexcept;
+        [[nodiscard]] render::RenderError cleanupFailure() const noexcept;
+        // Clears only discharged logical identities after Server joins and this Scene's continuations end.
+        [[nodiscard]] bool finishCloseAfterServerStop() noexcept;
 
     private:
         struct Impl;

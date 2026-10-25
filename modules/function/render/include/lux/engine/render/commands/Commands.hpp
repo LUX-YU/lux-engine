@@ -149,7 +149,7 @@ namespace lux::render
     {
         TargetDesc description;
         CapabilitySelection implementation;
-        ConfigValue configuration;
+        VCapabilityConfiguration configuration;
         ConfigValue inputs;
     };
 

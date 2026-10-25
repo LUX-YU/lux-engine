@@ -7,7 +7,9 @@
 #include <lux/engine/render/capabilities/RenderCapability.hpp>
 #include <lux/engine/render/commands/Commands.hpp>
 #include <lux/engine/render/extensions/FeatureRegistration.hpp>
+#include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
 #include <lux/engine/render/extensions/storage/ResourceRegistry.hpp>
+#include <lux/engine/render/extensions/storage/StorageBinding.hpp>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
 #include <thread>
 
@@ -116,7 +118,22 @@ struct ProbeStorage final
 
     static StorageFactory factory() noexcept
     {
-        return makeStorageFactory<Descriptor, ProbeStorage, StorageCreateContext, &create>(nullptr);
+        static const detail::StorageBindingOps binding{
+            [](void* object,
+               const VGraphResourceDesc&,
+               const void*,
+               detail::StorageSubscription&,
+               std::span<detail::ResourceInput> outputs) noexcept -> RenderResult<void>
+            {
+                auto& storage = *static_cast<ProbeStorage*>(object);
+                for (auto& output : outputs)
+                {
+                    output = {storage.buffer, 0, 4096};
+                }
+                return {};
+            }
+        };
+        return makeStorageFactory<Descriptor, ProbeStorage, StorageCreateContext, &create>(nullptr, &binding);
     }
 
     exec::task<ProbeUpload::Response> write(std::span<const std::byte> source) noexcept
@@ -207,6 +224,79 @@ template <bool Alternate> struct ProbeFeature final
             return result;
         }();
         return value;
+    }
+};
+
+template <bool Matching> struct ProbeEffect final
+{
+    using Config = void;
+    using Storages = ProbeFeature<false>::Storages;
+    using Commands = ProbeFeature<false>::Commands;
+    static constexpr FeatureName name{Matching ? "example.graph.match" : "example.graph.mismatch"};
+
+    static const FeatureGraphOps& graph(bool) noexcept
+    {
+        static const std::array inputs{CapabilityStorageInput{
+            "example.buffer.bytes",
+            1,
+            ECapabilityInputScope::GLOBAL,
+            ProbeStorage::Descriptor::descriptor.type,
+            "a"
+        }};
+        static const FeatureGraphOps result{
+            .describe_ports = [](const void*, std::string_view, FeaturePorts& ports) noexcept -> RenderResult<void>
+            {
+                ports.storage.global.push_back(
+                    {"buffer",
+                     EFeaturePort::OUTPUT,
+                     GraphBufferDesc{4096},
+                     EGraphOrigin::IMPORTED,
+                     {},
+                     StorageRequirement{
+                         StorageName{ProbeStorage::Descriptor::descriptor.type.name()},
+                         Matching ? "a" : "wrong-destination"
+                     }}
+                );
+                GraphImageDesc image{16, 16, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM};
+                ports.resources.push_back({"color", EFeaturePort::OUTPUT, image});
+                return {};
+            },
+            .build = [](const void*, std::string_view, FeatureBuildContext& context) noexcept -> RenderResult<void>
+            {
+                auto pass = context.graph.addTransferPass(
+                    "fill",
+                    TransferWork{
+                        {FillBuffer{{context.resource("buffer")}, 42},
+                         ClearImage{{context.resource("color")}, {0, 0, 0, 1}}}
+                    }
+                );
+                if (!pass)
+                {
+                    return cxx::unexpected(pass.error());
+                }
+                return context.publish("color", pass->written[1]);
+            },
+            .storage_inputs = inputs
+        };
+        return result;
+    }
+
+    static const CapabilitySupport& capabilities() noexcept
+    {
+        static const auto result = []
+        {
+            auto value = ProbeFeature<false>::capabilities();
+            value.implementation = name.name();
+            auto& capability = value.capabilities.front();
+            capability.name = "example.graph";
+            capability.kind = ERenderCapabilityKind::EFFECT;
+            capability.outputs = {"color"};
+            capability.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM};
+            capability.target_samples = {1};
+            capability.target_kinds = {ETargetKind::OFFSCREEN};
+            return value;
+        }();
+        return result;
     }
 };
 
@@ -396,6 +486,8 @@ int main()
     take(server->registerFeature<ProbeFeature<true>>());
     take(server->registerFeature<ProbeFeature<false>>());
     take(server->registerFeature<RejectedInstallation>());
+    take(server->registerFeature<ProbeEffect<true>>());
+    take(server->registerFeature<ProbeEffect<false>>());
     const auto incompatible = server->registerFeature<IncompatibleFeature>();
     CHECK(!incompatible && incompatible.error().type == kFeatureResourceMismatch);
     const auto remapped = server->registerFeature<RemappedFeature>();
@@ -404,6 +496,7 @@ int main()
     CHECK(!undeclared && undeclared.error().type == kFeatureResourceMismatch);
     CHECK(ProbeStorage::allocations == 0);
     const auto list = take(server->commandId<ListCapabilities>());
+    const auto create_effect = take(server->commandId<CreateEffect>());
     const auto install = take(server->commandId<InstallCapabilities>());
     const auto upload = take(server->commandId<ProbeUpload>());
     const auto size = take(server->commandId<ProbeSize>());
@@ -431,6 +524,25 @@ int main()
         CHECK(written.error.type == 0 && written.bytes == bytes.size());
         const auto observed = call<ProbeSize>(client, size, destination);
         CHECK(observed.error.type == 0 && observed.bytes == bytes.size());
+    }
+    for (const char* name : {"example.graph.match", "example.graph.mismatch"})
+    {
+        const auto choice = call<ListCapabilities>(client, list, {"example.graph", 1, name});
+        CHECK(choice.error.type == 0 && choice.implementations.size() == 1);
+        const auto effect = call<CreateEffect>(
+            client,
+            create_effect,
+            {{16, 16, rdesc::ETextureFormat::RGBA8_UNORM}, choice.implementations.front().selection}
+        );
+        if (std::string_view(name) == "example.graph.match")
+        {
+            CHECK(effect.error.type == 0 && !effect.effect.isNull());
+        }
+        else
+        {
+            CHECK(effect.error.type == kStorageMismatch && effect.effect.isNull());
+        }
+        CHECK(ProbeStorage::allocations == 2); // Compile qualification never silently creates a second destination.
     }
     auto wrong = ConfigValue::make(std::uint32_t{1});
     CHECK(wrong);

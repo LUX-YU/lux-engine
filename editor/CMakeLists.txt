@@ -258,11 +258,17 @@ target_link_libraries(
 
 component_add_internal_dependencies(lux_editor_scene_profiles lux_editor_context)
 
-target_link_libraries(lux_editor_scene_profiles PRIVATE imgui::core lux::engine::engine_rendering)
+target_link_libraries(lux_editor_scene_profiles
+    PRIVATE
+        imgui::core
+        lux::engine::engine_rendering
+        lux::engine::function::ui
+)
 
 component_add_transitive_commands(lux_editor_scene_profiles
     "find_package(imgui REQUIRED COMPONENTS core)"
     "find_package(lux-engine-rendering REQUIRED COMPONENTS engine_rendering)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS ui)"
 )
 
 component_add_transitive_commands(

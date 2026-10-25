@@ -13,16 +13,16 @@ namespace lux::scene
         return DirectLightBinding::inputs();
     }
 
-    RenderResult<std::unique_ptr<DirectLightOperation>>
-    DirectLightOperation::create(RenderBindingContext& context) noexcept
+    RenderResult<std::unique_ptr<DirectLightOperation>> DirectLightOperation::create(RenderBindingContext& context
+    ) noexcept
     {
-        const auto input = std::ranges::find(context.inputs, kDirectLightsInput, &CapabilitiesInstalled::Input::schema);
+        const auto input = context.input(kDirectLightsInput);
         auto update = context.client.bind<UpdateDirectLights>();
-        if (input == context.inputs.end() || !update)
+        if (!input || !update)
         {
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
-        return std::unique_ptr<DirectLightOperation>{new DirectLightOperation(context, input->destination, *update)};
+        return std::unique_ptr<DirectLightOperation>{new DirectLightOperation(context, *input, *update)};
     }
 
     DirectLightOperation::DirectLightOperation(

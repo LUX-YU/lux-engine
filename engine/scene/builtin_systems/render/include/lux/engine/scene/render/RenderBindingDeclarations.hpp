@@ -3,7 +3,6 @@
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/scene/render/RenderCapabilityOperation.hpp>
 #include <lux/engine/scene/render/visibility.h>
-#include <unordered_map>
 
 namespace lux::scene
 {
@@ -17,6 +16,12 @@ namespace lux::scene
 
     using RenderBindingRegistrationResult = cxx::expected<void, ERenderBindingDeclarationError>;
 
+    namespace detail
+    {
+        // The holder address, not its pointee, identifies one EnTT subscription owner.
+        using RenderBindingObject = std::unique_ptr<void, void (*)(void*)>;
+    } // namespace detail
+
     struct RenderBindingDeclaration final
     {
         std::shared_ptr<const void> code_lifetime;
@@ -29,18 +34,30 @@ namespace lux::scene
         std::vector<cxx::TypeToken> dependencies;
         std::vector<cxx::TypeToken> aggregate_dependencies;
         std::vector<render::RenderPayloadContract> inputs;
+        // Optional cold selection. Empty capability names use exact payload matching.
+        std::vector<std::string> capabilities;
+        // Schemas whose producer identities belong to shared asset tables, not Scene consumer aliases.
+        std::vector<std::string> asset_inputs;
+        // Explicit destinations are qualified against installation; unresolved entries are filled once.
+        std::vector<render::CapabilitiesInstalled::Input> destinations;
         std::vector<system::SystemDataContract> data_inputs;
-        ERenderUpdatePolicy policy = ERenderUpdatePolicy::STRUCTURE;
+        bool each_frame = false;
+        // Result records separate every active role/View instance; default components have one writer.
+        bool partitioned_results = false;
         ERenderOperationScope scope = ERenderOperationScope::SCENE;
         std::uint32_t role_index = 0;
-        bool effect_output = false;
+        bool view_provider = false;
         std::uint64_t (*effect_revision)(void*) noexcept {};
         exec::task<render::RenderResult<void>> (*prepare_resources)(engine::render::RenderAssets&) noexcept {};
         render::RenderResult<
             render::ConfigValue> (*effect_inputs)(void*, cxx::TypeToken, std::span<const std::byte>) noexcept {};
         render::RenderResult<void*> (*create)(RenderBindingContext&) noexcept {};
         void (*destroy)(void*) noexcept {};
-        void (*connect)(void*, simulation::ecs::Registry&, std::vector<entt::scoped_connection>&) noexcept {};
+        void (*connect)(
+            detail::RenderBindingObject&,
+            simulation::ecs::Registry&,
+            std::vector<entt::scoped_connection>&
+        ) noexcept {};
         SceneStageResult (*maintain)(void*, SceneStageContext&) noexcept {};
         SceneStageResult (*prepare)(void*, SceneStageContext&) noexcept {};
         SceneStageResult (*publish)(void*, SceneStageContext&, engine::render::FrameInput&) noexcept {};
@@ -52,96 +69,89 @@ namespace lux::scene
         // Registration is cold. Each Scene Plan copies its selected descriptions, so declaration
         // growth cannot invalidate live callbacks. Implementation code must outlive all objects.
         [[nodiscard]] RenderBindingRegistrationResult add(RenderBindingDeclaration) noexcept;
-        [[nodiscard]] bool supports(const render::RenderPayloadContract&) const noexcept;
         [[nodiscard]] std::span<const RenderBindingDeclaration> declarations() const noexcept;
-        [[nodiscard]] std::span<const std::size_t> affected(cxx::TypeToken) const noexcept;
         [[nodiscard]] static bool
         matches(const render::RenderPayloadContract&, const render::RenderPayloadContract&) noexcept;
 
     private:
-        struct ComponentTypeHash
-        {
-            std::size_t operator()(cxx::TypeToken type) const noexcept
-            {
-                return static_cast<std::size_t>(type.hash());
-            }
-        };
-
         std::vector<RenderBindingDeclaration> declarations_;
-        std::unordered_map<cxx::TypeToken, std::vector<std::size_t>, ComponentTypeHash> component_bindings_;
     };
 
     namespace detail
     {
         template <class T, class C, ERenderComponentChange Change>
         void renderSourceChanged(
-            T& binding,
+            RenderBindingObject& object,
             simulation::ecs::Registry& registry,
             simulation::ecs::Entity entity
         ) noexcept
         {
+            auto& binding = *static_cast<T*>(object.get());
             static_assert(noexcept(binding.template sourceChanged<C>(registry, entity, Change)));
             binding.template sourceChanged<C>(registry, entity, Change);
         }
 
         template <class T, class C>
         void connectRenderSource(
-            T& binding,
+            RenderBindingObject& object,
             simulation::ecs::Registry& registry,
             std::vector<entt::scoped_connection>& connections
         ) noexcept
         {
             connections.emplace_back(
                 registry.on_construct<C>()
-                    .template connect<&renderSourceChanged<T, C, ERenderComponentChange::CONSTRUCT>>(binding)
+                    .template connect<&renderSourceChanged<T, C, ERenderComponentChange::CONSTRUCT>>(object)
             );
             connections.emplace_back(
                 registry.on_update<C>().template connect<&renderSourceChanged<T, C, ERenderComponentChange::UPDATE>>(
-                    binding
+                    object
                 )
             );
             connections.emplace_back(
                 registry.on_destroy<C>().template connect<&renderSourceChanged<T, C, ERenderComponentChange::DESTROY>>(
-                    binding
+                    object
                 )
             );
             for (const auto entity : registry.view<C>())
             {
-                renderSourceChanged<T, C, ERenderComponentChange::CONSTRUCT>(binding, registry, entity);
+                renderSourceChanged<T, C, ERenderComponentChange::CONSTRUCT>(object, registry, entity);
             }
         }
 
         template <class T, class C>
         void renderResultDestroyed(
-            T& binding,
+            RenderBindingObject& object,
             simulation::ecs::Registry& registry,
             simulation::ecs::Entity entity
         ) noexcept
         {
+            auto& binding = *static_cast<T*>(object.get());
             static_assert(noexcept(binding.template resultDestroyed<C>(registry, entity)));
             binding.template resultDestroyed<C>(registry, entity);
         }
 
         template <class T, class... C>
-        void connectRenderSources(
-            T& binding,
+        void
+        connectRenderSources(
+            RenderBindingObject& object,
             simulation::ecs::Registry& registry,
             std::vector<entt::scoped_connection>& connections,
             std::type_identity<std::tuple<C...>>
         ) noexcept
         {
-            (connectRenderSource<T, C>(binding, registry, connections), ...);
+            (connectRenderSource<T, C>(object, registry, connections), ...);
         }
 
         template <class T, class... C>
-        void connectRenderResults(
-            T& binding,
+        void
+        connectRenderResults(
+            RenderBindingObject& object,
             simulation::ecs::Registry& registry,
             std::vector<entt::scoped_connection>& connections,
             std::type_identity<std::tuple<C...>>
         ) noexcept
         {
-            (connections.emplace_back(registry.on_destroy<C>().template connect<&renderResultDestroyed<T, C>>(binding)),
+            (connections.emplace_back(registry.on_destroy<C>().template connect<&renderResultDestroyed<T, C>>(object)),
              ...);
         }
 
@@ -163,6 +173,10 @@ namespace lux::scene
             result.results = renderSourceTypes(std::type_identity<typename T::ResultComponents>{});
             const auto inputs = T::inputs();
             result.inputs.assign(inputs.begin(), inputs.end());
+            if constexpr (requires { T::asset_inputs; })
+            {
+                result.asset_inputs.assign(std::begin(T::asset_inputs), std::end(T::asset_inputs));
+            }
             if constexpr (requires { T::data_inputs; })
             {
                 result.data_inputs.assign(std::begin(T::data_inputs), std::end(T::data_inputs));
@@ -191,19 +205,18 @@ namespace lux::scene
                     delete static_cast<T*>(object);
                 }
             };
-            result.connect =
-                +[](void* object, simulation::ecs::Registry& registry, std::vector<entt::scoped_connection>& connections
-                 ) noexcept
+            result.connect = +[](RenderBindingObject& object,
+                                 simulation::ecs::Registry& registry,
+                                 std::vector<entt::scoped_connection>& connections) noexcept
             {
-                auto& binding = *static_cast<T*>(object);
-                connectRenderResults(
-                    binding,
+                connectRenderResults<T>(
+                    object,
                     registry,
                     connections,
                     std::type_identity<typename T::ResultComponents>{}
                 );
-                connectRenderSources(
-                    binding,
+                connectRenderSources<T>(
+                    object,
                     registry,
                     connections,
                     std::type_identity<typename T::SourceComponents>{}
@@ -230,9 +243,21 @@ namespace lux::scene
                 result.publish = +[](void* object, SceneStageContext& context, engine::render::FrameInput& frame
                                   ) noexcept { return static_cast<T*>(object)->publish(context, frame); };
             }
-            if constexpr (requires { T::effect_output; })
+            if constexpr (requires { T::scope; })
             {
-                result.effect_output = T::effect_output;
+                result.scope = T::scope;
+            }
+            if constexpr (requires { T::partitioned_results; })
+            {
+                result.partitioned_results = T::partitioned_results;
+            }
+            if constexpr (requires { T::each_frame; })
+            {
+                result.each_frame = T::each_frame;
+            }
+            if constexpr (requires { T::view_provider; })
+            {
+                result.view_provider = T::view_provider;
             }
             if constexpr (requires { typename T::Dependencies; })
             {
@@ -271,12 +296,16 @@ namespace lux::scene
     [[nodiscard]] RenderBindingRegistrationResult registerComponentBinding(
         RenderBindingDeclarations& declarations,
         std::shared_ptr<const void> code_lifetime = {},
-        std::string_view role = {}
+        std::string_view role = {},
+        std::span<const render::CapabilitiesInstalled::Input> destinations = {},
+        std::span<const std::string_view> capabilities = {}
     ) noexcept
     {
         auto declaration = detail::renderBindingDeclaration<T>();
         declaration.code_lifetime = std::move(code_lifetime);
         declaration.role = role.empty() ? declaration.name : role;
+        declaration.destinations.assign(destinations.begin(), destinations.end());
+        declaration.capabilities.assign(capabilities.begin(), capabilities.end());
         return declarations.add(std::move(declaration));
     }
 
@@ -284,13 +313,16 @@ namespace lux::scene
     [[nodiscard]] RenderBindingRegistrationResult registerCapabilityOperation(
         RenderBindingDeclarations& declarations,
         std::shared_ptr<const void> code_lifetime = {},
-        std::string_view role = {}
+        std::string_view role = {},
+        std::span<const render::CapabilitiesInstalled::Input> destinations = {},
+        std::span<const std::string_view> capabilities = {}
     ) noexcept
     {
         auto declaration = detail::renderBindingDeclaration<T>();
         declaration.code_lifetime = std::move(code_lifetime);
         declaration.role = role.empty() ? declaration.name : role;
-        declaration.policy = T::policy;
+        declaration.destinations.assign(destinations.begin(), destinations.end());
+        declaration.capabilities.assign(capabilities.begin(), capabilities.end());
         declaration.scope = T::scope;
         return declarations.add(std::move(declaration));
     }

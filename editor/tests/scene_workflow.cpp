@@ -21,10 +21,12 @@
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/render/CameraRenderResourceComponent.hpp>
+#include <lux/engine/scene/render/CameraViewBinding.hpp>
 #include <lux/engine/scene/render/LightRenderResourceComponent.hpp>
 #include <lux/engine/scene/render/MeshRenderBinding.hpp>
 #include <lux/engine/scene/render/MeshRenderResourceComponent.hpp>
 #include <lux/engine/scene/render/RasterTransformOperation.hpp>
+#include <lux/engine/scene/render/RenderBindingPlan.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
 #include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
@@ -55,10 +57,10 @@ namespace lux::ui
 
 namespace
 {
-    SceneCreateResult legacyProfile(const SceneCreateInfo& info) noexcept
+    SceneCreateResult versionedProfile(const SceneCreateInfo& info, bool invalid_version) noexcept
     {
         auto package = sceneProfile3D().create(info);
-        if (!package || info.selection)
+        if (!package || (info.selection && !invalid_version))
         {
             return package;
         }
@@ -85,10 +87,10 @@ namespace
                 system.instanceId(),
                 system.instanceName(),
                 system.type(),
-                system.version(),
+                rendering && invalid_version ? system.version() + 1 : system.version(),
                 system.configurationSchemaName(),
-                rendering ? 1 : system.configurationSchemaVersion(),
-                rendering ? std::span<const std::byte>{bytes} : system.configurationPayload()
+                rendering && !invalid_version ? 1 : system.configurationSchemaVersion(),
+                rendering && !invalid_version ? std::span<const std::byte>{bytes} : system.configurationPayload()
             ));
             for (std::size_t j = 0; j < system.requirementBindingCount(); ++j)
             {
@@ -110,6 +112,16 @@ namespace
             {package->simulation, &package->simulation->data()},
             *description
         );
+    }
+
+    SceneCreateResult legacyProfile(const SceneCreateInfo& info) noexcept
+    {
+        return versionedProfile(info, false);
+    }
+
+    SceneCreateResult invalidVersionProfile(const SceneCreateInfo& info) noexcept
+    {
+        return versionedProfile(info, true);
     }
 } // namespace
 
@@ -147,6 +159,10 @@ int main(int argc, char** argv)
             legacy.id = "test.legacy.scene.3d";
             legacy.create = &legacyProfile;
             assert(composition.registerSceneProfile(std::move(legacy)));
+            auto invalid = sceneProfile3D();
+            invalid.id = "test.invalid.scene.version";
+            invalid.create = &invalidVersionProfile;
+            assert(composition.registerSceneProfile(std::move(invalid)));
             assert(composition.registerSceneProfile(sceneProfile3D()));
             assert(registerComponentEditors3D(composition));
             assert(registerRenderConfigurationEditor(composition));
@@ -276,10 +292,24 @@ int main(int argc, char** argv)
     auto& context = host.project();
     auto* bindings = context.extensions().find<scene::RenderBindingDeclarations>();
     assert(bindings);
+    assert(scene::registerCapabilityOperation<fixture::ViewDependency>(*bindings));
     assert(scene::registerCapabilityOperation<fixture::ViewOperation>(*bindings));
-    assert(scene::registerComponentBinding<fixture::StatelessObservation>(*bindings));
+    assert(scene::registerCapabilityOperation<fixture::StatelessObservation>(*bindings, {}, "test.signal.a"));
+    assert(scene::registerCapabilityOperation<fixture::StatelessObservation>(*bindings, {}, "test.signal.b"));
+    const auto duplicate_camera =
+        scene::registerComponentBinding<scene::CameraViewBinding>(*bindings, {}, "test.camera.duplicate");
+    assert(!duplicate_camera && duplicate_camera.error() == scene::ERenderBindingDeclarationError::DUPLICATE_RESULT);
+    const std::array unused_capabilities{std::string_view{"test.unselected.capability"}};
+    assert(scene::registerComponentBinding<
+           scene::MeshRenderBinding>(*bindings, {}, "test.unselected.mesh", {}, unused_capabilities));
     assert(scene::registerComponentBinding<scene::MeshRenderBinding>(*bindings, {}, "test.secondary.mesh"));
     assert(scene::registerCapabilityOperation<scene::RasterTransformOperation>(*bindings, {}, "test.secondary.mesh"));
+
+    render::RenderCapability empty_effect;
+    empty_effect.name = "test.empty.effect";
+    empty_effect.kind = render::ERenderCapabilityKind::EFFECT;
+    auto empty_plan = scene::resolveRenderBindings(*bindings, empty_effect);
+    assert(empty_plan && empty_plan->declarations.empty() && empty_plan->data_inputs.empty());
 
     until([&] { return context.service<ProjectAssets>()->get().ready(); });
     auto service = context.service<ProjectScenes>();
@@ -330,6 +360,19 @@ int main(int argc, char** argv)
     assert(!std::filesystem::exists(root / "invalid.luxscene"));
     assert(host.engine().sceneRuntime().instanceCount() == 0);
 
+    invalid_finished = false;
+    assert(scenes.create(
+        {asset::AssetId{generate()}, "Bad version", "bad-version.luxscene", "test.invalid.scene.version"},
+        selection()
+    ));
+    until([&] { return invalid_finished; });
+    const auto* version_failure = std::get_if<scene::SceneRuntimeFailure>(&*scenes.failure());
+    assert(version_failure);
+    const auto* version_build = std::get_if<scene::SceneBuildFailure>(&version_failure->cause);
+    assert(version_build && version_build->scene_system.code == scene::ESceneSystemBuildError::VERSION_MISMATCH);
+    assert(!std::filesystem::exists(root / "bad-version.luxscene"));
+    assert(context.manifest() == before_dynamic && host.engine().sceneRuntime().instanceCount() == 0);
+
     const auto id = asset::AssetId{generate()};
     assert(scenes.create({id, "Authored", "Scenes/authored.luxscene", "lux.editor.scene.3d"}, selection()));
     until([&] { return scenes.find(id) != nullptr; });
@@ -352,6 +395,7 @@ int main(int argc, char** argv)
             }
             scene_projection = (*system)->binding<scene::MeshRenderBinding>("raster.mesh");
             secondary_projection = (*system)->binding<scene::MeshRenderBinding>("test.secondary.mesh");
+            assert(!(*system)->binding<scene::MeshRenderBinding>("test.unselected.mesh"));
             assert(scene_projection && secondary_projection); // Borrow ends before this Scene retires.
             return true;
         }
@@ -416,7 +460,9 @@ int main(int argc, char** argv)
     const auto observed_camera = scenes.viewport(*a).camera;
     auto observe = [&](simulation::ecs::Registry& registry) noexcept
     { registry.emplace_or_replace<fixture::ViewObservation>(observed_camera, 41u); };
+    const auto before_signals = fixture::StatelessObservation::signals;
     until([&] { return context.engine().sceneRuntime().editInstance(editing_instance, observe).has_value(); });
+    assert(fixture::StatelessObservation::signals - before_signals == 2 * fixture::ViewOperation::observations.size());
     assert(
         std::ranges::count_if(
             fixture::ViewOperation::observations,
@@ -764,6 +810,32 @@ int main(int argc, char** argv)
     assert(play_view);
     until([&] { return scenes.setViewportCameraTransform(*play_view, left); });
     until([&] { return scenes.viewport(*play_view).ready; });
+    {
+        auto play_system = host.engine().sceneRuntime().borrowSystem<scene::RenderSystem>(scenes.playInstance(id));
+        assert(play_system);
+        const auto* play_mesh = (*play_system)->binding<scene::MeshRenderBinding>("raster.mesh");
+        assert(play_mesh);
+        const std::array inputs{
+            render::CapabilitiesInstalled::Input{
+                scene::MeshRenderBinding::inputs().front().schema,
+                1,
+                scene_projection->instanceInput()
+            },
+            render::CapabilitiesInstalled::Input{
+                scene::MeshRenderBinding::inputs().front().schema,
+                1,
+                play_mesh->instanceInput()
+            }
+        };
+        assert(inputs[0].destination != inputs[1].destination);
+        scene::RenderBindingPlan ambiguous;
+        ambiguous.declarations.emplace_back().inputs.push_back(scene::MeshRenderBinding::inputs().front());
+        auto selected = ambiguous;
+        selected.declarations.front().destinations.push_back(inputs[1]);
+        assert(!scene::resolveRenderBindingInputs(ambiguous, inputs, {}));
+        assert(scene::resolveRenderBindingInputs(selected, inputs, {}));
+        assert(selected.declarations.front().destinations.front().destination == inputs[1].destination);
+    }
     scenes.stopPlay(id);
     until([&] { return !scenes.playInstance(id).valid(); });
     assert(scenes.viewport(*play_view).target.isNull() && scenes.viewport(*b).ready);
@@ -771,6 +843,13 @@ int main(int argc, char** argv)
     scenes.closeViewport(*a);
     until([&] { return scenes.viewport(*a).target.isNull(); });
     assert(scenes.viewport(*b).ready);
+    const auto signals_after_close = fixture::StatelessObservation::signals;
+    const auto active_view_count = fixture::ViewOperation::observations.size();
+    const auto remaining_camera = scenes.viewport(*b).camera;
+    auto notify_remaining = [&](simulation::ecs::Registry& registry) noexcept
+    { registry.emplace_or_replace<fixture::ViewObservation>(remaining_camera, 51u); };
+    until([&] { return context.engine().sceneRuntime().editInstance(editing_instance, notify_remaining).has_value(); });
+    assert(fixture::StatelessObservation::signals - signals_after_close == 2 * active_view_count);
     assert(scenes.close(id));
     scene_projection = nullptr;
     until([&] { return host.engine().sceneRuntime().instanceCount() == 0 && scenes.settled(); });
@@ -856,6 +935,7 @@ int main(int argc, char** argv)
     made->reset();
     assert(fixture::StatelessObservation::signals > 0);
     assert(fixture::ViewOperation::observations.empty());
+    assert(fixture::ViewDependency::alive.empty());
     assert(fixture::ViewOperation::created == fixture::ViewOperation::destroyed);
     assert(fixture::ViewOperation::created == fixture::ViewOperation::drained);
     std::puts("Scene creation, incompatibility, multi-view, resize, reopen and late close passed");

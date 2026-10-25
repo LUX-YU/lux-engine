@@ -643,34 +643,19 @@ namespace lux::scene
             new MeshRenderBinding(std::make_unique<Impl>(context, *create, *update, *remove))
         };
         auto& self = *result->impl_;
-        for (const auto& input : context.inputs)
-        {
-            if (input.schema == kRasterInstancesInput)
-            {
-                self.instances = input.destination;
-            }
-            if (input.schema == kRasterMaterialInput)
-            {
-                self.materials = input.destination;
-            }
-        }
-        for (const auto& input : self.assets.inputs())
-        {
-            if (input.schema == kIndexedMeshInput)
-            {
-                self.meshes = input.destination;
-            }
-            if (input.schema == kSampledTextureInput)
-            {
-                self.textures = input.destination;
-            }
-        }
-        const bool valid_inputs = !self.instances.implementation.isNull() && !self.materials.implementation.isNull() &&
-                                  !self.meshes.implementation.isNull() && !self.textures.implementation.isNull();
-        if (!valid_inputs)
+        const auto instances = context.input(kRasterInstancesInput);
+        const auto materials = context.input(kRasterMaterialInput);
+        const auto meshes = context.input(kIndexedMeshInput);
+        const auto textures = context.input(kSampledTextureInput);
+        const bool has_destinations = instances && materials && meshes && textures;
+        if (!has_destinations)
         {
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
+        self.instances = *instances;
+        self.materials = *materials;
+        self.meshes = *meshes;
+        self.textures = *textures;
         self.assets.install(
             MaterialGpuPipeline{self.assets, self.materials, self.textures, *material_create, *material_remove},
             self.materials
@@ -705,6 +690,11 @@ namespace lux::scene
     std::uint32_t MeshRenderBinding::role() const noexcept
     {
         return impl_->role;
+    }
+
+    CapabilityInput MeshRenderBinding::instanceInput() const noexcept
+    {
+        return impl_->instances;
     }
 
     SceneStageResult MeshRenderBinding::maintain(SceneStageContext& context) noexcept

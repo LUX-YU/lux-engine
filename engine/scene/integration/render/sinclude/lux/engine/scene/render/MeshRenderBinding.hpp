@@ -1,5 +1,6 @@
 #pragma once
 #include <lux/engine/render/capabilities/LitScene.hpp>
+#include <lux/engine/render/capabilities/RasterAssets.hpp>
 #include <lux/engine/scene/render/RenderComponentBinding.hpp>
 #include <lux/engine/scene/render/visibility.h>
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -17,6 +18,8 @@ namespace lux::scene
     public:
         using SourceComponents = std::tuple<simulation::ecs::Mesh3D, simulation::ecs::WorldTransform3D>;
         using ResultComponents = std::tuple<detail::MeshRenderResourceComponent>;
+        static constexpr bool partitioned_results = true;
+        static constexpr std::string_view asset_inputs[]{render::kIndexedMeshInput, render::kSampledTextureInput};
         static constexpr std::string_view name = "lux.scene.binding.raster_mesh";
         static constexpr system::SystemDataContract data_inputs[]{
             {"lux.ecs.Transform3D"},
@@ -33,6 +36,7 @@ namespace lux::scene
         [[nodiscard]] std::vector<render::RasterGeometryInput> geometry() const noexcept;
         [[nodiscard]] std::uint32_t instanceCapacity() const noexcept;
         [[nodiscard]] std::uint32_t role() const noexcept;
+        [[nodiscard]] render::CapabilityInput instanceInput() const noexcept;
 
         template <class C>
         void sourceChanged(

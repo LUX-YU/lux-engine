@@ -10,7 +10,7 @@ namespace lux::scene::detail
     {
         // The immutable Scene Plan outlives all Scene/View instances and pins their implementation code.
         const RenderBindingDeclaration& declaration;
-        std::unique_ptr<void, void (*)(void*)> object;
+        RenderBindingObject object;
         std::vector<entt::scoped_connection> connections;
 
         RenderBindingInstance(const RenderBindingDeclaration& description, void* instance) noexcept

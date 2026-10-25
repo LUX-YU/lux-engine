@@ -13,14 +13,10 @@ namespace lux::scene
     class DirectLightOperation final
     {
     public:
-        using SourceComponents = std::tuple<
-            simulation::ecs::Light3D,
-            simulation::ecs::WorldTransform3D,
-            detail::LightRenderResourceComponent
-        >;
+        using SourceComponents = std::
+            tuple<simulation::ecs::Light3D, simulation::ecs::WorldTransform3D, detail::LightRenderResourceComponent>;
         using ResultComponents = std::tuple<>;
         static constexpr std::string_view name = "lux.scene.operation.direct_light_parameters";
-        static constexpr auto policy = ERenderUpdatePolicy::CHANGES;
         static constexpr auto scope = ERenderOperationScope::SCENE;
 
         [[nodiscard]] static std::span<const render::RenderPayloadContract> inputs() noexcept;

@@ -239,10 +239,15 @@ int main()
     const auto resource_support = call<ListCapabilities>(*rendering, {"lux.render.capability.raster_assets", 1});
     auto borrowed_input = resource_support.implementations.front().capabilities.front().inputs.front();
     scene::RenderBindingDeclarations bindings;
-    CHECK(scene::registerBuiltinRenderBindings(bindings));
-    CHECK(bindings.supports(borrowed_input));
+    const std::array camera_capabilities{
+        std::string_view{kLitSceneCapability},
+        std::string_view{"test.scene.no_geometry"}
+    };
+    CHECK(scene::registerBuiltinRenderBindings(bindings, camera_capabilities));
+    auto altered_contract = resource_support.implementations.front().capabilities.front();
+    CHECK(scene::RenderBindingDeclarations::matches(borrowed_input, altered_contract.inputs.front()));
     borrowed_input.lifetime = ERenderPayloadLifetime::MOVED_VALUE;
-    CHECK(!bindings.supports(borrowed_input));
+    CHECK(!scene::RenderBindingDeclarations::matches(borrowed_input, altered_contract.inputs.front()));
     CHECK(!resource_support.implementations.empty());
     CHECK(resource_support.implementations.front().capabilities.front().kind == ERenderCapabilityKind::RESOURCES);
     const auto catalog = call<ListCommands>(*rendering, {});

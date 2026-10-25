@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <concepts>
 #include <exec/task.hpp>
 #include <lux/engine/process/asset_loading/AssetRead.hpp>
@@ -68,6 +69,17 @@ namespace lux::scene
         std::uint32_t role_index = 0;
         render::ViewId view;
         simulation::ecs::Entity view_entity = simulation::ecs::NullEntity;
+
+        // Only the current role's qualified input destinations are exposed at construction.
+        [[nodiscard]] render::RenderResult<render::CapabilityInput> input(std::string_view schema) const noexcept
+        {
+            const auto found = std::ranges::find(inputs, schema, &render::CapabilitiesInstalled::Input::schema);
+            if (found == inputs.end())
+            {
+                return cxx::unexpected(render::RenderError{render::kRuntimeUnsupported});
+            }
+            return found->destination;
+        }
 
         template <class T> [[nodiscard]] T* find(std::string_view selected_role = {}) const noexcept
         {

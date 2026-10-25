@@ -155,6 +155,8 @@ namespace lux::scene
             SceneDataDependencies scene;
             std::vector<detail::ResolvedSceneRequirement> requirements;
             std::vector<simulation::SimulationExecutionDependency> simulation;
+            std::vector<const SceneSystemRegistration*> registrations;
+            std::vector<std::size_t> order;
         };
 
         cxx::expected<SceneDataPreparation, SceneBuildFailure> prepareDataDependencies(const SceneCreateInfo& info
@@ -332,7 +334,113 @@ namespace lux::scene
                 }
             }
 
-            return prepareDataDependencies(info);
+            const std::size_t count = info.scene->systemCount();
+            std::vector<const SceneSystemRegistration*> registrations(count);
+            std::vector<system::SystemInstanceId> instances;
+            instances.reserve(count);
+            for (std::size_t ordinal{}; ordinal < count; ++ordinal)
+            {
+                const auto system = info.scene->systemAt(ordinal);
+                const auto found = std::ranges::find(info.scene_systems, system.type(), &SceneSystemRegistration::type);
+                const auto* registration = found == info.scene_systems.end() ? nullptr : std::addressof(*found);
+                if (registration == nullptr)
+                {
+                    return lux::cxx::unexpected(
+                        systemFailure({ESceneSystemBuildError::UNKNOWN_SYSTEM_TYPE, system.instanceId()})
+                    );
+                }
+                if (registration->description == nullptr || registration->description->version != system.version())
+                {
+                    return lux::cxx::unexpected(
+                        systemFailure({ESceneSystemBuildError::VERSION_MISMATCH, system.instanceId()})
+                    );
+                }
+                const auto& description = *registration->description;
+                const bool invalid_schema =
+                    system.configurationSchemaName() != description.configuration_schema_name ||
+                    (system.configurationSchemaVersion() != description.configuration_schema_version &&
+                     !registration->configurationDecoder(system.configurationSchemaVersion())) ||
+                    system.configurationSchemaHash() !=
+                        (description.configuration_schema_name.empty()
+                             ? 0U
+                             : lux::cxx::Fnv1a64::hash(description.configuration_schema_name));
+                if (invalid_schema)
+                {
+                    return lux::cxx::unexpected(
+                        systemFailure({ESceneSystemBuildError::INVALID_DESCRIPTION, system.instanceId()})
+                    );
+                }
+                if (registration->configuration.valid())
+                {
+                    // The codec owns the C++ type. Reuse its typed decode/reencode boundary, never decode into guessed
+                    // storage.
+                    std::vector<std::byte> validated_bytes;
+                    auto decoded = registration->configuration.reencode(
+                        system.configurationPayload(),
+                        registration->configurationDecoder(system.configurationSchemaVersion()),
+                        validated_bytes
+                    );
+                    if (!decoded)
+                    {
+                        SceneSystemBuildFailure failure{
+                            ESceneSystemBuildError::CONFIGURATION_DECODE_FAILURE,
+                            system.instanceId()
+                        };
+                        failure.configuration = decoded.error();
+                        return cxx::unexpected(systemFailure(std::move(failure)));
+                    }
+                }
+                else if (!system.configurationPayload().empty())
+                {
+                    return cxx::unexpected(
+                        systemFailure({ESceneSystemBuildError::INVALID_DESCRIPTION, system.instanceId()})
+                    );
+                }
+                if (description.multiplicity == lux::system::ESystemMultiplicity::SINGLE_PER_OWNER)
+                {
+                    for (std::size_t previous{}; previous < ordinal; ++previous)
+                    {
+                        const auto candidate = info.scene->systemAt(previous);
+                        if (candidate.type() == system.type())
+                        {
+                            return lux::cxx::unexpected(systemFailure(
+                                {ESceneSystemBuildError::DUPLICATE_SYSTEM, system.instanceId(), candidate.instanceId()}
+                            ));
+                        }
+                    }
+                }
+                for (std::size_t index = 0; index < registration->projections.size(); ++index)
+                {
+                    const auto& projection = registration->projections[index];
+                    if (!projection.type.isValid() || !projection.project ||
+                        projection.type == registration->cpp_type ||
+                        std::ranges::any_of(
+                            registration->projections.first(index),
+                            [&](const auto& previous) { return previous.type == projection.type; }
+                        ))
+                    {
+                        return lux::cxx::unexpected(
+                            systemFailure({ESceneSystemBuildError::INVALID_DESCRIPTION, system.instanceId()})
+                        );
+                    }
+                }
+                registrations[ordinal] = registration;
+                instances.push_back(system.instanceId());
+            }
+
+            auto resolved = prepareDataDependencies(info);
+            if (!resolved)
+            {
+                return cxx::unexpected(resolved.error());
+            }
+            auto order = system::detail::deterministicSystemOrder(instances, resolved->scene);
+            if (!order)
+            {
+                return cxx::unexpected(systemFailure({ESceneSystemBuildError::DEPENDENCY_CYCLE}));
+            }
+            resolved->registrations = std::move(registrations);
+            resolved->order = std::move(*order);
+            return resolved;
         }
 
     } // namespace
@@ -433,88 +541,15 @@ namespace lux::scene
             }
             impl->simulation.emplace(std::move(*simulation));
 
-            const std::size_t count = impl->description->systemCount();
-            std::vector<const SceneSystemRegistration*> registrations(count);
-            std::vector<system::SystemInstanceId> instances;
-            instances.reserve(count);
-            for (std::size_t ordinal{}; ordinal < count; ++ordinal)
-            {
-                const auto system = impl->description->systemAt(ordinal);
-                const auto found = std::ranges::find(info.scene_systems, system.type(), &SceneSystemRegistration::type);
-                const auto* registration = found == info.scene_systems.end() ? nullptr : std::addressof(*found);
-                if (registration == nullptr)
-                {
-                    return lux::cxx::unexpected(
-                        systemFailure({ESceneSystemBuildError::UNKNOWN_SYSTEM_TYPE, system.instanceId()})
-                    );
-                }
-                if (registration->description == nullptr || registration->description->version != system.version())
-                {
-                    return lux::cxx::unexpected(
-                        systemFailure({ESceneSystemBuildError::VERSION_MISMATCH, system.instanceId()})
-                    );
-                }
-                const auto& description = *registration->description;
-                const bool invalid_schema =
-                    system.configurationSchemaName() != description.configuration_schema_name ||
-                    (system.configurationSchemaVersion() != description.configuration_schema_version &&
-                     !registration->configurationDecoder(system.configurationSchemaVersion())) ||
-                    system.configurationSchemaHash() !=
-                        (description.configuration_schema_name.empty()
-                             ? 0U
-                             : lux::cxx::Fnv1a64::hash(description.configuration_schema_name));
-                if (invalid_schema)
-                {
-                    return lux::cxx::unexpected(
-                        systemFailure({ESceneSystemBuildError::INVALID_DESCRIPTION, system.instanceId()})
-                    );
-                }
-                if (description.multiplicity == lux::system::ESystemMultiplicity::SINGLE_PER_OWNER)
-                {
-                    for (std::size_t previous{}; previous < ordinal; ++previous)
-                    {
-                        const auto candidate = impl->description->systemAt(previous);
-                        if (candidate.type() == system.type())
-                        {
-                            return lux::cxx::unexpected(systemFailure(
-                                {ESceneSystemBuildError::DUPLICATE_SYSTEM, system.instanceId(), candidate.instanceId()}
-                            ));
-                        }
-                    }
-                }
-                for (std::size_t index = 0; index < registration->projections.size(); ++index)
-                {
-                    const auto& projection = registration->projections[index];
-                    if (!projection.type.isValid() || !projection.project ||
-                        projection.type == registration->cpp_type ||
-                        std::ranges::any_of(
-                            registration->projections.first(index),
-                            [&](const auto& previous) { return previous.type == projection.type; }
-                        ))
-                    {
-                        return lux::cxx::unexpected(
-                            systemFailure({ESceneSystemBuildError::INVALID_DESCRIPTION, system.instanceId()})
-                        );
-                    }
-                }
-                registrations[ordinal] = registration;
-                impl->code_owners.push_back(registration->code_lifetime);
-                instances.push_back(system.instanceId());
-            }
-
-            auto edges = std::move(data_dependencies->scene);
-            std::vector<std::vector<std::size_t>> predecessors(count);
-            for (const auto edge : edges)
+            const auto& registrations = data_dependencies->registrations;
+            std::vector<std::vector<std::size_t>> predecessors(registrations.size());
+            for (const auto edge : data_dependencies->scene)
             {
                 predecessors[edge.after].push_back(edge.before);
             }
-            auto order = system::detail::deterministicSystemOrder(instances, edges);
-            if (!order)
+            for (const auto* registration : registrations)
             {
-                const auto code = order.error() == system::detail::ESystemDependencyOrderError::CYCLE
-                                      ? ESceneSystemBuildError::DEPENDENCY_CYCLE
-                                      : ESceneSystemBuildError::ALLOCATION_FAILURE;
-                return lux::cxx::unexpected(systemFailure({code}));
+                impl->code_owners.push_back(registration->code_lifetime);
             }
 
             SceneSystemInstaller::Impl build;
@@ -531,7 +566,7 @@ namespace lux::scene
             build.predecessors = std::move(predecessors);
             build.requirements = std::move(data_dependencies->requirements);
             SceneSystemInstaller builder(build);
-            for (const std::size_t ordinal : *order)
+            for (const std::size_t ordinal : data_dependencies->order)
             {
                 build.current_ordinal = ordinal;
                 build.current_registration = registrations[ordinal];

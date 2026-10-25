@@ -22,7 +22,6 @@ namespace lux::scene
         RenderAssetInput& asset_input;
         process::asset_loading::AssetReadPort source;
         RenderBindingPlan plan;
-        std::vector<CapabilitiesInstalled::Input> installed_inputs;
         std::vector<detail::RenderBindingInstance> bindings;
 
         struct ViewBindings
@@ -31,6 +30,14 @@ namespace lux::scene
             Entity entity;
             std::vector<detail::RenderBindingInstance> bindings;
             bool retiring = false;
+
+            ~ViewBindings() noexcept
+            {
+                while (!bindings.empty())
+                {
+                    bindings.pop_back();
+                }
+            }
         };
 
         std::list<ViewBindings> views;
@@ -87,6 +94,15 @@ namespace lux::scene
               assets(dependencies.assets), asset_input(dependencies.assets_input), source(dependencies.source),
               plan(dependencies.plan)
         {
+        }
+
+        ~Impl() noexcept
+        {
+            // Scene leases end before destruction; dependent destructors still need their providers.
+            while (!bindings.empty())
+            {
+                bindings.pop_back();
+            }
         }
 
         static void* findIn(
@@ -226,18 +242,26 @@ namespace lux::scene
             {
                 co_return cxx::unexpected(result.error);
             }
-            installed_inputs = std::move(result.inputs);
+            auto resolved = resolveRenderBindingInputs(plan, result.inputs, assets.inputs());
+            if (!resolved)
+            {
+                co_return resolved;
+            }
             installed = true;
             co_return RenderResult<void>{};
         }
 
-        RenderBindingContext bindingContext(ViewId view = {}, Entity entity = NullEntity) noexcept
+        RenderBindingContext bindingContext(
+            const RenderBindingDeclaration& declaration,
+            ViewId view,
+            Entity entity
+        ) noexcept
         {
             RenderBindingContext context{
                 registry,
                 client,
                 execution,
-                installed_inputs,
+                declaration.destinations,
                 plan.contracts,
                 assets,
                 asset_input,
@@ -285,7 +309,7 @@ namespace lux::scene
                 {
                     continue;
                 }
-                auto context = bindingContext(view, entity);
+                auto context = bindingContext(declaration, view, entity);
                 context.role = declaration.role;
                 context.role_index = declaration.role_index;
                 auto created = declaration.create(context);
@@ -294,7 +318,7 @@ namespace lux::scene
                     return cxx::unexpected(created.error());
                 }
                 auto& instance = output.emplace_back(declaration, *created);
-                declaration.connect(instance.object.get(), registry, instance.connections);
+                declaration.connect(instance.object, registry, instance.connections);
             }
             return {};
         }
@@ -536,7 +560,7 @@ namespace lux::scene
         bool pending = false;
         for (auto& binding : self.bindings)
         {
-            context.publication_needed |= binding.declaration.policy == ERenderUpdatePolicy::EACH_FRAME;
+            context.publication_needed |= binding.declaration.each_frame;
             if (!binding.declaration.maintain)
             {
                 continue;
@@ -556,7 +580,7 @@ namespace lux::scene
             }
             for (auto& binding : view.bindings)
             {
-                context.publication_needed |= binding.declaration.policy == ERenderUpdatePolicy::EACH_FRAME;
+                context.publication_needed |= binding.declaration.each_frame;
                 if (!binding.declaration.maintain)
                 {
                     continue;
@@ -570,7 +594,7 @@ namespace lux::scene
             }
         }
         const bool has_outputs =
-            std::ranges::any_of(self.plan.declarations, [](const auto& value) noexcept { return value.effect_output; });
+            std::ranges::any_of(self.plan.declarations, [](const auto& value) noexcept { return value.view_provider; });
         if (!has_outputs)
         {
             self.adopted_revision = self.input_revision;

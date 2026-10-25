@@ -25,15 +25,14 @@ namespace lux::scene
 
     RenderResult<std::unique_ptr<DirectLightBinding>> DirectLightBinding::create(RenderBindingContext& context) noexcept
     {
-        const auto input = std::ranges::find(context.inputs, kDirectLightsInput, &CapabilitiesInstalled::Input::schema);
+        const auto input = context.input(kDirectLightsInput);
         auto create = context.client.bind<CreateDirectLights>();
         auto remove = context.client.bind<RemoveDirectLight>();
-        if (input == context.inputs.end() || !create || !remove)
+        if (!input || !create || !remove)
         {
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
-        return std::unique_ptr<DirectLightBinding>{new DirectLightBinding(context, input->destination, *create, *remove)
-        };
+        return std::unique_ptr<DirectLightBinding>{new DirectLightBinding(context, *input, *create, *remove)};
     }
 
     DirectLightBinding::DirectLightBinding(

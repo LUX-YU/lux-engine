@@ -9,10 +9,17 @@
 
 `RenderBindingPlan` 保存所选声明、实际能力身份和有效数据需求，不拥有 Registry 或 GPU 对象。
 Scene Builder 在构造系统之前将动态需求与静态需求一起交给原 `SceneCompatibility` 算法。
+`resolveRenderBindings()` 是 UI 和实际准备共用的纯冷态算法；UI 在能力回复到达时计算资格，
+绘制时只显示已计算结果。登记可提供能力名称限定；没有限定时按完整 Payload 合同选择。
+不再因 EFFECT 种类自动启用 Camera。对不提供 CameraInput、但产品明确需要相机输出的能力，
+装配调用 registerBuiltinRenderBindings 时显式传入该能力名（包括仍需支持的其它相机能力名）。
 不同 Scene 的选择不会修改共享的 System 描述。缺少依赖、版本不符及依赖循环在冷态拒绝。
 Editor 的 Create 操作先准备 Plan，再调用 `SceneRuntime::Builder::validate()`；失败时不写 Scene
 或项目目录。实际构造复用该 Plan 和同一个静态/动态需求解析算法，validate 本身不创建 Registry、
-System、SceneId 或 GPU 对象，不承诺后续设备/文件操作一定成功。
+System、SceneId 或 GPU 对象，不承诺后续设备/文件操作一定成功。版本、配置 Schema、
+实际 codec 解码、单例限制及依赖顺序均在同一资格入口检查。Profile 只组装作者包，不再自行
+拼装一份静态兼容性判断。ProjectScenes 以完整配置 TypeToken 识别计划提供者；其它依赖渲染
+的 System 不会被当作 RenderSystem 配置解码。
 
 RenderSystem 只负责 Render Scene 的创建/删除、行为构造、阶段遍历和帧封包边界。
 它不包含 Mesh、Material、Light、Camera 或专业 Command。内置转换在此模块登记；
@@ -26,14 +33,19 @@ RenderSystem 只负责 Render Scene 的创建/删除、行为构造、阶段遍�
 
 ## 声明与事件
 
-组件关联声明 `SourceComponents`、`ResultComponents`，能力操作另声明更新策略。
+组件关联声明 `SourceComponents`、`ResultComponents`，能力操作声明实际 Scene/View 范围。
+默认由自身脏数据决定是否封包；需要持续发布的操作显式声明 `each_frame = true`。不再保留没有
+独立执行语义的 CHANGES/STRUCTURE 枚举。
 `Dependencies` 声明单一行为借用：优先同角色，否则要求唯一候选。需要多个角色时显式声明
-`AggregateDependencies`，构造时通过 `context.forEach<T>()` 聚合；帧内不重新做名称/类型发现。
-冷态按依赖排序构造，停止时反向清偿。Scene 构造不能借用尚不存在的 View 行为。
+`AggregateDependencies`，只聚合本次已选中的角色，构造时通过 `context.forEach<T>()` 取得借用。
+未选中的备用实现不会被聚合顺带启用；帧内不重新做名称/类型发现。
+冷态按依赖排序构造，停止时反向清偿，最终析构及部分构造回滚也显式逆序。Scene 构造不能借用尚不存在的 View 行为。
 有状态行为提供明确的 fallible factory；无状态、空且可平凡析构的函数对象可以省略 factory，
 不会为每个 Scene/View 分配一份空对象。需要保存任何依赖或异步状态时必须使用实际对象。
 模板连接 EnTT `on_construct`、`on_update`、`on_destroy`，并折入连接前已有的组件。
-信号直接调用类型化入口，热路径不再按组件 Hash 派发。冷态索引比较完整 TypeToken。
+连接以现有 RenderBindingInstance 中对象持有槽的地址为身份，即使无状态函数共用静态对象，
+不同 View/角色的连接也不相互覆盖。持有槽预留后地址稳定，连接先于对象销毁。
+信号直接调用类型化入口，热路径不按组件 Hash 派发；已删除无消费者的 affected/反向索引。
 
 作者或系统写入必须使用 `registry.patch<T>()` / `replace<T>()`；直接修改 get 返回的字段
 不会发出通知。观察者只记录需求、脏实体或退出句柄，不在信号栈里改组件、等待 IO 或提交资源事务。
@@ -47,6 +59,15 @@ Scene maintenance 仅在允许结构修改的安全点装入结果。结果组�
 从仍可读的组件中取出本角色句柄，不能释放别人的角色。候选集合只包含尚未完成的需求。
 内置 Mesh 与 Transform 操作使用 `raster.mesh` 角色；相同专业类型可按其它角色再次登记。
 各角色实例身份独立，实际相同 Pipeline/目的地/资产版本仍共享上传表示。
+只有明确声明 `partitioned_results = true`、实际按角色维护结果的实现才允许复用相同 ResultComponent；
+Light/Camera 等单例结果的第二生产者会在登记时拒绝。
+安装后 `resolveRenderBindingInputs()` 一次形成各角色的准确目的地。注册时可提供实际
+CapabilitiesInstalled::Input 作为显式选择；缺省选择必须唯一，歧义或过期选择在构造前失败。
+声明的 asset_inputs 明确选择共享资产表的生产者身份；其它资源输入使用 Scene 安装身份。
+不能用 Scene 的消费别名查询按生产者身份保存的共享资产表。VIEW 声明若产生 ResultComponent，
+也必须明确采用按实例分区的结果合同，不能让多个 View 覆盖同一个单值结果。
+专业工厂只用 `context.input(schema)`，Transform 从本角色 Mesh 生产者取得相同的实例目的地，
+不再各自取第一个/最后一个 Schema 匹配项。
 资产按 Pipeline、实际输入目的地、来源域和版本复用。CPU Cooked Material 与 GPU Material
 使用不同表示表；后者引用已就绪的 Cooked 和 Texture，不重复读取或解码。
 

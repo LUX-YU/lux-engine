@@ -10,7 +10,10 @@
 
 namespace lux::scene
 {
-    RenderBindingRegistrationResult registerBuiltinRenderBindings(RenderBindingDeclarations& declarations) noexcept
+    RenderBindingRegistrationResult registerBuiltinRenderBindings(
+        RenderBindingDeclarations& declarations,
+        std::span<const std::string_view> camera_capabilities
+    ) noexcept
     {
         auto result = registerComponentBinding<MeshRenderBinding>(declarations, {}, "raster.mesh");
         if (!result)
@@ -42,6 +45,6 @@ namespace lux::scene
         {
             return result;
         }
-        return registerCapabilityOperation<CameraInputOperation>(declarations);
+        return registerCapabilityOperation<CameraInputOperation>(declarations, {}, {}, {}, camera_capabilities);
     }
 } // namespace lux::scene

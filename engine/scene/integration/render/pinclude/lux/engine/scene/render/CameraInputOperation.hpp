@@ -17,8 +17,6 @@ namespace lux::scene
         using ResultComponents = std::tuple<>;
         using Dependencies = std::tuple<CameraViewBinding>;
         static constexpr std::string_view name = "lux.scene.operation.camera_inputs";
-        static constexpr bool effect_output = true;
-        static constexpr auto policy = ERenderUpdatePolicy::CHANGES;
         static constexpr auto scope = ERenderOperationScope::VIEW;
         static std::span<const render::RenderPayloadContract> inputs() noexcept;
         static render::RenderResult<std::unique_ptr<CameraInputOperation>> create(RenderBindingContext&) noexcept;

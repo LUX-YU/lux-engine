@@ -7,7 +7,9 @@ namespace lux::scene
         const bool invalid_identity =
             declaration.version == 0 || declaration.name.empty() || !declaration.type.isValid();
         const bool missing_entry = !declaration.create || !declaration.destroy || !declaration.connect;
-        const bool invalid = invalid_identity || missing_entry;
+        const bool unpartitioned_view_result = declaration.scope == ERenderOperationScope::VIEW &&
+                                               !declaration.results.empty() && !declaration.partitioned_results;
+        const bool invalid = invalid_identity || missing_entry || unpartitioned_view_result;
         if (invalid)
         {
             return cxx::unexpected(ERenderBindingDeclarationError::INVALID_DECLARATION);
@@ -27,43 +29,19 @@ namespace lux::scene
             {
                 return cxx::unexpected(ERenderBindingDeclarationError::DUPLICATE_NAME);
             }
-            if (duplicate_result && existing.role == declaration.role)
+            if (duplicate_result && (existing.role == declaration.role || !existing.partitioned_results ||
+                                     !declaration.partitioned_results))
             {
                 return cxx::unexpected(ERenderBindingDeclarationError::DUPLICATE_RESULT);
             }
-        }
-        const auto index = declarations_.size();
-        for (const auto source : declaration.sources)
-        {
-            component_bindings_[source].push_back(index);
         }
         declarations_.push_back(std::move(declaration));
         return {};
     }
 
-    bool RenderBindingDeclarations::supports(const render::RenderPayloadContract& input) const noexcept
-    {
-        return std::ranges::any_of(
-            declarations_,
-            [&](const auto& declaration) noexcept
-            {
-                return std::ranges::any_of(
-                    declaration.inputs,
-                    [&](const auto& produced) noexcept { return matches(produced, input); }
-                );
-            }
-        );
-    }
-
     std::span<const RenderBindingDeclaration> RenderBindingDeclarations::declarations() const noexcept
     {
         return declarations_;
-    }
-
-    std::span<const std::size_t> RenderBindingDeclarations::affected(cxx::TypeToken component) const noexcept
-    {
-        const auto found = component_bindings_.find(component);
-        return found == component_bindings_.end() ? std::span<const std::size_t>{} : found->second;
     }
 
     bool RenderBindingDeclarations::matches(

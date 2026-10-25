@@ -14,15 +14,54 @@ namespace fixture
         std::uint32_t value = 0;
     };
 
+    class ViewDependency final
+    {
+    public:
+        using SourceComponents = std::tuple<>;
+        using ResultComponents = std::tuple<>;
+        static constexpr std::string_view name = "test.editor.view_dependency";
+        static constexpr auto scope = scene::ERenderOperationScope::VIEW;
+        inline static std::vector<render::ViewId> alive;
+
+        static std::span<const render::RenderPayloadContract> inputs() noexcept
+        {
+            return {};
+        }
+
+        static render::RenderResult<std::unique_ptr<ViewDependency>> create(scene::RenderBindingContext& context
+        ) noexcept
+        {
+            return std::unique_ptr<ViewDependency>{new ViewDependency(context.view)};
+        }
+
+        ~ViewDependency() noexcept
+        {
+            std::erase(alive, view_);
+        }
+
+        bool valid() const noexcept
+        {
+            return std::ranges::find(alive, view_) != alive.end();
+        }
+
+    private:
+        explicit ViewDependency(render::ViewId view) noexcept : view_(view)
+        {
+            alive.push_back(view);
+        }
+
+        render::ViewId view_;
+    };
+
     // External author fixture: uses installed declaration/context contracts only, no builtin implementation.
     class ViewOperation final
     {
     public:
         using SourceComponents = std::tuple<ViewObservation>;
         using ResultComponents = std::tuple<>;
+        using Dependencies = std::tuple<ViewDependency>;
         static constexpr std::string_view name = "test.editor.external_view_operation";
         static constexpr auto scope = scene::ERenderOperationScope::VIEW;
-        static constexpr auto policy = scene::ERenderUpdatePolicy::CHANGES;
         inline static std::vector<std::pair<render::ViewId, std::uint32_t>> observations;
         inline static std::size_t created = 0, destroyed = 0, drained = 0;
 
@@ -50,6 +89,7 @@ namespace fixture
         ~ViewOperation() noexcept
         {
             assert(stopped_ && !pending_);
+            assert(std::ranges::find(ViewDependency::alive, view_) != ViewDependency::alive.end());
             std::erase_if(observations, [&](const auto& value) noexcept { return value.first == view_; });
             ++destroyed;
         }
@@ -74,6 +114,7 @@ namespace fixture
 
         scene::SceneStageResult maintain(scene::SceneStageContext& context) noexcept
         {
+            assert(dependency_.valid());
             if (context.stop.stop_requested() && !stopped_)
             {
                 stopped_ = pending_ = true;
@@ -93,7 +134,8 @@ namespace fixture
 
     private:
         explicit ViewOperation(scene::RenderBindingContext& context) noexcept
-            : execution_(context.execution), view_(context.view), entity_(context.view_entity)
+            : execution_(context.execution), dependency_(*context.find<ViewDependency>()), view_(context.view),
+              entity_(context.view_entity)
         {
             assert(std::ranges::none_of(observations, [&](const auto& value) noexcept { return value.first == view_; })
             );
@@ -102,6 +144,7 @@ namespace fixture
         }
 
         execution::ExecutionRuntime& execution_;
+        ViewDependency& dependency_;
         render::ViewId view_;
         simulation::ecs::Entity entity_;
         bool stopped_ = false, pending_ = false;
@@ -112,6 +155,7 @@ namespace fixture
         using SourceComponents = std::tuple<ViewObservation>;
         using ResultComponents = std::tuple<>;
         static constexpr std::string_view name = "test.editor.stateless_observation";
+        static constexpr auto scope = scene::ERenderOperationScope::VIEW;
         inline static std::size_t signals = 0;
 
         static auto inputs() noexcept

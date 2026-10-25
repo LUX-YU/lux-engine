@@ -16,18 +16,15 @@ namespace lux::scene
     ) noexcept
     {
         auto update = context.client.bind<UpdateTransforms>();
-        const auto input =
-            std::ranges::find(context.inputs, kRasterInstancesInput, &CapabilitiesInstalled::Input::schema);
         const auto* meshes = context.find<MeshRenderBinding>();
         const bool has_command = bool(update);
-        const bool has_input = input != context.inputs.end();
         const bool has_producer = meshes != nullptr;
-        if (!has_command || !has_input || !has_producer)
+        if (!has_command || !has_producer)
         {
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
         auto result = std::unique_ptr<RasterTransformOperation>{
-            new RasterTransformOperation(context, input->destination, *update, meshes->role())
+            new RasterTransformOperation(context, meshes->instanceInput(), *update, meshes->role())
         };
         return result;
     }
@@ -60,9 +57,9 @@ namespace lux::scene
         for (auto entry = changed_.begin(); entry != changed_.end();)
         {
             const bool has_components = registry_.valid(*entry) &&
-                registry_.all_of<detail::MeshRenderResourceComponent, WorldTransform3D>(*entry);
-            const bool has_role = has_components &&
-                registry_.get<detail::MeshRenderResourceComponent>(*entry).find(role_) != nullptr;
+                                        registry_.all_of<detail::MeshRenderResourceComponent, WorldTransform3D>(*entry);
+            const bool has_role =
+                has_components && registry_.get<detail::MeshRenderResourceComponent>(*entry).find(role_) != nullptr;
             if (!has_role)
             {
                 entry = changed_.erase(entry);

@@ -18,7 +18,7 @@ namespace lux::scene
         using SourceComponents = std::tuple<Camera, CameraTargetsComponent, simulation::ecs::WorldTransform3D>;
         using ResultComponents = std::tuple<detail::CameraRenderResourceComponent>;
         static constexpr std::string_view name = "lux.scene.binding.camera_views";
-        static constexpr bool effect_output = true;
+        static constexpr bool view_provider = true;
         static constexpr system::SystemDataContract data_inputs[]{
             {"lux.scene.Camera"},
             {"lux.ecs.Transform3D"},

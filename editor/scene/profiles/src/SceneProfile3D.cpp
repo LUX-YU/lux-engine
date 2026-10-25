@@ -5,10 +5,8 @@
 #include <lux/engine/scene/MeshQuerySystem.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
-#include <lux/engine/scene/SceneCompatibility.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
-#include <map>
 
 namespace lux::editor
 {
@@ -120,9 +118,6 @@ namespace lux::editor
                         "Creating an indexed World requires its actual index builder"
                     });
                 }
-                std::vector<scene::SceneSystemContract> systems;
-                std::vector<system::SystemDataContract> schemas;
-                std::map<system::SystemInstanceId, std::size_t> scene_indices;
                 for (const auto& name : selected.schemas)
                 {
                     const auto* schema =
@@ -138,55 +133,9 @@ namespace lux::editor
                     {
                         return cxx::unexpected(missing("Scene schema is not authored", name.name));
                     }
-                    schemas.push_back({name.name, schema->version});
                 }
-                for (std::size_t i = 0; i < selected.simulation->systemCount(); ++i)
-                {
-                    const auto input = selected.simulation->systemAt(i);
-                    const auto* registration = info.registrations.simulation_systems
-                                                   ? info.registrations.simulation_systems->find(input.type())
-                                                   : nullptr;
-                    if (!registration)
-                    {
-                        return cxx::unexpected(missing("Simulation system", input.type().name));
-                    }
-                    systems.push_back({input.instanceId(), &registration->description->type, true});
-                }
-                for (std::size_t i = 0; i < selected.systems->systemCount(); ++i)
-                {
-                    const auto input = selected.systems->systemAt(i);
-                    const auto found = std::ranges::find(
-                        info.registrations.scene_systems,
-                        input.type(),
-                        &scene::SceneSystemRegistration::type
-                    );
-                    if (found == info.registrations.scene_systems.end())
-                    {
-                        return cxx::unexpected(missing("Scene system", input.type().name));
-                    }
-                    scene_indices.emplace(input.instanceId(), systems.size());
-                    systems.push_back({input.instanceId(), found->description, false});
-                }
-                scene::SceneDataDependencies dependencies;
-                for (std::size_t i = 0; i < selected.systems->dependencyCount(); ++i)
-                {
-                    const auto dependency = selected.systems->dependencyAt(i);
-                    dependencies.push_back(
-                        {scene_indices.find(dependency.before())->second, scene_indices.find(dependency.after())->second
-                        }
-                    );
-                }
-                auto compatible = scene::resolveSceneData(systems, schemas, dependencies);
-                if (!compatible)
-                {
-                    return cxx::unexpected(scene::ScenePackageFailure{
-                        scene::EScenePackageError::INVALID_ARGUMENT,
-                        info.id,
-                        static_cast<std::size_t>(compatible.error().code),
-                        compatible.error().data,
-                        "Scene data compatibility"
-                    });
-                }
+                // Profiles assemble author data. ProjectScenes validates the actual selected static/dynamic
+                // contracts through SceneRuntime before publishing files; do not keep a second partial check here.
                 return scene::createScenePackage(
                     info.id,
                     info.name,

@@ -14,7 +14,6 @@ namespace lux::scene
         using ResultComponents = std::tuple<>;
         using Dependencies = std::tuple<MeshRenderBinding>;
         static constexpr std::string_view name = "lux.scene.operation.raster_transforms";
-        static constexpr auto policy = ERenderUpdatePolicy::CHANGES;
         static constexpr auto scope = ERenderOperationScope::SCENE;
         static std::span<const render::RenderPayloadContract> inputs() noexcept;
         static render::RenderResult<std::unique_ptr<RasterTransformOperation>> create(RenderBindingContext&) noexcept;

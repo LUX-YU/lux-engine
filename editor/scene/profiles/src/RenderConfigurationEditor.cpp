@@ -8,7 +8,7 @@
 #include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
-#include <lux/engine/scene/render/RenderBindingDeclarations.hpp>
+#include <lux/engine/scene/render/RenderBindingPlan.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/Pane.hpp>
 
@@ -57,7 +57,7 @@ namespace lux::editor
                         auto& editor = *static_cast<RenderConfigurationEditor*>(*found);
                         if (result)
                         {
-                            editor.supports_ = std::move(*result);
+                            editor.adoptSupports(std::move(*result));
                             editor.status_ = "Select a supported capability and implementation";
                         }
                         else
@@ -114,14 +114,31 @@ namespace lux::editor
                 {
                     return "Resource capability; it does not produce a Scene output";
                 }
-                for (const auto& input : capability.inputs)
+                if (!scene::resolveRenderBindings(*bindings_, capability))
                 {
-                    if (input.required && !bindings_->supports(input))
-                    {
-                        return "A required input producer is not installed in the Scene system";
-                    }
+                    return "The selected Scene declarations cannot satisfy this capability";
                 }
                 return nullptr;
+            }
+
+            struct Choice
+            {
+                lux::render::CapabilitySupport support;
+                std::vector<const char*> reasons;
+            };
+
+            void adoptSupports(std::vector<lux::render::CapabilitySupport> supports) noexcept
+            {
+                choices_.clear();
+                choices_.reserve(supports.size());
+                for (auto& support : supports)
+                {
+                    auto& choice = choices_.emplace_back(std::move(support));
+                    for (const auto& capability : choice.support.capabilities)
+                    {
+                        choice.reasons.push_back(unavailable(choice.support, capability));
+                    }
+                }
             }
 
             const scene::RenderBindingDeclarations* bindings_{};
@@ -176,12 +193,14 @@ namespace lux::editor
                 const auto preview = configuration_.capability + " / " + configuration_.implementation;
                 if (ImGui::BeginCombo("Render capability", preview.c_str()))
                 {
-                    for (const auto& support : supports_)
+                    for (const auto& choice : choices_)
                     {
+                        const auto& support = choice.support;
+                        std::size_t ordinal = 0;
                         for (const auto& capability : support.capabilities)
                         {
                             const auto label = capability.name + " / " + support.implementation;
-                            const auto* reason = unavailable(support, capability);
+                            const auto* reason = choice.reasons[ordinal++];
                             ImGui::BeginDisabled(reason != nullptr);
                             const bool selected = configuration_.capability == capability.name &&
                                                   configuration_.implementation == support.implementation;
@@ -209,8 +228,9 @@ namespace lux::editor
                     }
                     ImGui::EndCombo();
                 }
-                for (const auto& support : supports_)
+                for (const auto& choice : choices_)
                 {
+                    const auto& support = choice.support;
                     if (support.implementation != configuration_.implementation)
                     {
                         continue;
@@ -245,7 +265,7 @@ namespace lux::editor
             }
 
             scene::RenderSystemConfiguration configuration_;
-            std::vector<lux::render::CapabilitySupport> supports_;
+            std::vector<Choice> choices_;
             std::string status_ = "Reading Server capabilities...";
             bool valid_ = false;
         };

@@ -434,16 +434,19 @@ namespace lux::editor
                 {
                     co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
                 }
+                const bool is_render_configuration =
+                    registration->configuration.type == cxx::typeToken<scene::RenderSystemConfiguration>();
                 const bool requires_render = std::ranges::any_of(
                     registration->requirements,
                     [](const auto& requirement) noexcept
                     { return requirement.capability == "lux.scene.rendering" && !requirement.optional; }
                 );
-                if (!requires_render)
+                // A consumer of rendering is not necessarily a RenderSystem configuration producer.
+                if (!is_render_configuration)
                 {
                     continue;
                 }
-                if (render_registration)
+                if (!requires_render || render_registration)
                 {
                     co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
                 }

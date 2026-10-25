@@ -12,7 +12,6 @@ namespace lux::scene
         using ResultComponents = std::tuple<>;
         using AggregateDependencies = std::tuple<MeshRenderBinding>;
         static constexpr std::string_view name = "lux.scene.operation.lit_scene_inputs";
-        static constexpr auto policy = ERenderUpdatePolicy::STRUCTURE;
         static constexpr auto scope = ERenderOperationScope::SCENE;
         static std::span<const render::RenderPayloadContract> inputs() noexcept;
         static render::RenderResult<std::unique_ptr<LitSceneInputOperation>> create(RenderBindingContext&) noexcept;

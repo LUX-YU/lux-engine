@@ -89,12 +89,18 @@ namespace lux::rendering
 
         using CreateResult = render::RenderResult<std::unique_ptr<RenderAssets>>;
 
-        // Cold startup: installs raster asset inputs through the ordinary capability API.
+        // Cold startup: the application selects the asset implementation. Its Mesh/Texture payload
+        // contracts are checked before installation; startup performs no asset read or upload.
         [[nodiscard]] static CreateResult create(
             RenderExecution& rendering,
             process::asset_loading::AssetReadPort source,
+            render::CapabilityQuery capability,
+            render::VCapabilityConfiguration configuration = {},
             RenderAssetLimits limits = {}
         ) noexcept;
+
+        // Public producer destinations for cold consumer installation, never Storage identities.
+        [[nodiscard]] std::span<const render::CapabilitiesInstalled::Input> inputs() const noexcept;
 
         // close(), continue maintenance frames and wait for settled() before destroying this object.
         // RenderExecution and the file provider outlive all accepted source reads and protocol replies.

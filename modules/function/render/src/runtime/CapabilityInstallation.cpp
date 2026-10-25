@@ -380,6 +380,29 @@ namespace lux::render
                 bindings.push_back({set, *storage, index, scope});
             }
         }
+        for (const auto& source : input.source_inputs)
+        {
+            const auto destination = std::ranges::find_if(
+                bindings,
+                [&](const auto& binding) noexcept
+                {
+                    const auto& declaration = declarations[binding.input];
+                    return declaration.schema == source.schema;
+                }
+            );
+            if (destination == bindings.end())
+            {
+                continue; // A consumer without this input does not acquire an asset dependency.
+            }
+            const auto& declaration = declarations[destination->input];
+            const bool incompatible = source.version != declaration.version ||
+                                      resources->inputStorage(source.destination) != destination->storage;
+            if (incompatible)
+            {
+                result.error = RenderError{kFeatureResourceMismatch};
+                return;
+            }
+        }
         // No fallible allocation or user factory remains. Publish all input relations together.
         for (const auto& binding : bindings)
         {

@@ -197,7 +197,8 @@ int main()
     config.device.texture_descriptors = true;
     config.device.multiple_queues = true;
     auto rendering = take(RenderExecution::create(std::move(config), execution));
-    auto assets = take(RenderAssets::create(*rendering, endpoint->port()));
+    auto assets =
+        take(RenderAssets::create(*rendering, endpoint->port(), {"test.scene.asset_source", 1, "test.scene.assets"}));
     TargetDesc capability_target{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
     const auto offscreen_support = call<ListCapabilities>(
         *rendering,
@@ -774,6 +775,18 @@ int main()
             drive(true);
             CHECK(std::chrono::steady_clock::now() < deadline);
         }
+        const auto attached = scene->attachment(only_camera, observation);
+        no_geometry.patch<scene::Camera>(
+            only_camera,
+            [](auto& camera) noexcept { std::get<scene::PerspectiveProjection>(camera.projection).near_plane = 0.75; }
+        );
+        const auto before_camera_edit = completed_frames;
+        while (completed_frames < before_camera_edit + 3)
+        {
+            drive(true);
+            CHECK(std::chrono::steady_clock::now() < deadline);
+        }
+        CHECK(scene->attachment(only_camera, observation) == attached);
         scene_stop.request_stop();
         while (!scene_retired)
         {

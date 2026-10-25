@@ -529,6 +529,15 @@ int main()
     {
         const auto choice = call<ListCapabilities>(client, list, {"example.graph", 1, name});
         CHECK(choice.error.type == 0 && choice.implementations.size() == 1);
+        for (std::size_t index = 0; index < destinations.size(); ++index)
+        {
+            CapabilityInstallation consumer{choice.implementations.front().selection, GlobalRenderScope{}, {}};
+            consumer.source_inputs.push_back({"example.buffer.bytes", 1, destinations[index]});
+            const auto resolved = call<InstallCapabilities>(client, install, std::move(consumer));
+            const bool same_destination = choices.implementations[index].implementation == "example.buffer.a";
+            CHECK(resolved.error.type == (same_destination ? 0 : kFeatureResourceMismatch));
+            CHECK(ProbeStorage::allocations == 2);
+        }
         const auto effect = call<CreateEffect>(
             client,
             create_effect,

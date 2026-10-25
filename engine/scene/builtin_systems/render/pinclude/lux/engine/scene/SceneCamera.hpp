@@ -19,7 +19,11 @@ namespace lux::scene::detail
         bool operator==(const CameraGraphInputs&) const noexcept = default;
     };
 
-    [[nodiscard]] CameraGraphInputs cameraGraphInputs(const Camera&, const CameraTarget&) noexcept;
+    [[nodiscard]] CameraGraphInputs cameraGraphInputs(
+        const Camera&,
+        const CameraTarget&,
+        bool consumes_clipping
+    ) noexcept;
 
     // Stack preparation shared by this CameraMan's outputs at one Main stable point; no retained ECS borrow.
     struct SceneCamera final

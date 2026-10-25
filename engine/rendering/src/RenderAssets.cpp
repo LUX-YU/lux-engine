@@ -408,6 +408,7 @@ namespace lux::rendering
         std::optional<BoundCommand<ReleaseMesh>> release_mesh;
         std::optional<BoundCommand<ReleaseTexture>> release_texture;
         CapabilityInput mesh_input, texture_input;
+        std::vector<CapabilitiesInstalled::Input> asset_inputs;
         std::size_t in_flight = 0;
         RenderError release_failure;
         AvailabilityConnection* capacity_waiters{};
@@ -562,6 +563,8 @@ namespace lux::rendering
     RenderAssets::CreateResult RenderAssets::create(
         RenderExecution& rendering,
         loading::AssetReadPort source,
+        CapabilityQuery capability,
+        VCapabilityConfiguration configuration,
         RenderAssetLimits limits
     ) noexcept
     {
@@ -588,10 +591,8 @@ namespace lux::rendering
         impl->create_texture = *texture_command;
         impl->release_mesh = *mesh_release;
         impl->release_texture = *texture_release;
-        const auto choices = detail::requestAtStartup<ListCapabilities>(
-            rendering,
-            {std::string(kRasterAssetsCapability), 1, "lux.render.assets.raster"}
-        );
+        capability.input_schemas = {std::string(kIndexedMeshInput), std::string(kSampledTextureInput)};
+        const auto choices = detail::requestAtStartup<ListCapabilities>(rendering, std::move(capability));
         if (choices.error.type != 0)
         {
             return cxx::unexpected(choices.error);
@@ -600,9 +601,24 @@ namespace lux::rendering
         {
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
+        const auto& contract = choices.implementations.front().capabilities.front();
+        const auto accepts = [&](std::string_view schema, cxx::TypeToken type) noexcept
+        {
+            const auto input = std::ranges::find(contract.inputs, schema, &RenderPayloadContract::schema);
+            return input != contract.inputs.end() && input->version == 1 && input->cppType() == type &&
+                   input->use == ERenderPayloadUse::RESOURCE_INPUT &&
+                   input->lifetime == ERenderPayloadLifetime::UNTIL_RESPONSE;
+        };
+        const bool compatible = contract.kind == ERenderCapabilityKind::RESOURCES &&
+                                accepts(kIndexedMeshInput, cxx::typeToken<MeshWrite>()) &&
+                                accepts(kSampledTextureInput, cxx::typeToken<TextureWrite>());
+        if (!compatible)
+        {
+            return cxx::unexpected(RenderError{kRuntimeUnsupported});
+        }
         const auto installed = detail::requestAtStartup<InstallCapabilities>(
             rendering,
-            {choices.implementations.front().selection, GlobalRenderScope{}, {}}
+            {choices.implementations.front().selection, GlobalRenderScope{}, std::move(configuration)}
         );
         if (installed.error.type != 0)
         {
@@ -613,10 +629,12 @@ namespace lux::rendering
             if (input.schema == kIndexedMeshInput)
             {
                 impl->mesh_input = input.destination;
+                impl->asset_inputs.push_back(input);
             }
             else if (input.schema == kSampledTextureInput)
             {
                 impl->texture_input = input.destination;
+                impl->asset_inputs.push_back(input);
             }
         }
         const bool missing_input =
@@ -626,6 +644,11 @@ namespace lux::rendering
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
         return std::unique_ptr<RenderAssets>{new RenderAssets(std::move(impl))};
+    }
+
+    std::span<const CapabilitiesInstalled::Input> RenderAssets::inputs() const noexcept
+    {
+        return impl_->asset_inputs;
     }
 
     RenderResult<void> RenderAssets::acquireMesh(

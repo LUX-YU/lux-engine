@@ -4,7 +4,11 @@ namespace lux::scene::detail
 {
     using namespace render;
 
-    CameraGraphInputs cameraGraphInputs(const Camera& camera, const CameraTarget& output) noexcept
+    CameraGraphInputs cameraGraphInputs(
+        const Camera& camera,
+        const CameraTarget& output,
+        bool consumes_clipping
+    ) noexcept
     {
         CameraGraphInputs key{
             output.target,
@@ -13,14 +17,17 @@ namespace lux::scene::detail
             output.description.samples,
             output.description.sampled
         };
-        std::visit(
-            [&](const auto& projection) noexcept
-            {
-                key.near_distance = static_cast<float>(projection.near_plane);
-                key.far_distance = static_cast<float>(projection.far_plane);
-            },
-            camera.projection
-        );
+        if (consumes_clipping)
+        {
+            std::visit(
+                [&](const auto& projection) noexcept
+                {
+                    key.near_distance = static_cast<float>(projection.near_plane);
+                    key.far_distance = static_cast<float>(projection.far_plane);
+                },
+                camera.projection
+            );
+        }
         return key;
     }
 

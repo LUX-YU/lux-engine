@@ -4,6 +4,7 @@
 #include <lux/engine/scene/RenderSystemConfigurationImpl.hpp>
 #include <lux/engine/scene/RenderViewComponent.hpp>
 #include <lux/engine/scene/SceneCamera.hpp>
+#include <lux/engine/scene/SceneRenderInputs.hpp>
 
 #include <exec/task.hpp>
 #include <exec/variant_sender.hpp>
@@ -33,6 +34,7 @@ namespace lux::scene
     using namespace simulation::ecs;
     using detail::RenderViewBinding;
     using detail::RenderViewComponent;
+    using namespace detail;
 
     namespace
     {
@@ -63,106 +65,6 @@ namespace lux::scene
                 return VRequest{stdexec::just(std::move(result))};
             }
             return VRequest{client.request(*command, input)};
-        }
-
-        std::uint64_t programHash(const rdesc::MaterialProgramSet& program) noexcept
-        {
-            std::uint64_t hash = 14695981039346656037ULL;
-            for (const auto& use : program.programs)
-            {
-                for (const auto& stage : use.shader.stages)
-                {
-                    for (const auto word : stage.words)
-                    {
-                        hash = (hash ^ word) * 1099511628211ULL;
-                    }
-                }
-            }
-            return hash;
-        }
-
-        struct MaterialEntry final
-        {
-            MaterialId material;
-            std::vector<RenderAssetVersion> textures;
-            std::size_t references = 0;
-            std::uint64_t program_hash = 0;
-            asset::AssetVfsView snapshot;
-            RenderError error;
-        };
-
-        struct MeshBinding final
-        {
-            rdesc::MeshVisualDescription visual;
-            std::uint64_t revision = 0;
-        };
-
-        struct MeshEntry final
-        {
-            MeshBinding binding;
-            // Candidate uploads never invalidate the currently drawn binding. Previous is retained
-            // only until every observation has stopped referring to its compiled resource groups.
-            std::optional<MeshBinding> replacement, previous;
-            MeshInstanceId instance;
-            RenderError error;
-            bool present = true;
-        };
-
-        struct InstanceInput final
-        {
-            std::uint64_t entity;
-            MeshInstanceDescription description;
-        };
-
-        struct LightEntry final
-        {
-            LightId light;
-            rdesc::ELightType type = rdesc::ELightType::POINT;
-            bool present = true;
-        };
-
-        struct LightInput final
-        {
-            std::uint64_t entity;
-            VDirectLight value;
-        };
-
-        RenderResult<VDirectLight> lightValue(
-            const rdesc::LightDescription& light,
-            const Eigen::Affine3d& world
-        ) noexcept
-        {
-            const auto position = world.translation().cast<float>().eval();
-            const auto direction = (-world.linear().col(2)).normalized().cast<float>().eval();
-            const std::array<float, 4> radiance{
-                light.color[0] * light.intensity,
-                light.color[1] * light.intensity,
-                light.color[2] * light.intensity,
-                0
-            };
-            switch (light.type)
-            {
-            case rdesc::ELightType::DIRECTIONAL:
-                return VDirectLight{DirectionalLightGpu{radiance, {direction.x(), direction.y(), direction.z(), 0}}};
-            case rdesc::ELightType::POINT:
-                return VDirectLight{PointLightGpu{
-                    {position.x(), position.y(), position.z(), light.range},
-                    radiance,
-                    {light.attenuation_constant, light.attenuation_linear, light.attenuation_quadratic, 0}
-                }};
-            case rdesc::ELightType::SPOT:
-                return VDirectLight{SpotLightGpu{
-                    {position.x(), position.y(), position.z(), light.range},
-                    radiance,
-                    {direction.x(), direction.y(), direction.z(), std::cos(light.outer_cone_angle)},
-                    {light.attenuation_constant,
-                     light.attenuation_linear,
-                     light.attenuation_quadratic,
-                     std::cos(light.inner_cone_angle)}
-                }};
-            default:
-                return cxx::unexpected(RenderError{kRuntimeUnsupported});
-            }
         }
 
         SceneStageResult failure(RenderError error) noexcept
@@ -324,9 +226,38 @@ namespace lux::scene
                 material_input_enabled |= input.schema == kRasterMaterialInput;
                 instance_input_enabled |= input.schema == kRasterInstancesInput;
                 light_input_enabled |= input.schema == kDirectLightsInput;
-                geometry_input_enabled |= input.schema == kSceneGeometryInput;
+                if (input.schema == kSceneGeometryInput)
+                {
+                    effect_input_producer = &detail::produceLitSceneInputs;
+                }
                 camera_input_enabled |= input.schema == kCameraInput;
             }
+            if (instance_input_enabled)
+            {
+                auto bound = client.bind<UpdateTransforms>();
+                if (!bound)
+                {
+                    return cxx::unexpected(bound.error());
+                }
+                transforms = *bound;
+            }
+            if (light_input_enabled)
+            {
+                auto bound = client.bind<UpdateDirectLights>();
+                if (!bound)
+                {
+                    return cxx::unexpected(bound.error());
+                }
+                lighting = *bound;
+            }
+            auto inputs_command = client.bind<UpdateAttachmentInputs>();
+            auto active_command = client.bind<SetTargetActive>();
+            if (!inputs_command || !active_command)
+            {
+                return cxx::unexpected(RenderError{kRuntimeUnsupported});
+            }
+            attachment_inputs = *inputs_command;
+            target_active = *active_command;
             return {};
         }
 
@@ -361,6 +292,8 @@ namespace lux::scene
             }
             implementation = choices.implementations.front().selection;
             CapabilityInstallation install{implementation, scene, configuration.configuration};
+            const auto asset_inputs = assets.inputs();
+            install.source_inputs.assign(asset_inputs.begin(), asset_inputs.end());
             const auto installed = co_await request<InstallCapabilities>(client, install);
             if (installed.error.type != 0)
             {
@@ -423,6 +356,7 @@ namespace lux::scene
                 }
                 material = materials.emplace(material_key, MaterialEntry{.snapshot = assets_input.snapshot}).first;
                 pending_materials.insert(material_key);
+                ready_materials.insert(material_key);
             }
             ++material->second.references;
             asset_availability.observe(mesh_key);
@@ -430,29 +364,91 @@ namespace lux::scene
             return {};
         }
 
-        bool bindingReady(const MeshBinding& binding, RenderError& failure) const noexcept
+        // These indices contain only outstanding demand, never live asset ownership. Delivery records
+        // a version; the Main maintenance point selects the exact waiters before starting another task.
+        void awaitBinding(std::uint64_t entity, const MeshBinding& binding) noexcept
         {
-            const auto key = assetKey(binding.visual.mesh, binding.revision);
-            const auto& material = materials.find(assetKey(binding.visual.material, binding.revision))->second;
-            failure = assets.failure(key);
-            if (failure.type == 0)
+            pending_instances.insert(entity);
+            ready_instances.insert(entity);
+            instance_demands[assetKey(binding.visual.mesh, binding.revision)].insert(entity);
+            instance_demands[assetKey(binding.visual.material, binding.revision)].insert(entity);
+        }
+
+        void finishBinding(std::uint64_t entity, const MeshBinding& binding) noexcept
+        {
+            for (const auto asset : {binding.visual.mesh, binding.visual.material})
             {
-                failure = material.error;
+                const auto found = instance_demands.find(assetKey(asset, binding.revision));
+                if (found != instance_demands.end())
+                {
+                    found->second.erase(entity);
+                    if (found->second.empty())
+                    {
+                        instance_demands.erase(found);
+                    }
+                }
             }
-            return failure.type == 0 && assets.mesh(key) && !material.material.isNull();
+            pending_instances.erase(entity);
+            ready_instances.erase(entity);
+        }
+
+        void readyBindings(RenderAssetVersion key) noexcept
+        {
+            const auto found = instance_demands.find(key);
+            if (found != instance_demands.end())
+            {
+                ready_instances.insert(found->second.begin(), found->second.end());
+            }
+        }
+
+        void finishMaterial(RenderAssetVersion key, const MaterialEntry& entry) noexcept
+        {
+            for (const auto texture : entry.textures)
+            {
+                const auto found = material_demands.find(texture);
+                if (found != material_demands.end())
+                {
+                    found->second.erase(key);
+                    if (found->second.empty())
+                    {
+                        material_demands.erase(found);
+                    }
+                }
+            }
+            pending_materials.erase(key);
+            ready_materials.erase(key);
+            blocked_materials.erase(key);
+            readyBindings(key);
+        }
+
+        void applyAssetCompletions() noexcept
+        {
+            for (const auto version : completed_assets)
+            {
+                if (pending_materials.contains(version))
+                {
+                    ready_materials.insert(version);
+                }
+                if (const auto found = material_demands.find(version); found != material_demands.end())
+                {
+                    ready_materials.insert(found->second.begin(), found->second.end());
+                }
+                readyBindings(version);
+            }
+            completed_assets.clear();
         }
 
         exec::task<void> prepareMaterials() noexcept
         {
-            for (auto pending = pending_materials.begin(); pending != pending_materials.end();)
+            const auto ready = std::exchange(ready_materials, {});
+            for (const auto key : ready)
             {
-                const auto key = *pending++;
                 auto& entry = materials.find(key)->second;
                 const auto reject = [&](RenderError failure) noexcept
                 {
                     entry.error = failure;
                     entry.snapshot = {};
-                    pending_materials.erase(key);
+                    finishMaterial(key, entry);
                     reportRenderFailure(failure, "Prepare Scene material candidate");
                 };
                 if (entry.references == 0 || !entry.material.isNull())
@@ -478,6 +474,7 @@ namespace lux::scene
                         auto acquired = assets.acquireTexture(texture, source, entry.snapshot);
                         if (!acquired && acquired.error().type == kRuntimeCapacity)
                         {
+                            blocked_materials.insert(key);
                             asset_availability.whenCapacityAvailable();
                             break;
                         }
@@ -490,6 +487,7 @@ namespace lux::scene
                     entry.textures.push_back(texture);
                     if (!texture.asset.isNull())
                     {
+                        material_demands[texture].insert(key);
                         asset_availability.observe(texture);
                     }
                 }
@@ -532,86 +530,9 @@ namespace lux::scene
                 entry.material = created.material;
                 entry.program_hash = programHash(cooked->programs);
                 entry.snapshot = {};
-                pending_materials.erase(key);
+                finishMaterial(key, entry);
             }
             co_return;
-        }
-
-        std::vector<RasterGeometryInput> prepareGeometryInputs(bool include_replacements) noexcept
-        {
-            std::vector<RasterGeometryInput> geometry;
-            std::unordered_multimap<std::uint64_t, std::size_t> group_indices;
-            std::vector<const rdesc::MaterialProgramSet*> group_programs;
-            std::vector<const MeshBinding*> bindings;
-            for (const auto& [entity, entry] : meshes)
-            {
-                if (!entry.present || entry.instance.isNull())
-                {
-                    continue;
-                }
-                bindings.push_back(&entry.binding);
-                RenderError failure;
-                if (include_replacements && entry.replacement && bindingReady(*entry.replacement, failure))
-                {
-                    bindings.push_back(&*entry.replacement);
-                }
-            }
-            for (const auto* binding : bindings)
-            {
-                const auto& mesh = *assets.mesh(assetKey(binding->visual.mesh, binding->revision));
-                const auto& material = materials.find(assetKey(binding->visual.material, binding->revision))->second;
-                const auto& program = assets.material(assetKey(binding->visual.material, binding->revision))->programs;
-                const auto bucket = material.program_hash ^ mesh.mesh.hash();
-                const auto [first, last] = group_indices.equal_range(bucket);
-                auto found = first;
-                for (; found != last; ++found)
-                {
-                    const auto& group = geometry[found->second];
-                    if (group.selection.mesh == mesh.mesh &&
-                        (group_programs[found->second] == &program || *group_programs[found->second] == program))
-                    {
-                        break;
-                    }
-                }
-                if (found != last)
-                {
-                    auto& group = geometry[found->second];
-                    const RasterGeometrySelection candidate{mesh.mesh, material.material};
-                    if (!(candidate < group.selection))
-                    {
-                        continue;
-                    }
-                    // Deterministic table representative; instance iteration order is not a recipe change.
-                    group.selection = candidate;
-                    group.textures.clear();
-                    for (const auto texture : material.textures)
-                    {
-                        const auto* value = texture.asset.isNull() ? nullptr : assets.texture(texture);
-                        group.textures.push_back(
-                            value ? value->description : ImageShape{1, 1, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}
-                        );
-                    }
-                    continue;
-                }
-                group_indices.emplace(bucket, geometry.size());
-                group_programs.push_back(&program);
-                RasterGeometryInput group{mesh.geometry, program, {mesh.mesh, material.material}};
-                // Keep the raster recipe's canonical winding. Camera projection is not an additional
-                // source-mesh winding conversion; mirrored instance transforms are handled by the Mesh Feature.
-                for (const auto texture : material.textures)
-                {
-                    const auto* value = texture.asset.isNull() ? nullptr : assets.texture(texture);
-                    group.textures.push_back(
-                        value ? value->description : ImageShape{1, 1, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}
-                    );
-                }
-                geometry.push_back(std::move(group));
-            }
-            std::ranges::sort(
-                geometry,
-                [](const auto& left, const auto& right) noexcept { return left.selection < right.selection; }
-            );
-            return std::move(geometry);
         }
 
         const CameraTarget* cameraTarget(Entity camera, CameraTargetId id) const noexcept
@@ -642,6 +563,10 @@ namespace lux::scene
             if (!available)
             {
                 return cxx::unexpected(RenderError{kCommandContract});
+            }
+            if (!camera_input_enabled && !effect_input_producer)
+            {
+                return CameraInput{};
             }
             const auto& definition = registry.get<Camera>(camera);
             auto prepared = detail::prepareSceneCamera(definition, registry.get<WorldTransform3D>(camera).value);
@@ -715,24 +640,6 @@ namespace lux::scene
             }
         }
 
-        std::vector<SceneLightInput> collectLightInputs() const noexcept
-        {
-            std::vector<SceneLightInput> result;
-            for (const auto& [bits, entry] : lights)
-            {
-                const auto* source = registry.try_get<const Light3D>(static_cast<Entity>(bits));
-                if (entry.present && !entry.light.isNull() && source)
-                {
-                    result.push_back({entry.light, source->value});
-                }
-            }
-            std::ranges::sort(
-                result,
-                [](const auto& left, const auto& right) noexcept { return left.light < right.light; }
-            );
-            return result;
-        }
-
         exec::task<RenderResult<void>> releaseEffect(RenderViewBinding& binding) noexcept
         {
             if (!binding.effect.isNull())
@@ -797,6 +704,40 @@ namespace lux::scene
             co_return RenderResult<void>{};
         }
 
+        detail::SceneEffectInputs prepareEffectInputs(bool include_replacements) noexcept
+        {
+            if (!effect_input_producer)
+            {
+                return {};
+            }
+            auto inputs = detail::prepareSceneEffectInputs(
+                meshes,
+                materials,
+                lights,
+                registry,
+                assets,
+                assets_input.source,
+                effect_input_capacity,
+                include_replacements
+            );
+            std::vector<RasterGeometrySelection> selection;
+            selection.reserve(inputs.geometry.size());
+            for (const auto& group : inputs.geometry)
+            {
+                selection.push_back(group.selection);
+            }
+            const bool changed_input = effect_geometry != selection || effect_lights != inputs.lights ||
+                                       effect_input_capacity != inputs.capacity;
+            if (changed_input)
+            {
+                effect_geometry = std::move(selection);
+                effect_lights = inputs.lights;
+                effect_input_capacity = inputs.capacity;
+                ++effect_input_revision;
+            }
+            return inputs;
+        }
+
         exec::task<RenderResult<void>> synchronizeViews(
             bool include_replacements = false,
             bool* inputs_adopted = nullptr,
@@ -804,27 +745,7 @@ namespace lux::scene
         ) noexcept
         {
             const auto accepted_topology = topology_revision;
-            auto groups = prepareGeometryInputs(include_replacements);
-            std::vector<RasterGeometrySelection> selection;
-            selection.reserve(groups.size());
-            for (const auto& group : groups)
-            {
-                selection.push_back(group.selection);
-            }
-            const auto capacity = std::max(
-                effect_input_capacity,
-                std::bit_ceil(std::max<std::uint32_t>(128, static_cast<std::uint32_t>(meshes.size())))
-            );
-            const auto light_descriptions = collectLightInputs();
-            const bool changed_input = effect_geometry != selection || effect_lights != light_descriptions ||
-                                       effect_input_capacity != capacity;
-            if (changed_input)
-            {
-                effect_geometry = std::move(selection);
-                effect_lights = light_descriptions;
-                effect_input_capacity = capacity;
-                ++effect_input_revision;
-            }
+            const auto inputs = prepareEffectInputs(include_replacements);
             const auto accepted_input_revision = effect_input_revision;
             std::vector<std::pair<Entity, CameraTarget>> accepted;
             const auto accept = [&](Entity camera, const RenderViewBinding& binding) noexcept
@@ -877,7 +798,8 @@ namespace lux::scene
                     *binding = RenderViewBinding{.id = id, .error = parameters.error()};
                     continue;
                 }
-                const auto key = detail::cameraGraphInputs(registry.get<Camera>(camera), input);
+                const auto key =
+                    detail::cameraGraphInputs(registry.get<Camera>(camera), input, effect_input_producer != nullptr);
                 const bool same_inputs = !binding->attachment.isNull() && binding->graph_inputs == key &&
                                          binding->input_revision == accepted_input_revision;
                 if (same_inputs)
@@ -909,14 +831,8 @@ namespace lux::scene
                     binding->view = result.view;
                 }
                 const auto accepted_view = binding->view;
-                auto data = geometry_input_enabled ? ConfigValue::make(LitSceneInputs{
-                                                         groups,
-                                                         light_descriptions,
-                                                         capacity,
-                                                         parameters->near_distance,
-                                                         parameters->far_distance
-                                                     })
-                                                   : RenderResult<ConfigValue>{ConfigValue{}};
+                auto data = effect_input_producer ? effect_input_producer(inputs, *parameters)
+                                                  : RenderResult<ConfigValue>{ConfigValue{}};
                 if (!data)
                 {
                     co_return cxx::unexpected(data.error());
@@ -935,7 +851,9 @@ namespace lux::scene
                 auto latest_parameters = cameraParameters(camera, input);
                 const bool valid_camera = registry.valid(camera) && registry.all_of<Camera>(camera);
                 const bool changed_graph_inputs =
-                    !valid_camera || detail::cameraGraphInputs(registry.get<Camera>(camera), input) != key;
+                    !valid_camera ||
+                    detail::cameraGraphInputs(registry.get<Camera>(camera), input, effect_input_producer != nullptr) !=
+                        key;
                 const bool stale = !current || current->revision != input.revision || !binding || !latest_parameters ||
                                    binding->view != accepted_view || accepted_topology != topology_revision ||
                                    changed_graph_inputs || closing;
@@ -962,10 +880,11 @@ namespace lux::scene
                 auto adopted_parameters = cameraParameters(camera, input);
                 const bool still_available =
                     current && binding && registry.valid(camera) && registry.all_of<Camera>(camera);
-                const bool obsolete = !still_available || !adopted_parameters || closing ||
-                                      binding->view != accepted_view || current->revision != input.revision ||
-                                      accepted_topology != topology_revision ||
-                                      detail::cameraGraphInputs(registry.get<Camera>(camera), input) != key;
+                const bool obsolete =
+                    !still_available || !adopted_parameters || closing || binding->view != accepted_view ||
+                    current->revision != input.revision || accepted_topology != topology_revision ||
+                    detail::cameraGraphInputs(registry.get<Camera>(camera), input, effect_input_producer != nullptr) !=
+                        key;
                 if (adopted.error.type != 0 || obsolete)
                 {
                     retiring_views.push_back({camera, RenderViewBinding{.id = input.id, .effect = compiled.effect}});
@@ -1021,7 +940,8 @@ namespace lux::scene
 
         exec::task<RenderResult<void>> synchronizeStructure(
             std::vector<InstanceInput> inputs,
-            std::vector<LightInput> light_inputs
+            std::vector<LightInput> light_inputs,
+            bool structure_changed
         ) noexcept
         {
             if (closing)
@@ -1030,38 +950,41 @@ namespace lux::scene
             }
             bool changed = rebuild_requested;
             bool previous_inputs_removed = false;
-            for (auto& [entity, entry] : meshes)
+            if (structure_changed)
             {
-                if (entry.present || entry.instance.isNull())
+                for (auto& [entity, entry] : meshes)
                 {
-                    continue;
-                }
-                auto removed = co_await request<ReleaseMeshInstance>(client, entry.instance);
-                if (removed.error.type != 0)
-                {
-                    co_return cxx::unexpected(removed.error);
-                }
-                entry.instance = {};
-                changed = true;
-            }
-            for (auto entry = lights.begin(); entry != lights.end();)
-            {
-                if (entry->second.present)
-                {
-                    ++entry;
-                    continue;
-                }
-                if (!entry->second.light.isNull())
-                {
-                    RemoveDirectLight::Request remove{entry->second.light};
-                    auto removed = co_await request<RemoveDirectLight>(client, remove);
+                    if (entry.present || entry.instance.isNull())
+                    {
+                        continue;
+                    }
+                    auto removed = co_await request<ReleaseMeshInstance>(client, entry.instance);
                     if (removed.error.type != 0)
                     {
                         co_return cxx::unexpected(removed.error);
                     }
+                    entry.instance = {};
+                    changed = true;
                 }
-                entry = lights.erase(entry);
-                changed = true;
+                for (auto entry = lights.begin(); entry != lights.end();)
+                {
+                    if (entry->second.present)
+                    {
+                        ++entry;
+                        continue;
+                    }
+                    if (!entry->second.light.isNull())
+                    {
+                        RemoveDirectLight::Request remove{entry->second.light};
+                        auto removed = co_await request<RemoveDirectLight>(client, remove);
+                        if (removed.error.type != 0)
+                        {
+                            co_return cxx::unexpected(removed.error);
+                        }
+                    }
+                    entry = lights.erase(entry);
+                    changed = true;
+                }
             }
             if (!light_inputs.empty())
             {
@@ -1097,12 +1020,12 @@ namespace lux::scene
                     continue;
                 }
                 const auto& binding = entry.replacement ? *entry.replacement : entry.binding;
-                if (!bindingReady(binding, entry.error))
+                if (!detail::bindingReady(binding, assets, materials, assets_input.source, entry.error))
                 {
                     if (entry.error.type != 0)
                     {
                         // Failed candidates remain diagnosable; a new author/asset revision retries them.
-                        pending_instances.erase(input.entity);
+                        finishBinding(input.entity, binding);
                     }
                     continue;
                 }
@@ -1130,7 +1053,8 @@ namespace lux::scene
                     for (const auto entity : entities)
                     {
                         meshes.find(entity)->second.error = created.error;
-                        pending_instances.erase(entity);
+                        const auto& entry = meshes.find(entity)->second;
+                        finishBinding(entity, entry.replacement ? *entry.replacement : entry.binding);
                     }
                     reportRenderFailure(created.error, "Create Scene instance candidates");
                 }
@@ -1140,6 +1064,7 @@ namespace lux::scene
                     {
                         auto& entry = meshes.find(entities[i])->second;
                         entry.instance = created.instances[i];
+                        finishBinding(entities[i], entry.replacement ? *entry.replacement : entry.binding);
                         if (entry.replacement)
                         {
                             releaseBinding(entry.binding);
@@ -1147,7 +1072,6 @@ namespace lux::scene
                             entry.replacement.reset();
                         }
                         new_instances.push_back(entities[i]);
-                        pending_instances.erase(entities[i]);
                     }
                 }
                 changed = true;
@@ -1177,10 +1101,10 @@ namespace lux::scene
                         for (const auto entity : replacement_entities)
                         {
                             auto& entry = meshes.find(entity)->second;
+                            finishBinding(entity, *entry.replacement);
                             entry.previous = std::move(entry.binding);
                             entry.binding = std::move(*entry.replacement);
                             entry.replacement.reset();
-                            pending_instances.erase(entity);
                             new_instances.push_back(entity);
                         }
                         auto pruned = co_await synchronizeViews(false, &previous_inputs_removed);
@@ -1194,11 +1118,16 @@ namespace lux::scene
                         for (const auto entity : replacement_entities)
                         {
                             meshes.find(entity)->second.error = result.error;
-                            pending_instances.erase(entity);
+                            auto& entry = meshes.find(entity)->second;
+                            finishBinding(entity, *entry.replacement);
                         }
                         reportRenderFailure(result.error, "Adopt Scene instance candidates");
                     }
                 }
+            }
+            if (!structure_changed && !changed && replacements.empty())
+            {
+                co_return RenderResult<void>{};
             }
             rebuild_requested |= std::ranges::any_of(
                                      meshes,
@@ -1227,7 +1156,10 @@ namespace lux::scene
                 {
                     releaseBinding(*entry->second.replacement);
                 }
-                pending_instances.erase(entry->first);
+                finishBinding(
+                    entry->first,
+                    entry->second.replacement ? *entry->second.replacement : entry->second.binding
+                );
                 entry = meshes.erase(entry);
             }
             for (auto entry = materials.begin(); entry != materials.end();)
@@ -1253,7 +1185,7 @@ namespace lux::scene
                     }
                 }
                 assets.releaseMaterial(entry->first);
-                pending_materials.erase(entry->first);
+                finishMaterial(entry->first, entry->second);
                 entry = materials.erase(entry);
             }
             co_return RenderResult<void>{};
@@ -1349,6 +1281,12 @@ namespace lux::scene
             }
             pending_instances.clear();
             pending_materials.clear();
+            ready_instances.clear();
+            ready_materials.clear();
+            blocked_materials.clear();
+            completed_assets.clear();
+            instance_demands.clear();
+            material_demands.clear();
             lights.clear();
             co_return RenderResult<void>{};
         }
@@ -1437,7 +1375,7 @@ namespace lux::scene
                 structure.clear();
                 return false;
             }
-            if (asset_capacity_blocked && !assets_changed)
+            if (asset_capacity_blocked)
             {
                 return false;
             }
@@ -1493,6 +1431,7 @@ namespace lux::scene
                 else
                 {
                     auto& entry = current->second;
+                    finishBinding(bits, entry.replacement ? *entry.replacement : entry.binding);
                     if (entry.replacement)
                     {
                         releaseBinding(*entry.replacement);
@@ -1500,7 +1439,8 @@ namespace lux::scene
                     entry.replacement = std::move(candidate);
                     entry.error = {};
                 }
-                pending_instances.insert(bits);
+                const auto& entry = meshes.find(bits)->second;
+                awaitBinding(bits, entry.replacement ? *entry.replacement : entry.binding);
                 changed = true;
                 processed.push_back(entity);
             }
@@ -1578,7 +1518,11 @@ namespace lux::scene
                     {
                         continue;
                     }
-                    const auto key = detail::cameraGraphInputs(registry.get<Camera>(camera), *target);
+                    const auto key = detail::cameraGraphInputs(
+                        registry.get<Camera>(camera),
+                        *target,
+                        effect_input_producer != nullptr
+                    );
                     if (binding.graph_inputs != key || binding.attachment.isNull())
                     {
                         return true;
@@ -1598,7 +1542,7 @@ namespace lux::scene
                     continue;
                 }
                 const bool available = registry.all_of<Camera, WorldTransform3D>(camera);
-                auto prepared = available
+                auto prepared = available && camera_input_enabled
                                     ? detail::prepareSceneCamera(
                                           registry.get<Camera>(camera),
                                           registry.get<WorldTransform3D>(camera).value
@@ -1611,9 +1555,11 @@ namespace lux::scene
                     {
                         continue;
                     }
-                    const bool graph_inputs_changed =
-                        available &&
-                        detail::cameraGraphInputs(registry.get<Camera>(camera), *input) != binding.graph_inputs;
+                    const bool graph_inputs_changed = available && detail::cameraGraphInputs(
+                                                                       registry.get<Camera>(camera),
+                                                                       *input,
+                                                                       effect_input_producer != nullptr
+                                                                   ) != binding.graph_inputs;
                     if (graph_inputs_changed)
                     {
                         continue; // Keep the complete last-good parameter set until its replacement recipe adopts.
@@ -1621,7 +1567,8 @@ namespace lux::scene
                     const bool same_output = binding.adopted.target == input->target &&
                                              sameTargetLayout(binding.adopted.description, input->description);
                     const auto& requested = same_output ? *input : binding.adopted;
-                    auto candidate = prepared
+                    auto candidate = !camera_input_enabled ? RenderResult<CameraInput>{CameraInput{}}
+                                     : prepared
                                          ? detail::sceneParameters(registry.get<Camera>(camera), *prepared, requested)
                                          : RenderResult<CameraInput>{cxx::unexpected(prepared.error())};
                     if (!candidate)
@@ -1653,16 +1600,14 @@ namespace lux::scene
               asset_availability(
                   assets,
                   this,
-                  [](void* value, RenderAssetVersion) noexcept
-                  {
-                      // Delivery comes only from a version this Scene explicitly observed.
-                      static_cast<Impl*>(value)->assets_changed = true;
-                  },
+                  [](void* value, RenderAssetVersion version) noexcept
+                  { static_cast<Impl*>(value)->completed_assets.insert(version); },
                   [](void* value) noexcept
                   {
                       auto& system = *static_cast<Impl*>(value);
                       system.asset_capacity_blocked = false;
-                      system.assets_changed = true;
+                      system.ready_materials.insert(system.blocked_materials.begin(), system.blocked_materials.end());
+                      system.blocked_materials.clear();
                   }
               ),
               source(dependencies.source), configuration(std::move(selected)),
@@ -1700,19 +1645,6 @@ namespace lux::scene
             {
                 cameraChanged(registry, camera);
             }
-            auto transforms_command = dependencies.client.bind<UpdateTransforms>();
-            auto lighting_command = dependencies.client.bind<UpdateDirectLights>();
-            auto inputs_command = dependencies.client.bind<UpdateAttachmentInputs>();
-            auto active_command = dependencies.client.bind<SetTargetActive>();
-            if (!transforms_command || !lighting_command || !inputs_command || !active_command)
-            {
-                error = RenderError{kRuntimeUnsupported};
-                return;
-            }
-            transforms = *transforms_command;
-            lighting = *lighting_command;
-            attachment_inputs = *inputs_command;
-            target_active = *active_command;
         }
 
         ~Impl() noexcept
@@ -1804,7 +1736,10 @@ namespace lux::scene
         std::unordered_set<std::uint64_t> pending_instances;
         std::unordered_map<std::uint64_t, LightEntry> lights;
         std::map<RenderAssetVersion, MaterialEntry> materials;
-        std::set<RenderAssetVersion> pending_materials;
+        std::set<RenderAssetVersion> pending_materials, ready_materials, blocked_materials, completed_assets;
+        std::unordered_set<std::uint64_t> ready_instances;
+        std::map<RenderAssetVersion, std::unordered_set<std::uint64_t>> instance_demands;
+        std::map<RenderAssetVersion, std::set<RenderAssetVersion>> material_demands;
         SceneId scene;
         std::vector<detail::RetiringView> retiring_views;
         std::uint64_t next_camera_target = 0, camera_revision = 0;
@@ -1817,7 +1752,8 @@ namespace lux::scene
         std::uint32_t effect_input_capacity = 128;
         std::uint64_t effect_input_revision = 0;
         bool material_input_enabled = false, instance_input_enabled = false, light_input_enabled = false;
-        bool geometry_input_enabled = false, camera_input_enabled = false;
+        detail::EffectInputProducer effect_input_producer = nullptr;
+        bool camera_input_enabled = false;
         RenderError error;
         bool initialized = false, transaction_pending = false, retirement_pending = false, closing = false;
         std::optional<std::pair<Entity, CameraTargetId>> changing_camera_target, retiring_camera_target;
@@ -1836,7 +1772,7 @@ namespace lux::scene
         std::optional<BoundCommand<UpdateAttachmentInputs>> attachment_inputs;
         std::optional<BoundCommand<SetTargetActive>> target_active;
         std::uint64_t sequence = 0, resynchronization = 0;
-        bool assets_changed{}, asset_capacity_blocked{};
+        bool asset_capacity_blocked{};
         std::uint64_t asset_revision = 0;
         std::uint64_t topology_revision = 0, observed_topology = UINT64_MAX;
         entt::scoped_connection mesh_added, mesh_updated, mesh_removed, pose_added, pose_updated, pose_removed;
@@ -2048,11 +1984,12 @@ namespace lux::scene
             return failure(light_changes.error());
         }
         changed |= *light_changes;
-        changed |= std::exchange(self.assets_changed, false);
-        if (changed)
+        self.applyAssetCompletions();
+        if (changed || !self.ready_instances.empty() || !self.ready_materials.empty())
         {
             std::vector<InstanceInput> inputs;
-            for (const auto bits : self.pending_instances)
+            const auto ready_instances = std::exchange(self.ready_instances, {});
+            for (const auto bits : ready_instances)
             {
                 const auto& entry = self.meshes.find(bits)->second;
                 if (!entry.present || (!entry.instance.isNull() && !entry.replacement))
@@ -2068,8 +2005,11 @@ namespace lux::scene
                     inputs.push_back(value);
                 }
             }
-            self.view_changes.clear();
-            self.startTransaction(self.synchronizeStructure(std::move(inputs), std::move(light_inputs)));
+            if (changed)
+            {
+                self.view_changes.clear();
+            }
+            self.startTransaction(self.synchronizeStructure(std::move(inputs), std::move(light_inputs), changed));
         }
         else if (changed_views)
         {

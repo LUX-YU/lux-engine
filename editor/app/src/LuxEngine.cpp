@@ -158,7 +158,7 @@ namespace lux::editor
             {
                 return cxx::unexpected(render::RenderError{render::kRuntimeState});
             }
-            auto assets = rendering::RenderAssets::create(**rendering, (*source)->port());
+            auto assets = rendering::RenderAssets::create(**rendering, (*source)->port(), config.asset_capability);
             if (!assets)
             {
                 return cxx::unexpected(assets.error());

@@ -112,7 +112,6 @@ namespace lux::render::detail
             result.configuration.schema = "lux.render.config.ui";
             result.configuration.use = ERenderPayloadUse::CONFIGURATION;
             result.configuration.lifetime = ERenderPayloadLifetime::MOVED_VALUE;
-            result.configuration.changes_graph = true;
             result.configuration.setCppType(cxx::typeToken<UiConfiguration>());
             const UiConfiguration defaults;
             serialization::BinaryWriter writer(result.default_configuration);
@@ -130,7 +129,6 @@ namespace lux::render::detail
             images.schema = "lux.render.input.ui_images";
             images.use = ERenderPayloadUse::EFFECT_INPUT;
             images.lifetime = ERenderPayloadLifetime::MOVED_VALUE;
-            images.changes_graph = true;
             images.setCppType(cxx::typeToken<UiSceneInputs>());
             capability.inputs.push_back(std::move(images));
             RenderPayloadContract geometry;

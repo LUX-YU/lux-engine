@@ -451,7 +451,6 @@ namespace lux::render::detail
             result.schema = schema;
             result.use = use;
             result.lifetime = ERenderPayloadLifetime::MOVED_VALUE;
-            result.changes_graph = use == ERenderPayloadUse::EFFECT_INPUT || use == ERenderPayloadUse::CONFIGURATION;
             result.description = description;
             result.setCppType(cxx::typeToken<T>());
             return result;

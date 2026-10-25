@@ -32,7 +32,6 @@ namespace lux::render
         ERenderPayloadUse use = ERenderPayloadUse::RESOURCE_INPUT;
         ERenderPayloadLifetime lifetime = ERenderPayloadLifetime::UNTIL_RESPONSE;
         bool required = true;
-        bool changes_graph = false;
         std::string description;
 
         void setCppType(cxx::TypeToken type) noexcept

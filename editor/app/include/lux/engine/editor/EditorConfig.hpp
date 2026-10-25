@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <lux/engine/core/execution/ExecutionConfig.hpp>
 #include <lux/engine/editor/EditorLayout.hpp>
+#include <lux/engine/render/capabilities/RenderCapability.hpp>
 
 namespace lux::editor
 {
@@ -23,6 +24,8 @@ namespace lux::editor
         std::vector<ProjectPluginLocation> plugin_locations;
         // One application's shared CPU pool and bounded blocking IO resource. No subsystem creates a second pool.
         execution::ExecutionRuntimeConfig execution{2, 512, {256}, execution::BlockingSchedulerConfig{2, 128}};
+        // Product defaults are explicit choices; RenderAssets itself has no built-in implementation name.
+        render::CapabilityQuery asset_capability{"lux.render.capability.raster_assets", 1, "lux.render.assets.raster"};
         bool enable_validation{false}; // Development diagnostics, independent of display pacing.
         // A running editor always owns a loaded project. Empty is invalid for LuxEngine::create.
         std::filesystem::path project_file;

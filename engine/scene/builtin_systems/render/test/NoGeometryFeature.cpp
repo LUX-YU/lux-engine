@@ -1,12 +1,65 @@
 // Extension-author composition TU. The ordinary Scene consumer does not include author interfaces.
+#include <lux/engine/render/capabilities/RasterAssets.hpp>
 #include <lux/engine/render/capabilities/RenderCapability.hpp>
 #include <lux/engine/render/extensions/FeatureRegistration.hpp>
 #include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
+#include <lux/engine/render/extensions/storage/IndexedTriangleMesh.hpp>
+#include <lux/engine/render/extensions/storage/SampledTexture2D.hpp>
 
 namespace
 {
     using namespace lux;
     using namespace render;
+
+    // An author composition can select the existing installed resource providers without
+    // changing RenderAssets, duplicating their factories or exposing them to its callers.
+    struct AlternateAssets final
+    {
+        static constexpr FeatureName name{"test.scene.assets"};
+        using Config = void;
+        using Storages = std::tuple<>;
+        using Commands = std::tuple<>;
+
+        static const FeatureGraphOps& graph(bool) noexcept
+        {
+            static const std::array inputs{
+                CapabilityStorageInput{kIndexedMeshInput, 1, ECapabilityInputScope::GLOBAL, kMeshStorageType, "assets"},
+                CapabilityStorageInput{
+                    kSampledTextureInput,
+                    1,
+                    ECapabilityInputScope::GLOBAL,
+                    kTextureStorageType,
+                    "assets"
+                }
+            };
+            static const FeatureGraphOps operations{.storage_inputs = inputs};
+            return operations;
+        }
+
+        static const CapabilitySupport& capabilities() noexcept
+        {
+            static const CapabilitySupport support = []
+            {
+                CapabilitySupport result;
+                result.implementation = name.name();
+                RenderCapability capability;
+                capability.name = "test.scene.asset_source";
+                RenderPayloadContract mesh;
+                mesh.schema = kIndexedMeshInput;
+                mesh.use = ERenderPayloadUse::RESOURCE_INPUT;
+                mesh.lifetime = ERenderPayloadLifetime::UNTIL_RESPONSE;
+                mesh.setCppType(cxx::typeToken<MeshWrite>());
+                auto texture = mesh;
+                texture.schema = kSampledTextureInput;
+                texture.setCppType(cxx::typeToken<TextureWrite>());
+                capability.inputs = {mesh, texture};
+                capability.outputs = {"mesh", "texture"};
+                result.capabilities.push_back(std::move(capability));
+                return result;
+            }();
+            return support;
+        }
+    };
 
     template <bool Alternate> struct NoGeometryFeature final
     {
@@ -70,6 +123,11 @@ namespace
 
 lux::render::RenderResult<void> registerNoGeometryCapabilities(void*, lux::render::RenderServer& server) noexcept
 {
+    auto assets = server.registerFeature<AlternateAssets>();
+    if (!assets)
+    {
+        return lux::cxx::unexpected(assets.error());
+    }
     auto first = server.registerFeature<NoGeometryFeature<false>>();
     if (!first)
     {

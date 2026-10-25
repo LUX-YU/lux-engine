@@ -12,6 +12,7 @@ add_component(
     SOURCE_FILES
         src/RenderSystem.cpp
         src/SceneCamera.cpp
+        src/SceneRenderInputs.cpp
         src/RenderSystemConfiguration.cpp
 )
 

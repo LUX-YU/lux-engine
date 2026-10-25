@@ -130,13 +130,6 @@ namespace lux::render
         std::vector<CapabilitySupport> implementations;
     };
 
-    struct CapabilityInstallation final
-    {
-        CapabilitySelection selection;
-        VRenderScope scope;
-        VCapabilityConfiguration configuration;
-    };
-
     struct CapabilitiesInstalled final
     {
         struct Input final
@@ -149,4 +142,15 @@ namespace lux::render
         RenderError error;
         std::vector<Input> inputs;
     };
+
+    struct CapabilityInstallation final
+    {
+        CapabilitySelection selection;
+        VRenderScope scope;
+        VCapabilityConfiguration configuration;
+        // Already installed producers used by this consumer. Render checks actual dependency compatibility
+        // before publication. Unconsumed schemas are ignored; physical Storage identities remain private.
+        std::vector<CapabilitiesInstalled::Input> source_inputs;
+    };
+
 } // namespace lux::render

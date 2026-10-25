@@ -1,6 +1,8 @@
-#include <lux/engine/scene/render/RasterAssetPipelines.hpp>
-#include <lux/engine/scene/SceneRenderInputs.hpp>
 #include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/scene/SceneRenderInputs.hpp>
+#include <lux/engine/scene/render/DirectLightValues.hpp>
+#include <lux/engine/scene/render/LightRenderResourceComponent.hpp>
+#include <lux/engine/scene/render/RasterAssetPipelines.hpp>
 
 #include <bit>
 
@@ -20,41 +22,6 @@ namespace lux::scene::detail
             }
         }
         return hash;
-    }
-
-    RenderResult<VDirectLight> lightValue(const rdesc::LightDescription& light, const Eigen::Affine3d& world) noexcept
-    {
-        const auto position = world.translation().cast<float>().eval();
-        const auto direction = (-world.linear().col(2)).normalized().cast<float>().eval();
-        const std::array<float, 4> radiance{
-            light.color[0] * light.intensity,
-            light.color[1] * light.intensity,
-            light.color[2] * light.intensity,
-            0
-        };
-        switch (light.type)
-        {
-        case rdesc::ELightType::DIRECTIONAL:
-            return VDirectLight{DirectionalLightGpu{radiance, {direction.x(), direction.y(), direction.z(), 0}}};
-        case rdesc::ELightType::POINT:
-            return VDirectLight{PointLightGpu{
-                {position.x(), position.y(), position.z(), light.range},
-                radiance,
-                {light.attenuation_constant, light.attenuation_linear, light.attenuation_quadratic, 0}
-            }};
-        case rdesc::ELightType::SPOT:
-            return VDirectLight{SpotLightGpu{
-                {position.x(), position.y(), position.z(), light.range},
-                radiance,
-                {direction.x(), direction.y(), direction.z(), std::cos(light.outer_cone_angle)},
-                {light.attenuation_constant,
-                 light.attenuation_linear,
-                 light.attenuation_quadratic,
-                 std::cos(light.inner_cone_angle)}
-            }};
-        default:
-            return cxx::unexpected(RenderError{kRuntimeUnsupported});
-        }
     }
 
     bool bindingReady(
@@ -107,7 +74,8 @@ namespace lux::scene::detail
         {
             const auto& mesh = *assets.ready<MeshAssetPipeline>(assetKey(binding->visual.mesh, binding->revision));
             const auto& material = materials.find(assetKey(binding->visual.material, binding->revision))->second;
-            const auto& program = cookedMaterial(assets, assetKey(binding->visual.material, binding->revision))->programs;
+            const auto& program =
+                cookedMaterial(assets, assetKey(binding->visual.material, binding->revision))->programs;
             const auto bucket = material.program_hash ^ mesh.mesh.hash();
             const auto [first, last] = group_indices.equal_range(bucket);
             auto found = first;
@@ -161,19 +129,15 @@ namespace lux::scene::detail
         return geometry;
     }
 
-    static std::vector<SceneLightInput> collectLightInputs(
-        const SceneLights& lights,
-        const simulation::ecs::Registry& registry
-    ) noexcept
+    static std::vector<SceneLightInput> collectLightInputs(const simulation::ecs::Registry& registry) noexcept
     {
         std::vector<SceneLightInput> result;
-        for (const auto& [bits, entry] : lights)
+        for (const auto entity : registry.view<const detail::LightRenderResourceComponent>())
         {
-            const auto* source =
-                registry.try_get<const simulation::ecs::Light3D>(static_cast<simulation::ecs::Entity>(bits));
-            if (entry.present && !entry.light.isNull() && source)
+            const auto& resource = registry.get<const detail::LightRenderResourceComponent>(entity);
+            if (resource.shadows.enabled)
             {
-                result.push_back({entry.light, source->value});
+                result.push_back({resource.light, detail::compiledLightDescription(resource)});
             }
         }
         std::ranges::sort(
@@ -186,7 +150,6 @@ namespace lux::scene::detail
     SceneEffectInputs prepareSceneEffectInputs(
         const SceneMeshes& meshes,
         const SceneMaterials& materials,
-        const SceneLights& lights,
         const simulation::ecs::Registry& registry,
         const engine::render::RenderAssets& assets,
         std::uint64_t source,
@@ -196,7 +159,7 @@ namespace lux::scene::detail
     {
         return {
             prepareGeometryInputs(meshes, materials, assets, source, include_replacements),
-            collectLightInputs(lights, registry),
+            collectLightInputs(registry),
             std::max(previous_capacity, std::bit_ceil(std::max<std::uint32_t>(128, std::uint32_t(meshes.size()))))
         };
     }

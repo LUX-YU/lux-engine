@@ -1,10 +1,10 @@
 #pragma once
 
-#include <lux/engine/render/capabilities/LitScene.hpp>
-#include <lux/engine/context/render/RenderAssets.hpp>
-#include <lux/engine/simulation/ecs/Visual.hpp>
-#include <lux/engine/simulation/ecs/Registry.hpp>
 #include <Eigen/Geometry>
+#include <lux/engine/context/render/RenderAssets.hpp>
+#include <lux/engine/render/capabilities/LitScene.hpp>
+#include <lux/engine/simulation/ecs/Registry.hpp>
+#include <lux/engine/simulation/ecs/Visual.hpp>
 
 #include <map>
 #include <unordered_map>
@@ -47,22 +47,8 @@ namespace lux::scene::detail
         MeshInstanceDescription description;
     };
 
-    struct LightEntry final
-    {
-        LightId light;
-        rdesc::ELightType type = rdesc::ELightType::POINT;
-        bool present = true;
-    };
-
-    struct LightInput final
-    {
-        std::uint64_t entity;
-        VDirectLight value;
-    };
-
     using SceneMaterials = std::map<RenderAssetVersion, MaterialEntry>;
     using SceneMeshes = std::unordered_map<std::uint64_t, MeshEntry>;
-    using SceneLights = std::unordered_map<std::uint64_t, LightEntry>;
 
     // Owned cold data, rebuilt only after geometry/light structure changes. No Scene or GPU owner.
     struct SceneEffectInputs final
@@ -75,8 +61,6 @@ namespace lux::scene::detail
     using EffectInputProducer = RenderResult<ConfigValue> (*)(const SceneEffectInputs&, const CameraInput&) noexcept;
 
     [[nodiscard]] std::uint64_t programHash(const rdesc::MaterialProgramSet&) noexcept;
-    [[nodiscard]] RenderResult<VDirectLight>
-    lightValue(const rdesc::LightDescription&, const Eigen::Affine3d&) noexcept;
     [[nodiscard]] bool bindingReady(
         const MeshBinding&,
         const engine::render::RenderAssets&,
@@ -87,7 +71,6 @@ namespace lux::scene::detail
     [[nodiscard]] SceneEffectInputs prepareSceneEffectInputs(
         const SceneMeshes&,
         const SceneMaterials&,
-        const SceneLights&,
         const simulation::ecs::Registry&,
         const engine::render::RenderAssets&,
         std::uint64_t source,

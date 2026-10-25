@@ -1,3 +1,4 @@
+#include <lux/engine/scene/render/BuiltinRenderBindings.hpp>
 #include <lux/engine/scene/render/RasterAssetPipelines.hpp>
 #include "../../../../../modules/function/material/test/MaterialTest.hpp"
 
@@ -267,7 +268,9 @@ int main()
     scene::CameraTarget view_request;
     view_request.description = {64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1};
     view_request.target = call<CreateTarget>(*rendering, {view_request.description}).target;
-    scene::RenderSystemDependencies dependencies{rendering->mainClient(), execution, *assets, inputs};
+    scene::RenderBindingDeclarations bindings;
+    CHECK(scene::registerBuiltinRenderBindings(bindings));
+    scene::RenderSystemDependencies dependencies{rendering->mainClient(), execution, *assets, inputs, bindings};
     simulation::ecs::Registry registry;
     const auto camera = registry.create();
     registry.emplace<scene::Camera>(camera, scene::Camera{{scene::PerspectiveProjection{}}, true});

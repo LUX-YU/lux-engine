@@ -1,5 +1,7 @@
 #include "support/ModelSource.hpp"
 #include "support/ProjectRequests.hpp"
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/editor/ComponentEditors3D.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
@@ -12,12 +14,11 @@
 #include <lux/engine/editor/SceneViewportPane.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/render/capabilities/LitScene.hpp>
-#include <lux/engine/context/render/RenderDiagnostics.hpp>
-#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/render/LightRenderResourceComponent.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
 #include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
@@ -452,6 +453,103 @@ int main(int argc, char** argv)
         return count;
     };
     until([&] { return projected() == 2 && scenes.viewport(*a).ready && scenes.viewport(*b).ready; });
+
+    // Exercise the real Editor Registry -> registered binding -> Render response -> safe adoption path.
+    // The private result type is inspected by this fixture only; no test getter enters production APIs.
+    using LightResource = scene::detail::LightRenderResourceComponent;
+    simulation::ecs::Entity reactive_light = simulation::ecs::NullEntity;
+    auto edit_light = [&](auto edit)
+    { until([&] { return runtime.editInstance(editing_instance, edit).has_value(); }); };
+    auto resource_id = [&]() -> lux::render::LightId
+    {
+        const auto borrowed = std::as_const(runtime).borrowInstance(editing_instance);
+        assert(borrowed);
+        const auto& registry = borrowed->get();
+        const auto* resource =
+            registry.valid(reactive_light) ? registry.try_get<const LightResource>(reactive_light) : nullptr;
+        return resource ? resource->light : lux::render::LightId{};
+    };
+    edit_light(
+        [&](simulation::ecs::Registry& registry) noexcept
+        {
+            reactive_light = registry.create();
+            simulation::ecs::Transform3D transform;
+            transform.translation = {0, 4, 2};
+            registry.emplace<simulation::ecs::Transform3D>(reactive_light, transform);
+            rdesc::LightDescription light;
+        light.cast_shadow = true;
+        registry.emplace<simulation::ecs::Light3D>(reactive_light, light);
+        }
+    );
+    until([&] { return !resource_id().isNull(); });
+    const auto first_light_id = resource_id();
+    edit_light(
+        [&](simulation::ecs::Registry& registry) noexcept
+        {
+            registry.patch<simulation::ecs::Light3D>(
+                reactive_light,
+                [](auto& light) noexcept
+                {
+                    light.value.intensity = 4.F;
+                    light.value.color = {0.8F, 0.6F, 0.4F};
+                }
+            );
+            registry.patch<simulation::ecs::Transform3D>(
+                reactive_light,
+                [](auto& transform) noexcept { transform.translation.x() = 2; }
+            );
+        }
+    );
+    const auto before_light_update = host.rendering().stats().commands;
+    until([&] { return host.rendering().stats().commands > before_light_update + 4; });
+    assert(resource_id() == first_light_id); // Parameter updates must not recreate the resource.
+    edit_light(
+        [&](simulation::ecs::Registry& registry) noexcept
+        {
+            registry.remove<simulation::ecs::Light3D>(reactive_light);
+            registry.emplace<simulation::ecs::Light3D>(reactive_light, rdesc::LightDescription{});
+        }
+    );
+    until(
+        [&]
+        {
+            const auto current = resource_id();
+            return !current.isNull() && current != first_light_id;
+        }
+    );
+    const auto recreated_light_id = resource_id();
+    edit_light(
+        [&](simulation::ecs::Registry& registry) noexcept
+        {
+            registry.patch<simulation::ecs::Light3D>(
+                reactive_light,
+                [](auto& light) noexcept { light.value.type = rdesc::ELightType::SPOT; }
+            );
+        }
+    );
+    until(
+        [&]
+        {
+            const auto current = resource_id();
+            return !current.isNull() && current != recreated_light_id;
+        }
+    );
+    const auto removed_entity = reactive_light;
+    edit_light([&](simulation::ecs::Registry& registry) noexcept { registry.destroy(reactive_light); });
+    assert(resource_id().isNull());
+    edit_light(
+        [&](simulation::ecs::Registry& registry) noexcept
+        {
+            reactive_light = registry.create();
+            assert(reactive_light != removed_entity);
+            registry.emplace<simulation::ecs::Transform3D>(reactive_light);
+            registry.emplace<simulation::ecs::Light3D>(reactive_light, rdesc::LightDescription{});
+        }
+    );
+    until([&] { return !resource_id().isNull(); });
+    assert(host.rendering().stats().validation_errors == 0);
+    // This live relation is deliberately left for the ordinary Scene/Editor close path below.
+
     until(
         [&]
         {
@@ -521,7 +619,8 @@ int main(int argc, char** argv)
             [&]
             {
                 auto clock = std::as_const(runtime).borrowClock(*headless);
-                return clock && std::visit([](const auto& value) { return value.snapshot().step_index > 0; }, clock->get());
+                return clock &&
+                       std::visit([](const auto& value) { return value.snapshot().step_index > 0; }, clock->get());
             }
         );
         bool mutated = false;
@@ -541,7 +640,10 @@ int main(int argc, char** argv)
                     {
                         return;
                     }
-                    registry.patch<simulation::ecs::Transform3D>(entity, [](auto& value) { value.translation.x() = 900; });
+                    registry.patch<simulation::ecs::Transform3D>(
+                        entity,
+                        [](auto& value) { value.translation.x() = 900; }
+                    );
                     mutated = true;
                 };
                 static_cast<void>(runtime.editInstance(*headless, change));

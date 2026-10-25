@@ -1,20 +1,21 @@
-#include <lux/engine/scene/render/RasterAssetPipelines.hpp>
 #include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/render/capabilities/RasterAssets.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderBindingInstance.hpp>
 #include <lux/engine/scene/RenderSystemConfigurationImpl.hpp>
 #include <lux/engine/scene/RenderViewComponent.hpp>
 #include <lux/engine/scene/SceneCamera.hpp>
 #include <lux/engine/scene/SceneRenderInputs.hpp>
+#include <lux/engine/scene/render/RasterAssetPipelines.hpp>
+#include <lux/engine/scene/render/RenderBindingDeclarations.hpp>
 
 #include <exec/task.hpp>
 #include <exec/variant_sender.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/render/inputs/DirectLightInputs.hpp>
 #include <lux/engine/context/render/RenderAssets.hpp>
 #include <lux/engine/context/render/RenderDiagnostics.hpp>
 #include <lux/engine/context/render/RenderRequester.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -213,9 +214,10 @@ namespace lux::scene
                 [this](const auto& value) noexcept
                 { return value.name == configuration.capability && value.version == configuration.capability_version; }
             );
+            selected_inputs = capability->inputs;
             for (const auto& input : capability->inputs)
             {
-                const bool supported = supportsSceneRenderInput(input);
+                const bool supported = declarations.supports(input) || supportsSceneRenderInput(input);
                 if (!supported)
                 {
                     if (input.required)
@@ -226,7 +228,6 @@ namespace lux::scene
                 }
                 material_input_enabled |= input.schema == kRasterMaterialInput;
                 instance_input_enabled |= input.schema == kRasterInstancesInput;
-                light_input_enabled |= input.schema == kDirectLightsInput;
                 if (input.schema == kSceneGeometryInput)
                 {
                     effect_input_producer = &detail::produceLitSceneInputs;
@@ -248,15 +249,6 @@ namespace lux::scene
                     return cxx::unexpected(bound.error());
                 }
                 transforms = *bound;
-            }
-            if (light_input_enabled)
-            {
-                auto bound = client.bind<UpdateDirectLights>();
-                if (!bound)
-                {
-                    return cxx::unexpected(bound.error());
-                }
-                lighting = *bound;
             }
             auto inputs_command = client.bind<UpdateAttachmentInputs>();
             auto active_command = client.bind<SetTargetActive>();
@@ -302,9 +294,7 @@ namespace lux::scene
             CapabilityInstallation install{implementation, scene, configuration.configuration};
             if (instance_input_enabled || material_input_enabled)
             {
-                auto prepared = co_await installRasterAssetPipelines(
-                    assets, assets.resourceCapability()
-                );
+                auto prepared = co_await installRasterAssetPipelines(assets, assets.resourceCapability());
                 if (!prepared)
                 {
                     co_return prepared;
@@ -327,20 +317,85 @@ namespace lux::scene
                 {
                     material_input = input.destination;
                 }
-                else if (input.schema == kDirectLightsInput)
-                {
-                    light_input = input.destination;
-                }
             }
             const bool missing_input = (instance_input_enabled && instance_input.implementation.isNull()) ||
-                                       (material_input_enabled && material_input.implementation.isNull()) ||
-                                       (light_input_enabled && light_input.implementation.isNull());
+                                       (material_input_enabled && material_input.implementation.isNull());
             if (missing_input)
             {
                 co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
             }
+            installed_inputs = installed.inputs;
             initialized = true;
             co_return RenderResult<void>{};
+        }
+
+        RenderResult<void> connectBindings() noexcept
+        {
+            RenderBindingContext context{registry, client, execution, installed_inputs};
+            active_bindings.reserve(declarations.declarations().size());
+            for (const auto& declaration : declarations.declarations())
+            {
+                const bool selected = std::ranges::any_of(
+                    declaration.inputs,
+                    [&](const auto& produced) noexcept
+                    {
+                        return std::ranges::any_of(
+                            selected_inputs,
+                            [&](const auto& required) noexcept
+                            { return RenderBindingDeclarations::matches(produced, required); }
+                        );
+                    }
+                );
+                if (!selected)
+                {
+                    continue;
+                }
+                if (declaration.scope != ERenderOperationScope::SCENE)
+                {
+                    // View-scoped construction requires the Camera binding migration; do not
+                    // silently instantiate such a declaration once for the entire Scene.
+                    return cxx::unexpected(RenderError{kRuntimeUnsupported});
+                }
+                auto created = declaration.create(context);
+                if (!created)
+                {
+                    return cxx::unexpected(created.error());
+                }
+                auto& binding = active_bindings.emplace_back(declaration, *created);
+                declaration.connect(binding.object.get(), registry, binding.connections);
+            }
+            bindings_connected = true;
+            return {};
+        }
+
+        SceneStageResult maintainBindings(SceneStageContext& context) noexcept
+        {
+            bool pending = false;
+            for (auto& binding : active_bindings)
+            {
+                context.publication_needed |=
+                    !context.stop.stop_requested() && binding.declaration.policy == ERenderUpdatePolicy::EACH_FRAME;
+                if (binding.declaration.maintain)
+                {
+                    auto result = binding.declaration.maintain(binding.object.get(), context);
+                    if (!result)
+                    {
+                        return result;
+                    }
+                    pending |= *result == ESceneProgress::PENDING;
+                }
+                if (binding.declaration.revision)
+                {
+                    const auto revision = binding.declaration.revision(binding.object.get());
+                    if (revision != binding.observed_revision)
+                    {
+                        binding.observed_revision = revision;
+                        ++topology_revision;
+                        rebuild_requested = true;
+                    }
+                }
+            }
+            return pending ? ESceneProgress::PENDING : ESceneProgress::COMPLETE;
         }
 
         RenderAssetVersion assetKey(asset::AssetId id, std::uint64_t revision) const noexcept
@@ -731,7 +786,6 @@ namespace lux::scene
             auto inputs = detail::prepareSceneEffectInputs(
                 meshes,
                 materials,
-                lights,
                 registry,
                 assets,
                 assets_input.source,
@@ -765,6 +819,15 @@ namespace lux::scene
             const auto accepted_topology = topology_revision;
             const auto inputs = prepareEffectInputs(include_replacements);
             const auto accepted_input_revision = effect_input_revision;
+            std::vector<std::pair<std::size_t, std::uint64_t>> binding_revisions;
+            for (std::size_t i = 0; i < active_bindings.size(); ++i)
+            {
+                const auto& binding = active_bindings[i];
+                if (binding.declaration.revision && binding.declaration.confirm_inputs)
+                {
+                    binding_revisions.emplace_back(i, binding.declaration.revision(binding.object.get()));
+                }
+            }
             std::vector<std::pair<Entity, CameraTarget>> accepted;
             const auto accept = [&](Entity camera, const RenderViewBinding& binding) noexcept
             {
@@ -942,23 +1005,37 @@ namespace lux::scene
                 binding->input_revision = accepted_input_revision;
                 binding->error = {};
             }
+            // Removed Camera relations can still have an in-flight Detach. Their old recipe
+            // must stop executing before bindings release any identities that it mentions.
+            bool all_inputs_adopted = !retirement_pending && std::ranges::none_of(
+                                                                 retiring_views,
+                                                                 [](const auto& retired) noexcept
+                                                                 { return !retired.binding.attachment.isNull(); }
+                                                             );
+            forEachBinding(
+                [&](Entity, const RenderViewBinding& binding) noexcept
+                {
+                    all_inputs_adopted &=
+                        binding.attachment.isNull() || binding.input_revision == accepted_input_revision;
+                }
+            );
             if (inputs_adopted)
             {
-                *inputs_adopted = true;
-                forEachBinding(
-                    [&](Entity, const RenderViewBinding& binding) noexcept
-                    {
-                        *inputs_adopted &=
-                            binding.attachment.isNull() || binding.input_revision == accepted_input_revision;
-                    }
-                );
+                *inputs_adopted = all_inputs_adopted;
+            }
+            if (all_inputs_adopted)
+            {
+                for (const auto [index, revision] : binding_revisions)
+                {
+                    auto& binding = active_bindings[index];
+                    binding.declaration.confirm_inputs(binding.object.get(), revision);
+                }
             }
             co_return RenderResult<void>{};
         }
 
         exec::task<RenderResult<void>> synchronizeStructure(
             std::vector<InstanceInput> inputs,
-            std::vector<LightInput> light_inputs,
             bool structure_changed
         ) noexcept
         {
@@ -983,46 +1060,6 @@ namespace lux::scene
                     }
                     entry.instance = {};
                     changed = true;
-                }
-                for (auto entry = lights.begin(); entry != lights.end();)
-                {
-                    if (entry->second.present)
-                    {
-                        ++entry;
-                        continue;
-                    }
-                    if (!entry->second.light.isNull())
-                    {
-                        RemoveDirectLight::Request remove{entry->second.light};
-                        auto removed = co_await request<RemoveDirectLight>(client, remove);
-                        if (removed.error.type != 0)
-                        {
-                            co_return cxx::unexpected(removed.error);
-                        }
-                    }
-                    entry = lights.erase(entry);
-                    changed = true;
-                }
-            }
-            if (!light_inputs.empty())
-            {
-                changed = true;
-                std::vector<VDirectLight> values;
-                values.reserve(light_inputs.size());
-                for (const auto& input : light_inputs)
-                {
-                    values.push_back(input.value);
-                }
-                CreateDirectLights::Request create{light_input, 0, values};
-                auto result = co_await request<CreateDirectLights>(client, create);
-                if (result.error.type != 0)
-                {
-                    co_return cxx::unexpected(result.error);
-                }
-                for (std::size_t i = 0; i < light_inputs.size(); ++i)
-                {
-                    lights.find(light_inputs[i].entity)->second.light = result.lights[i];
-                    new_lights.push_back(light_inputs[i].entity);
                 }
             }
             co_await prepareMaterials();
@@ -1305,7 +1342,6 @@ namespace lux::scene
             completed_assets.clear();
             instance_demands.clear();
             material_demands.clear();
-            lights.clear();
             co_return RenderResult<void>{};
         }
 
@@ -1469,53 +1505,6 @@ namespace lux::scene
             return changed;
         }
 
-        RenderResult<bool> collectLightChanges(std::vector<LightInput>& light_inputs) noexcept
-        {
-            if (!light_input_enabled)
-            {
-                light_changes.clear();
-                return false;
-            }
-            bool changed = false;
-            for (const auto entity : light_changes)
-            {
-                const auto bits = entityBits(entity);
-                const auto* light = registry.valid(entity) ? registry.try_get<const Light3D>(entity) : nullptr;
-                const auto* pose = registry.valid(entity) ? registry.try_get<const WorldTransform3D>(entity) : nullptr;
-                auto found = lights.find(bits);
-                if (!light || !pose)
-                {
-                    if (found != lights.end())
-                    {
-                        found->second.present = false;
-                        changed = true;
-                    }
-                    continue;
-                }
-                if (found == lights.end())
-                {
-                    found = lights.emplace(bits, LightEntry{{}, light->value.type}).first;
-                }
-                if (found->second.type != light->value.type)
-                {
-                    found->second.present = false;
-                    changed = true;
-                    continue;
-                }
-                if (found->second.light.isNull())
-                {
-                    auto value = lightValue(light->value, pose->value);
-                    if (!value)
-                    {
-                        return cxx::unexpected(value.error());
-                    }
-                    light_inputs.push_back({bits, std::move(*value)});
-                    changed = true;
-                }
-            }
-            return changed;
-        }
-
         bool needsViewSynchronization() const noexcept
         {
             if (!retiring_views.empty())
@@ -1614,7 +1603,7 @@ namespace lux::scene
 
         Impl(Registry& registry, const RenderSystemDependencies& dependencies, RenderSystemConfiguration selected)
             : registry(registry), assets_input(dependencies.assets_input), client(dependencies.client),
-              execution(dependencies.execution), assets(dependencies.assets),
+              execution(dependencies.execution), declarations(dependencies.bindings), assets(dependencies.assets),
               asset_availability(
                   assets,
                   this,
@@ -1638,9 +1627,6 @@ namespace lux::scene
               camera_added(registry.on_construct<Camera>().connect<&Impl::cameraChanged>(*this)),
               camera_updated(registry.on_update<Camera>().connect<&Impl::cameraChanged>(*this)),
               camera_removed(registry.on_destroy<Camera>().connect<&Impl::cameraChanged>(*this)),
-              light_added(registry.on_construct<Light3D>().connect<&Impl::lightDescriptionChanged>(*this)),
-              light_updated(registry.on_update<Light3D>().connect<&Impl::lightDescriptionChanged>(*this)),
-              light_removed(registry.on_destroy<Light3D>().connect<&Impl::lightDescriptionChanged>(*this)),
               targets_added(registry.on_construct<CameraTargetsComponent>().connect<&Impl::cameraChanged>(*this)),
               targets_updated(registry.on_update<CameraTargetsComponent>().connect<&Impl::cameraChanged>(*this)),
               targets_removed(registry.on_destroy<CameraTargetsComponent>().connect<&Impl::cameraChanged>(*this)),
@@ -1654,10 +1640,6 @@ namespace lux::scene
             for (const auto entity : registry.view<const Mesh3D>())
             {
                 structure.insert(entity);
-            }
-            for (const auto entity : registry.view<const Light3D>())
-            {
-                light_changes.insert(entity);
             }
             for (const auto camera : registry.view<const CameraTargetsComponent>())
             {
@@ -1698,12 +1680,6 @@ namespace lux::scene
             ++camera_revision;
         }
 
-        void lightDescriptionChanged(Registry& registry, Entity entity) noexcept
-        {
-            ++topology_revision;
-            lightChanged(registry, entity);
-        }
-
         void poseRemoved(Registry& registry, Entity entity) noexcept
         {
             ++topology_revision;
@@ -1712,26 +1688,10 @@ namespace lux::scene
             {
                 cameraChanged(registry, entity);
             }
-            if (registry.all_of<Light3D>(entity))
-            {
-                lightChanged(registry, entity);
-            }
-        }
-
-        void lightChanged(Registry&, Entity entity) noexcept
-        {
-            if (!light_changes.contains(entity))
-            {
-                light_changes.insert(entity);
-            }
         }
 
         void transformChanged(Registry&, Entity entity) noexcept
         {
-            if (registry.all_of<Light3D>(entity))
-            {
-                lightChanged(registry, entity);
-            }
             if (registry.all_of<Camera>(entity))
             {
                 camera_changes.insert(entity);
@@ -1746,13 +1706,17 @@ namespace lux::scene
         RenderAssetInput& assets_input;
         RenderRequester& client;
         execution::ExecutionRuntime& execution;
+        const RenderBindingDeclarations& declarations;
+        std::vector<RenderPayloadContract> selected_inputs;
+        std::vector<CapabilitiesInstalled::Input> installed_inputs;
+        std::vector<RenderBindingInstance> active_bindings;
+        bool bindings_connected = false;
         RenderAssets& assets;
         RenderAssets::AvailabilityConnection asset_availability;
         process::asset_loading::AssetReadPort source;
         std::unordered_map<std::uint64_t, MeshEntry> meshes;
-        std::vector<std::uint64_t> new_instances, new_lights;
+        std::vector<std::uint64_t> new_instances;
         std::unordered_set<std::uint64_t> pending_instances;
-        std::unordered_map<std::uint64_t, LightEntry> lights;
         std::map<RenderAssetVersion, MaterialEntry> materials;
         std::set<RenderAssetVersion> pending_materials, ready_materials, blocked_materials, completed_assets;
         std::unordered_set<std::uint64_t> ready_instances;
@@ -1761,7 +1725,7 @@ namespace lux::scene
         SceneId scene;
         std::vector<detail::RetiringView> retiring_views;
         std::uint64_t next_camera_target = 0, camera_revision = 0;
-        CapabilityInput instance_input, material_input, light_input;
+        CapabilityInput instance_input, material_input;
         CapabilitySelection implementation;
         RenderSystemConfiguration configuration;
         // Cold input identity is shared by this Scene's views. Bindings retain only the adopted revision.
@@ -1769,7 +1733,7 @@ namespace lux::scene
         std::vector<SceneLightInput> effect_lights;
         std::uint32_t effect_input_capacity = 128;
         std::uint64_t effect_input_revision = 0;
-        bool material_input_enabled = false, instance_input_enabled = false, light_input_enabled = false;
+        bool material_input_enabled = false, instance_input_enabled = false;
         detail::EffectInputProducer effect_input_producer = nullptr;
         bool camera_input_enabled = false;
         RenderError error;
@@ -1780,13 +1744,11 @@ namespace lux::scene
 
         // Dirty intents can contain an erased entity and its reused slot's next generation in
         // one Main interval (for example Undo + Redo). A live-component sparse set cannot.
-        entt::dense_set<Entity> structure, transformed, light_changes, camera_changes, view_changes;
+        entt::dense_set<Entity> structure, transformed, camera_changes, view_changes;
         std::vector<Entity> processed;
         std::vector<MeshInstanceId> transform_ids;
         std::vector<Entity> transform_entities;
-        std::vector<DirectLightUpdate> light_updates;
         std::optional<BoundCommand<UpdateTransforms>> transforms;
-        std::optional<BoundCommand<UpdateDirectLights>> lighting;
         std::optional<BoundCommand<UpdateAttachmentInputs>> attachment_inputs;
         std::optional<BoundCommand<SetTargetActive>> target_active;
         std::uint64_t sequence = 0, resynchronization = 0;
@@ -1795,7 +1757,6 @@ namespace lux::scene
         std::uint64_t topology_revision = 0, observed_topology = UINT64_MAX;
         entt::scoped_connection mesh_added, mesh_updated, mesh_removed, pose_added, pose_updated, pose_removed;
         entt::scoped_connection camera_added, camera_updated, camera_removed;
-        entt::scoped_connection light_added, light_updated, light_removed;
         entt::scoped_connection targets_added, targets_updated, targets_removed, bindings_removed;
     };
 
@@ -1925,9 +1886,22 @@ namespace lux::scene
     SceneStageResult RenderSystem::maintain(SceneStageContext& context) noexcept
     {
         auto& self = *impl_;
+        if (self.initialized && !self.bindings_connected && context.allow_structure && !context.stop.stop_requested())
+        {
+            auto connected = self.connectBindings();
+            if (!connected)
+            {
+                return failure(connected.error());
+            }
+        }
+        auto bindings = self.maintainBindings(context);
+        if (!bindings)
+        {
+            return bindings;
+        }
         if (context.stop.stop_requested())
         {
-            if (self.transaction_pending || self.retirement_pending)
+            if (self.transaction_pending || self.retirement_pending || *bindings == ESceneProgress::PENDING)
             {
                 return ESceneProgress::PENDING;
             }
@@ -1959,8 +1933,8 @@ namespace lux::scene
         }
         const bool changed_inputs = !self.camera_changes.empty() || !self.view_changes.empty() ||
                                     self.resynchronization != self.client.resynchronization();
-        context.publication_needed |= !self.structure.empty() || !self.transformed.empty() ||
-                                      !self.light_changes.empty() || changed_inputs || self.transaction_pending;
+        context.publication_needed |=
+            !self.structure.empty() || !self.transformed.empty() || changed_inputs || self.transaction_pending;
         if (!context.allow_structure)
         {
             return ESceneProgress::COMPLETE;
@@ -1995,13 +1969,6 @@ namespace lux::scene
             return failure(mesh_changes.error());
         }
         changed |= *mesh_changes;
-        std::vector<LightInput> light_inputs;
-        auto light_changes = self.collectLightChanges(light_inputs);
-        if (!light_changes)
-        {
-            return failure(light_changes.error());
-        }
-        changed |= *light_changes;
         self.applyAssetCompletions();
         if (changed || !self.ready_instances.empty() || !self.ready_materials.empty())
         {
@@ -2027,7 +1994,7 @@ namespace lux::scene
             {
                 self.view_changes.clear();
             }
-            self.startTransaction(self.synchronizeStructure(std::move(inputs), std::move(light_inputs), changed));
+            self.startTransaction(self.synchronizeStructure(std::move(inputs), changed));
         }
         else if (changed_views)
         {
@@ -2042,12 +2009,23 @@ namespace lux::scene
         return ESceneProgress::COMPLETE;
     }
 
-    SceneStageResult RenderSystem::prepareInputs(SceneStageContext&) noexcept
+    SceneStageResult RenderSystem::prepareInputs(SceneStageContext& context) noexcept
     {
         auto& self = *impl_;
         if (self.closing)
         {
             return ESceneProgress::COMPLETE;
+        }
+        for (auto& binding : self.active_bindings)
+        {
+            if (binding.declaration.prepare)
+            {
+                auto result = binding.declaration.prepare(binding.object.get(), context);
+                if (!result || *result == ESceneProgress::PENDING)
+                {
+                    return result;
+                }
+            }
         }
         self.transform_ids.clear();
         self.transform_entities.clear();
@@ -2070,10 +2048,6 @@ namespace lux::scene
             {
                 self.transformChanged(self.registry, static_cast<Entity>(bits));
             }
-            for (const auto& [bits, entry] : self.lights)
-            {
-                self.lightChanged(self.registry, static_cast<Entity>(bits));
-            }
         }
         for (const auto entity : self.transformed)
         {
@@ -2092,49 +2066,12 @@ namespace lux::scene
             self.transform_entities.push_back(entity);
         }
         self.transformed.erase(self.transformed.begin(), self.transformed.end());
-        for (auto bits : self.new_lights)
-        {
-            self.lightChanged(self.registry, static_cast<Entity>(bits));
-        }
-        self.new_lights.clear();
-        self.light_updates.clear();
-        self.processed.clear();
-        for (const auto entity : self.light_changes)
-        {
-            const auto found = self.lights.find(entityBits(entity));
-            const auto* light = self.registry.valid(entity) ? self.registry.try_get<const Light3D>(entity) : nullptr;
-            const auto* world =
-                self.registry.valid(entity) ? self.registry.try_get<const WorldTransform3D>(entity) : nullptr;
-            if (found == self.lights.end() || !light || !world)
-            {
-                if (found == self.lights.end())
-                {
-                    self.processed.push_back(entity);
-                }
-                continue;
-            }
-            if (!found->second.present || found->second.light.isNull())
-            {
-                continue;
-            }
-            auto value = lightValue(light->value, world->value);
-            if (!value)
-            {
-                return failure(value.error());
-            }
-            self.light_updates.push_back({found->second.light, std::move(*value)});
-            self.processed.push_back(entity);
-        }
-        for (auto entity : self.processed)
-        {
-            self.light_changes.erase(entity);
-        }
         self.prepareCameraParameters();
         self.completeCameraTargets();
         return ESceneProgress::COMPLETE;
     }
 
-    SceneStageResult RenderSystem::publish(SceneStageContext&) noexcept
+    SceneStageResult RenderSystem::publish(SceneStageContext& context) noexcept
     {
         auto& self = *impl_;
         if (self.closing)
@@ -2163,16 +2100,15 @@ namespace lux::scene
                 return failure(appended.error());
             }
         }
-        if (!self.light_updates.empty())
+        for (auto& binding : self.active_bindings)
         {
-            UpdateDirectLights::Request request{
-                self.light_input,
-                self.sequence,
-                frame->freeze(std::span(self.light_updates))
-            };
-            if (auto appended = client.append(*frame, *self.lighting, request); !appended)
+            if (binding.declaration.publish)
             {
-                return failure(appended.error());
+                auto result = binding.declaration.publish(binding.object.get(), context, *frame);
+                if (!result || *result == ESceneProgress::PENDING)
+                {
+                    return result;
+                }
             }
         }
         RenderError publication_error;

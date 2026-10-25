@@ -26,12 +26,15 @@ namespace lux::engine::render
 
 namespace lux::scene
 {
+    class RenderBindingDeclarations;
+
     struct RenderSystemDependencies final
     {
         engine::render::RenderRequester& client;
         execution::ExecutionRuntime& execution;
         engine::render::RenderAssets& assets;
         RenderAssetInput& assets_input;
+        const RenderBindingDeclarations& bindings;
         // Optional project VFS; copied into each accepted load, never selected globally by workers.
         process::asset_loading::AssetReadPort source;
     };

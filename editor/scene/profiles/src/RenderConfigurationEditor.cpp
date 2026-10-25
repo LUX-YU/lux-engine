@@ -1,3 +1,4 @@
+#include <lux/engine/scene/render/RenderBindingDeclarations.hpp>
 #include <algorithm>
 #include <imgui.h>
 #include <lux/engine/EngineContext.hpp>
@@ -25,6 +26,12 @@ namespace lux::editor
                 if (!rendering)
                 {
                     status_ = "Render is unavailable in this session; the stored configuration is preserved";
+                    return;
+                }
+                bindings_ = context.extensions().find<scene::RenderBindingDeclarations>();
+                if (!bindings_)
+                {
+                    status_ = "Scene input bindings are unavailable; the stored configuration is preserved";
                     return;
                 }
                 auto& client = rendering->mainClient();
@@ -90,7 +97,7 @@ namespace lux::editor
                 co_return std::move(result.implementations);
             }
 
-            static const char* unavailable(
+            const char* unavailable(
                 const lux::render::CapabilitySupport& support,
                 const lux::render::RenderCapability& capability
             ) noexcept
@@ -109,13 +116,15 @@ namespace lux::editor
                 }
                 for (const auto& input : capability.inputs)
                 {
-                    if (input.required && !scene::supportsSceneRenderInput(input))
+                    if (input.required && !bindings_->supports(input) && !scene::supportsSceneRenderInput(input))
                     {
                         return "A required input producer is not installed in the Scene system";
                     }
                 }
                 return nullptr;
             }
+
+            const scene::RenderBindingDeclarations* bindings_{};
 
             void drawConfiguration() noexcept
             {

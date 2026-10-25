@@ -1,3 +1,4 @@
+#include <lux/engine/scene/render/BuiltinRenderBindings.hpp>
 #include <algorithm>
 #include <chrono>
 #include <exception>
@@ -86,6 +87,10 @@ namespace lux::editor
               source_(std::move(source)), assets_(std::move(assets)), ui_scene_(std::move(ui_scene)),
               config_(std::move(config)), assembly_(std::move(assembly)), project_tasks_(engine_->execution())
         {
+            if (auto registered = scene::registerBuiltinRenderBindings(render_bindings_); !registered)
+            {
+                std::terminate(); // Built-in declarations are fixed and unique within this application.
+            }
         }
 
         ~Impl() noexcept
@@ -615,7 +620,7 @@ namespace lux::editor
         {
             EditorComposition composition;
             if (!composition.bindExtension(*rendering_) || !composition.bindExtension(*assets_) ||
-                !composition.bindExtension(*ui_scene_))
+                !composition.bindExtension(*ui_scene_) || !composition.bindExtension(render_bindings_))
             {
                 std::terminate();
             }
@@ -939,6 +944,7 @@ namespace lux::editor
         std::unique_ptr<engine::render::RenderExecution> rendering_;
         std::unique_ptr<process::asset_loading::VfsAssetReadEndpoint> source_;
         std::unique_ptr<engine::render::RenderAssets> assets_;
+        scene::RenderBindingDeclarations render_bindings_;
         std::unique_ptr<EditorUiScene> ui_scene_;
         EditorConfig config_;
         EditorAssembly assembly_;

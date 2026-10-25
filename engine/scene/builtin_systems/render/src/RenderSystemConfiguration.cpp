@@ -77,12 +77,6 @@ namespace lux::scene
                 ERenderPayloadUse::RESOURCE_INPUT,
                 borrowed
             },
-            std::tuple{
-                kDirectLightsInput,
-                cxx::typeToken<CreateDirectLights::Request>(),
-                ERenderPayloadUse::RESOURCE_INPUT,
-                borrowed
-            },
             std::tuple{kSceneGeometryInput, cxx::typeToken<LitSceneInputs>(), ERenderPayloadUse::EFFECT_INPUT, moved},
             std::tuple{kCameraInput, cxx::typeToken<CameraInput>(), ERenderPayloadUse::FRAME_INPUT, moved}
         };

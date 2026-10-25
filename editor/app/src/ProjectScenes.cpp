@@ -443,7 +443,8 @@ namespace lux::editor
             std::optional<scene::RenderSystemDependencies> render_dependencies;
             if (renders)
             {
-                if (!rendering || !assets || !ui)
+                const auto* bindings = context.extensions().find<scene::RenderBindingDeclarations>();
+                if (!rendering || !assets || !ui || !bindings)
                 {
                     return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::RENDER_UNAVAILABLE});
                 }
@@ -453,7 +454,7 @@ namespace lux::editor
                     return cxx::unexpected(VProjectSceneFailure{reads.error()});
                 }
                 render_dependencies
-                    .emplace(rendering->mainClient(), context.engine().execution(), *assets, inputs, *reads);
+                    .emplace(rendering->mainClient(), context.engine().execution(), *assets, inputs, *bindings, *reads);
                 providers.push_back(scene::makeSceneCapabilityProvider<scene::RenderSystemDependencies>(
                     "rendering",
                     "lux.scene.rendering",

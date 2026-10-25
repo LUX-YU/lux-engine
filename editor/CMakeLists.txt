@@ -667,7 +667,10 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
             lux::engine::scene::scene_mesh_query
         )
 
-        target_include_directories(editor_scene_workflow_test PRIVATE app/pinclude)
+        target_include_directories(editor_scene_workflow_test PRIVATE
+            app/pinclude
+            ${CMAKE_CURRENT_SOURCE_DIR}/../engine/scene/integration/render/pinclude
+        )
 
         lux_editor_test_options(editor_scene_workflow_test)
 

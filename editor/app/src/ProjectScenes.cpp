@@ -394,9 +394,14 @@ namespace lux::editor
             {
                 co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::CLOSED});
             }
+            auto plan = co_await prepareRenderPlan(decoded->scene->data());
+            if (!plan)
+            {
+                co_return cxx::unexpected(plan.error());
+            }
             reporter.setPhase("Create Scene instance");
             co_return co_await stdexec::write_env(
-                adoptPackage(std::move(*decoded), std::move(path)),
+                adoptPackage(std::move(*decoded), std::move(path), std::move(*plan)),
                 stdexec::prop{stdexec::get_stop_token, stdexec::never_stop_token{}}
             );
         }
@@ -413,10 +418,75 @@ namespace lux::editor
             co_await stdexec::continues_on(retirement.whenComplete(), context.engine().execution().mainScheduler());
         }
 
-        exec::task<ProjectSceneResult<InstanceCandidate>> buildInstance(
+        exec::task<ProjectSceneResult<std::optional<scene::RenderBindingPlan>>> prepareRenderPlan(
+            const scene::SceneDescription& description
+        ) noexcept
+        {
+            const auto& registrations = context.sceneRegistrations();
+            scene::SceneSystemDescription selected;
+            const scene::SceneSystemRegistration* render_registration = nullptr;
+            for (std::size_t i = 0; i < description.systemCount(); ++i)
+            {
+                const auto input = description.systemAt(i);
+                const auto registration =
+                    std::ranges::find(registrations.scene_systems, input.type(), &scene::SceneSystemRegistration::type);
+                if (registration == registrations.scene_systems.end())
+                {
+                    co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
+                }
+                const bool requires_render = std::ranges::any_of(
+                    registration->requirements,
+                    [](const auto& requirement) noexcept
+                    { return requirement.capability == "lux.scene.rendering" && !requirement.optional; }
+                );
+                if (!requires_render)
+                {
+                    continue;
+                }
+                if (render_registration)
+                {
+                    co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
+                }
+                selected = input;
+                render_registration = &*registration;
+            }
+            if (!render_registration)
+            {
+                co_return std::optional<scene::RenderBindingPlan>{};
+            }
+            const auto* declarations = context.extensions().find<scene::RenderBindingDeclarations>();
+            if (!rendering || !assets || !ui || !declarations)
+            {
+                co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::RENDER_UNAVAILABLE});
+            }
+            scene::RenderSystemConfiguration configuration;
+            const auto decoder = render_registration->configurationDecoder(selected.configurationSchemaVersion());
+            if (!decoder || !decoder(selected.configurationPayload(), &configuration))
+            {
+                co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
+            }
+            auto prepared =
+                co_await scene::prepareRenderBindings(rendering->mainClient(), *declarations, std::move(configuration));
+            if (!prepared)
+            {
+                co_return cxx::unexpected(VProjectSceneFailure{prepared.error()});
+            }
+            if (closing)
+            {
+                co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::CLOSED});
+            }
+            co_return std::optional<scene::RenderBindingPlan>{std::move(*prepared)};
+        }
+
+        // Both validation and construction borrow the very same prepared plan. Provider values only
+        // need this synchronous segment; every installed System captures its actual long-lived dependencies.
+        template <class T, class F>
+        ProjectSceneResult<T> withInstanceBuilder(
             const scene::ScenePackage& package,
             std::shared_ptr<const scene::SceneDescription> description,
-            scene::RenderAssetInput& inputs
+            scene::RenderAssetInput& inputs,
+            const std::optional<scene::RenderBindingPlan>& plan,
+            F finish
         ) noexcept
         {
             const auto world = std::shared_ptr<const world::WorldDescription>{package.world, &package.world->data()};
@@ -427,7 +497,7 @@ namespace lux::editor
             auto source = process::world_loading::makeWorldMemoryStorageSource(world, package.volumes);
             if (!source)
             {
-                co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
+                return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
             }
             scene::WorldLoadingServices loading{*source, context.tasks()};
             loading.initial_partitions = package.partitions;
@@ -435,102 +505,68 @@ namespace lux::editor
             providers.push_back(
                 scene::makeSceneCapabilityProvider<scene::WorldLoadingServices>("loading", "lux.world.loading", loading)
             );
-            const auto& registrations = context.sceneRegistrations();
-            bool renders = false;
-            scene::SceneSystemDescription render_description;
-            for (std::size_t i = 0; i < description->systemCount(); ++i)
-            {
-                const auto registration = std::ranges::find(
-                    registrations.scene_systems,
-                    description->systemAt(i).type(),
-                    &scene::SceneSystemRegistration::type
-                );
-                if (registration == registrations.scene_systems.end())
-                {
-                    co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
-                }
-                const bool needs_render = std::ranges::any_of(
-                    registration->requirements,
-                    [](const auto& requirement) noexcept
-                    { return requirement.capability == "lux.scene.rendering" && !requirement.optional; }
-                );
-                if (needs_render)
-                {
-                    if (renders)
-                    {
-                        co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
-                    }
-                    renders = true;
-                    render_description = description->systemAt(i);
-                }
-            }
             std::optional<scene::RenderSystemDependencies> render_dependencies;
-            std::optional<scene::RenderBindingPlan> render_plan;
-            if (renders)
+            if (plan)
             {
-                const auto* bindings = context.extensions().find<scene::RenderBindingDeclarations>();
-                if (!rendering || !assets || !ui || !bindings)
-                {
-                    co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::RENDER_UNAVAILABLE});
-                }
                 auto reads = context.prepareAssetReads();
                 if (!reads)
                 {
-                    co_return cxx::unexpected(VProjectSceneFailure{reads.error()});
+                    return cxx::unexpected(VProjectSceneFailure{reads.error()});
                 }
-                const auto selected = render_description;
-                const auto registration = std::ranges::find(
-                    registrations.scene_systems,
-                    selected.type(),
-                    &scene::SceneSystemRegistration::type
-                );
-                scene::RenderSystemConfiguration configuration;
-                const auto decoder = registration->configurationDecoder(selected.configurationSchemaVersion());
-                if (!decoder || !decoder(selected.configurationPayload(), &configuration))
-                {
-                    co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
-                }
-                auto prepared =
-                    co_await scene::prepareRenderBindings(rendering->mainClient(), *bindings, std::move(configuration));
-                if (!prepared)
-                {
-                    co_return cxx::unexpected(VProjectSceneFailure{prepared.error()});
-                }
-                if (closing)
-                {
-                    co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::CLOSED});
-                }
-                render_plan.emplace(std::move(*prepared));
-                render_dependencies.emplace(
-                    rendering->mainClient(),
-                    context.engine().execution(),
-                    *assets,
-                    inputs,
-                    *render_plan,
-                    *reads
-                );
+                render_dependencies
+                    .emplace(rendering->mainClient(), context.engine().execution(), *assets, inputs, *plan, *reads);
                 providers.push_back(scene::makeSceneCapabilityProvider<scene::RenderSystemDependencies>(
                     "rendering",
                     "lux.scene.rendering",
                     *render_dependencies
                 ));
             }
+            const auto& registrations = context.sceneRegistrations();
+            auto builder = context.engine().sceneRuntime().builder();
+            builder.setDescription(std::move(description))
+                .setWorld(world)
+                .setSimulation(simulation)
+                .setRegistrations(
+                    registrations.components,
+                    *registrations.simulation_systems,
+                    registrations.scene_systems
+                )
+                .setProviders(providers)
+                .setFrameAdmissionRequired(plan.has_value());
+            auto result = finish(builder);
+            if (!result)
+            {
+                return cxx::unexpected(VProjectSceneFailure{result.error()});
+            }
+            if constexpr (std::is_void_v<T>)
+            {
+                return {};
+            }
+            else
+            {
+                return std::move(*result);
+            }
+        }
+
+        exec::task<ProjectSceneResult<InstanceCandidate>> buildInstance(
+            const scene::ScenePackage& package,
+            std::shared_ptr<const scene::SceneDescription> description,
+            scene::RenderAssetInput& inputs,
+            std::optional<scene::RenderBindingPlan> plan
+        ) noexcept
+        {
             auto& runtime = context.engine().sceneRuntime();
-            auto lease = runtime.builder()
-                             .setDescription(description)
-                             .setWorld(world)
-                             .setSimulation(simulation)
-                             .setRegistrations(
-                                 registrations.components,
-                                 *registrations.simulation_systems,
-                                 registrations.scene_systems
-                             )
-                             .setProviders(providers)
-                             .setFrameAdmissionRequired(renders)
-                             .build();
+            const bool renders = plan.has_value();
+            auto lease = withInstanceBuilder<scene::SceneInstanceLease>(
+                package,
+                std::move(description),
+                inputs,
+                plan,
+                [](auto& builder) noexcept { return builder.build(); }
+            );
             if (!lease)
             {
-                co_return cxx::unexpected(VProjectSceneFailure{lease.error()});
+                co_return cxx::unexpected(lease.error());
             }
             const auto instance = lease->id();
             static_cast<void>(runtime.pauseSimulation(instance));
@@ -615,7 +651,8 @@ namespace lux::editor
 
         exec::task<ProjectSceneResult<asset::AssetId>> adoptPackage(
             scene::ScenePackage package,
-            std::filesystem::path path
+            std::filesystem::path path,
+            std::optional<scene::RenderBindingPlan> plan
         ) noexcept
         {
             const auto id = package.scene->id();
@@ -633,7 +670,8 @@ namespace lux::editor
             auto candidate = co_await buildInstance(
                 package,
                 std::shared_ptr<const scene::SceneDescription>{package.scene, &package.scene->data()},
-                entry->inputs
+                entry->inputs,
+                std::move(plan)
             );
             if (!candidate)
             {
@@ -740,6 +778,23 @@ namespace lux::editor
             {
                 co_return cxx::unexpected(taskFailure(prepared.error()));
             }
+            auto plan = co_await prepareRenderPlan(prepared->scene->data());
+            if (!plan)
+            {
+                co_return cxx::unexpected(plan.error());
+            }
+            scene::RenderAssetInput validation_inputs;
+            auto validated = withInstanceBuilder<void>(
+                *prepared,
+                std::shared_ptr<const scene::SceneDescription>{prepared->scene, &prepared->scene->data()},
+                validation_inputs,
+                *plan,
+                [](auto& builder) noexcept { return builder.validate(); }
+            );
+            if (!validated)
+            {
+                co_return cxx::unexpected(validated.error());
+            }
             auto encoded = co_await execution::taskResult(
                 stdexec::schedule(execution.cpu()) |
                 stdexec::then([&]() noexcept { return scene::encodeScenePackage(*prepared, scene_byte_limit, stop); })
@@ -813,7 +868,7 @@ namespace lux::editor
             {
                 co_return record.id; // Persistent creation succeeded; closing suppresses only runtime opening.
             }
-            co_return co_await adoptPackage(std::move(*prepared), path);
+            co_return co_await adoptPackage(std::move(*prepared), path, std::move(*plan));
         }
 
         exec::task<lux::render::RenderResult<void>> createTarget(Viewport& viewport) noexcept
@@ -1263,7 +1318,12 @@ namespace lux::editor
         {
             auto& entry = *documents.find(id)->second;
             auto& play = *entry.play;
-            auto candidate = co_await buildInstance(package, std::move(description), play.inputs);
+            auto plan = co_await prepareRenderPlan(*description);
+            if (!plan)
+            {
+                co_return cxx::unexpected(plan.error());
+            }
+            auto candidate = co_await buildInstance(package, std::move(description), play.inputs, std::move(*plan));
             if (!candidate)
             {
                 co_return cxx::unexpected(candidate.error());

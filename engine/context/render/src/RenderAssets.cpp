@@ -209,9 +209,9 @@ namespace lux::engine::render
     void RenderAssets::close() noexcept
     {
         stopLoads();
-        for (const auto& table : tables_)
+        for (const auto& installed : tables_)
         {
-            table->close();
+            installed.table->close();
         }
     }
 
@@ -230,7 +230,7 @@ namespace lux::engine::render
     bool RenderAssets::settled() const noexcept
     {
         return loadsSettled() &&
-               std::ranges::all_of(tables_, [](const auto& table) noexcept { return table->settled(); });
+               std::ranges::all_of(tables_, [](const auto& installed) noexcept { return installed.table->settled(); });
     }
 
     RenderError RenderAssets::releaseFailure() const noexcept

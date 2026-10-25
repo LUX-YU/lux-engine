@@ -23,19 +23,35 @@ namespace lux::scene
     RenderResult<std::unique_ptr<LitSceneInputOperation>> LitSceneInputOperation::create(RenderBindingContext& context
     ) noexcept
     {
-        auto* meshes = context.find<MeshRenderBinding>();
-        if (!meshes)
+        std::vector<MeshRenderBinding*> meshes;
+        context.forEach<MeshRenderBinding>([&](MeshRenderBinding& binding) noexcept { meshes.push_back(&binding); });
+        if (meshes.empty())
         {
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
-        return std::unique_ptr<LitSceneInputOperation>{new LitSceneInputOperation(context, *meshes)};
+        return std::unique_ptr<LitSceneInputOperation>{new LitSceneInputOperation(context, std::move(meshes))};
     }
 
     std::uint64_t LitSceneInputOperation::effectRevision() noexcept
     {
         if (cached_revision_ != revision_)
         {
-            auto geometry = meshes_.geometry();
+            std::vector<RasterGeometryInput> geometry;
+            std::uint32_t capacity = 0;
+            for (const auto* meshes : meshes_)
+            {
+                auto role = meshes->geometry();
+                geometry
+                    .insert(geometry.end(), std::make_move_iterator(role.begin()), std::make_move_iterator(role.end()));
+                capacity += meshes->instanceCapacity();
+            }
+            std::ranges::sort(
+                geometry,
+                [](const auto& a, const auto& b) noexcept { return a.selection < b.selection; }
+            );
+            const auto repeated = std::ranges::unique(geometry, {}, &RasterGeometryInput::selection);
+            geometry.erase(repeated.begin(), repeated.end());
+            capacity = std::max(capacity, inputs_.instance_capacity);
             std::vector<SceneLightInput> lights;
             for (const auto entity : registry_.view<const detail::LightRenderResourceComponent>())
             {
@@ -49,7 +65,6 @@ namespace lux::scene
                 lights,
                 [](const auto& left, const auto& right) noexcept { return left.light < right.light; }
             );
-            const auto capacity = std::max(inputs_.instance_capacity, meshes_.instanceCapacity());
             const bool same_geometry =
                 geometry.size() == inputs_.geometry.size() &&
                 std::equal(

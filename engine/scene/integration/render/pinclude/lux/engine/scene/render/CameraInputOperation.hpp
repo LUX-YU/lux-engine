@@ -1,5 +1,4 @@
 #pragma once
-#include <entt/container/dense_set.hpp>
 #include <lux/engine/context/render/RenderRequester.hpp>
 #include <lux/engine/scene/render/CameraRenderResourceComponent.hpp>
 #include <lux/engine/scene/render/CameraViewBinding.hpp>
@@ -20,7 +19,7 @@ namespace lux::scene
         static constexpr std::string_view name = "lux.scene.operation.camera_inputs";
         static constexpr bool effect_output = true;
         static constexpr auto policy = ERenderUpdatePolicy::CHANGES;
-        static constexpr auto scope = ERenderOperationScope::SCENE;
+        static constexpr auto scope = ERenderOperationScope::VIEW;
         static std::span<const render::RenderPayloadContract> inputs() noexcept;
         static render::RenderResult<std::unique_ptr<CameraInputOperation>> create(RenderBindingContext&) noexcept;
         SceneStageResult maintain(SceneStageContext&) noexcept;
@@ -34,25 +33,27 @@ namespace lux::scene
             ERenderComponentChange
         ) noexcept
         {
-            if constexpr (std::same_as<C, simulation::ecs::WorldTransform3D>)
+            if (entity == camera_)
             {
-                if (!registry.any_of<Camera>(entity))
-                {
-                    return;
-                }
+                changed_ = true;
             }
-            changed_.insert(entity);
         }
 
     private:
-        CameraInputOperation(RenderBindingContext&, engine::render::BoundCommand<render::UpdateAttachmentInputs>, engine::render::BoundCommand<render::SetTargetActive>) noexcept;
+        CameraInputOperation(
+            RenderBindingContext&,
+            engine::render::BoundCommand<render::UpdateAttachmentInputs>,
+            engine::render::BoundCommand<render::SetTargetActive>
+        ) noexcept;
         simulation::ecs::Registry& registry_;
         engine::render::RenderRequester& client_;
         engine::render::BoundCommand<render::UpdateAttachmentInputs> update_;
         engine::render::BoundCommand<render::SetTargetActive> active_;
         bool camera_input_, clipping_;
-        entt::dense_set<simulation::ecs::Entity> changed_;
-        std::vector<std::pair<simulation::ecs::Entity, CameraTargetId>> prepared_;
+        simulation::ecs::Entity camera_;
+        render::ViewId view_;
+        bool changed_ = true, prepared_ = false;
+        detail::CameraRenderTarget* current() const noexcept;
         std::uint64_t resynchronization_ = 0;
     };
 } // namespace lux::scene

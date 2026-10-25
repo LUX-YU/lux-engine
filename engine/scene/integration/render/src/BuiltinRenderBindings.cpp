@@ -4,8 +4,6 @@
 #include <lux/engine/scene/render/DirectLightBinding.hpp>
 #include <lux/engine/scene/render/DirectLightOperation.hpp>
 #include <lux/engine/scene/render/LitSceneInputOperation.hpp>
-#include <lux/engine/scene/render/MaterialRenderResourceComponent.hpp>
-#include <lux/engine/scene/render/MeshInstanceRenderResourceComponent.hpp>
 #include <lux/engine/scene/render/MeshRenderBinding.hpp>
 #include <lux/engine/scene/render/MeshRenderResourceComponent.hpp>
 #include <lux/engine/scene/render/RasterTransformOperation.hpp>
@@ -14,7 +12,7 @@ namespace lux::scene
 {
     RenderBindingRegistrationResult registerBuiltinRenderBindings(RenderBindingDeclarations& declarations) noexcept
     {
-        auto result = registerComponentBinding<MeshRenderBinding>(declarations);
+        auto result = registerComponentBinding<MeshRenderBinding>(declarations, {}, "raster.mesh");
         if (!result)
         {
             return result;
@@ -24,7 +22,7 @@ namespace lux::scene
         {
             return result;
         }
-        result = registerCapabilityOperation<RasterTransformOperation>(declarations);
+        result = registerCapabilityOperation<RasterTransformOperation>(declarations, {}, "raster.mesh");
         if (!result)
         {
             return result;

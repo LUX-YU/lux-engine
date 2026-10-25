@@ -49,6 +49,9 @@ namespace lux::scene
         std::uint64_t& input_revision;
         std::uint64_t& adopted_revision;
         Commands commands;
+        void* binding_stages;
+        RenderResult<void> (*bind_view)(void*, ViewId, Entity) noexcept;
+        SceneStageResult (*finish_view)(void*, ViewId, SceneStageContext&) noexcept;
         void* input_object;
         RenderResult<ConfigValue> (*compose_inputs)(void*, cxx::TypeToken, std::span<const std::byte>) noexcept;
         std::uint64_t (*recipe_revision)(void*) noexcept;
@@ -65,7 +68,8 @@ namespace lux::scene
             : registry(context.registry), client(context.client), execution(context.execution), scene(context.scene),
               implementation(context.implementation), configuration(context.configuration),
               input_revision(context.input_revision), adopted_revision(context.adopted_input_revision),
-              commands(std::move(selected)), input_object(context.effect_input_object),
+              commands(std::move(selected)), binding_stages(context.lookup_context), bind_view(context.bind_view),
+              finish_view(context.finish_view), input_object(context.effect_input_object),
               compose_inputs(context.effect_inputs), recipe_revision(context.effect_revision),
               camera_input_enabled(std::ranges::any_of(
                   context.contracts,
@@ -398,6 +402,14 @@ namespace lux::scene
                         change.graph_inputs;
                 if (change.error.type == 0 && current)
                 {
+                    auto bound = bind_view(binding_stages, change.view, change.camera);
+                    if (!bound)
+                    {
+                        change.error = bound.error();
+                    }
+                }
+                if (change.error.type == 0 && current)
+                {
                     if (!binding->effect.isNull())
                     {
                         retiring_views.push_back(
@@ -543,7 +555,7 @@ namespace lux::scene
                    );
         }
 
-        void retireViews() noexcept
+        void retireViews(SceneStageContext& context) noexcept
         {
             if (exit_work)
             {
@@ -577,6 +589,19 @@ namespace lux::scene
             if (selected == retiring_views.end())
             {
                 return;
+            }
+            if (!selected->binding.view.isNull())
+            {
+                auto finished = finish_view(binding_stages, selected->binding.view, context);
+                if (!finished)
+                {
+                    error = finished.error().cause;
+                    return;
+                }
+                if (*finished == ESceneProgress::PENDING)
+                {
+                    return;
+                }
             }
             exit_work.emplace(std::move(*selected));
             retiring_views.erase(selected);
@@ -784,7 +809,7 @@ namespace lux::scene
         {
             self.prepareChanges();
         }
-        self.retireViews();
+        self.retireViews(context);
         self.confirmInputs();
         self.completeCameraTargets();
         if (self.error.type != 0)

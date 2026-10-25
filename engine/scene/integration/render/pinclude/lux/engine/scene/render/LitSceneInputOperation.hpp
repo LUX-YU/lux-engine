@@ -10,7 +10,7 @@ namespace lux::scene
     public:
         using SourceComponents = std::tuple<>;
         using ResultComponents = std::tuple<>;
-        using Dependencies = std::tuple<MeshRenderBinding>;
+        using AggregateDependencies = std::tuple<MeshRenderBinding>;
         static constexpr std::string_view name = "lux.scene.operation.lit_scene_inputs";
         static constexpr auto policy = ERenderUpdatePolicy::STRUCTURE;
         static constexpr auto scope = ERenderOperationScope::SCENE;
@@ -20,13 +20,13 @@ namespace lux::scene
         render::RenderResult<render::ConfigValue> effectInputs(cxx::TypeToken, std::span<const std::byte>) noexcept;
 
     private:
-        LitSceneInputOperation(RenderBindingContext& context, MeshRenderBinding& meshes) noexcept
-            : registry_(context.registry), meshes_(meshes), revision_(context.input_revision)
+        LitSceneInputOperation(RenderBindingContext& context, std::vector<MeshRenderBinding*> meshes) noexcept
+            : registry_(context.registry), meshes_(std::move(meshes)), revision_(context.input_revision)
         {
         }
 
         simulation::ecs::Registry& registry_;
-        MeshRenderBinding& meshes_;
+        std::vector<MeshRenderBinding*> meshes_;
         const std::uint64_t& revision_;
         std::uint64_t cached_revision_ = 0, effect_revision_ = 1;
         render::LitSceneInputs inputs_;

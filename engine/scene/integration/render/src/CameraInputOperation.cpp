@@ -32,7 +32,7 @@ namespace lux::scene
               context.contracts,
               [](const auto& value) noexcept { return value.cppType() == cxx::typeToken<CameraInput>(); }
           )),
-          clipping_(context.effect_inputs != nullptr)
+          clipping_(context.effect_inputs != nullptr), camera_(context.view_entity), view_(context.view)
     {
     }
 
@@ -41,111 +41,100 @@ namespace lux::scene
     {
         auto update = context.client.bind<UpdateAttachmentInputs>();
         auto active = context.client.bind<SetTargetActive>();
-        if (!update || !active)
+        const bool has_commands = update && active;
+        const bool has_view = !context.view.isNull() && context.view_entity != NullEntity;
+        if (!has_commands || !has_view)
         {
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
         return std::unique_ptr<CameraInputOperation>{new CameraInputOperation(context, *update, *active)};
     }
 
+    CameraRenderTarget* CameraInputOperation::current() const noexcept
+    {
+        auto* resource = registry_.valid(camera_) ? registry_.try_get<CameraRenderResourceComponent>(camera_) : nullptr;
+        if (!resource)
+        {
+            return nullptr;
+        }
+        const auto found = std::ranges::find(resource->bindings, view_, &CameraRenderTarget::view);
+        return found == resource->bindings.end() ? nullptr : &*found;
+    }
+
     SceneStageResult CameraInputOperation::maintain(SceneStageContext& context) noexcept
     {
         if (context.stop.stop_requested())
         {
-            changed_.clear();
-            prepared_.clear();
+            changed_ = prepared_ = false;
         }
         else
         {
-            context.publication_needed |= !changed_.empty() || resynchronization_ != client_.resynchronization();
+            context.publication_needed |= changed_ || resynchronization_ != client_.resynchronization();
         }
         return ESceneProgress::COMPLETE;
     }
 
     SceneStageResult CameraInputOperation::prepare(SceneStageContext&) noexcept
     {
+        prepared_ = false;
+        auto* binding = current();
+        if (!binding)
+        {
+            return ESceneProgress::COMPLETE;
+        }
         if (resynchronization_ != client_.resynchronization())
         {
             resynchronization_ = client_.resynchronization();
-            for (const auto entity : registry_.view<CameraRenderResourceComponent>())
-            {
-                changed_.insert(entity);
-                for (auto& binding : registry_.get<CameraRenderResourceComponent>(entity).bindings)
-                {
-                    binding.parameters_changed = true;
-                    binding.output_changed = true;
-                }
-            }
+            changed_ = binding->parameters_changed = binding->output_changed = true;
         }
-        prepared_.clear();
-        for (auto entry = changed_.begin(); entry != changed_.end();)
+        if (!changed_)
         {
-            const auto entity = *entry;
-            const bool available =
-                registry_.valid(entity) &&
-                registry_.all_of<Camera, CameraTargetsComponent, CameraRenderResourceComponent, WorldTransform3D>(entity
-                );
-            if (!available)
-            {
-                entry = changed_.erase(entry);
-                continue;
-            }
-            const auto& camera = registry_.get<Camera>(entity);
-            const bool needs_parameters = camera_input_ || clipping_;
-            auto prepared = needs_parameters ? prepareSceneCamera(camera, registry_.get<WorldTransform3D>(entity).value)
-                                             : RenderResult<PreparedCamera>{PreparedCamera{}};
-            auto& bindings = registry_.get<CameraRenderResourceComponent>(entity).bindings;
-            const auto& targets = registry_.get<CameraTargetsComponent>(entity).targets;
-            for (auto& binding : bindings)
-            {
-                if (binding.attachment.isNull())
-                {
-                    continue;
-                }
-                const auto target = std::ranges::find(targets, binding.id, &CameraTarget::id);
-                if (target == targets.end())
-                {
-                    continue;
-                }
-                if (binding.graph_inputs != cameraGraphInputs(camera, *target, clipping_))
-                {
-                    continue;
-                }
-                auto parameters = !needs_parameters ? RenderResult<CameraInput>{CameraInput{}}
-                                  : prepared        ? sceneParameters(camera, *prepared, *target)
-                                                    : RenderResult<CameraInput>{cxx::unexpected(prepared.error())};
-                if (!parameters)
-                {
-                    binding.error = parameters.error();
-                    binding.adopted.active = false;
-                    binding.output_changed = true;
-                }
-                else
-                {
-                    binding.parameters_changed |= !sameParameters(binding.parameters, *parameters) ||
-                                                  binding.adopted.viewport != target->viewport;
-                    binding.output_changed |=
-                        binding.adopted.active != target->active || binding.adopted.epoch != target->epoch;
-                    binding.parameters = *parameters;
-                    binding.adopted = *target;
-                    binding.error = {};
-                }
-                if (binding.parameters_changed || binding.output_changed)
-                {
-                    prepared_.emplace_back(entity, binding.id);
-                }
-            }
-            ++entry;
+            return ESceneProgress::COMPLETE;
         }
+        const bool available = registry_.all_of<Camera, CameraTargetsComponent, WorldTransform3D>(camera_);
+        if (!available || binding->attachment.isNull())
+        {
+            return ESceneProgress::COMPLETE;
+        }
+        const auto& camera = registry_.get<Camera>(camera_);
+        const auto& targets = registry_.get<CameraTargetsComponent>(camera_).targets;
+        const auto target = std::ranges::find(targets, binding->id, &CameraTarget::id);
+        if (target == targets.end() || binding->graph_inputs != cameraGraphInputs(camera, *target, clipping_))
+        {
+            return ESceneProgress::COMPLETE;
+        }
+        RenderResult<CameraInput> parameters{CameraInput{}};
+        if (camera_input_ || clipping_)
+        {
+            auto pose = prepareSceneCamera(camera, registry_.get<WorldTransform3D>(camera_).value);
+            parameters = pose ? sceneParameters(camera, *pose, *target) : cxx::unexpected(pose.error());
+        }
+        if (!parameters)
+        {
+            binding->error = parameters.error();
+            binding->adopted.active = false;
+            binding->output_changed = true;
+        }
+        else
+        {
+            binding->parameters_changed |=
+                !sameParameters(binding->parameters, *parameters) || binding->adopted.viewport != target->viewport;
+            binding->output_changed |=
+                binding->adopted.active != target->active || binding->adopted.epoch != target->epoch;
+            binding->parameters = *parameters;
+            binding->adopted = *target;
+            binding->error = {};
+        }
+        prepared_ = binding->parameters_changed || binding->output_changed;
         return ESceneProgress::COMPLETE;
     }
 
     SceneStageResult CameraInputOperation::publish(SceneStageContext&, engine::render::FrameInput& frame) noexcept
     {
-        for (const auto [entity, id] : prepared_)
+        if (prepared_)
         {
-            auto& bindings = registry_.get<CameraRenderResourceComponent>(entity).bindings;
-            auto& binding = *std::ranges::find(bindings, id, &CameraRenderTarget::id);
+            // Structural mutation is excluded between prepare and publication.
+            auto& binding = *current();
             if (binding.parameters_changed && binding.error.type == 0)
             {
                 const auto bytes = std::as_bytes(std::span{&binding.parameters, 1});
@@ -177,8 +166,7 @@ namespace lux::scene
                 binding.output_changed = false;
             }
         }
-        changed_.clear();
-        prepared_.clear();
+        changed_ = prepared_ = false;
         return ESceneProgress::COMPLETE;
     }
 } // namespace lux::scene

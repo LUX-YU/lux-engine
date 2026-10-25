@@ -71,33 +71,60 @@ namespace lux::scene
                 {
                     continue;
                 }
+                const auto add_dependency = [&](std::size_t index) noexcept
+                {
+                    if (std::ranges::find(predecessors[i], index) == predecessors[i].end())
+                    {
+                        predecessors[i].push_back(index);
+                    }
+                    if (!selected[index])
+                    {
+                        selected[index] = true;
+                        changed = true;
+                    }
+                };
                 for (const auto dependency : declarations[i].dependencies)
                 {
-                    std::size_t found = declarations.size();
+                    std::size_t found = declarations.size(), count = 0;
                     for (std::size_t j = 0; j < declarations.size(); ++j)
                     {
-                        if (declarations[j].type != dependency)
+                        if (declarations[j].type == dependency && declarations[j].role == declarations[i].role)
                         {
-                            continue;
+                            found = j;
+                            break;
                         }
-                        if (found != declarations.size())
-                        {
-                            co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
-                        }
-                        found = j;
                     }
                     if (found == declarations.size())
                     {
+                        for (std::size_t j = 0; j < declarations.size(); ++j)
+                        {
+                            if (declarations[j].type == dependency)
+                            {
+                                found = j;
+                                ++count;
+                            }
+                        }
+                    }
+                    if (found == declarations.size() || count > 1)
+                    {
                         co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
                     }
-                    if (std::ranges::find(predecessors[i], found) == predecessors[i].end())
+                    add_dependency(found);
+                }
+                for (const auto dependency : declarations[i].aggregate_dependencies)
+                {
+                    bool found = false;
+                    for (std::size_t j = 0; j < declarations.size(); ++j)
                     {
-                        predecessors[i].push_back(found);
+                        if (declarations[j].type == dependency)
+                        {
+                            add_dependency(j);
+                            found = true;
+                        }
                     }
-                    if (!selected[found])
+                    if (!found)
                     {
-                        selected[found] = true;
-                        changed = true;
+                        co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
                     }
                 }
             }
@@ -124,6 +151,10 @@ namespace lux::scene
             }
             if (declaration.effect_inputs)
             {
+                if (declaration.scope != ERenderOperationScope::SCENE)
+                {
+                    co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
+                }
                 if (effect_source != declarations.size())
                 {
                     co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
@@ -156,6 +187,20 @@ namespace lux::scene
                 }
             }
         }
+        // Scene construction cannot borrow a not-yet-created View behavior.
+        for (std::size_t i = 0; i < declarations.size(); ++i)
+        {
+            if (selected[i] && declarations[i].scope == ERenderOperationScope::SCENE)
+            {
+                for (const auto predecessor : predecessors[i])
+                {
+                    if (declarations[predecessor].scope == ERenderOperationScope::VIEW)
+                    {
+                        co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
+                    }
+                }
+            }
+        }
         RenderBindingPlan plan;
         plan.configuration = std::move(configuration);
         plan.implementation = support.selection;
@@ -176,6 +221,7 @@ namespace lux::scene
                     continue;
                 }
                 plan.declarations.push_back(declarations[i]);
+                plan.declarations.back().role_index = static_cast<std::uint32_t>(i);
                 for (const auto& input : declarations[i].data_inputs)
                 {
                     const auto existing = std::ranges::find_if(

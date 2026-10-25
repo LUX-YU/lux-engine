@@ -1132,6 +1132,22 @@ namespace lux::scene
         return *this;
     }
 
+    SceneRuntimeResult<void> SceneRuntime::Builder::validate() const noexcept
+    {
+        if (!components_ || !simulation_systems_)
+        {
+            return rejected(ESceneRuntimeError::INVALID_INPUT);
+        }
+        auto result = SceneInstance::validate(
+            {description_, world_, simulation_, *components_, *simulation_systems_, scene_systems_, providers_}
+        );
+        if (!result)
+        {
+            return rejected(result.error());
+        }
+        return {};
+    }
+
     SceneRuntimeResult<SceneInstanceLease> SceneRuntime::Builder::build() noexcept
     {
         return runtime_.build(*this);

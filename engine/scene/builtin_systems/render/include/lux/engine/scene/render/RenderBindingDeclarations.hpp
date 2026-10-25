@@ -27,10 +27,12 @@ namespace lux::scene
         std::vector<cxx::TypeToken> sources;
         std::vector<cxx::TypeToken> results;
         std::vector<cxx::TypeToken> dependencies;
+        std::vector<cxx::TypeToken> aggregate_dependencies;
         std::vector<render::RenderPayloadContract> inputs;
         std::vector<system::SystemDataContract> data_inputs;
         ERenderUpdatePolicy policy = ERenderUpdatePolicy::STRUCTURE;
         ERenderOperationScope scope = ERenderOperationScope::SCENE;
+        std::uint32_t role_index = 0;
         bool effect_output = false;
         std::uint64_t (*effect_revision)(void*) noexcept {};
         exec::task<render::RenderResult<void>> (*prepare_resources)(engine::render::RenderAssets&) noexcept {};
@@ -47,7 +49,7 @@ namespace lux::scene
     class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderBindingDeclarations final
     {
     public:
-        // Registration is cold. Scene objects copy their selected descriptions, so declaration
+        // Registration is cold. Each Scene Plan copies its selected descriptions, so declaration
         // growth cannot invalidate live callbacks. Implementation code must outlive all objects.
         [[nodiscard]] RenderBindingRegistrationResult add(RenderBindingDeclaration) noexcept;
         [[nodiscard]] bool supports(const render::RenderPayloadContract&) const noexcept;
@@ -121,15 +123,23 @@ namespace lux::scene
         }
 
         template <class T, class... C>
-        void
-        connectRenderSources(T& binding, simulation::ecs::Registry& registry, std::vector<entt::scoped_connection>& connections, std::type_identity<std::tuple<C...>>) noexcept
+        void connectRenderSources(
+            T& binding,
+            simulation::ecs::Registry& registry,
+            std::vector<entt::scoped_connection>& connections,
+            std::type_identity<std::tuple<C...>>
+        ) noexcept
         {
             (connectRenderSource<T, C>(binding, registry, connections), ...);
         }
 
         template <class T, class... C>
-        void
-        connectRenderResults(T& binding, simulation::ecs::Registry& registry, std::vector<entt::scoped_connection>& connections, std::type_identity<std::tuple<C...>>) noexcept
+        void connectRenderResults(
+            T& binding,
+            simulation::ecs::Registry& registry,
+            std::vector<entt::scoped_connection>& connections,
+            std::type_identity<std::tuple<C...>>
+        ) noexcept
         {
             (connections.emplace_back(registry.on_destroy<C>().template connect<&renderResultDestroyed<T, C>>(binding)),
              ...);
@@ -159,14 +169,28 @@ namespace lux::scene
             }
             result.create = +[](RenderBindingContext& context) noexcept -> render::RenderResult<void*>
             {
-                auto made = T::create(context);
-                if (!made)
+                if constexpr (requires { T::create(context); })
                 {
-                    return cxx::unexpected(made.error());
+                    auto made = T::create(context);
+                    if (!made)
+                    {
+                        return cxx::unexpected(made.error());
+                    }
+                    return made->release();
                 }
-                return made->release();
+                else
+                {
+                    static T function;
+                    return &function;
+                }
             };
-            result.destroy = +[](void* object) noexcept { delete static_cast<T*>(object); };
+            result.destroy = +[](void* object) noexcept
+            {
+                if constexpr (requires(RenderBindingContext& context) { T::create(context); })
+                {
+                    delete static_cast<T*>(object);
+                }
+            };
             result.connect =
                 +[](void* object, simulation::ecs::Registry& registry, std::vector<entt::scoped_connection>& connections
                  ) noexcept
@@ -213,6 +237,11 @@ namespace lux::scene
             if constexpr (requires { typename T::Dependencies; })
             {
                 result.dependencies = renderSourceTypes(std::type_identity<typename T::Dependencies>{});
+            }
+            if constexpr (requires { typename T::AggregateDependencies; })
+            {
+                result.aggregate_dependencies =
+                    renderSourceTypes(std::type_identity<typename T::AggregateDependencies>{});
             }
             if constexpr (requires(engine::render::RenderAssets& assets) { T::prepareResources(assets); })
             {

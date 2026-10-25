@@ -1,5 +1,6 @@
 #include "support/ModelSource.hpp"
 #include "support/ProjectRequests.hpp"
+#include "support/RenderBindingExtensions.hpp"
 #include <lux/engine/context/render/RenderDiagnostics.hpp>
 #include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/editor/ComponentEditors3D.hpp>
@@ -19,8 +20,11 @@
 #include <lux/engine/scene/MeshQuery.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
+#include <lux/engine/scene/render/CameraRenderResourceComponent.hpp>
 #include <lux/engine/scene/render/LightRenderResourceComponent.hpp>
 #include <lux/engine/scene/render/MeshRenderBinding.hpp>
+#include <lux/engine/scene/render/MeshRenderResourceComponent.hpp>
+#include <lux/engine/scene/render/RasterTransformOperation.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
 #include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
@@ -270,11 +274,19 @@ int main(int argc, char** argv)
         }
     };
     auto& context = host.project();
+    auto* bindings = context.extensions().find<scene::RenderBindingDeclarations>();
+    assert(bindings);
+    assert(scene::registerCapabilityOperation<fixture::ViewOperation>(*bindings));
+    assert(scene::registerComponentBinding<fixture::StatelessObservation>(*bindings));
+    assert(scene::registerComponentBinding<scene::MeshRenderBinding>(*bindings, {}, "test.secondary.mesh"));
+    assert(scene::registerCapabilityOperation<scene::RasterTransformOperation>(*bindings, {}, "test.secondary.mesh"));
+
     until([&] { return context.service<ProjectAssets>()->get().ready(); });
     auto service = context.service<ProjectScenes>();
     assert(service);
     auto& scenes = service->get();
     scene::MeshRenderBinding* scene_projection = nullptr;
+    scene::MeshRenderBinding* secondary_projection = nullptr;
     const auto selection = [&]
     {
         auto package =
@@ -286,11 +298,35 @@ int main(int argc, char** argv)
         selected.systems = {package->scene, &package->scene->data()};
         return selected;
     };
+    auto missing_camera = selection();
+    std::erase_if(missing_camera.schemas, [](const auto& value) { return value.name == "lux.scene.Camera"; });
+    const auto before_dynamic = context.manifest();
+    const auto invalid_camera = asset::AssetId{generate()};
+    assert(scenes.create(
+        {invalid_camera, "Missing Camera", "invalid-camera.luxscene", "lux.editor.scene.3d"},
+        std::move(missing_camera)
+    ));
+    until([&] { return scenes.failure().has_value(); });
+    const auto* dynamic_failure = std::get_if<scene::SceneRuntimeFailure>(&*scenes.failure());
+    assert(dynamic_failure);
+    const auto* build_failure = std::get_if<scene::SceneBuildFailure>(&dynamic_failure->cause);
+    assert(build_failure && build_failure->code == scene::ESceneBuildError::INCOMPATIBLE_DATA);
+    assert(!std::filesystem::exists(root / "invalid-camera.luxscene"));
+    assert(context.manifest() == before_dynamic && host.engine().sceneRuntime().instanceCount() == 0);
+
     auto incompatible = selection();
     std::erase_if(incompatible.schemas, [](const auto& value) { return value.name == "lux.ecs.Transform3D"; });
     const auto bad_id = asset::AssetId{generate()};
+    bool invalid_finished = false;
+    auto invalid_connection = object::LuxObject::connect(
+        &scenes,
+        &ProjectScenes::changed,
+        &host,
+        [&]() noexcept { invalid_finished = true; }
+    );
+    assert(invalid_connection);
     assert(scenes.create({bad_id, "Invalid", "invalid.luxscene", "lux.editor.scene.3d"}, std::move(incompatible)));
-    until([&] { return scenes.failure().has_value(); });
+    until([&] { return invalid_finished; });
     assert(!std::filesystem::exists(root / "invalid.luxscene"));
     assert(host.engine().sceneRuntime().instanceCount() == 0);
 
@@ -314,8 +350,9 @@ int main(int argc, char** argv)
                 assert(error && *error == scene::ESceneRuntimeError::BUSY);
                 return false;
             }
-            scene_projection = (*system)->binding<scene::MeshRenderBinding>();
-            assert(scene_projection); // Borrow ends before this Scene retires.
+            scene_projection = (*system)->binding<scene::MeshRenderBinding>("raster.mesh");
+            secondary_projection = (*system)->binding<scene::MeshRenderBinding>("test.secondary.mesh");
+            assert(scene_projection && secondary_projection); // Borrow ends before this Scene retires.
             return true;
         }
     );
@@ -348,11 +385,51 @@ int main(int argc, char** argv)
             return first.ready && second.ready;
         }
     );
+    {
+        // The mounted SceneViewportPane also creates an output. Compare actual adopted Views,
+        // rather than assuming only the two explicit viewport requests exist.
+        auto registry = std::as_const(context.engine().sceneRuntime()).borrowInstance(editing_instance);
+        assert(registry);
+        std::vector<render::ViewId> adopted_views;
+        for (const auto camera : registry->get().view<const scene::detail::CameraRenderResourceComponent>())
+        {
+            for (const auto& target :
+                 registry->get().get<scene::detail::CameraRenderResourceComponent>(camera).bindings)
+            {
+                if (!target.view.isNull())
+                {
+                    adopted_views.push_back(target.view);
+                }
+            }
+        }
+        assert(adopted_views.size() >= 2 && fixture::ViewOperation::observations.size() == adopted_views.size());
+        for (const auto view : adopted_views)
+        {
+            assert(
+                std::ranges::count_if(
+                    fixture::ViewOperation::observations,
+                    [&](const auto& observed) noexcept { return observed.first == view; }
+                ) == 1
+            );
+        }
+    }
+    const auto observed_camera = scenes.viewport(*a).camera;
+    auto observe = [&](simulation::ecs::Registry& registry) noexcept
+    { registry.emplace_or_replace<fixture::ViewObservation>(observed_camera, 41u); };
+    until([&] { return context.engine().sceneRuntime().editInstance(editing_instance, observe).has_value(); });
+    assert(
+        std::ranges::count_if(
+            fixture::ViewOperation::observations,
+            [](const auto& item) { return item.second == 41; }
+        ) == 1
+    );
     const auto original_target = scenes.viewport(*a).target;
     assert(scenes.viewport(*b).target != original_target);
+    const auto views_before_resize = fixture::ViewOperation::created;
     assert(scenes.updateViewport(*a, 640, 320));
     assert(!scenes.viewport(*a).ready);
     until([&] { return scenes.viewport(*a).ready; });
+    assert(fixture::ViewOperation::created == views_before_resize);
     assert(
         scenes.viewport(*a).target == original_target
     ); // Resize adopts physical candidates, not new logical identity.
@@ -452,7 +529,18 @@ int main(int argc, char** argv)
         for (auto entity : borrowed->get().view<const simulation::ecs::Mesh3D>())
         {
             assert(scene_projection->assetError(entity).type == 0);
-            count += scene_projection->visualReady(entity);
+            assert(secondary_projection->assetError(entity).type == 0);
+            const bool ready = scene_projection->visualReady(entity) && secondary_projection->visualReady(entity);
+            count += ready;
+            if (ready)
+            {
+                const auto* resources = borrowed->get().try_get<scene::detail::MeshRenderResourceComponent>(entity);
+                assert(resources && resources->roles.size() == 2);
+                const auto& first = resources->roles[0];
+                const auto& second = resources->roles[1];
+                assert(first.role != second.role && first.instance != second.instance);
+                assert(first.mesh == second.mesh && first.material == second.material);
+            }
         }
         return count;
     };
@@ -576,6 +664,8 @@ int main(int argc, char** argv)
     assert(assets.records().front().products == imported.products);
     assert(assets.records().front().package != imported.package);
     assert(old_snapshot.open(imported.id)); // Old readers still own their exact published provider.
+    // Catalog publication precedes asynchronous resource adoption for both representation roles.
+    until([&] { return projected() == 2 && scenes.viewport(*a).ready && scenes.viewport(*b).ready; });
     const auto accepted_catalog = assets.revision();
     fixture::writeText(source, "this is not a model");
     assert(assets.reimport(imported.id));
@@ -764,5 +854,9 @@ int main(int argc, char** argv)
     }
     assert(host.engine().sceneRuntime().instanceCount() == 0);
     made->reset();
+    assert(fixture::StatelessObservation::signals > 0);
+    assert(fixture::ViewOperation::observations.empty());
+    assert(fixture::ViewOperation::created == fixture::ViewOperation::destroyed);
+    assert(fixture::ViewOperation::created == fixture::ViewOperation::drained);
     std::puts("Scene creation, incompatibility, multi-view, resize, reopen and late close passed");
 }

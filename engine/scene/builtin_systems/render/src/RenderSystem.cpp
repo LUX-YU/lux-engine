@@ -1,3 +1,4 @@
+#include <list>
 #include <lux/engine/context/render/RenderAssets.hpp>
 #include <lux/engine/context/render/RenderDiagnostics.hpp>
 #include <lux/engine/scene/RenderBindingInstance.hpp>
@@ -23,6 +24,16 @@ namespace lux::scene
         RenderBindingPlan plan;
         std::vector<CapabilitiesInstalled::Input> installed_inputs;
         std::vector<detail::RenderBindingInstance> bindings;
+
+        struct ViewBindings
+        {
+            ViewId view;
+            Entity entity;
+            std::vector<detail::RenderBindingInstance> bindings;
+            bool retiring = false;
+        };
+
+        std::list<ViewBindings> views;
         SceneId scene;
         std::uint64_t input_revision = 1, adopted_revision = 0;
         RenderError error;
@@ -78,13 +89,16 @@ namespace lux::scene
         {
         }
 
-        void* find(cxx::TypeToken type, std::string_view role) noexcept
+        static void* findIn(
+            std::span<const detail::RenderBindingInstance> entries,
+            cxx::TypeToken type,
+            std::string_view role
+        ) noexcept
         {
             void* found = nullptr;
-            for (const auto& binding : bindings)
+            for (const auto& binding : entries)
             {
-                const auto& declaration = binding.declaration;
-                if (declaration.type != type || (!role.empty() && declaration.role != role))
+                if (binding.declaration.type != type || (!role.empty() && binding.declaration.role != role))
                 {
                     continue;
                 }
@@ -95,6 +109,44 @@ namespace lux::scene
                 found = binding.object.get();
             }
             return found;
+        }
+
+        void* find(cxx::TypeToken type, std::string_view role, ViewId view = {}) noexcept
+        {
+            if (!view.isNull())
+            {
+                auto found = std::ranges::find(views, view, &ViewBindings::view);
+                if (found != views.end())
+                {
+                    if (auto* object = findIn(found->bindings, type, role))
+                    {
+                        return object;
+                    }
+                }
+            }
+            return findIn(bindings, type, role);
+        }
+
+        void visit(cxx::TypeToken type, ViewId view, void* receiver, void (*apply)(void*, void*) noexcept) noexcept
+        {
+            for (auto& binding : bindings)
+            {
+                if (binding.declaration.type == type)
+                {
+                    apply(receiver, binding.object.get());
+                }
+            }
+            auto found = std::ranges::find(views, view, &ViewBindings::view);
+            if (found != views.end())
+            {
+                for (auto& binding : found->bindings)
+                {
+                    if (binding.declaration.type == type)
+                    {
+                        apply(receiver, binding.object.get());
+                    }
+                }
+            }
         }
 
         static void deliver(ReadyWaiter& waiter, RenderResult<void> result) noexcept
@@ -179,7 +231,7 @@ namespace lux::scene
             co_return RenderResult<void>{};
         }
 
-        RenderResult<void> connect() noexcept
+        RenderBindingContext bindingContext(ViewId view = {}, Entity entity = NullEntity) noexcept
         {
             RenderBindingContext context{
                 registry,
@@ -196,35 +248,142 @@ namespace lux::scene
                 input_revision,
                 adopted_revision,
                 this,
-                [](void* data, cxx::TypeToken type, std::string_view role) noexcept
-                { return static_cast<Impl*>(data)->find(type, role); }
+                [](void* data, cxx::TypeToken type, std::string_view role, ViewId view) noexcept
+                { return static_cast<Impl*>(data)->find(type, role, view); },
+                [](void* data, cxx::TypeToken type, ViewId view, void* receiver, void (*apply)(void*, void*) noexcept
+                ) noexcept { static_cast<Impl*>(data)->visit(type, view, receiver, apply); },
+                [](void* data, ViewId view, Entity entity) noexcept
+                { return static_cast<Impl*>(data)->bindView(view, entity); },
+                [](void* data, ViewId view, SceneStageContext& stage) noexcept
+                { return static_cast<Impl*>(data)->finishView(view, stage); }
             };
-            bindings.reserve(plan.declarations.size());
+            context.view = view;
+            context.view_entity = entity;
+            for (auto& binding : bindings)
+            {
+                if (binding.declaration.effect_inputs)
+                {
+                    context.effect_input_object = binding.object.get();
+                    context.effect_inputs = binding.declaration.effect_inputs;
+                    context.effect_revision = binding.declaration.effect_revision;
+                }
+            }
+            return context;
+        }
+
+        RenderResult<void> constructBindings(
+            std::vector<detail::RenderBindingInstance>& output,
+            ERenderOperationScope scope,
+            ViewId view = {},
+            Entity entity = NullEntity
+        ) noexcept
+        {
+            output.reserve(std::ranges::count(plan.declarations, scope, &RenderBindingDeclaration::scope));
             for (const auto& declaration : plan.declarations)
             {
-                // Scene behaviors may emit per-View records themselves. Arbitrary View construction
-                // is not inferred from a type name or replicated silently once per Scene.
-                if (declaration.scope != ERenderOperationScope::SCENE)
+                if (declaration.scope != scope)
                 {
-                    return cxx::unexpected(RenderError{kRuntimeUnsupported});
+                    continue;
                 }
+                auto context = bindingContext(view, entity);
                 context.role = declaration.role;
+                context.role_index = declaration.role_index;
                 auto created = declaration.create(context);
                 if (!created)
                 {
                     return cxx::unexpected(created.error());
                 }
-                auto& instance = bindings.emplace_back(declaration, *created);
+                auto& instance = output.emplace_back(declaration, *created);
                 declaration.connect(instance.object.get(), registry, instance.connections);
-                if (declaration.effect_inputs)
+            }
+            return {};
+        }
+
+        RenderResult<void> connect() noexcept
+        {
+            auto connected = constructBindings(bindings, ERenderOperationScope::SCENE);
+            ready = bool(connected);
+            return connected;
+        }
+
+        RenderResult<void> bindView(ViewId view, Entity entity) noexcept
+        {
+            if (closing || view.isNull())
+            {
+                return cxx::unexpected(RenderError{kRuntimeState});
+            }
+            auto found = std::ranges::find(views, view, &ViewBindings::view);
+            if (found != views.end())
+            {
+                return found->entity == entity && !found->retiring ? RenderResult<void>{}
+                                                                   : cxx::unexpected(RenderError{kRuntimeIdentity});
+            }
+            auto& entry = views.emplace_back(view, entity);
+            auto result = constructBindings(entry.bindings, ERenderOperationScope::VIEW, view, entity);
+            if (!result)
+            {
+                // Constructors only capture dependencies; no accepted work precedes stage execution.
+                views.pop_back();
+            }
+            return result;
+        }
+
+        static SceneStageContext stoppedStage(const SceneStageContext& stage) noexcept
+        {
+            // One immutable requested token adapts local View retirement to the existing stage contract.
+            // There is no per-View cancellation source, Scope, operation owner or completion queue.
+            static const auto requested = []
+            {
+                std::stop_source stop;
+                stop.request_stop();
+                return stop;
+            }();
+            auto result = stage;
+            result.stop = requested.get_token();
+            return result;
+        }
+
+        SceneStageResult finishView(ViewId view, SceneStageContext& stage) noexcept
+        {
+            const auto found = std::ranges::find(views, view, &ViewBindings::view);
+            if (found == views.end())
+            {
+                return ESceneProgress::COMPLETE;
+            }
+            found->retiring = true;
+            auto stopped = stoppedStage(stage);
+            for (auto entry = found->bindings.rbegin(); entry != found->bindings.rend(); ++entry)
+            {
+                if (!entry->declaration.maintain)
                 {
-                    context.effect_input_object = instance.object.get();
-                    context.effect_inputs = declaration.effect_inputs;
-                    context.effect_revision = declaration.effect_revision;
+                    continue;
+                }
+                auto result = entry->declaration.maintain(entry->object.get(), stopped);
+                stage.publication_needed |= stopped.publication_needed;
+                if (!result || *result == ESceneProgress::PENDING)
+                {
+                    return result;
                 }
             }
-            ready = true;
-            return {};
+            // Only after all accepted View work is settled can the provider remove its native View.
+            views.erase(found);
+            return ESceneProgress::COMPLETE;
+        }
+
+        static SceneStageResult publishBinding(
+            detail::RenderBindingInstance& binding,
+            SceneStageContext& context,
+            engine::render::FrameInput& frame
+        ) noexcept
+        {
+            auto result = binding.declaration.publish(binding.object.get(), context, frame);
+            // Different roles may write the same destination. Only the behavior can assert that
+            // commands within its group are independent; never infer independence between behaviors.
+            if (frame.group_ends.empty() || frame.group_ends.back() != frame.commands.size())
+            {
+                frame.group_ends.push_back(frame.commands.size());
+            }
+            return result;
         }
 
         exec::task<RenderResult<void>> removeScene() noexcept
@@ -278,7 +437,7 @@ namespace lux::scene
 
     RenderSystem::~RenderSystem() noexcept
     {
-        if (impl_->pending || impl_->waiters || !impl_->scene.isNull())
+        if (impl_->pending || impl_->waiters || !impl_->scene.isNull() || !impl_->views.empty())
         {
             std::terminate();
         }
@@ -304,6 +463,14 @@ namespace lux::scene
             if (self.pending)
             {
                 return ESceneProgress::PENDING;
+            }
+            while (!self.views.empty())
+            {
+                auto result = self.finishView(self.views.front().view, context);
+                if (!result || *result == ESceneProgress::PENDING)
+                {
+                    return result;
+                }
             }
             // Reverse the actual construction dependencies. Camera outputs finish before their
             // input producers release Scene/global resources. No second cleanup Scope is created.
@@ -381,6 +548,27 @@ namespace lux::scene
             }
             pending |= *result == ESceneProgress::PENDING;
         }
+        for (auto& view : self.views)
+        {
+            if (view.retiring)
+            {
+                continue;
+            }
+            for (auto& binding : view.bindings)
+            {
+                context.publication_needed |= binding.declaration.policy == ERenderUpdatePolicy::EACH_FRAME;
+                if (!binding.declaration.maintain)
+                {
+                    continue;
+                }
+                auto result = binding.declaration.maintain(binding.object.get(), context);
+                if (!result)
+                {
+                    return result;
+                }
+                pending |= *result == ESceneProgress::PENDING;
+            }
+        }
         const bool has_outputs =
             std::ranges::any_of(self.plan.declarations, [](const auto& value) noexcept { return value.effect_output; });
         if (!has_outputs)
@@ -408,6 +596,25 @@ namespace lux::scene
                 return result;
             }
         }
+        for (auto& view : impl_->views)
+        {
+            if (view.retiring)
+            {
+                continue;
+            }
+            for (auto& binding : view.bindings)
+            {
+                if (!binding.declaration.prepare)
+                {
+                    continue;
+                }
+                auto result = binding.declaration.prepare(binding.object.get(), context);
+                if (!result || *result == ESceneProgress::PENDING)
+                {
+                    return result;
+                }
+            }
+        }
         return ESceneProgress::COMPLETE;
     }
 
@@ -429,15 +636,30 @@ namespace lux::scene
             {
                 continue;
             }
-            auto result = binding.declaration.publish(binding.object.get(), context, *frame);
+            auto result = Impl::publishBinding(binding, context, *frame);
             if (!result || *result == ESceneProgress::PENDING)
             {
                 return result;
             }
         }
-        if (frame->group_ends.empty() || frame->group_ends.back() != frame->commands.size())
+        for (auto& view : impl_->views)
         {
-            frame->group_ends.push_back(frame->commands.size());
+            if (view.retiring)
+            {
+                continue;
+            }
+            for (auto& binding : view.bindings)
+            {
+                if (!binding.declaration.publish)
+                {
+                    continue;
+                }
+                auto result = Impl::publishBinding(binding, context, *frame);
+                if (!result || *result == ESceneProgress::PENDING)
+                {
+                    return result;
+                }
+            }
         }
         return ESceneProgress::COMPLETE;
     }

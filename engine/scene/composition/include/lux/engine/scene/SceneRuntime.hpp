@@ -194,6 +194,10 @@ namespace lux::scene
                 return *this;
             }
 
+            // Runs the same static/dynamic data qualification as build, without constructing an instance.
+            // Use before persistent publication; dependencies and configuration are borrowed for this call.
+            [[nodiscard]] SceneRuntimeResult<void> validate() const noexcept;
+
             // Registration/provider borrows must stay alive until build returns.
             [[nodiscard]] SceneRuntimeResult<SceneInstanceLease> build() noexcept;
 

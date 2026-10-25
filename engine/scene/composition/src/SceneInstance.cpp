@@ -282,6 +282,59 @@ namespace lux::scene
             }
             return result;
         }
+
+        cxx::expected<SceneDataPreparation, SceneBuildFailure> validateDataDependencies(const SceneCreateInfo& info
+        ) noexcept
+        {
+            if (!info.scene)
+            {
+                return lux::cxx::unexpected(buildFailure(ESceneBuildError::INVALID_DESCRIPTION));
+            }
+            if (!info.world)
+            {
+                return lux::cxx::unexpected(buildFailure(ESceneBuildError::INVALID_WORLD));
+            }
+            if (!info.simulation)
+            {
+                return lux::cxx::unexpected(buildFailure(ESceneBuildError::INVALID_SIMULATION));
+            }
+            for (std::size_t index{}; index < info.scene_systems.size(); ++index)
+            {
+                const auto& registration = info.scene_systems[index];
+                const bool invalid = !validSceneSystemRegistration(registration);
+                const bool duplicate = std::ranges::any_of(
+                    info.scene_systems.first(index),
+                    [&](const auto& previous) { return previous.type.hash == registration.type.hash; }
+                );
+                if (invalid || duplicate)
+                {
+                    return lux::cxx::unexpected(
+                        systemFailure({ESceneSystemBuildError::INVALID_DESCRIPTION, {}, {}, registration.type.hash})
+                    );
+                }
+            }
+            for (std::size_t index{}; index < info.providers.size(); ++index)
+            {
+                const auto& provider = info.providers[index];
+                const bool duplicate = std::any_of(
+                    info.providers.begin(),
+                    info.providers.begin() + index,
+                    [&](const auto& previous) noexcept { return previous.name == provider.name; }
+                );
+                const bool is_invalid_identity = provider.name.empty() || provider.capability.empty() || duplicate;
+                const bool is_invalid_value = !provider.type.isValid() || provider.value == nullptr;
+                if (is_invalid_identity || is_invalid_value)
+                {
+                    return lux::cxx::unexpected(buildFailure(
+                        ESceneBuildError::INVALID_PROVIDER,
+                        provider.name.empty() ? 0U : lux::cxx::Fnv1a64::hash(provider.name)
+                    ));
+                }
+            }
+
+            return prepareDataDependencies(info);
+        }
+
     } // namespace
 
     SceneInstance::SceneInstance(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
@@ -339,57 +392,22 @@ namespace lux::scene
         return std::unique_ptr<SceneInstance>(new SceneInstance(std::move(*prepared)));
     }
 
+    cxx::expected<void, SceneBuildFailure> SceneInstance::validate(const SceneCreateInfo& info) noexcept
+    {
+        auto prepared = validateDataDependencies(info);
+        if (!prepared)
+        {
+            return cxx::unexpected(prepared.error());
+        }
+        return {};
+    }
+
     lux::cxx::expected<std::unique_ptr<SceneInstance::Impl>, SceneBuildFailure> SceneInstance::prepare(
         SceneCreateInfo info,
         SceneInstanceId id
     ) noexcept
     {
-        if (!info.scene)
-        {
-            return lux::cxx::unexpected(buildFailure(ESceneBuildError::INVALID_DESCRIPTION));
-        }
-        if (!info.world)
-        {
-            return lux::cxx::unexpected(buildFailure(ESceneBuildError::INVALID_WORLD));
-        }
-        if (!info.simulation)
-        {
-            return lux::cxx::unexpected(buildFailure(ESceneBuildError::INVALID_SIMULATION));
-        }
-        for (std::size_t index{}; index < info.scene_systems.size(); ++index)
-        {
-            const auto& registration = info.scene_systems[index];
-            const bool invalid = !validSceneSystemRegistration(registration);
-            const bool duplicate = std::ranges::any_of(
-                info.scene_systems.first(index),
-                [&](const auto& previous) { return previous.type.hash == registration.type.hash; }
-            );
-            if (invalid || duplicate)
-            {
-                return lux::cxx::unexpected(
-                    systemFailure({ESceneSystemBuildError::INVALID_DESCRIPTION, {}, {}, registration.type.hash})
-                );
-            }
-        }
-        for (std::size_t index{}; index < info.providers.size(); ++index)
-        {
-            const auto& provider = info.providers[index];
-            const bool duplicate = std::any_of(
-                info.providers.begin(),
-                info.providers.begin() + index,
-                [&](const auto& previous) noexcept { return previous.name == provider.name; }
-            );
-            if (provider.name.empty() || provider.capability.empty() || !provider.type.isValid() ||
-                provider.value == nullptr || duplicate)
-            {
-                return lux::cxx::unexpected(buildFailure(
-                    ESceneBuildError::INVALID_PROVIDER,
-                    provider.name.empty() ? 0U : lux::cxx::Fnv1a64::hash(provider.name)
-                ));
-            }
-        }
-
-        auto data_dependencies = prepareDataDependencies(info);
+        auto data_dependencies = validateDataDependencies(info);
         if (!data_dependencies)
         {
             return cxx::unexpected(std::move(data_dependencies.error()));

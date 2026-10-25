@@ -53,26 +53,65 @@ namespace lux::scene
         std::uint64_t& input_revision;
         std::uint64_t& adopted_input_revision;
         void* lookup_context;
-        void* (*lookup)(void*, cxx::TypeToken, std::string_view) noexcept;
+        void* (*lookup)(void*, cxx::TypeToken, std::string_view, render::ViewId) noexcept;
+        void (*visit)(void*, cxx::TypeToken, render::ViewId, void*, void (*)(void*, void*) noexcept) noexcept;
+        // A View provider calls bind_view after accepting its native View, at a Scene structural safe point.
+        // Before removing that View, repeat finish_view until COMPLETE; it settles the selected VIEW operations.
+        // Borrow these callbacks with lookup_context, not this temporary construction aggregate.
+        render::RenderResult<void> (*bind_view)(void*, render::ViewId, simulation::ecs::Entity) noexcept;
+        SceneStageResult (*finish_view)(void*, render::ViewId, SceneStageContext&) noexcept;
         void* effect_input_object = nullptr;
         render::RenderResult<
             render::ConfigValue> (*effect_inputs)(void*, cxx::TypeToken, std::span<const std::byte>) noexcept = nullptr;
         std::uint64_t (*effect_revision)(void*) noexcept = nullptr;
         std::string_view role;
+        std::uint32_t role_index = 0;
+        render::ViewId view;
+        simulation::ecs::Entity view_entity = simulation::ecs::NullEntity;
 
         template <class T> [[nodiscard]] T* find(std::string_view selected_role = {}) const noexcept
         {
-            return static_cast<T*>(lookup(lookup_context, cxx::typeToken<T>(), selected_role));
+            if (selected_role.empty())
+            {
+                if (auto* same_role = lookup(lookup_context, cxx::typeToken<T>(), role, view))
+                {
+                    return static_cast<T*>(same_role);
+                }
+            }
+            return static_cast<T*>(lookup(lookup_context, cxx::typeToken<T>(), selected_role, view));
+        }
+
+        // Cold aggregation of explicitly declared multi-role dependencies; no new directory or ownership.
+        template <class T, class F> void forEach(F&& function) const noexcept
+        {
+            static_assert(noexcept(function(std::declval<T&>())));
+            visit(
+                lookup_context,
+                cxx::typeToken<T>(),
+                view,
+                const_cast<void*>(static_cast<const void*>(std::addressof(function))),
+                +[](void* callback, void* object) noexcept
+                { (*static_cast<std::remove_reference_t<F>*>(callback))(*static_cast<T*>(object)); }
+            );
         }
     };
 
+    // Empty function objects can use the same declaration without allocating one object per Scene/View.
+    // Anything retaining dependencies must provide its explicit fallible factory.
     template <class T>
-    concept RenderComponentBinding = requires(RenderBindingContext& context) {
+    concept StatelessRenderBinding =
+        std::is_empty_v<T> && std::is_trivially_destructible_v<T> && std::is_nothrow_default_constructible_v<T>;
+
+    template <class T>
+    concept RenderComponentBinding = requires {
         typename T::SourceComponents;
         typename T::ResultComponents;
         { T::name } -> std::convertible_to<std::string_view>;
         { T::inputs() } noexcept -> std::same_as<std::span<const render::RenderPayloadContract>>;
-        { T::create(context) } noexcept -> std::same_as<render::RenderResult<std::unique_ptr<T>>>;
         requires std::is_nothrow_destructible_v<T>;
-    };
+    } && (StatelessRenderBinding<T> || requires(RenderBindingContext& context) {
+                                         {
+                                             T::create(context)
+                                         } noexcept -> std::same_as<render::RenderResult<std::unique_ptr<T>>>;
+                                     });
 } // namespace lux::scene

@@ -2,8 +2,6 @@
 #include <entt/container/dense_set.hpp>
 #include <lux/engine/context/render/RenderDiagnostics.hpp>
 #include <lux/engine/render/capabilities/RasterAssets.hpp>
-#include <lux/engine/scene/render/MaterialRenderResourceComponent.hpp>
-#include <lux/engine/scene/render/MeshInstanceRenderResourceComponent.hpp>
 #include <lux/engine/scene/render/MeshRenderBinding.hpp>
 #include <lux/engine/scene/render/MeshRenderResourceComponent.hpp>
 #include <lux/engine/scene/render/RasterAssetPipelines.hpp>
@@ -60,6 +58,7 @@ namespace lux::scene
         RenderRequester& client;
         execution::ExecutionRuntime& execution;
         CapabilityInput meshes, textures, materials, instances;
+        const std::uint32_t role;
         BoundCommand<CreateMeshInstance> create;
         BoundCommand<UpdateMeshInstances> update;
         BoundCommand<ReleaseMeshInstance> remove;
@@ -85,8 +84,8 @@ namespace lux::scene
             BoundCommand<ReleaseMeshInstance> remove_command
         )
             : registry(context.registry), assets(context.assets), asset_input(context.asset_input),
-              source(context.source), client(context.client), execution(context.execution), create(create_command),
-              update(update_command), remove(remove_command), revision(context.input_revision),
+              source(context.source), client(context.client), execution(context.execution), role(context.role_index),
+              create(create_command), update(update_command), remove(remove_command), revision(context.input_revision),
               adopted(context.adopted_input_revision), availability(assets, this, &assetReady, &capacityReady)
         {
         }
@@ -324,34 +323,73 @@ namespace lux::scene
             }
         }
 
-        void adopt(Candidate& candidate) noexcept
+        const MeshRenderResource* resource(Entity entity) const noexcept
         {
-            const auto entity = candidate.entity;
-            registry.remove<MeshRenderResourceComponent, MaterialRenderResourceComponent>(entity);
-            registry.emplace<MeshRenderResourceComponent>(
-                entity,
-                key(candidate.visual.mesh, candidate.revision),
-                candidate.description.mesh,
-                candidate.visual
-            );
-            registry.emplace<MaterialRenderResourceComponent>(
-                entity,
-                key(candidate.visual.material, candidate.revision),
-                candidate.description.material
-            );
-            if (registry.all_of<MeshInstanceRenderResourceComponent>(entity))
+            const auto* component =
+                registry.valid(entity) ? registry.try_get<MeshRenderResourceComponent>(entity) : nullptr;
+            return component ? component->find(role) : nullptr;
+        }
+
+        void releaseResource(Entity entity, const MeshRenderResource& value, bool release_instance) noexcept
+        {
+            const auto after = ++revision;
+            mesh_exits.push_back({value.mesh_source, after});
+            material_exits.push_back({value.material_source, after});
+            if (release_instance)
             {
-                registry.patch<MeshInstanceRenderResourceComponent>(
-                    entity,
-                    [&](auto& value) noexcept { value.instance = candidate.instance; }
-                );
+                instance_exits.push_back({entity, value.instance});
+            }
+        }
+
+        void removeResource(Entity entity) noexcept
+        {
+            auto* component = registry.try_get<MeshRenderResourceComponent>(entity);
+            if (!component)
+            {
+                return;
+            }
+            auto found = std::ranges::find(component->roles, role, &MeshRenderResource::role);
+            if (found == component->roles.end())
+            {
+                return;
+            }
+            releaseResource(entity, *found, true);
+            component->roles.erase(found);
+            if (component->roles.empty())
+            {
+                registry.remove<MeshRenderResourceComponent>(entity); // Empty on_destroy cannot release twice.
             }
             else
             {
-                registry.emplace<MeshInstanceRenderResourceComponent>(entity, candidate.instance);
+                registry.patch<MeshRenderResourceComponent>(entity);
             }
-            candidate.mesh_acquired = false;
-            candidate.material_acquired = false;
+        }
+
+        void adopt(Candidate& candidate) noexcept
+        {
+            const auto entity = candidate.entity;
+            auto& component = registry.get_or_emplace<MeshRenderResourceComponent>(entity);
+            const MeshRenderResource value{
+                role,
+                key(candidate.visual.mesh, candidate.revision),
+                key(candidate.visual.material, candidate.revision),
+                candidate.description.mesh,
+                candidate.description.material,
+                candidate.instance,
+                candidate.visual
+            };
+            auto found = std::ranges::find(component.roles, role, &MeshRenderResource::role);
+            if (found == component.roles.end())
+            {
+                component.roles.push_back(value);
+            }
+            else
+            {
+                releaseResource(entity, *found, false); // The accepted update kept this role's instance identity.
+                *found = value;
+            }
+            registry.patch<MeshRenderResourceComponent>(entity);
+            candidate.mesh_acquired = candidate.material_acquired = false;
             failures.erase(entity);
             intents.erase(entity);
         }
@@ -378,10 +416,9 @@ namespace lux::scene
                         fatal = candidate.error;
                         return false;
                     }
-                    if (registry.valid(candidate.entity) &&
-                        registry.all_of<MeshInstanceRenderResourceComponent>(candidate.entity))
+                    if (registry.valid(candidate.entity) && resource(candidate.entity) != nullptr)
                     {
-                        registry.patch<MeshInstanceRenderResourceComponent>(candidate.entity);
+                        registry.patch<MeshRenderResourceComponent>(candidate.entity);
                     }
                     return true;
                 }
@@ -438,12 +475,12 @@ namespace lux::scene
             }
             const auto& world = registry.get<WorldTransform3D>(candidate.entity);
             Eigen::Map<Eigen::Matrix4f>{candidate.description.transform.data()} = world.value.matrix().cast<float>();
-            if (const auto* previous = registry.try_get<MeshInstanceRenderResourceComponent>(candidate.entity))
+            if (const auto* previous = resource(candidate.entity))
             {
                 candidate.instance = previous->instance;
                 candidate.previous = candidate.description;
-                candidate.previous.mesh = registry.get<MeshRenderResourceComponent>(candidate.entity).mesh;
-                candidate.previous.material = registry.get<MaterialRenderResourceComponent>(candidate.entity).material;
+                candidate.previous.mesh = previous->mesh;
+                candidate.previous.material = previous->material;
             }
             start(candidate);
             return false;
@@ -656,26 +693,18 @@ namespace lux::scene
         impl_->changed(entity);
     }
 
-    void MeshRenderBinding::meshDestroyed(Entity entity) noexcept
+    void MeshRenderBinding::resourceDestroyed(Entity entity) noexcept
     {
         auto& self = *impl_;
-        self.mesh_exits.push_back({self.registry.get<MeshRenderResourceComponent>(entity).source, ++self.revision});
+        if (const auto* value = self.registry.get<MeshRenderResourceComponent>(entity).find(self.role))
+        {
+            self.releaseResource(entity, *value, true);
+        }
     }
 
-    void MeshRenderBinding::materialDestroyed(Entity entity) noexcept
+    std::uint32_t MeshRenderBinding::role() const noexcept
     {
-        auto& self = *impl_;
-        self.material_exits.push_back(
-            {self.registry.get<MaterialRenderResourceComponent>(entity).source, ++self.revision}
-        );
-    }
-
-    void MeshRenderBinding::instanceDestroyed(Entity entity) noexcept
-    {
-        auto& self = *impl_;
-        self.instance_exits.push_back({entity, self.registry.get<MeshInstanceRenderResourceComponent>(entity).instance}
-        );
-        ++self.revision;
+        return impl_->role;
     }
 
     SceneStageResult MeshRenderBinding::maintain(SceneStageContext& context) noexcept
@@ -703,9 +732,10 @@ namespace lux::scene
         }
         if (self.closing)
         {
-            self.registry.clear<MeshInstanceRenderResourceComponent>();
-            self.registry.clear<MaterialRenderResourceComponent>();
-            self.registry.clear<MeshRenderResourceComponent>();
+            for (const auto entity : self.registry.view<MeshRenderResourceComponent>())
+            {
+                self.removeResource(entity);
+            }
             self.intents.clear();
             for (const auto& [entity, candidate] : self.candidates)
             {
@@ -745,10 +775,7 @@ namespace lux::scene
             {
                 if (self.registry.valid(entity))
                 {
-                    self.registry.remove<
-                        MeshInstanceRenderResourceComponent,
-                        MaterialRenderResourceComponent,
-                        MeshRenderResourceComponent>(entity);
+                    self.removeResource(entity);
                 }
                 self.intents.erase(entity);
                 continue;
@@ -759,8 +786,8 @@ namespace lux::scene
                 continue;
             }
             const auto visual = self.registry.get<Mesh3D>(entity).value;
-            const auto* current = self.registry.try_get<MeshRenderResourceComponent>(entity);
-            if (current && current->source.revision == self.source_revision && current->visual == visual)
+            const auto* current = self.resource(entity);
+            if (current && current->mesh_source.revision == self.source_revision && current->visual == visual)
             {
                 self.intents.erase(intent);
                 continue;
@@ -799,14 +826,18 @@ namespace lux::scene
 
     bool MeshRenderBinding::visualReady(Entity entity) const noexcept
     {
-        return impl_->registry.valid(entity) && impl_->registry.all_of<MeshInstanceRenderResourceComponent>(entity) &&
+        return impl_->registry.valid(entity) && impl_->resource(entity) != nullptr &&
                !impl_->intents.contains(entity) && !impl_->candidates.contains(entity) &&
                !impl_->failures.contains(entity);
     }
 
     std::uint32_t MeshRenderBinding::instanceCapacity() const noexcept
     {
-        const auto live = impl_->registry.view<MeshInstanceRenderResourceComponent>().size();
+        std::uint32_t live = 0;
+        for (const auto entity : impl_->registry.view<MeshRenderResourceComponent>())
+        {
+            live += impl_->resource(entity) != nullptr;
+        }
         return std::bit_ceil(std::max<std::uint32_t>(128, static_cast<std::uint32_t>(live + impl_->candidates.size())));
     }
 
@@ -860,13 +891,12 @@ namespace lux::scene
                 );
             }
         };
-        for (const auto entity :
-             self.registry.view<const MeshRenderResourceComponent, const MaterialRenderResourceComponent>())
+        for (const auto entity : self.registry.view<const MeshRenderResourceComponent>())
         {
-            append(
-                self.registry.get<MeshRenderResourceComponent>(entity).source,
-                self.registry.get<MaterialRenderResourceComponent>(entity).source
-            );
+            if (const auto* value = self.resource(entity))
+            {
+                append(value->mesh_source, value->material_source);
+            }
         }
         for (const auto& [entity, candidate] : self.candidates)
         {

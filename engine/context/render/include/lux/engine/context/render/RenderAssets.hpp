@@ -61,7 +61,11 @@ namespace lux::engine::render
 
         // Cold registration. Equal pipeline/destination reuses the existing typed table.
         template <RenderAssetPipeline P>
-        void install(P pipeline, lux::render::CapabilityInput destination = {}) noexcept;
+        void install(
+            P pipeline,
+            lux::render::CapabilityInput destination = {},
+            std::shared_ptr<const void> code_lifetime = {}
+        ) noexcept;
 
         template <RenderAssetPipeline P>
         [[nodiscard]] lux::render::RenderResult<void> acquire(
@@ -207,8 +211,9 @@ namespace lux::engine::render
         template <RenderAssetPipeline P> TypedTable<P>* find(lux::render::CapabilityInput destination) const noexcept
         {
             TypedTable<P>* selected = nullptr;
-            for (const auto& table : tables_)
+            for (const auto& installed : tables_)
             {
+                const auto& table = installed.table;
                 if (table->type != cxx::typeToken<P>())
                 {
                     continue;
@@ -246,7 +251,14 @@ namespace lux::engine::render
         RenderAssetLimits limits_;
         execution::TaskScope tasks_;
         std::stop_source stop_;
-        std::vector<std::unique_ptr<Table>> tables_;
+
+        struct PipelineTable
+        {
+            std::shared_ptr<const void> code_lifetime;
+            std::unique_ptr<Table> table; // Destroyed before code_lifetime, including the foreign delete tail.
+        };
+
+        std::vector<PipelineTable> tables_;
         std::vector<lux::render::CapabilitiesInstalled::Input> inputs_;
         std::size_t in_flight_ = 0;
         lux::render::RenderError release_failure_;
@@ -257,11 +269,17 @@ namespace lux::engine::render
     };
 
     template <RenderAssetPipeline P>
-    void RenderAssets::install(P pipeline, lux::render::CapabilityInput destination) noexcept
+    void RenderAssets::install(
+        P pipeline,
+        lux::render::CapabilityInput destination,
+        std::shared_ptr<const void> code_lifetime
+    ) noexcept
     {
         if (!find<P>(destination))
         {
-            tables_.push_back(std::make_unique<TypedTable<P>>(*this, std::move(pipeline), destination));
+            tables_.push_back(
+                {std::move(code_lifetime), std::make_unique<TypedTable<P>>(*this, std::move(pipeline), destination)}
+            );
         }
     }
 

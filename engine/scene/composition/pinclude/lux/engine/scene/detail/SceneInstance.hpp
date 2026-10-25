@@ -2,13 +2,13 @@
 
 #include <lux/engine/scene/SceneCapabilityProvider.hpp>
 #include <lux/engine/scene/SceneDescription.hpp>
-#include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/scene/SceneInstanceId.hpp>
-#include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
+#include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/scene/SceneSystem.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/scene/visibility.h>
 #include <lux/engine/simulation/Simulation.hpp>
+#include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
 #include <lux/engine/world/WorldDescription.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -38,6 +38,9 @@ namespace lux::scene
         SceneInstance& operator=(const SceneInstance&) = delete;
         SceneInstance(SceneInstance&&) = delete;
         SceneInstance& operator=(SceneInstance&&) = delete;
+
+        // Pure preflight: no Registry, System, Scene identity, IO or Render objects are created.
+        [[nodiscard]] static cxx::expected<void, SceneBuildFailure> validate(const SceneCreateInfo&) noexcept;
 
         [[nodiscard]] static lux::cxx::expected<std::unique_ptr<SceneInstance>, SceneBuildFailure> create(
             SceneCreateInfo info

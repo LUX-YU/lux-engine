@@ -1,16 +1,54 @@
 #include <cassert>
 #include <chrono>
 #include <cstdio>
+#include <exec/task.hpp>
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/editor/AppErrors.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
-#include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
 #include <thread>
+
+namespace
+{
+    exec::task<lux::editor::FrameworkResult<void>> stopAfterPresentation(
+        lux::editor::LuxEngine& application,
+        bool& rejected_recursive_drive,
+        bool& acknowledged
+    ) noexcept
+    {
+        using namespace lux;
+        auto& rendering = application.rendering();
+        auto& execution = rendering.execution();
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (rendering.stats().presentations == 0)
+        {
+            assert(std::chrono::steady_clock::now() < deadline);
+            auto delayed = execution.timer().after(std::chrono::milliseconds(2)) |
+                           stdexec::then([]() noexcept { return true; }) |
+                           stdexec::upon_error([](auto) noexcept { return false; }) |
+                           stdexec::upon_stopped([]() noexcept { return false; });
+            assert(co_await stdexec::continues_on(std::move(delayed), execution.mainScheduler()));
+        }
+        // A public SDK consumer uses run() as its only application driver. Ordinary Main callbacks
+        // must not nest it or turn a rejected reentry into application shutdown.
+        const auto nested = application.run();
+        assert(!nested && nested.error().type == editor::Errors::EditorRecursiveHostFrame);
+        assert(application.project().project().name == "Shutdown");
+        rejected_recursive_drive = true;
+        auto& client = rendering.mainClient();
+        auto command = client.bind<render::Stop>();
+        assert(command);
+        render::EmptyRequest input;
+        const auto reply = co_await client.request(*command, input);
+        assert(reply.error.type == 0);
+        acknowledged = true;
+        co_return editor::FrameworkResult<void>{};
+    }
+} // namespace
 
 int main(int argc, char** argv)
 {
@@ -40,42 +78,16 @@ int main(int argc, char** argv)
     failure_config.project_file = file;
     host = editor::LuxEngine::create(std::move(failure_config));
     assert(host);
-    const auto ready_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    while ((*host)->rendering().stats().presentations == 0)
-    {
-        assert(std::chrono::steady_clock::now() < ready_deadline);
-        auto advanced = editor::detail::LuxEngineTestAccess::pumpOnce(**host);
-        assert(advanced && *advanced);
-    }
     auto& rendering = (*host)->rendering();
     auto& client = rendering.mainClient();
-    bool rejected_recursive_drive{};
-    assert(rendering.execution().spawn(stdexec::then(
-        stdexec::schedule(rendering.execution().mainScheduler()),
-        [&]() noexcept
-        {
-            // Ordinary Execution callbacks are not Object event dispatch. The outer driver still forbids
-            // reentry, and a rejected nested run must not initiate application shutdown itself.
-            const auto nested_run = (*host)->run();
-            const auto nested_step = editor::detail::LuxEngineTestAccess::pumpOnce(**host);
-            assert(!nested_run && nested_run.error().type == editor::Errors::EditorRecursiveHostFrame);
-            assert(!nested_step && nested_step.error().type == editor::Errors::EditorRecursiveHostFrame);
-            assert((*host)->project().project().name == "Shutdown");
-            rejected_recursive_drive = true;
-        }
-    )));
-    auto command = client.bind<render::Stop>();
-    assert(command);
-    render::EmptyRequest request_stop;
-    bool acknowledged{};
-    assert(rendering.execution().spawn(stdexec::then(
-        client.request(*command, request_stop),
-        [&](render::AckResponse reply) noexcept
-        {
-            assert(reply.error.type == 0);
-            acknowledged = true;
-        }
-    )));
+    bool rejected_recursive_drive{}, acknowledged{};
+    auto work = stdexec::starts_on(
+        rendering.execution().mainScheduler(),
+        stopAfterPresentation(**host, rejected_recursive_drive, acknowledged)
+    );
+    assert(rendering.execution().spawn(
+        stdexec::then(execution::taskResult(std::move(work)), [](auto&& result) noexcept { assert(result); })
+    ));
     const auto stopped = (*host)->run();
     assert(!stopped && stopped.error().type == render::kCommandCancelled && acknowledged && rejected_recursive_drive);
     assert(client.pendingRequests() == 0 && rendering.stats().validation_errors == 0);

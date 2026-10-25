@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdio>
 #include <lux/engine/core/execution/TaskScope.hpp>
+#include <lux/engine/editor/AppErrors.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
@@ -177,6 +178,19 @@ int main(int argc, char** argv)
             std::this_thread::sleep_for(1ms);
         }
     };
+    bool rejected_recursive_step{};
+    auto& execution = engine->engine().execution();
+    assert(execution.spawn(stdexec::then(
+        stdexec::schedule(execution.mainScheduler()),
+        [&]() noexcept
+        {
+            const auto nested = detail::LuxEngineTestAccess::pumpOnce(*engine);
+            assert(!nested && nested.error().type == Errors::EditorRecursiveHostFrame);
+            assert(engine->project().project().name == "A");
+            rejected_recursive_step = true;
+        }
+    )));
+    until([&] { return rejected_recursive_step; });
     const auto idle = [&] { return fixture::preparationsFinished(*engine); };
     const auto open = [&](const auto& path)
     {

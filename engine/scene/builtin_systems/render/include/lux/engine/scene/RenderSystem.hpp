@@ -70,7 +70,7 @@ namespace lux::scene
         [[nodiscard]] SceneStageResult prepareInputs(SceneStageContext&) noexcept;
         [[nodiscard]] SceneStageResult publish(SceneStageContext&) noexcept;
         // Call in a Main Scene edit safe point. These functions patch only intent; maintain adopts it later.
-        [[nodiscard]] render::RenderResult<CameraTargetId> addCameraTarget(
+        [[nodiscard]] lux::render::RenderResult<CameraTargetId> addCameraTarget(
             simulation::ecs::Entity,
             CameraTarget
         ) noexcept;
@@ -78,21 +78,21 @@ namespace lux::scene
         [[nodiscard]] bool removeCameraTarget(simulation::ecs::Entity, CameraTargetId) noexcept;
         // Main-thread diagnostic/viewport association. Null until the candidate is actually attached;
         // this identity is a borrow, not a promise that a GPU frame has completed.
-        [[nodiscard]] render::AttachmentId attachment(simulation::ecs::Entity, CameraTargetId) const noexcept;
-        [[nodiscard]] render::RenderError cameraTargetError(simulation::ecs::Entity, CameraTargetId) const noexcept;
+        [[nodiscard]] lux::render::AttachmentId attachment(simulation::ecs::Entity, CameraTargetId) const noexcept;
+        [[nodiscard]] lux::render::RenderError cameraTargetError(simulation::ecs::Entity, CameraTargetId) const noexcept;
         // A failed asset candidate does not remove the previously adopted instance binding.
-        [[nodiscard]] render::RenderError assetError(simulation::ecs::Entity) const noexcept;
+        [[nodiscard]] lux::render::RenderError assetError(simulation::ecs::Entity) const noexcept;
         // True only after an actual instance has adopted the current asset binding.
         [[nodiscard]] bool visualReady(simulation::ecs::Entity) const noexcept;
         // After removing the input, keep its Target alive until this returns true.
         [[nodiscard]] bool cameraTargetRetired(simulation::ecs::Entity, CameraTargetId) const noexcept;
         // Main completion for this exact ECS relation, never a global Scene transaction. The Scene/System
         // remains borrowed until completion; retired identity/error is returned explicitly.
-        [[nodiscard]] exec::task<render::RenderResult<void>> whenCameraTargetReady(
+        [[nodiscard]] exec::task<lux::render::RenderResult<void>> whenCameraTargetReady(
             simulation::ecs::Entity,
             CameraTargetId
         ) noexcept;
-        [[nodiscard]] exec::task<render::RenderResult<void>> whenCameraTargetRetired(
+        [[nodiscard]] exec::task<lux::render::RenderResult<void>> whenCameraTargetRetired(
             simulation::ecs::Entity,
             CameraTargetId
         ) noexcept;

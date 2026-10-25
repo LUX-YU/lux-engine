@@ -469,7 +469,7 @@ EngineContext 保持无图形成员。项目包含 RenderSystem 不会让基础 
 先加载所有 DLL。缺少必需渲染能力时失败，不安装空 RenderSystem 代替。
 
 本轮为根构建提供明确的 CPU-only 选项组合，确保 `modules/platform`、`modules/function`、
-`engine/rendering` 和 `scene_render` 不被配置。选项控制真实源/target，不用全局宏遮蔽实现。
+`engine/context/render` 和 `scene_render` 不被配置。选项控制真实源/target，不用全局宏遮蔽实现。
 使用安装后的 Engine SDK 独立构建 Headless 消费者，并检查传递 find_package、链接、动态依赖。
 仅不打开窗口不足以通过；无 Linux/无桌面环境实测时保留该环境 NOT_RUN。
 

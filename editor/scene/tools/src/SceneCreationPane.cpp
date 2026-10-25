@@ -244,7 +244,10 @@ namespace lux::editor
                 const auto& registration = registrations.scene_systems[i];
                 const auto& description = *registration.description;
                 auto& config = configurations[i];
-                if (!config.valid || (config.editor && !config.editor->serialize(*config.widget, config.bytes)))
+                // An editor can replace an initially absent configuration with an explicit valid choice.
+                const bool valid_configuration =
+                    config.editor ? config.editor->serialize(*config.widget, config.bytes) : config.valid;
+                if (!valid_configuration)
                 {
                     return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
                 }

@@ -235,7 +235,10 @@ add_component(
     COMPONENT_NAME lux_editor_scene_profiles
     NAMESPACE lux::engine::editor
     STATIC
-    SOURCE_FILES scene/profiles/src/SceneProfile3D.cpp
+    SOURCE_FILES
+        scene/profiles/src/SceneProfile3D.cpp
+        scene/profiles/src/ComponentEditors3D.cpp
+        scene/profiles/src/RenderConfigurationEditor.cpp
 )
 
 component_include_directories(
@@ -254,6 +257,13 @@ target_link_libraries(
 )
 
 component_add_internal_dependencies(lux_editor_scene_profiles lux_editor_context)
+
+target_link_libraries(lux_editor_scene_profiles PRIVATE imgui::core lux::engine::engine_rendering)
+
+component_add_transitive_commands(lux_editor_scene_profiles
+    "find_package(imgui REQUIRED COMPONENTS core)"
+    "find_package(lux-engine-rendering REQUIRED COMPONENTS engine_rendering)"
+)
 
 component_add_transitive_commands(
     lux_editor_scene_profiles

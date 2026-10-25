@@ -83,6 +83,11 @@ namespace lux::simulation::ecs
         return replace_ != nullptr;
     }
 
+    void* DecodedComponent::data() noexcept
+    {
+        return value_;
+    }
+
     const void* DecodedComponent::data() const noexcept
     {
         return value_;

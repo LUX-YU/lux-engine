@@ -126,6 +126,8 @@ namespace lux::render
             }
             auto& published = result.implementations.emplace_back(support);
             published.selection = CapabilitySelection{entry.id};
+            published.portable_configuration =
+                !entry.config_type.isValid() || entry.graph.decode_configuration != nullptr;
             for (const auto& declaration : entry.graph.storage_inputs)
             {
                 if (!resources->factory(declaration.storage_type))

@@ -83,9 +83,9 @@ retains its code. Creation synchronously borrows immutable SceneRegistrations an
 a worker must own those registrations for the whole call, not borrow a live Context.
 
 `sceneProfile3D()` contributes `lux.editor.scene.3d` and spatial.3d/transform.3d/mesh.3d/camera.3d capabilities. It uses
-verified project schema/system/feature registrations and their codecs to create a single-partition world with Parent,
+verified project schema/system registrations and their codecs to create a single-partition world with Parent,
 Transform3D, Mesh3D, Light3D and Camera author schemas; Transform, WorldLoading, MeshQuery and Render systems; an empty Simulation;
-and the typed deferred-rendering Scene projection. No editor camera, picking entity or runtime scene is created.
+and an explicit lit-scene capability/implementation selection. No editor camera, picking entity or runtime scene is created.
 Missing capabilities and incompatible configuration fail without partial output. A test-only 2D profile uses the same
 public registration/creation path without changing the host.
 
@@ -93,7 +93,12 @@ public registration/creation path without changing the host.
 the installed `platform_file` publication primitive. It preserves unknown package entries. There is no second scene format. These synchronous helpers are intended
 for worker-side IO; ProjectScenes schedules read/decode/adoption and snapshot save on the shared execution resources.
 
-Tools use the actual SceneDocument, ComponentSchema and product UI factories. Profiles do not create tools;
+Tools use the actual SceneDocument, ComponentSchema and product UI factories. EditorComposition registers
+ComponentEditor callbacks and SceneConfigurationEditor widget factories; EditorContext publishes stable borrows.
+The generic Inspector owns DecodedComponent drafts and uses revision-checked Apply/Revert. Product assembly
+registers ComponentEditors3D and RenderConfigurationEditor; adding another component editor does not modify the Pane.
+The creation widget queries actual Server capabilities and displays unavailable inputs/codecs. Built-in lit-scene
+configuration uses the public encode/decode contract; unknown configuration remains intact and explicitly read-only. Profiles do not create tools;
 there is no World-name-matching SceneToolRegistry or frozen runtime tool directory.
 
 ## Components and verification

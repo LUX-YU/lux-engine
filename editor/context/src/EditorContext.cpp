@@ -19,9 +19,23 @@ namespace lux::editor
         : engine_(engine), project_(std::move(prepared.description)), manifest_(std::move(prepared.manifest)),
           plugins_(std::move(prepared.plugins)), registrations_(std::move(prepared.registrations)),
           ui_(std::move(composition.ui_)), scene_profiles_(std::move(composition.scene_profiles_)),
+          component_editors_(std::move(composition.component_editors_)),
+          scene_configuration_editors_(std::move(composition.scene_configuration_editors_)),
           extensions_(std::move(composition.extensions_).publish()), services_(std::move(composition.services_)),
           tasks_(engine.execution())
     {
+    }
+
+    const ComponentEditor* EditorContext::componentEditor(cxx::TypeToken type) const noexcept
+    {
+        const auto found = std::ranges::find(component_editors_, type, &ComponentEditor::type);
+        return found == component_editors_.end() ? nullptr : &*found;
+    }
+
+    const SceneConfigurationEditor* EditorContext::sceneConfigurationEditor(cxx::TypeToken type) const noexcept
+    {
+        const auto found = std::ranges::find(scene_configuration_editors_, type, &SceneConfigurationEditor::type);
+        return found == scene_configuration_editors_.end() ? nullptr : &*found;
     }
 
     EditorContext::~EditorContext() noexcept

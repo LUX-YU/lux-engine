@@ -6,6 +6,37 @@
 
 namespace lux::editor
 {
+    FrameworkResult<void> EditorComposition::registerComponentEditor(ComponentEditor entry) noexcept
+    {
+        const bool invalid = !entry.type.isValid() || !entry.draw;
+        if (invalid)
+        {
+            return cxx::unexpected(error::Error{Errors::ValueEditorInvalid});
+        }
+        if (std::ranges::find(component_editors_, entry.type, &ComponentEditor::type) != component_editors_.end())
+        {
+            return cxx::unexpected(error::Error{Errors::ValueEditorDuplicate});
+        }
+        component_editors_.push_back(std::move(entry));
+        return {};
+    }
+
+    FrameworkResult<void> EditorComposition::registerSceneConfigurationEditor(SceneConfigurationEditor entry) noexcept
+    {
+        const bool invalid = !entry.type.isValid() || !entry.create || !entry.serialize;
+        if (invalid)
+        {
+            return cxx::unexpected(error::Error{Errors::ValueEditorInvalid});
+        }
+        if (std::ranges::find(scene_configuration_editors_, entry.type, &SceneConfigurationEditor::type) !=
+            scene_configuration_editors_.end())
+        {
+            return cxx::unexpected(error::Error{Errors::ValueEditorDuplicate});
+        }
+        scene_configuration_editors_.push_back(std::move(entry));
+        return {};
+    }
+
     FrameworkResult<void> EditorComposition::registerErased(
         cxx::TypeToken type,
         EditorServices::Factory factory

@@ -1,7 +1,7 @@
 # Scene 编辑 运行与产品装配设计
 
 本文设计项目创建、场景组合、相机与视口、资产导入、组件编辑、保存和运行的完整关系。
-本文包含已落地的组合、文档与视口 API，以及资产编辑和 Play 的后续目标；未实现部分仍明确标注。
+本文说明当前组合、文档、能力选择与视口 API；游戏编译发布等未实现部分单独说明。
 
 设计遵守 [工程原则](engineering-principles.md)、[Editor Framework](editor-framework-v2.md)、
 [Editor 质量规则](editor-quality.md) 与 [AGENTS.md](../AGENTS.md)。
@@ -41,7 +41,7 @@ flowchart TD
     Composition --> Simulation[Simulation Systems]
     Composition --> Scene[Scene Systems]
     Scene --> Projection[可选 RenderSystem]
-    Projection --> Render[Render Command 与 Feature]
+    Projection --> Render[Render 能力与语义输入]
     Product --> Tools[Editor 文档与工具]
     Tools --> Composition
     Tools --> Edit[组件编辑与场景安全点]
@@ -214,12 +214,19 @@ Engine 同一解析算法做权威检查。不能让 UI 与运行时各维护一
 保留为预设生成函数，移除其“只能 single World、固定空 Simulation、固定三个 SceneSystem”的限制。
 新增 2D/headless 预设前，必须有对应真实消费者；无 Sprite/Tile 等渲染实现时不展示可用的完整 2D 渲染。
 
-`RenderSystemConfiguration` 保存配方语义身份、版本与实际参数，不另建同义的 Recipe Owner，也不保存运行期 FeatureId。Engine 渲染装配通过当前 Render 目录解析 FeatureId，
-沿现有 Feature 端口生成 Effect。内置延迟配方接入现有 GBuffer、主视图剔除、光照、阴影、Clustered
-和 Tonemap；这些 Feature 继续独立，不互相调用。
+`RenderSystemConfiguration` 保存能力名称/版本、实现名称/版本及带 schema/version 的持久配置。
+配置 schema 2 由 Render 实现的 codec 解码，不按 C++ 对象内存重解释；旧 schema 1 通过现有
+SceneSystemRegistration 中的显式版本迁移入口读取。新配置使用 schema 2 编码；读取旧包不隐式改写文件。
+运行期 CapabilitySelection 只在连接内使用，不写入项目资产。
 
-`RenderSystem::Impl` 仍承担 ECS 到专业输入的增量投影；将具体配方组装保留在 `SceneEffect.cpp`
-及同主题文件，不能把多个 Shader/后端算法塞进 System。配置声明可被不依赖 NRI 的工具读取。
+RenderSystem 从 ListCapabilities 取得候选并核对自身的实际输入生产者，然后安装所选能力。
+同一公开输入可以由不同 Feature 组合消费，不为每个 Feature 再建立一个 SceneSystem。
+Engine 只生产 CameraInput、几何/资产选择、实例和灯数据；具体 GBuffer、阴影、Clustered 和 Tonemap
+的组合与 Shader 参数投影在 Render 私有实现中。旧 SceneEffect/SceneParameters 文件不再存在。
+
+普通消费者只链接 `render`；扩展作者显式链接 `render_extensions`，它提供作者头和依赖，复用同一个
+Render 运行库、CommandRegistry、DeviceSession 和 cleanup_scope_。普通用户不查询或准备 Storage。
+实际 Storage 由 Render 在 Global/Scene/View/Attachment 存在时按所选实现安装。
 
 ## 5 项目 文档与编辑权威
 
@@ -294,8 +301,12 @@ ExecutionRuntime、Context 或 Render。纯持久化工具不因编辑器新增�
 ### 5.5 产品创建与视口调用
 
 `ProjectCreationPane` 发送原有 typed Project Event；`SceneCreationPane` 从项目的不可变注册表列出
-作者 schema、Simulation 与 Scene Systems。配置默认值来自原有 Codec/profile；Render 配方与阴影
-选项写入真实 RenderSystemConfiguration。选择产生 SceneCreateSelection，仍由同一 SceneCompatibility
+作者 schema、Simulation 与 Scene Systems。配置默认值来自原有 Codec/profile；具体配置控件由
+EditorComposition 的 SceneConfigurationEditor 函数声明提供，通用 Pane 不识别 RenderSystem 类名。
+Render 控件查询 Server 的真实能力、实现及 payload，显示设备/生产者不相容原因。内置光照配置
+通过公开 codec 编辑，校验失败保留旧值。没有字段编辑器的配置保留原始持久字节，明确显示不可编辑；
+切换实现使用该实现公布的默认配置。
+选择产生 SceneCreateSelection，仍由同一 SceneCompatibility
 解析，不另建 UI 兼容矩阵。当前新建 World 限 single；其它索引必须有实际生成算法，不能偷偷替换。
 
 `ProjectScenes::create()` 使用现有 TaskScope 跟踪用户任务：CPU 准备/编码，blocking 发布 Scene 文件与
@@ -373,7 +384,8 @@ Editor 启动请求实际使用的 BC 能力，不支持的设备或像素格式
 ### 7.1 工具分工
 
 - `SceneHierarchyPane`：展示稳定对象/父子关系和当前选择，不拥有另一份对象树。
-- `SceneInspectorPane`：消费 ComponentSchema/反射元数据，维护带 based_on 的字段草稿。
+- `SceneInspectorPane`：消费 ComponentSchema 解出的独占 DecodedComponent 草稿和 EditorComposition
+  登记的 ComponentEditor，保持 based_on。通用 Pane 不列举具体组件类型；无编辑器的值原样保留。
 - `AssetBrowserPane`：显示 ProjectAssets，不读取 Render Storage。
 - `SceneViewportPane`：画面、相机操作、拾取与变换；选择通过 SceneDocument，Pane 互不互相持有。
 
@@ -500,6 +512,8 @@ MAINTENANCE 下仍按自己的时钟推进；图形实例为 true。随后仍遍
 存储读取在 bounded blocking 资源，解码/Cook 在同一 ExecutionRuntime 的 CPU Scheduler，业务
 采用回 Main。独立 Asset Client 只拥有其 Link/通信亲和性；stdexec 继续拥有 connected operation。
 关闭顺序覆盖 Scene/视口、Asset 输入、Producer 尾栈、Outbox 和 Device 清理，Scope join 不替代后两者。
+永久清理错误保留首因和实际借用。只有 Render/Asset 线程已 join 的 serverStopped 事实，才允许释放
+失去回复的 Render 关联；随后继续清偿 Scene/Context/CPU Producer。关闭意图或 closed Link 不能代替此证明。
 
 ## 10 类型与文件的主要处置
 
@@ -512,7 +526,7 @@ MAINTENANCE 下仍按自己的时钟推进；图形实例为 true。随后仍遍
 | `PluginCatalog.hpp/.cpp`、插件描述生成/格式 | 由真实声明导出兼容元数据；删除 `systemsForWorld` 索引 |
 | `SceneProfileRegistry.hpp` / `SceneProfile3D.cpp` | 接收真实组合选择；3D 保留为预设，移除固定创建形状 |
 | `RenderSystem.hpp/.cpp` | 多观察记录、相机正确发布、明确配方配置；不认识 World 索引 |
-| `SceneEffect.hpp/.cpp` | 从明确配方和数据组合 Feature，保留端口协作 |
+| `render/src/features/LitScene.cpp`、`UiScene.cpp` | Render 私有组合与参数映射；普通消费者使用能力/data合同 |
 | `Camera.hpp/.cpp` | 保留中立 Camera/姿态算法；删除注释中不必要的 Vulkan 身份，保留准确坐标约定 |
 | `CameraTargetsComponent / RenderAssetInput` | 输出意图与资产版本分开；旧 SceneRenderInputs、SceneViewRequest 和来源 variant 已删除 |
 | `SceneDocument.hpp/.cpp` | 作者 revision、编辑/Play 实例身份、保存/撤销、选择和关闭；不拥有重复 Lease |
@@ -540,27 +554,12 @@ MAINTENANCE 下仍按自己的时钟推进；图形实例为 true。随后仍遍
 性能专项后置；保留增量复杂度与分配边界检查。文档选择/兼容/名称解析均在冷态。稳定帧只处理
 活跃观察与实际脏数据，不因新增 Inspector 每帧编码全 Registry 或扫描项目资产。未归因性能保持 PARTIAL。
 
-## 12 实施前值得继续讨论的设计决策
-
-1. **数据约束粒度。** 推荐 SCHEMA 与 PREPARED_DATA 两种明确含义；不采用任意 capability 字符串
-   就能放行的规则引擎。若实际消费者不需要某项声明，应删除该项而不是填空值。
-2. **World 支持验证归属。** 推荐彻底移出通用 System 描述，放在读取/索引实现及 Scene 装配边界；
-   底层 RenderSystem 不维护“允许的世界”列表。
-3. **视口相机来源。** CameraTargets 位于选定的 CameraMan；临时编辑相机是没有作者 WorldObjectId
-   的运行实体，不进入作者保存/Undo/Play 快照，不另建观察实体。
-4. **编辑权威。** 推荐已加载编辑 ECS 为 current，脏分区暂不驱逐；不同时维护可变 Document Object 树。
-5. **运行隔离。** 推荐独立 Play 实例、作者编辑暂只读；不在本轮增加双向同步或自动应用运行变化。
-6. **发布边界。** 本轮实现 CPU-only 构建和运行预览；真正编译、优化、链接和游戏发布另行设计与授权。
-
-这些是有具体落点的推荐方案。更改其中一项时，应同步修改它影响的身份、调用顺序和验收，不靠
-额外长期状态或运行期补偿掩盖两种相互矛盾的合同。
-
 ## 应用生命周期与完整帧边界
 
 共享 RenderExecution 持有协议设施；Scene 级 RenderSystem 仅投影自己的 ECS。Main 的请求关联按实际
 完整帧增长并复用，领先控制只在 beginFrame；独立 Asset 的可选在途量不成为主帧命令上限。
 
-LuxEngine 工厂在局部准备完整依赖后才构造 Impl。OpenProject 负责其 Context/Scene 的关闭，应用只推进
+LuxEngine 工厂在局部准备完整依赖后才构造 Impl。EditorProject 负责其 Context/Scene 的关闭，应用只推进
 这些实际拥有者。关闭时先清偿 Scene/UI/资产和 FrameCompletion，再关闭 Client、停止 Server，最后
 停止共享 ExecutionRuntime。Runtime join 在主循环回调之外，原生窗口始终晚于 SwapChain 结束。
 
@@ -575,11 +574,16 @@ ProjectScenes 的 Camera 信号连接借用 Registry，开始 InstanceRetirement
 等待每个 InstanceRetirement 的真实完成，再清偿 Context 依赖。应用不扫描一份关闭项目列表。
 
 ProjectAssets 的几何完成携带 AssetId/revision，ProjectScenes 仅向登记需求的 Scene 调度采用。
-MeshQuery 的缺失集合发起需求；输入失败和容量拒绝保留准确诊断，不能伪装几何已到位。RenderAssets
+MeshQuery 的缺失集合发起需求；任务容量耗尽保留需求并等待现有 TaskScope 容量通知，恢复后自动接纳，
+不把暂忙写成永久几何错误。RenderAssets 的完成只通知实际登记该版本的 Scene；容量等待另行通知。
+RenderAssets
 的零引用释放由原 stdexec 通路推进，失败记录与物理清偿分别处理。静态 UI 通过现有 Signal 与
 Root::deferChange/requestUpdate 采用事实，持续交互显式启用连续更新。
 
-Camera 配方保存 Target/格式/样本和实际阴影范围等编译输入的 key；每次编译与 Attach 挂起后复核。
+CameraGraphInputs 保存相机冷态裁剪事实；渲染能力决定对应算法。每次编译与 Attach 挂起后复核
+Entity、实际 ViewId、配置与输入 revision；同实体重新创建 View 不得采用旧操作的结果。
+Primary 候选属于文档/Play Scene 的一个选择事实。首次观察折入已有 Camera，此后仅 primary 成员变化
+更新集合，多视口复用；多个 Primary 仍准确报错。固定相机只因身份变化重新选择。
 只改姿态或其它运行参数不重新选择 Primary 或构建配方。已成功 Attach 但资格失效的候选先真实
 Detach 再退出，不发布旧配方配新参数的混合状态。
 

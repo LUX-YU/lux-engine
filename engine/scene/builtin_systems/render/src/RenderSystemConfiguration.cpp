@@ -1,4 +1,7 @@
+#include <array>
 #include <lux/engine/render/capabilities/LitScene.hpp>
+#include <lux/engine/render/capabilities/RasterAssets.hpp>
+#include <lux/engine/render/inputs/DirectLightInputs.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/RenderSystemConfigurationImpl.hpp>
 #include <tuple>
@@ -53,6 +56,33 @@ namespace lux::serialization
 
 namespace lux::scene
 {
+    bool supportsSceneRenderInput(const render::RenderPayloadContract& input) noexcept
+    {
+        using namespace render;
+        // Producer declarations, not a whitelist of Feature implementations.
+        const std::array producers{
+            std::tuple{kIndexedMeshInput, cxx::typeToken<MeshWrite>(), ERenderPayloadUse::RESOURCE_INPUT},
+            std::tuple{kSampledTextureInput, cxx::typeToken<TextureWrite>(), ERenderPayloadUse::RESOURCE_INPUT},
+            std::tuple{kRasterMaterialInput, cxx::typeToken<MaterialWrite>(), ERenderPayloadUse::RESOURCE_INPUT},
+            std::tuple{kRasterInstancesInput, cxx::typeToken<MeshInstancesCreate>(), ERenderPayloadUse::RESOURCE_INPUT},
+            std::tuple{
+                kDirectLightsInput,
+                cxx::typeToken<CreateDirectLights::Request>(),
+                ERenderPayloadUse::RESOURCE_INPUT
+            },
+            std::tuple{kSceneGeometryInput, cxx::typeToken<LitSceneInputs>(), ERenderPayloadUse::EFFECT_INPUT},
+            std::tuple{kCameraInput, cxx::typeToken<CameraInput>(), ERenderPayloadUse::FRAME_INPUT}
+        };
+        for (const auto& [schema, type, use] : producers)
+        {
+            if (input.schema == schema)
+            {
+                return input.version == 1 && input.cppType() == type && input.use == use;
+            }
+        }
+        return false;
+    }
+
     bool validRenderConfiguration(const RenderSystemConfiguration& value) noexcept
     {
         return !value.capability.empty() && value.capability_version != 0 && !value.implementation.empty() &&

@@ -96,5 +96,19 @@ namespace lux::editor
             {}
         };
         inline constexpr error::ErrorId SceneProfileUnknown = error::errorId(SceneProfileUnknownDescriptor.name);
+        inline constexpr error::ErrorDescriptor ValueEditorInvalidDescriptor{
+            "lux.editor.value_editor.invalid",
+            "Invalid Editor value declaration",
+            error::ERecovery::PERMANENT,
+            {}
+        };
+        inline constexpr error::ErrorId ValueEditorInvalid = error::errorId(ValueEditorInvalidDescriptor.name);
+        inline constexpr error::ErrorDescriptor ValueEditorDuplicateDescriptor{
+            "lux.editor.value_editor.duplicate",
+            "Duplicate Editor value type",
+            error::ERecovery::PERMANENT,
+            {}
+        };
+        inline constexpr error::ErrorId ValueEditorDuplicate = error::errorId(ValueEditorDuplicateDescriptor.name);
     } // namespace Errors
 } // namespace lux::editor

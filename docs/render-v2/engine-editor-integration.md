@@ -1,8 +1,7 @@
 # Engine / Editor 与 Render 的统一执行及接线设计
 
-本文替代本文件的旧接线方案。源码核对基线为
-`1e3249e7eb51a8ef1d94a304f9edb9078d8bcb1e`（2026-10-23）；下文明确区分现状和拟实施方案。
-本文说明接线目标与实施边界；API 已迁移不代表窗口输出、产品闭包或性能已经验收。
+本文说明当前 Engine/Editor 的执行、传输、帧和关闭合同。结构与使用说明保留于此；
+精确版本的构建、GPU 和性能资格由对应验收证据说明，不能由 API 存在推定。
 
 遵守 [工程原则](../engineering-principles.md)、[Context 扩展合同](../context-extensions.md)、
 [Editor Framework v2](../editor-framework-v2.md) 和 [Editor 质量规则](../editor-quality.md)。
@@ -10,7 +9,7 @@ Render 当前链路见 [源码阅读说明](rendering-flow.md)。
 
 Scene/Camera/View 关系、System 兼容、项目编辑闭环与 Headless 产品边界，统一见
 [Scene 编辑与产品装配设计](../scene-editor-architecture.md)。这些事项以该设计为准；本文保留执行、
-传输、FIF 和物理清理合同。下文基线事实和阶段目标不表示当前 Editor 已有完整场景工具。
+传输、FIF 和物理清理合同。具体编辑工作流见该文档。
 正式游戏编译、优化与发布另行实施，Editor 运行预览不能替代其资格。
 
 ## 1. 目标与设计裁决
@@ -38,7 +37,7 @@ Scene/Camera/View 关系、System 兼容、项目编辑闭环与 Headless 产品
 本轮不重写 MaterialGraph、阴影算法或 RenderGraph，不恢复 Legacy RenderRuntime/Readback，不新增通用服务容器。
 窗口、UI 和 Scene 接线是实际产品范围；阴影质量和专项性能优化后置，未归因性能保持 PARTIAL。
 
-## 2. 当前事实与未完成部分
+## 2. 模块职责与边界
 
 | 事实 | 源码依据 | 本轮处置 |
 |---|---|---|
@@ -194,7 +193,7 @@ ExecutionRuntime 的通用完成交付复用现有 Core RunLoop 实现，提供�
 
 | 消费者 | 修改 |
 |---|---|
-| `LuxEngine::Impl::admitProject` | 文件和插件阻塞阶段用 blocking；确有重计算的阶段再切 cpu；最终通过已有 ObjectScheduler 交付 ProjectPrepared，不再绕 Task 的 completed 回调 |
+| `LuxEngine::Impl::admitProject` | 文件和插件阻塞阶段用 blocking；确有重计算的阶段再切 cpu；最终通过 Main Scheduler 直接采用候选，不再经过 ProjectPrepared 事件或 Task completed 转发 |
 | `receivePrepared/applyPendingHostChanges` | 保留请求序号、重入后的二次资格检查、候选采用和真实 published 事实；文件已发布后取消不能说成回滚 |
 | `EditorContext::tasks_` | 保留项目取消分组，迁统一 submit；析构不 join 全局执行资源 |
 | `WorldLoadingSystem` | 直接发布拥有型解码结果到现有 Read 状态；主阶段按 epoch/revision 采用，不让 Worker 改 Registry |
@@ -376,9 +375,9 @@ Scene 和 UI 通过资源/端口协作，不通过另一个 Feature 的实现对
 ```text
 Main 收取完成/窗口事件
   → beginFrame 取得 L+1 中一个空输入载体
+  → 生成独立 UI Scene 数据并追加
   → 推进本次 Simulation 与 Scene 同步
   → 所有可见 Scene 追加 Command groups
-  → 捕获独立 UI Scene 数据并追加
   → SubmitFrame（一次）
   → Render 在真正可复用的 GPU frame slot 上准备、录制与提交
   → FrameCompletion 返还 CPU 输入借用
@@ -528,7 +527,8 @@ ImGui 下一帧会覆盖原数组，因此必要的一次冻结不能声称可�
 
 ### 9.3 Feature、Storage 与 Raster
 
-采用明确名称 `UiRasterFeature`，实现放 Render 私有 features 区域，公开描述在 include；
+`UiRasterFeature` 与 `UiScene` 组合位于 Render 私有 features 区域；普通公开 API 是 UI 能力和 payload，
+不再安装内置 FeatureDescriptor 包装。
 它依赖现有纹理声明和本次帧实际 UI 数据，不依赖另一 Feature 的实现。
 UI 帧几何由 Attachment/FrameResources 保存；没有独立资源身份需求时不新建 UiStorage。
 
@@ -578,7 +578,10 @@ Object 回调借用另行保留，最终 join 在回调之外。普通帧与关�
 撤销文件读取入口并清偿实际借用。没有 Scene 借用的候选可立即销毁，独立任务继续拥有自己的输入/代码。读取结果的输入寿命由有限 Sender 和 ExecutionRuntime
 覆盖，不为每次文件范围读取建立 TaskRecord。UI Scene 仅在释放 Response 成功后清空对应句柄；失败不是 settled。
 
-项目关闭不停止整个 ExecutionRuntime，不 join RenderThread，不卸载仍有回调/Handler 的 DLL。
+正常项目关闭不停止整个 ExecutionRuntime，不 join RenderThread，不卸载仍有回调/Handler 的 DLL。
+永久清理失败上报真实失败，有限关闭操作仍持有项目。应用停止资产读取准入，等最后一个 CPU 输入
+生产者结束后关闭协议并 join Render/Asset 线程。serverStopped 是实际 join 的事实，之后才清偿未获得
+成功回复的逻辑关联、Scene Registry 和 Context；错误不被改写为成功，不能无限等一个失去生产者的回执。
 
 成功创建但已经无人采用的资源走真实释放命令；该清偿属于应用仍存活的 RenderAssets/协议流水线。
 若释放是 frame-scoped，放入关闭维护帧，不等待一个已经销毁的 Scene 再生产普通帧。
@@ -600,12 +603,14 @@ Object 回调借用另行保留，最终 join 在回调之外。普通帧与关�
 正常关闭不依赖 IPC 先失效。实际 Server 异常退出在 RenderExecution 的完成入口集中报告，
 join Producer 后才把缺失终态结为 Unknown，不能以关闭意图提前释放输入。
 
-应用通过 RenderExecution::beginFrame 取得下一份输入；暂无可复用输入时返回空借用，不准备新帧。
+应用每轮仅调用一次 RenderExecution::beginFrame(draw)；无绘制/维护需求或暂无可复用输入时返回空借用。
+维护期间新产生的帧内请求保留到下一轮准入，frameReady() 结合真实容量和需求决定是否立即继续；
+不在同一轮第二次取帧，也不丢掉无帧维护中新到的工作。
 submitFrame 接手提交、失败诊断和实际回复后的回收。LuxEngine 不再保存待完成帧计数，Scene 继续通过
 Main Requester 的 buildingFrame 在同一安全段追加数据。直接使用 Requester 的 SDK 消费者保留显式完成/释放合同。
 
 LuxEngine::Impl 只持有已完整构造的必需成员，启动失败回滚留在工厂局部。旧 ApplicationResources 聚合
-已删除；OpenProject 保有其 Context 和 Scene 关闭责任，不把裸 Context 交回应用后每帧猜测服务状态。
+已删除；EditorProject 保有其 Context 和 Scene 关闭责任，不把裸 Context 交回应用后每帧猜测服务状态。
 `advanceClose()` 与普通帧共用已有完成/维护通路，`run()` 与析构调用相同的关闭推进，不在主循环里
 嵌套一套关机事件泵。驱动返回 RUNNING / WAITING / STOPPED，等待前核对原有 wake epoch，删除
 hasImmediateWork 的重复呈现查询。Headless Scene 的真实时钟继续由 SceneRuntime 的现有 Timer 唤醒。
@@ -613,132 +618,22 @@ hasImmediateWork 的重复呈现查询。Headless Scene 的真实时钟继续由
 Main 完整帧没有 1024 条请求上限，也不为 SubmitFrame 预留一个关联槽。仅在下一帧开始处检查
 领先帧数；独立 Asset Client 可以保留实际在途请求上限。两者都不替代真实 FIF 或 GPU 完成条件。
 
-## 11. 类、函数、文件与 target 清单
+## 11. SDK 与实现边界
 
-表中路径相对仓库。已有头/源同职责时保持同名；新公开头安装，组合内部实现留 pinclude，
-项目扩展面确有消费者才放 sinclude。模板可以只有头，不制造空 cpp。
+普通用户链接 `lux::engine::function::render`，使用能力、输入、资源句柄和 Command 数据。
+作者链接 `render_extensions`，取得 Feature/Storage 声明、同步/异步 Handler Concept、Graph 和设备接缝；
+这个 INTERFACE target 没有第二份运行库。内置 Feature 和 Storage 实现不安装，普通 Engine/Editor 不包含作者头。
+ListCapabilities/InstallCapabilities 取代普通 Feature/Storage 发现与准备；CreateEffect 以能力输入构建，
+Graph 作者的 CreateGraphEffect 仍通过同一个编译和采用路径。
 
-### 11.1 Core Execution 与既有异步消费者
+Scene 的配置保存能力和实现的稳定名称/版本，输入生产者在冷态核对公开 payload 合同。运行期 ID 不持久化。
+EditorComposition 只在装配期登记 ComponentEditor 与 SceneConfigurationEditor 函数，Context 发布稳定借用。
+Inspector 使用独占 DecodedComponent，Apply 走原 SceneDocument revision 事务。配置控件使用原 PortableValueCodec；
+通用创建面板不解释具体 Render 类或算法。未知编辑支持必须显示，不能偷偷改成默认值。
 
-| 文件或类型 | 修改/删除 |
-|---|---|
-| `modules/core/execution/include/lux/engine/core/execution/TaskScope.hpp` | 保留有限任务分组；迁单一工厂 submit，删除三参数隐式采用重载 |
-| 同目录 `Task.hpp` | 删除 TaskOperation/TTaskOperation、通用 connected owner、deliver；保留 TaskId/TaskReporter/实际取消及错误语义 |
-| `modules/core/execution/pinclude/lux/engine/core/execution/detail/TaskState.hpp` | TaskRecord 不拥有 operation；清理结果运输字段；TaskRuntime 保留实际监控目录和接纳，容纳标准执行 Scope |
-| `modules/core/execution/src/Task.cpp` | 迁 admit/start/complete/collect/release；执行清偿与监控派发分开，删除业务 deliveries 路径 |
-| `ExecutionRuntime.hpp/.cpp` | 单一 CPU 池不重做；补 Main Scheduler/明确派发/settled；迁 submit、关闭顺序和旧 completed API |
-| `CompletionWork.hpp`；其现位于 ExecutionRuntime.cpp 的实现 | 保留合并通知语义，迁同一 RunLoop；实现归独立 `src/CompletionWork.cpp`，删除旧 ready_completion/completion_batch 运输 |
-| `RunLoop.hpp/.cpp` | 复用现有 moodycamel、批处理和发布尾栈；只补确实需要的接口/注释，不暴露 Work* 给业务 |
-| `modules/core/task/TaskExecutor.hpp/.cpp` 与内部整图 Sender | KEEP：共享池、DAG、affinity、workspace；不重写成逐节点 spawn |
-| `engine/process/object_execution/.../ObjectScheduler.hpp` | 保留代际/对象借用；声明清楚 value 与拒绝的线程差异，删除消费端重复交付 |
-| `engine/scene/composition/src/SceneRuntime.cpp` | 迁完成派发与定时通知，保留 Scene 时钟/驱动；不增加另一主循环 |
-| `engine/scene/integration/script/src/ScriptRuntimeSystem.cpp` | 迁 delay 的 Task 完成转发，保留脚本恢复安全点 |
-| `engine/scene/scripting/assets/ScriptAssetAccess.hpp/.cpp` | 按实际 include/src 路径迁 submit/完成，保留 VM 身份、准入及代码寿命 |
-| Core/Scene/Script/Editor 的上述 API 测试与安装消费者 | 同模块迁消费者；保留同步完成、取消、晚析构、无主线程中转等行为断言，不保留兼容重载 |
+## 12. 质量、成本与判定
 
-TaskScope 内部迁移是一个完整模块，不能先删除 API 留一半消费者。
-新 Scope 不负责 GPU 对象清理；现有 Render Scope 不合并进 TaskRuntime 任务目录。
-
-### 11.2 IO、解码与世界流送
-
-| 文件或类型 | 修改/删除 |
-|---|---|
-| `engine/process/asset_loading/src/VfsAssetReadEndpoint.cpp` | 改 Impl::submit/Request::finish/mapExecutionError；删除主线程完成依赖和无真实生产者的 OOM 容量映射 |
-| 对应 `include/.../VfsAssetReadEndpoint.hpp` | 明确准入、线程、销毁和借用；只保留实际依赖 |
-| `include/.../AssetLoadSender.hpp` | 删除 TAssetReadReceiver/等价手工转发 TState，标准组合表达读取→CPU→解码；保留业务错误区分 |
-| `AssetReadOverlay.cpp`、AssetVfs/AssetProvider | KEEP 实际 fallback 与 mount 快照；不复制新 VFS |
-| `engine/process/world_loading/include/.../WorldPartitionLoadSender.hpp` | 增加明确 CpuScheduler 输入，迁逐范围完成 |
-| `src/WorldPartitionLoad.cpp` | 拆实际解码推进与调度；删除手工 callback 中直接解码 |
-| `WorldStorageSource` 的定义当前混在上述 cpp | 迁为匹配的 `src/WorldStorageSource.cpp`，不改变源身份合同 |
-| 新 `include/.../WorldFileStorageSource.hpp`、`src/WorldFileStorageSource.cpp` | 正式有限文件 range provider，使用同一 blocking 资源 |
-| `WorldMemoryStorageSource.hpp/.cpp` | KEEP 同步内存提供者，作为调度/重入有效消费者 |
-| `engine/domain/world/storage/src/WorldPartitionDecoder.cpp` | KEEP 解码算法；无必要不改格式/重写 Parser |
-| `engine/scene/builtin_systems/world_loading/src/WorldLoadingSystem.cpp` 及 public services | 传入 CPU scheduler；迁 Task completion，维护 source epoch、需求 revision、容量与主阶段采用 |
-| 世界加载测试中的 Disk | 正式 provider 替代重复实现；测试保留延迟、故障、短读等必要控制 |
-
-### 11.3 Engine 装配、Client 与 Scene
-
-| 文件或类型 | 修改/删除 |
-|---|---|
-| `engine/context/include/lux/engine/EngineContext.hpp` | 删除 RenderContext 前置声明、renderContext()、rendering_、EngineRenderAccess；不增加渲染隐式初始化 |
-| `engine/context/src/EngineContext.cpp` | 保留唯一执行资源、资产与 Scene；生命周期注释与实际合同一致 |
-| 新 `engine/rendering/include/lux/engine/rendering/RenderExecution.hpp`、`src/RenderExecution.cpp` | 实际 Server/两 Link/协议线程装配；公开 execution、mainClient、assetScheduler 等窄接口，不暴露 Impl/Device |
-| 现有 `RenderRequester.hpp/.cpp` | KEEP typed Sender/有限载体；补实际线程与关闭通知消费，不增加 operation Owner |
-| 新 `RenderAssets.hpp/.cpp` | 明确资产需求/版本、有限上传流水线及 Main 采用；不是 GPU 内存管理器 |
-| 新 `RenderDiagnostics.hpp/.cpp` | 一处将结构化 RenderErrorSink 映射到宿主诊断；Render 仍不链接 lux::log |
-| 新 `engine/scene/builtin_systems/render/include/lux/engine/scene/RenderSystem.hpp`、`src/RenderSystem.cpp` | 正式 SceneSystem 注册与增量发布；私有 Asset/Entity 关联留 pinclude，不在组件头 include 系统 |
-| 新同模块 `SceneRenderSchema.hpp/.cpp` | 实际渲染组件/反射与窄数据合同，沿当前 schema 生成机制 |
-| `engine/scene/plugins/BuiltinSceneRenderExports.cpp` | 迁现行 SceneSystem/component 导出；删除旧 RenderScenePluginExports/builtinRenderFeatureSceneBindings 导出 |
-| Engine/Scene 的 Render 旧 README/配置消费者 | 一次迁当前 descriptor/ID/FrameInput；不复制缺失旧头或增加别名 |
-
-### 11.4 Render 窗口、Raster 与 UI
-
-| 文件或类型 | 修改/删除 |
-|---|---|
-| `modules/function/render/include/lux/engine/render/core/Target.hpp`、`src/core/Target.cpp` | 实际 Surface 描述、采样用途和窗口借用 |
-| `include/.../commands/Commands.hpp`、`src/runtime/RenderServerImpl.cpp`、`Scene.cpp` | Target 创建/resize/关闭与帧顺序；保持显式 Response 错误和真实异步清偿 |
-| 新 `pinclude/lux/engine/render/execution/SurfaceTarget.hpp`、`src/execution/SurfaceTarget.cpp` | NRI SwapChain 与呈现对象，单一设备/队列 |
-| `sinclude/.../execution/OffscreenTarget.hpp`、`src/execution/OffscreenTarget.cpp` | 采样使用及 Target 输出资源信息 |
-| `FrameExecution.hpp/.cpp`、`RenderGraphInstance.hpp/.cpp`、SubmissionQueue | Target producer/read 摘要、Barrier、WSI 同步、真实 FIF 与最后使用 |
-| `include/.../runtime/RenderServer.hpp`、`pinclude/.../runtime/ResponseOutbox.hpp`、对应 src | 借用回复可用通知；只从真实发布/终止边界唤醒，不把结算统计当发布事实 |
-| `include/.../graph/Draw.hpp`、GraphCompiler、`src/graph/Shader.cpp` | DrawIndexedList/IndexedDrawRange、ColorBlendState、冷态校验/Pipeline 身份 |
-| `sinclude/.../execution/RenderExecutor.hpp`、`src/execution/RenderExecutor.cpp` | 一 Pass 多 draw 的裁剪/图像选择/索引偏移，沿现有状态缓存录制 |
-| 新 `include/.../features/UiRasterFeature.hpp`、`src/features/UiRasterFeature.cpp`；现有 `pinclude/.../features/BuiltinFeatures.hpp` | public descriptor 与源内实现分离，私有登记声明接已有 tuple；不增加与公开头同 include 路径的私有头 |
-| 新 `modules/resource/description/include/lux/engine/description/UiDraw.hpp` | 中立 CPU/GPU 绘制值合同；若只有结构体不加空源文件 |
-| `modules/function/ui/include/lux/engine/ui/DrawData.hpp`、`src/DrawData.cpp` | 直接冻结中立数组，删除 ImDrawList 运输副本和 VulkanRenderer friend |
-| `ImageElement.hpp/.cpp`、`sinclude/.../detail/ImageEncoding.hpp` | 中立 image token；删除旧 RTextureHandle 编码 |
-| `editor/app/pinclude/.../detail/EditorUiScene.hpp`、`src/EditorUiScene.cpp` | 保留类型，重写为独立 Render Scene；publishFrame→appendFrameCommands；删除空 World/Simulation |
-| `editor/app/.../UiRenderSyncStage.hpp/.cpp`、`detail/UiFrame.hpp` | 新 UI 路径闭环后删除，不留下旧运输接口 |
-| `editor/app/src/LuxEngine.cpp`、`ProjectPreparation.hpp/.cpp` | 共享执行资源、项目准备组合、统一帧发布、显式关闭 |
-| `editor/context/EditorContext.hpp/.cpp`、EditorComposition | 借实际设施，迁 Task API；ContextExtensions 仍一次发布 |
-| `editor/window/EditorWindow.hpp/.cpp` | 尺寸 revision、唯一输入与 wake 接线，窗口回调不直接录制或销毁 GPU |
-
-上表没有列出的 Render 热路径默认不改。不能在不同可见层建立相同逻辑 include 路径而依赖搜索顺序选择不同类型。
-不为了文件配对增加转发头、导出具体内置 Storage，或让 public descriptor 包含实现。
-
-### 11.5 CMake、SDK 与依赖
-
-| target/配置 | 迁移 |
-|---|---|
-| `core_execution` | 只增加/调整真实源文件，仍依赖锁定 stdexec 与既有 ConcurrentQueue；消除旧完成源清单 |
-| `engine_rendering`（已存在） | 扩展 RenderExecution/RenderAssets/Diagnostics，链接实际 Core/资产依赖；安装实际扩展头 |
-| `engine_context` | 删除 `if(TARGET render_runtime) add_subdirectory(rendering)`；保持 headless 闭包 |
-| `process_asset_loading/process_world_loading` | 新 Sender/正式文件 provider 依赖；保持 process→domain/modules |
-| 新 `scene_render` | SceneSystem 的真实实现，替换缺失 render 子目录条件；不创建另一个 Renderer |
-| `engine/scene/CMakeLists.txt`、Scene 插件 | 使用 scene_render 和现行导出；删除旧 render_runtime 条件与无消费者渲染插件 ABI |
-| `modules/function/ui/CMakeLists.txt` | 去 render_client、imgui vulkan 与旧 rendering 子目录；CPU UI 依赖中立 UiDraw |
-| Render 唯一库 | 增加 Surface/UI 专业实现，仍不依赖 engine/editor/ImGui |
-| `editor/CMakeLists.txt` | 用真实 engine_rendering/scene_render 替换 engine_context_render/project_plugin_rendering 及旧找包；同次迁所有测试和安装消费者 |
-| module README/SDK 包 | 更新使用流程、安装头与依赖；不留过时 shim/旧 package 冒充兼容 |
-
-不得仅注释失效 target 依赖使 Editor 链接成功。每个删项必须对应真实消费者迁移；
-若还需要插件装配，使用现有项目插件目录和 Scene 导出，不重新建一个空的 project_plugin_rendering。
-
-## 12. 分大模块实施与集中验收
-
-顺序为 A→B→C→D→E→F。每个大模块完成接口、实现、消费者和错误路径后集中验证，
-不按单个函数/类型反复运行全矩阵。必要编译诊断不受此限制。
-
-| 模块 | 完整成果 | 主要门禁 |
-|---|---|---|
-| A：统一有限任务与完成交付 | TaskScope/Runtime 标准 Scope、显式业务采用、同一 Main 完成通路；Editor/Scene/Script API 消费者全部迁完 | 同步完成/start 重入、TaskId 取消/历史、组析构后工作存活、模块晚析构、Main 不消费时终态及容量正确、无 connected owner 回迁 |
-| B：IO 与解码 | VFS 直接运输完成、标准 AssetLoadSender、World 每次读取后 CPU 调度、正式文件范围 provider | 主线程暂停时 accepted read/decode 前进；内存同步/文件异步/短读/取消/endpoint 关闭；source epoch/revision 与 staged bytes |
-| C：Engine 双 Client 与 Scene | RenderExecution、独立 Asset Link、RenderAssets、RenderSystem、完整帧 | 一个 CPU 池；固定 SPSC 线程；两个相同数值 RequestId 不串 Link；上传借用、额度、跨 Link 发布、两 Scene、关闭维护帧 |
-| D：窗口与 Target | 真 Surface、输出采样、明确图间依赖及关闭 | 真实窗口/多窗口、resize/minimize/out-of-date、FIF/WSI 同步、GPU Validation/SyncValidation、项目暂停/恢复 |
-| E：UI 完整闭环 | 独立 Render UI Scene、UiRasterFeature、中立快照、IndexedList/Blend、项目视口合成 | clip/DPI/透明/多纹理/索引宽度/大网格、字体上传、两窗口、项目切换、Pane 删除、完整帧与 CPU 借用 |
-| F：产品与 SDK 收口 | 删除旧接线、正式安装/迁移 prefix、更新使用说明、真实 Editor 启停 | Root EDITOR 实配、all/第二轮无工作、公共头/安装消费者、ASan/GPU、关闭与磁盘清理 |
-
-A 的 OperationState 迁移先做同一模块内的实际生命周期证明，再迁全部消费者；
-验证失败不能留两套 submit/队列作为终态，也不能扩大成新 TaskManager。
-D 的呈现等待和 Target 跨图使用必须实测，不能以离屏图像测试替代。
-E 的图像正确性包括像素/裁剪/混合与人工查看实际 Editor，不以“进程退出码为零”替代显示验收。
-
-最终使用同一源码树/既有增量构建目录；独立验收绑定精确 clean commit，只保留本轮必要验证副本，
-不重复积累 SDK、build、PDB 和依赖缓存。源码、依赖与必要日志可追溯即可。
-
-## 13. 质量、成本与判定
-
-### 13.1 架构与代码审查
+### 12.1 架构与代码审查
 
 - 对每个新增长期类型列明实际成员、消费者及被删除的旧职责；能用现有对象的方法就不再加转发层。
 - 公共接口注释必须交代线程、借用期限、失败和取消，不用大段注释解释不合理结构。
@@ -748,7 +643,7 @@ E 的图像正确性包括像素/裁剪/混合与人工查看实际 Editor，不
 - 不将 callback 层数直接等同于运行时成本：标准组合可能内联，队列切换/分配/等待必须分开统计。
 - KEEP 实际取消、代际、FIF 修复和 GPU/WSI 同步；删除重复观察、无实际生产者的状态与多次同值检查。
 
-### 13.2 成本预算的落实
+### 12.2 成本预算的落实
 
 | 路径 | 设计约束与需要记录的事实 |
 |---|---|
@@ -766,7 +661,7 @@ E 的图像正确性包括像素/裁剪/混合与人工查看实际 Editor，不
 Frame/Record/Submit、堆分配、切换次数和峰值；采样与正式时延结果分开。
 没有同工作量对照就不宣称更快；超既有 5% 参考线或未归因项仍为 PARTIAL。
 
-### 13.3 最终验证与交付边界
+### 12.3 最终验证与交付边界
 
 - Windows RelWithDebInfo、Debug、MSVC ASan；C++20、无 RTTI，遵守既有异常边界。
 - 必须全量 `all -j 4 -- -k 0`；CMake 改动后第二轮无工作；构建与实机测试不并发。
@@ -783,7 +678,7 @@ Frame/Record/Submit、堆分配、切换次数和峰值；采样与正式时延�
 阶段材料和原始输出外置，本文件只维护架构与使用合同，不变成历史施工账本。
 实现按模块提交，独立验收后才安全推送；本文的目标形状不代替实际交付结果。
 
-## 14. 实际接入接口
+## 13. 实际接入接口
 
 - 应用启动以 `RenderExecution::create(config, execution)` 组合 Server/Main/Asset；
   Editor 的 `LuxEngine::rendering()` 与 `renderAssets()` 借用同一设施。

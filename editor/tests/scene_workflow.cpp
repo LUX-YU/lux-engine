@@ -1,10 +1,12 @@
 #include "support/ModelSource.hpp"
 #include "support/ProjectRequests.hpp"
+#include <lux/engine/editor/ComponentEditors3D.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/ModelPlacement.hpp>
 #include <lux/engine/editor/ProjectAssets.hpp>
 #include <lux/engine/editor/ProjectScenes.hpp>
+#include <lux/engine/editor/RenderConfigurationEditor.hpp>
 #include <lux/engine/editor/SceneCreationPane.hpp>
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/editor/SceneViewportPane.hpp>
@@ -12,6 +14,7 @@
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
+#include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -52,6 +55,8 @@ int main(int argc, char** argv)
         [](EditorComposition& composition) noexcept -> FrameworkResult<void>
         {
             assert(composition.registerSceneProfile(sceneProfile3D()));
+            assert(registerComponentEditors3D(composition));
+            assert(registerRenderConfigurationEditor(composition));
             assert(composition.registerServiceFactory<ProjectAssets>(
                 [](EditorContext& context) noexcept -> FrameworkResult<std::unique_ptr<ProjectAssets>>
                 {
@@ -258,8 +263,28 @@ int main(int argc, char** argv)
     assert(
         scenes.viewport(*a).target == original_target
     ); // Resize adopts physical candidates, not new logical identity.
+    const auto primary_camera = scenes.viewport(*a).camera;
     assert(scenes.selectViewportCamera(*a, {EViewportCamera::PRIMARY}));
     until([&] { return scenes.viewport(*a).error.type != 0 && !scenes.viewport(*a).ready; });
+    auto& scene_runtime = host.engine().sceneRuntime();
+    auto set_primary = [&](bool value)
+    {
+        auto change = [&](simulation::ecs::Registry& registry) noexcept
+        {
+            registry.patch<scene::Camera>(
+                primary_camera,
+                [value](scene::Camera& camera) noexcept { camera.primary = value; }
+            );
+        };
+        until([&] { return scene_runtime.editInstance(editing_instance, change).has_value(); });
+    };
+    set_primary(true);
+    assert(scenes.selectViewportCamera(*b, {EViewportCamera::PRIMARY}));
+    until([&] { return scenes.viewport(*a).ready && scenes.viewport(*b).ready; });
+    assert(scenes.viewport(*a).camera == primary_camera && scenes.viewport(*b).camera == primary_camera);
+    set_primary(false);
+    until([&] { return scenes.viewport(*a).error.type != 0 && scenes.viewport(*b).error.type != 0; });
+    assert(scenes.selectViewportCamera(*b, {}));
     assert(scenes.updateViewport(*a, 640, 320));
     assert(scenes.selectViewportCamera(*a, {}));
     until([&] { return scenes.viewport(*a).ready && scenes.viewport(*b).ready; });

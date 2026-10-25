@@ -35,6 +35,8 @@ namespace lux::simulation::ecs
         // Replacement uses EnTT's update signal, never erase + emplace. The caller validates presence first.
         [[nodiscard]] bool canReplace() const noexcept;
         [[nodiscard]] const void* data() const noexcept;
+        // Mutable access is to this independent draft, never to Registry storage.
+        [[nodiscard]] void* data() noexcept;
         void replaceInto(Registry& registry, Entity entity) &&;
 
         template <class Component>

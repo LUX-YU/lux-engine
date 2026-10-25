@@ -22,6 +22,11 @@ namespace
 {
     uuids::uuid_name_generator identity{*uuids::uuid::from_string("55677517-5438-46d1-967e-2977ad66961b")};
 
+    struct EditorOnlyValue final
+    {
+        unsigned value = 0;
+    };
+
     SceneCreateResult create2D(const SceneCreateInfo& info) noexcept
     {
         return scene::createScenePackage(
@@ -69,7 +74,10 @@ namespace
         assert(render.configurationSchemaName() == scene::RenderSystem::Description.configuration_schema_name);
         scene::RenderSystemConfiguration render_config;
         assert(scene::renderConfigurationCodec().decode(render.configurationPayload(), &render_config));
-        assert(scene::validRenderConfiguration(render_config) && render_config.implementation == "lux.render.scene.clustered");
+        assert(
+            scene::validRenderConfiguration(render_config) &&
+            render_config.implementation == "lux.render.scene.clustered"
+        );
     }
 } // namespace
 
@@ -85,6 +93,14 @@ int main(int argc, char** argv)
     auto assembly = [&](EditorComposition& composition) noexcept -> FrameworkResult<void>
     {
         static_assert(!api_contract::PublicProfileLookup<EditorComposition>);
+        const ComponentEditor editor{
+            {},
+            cxx::typeToken<EditorOnlyValue>(),
+            +[](void* value) noexcept { ++static_cast<EditorOnlyValue*>(value)->value; }
+        };
+        assert(composition.registerComponentEditor(editor));
+        assert(!composition.registerComponentEditor(editor));
+        assert(!composition.registerComponentEditor({}));
         auto profile = sceneProfile3D();
         profile.id = "Bad Profile";
         assert(!composition.registerSceneProfile(std::move(profile)));
@@ -101,6 +117,11 @@ int main(int argc, char** argv)
     SceneProfileRegistration three, two;
     auto inspect = [&](EditorContext& context) noexcept
     {
+        EditorOnlyValue edited;
+        const auto* editor = context.componentEditor(cxx::typeToken<EditorOnlyValue>());
+        assert(editor && !context.componentEditor(cxx::typeToken<int>()));
+        editor->draw(&edited);
+        assert(edited.value == 1);
         assert(context.sceneProfiles().profiles().size() == 2);
         static_assert(!api_contract::PublicProfileRegistration<SceneProfileRegistry>);
         assert(!context.sceneProfiles().find("test.missing"));

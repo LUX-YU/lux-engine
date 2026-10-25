@@ -97,6 +97,7 @@ namespace lux::render
         std::vector<RenderCapability> capabilities;
         RenderPayloadContract configuration;
         std::vector<std::byte> default_configuration;
+        bool portable_configuration = false; // Derived from the implementation codec, not promised by its C++ type.
         RenderError unavailable;
     };
 

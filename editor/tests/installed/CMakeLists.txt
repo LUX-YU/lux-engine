@@ -225,6 +225,9 @@ set(
     UiTargetImage
     SceneProfileRegistry
     SceneProfile3D
+    ValueEditors
+    ComponentEditors3D
+    RenderConfigurationEditor
     ProjectScenes
     ProjectAssets
     SceneDocument

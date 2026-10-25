@@ -318,6 +318,61 @@ namespace lux::editor
             }
         }
 
+        void advanceResourceClose() noexcept
+        {
+            recordFailure(ui_scene_->cleanupFailure());
+            render_cleanup_failed_ |= failure_.type != 0;
+            if (render_cleanup_failed_)
+            {
+                assets_->stopLoads();
+                if (assets_->loadsSettled())
+                {
+                    // No CPU producer can post a later Asset request. Main close cancels unsent commands;
+                    // accepted requests retain their payload until terminal delivery or joined-Server proof.
+                    rendering_->beginClose();
+                    close_phase_ = EClosePhase::RENDER;
+                }
+            }
+            if (close_phase_ == EClosePhase::PROJECTS)
+            {
+                if (closing_project_count_ == 0 && project_tasks_.settled())
+                {
+                    assets_->close();
+                    close_phase_ = EClosePhase::ASSETS;
+                }
+            }
+            if (close_phase_ == EClosePhase::PROJECTS || close_phase_ == EClosePhase::ASSETS)
+            {
+                const bool settled = close_phase_ == EClosePhase::ASSETS && ui_scene_->settled() &&
+                                     assets_->settled() && rendering_->mainClient().pendingRequests() == 0;
+                if (settled)
+                {
+                    recordFailure(assets_->releaseFailure());
+                    rendering_->beginClose();
+                    close_phase_ = EClosePhase::RENDER;
+                }
+            }
+        }
+
+        void advanceDependencyClose() noexcept
+        {
+            const auto progressed = engine_->sceneRuntime().driveFrame(scene::ESceneDriveMode::MAINTENANCE);
+            if (!progressed)
+            {
+                recordFailure(scene::toError(progressed.error()));
+            }
+            const bool ui_settled = ui_scene_->finishCloseAfterServerStop();
+            if (closing_project_count_ == 0 && project_tasks_.settled() && ui_settled)
+            {
+                assets_->close();
+                if (assets_->settled())
+                {
+                    engine_->execution().requestStop();
+                    close_phase_ = EClosePhase::EXECUTION;
+                }
+            }
+        }
+
         FrameworkResult<ELoopState> advanceClose() noexcept
         {
             if (close_phase_ == EClosePhase::CLOSED)
@@ -343,38 +398,7 @@ namespace lux::editor
             }
             if (close_phase_ == EClosePhase::PROJECTS || close_phase_ == EClosePhase::ASSETS)
             {
-                recordFailure(ui_scene_->cleanupFailure());
-                render_cleanup_failed_ |= failure_.type != 0;
-                if (render_cleanup_failed_)
-                {
-                    assets_->stopLoads();
-                    if (assets_->loadsSettled())
-                    {
-                        // No CPU producer can post a later Asset request. Main close cancels unsent commands;
-                        // accepted requests retain their payload until terminal delivery or joined-Server proof.
-                        rendering_->beginClose();
-                        close_phase_ = EClosePhase::RENDER;
-                    }
-                }
-            }
-            if (close_phase_ == EClosePhase::PROJECTS)
-            {
-                if (closing_project_count_ == 0 && project_tasks_.settled())
-                {
-                    assets_->close();
-                    close_phase_ = EClosePhase::ASSETS;
-                }
-            }
-            if (close_phase_ == EClosePhase::PROJECTS || close_phase_ == EClosePhase::ASSETS)
-            {
-                const bool settled = close_phase_ == EClosePhase::ASSETS && ui_scene_->settled() &&
-                                     assets_->settled() && rendering_->mainClient().pendingRequests() == 0;
-                if (settled)
-                {
-                    recordFailure(assets_->releaseFailure());
-                    rendering_->beginClose();
-                    close_phase_ = EClosePhase::RENDER;
-                }
+                advanceResourceClose();
             }
             if (close_phase_ == EClosePhase::RENDER)
             {
@@ -386,21 +410,7 @@ namespace lux::editor
             }
             if (close_phase_ == EClosePhase::DEPENDENCIES)
             {
-                const auto progressed = engine_->sceneRuntime().driveFrame(scene::ESceneDriveMode::MAINTENANCE);
-                if (!progressed)
-                {
-                    recordFailure(scene::toError(progressed.error()));
-                }
-                const bool ui_settled = ui_scene_->finishCloseAfterServerStop();
-                if (closing_project_count_ == 0 && project_tasks_.settled() && ui_settled)
-                {
-                    assets_->close();
-                    if (assets_->settled())
-                    {
-                        engine_->execution().requestStop();
-                        close_phase_ = EClosePhase::EXECUTION;
-                    }
-                }
+                advanceDependencyClose();
             }
             auto& objects = object::ObjectRuntime::instance();
             static_cast<void>(objects.collectRetired());
@@ -873,8 +883,7 @@ namespace lux::editor
             }
             const bool can_draw = *presentation;
             auto& client = rendering_->mainClient();
-            auto admitted = can_draw || client.needsFrameInput() ? rendering_->beginFrame()
-                                                                 : FrameworkResult<rendering::FrameInput*>{nullptr};
+            auto admitted = rendering_->beginFrame(can_draw);
             if (!admitted)
             {
                 return cxx::unexpected(admitted.error());
@@ -911,17 +920,6 @@ namespace lux::editor
                 }
                 recordFailure(scene_error); // An error cannot discard cleanup commands appended by other Scenes.
             }
-            if (!frame && client.hasQueuedFrameCommands())
-            {
-                // A finite completion can append commands during maintenance. Only those owned requests may
-                // submit now; a newly requested Scene publication input is prepared in the next iteration.
-                auto pending = rendering_->beginFrame();
-                if (!pending)
-                {
-                    return cxx::unexpected(pending.error());
-                }
-                frame = *pending;
-            }
             if (frame)
             {
                 auto* submitted = std::exchange(frame, nullptr);
@@ -931,7 +929,7 @@ namespace lux::editor
                 }
             }
             (void)object::ObjectRuntime::instance().collectRetired();
-            const bool another_frame = client.hasFrameCapacity() && (can_draw || client.needsFrameInput());
+            const bool another_frame = rendering_->frameReady(can_draw);
             return another_frame ? ELoopState::RUNNING : ELoopState::WAITING;
         }
 

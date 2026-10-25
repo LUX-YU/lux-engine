@@ -305,50 +305,6 @@ namespace lux::scene
 
         RenderResult<void> bindInputProducers(const CapabilitySupport& support) noexcept
         {
-            // This table describes Engine data producers, not Render implementation names.
-            // New implementations of these contracts require no new SceneSystem or routing branch.
-            struct Producer final
-            {
-                std::string_view schema;
-                cxx::TypeToken type;
-                ERenderPayloadUse use;
-                bool Impl::* enabled = nullptr;
-            };
-
-            const std::array producers{
-                Producer{kIndexedMeshInput, cxx::typeToken<MeshWrite>(), ERenderPayloadUse::RESOURCE_INPUT},
-                Producer{kSampledTextureInput, cxx::typeToken<TextureWrite>(), ERenderPayloadUse::RESOURCE_INPUT},
-                Producer{
-                    kRasterMaterialInput,
-                    cxx::typeToken<MaterialWrite>(),
-                    ERenderPayloadUse::RESOURCE_INPUT,
-                    &Impl::material_input_enabled
-                },
-                Producer{
-                    kRasterInstancesInput,
-                    cxx::typeToken<MeshInstancesCreate>(),
-                    ERenderPayloadUse::RESOURCE_INPUT,
-                    &Impl::instance_input_enabled
-                },
-                Producer{
-                    kDirectLightsInput,
-                    cxx::typeToken<CreateDirectLights::Request>(),
-                    ERenderPayloadUse::RESOURCE_INPUT,
-                    &Impl::light_input_enabled
-                },
-                Producer{
-                    kSceneGeometryInput,
-                    cxx::typeToken<LitSceneInputs>(),
-                    ERenderPayloadUse::EFFECT_INPUT,
-                    &Impl::geometry_input_enabled
-                },
-                Producer{
-                    kCameraInput,
-                    cxx::typeToken<CameraInput>(),
-                    ERenderPayloadUse::FRAME_INPUT,
-                    &Impl::camera_input_enabled
-                }
-            };
             const auto capability = std::ranges::find_if(
                 support.capabilities,
                 [this](const auto& value) noexcept
@@ -356,9 +312,7 @@ namespace lux::scene
             );
             for (const auto& input : capability->inputs)
             {
-                const auto producer = std::ranges::find(producers, input.schema, &Producer::schema);
-                const bool supported = producer != producers.end() && input.version == 1 &&
-                                       input.cppType() == producer->type && input.use == producer->use;
+                const bool supported = supportsSceneRenderInput(input);
                 if (!supported)
                 {
                     if (input.required)
@@ -367,10 +321,11 @@ namespace lux::scene
                     }
                     continue;
                 }
-                if (producer->enabled)
-                {
-                    this->*(producer->enabled) = true;
-                }
+                material_input_enabled |= input.schema == kRasterMaterialInput;
+                instance_input_enabled |= input.schema == kRasterInstancesInput;
+                light_input_enabled |= input.schema == kDirectLightsInput;
+                geometry_input_enabled |= input.schema == kSceneGeometryInput;
+                camera_input_enabled |= input.schema == kCameraInput;
             }
             return {};
         }

@@ -2,13 +2,11 @@
 #include <lux/engine/editor/ProjectScenes.hpp>
 #include <lux/engine/editor/SceneCreationPane.hpp>
 #include <lux/engine/project/SceneRegistrations.hpp>
-#include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 
 #include <algorithm>
-#include <lux/engine/render/capabilities/LitScene.hpp>
 #include <random>
 
 namespace lux::editor
@@ -23,8 +21,17 @@ namespace lux::editor
         ui::TextEdit path{"Scenes/NewScene.luxscene"};
         ui::Choice catalog{{}};
         ui::Choice profiles{{}};
-        ui::Choice recipe{{{0, "Clustered lighting"}, {1, "All-light deferred"}}};
-        ui::CheckBox shadows{"Shadows", true};
+        ui::Layout configuration_layout;
+
+        struct Configuration final
+        {
+            std::vector<std::byte> bytes;
+            bool valid = true;
+            const SceneConfigurationEditor* editor = nullptr;
+            std::unique_ptr<ui::Element> widget;
+        };
+
+        std::vector<Configuration> configurations;
         ui::Button create{"Create Scene"}, open{"Open selected Scene"};
         ui::Label status;
         std::vector<std::unique_ptr<ui::CheckBox>> schemas, simulations, systems;
@@ -32,6 +39,7 @@ namespace lux::editor
         std::vector<ProjectManifest::SceneRecord> catalog_records;
         std::vector<object::Connection> connections;
         std::mt19937 random{std::random_device{}()};
+        bool preset_changed = false;
         std::shared_ptr<const scene::SceneAsset> preset;
         std::shared_ptr<const simulation::SimulationAsset> simulation_preset;
 
@@ -86,8 +94,7 @@ namespace lux::editor
                 systems.push_back(std::make_unique<ui::CheckBox>("Scene: " + registration.type.name));
                 add(*systems.back());
             }
-            add(recipe);
-            add(shadows);
+            add(configuration_layout);
             add(create);
             add(status);
             selectPreset();
@@ -101,6 +108,7 @@ namespace lux::editor
             const auto index = static_cast<std::size_t>(profiles.value());
             if (index >= available.size())
             {
+                prepareConfigurations();
                 return;
             }
             uuids::uuid_random_generator generate{random};
@@ -110,6 +118,7 @@ namespace lux::editor
             if (!defaults)
             {
                 status.setText(describeProjectSceneFailure(defaults.error()));
+                prepareConfigurations();
                 return;
             }
             preset = std::move(defaults->scene);
@@ -141,7 +150,40 @@ namespace lux::editor
                 }
                 systems[i]->setValue(selected);
             }
+            prepareConfigurations();
             status.setText("Preset applied; adjust schemas and systems before creation");
+        }
+
+        void prepareConfigurations() noexcept
+        {
+            configurations.clear();
+            for (const auto& registration : context.sceneRegistrations().scene_systems)
+            {
+                auto& config = configurations.emplace_back();
+                if (registration.configuration.valid())
+                {
+                    config.valid = registration.configuration.encode_default(config.bytes).has_value();
+                }
+                for (std::size_t j = 0; preset && j < preset->data().systemCount(); ++j)
+                {
+                    const auto system = preset->data().systemAt(j);
+                    if (system.type() == registration.type)
+                    {
+                        const auto bytes = system.configurationPayload();
+                        config.bytes.assign(bytes.begin(), bytes.end());
+                        config.valid = true;
+                    }
+                }
+                config.editor = context.sceneConfigurationEditor(registration.configuration.type);
+                if (config.editor)
+                {
+                    config.widget = config.editor->create(context, config.bytes);
+                    if (!config.widget || !configuration_layout.addElement(*config.widget))
+                    {
+                        std::terminate();
+                    }
+                }
+            }
         }
 
         ProjectSceneResult<SceneCreateSelection> selection() noexcept
@@ -201,35 +243,10 @@ namespace lux::editor
                 }
                 const auto& registration = registrations.scene_systems[i];
                 const auto& description = *registration.description;
-                std::vector<std::byte> configuration;
-                if (registration.configuration.valid() && !registration.configuration.encode_default(configuration))
+                auto& config = configurations[i];
+                if (!config.valid || (config.editor && !config.editor->serialize(*config.widget, config.bytes)))
                 {
                     return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
-                }
-                if (preset)
-                {
-                    for (std::size_t j = 0; j < preset->data().systemCount(); ++j)
-                    {
-                        const auto system = preset->data().systemAt(j);
-                        if (system.type() == registration.type)
-                        {
-                            const auto bytes = system.configurationPayload();
-                            configuration.assign(bytes.begin(), bytes.end());
-                        }
-                    }
-                }
-                if (registration.type.name == scene::RenderSystem::Description.canonical_name)
-                {
-                    scene::RenderSystemConfiguration rendering;
-                    rendering.capability = render::kLitSceneCapability;
-                    rendering.implementation = recipe.value() == 0 ? "lux.render.scene.clustered" : "lux.render.scene.deferred";
-                    render::LitSceneConfiguration settings;
-                    settings.shadows = shadows.value();
-                    rendering.configuration = *render::encodeLitSceneConfiguration(settings);
-                    if (!registration.configuration.encode(&rendering, configuration))
-                    {
-                        return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
-                    }
                 }
                 if (!scene.addSystem(
                         {i + 1},
@@ -238,7 +255,7 @@ namespace lux::editor
                         description.version,
                         description.configuration_schema_name,
                         description.configuration_schema_version,
-                        configuration
+                        config.bytes
                     ))
                 {
                     return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
@@ -273,7 +290,11 @@ namespace lux::editor
             &impl_->profiles,
             &ui::Choice::edited,
             this,
-            [this](ui::EditResult) noexcept { impl_->selectPreset(); }
+            [this](ui::EditResult) noexcept
+            {
+                impl_->preset_changed = true;
+                requestUpdate();
+            }
         ));
         retain(connect(&impl_->create, &ui::Button::activated, this, [this]() noexcept { createScene(); }));
         retain(connect(&impl_->open, &ui::Button::activated, this, [this]() noexcept { openScene(); }));
@@ -283,6 +304,15 @@ namespace lux::editor
     }
 
     SceneCreationPane::~SceneCreationPane() noexcept = default;
+
+    void SceneCreationPane::update() noexcept
+    {
+        if (std::exchange(impl_->preset_changed, false))
+        {
+            // Replace editor children at the Root update safe point, never during control drawing.
+            impl_->selectPreset();
+        }
+    }
 
     void SceneCreationPane::refreshCatalog() noexcept
     {

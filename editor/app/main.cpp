@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/editor/AssetBrowserPane.hpp>
+#include <lux/engine/editor/ComponentEditors3D.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorMenuComposition.hpp>
@@ -10,6 +11,7 @@
 #include <lux/engine/editor/ProjectCreationPane.hpp>
 #include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/ProjectScenes.hpp>
+#include <lux/engine/editor/RenderConfigurationEditor.hpp>
 #include <lux/engine/editor/SceneCreationPane.hpp>
 #include <lux/engine/editor/SceneHierarchyPane.hpp>
 #include <lux/engine/editor/SceneInspectorPane.hpp>
@@ -100,6 +102,14 @@ int main(int argc, char** argv)
     }
     auto assemble = [](lux::editor::EditorComposition& context) noexcept -> lux::editor::FrameworkResult<void>
     {
+        if (auto registered = lux::editor::registerComponentEditors3D(context); !registered)
+        {
+            return registered;
+        }
+        if (auto registered = lux::editor::registerRenderConfigurationEditor(context); !registered)
+        {
+            return registered;
+        }
         if (auto registered = context.registerSceneProfile(lux::editor::sceneProfile3D()); !registered)
         {
             return registered;
@@ -199,11 +209,7 @@ int main(int argc, char** argv)
                     {
                         return lux::cxx::unexpected(scenes.error());
                     }
-                    return std::make_unique<lux::editor::SceneInspectorPane>(
-                        scenes->get(),
-                        value.engine().execution(),
-                        description.title
-                    );
+                    return std::make_unique<lux::editor::SceneInspectorPane>(value, scenes->get(), description.title);
                 }
             );
             !registered)

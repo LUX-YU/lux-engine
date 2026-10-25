@@ -43,6 +43,12 @@ namespace lux::editor
         component(world::WorldObjectId, const simulation::ecs::ComponentSchemaId&) const noexcept;
 
         // Encodes an owned tool draft against this exact revision; apply performs domain admission.
+        [[nodiscard]] SceneEditResult<SceneEdit> prepareComponentEdit(
+            world::WorldObjectId object,
+            std::uint64_t based_on,
+            const simulation::ecs::DecodedComponent& value
+        ) const noexcept;
+
         template <class T>
         [[nodiscard]] SceneEditResult<SceneEdit> prepareComponentEdit(
             world::WorldObjectId object,

@@ -309,14 +309,23 @@ namespace lux::rendering
         return impl_->asset_loop.scheduler();
     }
 
-    RenderResult<FrameInput*> RenderExecution::beginFrame() noexcept
+    RenderResult<FrameInput*> RenderExecution::beginFrame(bool draw) noexcept
     {
+        if (!draw && !impl_->main_client->needsFrameInput())
+        {
+            return nullptr;
+        }
         auto frame = impl_->main_client->beginFrame();
         if (!frame && frame.error().type == kRuntimeCapacity)
         {
             return nullptr;
         }
         return frame;
+    }
+
+    bool RenderExecution::frameReady(bool draw) const noexcept
+    {
+        return impl_->main_client->hasFrameCapacity() && (draw || impl_->main_client->needsFrameInput());
     }
 
     RenderResult<void> RenderExecution::submitFrame(FrameInput& frame) noexcept

@@ -91,7 +91,8 @@ ExecutionRuntime::create（应用已有）
 | `DeviceBackend` | 选定后端的设备初始化及专属能力适配；不承担帧调度 | [DeviceBackend.cpp](../../modules/function/render/src/device/vulkan/DeviceBackend.cpp) |
 | `DescriptorTable` | 设备级 sampled-image/sampler 索引和 Native 描述符；不拥有材质业务依赖 | [DescriptorTable.cpp](../../modules/function/render/src/device/DescriptorTable.cpp) |
 
-公开 Descriptor 只保存类型、配置和端口合同，不再导出 `definition()`。内置依赖在私有 tuple 中声明，
+普通公开合同是能力与 payload；扩展作者的声明、端口和构建合同由 render_extensions 安装。
+内置依赖在私有 tuple 中声明，
 `create()` 直接登记已知实现；不创建 Feature/Storage/Handler，不运行外部兼容验证或注册回退。
 实际设备能力仍在冷态选择支持项，不因自动注册而擅自启用可选能力。
 
@@ -101,7 +102,7 @@ ExecutionRuntime::create（应用已有）
 RenderThread 安全点进行，发布后先落实选中对象再继续分发。普通请求不做实例化判断。
 
 Feature 的 Storage 依赖与 Effect 的资源端口连接是两件事：前者登记实现，后者决定同一张图的数据依赖。
-PrepareStorage/Attach 才创建 Storage；原 StorageSet 拥有关系不变。构建函数依据已启用的分页路径冷态选定，
+InstallCapabilities 在已有业务作用域创建实际 Storage，Attach 补齐 Attachment 私有输入；StorageSet 拥有关系不变。构建函数依据已启用的分页路径冷态选定，
 编译任务借用稳定 FeatureEntry，热帧不重选。新增 Handler 不抢占当前绑定，旧实例保留到异步工作清偿之后。
 
 Command、配置和绑定选择的 C++ 身份直接使用 `cxx::TypeToken`。Token 比较完整类型名及 hash，
@@ -156,10 +157,11 @@ Response 使用显式 `RenderError error` 和业务字段，内部函数可以�
 [StorageSet](../../modules/function/render/sinclude/lux/engine/render/resource/StorageSet.hpp) 独占实际 Storage；
 [ResourceRegistry](../../modules/function/render/include/lux/engine/render/extensions/storage/ResourceRegistry.hpp) 拥有类型目录、
 生成式 StorageId 和非拥有实例定位。Global StorageSet 在 Runtime；Scene/View/Attachment 各有自己的集合。
-`PrepareStorage` 可先创建并取得 ID；Attach 也可按声明创建缺少的实例并返回逻辑资源到 StorageId 的对应。
+普通客户端提交 InstallCapabilities，获得语义输入的 CapabilityInput；Attach 返回实际采用的输入位置。
+StorageId、类型目录与创建算法只用于扩展作者和 Render 内部，普通用户不准备或释放 Storage。
 
 `StorageCreateContext` 只同步借用设备、上传、帧执行和 Registry 等构造依赖。
-业务资源 ID 包含 StorageId 和本地代际键；名称用于冷发现，不在稳定绘制中重复查询。
+业务资源 ID 是不透明值；仅 Render 内部解析 Storage 和本地代际键。名称用于冷发现，不在稳定绘制中重复查询。
 
 ### 5.2 专业类逐一分工
 
@@ -458,7 +460,7 @@ Scope join 不替代外部 Producer 退栈或代码模块寿命证明。
 
 1. 应用创建唯一 ExecutionRuntime、诊断目标和 RenderServer；登记内置声明及需要的外部扩展。
 2. 建立主帧与 Asset 的独立 IpcRequester，冷态 setFrameSource；再启动唯一 RenderThread。
-3. 查询目录；CreateScene/View/Target、PrepareStorage 处理不改变已有可见状态的冷准备。
+3. 查询目录；CreateScene/View/Target、InstallCapabilities 处理不改变已有可见状态的冷准备。
 4. Asset Client 可独立 CreateTexture/CreateMesh；收到成功后才使用其返回 ID。
 5. CreateMaterial、CreateMeshInstances、CreateDirectLights 等共享表更新放进主来源 SubmitFrame。
    初始化可以先提交 NO_DRAW 帧；需要前一条请求返回的新 ID 时，在后续完整载体中使用，不能中途改写已借出的数组。

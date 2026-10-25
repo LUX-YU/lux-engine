@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 
 namespace lux::editor
 {
@@ -270,12 +271,20 @@ namespace lux::editor
             scene::SceneInstanceId instance;
         };
 
+        // The Scene owns one selection fact; viewports borrow it. Only primary membership changes invalidate it.
+        struct PrimaryCameras final
+        {
+            std::set<simulation::ecs::Entity> entities;
+            bool initialized = false;
+        };
+
         struct Play final
         {
             scene::SceneInstanceId instance;
             scene::RenderAssetInput inputs;
             scene::RenderSystem* rendering{};
             std::array<entt::scoped_connection, 3> camera_connections;
+            PrimaryCameras primary_cameras;
             bool stopping{};
             error::Error close_failure;
             GeometryRequests geometry;
@@ -288,6 +297,7 @@ namespace lux::editor
             scene::RenderAssetInput inputs;
             scene::RenderSystem* rendering{};
             std::array<entt::scoped_connection, 3> camera_connections;
+            PrimaryCameras primary_cameras;
             std::optional<Play> play;
             bool closing{}, saving{};
             GeometryRequests geometry;
@@ -497,7 +507,7 @@ namespace lux::editor
                     );
                 }
                 camera_connections = {
-                    registry.on_construct<scene::Camera>().connect<&Impl::camerasChanged>(*this),
+                    registry.on_construct<scene::Camera>().connect<&Impl::cameraAdded>(*this),
                     registry.on_update<scene::Camera>().connect<&Impl::camerasChanged>(*this),
                     registry.on_destroy<scene::Camera>().connect<&Impl::cameraRemoved>(*this)
                 };
@@ -791,6 +801,7 @@ namespace lux::editor
                         std::erase(related, id);
                         if (related.empty())
                         {
+                            primaryCameras(viewport) = {};
                             camera_viewports.erase(viewport.registry);
                         }
                         viewports.erase(id);
@@ -819,32 +830,48 @@ namespace lux::editor
             return *(viewport.play ? entry.play->rendering : entry.rendering);
         }
 
+        PrimaryCameras& primaryCameras(const Viewport& viewport) noexcept
+        {
+            auto& entry = *documents.find(viewport.document)->second;
+            return viewport.play ? entry.play->primary_cameras : entry.primary_cameras;
+        }
+
         void invalidateCameraSelection(
             simulation::ecs::Registry& registry,
             simulation::ecs::Entity camera,
-            bool removed
+            bool removed,
+            bool identity_changed
         ) noexcept
         {
             const auto found = camera_viewports.find(&registry);
-            if (found == camera_viewports.end())
+            if (found == camera_viewports.end() || found->second.empty())
             {
                 return;
             }
             const auto* residency = registry.ctx().find<scene::WorldResidency>();
             const auto* description = registry.try_get<scene::Camera>(camera);
             const bool primary = !removed && description && description->primary;
+            auto& cached = primaryCameras(*viewports.find(found->second.front()));
+            bool primary_changed = !cached.initialized;
+            if (cached.initialized)
+            {
+                primary_changed = primary ? cached.entities.insert(camera).second : cached.entities.erase(camera) != 0;
+            }
+            if (!primary_changed && !identity_changed)
+            {
+                return; // Pose/exposure updates do not revisit any viewport selection.
+            }
             for (auto id : found->second)
             {
                 auto& viewport = *viewports.find(id);
                 const bool selected = viewport.camera == camera;
-                const bool primary_changed = viewport.selection.kind == EViewportCamera::PRIMARY &&
-                                             (selected ? !primary : primary || viewport.camera_error.type != 0);
+                const bool primary_affected = viewport.selection.kind == EViewportCamera::PRIMARY && primary_changed;
                 const bool fixed_changed =
-                    viewport.selection.kind != EViewportCamera::PRIMARY &&
+                    identity_changed && viewport.selection.kind != EViewportCamera::PRIMARY &&
                     ((selected && removed) ||
                      (!selected && !removed && viewport.selection.kind == EViewportCamera::SCENE && residency &&
                       residency->identities().entity(viewport.selection.object) == camera));
-                const bool affected = primary_changed || fixed_changed;
+                const bool affected = primary_affected || fixed_changed;
                 if (affected && !viewport.closing)
                 {
                     viewport.camera_dirty = true;
@@ -854,14 +881,19 @@ namespace lux::editor
             }
         }
 
+        void cameraAdded(simulation::ecs::Registry& registry, simulation::ecs::Entity camera) noexcept
+        {
+            invalidateCameraSelection(registry, camera, false, true);
+        }
+
         void camerasChanged(simulation::ecs::Registry& registry, simulation::ecs::Entity camera) noexcept
         {
-            invalidateCameraSelection(registry, camera, false);
+            invalidateCameraSelection(registry, camera, false, false);
         }
 
         void cameraRemoved(simulation::ecs::Registry& registry, simulation::ecs::Entity camera) noexcept
         {
-            invalidateCameraSelection(registry, camera, true);
+            invalidateCameraSelection(registry, camera, true, true);
         }
 
         simulation::ecs::Entity selectCamera(simulation::ecs::Registry& registry, Viewport& viewport) noexcept
@@ -888,22 +920,27 @@ namespace lux::editor
             }
             else
             {
-                for (const auto camera : registry.view<const scene::Camera>())
+                auto& cached = primaryCameras(viewport);
+                if (!cached.initialized)
                 {
-                    if (!registry.get<const scene::Camera>(camera).primary)
+                    for (const auto camera : registry.view<const scene::Camera>())
                     {
-                        continue;
+                        if (registry.get<const scene::Camera>(camera).primary)
+                        {
+                            cached.entities.insert(camera);
+                        }
                     }
-                    if (selected != NullEntity)
-                    {
-                        viewport.camera_error = render::RenderError{
-                            render::kCommandContract,
-                            {static_cast<std::uint64_t>(scene::ECameraError::MULTIPLE_PRIMARY_CAMERAS)}
-                        };
-                        return NullEntity;
-                    }
-                    selected = camera;
+                    cached.initialized = true;
                 }
+                if (cached.entities.size() > 1)
+                {
+                    viewport.camera_error = render::RenderError{
+                        render::kCommandContract,
+                        {static_cast<std::uint64_t>(scene::ECameraError::MULTIPLE_PRIMARY_CAMERAS)}
+                    };
+                    return NullEntity;
+                }
+                selected = cached.entities.empty() ? NullEntity : *cached.entities.begin();
             }
             const bool available = registry.valid(selected) && registry.all_of<scene::Camera>(selected);
             if (!available)

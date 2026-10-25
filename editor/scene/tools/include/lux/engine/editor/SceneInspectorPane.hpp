@@ -3,13 +3,9 @@
 #include <lux/engine/ui/Pane.hpp>
 #include <memory>
 
-namespace lux::execution
-{
-    class ExecutionRuntime;
-}
-
 namespace lux::editor
 {
+    class EditorContext;
     class ProjectScenes;
     class SceneDocument;
 
@@ -17,7 +13,7 @@ namespace lux::editor
     class SceneInspectorPane final : public ui::Pane
     {
     public:
-        SceneInspectorPane(ProjectScenes&, execution::ExecutionRuntime&, std::string title);
+        SceneInspectorPane(EditorContext&, ProjectScenes&, std::string title);
         ~SceneInspectorPane() noexcept;
 
     private:

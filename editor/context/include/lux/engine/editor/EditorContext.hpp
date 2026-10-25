@@ -7,6 +7,7 @@
 #include <lux/engine/editor/ProjectDescription.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
 #include <lux/engine/editor/SceneProfileRegistry.hpp>
+#include <lux/engine/editor/ValueEditors.hpp>
 #include <lux/engine/process/asset_loading/AssetRead.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/scene/SceneInstanceLease.hpp>
@@ -122,6 +123,9 @@ namespace lux::editor
         }
 
         [[nodiscard]] execution::TaskScope& tasks() noexcept;
+        // Immutable function declarations; returned borrows remain valid through this Context's pane lifetime.
+        [[nodiscard]] const ComponentEditor* componentEditor(cxx::TypeToken) const noexcept;
+        [[nodiscard]] const SceneConfigurationEditor* sceneConfigurationEditor(cxx::TypeToken) const noexcept;
         // Main-only lazy project VFS endpoint. IO uses the Engine's bounded blocking resource.
         // Copied ports close with this Context; accepted reads retain their source snapshot and code.
         [[nodiscard]] FrameworkResult<process::asset_loading::AssetReadPort> prepareAssetReads() noexcept;
@@ -156,6 +160,8 @@ namespace lux::editor
         asset::AssetVfs assets_;
         EditorUiRegistry ui_;
         SceneProfileRegistry scene_profiles_;
+        std::vector<ComponentEditor> component_editors_;
+        std::vector<SceneConfigurationEditor> scene_configuration_editors_;
         engine::ContextExtensions extensions_;
         // Instances die before factory captures, project paths, VFS and plugin registrations.
         EditorServices services_;

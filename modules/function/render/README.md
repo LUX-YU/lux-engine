@@ -164,9 +164,9 @@ build once, audits its appended resource/pass interval and analyzes the finished
 the supplied version, while only its producer may write that output. Output versions are not restricted to v1.
 Zero-pass resource Features need no dummy build callback.
 
-`FeatureEntry` retains the selected cold build callback; the private tuple declaration carries dependencies. The public FeatureDescriptor only describes
-identity/configuration and purpose. `MaterialMeshRasterDescriptor` and `MeshDepthRasterDescriptor` share the
-documented raster mesh parameter ABI; their implementation and dependency lists remain private. Features describe
+`FeatureEntry` retains the selected cold build callback and one capability declaration; private tuples carry
+implementation dependencies. Ordinary clients select capabilities and semantic payloads. Extension authors use
+`render_extensions`; built-in raster implementations and dependency lists remain private. Features describe
 draws, compilation lowers them, and execution records them. No Feature build callback or graph analysis runs in a
 stable frame. Cooked shader reflection remains the source of parameter layouts.
 
@@ -271,7 +271,7 @@ and sample it once. Both paths record the same compiled transitions; the false p
 Rendering groups may merge within a region but never across its boundary. There are no predicate callbacks or
 GPU-to-CPU reads.
 
-`HzbFeatureDescriptor` consumes forward-Z depth and produces current/previous R32 depth pyramids. It ports Legacy's
+The private `HzbFeature` consumes forward-Z depth and produces current/previous R32 depth pyramids. It ports Legacy's
 per-mip maximum reduction with complete odd-size footprint coverage. History, initialization and barriers belong to
 the graph instance and plan; the feature has no private double-buffer or barrier owner. `ImageDispatchArguments`
 resolves group counts from the actual attached mip extent, including after Resize.
@@ -395,7 +395,7 @@ If none of the requested uses reads a material record, the Cooked runtime parame
 The author graph retains its slots; compiling another purpose can consume them later. Storage never invents
 a layout for unused authoring data or creates a hidden Shader use to recover one.
 
-Install `GBufferFeatureDescriptor`, `DeferredLightingFeatureDescriptor` and `TonemapFeatureDescriptor` independently.
+The private GBuffer, deferred lighting and tonemap Features compose the built-in lit-scene capability.
 Connect the GBuffer's `albedo_metallic`, `normal_roughness`, `emissive_ao` and `depth` ports to the lighting feature,
 then its `hdr_color` to Tonemap. Port encoding identities supplement size/format matching: two equal-format images
 with different channel meanings cannot be interchanged. GBuffer is linear RGBA8 + RGBA16F + RGBA16F and forward-Z D32.
@@ -422,7 +422,7 @@ explicitly supplied environment term. Tonemap applies ACES and an explicit linea
 
 ## Shadow composition
 
-Install `ShadowMapFeatureDescriptor`, `MeshVisibilityFeatureDescriptor` and `MeshShadowFeatureDescriptor` independently.
+The private shadow-map, visibility and mesh-shadow Features compose the selected lit-scene implementation.
 None installs or calls another Feature. Their common inputs are plain geometry, light and resource-port contracts:
 
 - ShadowMap contributes zero raster passes. Its Attachment data calculates explicit directional cascades, six point
@@ -464,7 +464,7 @@ AlphaMask coverage. These output probes do not add a production Readback command
 
 ## Clustered light composition
 
-Install `ClusteredLightingFeatureDescriptor` independently. It contributes Reset/Build/Count/Scan/Fill graph work;
+The private `ClusteredLightingFeature` contributes Reset/Build/Count/Scan/Fill graph work;
 it does not call DeferredLighting, ShadowMap or GBuffer. `ClusterGrid` declares XYZ cells, linear/logarithmic depth
 slices and an explicit index capacity. `ClusteredLightingParameters` supplies the finite forward-Z inverse projection,
 camera position/near distance and unit forward/far distance through the attachment parameter block.

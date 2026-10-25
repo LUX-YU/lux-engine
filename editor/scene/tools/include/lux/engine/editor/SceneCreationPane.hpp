@@ -16,6 +16,7 @@ namespace lux::editor
         ~SceneCreationPane() noexcept;
 
     private:
+        void update() noexcept override;
         void refreshCatalog() noexcept;
         void createScene() noexcept;
         void openScene() noexcept;

@@ -67,7 +67,14 @@ int main()
         *engine,
         {manifest.name, std::filesystem::current_path()},
         manifest,
-        [](EditorComposition&) noexcept -> FrameworkResult<void> { return {}; }
+        [](EditorComposition& composition) noexcept -> FrameworkResult<void>
+        {
+            return composition.registerComponentEditor(
+                {{},
+                 cxx::typeToken<ecs::Transform3D>(),
+                 +[](void* value) noexcept { static_cast<ecs::Transform3D*>(value)->translation.x() += 3; }}
+            );
+        }
     ));
     std::vector<ecs::ComponentSchema> schema_values;
     for (auto group : {ecs::hierarchyComponentSchemas(), ecs::transformComponentSchemas()})
@@ -181,6 +188,13 @@ int main()
     document->setReadOnly(false);
     assert(document->select(first) && document->selection() == first);
     auto value = take(document->component(first, transform_value.schema));
+    const auto draft_revision = document->revision();
+    context->componentEditor(value.type())->draw(value.data());
+    const auto edited_x = static_cast<const ecs::Transform3D*>(value.data())->translation.x();
+    assert(registry.get<ecs::Transform3D>(residency.identities().entity(first)).translation.x() != edited_x);
+    assert(document->apply(take(document->prepareComponentEdit(first, draft_revision, value))));
+    assert(registry.get<ecs::Transform3D>(residency.identities().entity(first)).translation.x() == edited_x);
+    assert(!document->prepareComponentEdit(first, draft_revision, value));
     auto draft = *static_cast<const ecs::Transform3D*>(value.data());
     const auto original = draft.translation;
     const auto start_revision = document->revision();

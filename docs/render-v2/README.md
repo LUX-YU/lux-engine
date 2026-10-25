@@ -103,15 +103,15 @@ if (!server)
 {
     return server.error();
 }
-auto mesh_feature = (*server)->featureId<MaterialMeshRasterDescriptor>();
+// Client: query ListCapabilities, select an implementation, then install its semantic inputs.
 ```
 
 `create()` 从私有 `BuiltinFeatures` 的 tuple 清单直接登记支持的 Feature、Storage 和 Command。
-Descriptor 不再导出私有定义，登记不创建实例。`run()` 激活已选 Handler，PrepareStorage/Attach 才创建 Storage。
+普通能力声明与扩展登记引用同一份描述，登记不创建实例。`run()` 激活已选 Handler，InstallCapabilities/Attach 创建实际 Storage。
 内置路径不执行外部扩展的事务验证或回退；设备能力仍在冷态选择支持项。
 
-外部扩展包含 `sinclude` 的 `runtime/FeatureRegistration.hpp`，声明 `Descriptor`、`Storages`、`Commands`
-和 Graph 构建入口。模板验证整个依赖集合后发布到同一目录；失败不留下部分目录，重复登记保留 ID 和当前选择。
+外部扩展链接 `render_extensions`，包含安装的 `extensions/FeatureRegistration.hpp`，声明名称、配置、
+能力、`Storages`、`Commands` 和 Graph 构建入口。模板验证整个依赖集合后发布到同一目录；失败不留下部分目录，重复登记保留 ID 和当前选择。
 具体实现不进入安装公共头。所有声明、回调和类型名都要求定义模块存活至 Server 及相关消息销毁。
 扩展只在 `run()` 前或 RenderThread 安全点登记，普通请求不承担注册或实例化工作。
 

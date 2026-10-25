@@ -415,6 +415,15 @@ namespace lux::editor
         return std::move(*decoded);
     }
 
+    SceneEditResult<SceneEdit> SceneDocument::prepareComponentEdit(
+        world::WorldObjectId id,
+        std::uint64_t based_on,
+        const simulation::ecs::DecodedComponent& value
+    ) const noexcept
+    {
+        return encodeComponentEdit(id, based_on, value.type(), value.data());
+    }
+
     SceneEditResult<SceneEdit> SceneDocument::encodeComponentEdit(
         world::WorldObjectId id,
         std::uint64_t based_on,

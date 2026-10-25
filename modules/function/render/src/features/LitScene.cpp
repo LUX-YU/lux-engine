@@ -38,15 +38,12 @@ namespace lux::render::detail
 
         RenderResult<ConfigValue> decodeConfiguration(std::span<const std::byte> bytes) noexcept
         {
-            LitSceneConfiguration value;
-            serialization::BinaryReader reader(bytes);
-            auto fields = configurationFields(value);
-            const auto decoded = serialization::read(reader, fields, serialization::kPortableMetadataBudget);
-            if (!decoded || reader.remaining() != 0 || !validConfiguration(value))
+            auto value = decodeLitSceneConfiguration(bytes);
+            if (!value)
             {
-                return cxx::unexpected(RenderError{kInvalidConfig});
+                return cxx::unexpected(value.error());
             }
-            return ConfigValue::make(value);
+            return ConfigValue::make(*value);
         }
 
         rdesc::ShaderBlock sceneParameterLayout() noexcept
@@ -533,6 +530,20 @@ namespace lux::render::detail
 
 namespace lux::render
 {
+    RenderResult<LitSceneConfiguration> decodeLitSceneConfiguration(std::span<const std::byte> bytes) noexcept
+    {
+        LitSceneConfiguration value;
+        serialization::BinaryReader reader(bytes);
+        auto fields = detail::configurationFields(value);
+        const auto decoded = serialization::read(reader, fields, serialization::kPortableMetadataBudget);
+        const bool invalid = !decoded || reader.remaining() != 0 || !detail::validConfiguration(value);
+        if (invalid)
+        {
+            return cxx::unexpected(RenderError{kInvalidConfig});
+        }
+        return value;
+    }
+
     RenderResult<SerializedRenderConfiguration> encodeLitSceneConfiguration(const LitSceneConfiguration& value) noexcept
     {
         if (!detail::validConfiguration(value))

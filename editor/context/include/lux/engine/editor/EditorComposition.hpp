@@ -4,6 +4,7 @@
 #include <lux/engine/editor/EditorServices.hpp>
 #include <lux/engine/editor/EditorUiRegistry.hpp>
 #include <lux/engine/editor/SceneProfileRegistry.hpp>
+#include <lux/engine/editor/ValueEditors.hpp>
 
 namespace lux::editor
 {
@@ -52,6 +53,8 @@ namespace lux::editor
 
         [[nodiscard]] FrameworkResult<void> registerUiFactory(std::string, UiFactory) noexcept;
         [[nodiscard]] FrameworkResult<void> registerSceneProfile(SceneProfileRegistration) noexcept;
+        [[nodiscard]] FrameworkResult<void> registerComponentEditor(ComponentEditor) noexcept;
+        [[nodiscard]] FrameworkResult<void> registerSceneConfigurationEditor(SceneConfigurationEditor) noexcept;
 
     private:
         friend class EditorContext;
@@ -60,5 +63,7 @@ namespace lux::editor
         std::vector<EditorServices::Entry> services_;
         std::vector<EditorUiRegistry::Factory> ui_;
         std::vector<SceneProfileRegistration> scene_profiles_;
+        std::vector<ComponentEditor> component_editors_;
+        std::vector<SceneConfigurationEditor> scene_configuration_editors_;
     };
 } // namespace lux::editor

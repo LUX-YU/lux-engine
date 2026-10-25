@@ -96,8 +96,10 @@ namespace lux::rendering
         [[nodiscard]] RenderRequester& assetClient() noexcept;
         [[nodiscard]] execution::RunLoop::Scheduler assetScheduler() noexcept;
 
-        // Main frame entry: nullptr means wait for a previous frame before preparing new inputs.
-        [[nodiscard]] render::RenderResult<FrameInput*> beginFrame() noexcept;
+        // Main frame entry: nullptr means no input demand or no reusable carrier; maintenance still progresses.
+        [[nodiscard]] render::RenderResult<FrameInput*> beginFrame(bool draw = true) noexcept;
+        // After maintenance, newly queued requests are admitted at the next iteration's single safe point.
+        [[nodiscard]] bool frameReady(bool draw) const noexcept;
         // Takes over the open carrier. Report failed completion, then recycle it after all replies.
         // The application must not use/release this carrier after calling submitFrame, even on failure.
         [[nodiscard]] render::RenderResult<void> submitFrame(FrameInput& frame) noexcept;

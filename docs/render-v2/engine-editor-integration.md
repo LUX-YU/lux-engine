@@ -718,9 +718,17 @@ stdexec 执行 Scope。读取端点接受 ExecutionRuntime 和可选项目停止
 维护帧只清偿已有控制命令，不增加第二份领先帧计数。
 
 RenderSystem 直接拥有实际 Scene 关联，构造时借用 Requester、ExecutionRuntime、RenderAssets 和视图输入。
-结构事务与现有实例的增量帧投影分开；等待资产只遍历待建立集合。SceneEffect 是纯冷态配方构造，
-按实际 Mesh/完整 Cooked Program 分组，并且仅在分组、容量或输出合同变化时重建 Effect。
+结构事务与现有实例的增量帧投影分开。SceneRenderInputs 的窄算法按实际 Mesh/完整 Cooked Program
+生成公共几何输入，Render 内的能力实现负责构图。所选能力没有几何输入时不执行该算法；没有冷态
+Camera 裁剪输入时 near/far 不参与编译身份。帧 Camera 输入与冷态输入分别采用。
+资产完成通知保留 AssetId、revision 和 source；Scene 只唤醒等待该版本的实例或材质。容量通知只恢复
+准入受阻的需求，不代替版本完成。只有真正改变可绘制结构时才重新生成相关 Effect 输入；完成通知本身
+不扫描全部 live Mesh/Light/View。候选采用之后的旧引用回收仍以实际关系撤销为前提。
 Scene 和 UI 的释放只在成功回执后清空句柄，退休 maintenance 结束后才析构。
+
+RenderAssets 的资产能力选择来自产品装配参数。Scene 安装消费能力时传入该资产实现已发布的输入目的地，
+由 Render 冷态核对实际依赖相容性。普通消费者不拆解 Storage 身份，也不依靠两个句柄的 C++ 类型相同
+推断它们可以互用。
 
 Surface 输出不能被其它实例采样，轮转只更新实际图像/View/Barrier，不使共享资源依赖缓存失效。
 共享 Offscreen 输出更换仍更新跨实例依赖。UI 唯一图片列表由 DrawData::textures() 显式查询，

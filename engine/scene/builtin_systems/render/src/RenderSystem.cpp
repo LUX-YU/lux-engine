@@ -232,6 +232,13 @@ namespace lux::scene
                 }
                 camera_input_enabled |= input.schema == kCameraInput;
             }
+            // Mesh3D projects a material reference with each instance. This Scene producer cannot
+            // satisfy an instance-only contract by inventing a material destination.
+            const bool missing_material_producer = instance_input_enabled && !material_input_enabled;
+            if (missing_material_producer)
+            {
+                return cxx::unexpected(RenderError{kRuntimeUnsupported});
+            }
             if (instance_input_enabled)
             {
                 auto bound = client.bind<UpdateTransforms>();

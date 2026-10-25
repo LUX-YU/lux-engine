@@ -25,6 +25,8 @@ namespace lux::editor
 
         struct Configuration final
         {
+            std::string schema;
+            std::uint32_t version = 0;
             std::vector<std::byte> bytes;
             bool valid = true;
             const SceneConfigurationEditor* editor = nullptr;
@@ -151,7 +153,9 @@ namespace lux::editor
                 systems[i]->setValue(selected);
             }
             prepareConfigurations();
-            status.setText("Preset applied; adjust schemas and systems before creation");
+            const bool supported = std::ranges::all_of(configurations, &Configuration::valid);
+            status.setText(supported ? "Preset applied; adjust schemas and systems before creation"
+                                     : "Preset has an unsupported configuration version; choose another profile");
         }
 
         void prepareConfigurations() noexcept
@@ -160,6 +164,8 @@ namespace lux::editor
             for (const auto& registration : context.sceneRegistrations().scene_systems)
             {
                 auto& config = configurations.emplace_back();
+                config.schema = registration.description->configuration_schema_name;
+                config.version = registration.description->configuration_schema_version;
                 if (registration.configuration.valid())
                 {
                     config.valid = registration.configuration.encode_default(config.bytes).has_value();
@@ -170,11 +176,34 @@ namespace lux::editor
                     if (system.type() == registration.type)
                     {
                         const auto bytes = system.configurationPayload();
+                        config.schema = system.configurationSchemaName();
+                        config.version = system.configurationSchemaVersion();
                         config.bytes.assign(bytes.begin(), bytes.end());
-                        config.valid = true;
+                        const bool same_schema = config.schema == registration.description->configuration_schema_name;
+                        if (same_schema && registration.configuration.valid())
+                        {
+                            const auto migrated = registration.configuration.reencode(
+                                config.bytes,
+                                registration.configurationDecoder(config.version),
+                                config.bytes
+                            );
+                            config.valid = migrated.has_value();
+                            if (config.valid)
+                            {
+                                config.version = registration.description->configuration_schema_version;
+                            }
+                        }
+                        else
+                        {
+                            config.valid =
+                                same_schema && config.schema.empty() && config.version == 0 && config.bytes.empty();
+                        }
+                        break;
                     }
                 }
-                config.editor = context.sceneConfigurationEditor(registration.configuration.type);
+                // An unsupported old payload remains intact and cannot enter an editor for the current type.
+                config.editor =
+                    config.valid ? context.sceneConfigurationEditor(registration.configuration.type) : nullptr;
                 if (config.editor)
                 {
                     config.widget = config.editor->create(context, config.bytes);
@@ -218,7 +247,27 @@ namespace lux::editor
                         if (system.type() == registration.type)
                         {
                             const auto bytes = system.configurationPayload();
-                            configuration.assign(bytes.begin(), bytes.end());
+                            const auto& description = registration.description->type;
+                            const bool same_schema =
+                                system.configurationSchemaName() == description.configuration_schema_name;
+                            const bool same_version =
+                                system.configurationSchemaVersion() == description.configuration_schema_version;
+                            if (!same_schema || !same_version)
+                            {
+                                // Simulation currently declares no legacy decoder table. Reject instead of relabeling.
+                                return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
+                            }
+                            const bool valid =
+                                registration.configuration.valid()
+                                    ? registration.configuration
+                                          .reencode(bytes, registration.configuration.decode, configuration)
+                                          .has_value()
+                                    : bytes.empty();
+                            if (!valid)
+                            {
+                                return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
+                            }
+                            break;
                         }
                     }
                 }
@@ -244,9 +293,8 @@ namespace lux::editor
                 const auto& registration = registrations.scene_systems[i];
                 const auto& description = *registration.description;
                 auto& config = configurations[i];
-                // An editor can replace an initially absent configuration with an explicit valid choice.
                 const bool valid_configuration =
-                    config.editor ? config.editor->serialize(*config.widget, config.bytes) : config.valid;
+                    config.valid && (!config.editor || config.editor->serialize(*config.widget, config.bytes));
                 if (!valid_configuration)
                 {
                     return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
@@ -256,8 +304,8 @@ namespace lux::editor
                         registration.type.name,
                         registration.type,
                         description.version,
-                        description.configuration_schema_name,
-                        description.configuration_schema_version,
+                        config.schema,
+                        config.version,
                         config.bytes
                     ))
                 {

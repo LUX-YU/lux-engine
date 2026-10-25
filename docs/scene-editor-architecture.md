@@ -118,8 +118,14 @@ RenderAssetInput 单独提供稳定资产域和一起发布的 revision/VFS snap
 output_available；关闭旧 SwapChain 后失败不会伪装旧输出仍可用。物理回收仍归唯一 cleanup_scope_。
 子视口按实际 framebuffer scale 一次换算到像素；旧图像保持同一个 token 并按旧宽高比 fit，留边不接受拾取。
 
-内置配方为 `lux.scene.deferred` 与 `lux.scene.clustered`，版本 1。阴影采用统一数组分辨率，
-由 Scene 的 `shadow_resolution` 指定；Light 的 `cast_shadow`、级联划分和偏移参与实际投影。
+内置图像能力为 `lux.render.capability.lit_scene`，实现选项为 `lux.render.scene.deferred` 和
+`lux.render.scene.clustered`。普通用户选择能力、实现及公开配置，不直接选择 Feature 或 Storage。
+资源能力不能作为 Scene 图像候选；每个选择只采用自己声明的输入和 Target 约束。
+Profile 配置保留原 schema/version。创建面板通过 SceneSystemRegistration 已登记的对应 decoder
+产生当前值，再由当前 codec 编码，成功后才交给编辑器并采用当前版本。没有对应 decoder 时保留原
+字节、拒绝创建；不能在没有字段编辑器时跳过资格。Simulation 暂未声明版本迁移表，只接受当前合同。
+阴影采用统一数组分辨率，由 LitSceneConfiguration 的 `shadow_resolution` 指定；
+Light 的 `cast_shadow`、级联划分和偏移参与实际投影。
 当前配方不实现每灯混合分辨率，不把 Light 的旧 `shadow_map_size` 当成已生效。
 阴影可见性读取 ShadowMapFeature 的 views 端口，主视图可见性读取观察参数；二者不是同一种输入。
 

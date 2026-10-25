@@ -59,25 +59,38 @@ namespace lux::scene
     bool supportsSceneRenderInput(const render::RenderPayloadContract& input) noexcept
     {
         using namespace render;
+        constexpr auto borrowed = ERenderPayloadLifetime::UNTIL_RESPONSE;
+        constexpr auto moved = ERenderPayloadLifetime::MOVED_VALUE;
         // Producer declarations, not a whitelist of Feature implementations.
         const std::array producers{
-            std::tuple{kIndexedMeshInput, cxx::typeToken<MeshWrite>(), ERenderPayloadUse::RESOURCE_INPUT},
-            std::tuple{kSampledTextureInput, cxx::typeToken<TextureWrite>(), ERenderPayloadUse::RESOURCE_INPUT},
-            std::tuple{kRasterMaterialInput, cxx::typeToken<MaterialWrite>(), ERenderPayloadUse::RESOURCE_INPUT},
-            std::tuple{kRasterInstancesInput, cxx::typeToken<MeshInstancesCreate>(), ERenderPayloadUse::RESOURCE_INPUT},
+            std::tuple{kIndexedMeshInput, cxx::typeToken<MeshWrite>(), ERenderPayloadUse::RESOURCE_INPUT, borrowed},
+            std::tuple{
+                kSampledTextureInput,
+                cxx::typeToken<TextureWrite>(),
+                ERenderPayloadUse::RESOURCE_INPUT,
+                borrowed
+            },
+            std::tuple{kRasterMaterialInput, cxx::typeToken<MaterialWrite>(), ERenderPayloadUse::RESOURCE_INPUT, moved},
+            std::tuple{
+                kRasterInstancesInput,
+                cxx::typeToken<MeshInstancesCreate>(),
+                ERenderPayloadUse::RESOURCE_INPUT,
+                borrowed
+            },
             std::tuple{
                 kDirectLightsInput,
                 cxx::typeToken<CreateDirectLights::Request>(),
-                ERenderPayloadUse::RESOURCE_INPUT
+                ERenderPayloadUse::RESOURCE_INPUT,
+                borrowed
             },
-            std::tuple{kSceneGeometryInput, cxx::typeToken<LitSceneInputs>(), ERenderPayloadUse::EFFECT_INPUT},
-            std::tuple{kCameraInput, cxx::typeToken<CameraInput>(), ERenderPayloadUse::FRAME_INPUT}
+            std::tuple{kSceneGeometryInput, cxx::typeToken<LitSceneInputs>(), ERenderPayloadUse::EFFECT_INPUT, moved},
+            std::tuple{kCameraInput, cxx::typeToken<CameraInput>(), ERenderPayloadUse::FRAME_INPUT, moved}
         };
-        for (const auto& [schema, type, use] : producers)
+        for (const auto& [schema, type, use, lifetime] : producers)
         {
             if (input.schema == schema)
             {
-                return input.version == 1 && input.cppType() == type && input.use == use;
+                return input.version == 1 && input.cppType() == type && input.use == use && input.lifetime == lifetime;
             }
         }
         return false;

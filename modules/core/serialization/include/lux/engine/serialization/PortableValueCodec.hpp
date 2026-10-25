@@ -16,6 +16,11 @@ namespace lux::serialization
     using EncodeDefaultPortableValueFn = SerializationResult (*)(std::vector<std::byte>& output) noexcept;
     using EncodePortableValueFn = SerializationResult (*)(const void* object, std::vector<std::byte>& output) noexcept;
     using DecodePortableValueFn = SerializationResult (*)(std::span<const std::byte> input, void* object) noexcept;
+    using ReencodePortableValueFn = SerializationResult (*)(
+        std::span<const std::byte> input,
+        DecodePortableValueFn decoder,
+        std::vector<std::byte>& output
+    ) noexcept;
 
     struct PortableValueCodec final
     {
@@ -23,10 +28,14 @@ namespace lux::serialization
         EncodeDefaultPortableValueFn encode_default{};
         EncodePortableValueFn encode{};
         DecodePortableValueFn decode{};
+        // The selected current/legacy decoder constructs this codec's value. The current encoder
+        // writes a separate candidate; failure preserves output, including when input aliases it.
+        ReencodePortableValueFn reencode{};
 
         [[nodiscard]] bool valid() const noexcept
         {
-            return type.isValid() && encode_default != nullptr && encode != nullptr && decode != nullptr;
+            return type.isValid() && encode_default != nullptr && encode != nullptr && decode != nullptr &&
+                   reencode != nullptr;
         }
     };
 
@@ -37,13 +46,15 @@ namespace lux::serialization
 
         return PortableValueCodec{
             .type = lux::cxx::typeToken<Value>(),
-            .encode_default = +[](std::vector<std::byte>& output) noexcept -> SerializationResult {
+            .encode_default = +[](std::vector<std::byte>& output) noexcept -> SerializationResult
+            {
                 Value value{};
                 output.clear();
                 BinaryWriter writer(output);
                 return serialization::write(writer, value, kPortableMetadataBudget);
             },
-            .encode = +[](const void* object, std::vector<std::byte>& output) noexcept -> SerializationResult {
+            .encode = +[](const void* object, std::vector<std::byte>& output) noexcept -> SerializationResult
+            {
                 if (object == nullptr)
                 {
                     return lux::cxx::unexpected<SerializationFailure>(
@@ -54,7 +65,8 @@ namespace lux::serialization
                 BinaryWriter writer(output);
                 return serialization::write(writer, *static_cast<const Value*>(object), kPortableMetadataBudget);
             },
-            .decode = +[](std::span<const std::byte> input, void* object) noexcept -> SerializationResult {
+            .decode = +[](std::span<const std::byte> input, void* object) noexcept -> SerializationResult
+            {
                 if (object == nullptr)
                 {
                     return lux::cxx::unexpected<SerializationFailure>(
@@ -74,6 +86,31 @@ namespace lux::serialization
                     );
                 }
                 return {};
+            },
+            .reencode =
+                +[](std::span<const std::byte> input, DecodePortableValueFn decoder, std::vector<std::byte>& output
+                 ) noexcept -> SerializationResult
+            {
+                if (!decoder)
+                {
+                    return lux::cxx::unexpected<SerializationFailure>(
+                        SerializationFailure{ESerializationError::INVALID_VALUE, 0U}
+                    );
+                }
+                Value value{};
+                auto decoded = decoder(input, &value);
+                if (!decoded)
+                {
+                    return decoded;
+                }
+                std::vector<std::byte> candidate;
+                BinaryWriter writer(candidate);
+                auto encoded = serialization::write(writer, value, kPortableMetadataBudget);
+                if (encoded)
+                {
+                    output = std::move(candidate);
+                }
+                return encoded;
             }
         };
     }

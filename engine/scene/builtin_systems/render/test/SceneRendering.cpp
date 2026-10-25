@@ -213,6 +213,10 @@ int main()
     CHECK(surface_support.implementations.front().unavailable.type == kRuntimeUnsupported);
     CHECK(offscreen_support.implementations.front().selection != surface_support.implementations.front().selection);
     const auto resource_support = call<ListCapabilities>(*rendering, {"lux.render.capability.raster_assets", 1});
+    auto borrowed_input = resource_support.implementations.front().capabilities.front().inputs.front();
+    CHECK(scene::supportsSceneRenderInput(borrowed_input));
+    borrowed_input.lifetime = ERenderPayloadLifetime::MOVED_VALUE;
+    CHECK(!scene::supportsSceneRenderInput(borrowed_input));
     CHECK(!resource_support.implementations.empty());
     CHECK(resource_support.implementations.front().capabilities.front().kind == ERenderCapabilityKind::RESOURCES);
     const auto catalog = call<ListCommands>(*rendering, {});
@@ -305,6 +309,21 @@ int main()
     CHECK(registration.configurationDecoder(1)(version1, &migrated));
     CHECK(migrated.configuration == scene_configuration.configuration);
     CHECK(migrated.implementation == scene_configuration.implementation);
+    auto preset_bytes = version1;
+    CHECK(codec.reencode(preset_bytes, registration.configurationDecoder(1), preset_bytes));
+    scene::RenderSystemConfiguration saved_preset;
+    CHECK(codec.decode(preset_bytes, &saved_preset));
+    CHECK(saved_preset.configuration == scene_configuration.configuration);
+    CHECK(saved_preset.implementation == scene_configuration.implementation);
+    const auto preserved_preset = preset_bytes;
+    CHECK(!codec.reencode(version1, registration.configurationDecoder(999), preset_bytes));
+    CHECK(preset_bytes == preserved_preset);
+    CHECK(!codec.reencode(
+        std::span(version1).first(version1.size() - 1),
+        registration.configurationDecoder(1),
+        preset_bytes
+    ));
+    CHECK(preset_bytes == preserved_preset);
     auto scene = std::make_unique<scene::RenderSystem>(registry, dependencies, scene_configuration);
     const auto first_added = scene->addCameraTarget(camera, view_request);
     CHECK(first_added);

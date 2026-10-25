@@ -44,8 +44,14 @@ namespace lux::render
     {
         using Build = RenderResult<void> (*)(const void*, std::string_view, FeatureBuildContext&) noexcept;
         using Describe = RenderResult<void> (*)(const void*, std::string_view, FeaturePorts&) noexcept;
-        using Expand = RenderResult<
-            void> (*)(const RenderCapability&, const TargetDesc&, const void*, const void*, std::span<const FeatureId>, EffectDefinition&) noexcept;
+        using Expand = RenderResult<void> (*)(
+            const RenderCapability&,
+            const TargetDesc&,
+            const void*,
+            const void*,
+            std::span<const FeatureId>,
+            EffectDefinition&
+        ) noexcept;
         using Parameters =
             RenderResult<void> (*)(cxx::TypeToken, std::span<const std::byte>, std::span<std::byte>) noexcept;
 

@@ -11,6 +11,7 @@
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/editor/SceneViewportPane.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
+#include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/rendering/RenderDiagnostics.hpp>
 #include <lux/engine/rendering/RenderExecution.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
@@ -20,6 +21,7 @@
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
 #include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
+#include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Pane.hpp>
 
 #include <cassert>
@@ -32,6 +34,77 @@
 using namespace lux;
 using namespace lux::editor;
 using namespace std::chrono_literals;
+
+namespace lux::ui
+{
+    struct ControlsTestAccess final
+    {
+        static void click(Button& button) noexcept
+        {
+            static_cast<void>(button.emit(button.activated));
+        }
+    };
+} // namespace lux::ui
+
+namespace
+{
+    SceneCreateResult legacyProfile(const SceneCreateInfo& info) noexcept
+    {
+        auto package = sceneProfile3D().create(info);
+        if (!package || info.selection)
+        {
+            return package;
+        }
+        // Real version-1 bytes enter through the Profile, then pass through the Pane's current editor and save.
+        std::vector<std::byte> bytes;
+        serialization::BinaryWriter writer(bytes);
+        const auto old_fields = std::tuple{
+            std::string{"lux.scene.clustered"},
+            std::uint32_t{1},
+            true,
+            std::uint32_t{64},
+            std::uint32_t{2},
+            37.F,
+            std::uint32_t{2048}
+        };
+        assert(serialization::write(writer, old_fields, serialization::kPortableMetadataBudget));
+        const auto& original = package->scene->data();
+        scene::SceneDescriptionBuilder builder;
+        for (std::size_t i = 0; i < original.systemCount(); ++i)
+        {
+            const auto system = original.systemAt(i);
+            const bool rendering = system.type().name == scene::RenderSystem::Description.canonical_name;
+            assert(builder.addSystem(
+                system.instanceId(),
+                system.instanceName(),
+                system.type(),
+                system.version(),
+                system.configurationSchemaName(),
+                rendering ? 1 : system.configurationSchemaVersion(),
+                rendering ? std::span<const std::byte>{bytes} : system.configurationPayload()
+            ));
+            for (std::size_t j = 0; j < system.requirementBindingCount(); ++j)
+            {
+                const auto binding = system.requirementBindingAt(j);
+                assert(builder.bindRequirement(system.instanceId(), binding.requirement(), binding.provider()));
+            }
+        }
+        for (std::size_t i = 0; i < original.dependencyCount(); ++i)
+        {
+            const auto dependency = original.dependencyAt(i);
+            assert(builder.addDependency(dependency.before(), dependency.after()));
+        }
+        auto description = std::move(builder).buildResolved();
+        assert(description);
+        return scene::createScenePackage(
+            info.id,
+            info.name,
+            package->world->data().schemas(),
+            {package->simulation, &package->simulation->data()},
+            *description
+        );
+    }
+} // namespace
 
 int main(int argc, char** argv)
 {
@@ -50,10 +123,15 @@ int main(int argc, char** argv)
     config.execution.task_capacity = 8;
     config.plugin_locations = {{argv[1], argv[2]}};
     config.layout = {{"scene.creation", "scenes", "Scenes"}, {"scene.viewport", "view", "View"}};
+    SceneCreationPane* creation_pane = nullptr;
     auto made = LuxEngine::create(
         std::move(config),
-        [](EditorComposition& composition) noexcept -> FrameworkResult<void>
+        [&creation_pane](EditorComposition& composition) noexcept -> FrameworkResult<void>
         {
+            auto legacy = sceneProfile3D();
+            legacy.id = "test.legacy.scene.3d";
+            legacy.create = &legacyProfile;
+            assert(composition.registerSceneProfile(std::move(legacy)));
             assert(composition.registerSceneProfile(sceneProfile3D()));
             assert(registerComponentEditors3D(composition));
             assert(registerRenderConfigurationEditor(composition));
@@ -71,12 +149,14 @@ int main(int argc, char** argv)
             ));
             assert(composition.registerUiFactory(
                 "scene.creation",
-                [](EditorContext& context,
-                   const PaneDescription& pane) noexcept -> FrameworkResult<std::unique_ptr<ui::Pane>>
+                [&creation_pane](EditorContext& context, const PaneDescription& pane) noexcept
+                    -> FrameworkResult<std::unique_ptr<ui::Pane>>
                 {
                     auto scenes = context.service<ProjectScenes>();
                     assert(scenes);
-                    return std::make_unique<SceneCreationPane>(context, scenes->get(), pane.title);
+                    auto created = std::make_unique<SceneCreationPane>(context, scenes->get(), pane.title);
+                    creation_pane = created.get();
+                    return created;
                 }
             ));
             return composition.registerUiFactory(
@@ -493,6 +573,45 @@ int main(int argc, char** argv)
             edited_transform.translation
     );
     assert(scenes.open(root / "Scenes/authored.luxscene"));
+    assert(creation_pane);
+    // Layout's last two controls are Create and Status. Drive the actual public signal;
+    // no production backdoor calls selection() or fabricates a migrated configuration.
+    object::LuxObject* create_control = nullptr;
+    for (auto* child = creation_pane->content()->firstChild(); child && child->nextSibling();
+         child = child->nextSibling())
+    {
+        create_control = child;
+    }
+    assert(create_control);
+    ui::ControlsTestAccess::click(*static_cast<ui::Button*>(create_control));
+    until(
+        [&]
+        {
+            const auto& records = context.manifest().scenes;
+            const auto created =
+                std::ranges::find(records, "Scenes/NewScene.luxscene", &ProjectManifest::SceneRecord::path);
+            return created != records.end() && scenes.find(created->id) != nullptr;
+        }
+    );
+    auto migrated_package = scene::readScenePackageFile(root / "Scenes/NewScene.luxscene", 1U << 24);
+    assert(migrated_package);
+    const auto saved_system =
+        migrated_package->scene->data().findSystem(scene::RenderSystem::Description.canonical_name);
+    assert(
+        saved_system &&
+        saved_system.configurationSchemaVersion() == scene::RenderSystem::Description.configuration_schema_version
+    );
+    scene::RenderSystemConfiguration migrated_config;
+    assert(scene::renderConfigurationCodec().decode(saved_system.configurationPayload(), &migrated_config));
+    const auto migrated_lighting = render::decodeLitSceneConfiguration(migrated_config.configuration.bytes);
+    assert(
+        migrated_lighting && migrated_lighting->shadow_resolution == 64 &&
+        migrated_lighting->shadow_filter_radius == 2 && migrated_lighting->shadow_distance == 37.F &&
+        migrated_lighting->cluster_index_capacity == 2048
+    );
+    assert(scenes.close(migrated_package->scene->id()));
+    until([&] { return !scenes.find(migrated_package->scene->id()); });
+    scene_projection = nullptr;
     fixture::modelSource(root / "Sources");
     assert(assets.reimport(imported.id));
     if (argc == 5)

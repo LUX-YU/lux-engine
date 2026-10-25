@@ -130,11 +130,19 @@ namespace lux::render
 
     private:
         [[nodiscard]] RenderResult<FeatureId>
-        registerFeature(std::string_view, cxx::TypeToken, const FeatureGraphOps&, const CapabilitySupport*, std::span<const StorageFactory>, std::span<runtime_detail::HandlerRecord>, std::span<const CommandBinding>) noexcept;
+        registerFeature(
+            std::string_view name,
+            cxx::TypeToken configuration_type,
+            const FeatureGraphOps& graph,
+            const CapabilitySupport* capabilities,
+            std::span<const StorageFactory> storages,
+            std::span<runtime_detail::HandlerRecord> handlers,
+            std::span<const CommandBinding> commands
+        ) noexcept;
 
         [[nodiscard]] RenderResult<StorageTypeId> registerStorage(StorageFactory, ConfigValue) noexcept;
-        [[nodiscard]] RenderResult<
-            HandlerId> registerHandler(runtime_detail::HandlerRecord, std::span<const CommandBinding>) noexcept;
+        [[nodiscard]] RenderResult<HandlerId>
+        registerHandler(runtime_detail::HandlerRecord, std::span<const CommandBinding>) noexcept;
 
         [[nodiscard]] bool pagedInstances() const noexcept;
         [[nodiscard]] RenderResult<CommandId> findCommand(const CommandDescriptor&) const noexcept;

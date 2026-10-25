@@ -29,12 +29,17 @@ target. An application that creates ExecutionRuntime also declares its own Core 
 Server creation registers built-in implementations and their construction/call entries. Applications query
 `ListCapabilities` with a capability schema/version and, optionally, a saved implementation name. The response
 owns its strings and describes the actual inputs, outputs and unsupported choices. A resolved selection belongs
-only to that Server; persist names/versions instead of identities.
+only to that Server and selects one capability contract of an implementation; persist both names/versions instead
+of identities. A query never borrows another contract's inputs or target support. `RESOURCES` capabilities provide
+asset inputs; only `EFFECT` capabilities can render to a Target. Nonempty resource outputs do not imply an Effect.
 
 `InstallCapabilities` resolves input destinations in an existing Global/Scene/View/Attachment scope and creates
 the actual required Storage instances. For example, raster assets can be installed and uploaded before any
 Effect exists. Instances share only when implementation requirements, key and actual scope agree. A failed
 installation removes only its newly created objects. Reinstalling compatible inputs is idempotent.
+When an independently selected asset implementation supplies inputs, pass its advertised destinations in
+`CapabilityInstallation::source_inputs`. Render compares the actual resolved dependencies before publishing;
+equal C++ resource handle types alone do not prove that two implementations share compatible storage.
 
 Applications send `MeshWrite`, `TextureWrite`, `MaterialWrite`, instance and light requests to the advertised
 `CapabilityInput`. Handlers resolve that input once per batch and continue through the existing Storage Sender
@@ -46,6 +51,9 @@ and dirty-word paths; the batch still fits IPC's inline storage.
 inside Render into the existing Feature graph. A single Feature uses the same compiler directly. Applications
 supply public Camera/UI frame data instead of concatenating implementation shader blocks. Attach installs late
 scope dependencies and returns logical input destinations and streaming draw identities, never a Storage list.
+Installation and compilation use the same cold dependency resolver. Compilation merges live Graph requirements
+with public input mappings and rejects conflicting scope/key/configuration before creating an execution instance.
+Attach consumes the resolved dependency records instead of deriving another mapping from public input names.
 The old ListFeatures and ListStorages/FindStorage/PrepareStorage/RemoveStorage control commands are removed.
 
 Built-in lit-scene port composition, cascade selection and shader parameter projection live in Render. Engine
@@ -60,8 +68,12 @@ which declarations are usable; automatic registration never enables unrequested 
 Installed SDK extensions include `extensions/FeatureRegistration.hpp`. A Feature supplies its stable `name`,
 `Config`, `Storages`, `Commands` and `graph(bool paged_instances)`. Name/config qualification is recorded directly
 in the existing Feature entry; there is no separate FeatureDescriptor wrapper. Port declaration, graph building and optional composition expansion are cold callbacks in FeatureGraphOps.
-An optional `capabilities()` publishes supported payload contracts. `storage_inputs` maps those contracts to
-private dependency declarations; optional configuration projection supplies actual late-scope creation values. Command-only extensions use `registerHandler` directly. Each Storage supplies its typed `factory()`. Each CommandMethod names
+An optional `capabilities()` publishes supported payload contracts. `storage_inputs` maps each resource input to
+exactly one private dependency declaration; optional configuration projection supplies actual creation values.
+The selected Effect input type must match the expansion callback. Repeated registration compares the mappings
+as well as callback/configuration identity. These checks qualify declared contracts; arbitrary callback behavior
+is still the extension author's responsibility. Command-only extensions use `registerHandler` directly.
+Each Storage supplies its typed `factory()`. Each CommandMethod names
 one Command and Handler method; the Handler supplies an explicit `create(ResourceRegistry&) noexcept` factory
 returning a valid new object. No constructor-shape inference is performed. External registration checks the full
 closure before publishing, including conflicts between incoming declarations. Repeated compatible registration

@@ -1,14 +1,14 @@
-#include <lux/engine/scene/render/RenderBindingDeclarations.hpp>
 #include <algorithm>
 #include <imgui.h>
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/RenderConfigurationEditor.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/render/capabilities/LitScene.hpp>
-#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
+#include <lux/engine/scene/render/RenderBindingDeclarations.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/Pane.hpp>
 
@@ -116,7 +116,7 @@ namespace lux::editor
                 }
                 for (const auto& input : capability.inputs)
                 {
-                    if (input.required && !bindings_->supports(input) && !scene::supportsSceneRenderInput(input))
+                    if (input.required && !bindings_->supports(input))
                     {
                         return "A required input producer is not installed in the Scene system";
                     }

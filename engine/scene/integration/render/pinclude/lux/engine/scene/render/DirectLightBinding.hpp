@@ -30,17 +30,6 @@ namespace lux::scene
         ~DirectLightBinding() noexcept;
         [[nodiscard]] SceneStageResult maintain(SceneStageContext&) noexcept;
 
-        [[nodiscard]] std::uint64_t revision() const noexcept
-        {
-            return revision_;
-        }
-
-        // A captured recipe revision confirms only the old identities that it stopped referencing.
-        void confirmInputs(std::uint64_t revision) noexcept
-        {
-            adopted_revision_ = std::max(adopted_revision_, revision);
-        }
-
         template <class C>
         void sourceChanged(
             simulation::ecs::Registry& registry,
@@ -118,12 +107,7 @@ namespace lux::scene
             render::RenderError error;
         };
 
-        DirectLightBinding(
-            RenderBindingContext&,
-            render::CapabilityInput,
-            engine::render::BoundCommand<render::CreateDirectLights>,
-            engine::render::BoundCommand<render::RemoveDirectLight>
-        ) noexcept;
+        DirectLightBinding(RenderBindingContext&, render::CapabilityInput, engine::render::BoundCommand<render::CreateDirectLights>, engine::render::BoundCommand<render::RemoveDirectLight>) noexcept;
         exec::task<render::RenderResult<void>> sendWork() noexcept;
         void startWork() noexcept;
         void adoptWork(bool closing) noexcept;
@@ -137,7 +121,9 @@ namespace lux::scene
         std::unordered_map<simulation::ecs::Entity, Demand> demands_;
         std::vector<Retirement> retired_;
         std::optional<Work> work_;
-        std::uint64_t next_demand_ = 0, revision_ = 0, adopted_revision_ = 0;
+        std::uint64_t next_demand_ = 0;
+        std::uint64_t& revision_;
+        std::uint64_t& adopted_revision_;
         render::RenderError failure_;
         bool pending_ = false;
     };

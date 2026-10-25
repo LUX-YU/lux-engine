@@ -1,8 +1,10 @@
 #pragma once
 
+#include <lux/engine/scene/SceneCapabilityProvider.hpp>
 #include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/serialization/PortableValueCodec.hpp>
 #include <lux/engine/system/SystemTypeDescription.hpp>
+#include <vector>
 
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
@@ -118,6 +120,11 @@ namespace lux::scene
         std::span<const SceneSystemCapabilityProjection> projections;
         std::shared_ptr<const void> code_lifetime;
         std::span<const SceneConfigurationMigration> configuration_migrations;
+        // Pure cold resolution after constructor requirements are qualified. No Registry/IO access.
+        cxx::expected<
+            std::vector<system::SystemDataContract>,
+            SceneSystemBuildFailure> (*resolve_data_inputs)(SceneSystemDescription, std::span<const SceneCapabilityProvider>) noexcept {
+        };
 
         [[nodiscard]] serialization::DecodePortableValueFn configurationDecoder(std::uint32_t version) const noexcept
         {

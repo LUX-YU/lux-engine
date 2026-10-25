@@ -1,4 +1,4 @@
-#include <lux/engine/scene/SceneCamera.hpp>
+#include <lux/engine/scene/render/CameraParameters.hpp>
 
 namespace lux::scene::detail
 {
@@ -31,7 +31,7 @@ namespace lux::scene::detail
         return key;
     }
 
-    RenderResult<SceneCamera> prepareSceneCamera(const Camera& camera, const Eigen::Affine3d& transform) noexcept
+    RenderResult<PreparedCamera> prepareSceneCamera(const Camera& camera, const Eigen::Affine3d& transform) noexcept
     {
         auto view = cameraView(transform, Eigen::Vector3d::Zero());
         if (!view)
@@ -42,7 +42,7 @@ namespace lux::scene::detail
             [](const auto& value) noexcept { return std::pair{float(value.near_plane), float(value.far_plane)}; },
             camera.projection
         );
-        return SceneCamera{
+        return PreparedCamera{
             *view,
             transform.translation(),
             -view->row(2).head<3>().transpose(),
@@ -53,7 +53,7 @@ namespace lux::scene::detail
 
     RenderResult<CameraInput> sceneParameters(
         const Camera& camera,
-        const SceneCamera& prepared,
+        const PreparedCamera& prepared,
         const CameraTarget& input
     ) noexcept
     {

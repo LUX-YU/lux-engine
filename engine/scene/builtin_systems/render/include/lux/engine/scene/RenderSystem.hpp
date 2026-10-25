@@ -1,13 +1,8 @@
 #pragma once
 #include <exec/task.hpp>
-
 #include <lux/engine/process/asset_loading/AssetRead.hpp>
-#include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/core/RasterViewport.hpp>
-#include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/scene/CameraTargetsComponent.hpp>
+#include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/scene/RenderAssetInput.hpp>
-#include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/SceneSystem.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/scene/render/visibility.h>
@@ -26,7 +21,7 @@ namespace lux::engine::render
 
 namespace lux::scene
 {
-    class RenderBindingDeclarations;
+    struct RenderBindingPlan;
 
     struct RenderSystemDependencies final
     {
@@ -34,37 +29,24 @@ namespace lux::scene
         execution::ExecutionRuntime& execution;
         engine::render::RenderAssets& assets;
         RenderAssetInput& assets_input;
-        const RenderBindingDeclarations& bindings;
-        // Optional project VFS; copied into each accepted load, never selected globally by workers.
+        const RenderBindingPlan& plan;
         process::asset_loading::AssetReadPort source;
     };
 
-    // Main-thread Scene projection. Observers collect intent; the existing TransformSystem remains
-    // the sole world-matrix producer. Protocol continuations stay on Main; workers receive immutable inputs.
+    // Scene lifecycle and selected stages only. ECS/Render payload conversions live in registered bindings.
     class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderSystem final
     {
     public:
         inline static constexpr std::string_view Capabilities[]{"lux.scene.optional_presentation"};
-        // Mesh/Light inputs are optional authored streams. The selected capability binds their producers;
-        // a camera-only program must not require a Mesh schema just to create an output.
-        inline static constexpr system::SystemDataContract DataInputs[]{
-            {"lux.ecs.Transform3D"},
-            {"lux.scene.Camera"},
-            {"lux.transform.world3d.ready", 1, system::ESystemDataKind::PREPARED_DATA, system::ESystemDataPhase::STABLE}
-        };
         inline static constexpr system::SystemTypeDescription Description{
             .canonical_name = "lux.scene.render",
             .version = 2,
             .configuration_schema_name = "lux.scene.render.Configuration",
             .configuration_schema_version = 2,
             .capabilities = Capabilities,
-            .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER,
-            .data_inputs = DataInputs
+            .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER
         };
-
-        RenderSystem(simulation::ecs::Registry&, const RenderSystemDependencies&, RenderSystemConfiguration);
-        // Retire through maintain(context.stop): continue Main maintenance frames until COMPLETE.
-        // Destruction never starts asynchronous work; Registry and dependencies remain alive until then.
+        RenderSystem(simulation::ecs::Registry&, const RenderSystemDependencies&);
         ~RenderSystem() noexcept;
         RenderSystem(const RenderSystem&) = delete;
         RenderSystem& operator=(const RenderSystem&) = delete;
@@ -72,35 +54,17 @@ namespace lux::scene
         [[nodiscard]] SceneStageResult maintain(SceneStageContext&) noexcept;
         [[nodiscard]] SceneStageResult prepareInputs(SceneStageContext&) noexcept;
         [[nodiscard]] SceneStageResult publish(SceneStageContext&) noexcept;
-        // Call in a Main Scene edit safe point. These functions patch only intent; maintain adopts it later.
-        [[nodiscard]] lux::render::RenderResult<CameraTargetId> addCameraTarget(
-            simulation::ecs::Entity,
-            CameraTarget
-        ) noexcept;
-        [[nodiscard]] bool updateCameraTarget(simulation::ecs::Entity, CameraTargetId, CameraTarget) noexcept;
-        [[nodiscard]] bool removeCameraTarget(simulation::ecs::Entity, CameraTargetId) noexcept;
-        // Main-thread diagnostic/viewport association. Null until the candidate is actually attached;
-        // this identity is a borrow, not a promise that a GPU frame has completed.
-        [[nodiscard]] lux::render::AttachmentId attachment(simulation::ecs::Entity, CameraTargetId) const noexcept;
-        [[nodiscard]] lux::render::RenderError cameraTargetError(simulation::ecs::Entity, CameraTargetId) const noexcept;
-        // A failed asset candidate does not remove the previously adopted instance binding.
-        [[nodiscard]] lux::render::RenderError assetError(simulation::ecs::Entity) const noexcept;
-        // True only after an actual instance has adopted the current asset binding.
-        [[nodiscard]] bool visualReady(simulation::ecs::Entity) const noexcept;
-        // After removing the input, keep its Target alive until this returns true.
-        [[nodiscard]] bool cameraTargetRetired(simulation::ecs::Entity, CameraTargetId) const noexcept;
-        // Main completion for this exact ECS relation, never a global Scene transaction. The Scene/System
-        // remains borrowed until completion; retired identity/error is returned explicitly.
-        [[nodiscard]] exec::task<lux::render::RenderResult<void>> whenCameraTargetReady(
-            simulation::ecs::Entity,
-            CameraTargetId
-        ) noexcept;
-        [[nodiscard]] exec::task<lux::render::RenderResult<void>> whenCameraTargetRetired(
-            simulation::ecs::Entity,
-            CameraTargetId
-        ) noexcept;
+        // Main completion after native scope installation and EnTT connection. Caller retains the Scene lease.
+        [[nodiscard]] exec::task<render::RenderResult<void>> whenReady() noexcept;
+
+        // Cold non-owning query. A missing/ambiguous role returns null; this never constructs a behavior.
+        template <class T> [[nodiscard]] T* binding(std::string_view role = {}) noexcept
+        {
+            return static_cast<T*>(findBinding(cxx::typeToken<T>(), role));
+        }
 
     private:
+        void* findBinding(cxx::TypeToken, std::string_view) noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

@@ -1,6 +1,8 @@
 #include <exec/task.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/context/render/RenderAssets.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/core/execution/ExecutionError.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/ProjectAssets.hpp>
@@ -11,12 +13,12 @@
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
 #include <lux/engine/project/SceneRegistrations.hpp>
-#include <lux/engine/context/render/RenderAssets.hpp>
-#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/SceneError.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
+#include <lux/engine/scene/render/CameraViewBinding.hpp>
+#include <lux/engine/scene/render/RenderBindingPlan.hpp>
 #include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
 #include <lux/engine/ui/Command.hpp>
 
@@ -282,10 +284,10 @@ namespace lux::editor
         {
             scene::SceneInstanceId instance;
             scene::RenderAssetInput inputs;
-            scene::RenderSystem* rendering{};
+            scene::CameraViewBinding* rendering{};
             std::array<entt::scoped_connection, 3> camera_connections;
             PrimaryCameras primary_cameras;
-            bool stopping{};
+            bool stopping{}, preparing{true};
             error::Error close_failure;
             GeometryRequests geometry;
         };
@@ -295,7 +297,7 @@ namespace lux::editor
             std::unique_ptr<SceneDocument> document;
             std::filesystem::path path;
             scene::RenderAssetInput inputs;
-            scene::RenderSystem* rendering{};
+            scene::CameraViewBinding* rendering{};
             std::array<entt::scoped_connection, 3> camera_connections;
             PrimaryCameras primary_cameras;
             std::optional<Play> play;
@@ -393,16 +395,28 @@ namespace lux::editor
                 co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::CLOSED});
             }
             reporter.setPhase("Create Scene instance");
-            co_return adoptPackage(std::move(*decoded), std::move(path));
+            co_return co_await stdexec::write_env(
+                adoptPackage(std::move(*decoded), std::move(path)),
+                stdexec::prop{stdexec::get_stop_token, stdexec::never_stop_token{}}
+            );
         }
 
-        ProjectSceneResult<scene::SceneInstanceId> buildInstance(
+        struct InstanceCandidate
+        {
+            scene::SceneInstanceLease lease;
+            scene::CameraViewBinding* rendering = nullptr;
+        };
+
+        exec::task<void> discardInstance(scene::SceneInstanceLease lease) noexcept
+        {
+            auto retirement = lease.retire();
+            co_await stdexec::continues_on(retirement.whenComplete(), context.engine().execution().mainScheduler());
+        }
+
+        exec::task<ProjectSceneResult<InstanceCandidate>> buildInstance(
             const scene::ScenePackage& package,
             std::shared_ptr<const scene::SceneDescription> description,
-            scene::RenderAssetInput& inputs,
-            scene::RenderSystem*& projection,
-            std::array<entt::scoped_connection, 3>& camera_connections,
-            GeometryRequests& requests
+            scene::RenderAssetInput& inputs
         ) noexcept
         {
             const auto world = std::shared_ptr<const world::WorldDescription>{package.world, &package.world->data()};
@@ -413,7 +427,7 @@ namespace lux::editor
             auto source = process::world_loading::makeWorldMemoryStorageSource(world, package.volumes);
             if (!source)
             {
-                return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
+                co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
             }
             scene::WorldLoadingServices loading{*source, context.tasks()};
             loading.initial_partitions = package.partitions;
@@ -423,6 +437,7 @@ namespace lux::editor
             );
             const auto& registrations = context.sceneRegistrations();
             bool renders = false;
+            scene::SceneSystemDescription render_description;
             for (std::size_t i = 0; i < description->systemCount(); ++i)
             {
                 const auto registration = std::ranges::find(
@@ -432,29 +447,68 @@ namespace lux::editor
                 );
                 if (registration == registrations.scene_systems.end())
                 {
-                    return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
+                    co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
                 }
-                renders |= std::ranges::any_of(
+                const bool needs_render = std::ranges::any_of(
                     registration->requirements,
                     [](const auto& requirement) noexcept
                     { return requirement.capability == "lux.scene.rendering" && !requirement.optional; }
                 );
+                if (needs_render)
+                {
+                    if (renders)
+                    {
+                        co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
+                    }
+                    renders = true;
+                    render_description = description->systemAt(i);
+                }
             }
             std::optional<scene::RenderSystemDependencies> render_dependencies;
+            std::optional<scene::RenderBindingPlan> render_plan;
             if (renders)
             {
                 const auto* bindings = context.extensions().find<scene::RenderBindingDeclarations>();
                 if (!rendering || !assets || !ui || !bindings)
                 {
-                    return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::RENDER_UNAVAILABLE});
+                    co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::RENDER_UNAVAILABLE});
                 }
                 auto reads = context.prepareAssetReads();
                 if (!reads)
                 {
-                    return cxx::unexpected(VProjectSceneFailure{reads.error()});
+                    co_return cxx::unexpected(VProjectSceneFailure{reads.error()});
                 }
-                render_dependencies
-                    .emplace(rendering->mainClient(), context.engine().execution(), *assets, inputs, *bindings, *reads);
+                const auto selected = render_description;
+                const auto registration = std::ranges::find(
+                    registrations.scene_systems,
+                    selected.type(),
+                    &scene::SceneSystemRegistration::type
+                );
+                scene::RenderSystemConfiguration configuration;
+                const auto decoder = registration->configurationDecoder(selected.configurationSchemaVersion());
+                if (!decoder || !decoder(selected.configurationPayload(), &configuration))
+                {
+                    co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::INVALID_DOCUMENT});
+                }
+                auto prepared =
+                    co_await scene::prepareRenderBindings(rendering->mainClient(), *bindings, std::move(configuration));
+                if (!prepared)
+                {
+                    co_return cxx::unexpected(VProjectSceneFailure{prepared.error()});
+                }
+                if (closing)
+                {
+                    co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::CLOSED});
+                }
+                render_plan.emplace(std::move(*prepared));
+                render_dependencies.emplace(
+                    rendering->mainClient(),
+                    context.engine().execution(),
+                    *assets,
+                    inputs,
+                    *render_plan,
+                    *reads
+                );
                 providers.push_back(scene::makeSceneCapabilityProvider<scene::RenderSystemDependencies>(
                     "rendering",
                     "lux.scene.rendering",
@@ -476,23 +530,48 @@ namespace lux::editor
                              .build();
             if (!lease)
             {
-                return cxx::unexpected(VProjectSceneFailure{lease.error()});
+                co_return cxx::unexpected(VProjectSceneFailure{lease.error()});
             }
             const auto instance = lease->id();
+            static_cast<void>(runtime.pauseSimulation(instance));
+            scene::CameraViewBinding* camera = nullptr;
             if (renders)
             {
                 auto system = runtime.borrowSystem<scene::RenderSystem>(instance);
                 if (!system)
                 {
-                    return cxx::unexpected(VProjectSceneFailure{system.error()});
+                    co_await discardInstance(std::move(*lease));
+                    co_return cxx::unexpected(VProjectSceneFailure{system.error()});
                 }
-                projection = *system;
+                const auto initialized = co_await (*system)->whenReady();
+                if (!initialized)
+                {
+                    co_await discardInstance(std::move(*lease));
+                    co_return cxx::unexpected(VProjectSceneFailure{initialized.error()});
+                }
+                camera = (*system)->binding<scene::CameraViewBinding>();
+                if (!camera)
+                {
+                    co_await discardInstance(std::move(*lease));
+                    co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::RENDER_UNAVAILABLE});
+                }
             }
-            auto adopted = context.adoptScene(std::move(*lease));
-            if (!adopted)
+            if (closing)
             {
-                std::terminate(); // Same uninterrupted open-Context construction segment.
+                co_await discardInstance(std::move(*lease));
+                co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::CLOSED});
             }
+            co_return InstanceCandidate{std::move(*lease), camera};
+        }
+
+        exec::task<ProjectSceneResult<scene::SceneInstanceId>> adoptInstance(
+            InstanceCandidate candidate,
+            GeometryRequests& requests,
+            std::array<entt::scoped_connection, 3>& camera_connections
+        ) noexcept
+        {
+            auto& runtime = context.engine().sceneRuntime();
+            const auto instance = candidate.lease.id();
             requests = {this, instance};
             auto connect = [&](simulation::ecs::Registry& registry) noexcept
             {
@@ -513,14 +592,28 @@ namespace lux::editor
                     registry.on_destroy<scene::Camera>().connect<&Impl::cameraRemoved>(*this)
                 };
             };
-            if (auto connected = runtime.editInstance(instance, connect); !connected)
+            auto connected = co_await runtime.editInstanceAsync(instance, connect);
+            if (!connected || closing)
             {
-                std::terminate(); // Newly constructed, unpublished instance has no running simulation.
+                for (auto& connection : camera_connections)
+                {
+                    connection.release();
+                }
+                co_await discardInstance(std::move(candidate.lease));
+                co_return cxx::unexpected(
+                    connected ? VProjectSceneFailure{EProjectSceneError::CLOSED}
+                              : VProjectSceneFailure{connected.error()}
+                );
             }
-            return instance;
+            auto adopted = context.adoptScene(std::move(candidate.lease));
+            if (!adopted)
+            {
+                std::terminate();
+            } // Same uninterrupted, open Context publication segment.
+            co_return instance;
         }
 
-        ProjectSceneResult<asset::AssetId> adoptPackage(
+        exec::task<ProjectSceneResult<asset::AssetId>> adoptPackage(
             scene::ScenePackage package,
             std::filesystem::path path
         ) noexcept
@@ -528,7 +621,7 @@ namespace lux::editor
             const auto id = package.scene->id();
             if (const auto found = documents.find(id); found != documents.end())
             {
-                return cxx::unexpected(VProjectSceneFailure{
+                co_return cxx::unexpected(VProjectSceneFailure{
                     found->second->closing ? EProjectSceneError::BUSY : EProjectSceneError::DUPLICATE_DOCUMENT
                 });
             }
@@ -537,17 +630,20 @@ namespace lux::editor
             entry->inputs.revision = asset_revision;
             entry->inputs.source = asset_source;
             entry->inputs.snapshot = context.assets().view().capture();
-            auto instance = buildInstance(
+            auto candidate = co_await buildInstance(
                 package,
                 std::shared_ptr<const scene::SceneDescription>{package.scene, &package.scene->data()},
-                entry->inputs,
-                entry->rendering,
-                entry->camera_connections,
-                entry->geometry
+                entry->inputs
             );
+            if (!candidate)
+            {
+                co_return cxx::unexpected(candidate.error());
+            }
+            entry->rendering = candidate->rendering;
+            auto instance = co_await adoptInstance(std::move(*candidate), entry->geometry, entry->camera_connections);
             if (!instance)
             {
-                return cxx::unexpected(instance.error());
+                co_return cxx::unexpected(instance.error());
             }
             static_cast<void>(context.engine().sceneRuntime().pauseSimulation(*instance));
             entry->document = std::make_unique<SceneDocument>(
@@ -557,7 +653,12 @@ namespace lux::editor
                 std::move(package)
             );
             documents.emplace(id, std::move(entry));
-            return id;
+            // Publish the document, selection and notification in one Main-thread segment.
+            // The enclosing Task's terminal delivery may resume on a later scheduler turn.
+            failure.reset();
+            active_document = id;
+            static_cast<void>(collection.emit(collection.opened, id));
+            co_return id;
         }
 
         exec::task<ProjectSceneResult<void>> saveScene(
@@ -712,13 +813,14 @@ namespace lux::editor
             {
                 co_return record.id; // Persistent creation succeeded; closing suppresses only runtime opening.
             }
-            co_return adoptPackage(std::move(*prepared), path);
+            co_return co_await adoptPackage(std::move(*prepared), path);
         }
 
         exec::task<lux::render::RenderResult<void>> createTarget(Viewport& viewport) noexcept
         {
             const auto candidate = viewport.requested;
-            auto created = co_await requestRenderCommand<lux::render::CreateTarget>(rendering->mainClient(), {candidate});
+            auto created =
+                co_await requestRenderCommand<lux::render::CreateTarget>(rendering->mainClient(), {candidate});
             if (created.error.type != 0)
             {
                 co_return cxx::unexpected(created.error);
@@ -761,7 +863,8 @@ namespace lux::editor
 
         exec::task<lux::render::RenderResult<void>> removeTarget(Viewport& viewport) noexcept
         {
-            auto result = co_await requestRenderCommand<lux::render::RemoveTarget>(rendering->mainClient(), viewport.target);
+            auto result =
+                co_await requestRenderCommand<lux::render::RemoveTarget>(rendering->mainClient(), viewport.target);
             if (result.error.type != 0)
             {
                 co_return cxx::unexpected(result.error);
@@ -788,9 +891,10 @@ namespace lux::editor
                 {
                     viewport.pending = false;
                     viewport.failed_revision = viewport.requested_revision;
-                    viewport.error = result                           ? lux::render::RenderError{}
-                                     : result.error().domainFailure() ? *result.error().domainFailure()
-                                                                      : lux::render::RenderError{lux::render::kRuntimeState};
+                    viewport.error = result ? lux::render::RenderError{}
+                                     : result.error().domainFailure()
+                                         ? *result.error().domainFailure()
+                                         : lux::render::RenderError{lux::render::kRuntimeState};
                     const auto id = viewport.id;
                     if (!result && viewport.closing && close_failure.type == 0)
                     {
@@ -825,7 +929,7 @@ namespace lux::editor
             return viewport.play ? entry.play->instance : entry.document->instance();
         }
 
-        scene::RenderSystem& projection(const Viewport& viewport) noexcept
+        scene::CameraViewBinding& projection(const Viewport& viewport) noexcept
         {
             auto& entry = *documents.find(viewport.document)->second;
             return *(viewport.play ? entry.play->rendering : entry.rendering);
@@ -1091,7 +1195,8 @@ namespace lux::editor
                 {
                     co_return detached;
                 }
-                co_return viewport.target.isNull() ? lux::render::RenderResult<void>{} : co_await removeTarget(viewport);
+                co_return viewport.target.isNull() ? lux::render::RenderResult<void>{}
+                                                   : co_await removeTarget(viewport);
             }
             const bool visible = viewport.requested.width != 0 && viewport.requested.height != 0;
             if (visible && viewport.target.isNull())
@@ -1148,6 +1253,50 @@ namespace lux::editor
                     co_return result;
                 }
             }
+        }
+
+        exec::task<ProjectSceneResult<scene::SceneInstanceId>> preparePlay(
+            asset::AssetId id,
+            scene::ScenePackage package,
+            std::shared_ptr<const scene::SceneDescription> description
+        ) noexcept
+        {
+            auto& entry = *documents.find(id)->second;
+            auto& play = *entry.play;
+            auto candidate = co_await buildInstance(package, std::move(description), play.inputs);
+            if (!candidate)
+            {
+                co_return cxx::unexpected(candidate.error());
+            }
+            if (closing || entry.closing || play.stopping)
+            {
+                co_await discardInstance(std::move(candidate->lease));
+                co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::CLOSED});
+            }
+            play.rendering = candidate->rendering;
+            auto instance = co_await adoptInstance(std::move(*candidate), play.geometry, play.camera_connections);
+            if (!instance)
+            {
+                co_return cxx::unexpected(instance.error());
+            }
+            if (closing || entry.closing || play.stopping)
+            {
+                for (auto& connection : play.camera_connections)
+                {
+                    connection.release();
+                }
+                auto retired = context.retireScene(*instance);
+                if (!retired)
+                {
+                    std::terminate();
+                }
+                co_await stdexec::continues_on(retired->whenComplete(), context.engine().execution().mainScheduler());
+                co_return cxx::unexpected(VProjectSceneFailure{EProjectSceneError::CLOSED});
+            }
+            play.instance = *instance;
+            play.preparing = false;
+            static_cast<void>(context.engine().sceneRuntime().resumeSimulation(play.instance));
+            co_return *instance;
         }
 
         exec::task<FrameworkResult<void>> closePlay(asset::AssetId id) noexcept
@@ -1262,8 +1411,9 @@ namespace lux::editor
                     --operations;
                     if (!result)
                     {
-                        const auto cause = result.error().domainFailure() ? *result.error().domainFailure()
-                                                                          : lux::render::RenderError{lux::render::kRuntimeState};
+                        const auto cause = result.error().domainFailure()
+                                               ? *result.error().domainFailure()
+                                               : lux::render::RenderError{lux::render::kRuntimeState};
                         failure = cause;
                         if (close_failure.type == 0)
                         {
@@ -1299,9 +1449,6 @@ namespace lux::editor
                 static_cast<void>(collection.emit(collection.changed));
                 return outcome;
             }
-            failure.reset();
-            active_document = *result;
-            static_cast<void>(collection.emit(collection.opened, *result));
             return execution::ETaskState::SUCCEEDED;
         }
 
@@ -1316,14 +1463,9 @@ namespace lux::editor
                 static_cast<void>(collection.emit(collection.changed));
                 return execution::ETaskState::FAILED;
             }
-            failure.reset();
-            if (collection.find(*result))
+            if (!collection.find(*result))
             {
-                active_document = *result;
-                static_cast<void>(collection.emit(collection.opened, *result));
-            }
-            else
-            {
+                failure.reset();
                 static_cast<void>(collection.emit(collection.changed));
             }
             return execution::ETaskState::SUCCEEDED;
@@ -1789,7 +1931,7 @@ namespace lux::editor
         return *admitted;
     }
 
-    ProjectSceneResult<scene::SceneInstanceId> ProjectScenes::startPlay(asset::AssetId id, ESceneRunMode mode) noexcept
+    ProjectSceneResult<execution::TaskId> ProjectScenes::startPlay(asset::AssetId id, ESceneRunMode mode) noexcept
     {
         auto* document = find(id);
         if (!document || impl_->closing)
@@ -1815,23 +1957,48 @@ namespace lux::editor
         play.inputs.source = entry.inputs.source;
         play.inputs.revision = entry.inputs.revision;
         play.inputs.snapshot = entry.inputs.snapshot;
-        auto instance = impl_->buildInstance(
-            *package,
-            std::move(*description),
-            play.inputs,
-            play.rendering,
-            play.camera_connections,
-            play.geometry
-        );
-        if (!instance)
-        {
-            entry.play.reset();
-            return cxx::unexpected(instance.error());
-        }
-        play.instance = *instance;
         document->setReadOnly(true);
+        ++impl_->operations;
+        auto admitted = impl_->context.tasks().submit(
+            {"Prepare preview", "Scene"},
+            [this, id, package = std::move(*package), description = std::move(*description)](execution::TaskReporter
+            ) mutable noexcept
+            {
+                auto work = stdexec::write_env(
+                    stdexec::starts_on(
+                        impl_->context.engine().execution().mainScheduler(),
+                        impl_->preparePlay(id, std::move(package), std::move(description))
+                    ),
+                    stdexec::prop{stdexec::get_stop_token, stdexec::never_stop_token{}}
+                );
+                return stdexec::then(
+                    execution::taskResult(std::move(work)),
+                    [this, id](auto result) noexcept
+                    {
+                        --impl_->operations;
+                        auto& entry = *impl_->documents.find(id)->second;
+                        if (!result)
+                        {
+                            impl_->failure = taskFailure(result.error());
+                            entry.play.reset();
+                            entry.document->setReadOnly(entry.closing);
+                        }
+                        impl_->completeClosures();
+                        static_cast<void>(emit(changed));
+                        return result ? execution::ETaskState::SUCCEEDED : execution::ETaskState::FAILED;
+                    }
+                );
+            }
+        );
+        if (!admitted)
+        {
+            --impl_->operations;
+            entry.play.reset();
+            document->setReadOnly(false);
+            return cxx::unexpected(VProjectSceneFailure{execution::toError(admitted.error())});
+        }
         static_cast<void>(emit(changed));
-        return *instance;
+        return *admitted;
     }
 
     void ProjectScenes::stopPlay(asset::AssetId id) noexcept
@@ -1842,6 +2009,11 @@ namespace lux::editor
             return;
         }
         found->second->play->stopping = true;
+        if (found->second->play->preparing)
+        {
+            // The accepted startup owns its candidate and will retire it before publishing completion.
+            return;
+        }
         static_cast<void>(impl_->context.engine().sceneRuntime().pauseSimulation(found->second->play->instance));
         for (auto& viewport : impl_->viewports)
         {
@@ -2002,8 +2174,8 @@ namespace lux::editor
         Impl::Viewport viewport;
         viewport.document = document;
         viewport.play = play;
-        viewport
-            .requested = {width, height, rdesc::ETextureFormat::RGBA8_UNORM, 1, lux::render::ETargetKind::OFFSCREEN, true};
+        viewport.requested =
+            {width, height, rdesc::ETextureFormat::RGBA8_UNORM, 1, lux::render::ETargetKind::OFFSCREEN, true};
         const auto id = impl_->viewports.emplace(std::move(viewport));
         auto& installed = *impl_->viewports.find(id);
         installed.id = id;

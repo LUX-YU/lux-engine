@@ -24,7 +24,7 @@ namespace lux::scene
     };
 
     // Runtime output intent. description is the actual CreateTarget/ResizeTarget reply, not a requested size.
-    // The caller keeps target alive until RenderSystem confirms this relation has retired.
+    // The caller keeps target alive until CameraViewBinding confirms this relation has retired.
     struct CameraTarget final
     {
         CameraTargetId id;

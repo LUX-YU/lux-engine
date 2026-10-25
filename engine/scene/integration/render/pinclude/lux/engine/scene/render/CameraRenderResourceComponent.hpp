@@ -1,14 +1,14 @@
 #pragma once
 
 #include <lux/engine/render/capabilities/LitScene.hpp>
-#include <lux/engine/scene/CameraTargetsComponent.hpp>
-#include <lux/engine/scene/SceneCamera.hpp>
+#include <lux/engine/scene/render/CameraParameters.hpp>
+#include <lux/engine/scene/render/CameraTargetsComponent.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 
 namespace lux::scene::detail
 {
-    // Only RenderSystem writes these derived bindings. No asynchronous work runs from destruction.
-    struct RenderViewBinding final
+    // Only Camera bindings write these derived bindings. No asynchronous work runs from destruction.
+    struct CameraRenderTarget final
     {
         CameraTargetId id;
         render::ViewId view;
@@ -18,20 +18,20 @@ namespace lux::scene::detail
         CameraGraphInputs graph_inputs;
         render::CameraInput parameters;
         render::RenderError error;
-        std::uint64_t input_revision{};
+        std::uint64_t input_revision{}, effect_revision{};
         bool parameters_changed = true;
         bool output_changed = true;
     };
 
-    struct RenderViewComponent final
+    struct CameraRenderResourceComponent final
     {
-        std::vector<RenderViewBinding> bindings;
+        std::vector<CameraRenderTarget> bindings;
     };
 
     // Exit-only transfer when ECS destroys a binding. Never used to locate an active output.
     struct RetiringView final
     {
         simulation::ecs::Entity camera;
-        RenderViewBinding binding;
+        CameraRenderTarget binding;
     };
 } // namespace lux::scene::detail

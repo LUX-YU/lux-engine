@@ -77,15 +77,91 @@ namespace lux::scene
             return found != systems.end() ? std::addressof(*found) : nullptr;
         }
 
+        cxx::expected<std::vector<SceneCapabilityProvider>, SceneBuildFailure> resolveRequirements(
+            const SceneSystemRegistration& registration,
+            SceneSystemDescription description,
+            std::span<const SceneCapabilityProvider> providers
+        ) noexcept
+        {
+            std::vector<SceneCapabilityProvider> resolved;
+            for (const auto& requirement : registration.requirements)
+            {
+                const auto binding = description.findRequirementBinding(requirement.name);
+                const SceneCapabilityProvider* selected{};
+                if (binding)
+                {
+                    selected = findProviderByName(providers, binding.provider());
+                    if (selected == nullptr || selected->capability != requirement.capability)
+                    {
+                        return lux::cxx::unexpected(systemFailure(
+                            {ESceneSystemBuildError::INVALID_REQUIREMENT_BINDING,
+                             description.instanceId(),
+                             {},
+                             lux::cxx::Fnv1a64::hash(requirement.name)}
+                        ));
+                    }
+                    if (selected->type != requirement.expected_type)
+                    {
+                        return lux::cxx::unexpected(systemFailure(
+                            {ESceneSystemBuildError::REQUIREMENT_TYPE_MISMATCH,
+                             description.instanceId(),
+                             {},
+                             lux::cxx::Fnv1a64::hash(requirement.name)}
+                        ));
+                    }
+                }
+                else
+                {
+                    for (const auto& provider : providers)
+                    {
+                        if (provider.capability != requirement.capability || provider.type != requirement.expected_type)
+                        {
+                            continue;
+                        }
+                        if (selected != nullptr)
+                        {
+                            return lux::cxx::unexpected(systemFailure(
+                                {ESceneSystemBuildError::AMBIGUOUS_REQUIREMENT,
+                                 description.instanceId(),
+                                 {},
+                                 lux::cxx::Fnv1a64::hash(requirement.name)}
+                            ));
+                        }
+                        selected = &provider;
+                    }
+                }
+                if (selected == nullptr)
+                {
+                    if (!requirement.optional)
+                    {
+                        return lux::cxx::unexpected(systemFailure(
+                            {ESceneSystemBuildError::MISSING_REQUIREMENT,
+                             description.instanceId(),
+                             {},
+                             lux::cxx::Fnv1a64::hash(requirement.name)}
+                        ));
+                    }
+                    continue;
+                }
+                resolved.push_back(
+                    {requirement.name, requirement.capability, requirement.expected_type, selected->value}
+                );
+            }
+            return resolved;
+        }
+
         struct SceneDataPreparation final
         {
             SceneDataDependencies scene;
+            std::vector<detail::ResolvedSceneRequirement> requirements;
             std::vector<simulation::SimulationExecutionDependency> simulation;
         };
 
         cxx::expected<SceneDataPreparation, SceneBuildFailure> prepareDataDependencies(const SceneCreateInfo& info
         ) noexcept
         {
+            SceneDataPreparation result;
+            std::vector<std::vector<system::SystemDataContract>> dynamic_inputs(info.scene->systemCount());
             const auto simulation_count = info.simulation->systemCount();
             std::vector<SceneSystemContract> systems;
             systems.reserve(simulation_count + info.scene->systemCount());
@@ -117,7 +193,26 @@ namespace lux::scene
                     );
                 }
                 scene_ordinals.emplace(selected.instanceId(), systems.size());
-                systems.push_back({selected.instanceId(), registration->description, false});
+                auto providers = resolveRequirements(*registration, selected, info.providers);
+                if (!providers)
+                {
+                    return cxx::unexpected(providers.error());
+                }
+                for (const auto& provider : *providers)
+                {
+                    result.requirements.push_back({selected.instanceId(), provider.name, provider.type, provider.value}
+                    );
+                }
+                if (registration->resolve_data_inputs)
+                {
+                    auto resolved = registration->resolve_data_inputs(selected, *providers);
+                    if (!resolved)
+                    {
+                        return cxx::unexpected(systemFailure(resolved.error()));
+                    }
+                    dynamic_inputs[i] = std::move(*resolved);
+                }
+                systems.push_back({selected.instanceId(), registration->description, false, dynamic_inputs[i]});
             }
             std::vector<system::SystemDataContract> schemas;
             schemas.reserve(info.world->schemas().size());
@@ -165,7 +260,6 @@ namespace lux::scene
                 }
                 return result;
             };
-            SceneDataPreparation result;
             for (const auto edge : *resolved)
             {
                 if (edge.before >= simulation_count && edge.after >= simulation_count)
@@ -277,11 +371,6 @@ namespace lux::scene
                 );
             }
         }
-        auto data_dependencies = prepareDataDependencies(info);
-        if (!data_dependencies)
-        {
-            return cxx::unexpected(std::move(data_dependencies.error()));
-        }
         for (std::size_t index{}; index < info.providers.size(); ++index)
         {
             const auto& provider = info.providers[index];
@@ -298,6 +387,12 @@ namespace lux::scene
                     provider.name.empty() ? 0U : lux::cxx::Fnv1a64::hash(provider.name)
                 ));
             }
+        }
+
+        auto data_dependencies = prepareDataDependencies(info);
+        if (!data_dependencies)
+        {
+            return cxx::unexpected(std::move(data_dependencies.error()));
         }
 
         {
@@ -404,77 +499,6 @@ namespace lux::scene
                 return lux::cxx::unexpected(systemFailure({code}));
             }
 
-            std::vector<detail::ResolvedSceneRequirement> resolved_requirements;
-            for (std::size_t ordinal{}; ordinal < count; ++ordinal)
-            {
-                const auto system = impl->description->systemAt(ordinal);
-                const auto& registration = *registrations[ordinal];
-                for (const auto& requirement : registration.requirements)
-                {
-                    const auto binding = system.findRequirementBinding(requirement.name);
-                    const SceneCapabilityProvider* selected{};
-                    if (binding)
-                    {
-                        selected = findProviderByName(info.providers, binding.provider());
-                        if (selected == nullptr || selected->capability != requirement.capability)
-                        {
-                            return lux::cxx::unexpected(systemFailure(
-                                {ESceneSystemBuildError::INVALID_REQUIREMENT_BINDING,
-                                 system.instanceId(),
-                                 {},
-                                 lux::cxx::Fnv1a64::hash(requirement.name)}
-                            ));
-                        }
-                        if (selected->type != requirement.expected_type)
-                        {
-                            return lux::cxx::unexpected(systemFailure(
-                                {ESceneSystemBuildError::REQUIREMENT_TYPE_MISMATCH,
-                                 system.instanceId(),
-                                 {},
-                                 lux::cxx::Fnv1a64::hash(requirement.name)}
-                            ));
-                        }
-                    }
-                    else
-                    {
-                        for (const auto& provider : info.providers)
-                        {
-                            if (provider.capability != requirement.capability ||
-                                provider.type != requirement.expected_type)
-                            {
-                                continue;
-                            }
-                            if (selected != nullptr)
-                            {
-                                return lux::cxx::unexpected(systemFailure(
-                                    {ESceneSystemBuildError::AMBIGUOUS_REQUIREMENT,
-                                     system.instanceId(),
-                                     {},
-                                     lux::cxx::Fnv1a64::hash(requirement.name)}
-                                ));
-                            }
-                            selected = &provider;
-                        }
-                    }
-                    if (selected == nullptr)
-                    {
-                        if (!requirement.optional)
-                        {
-                            return lux::cxx::unexpected(systemFailure(
-                                {ESceneSystemBuildError::MISSING_REQUIREMENT,
-                                 system.instanceId(),
-                                 {},
-                                 lux::cxx::Fnv1a64::hash(requirement.name)}
-                            ));
-                        }
-                        continue;
-                    }
-                    resolved_requirements.push_back(
-                        {system.instanceId(), requirement.name, requirement.expected_type, selected->value}
-                    );
-                }
-            }
-
             SceneSystemInstaller::Impl build;
             build.instance = impl->id;
             build.registry = &impl->registry;
@@ -487,7 +511,7 @@ namespace lux::scene
             build.publication_hooks = &impl->publication_hooks;
             build.description = impl->description.get();
             build.predecessors = std::move(predecessors);
-            build.requirements = std::move(resolved_requirements);
+            build.requirements = std::move(data_dependencies->requirements);
             SceneSystemInstaller builder(build);
             for (const std::size_t ordinal : *order)
             {

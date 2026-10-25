@@ -18,7 +18,9 @@
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/render/LightRenderResourceComponent.hpp>
+#include <lux/engine/scene/render/MeshRenderBinding.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
 #include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
@@ -272,20 +274,7 @@ int main(int argc, char** argv)
     auto service = context.service<ProjectScenes>();
     assert(service);
     auto& scenes = service->get();
-    scene::RenderSystem* scene_projection = nullptr;
-    auto projection_connection = object::LuxObject::connect(
-        &scenes,
-        &ProjectScenes::opened,
-        &host,
-        [&](asset::AssetId opened) noexcept
-        {
-            auto system =
-                context.engine().sceneRuntime().borrowSystem<scene::RenderSystem>(scenes.find(opened)->instance());
-            assert(system);
-            scene_projection = *system; // Cold construction borrow; ends before that Scene's retirement.
-        }
-    );
-    assert(projection_connection);
+    scene::MeshRenderBinding* scene_projection = nullptr;
     const auto selection = [&]
     {
         auto package =
@@ -315,6 +304,21 @@ int main(int argc, char** argv)
     auto package = scene::readScenePackageFile(root / "Scenes/authored.luxscene", 1U << 24);
     assert(package && package->scene->id() == id);
     const auto editing_instance = scenes.find(id)->instance();
+    until(
+        [&]
+        {
+            auto system = context.engine().sceneRuntime().borrowSystem<scene::RenderSystem>(editing_instance);
+            if (!system)
+            {
+                const auto* error = std::get_if<scene::ESceneRuntimeError>(&system.error().cause);
+                assert(error && *error == scene::ESceneRuntimeError::BUSY);
+                return false;
+            }
+            scene_projection = (*system)->binding<scene::MeshRenderBinding>();
+            assert(scene_projection); // Borrow ends before this Scene retires.
+            return true;
+        }
+    );
 
     simulation::ecs::Transform3D left, right;
     left.translation = Eigen::Vector3d{0, 2, 8};
@@ -477,8 +481,8 @@ int main(int argc, char** argv)
             transform.translation = {0, 4, 2};
             registry.emplace<simulation::ecs::Transform3D>(reactive_light, transform);
             rdesc::LightDescription light;
-        light.cast_shadow = true;
-        registry.emplace<simulation::ecs::Light3D>(reactive_light, light);
+            light.cast_shadow = true;
+            registry.emplace<simulation::ecs::Light3D>(reactive_light, light);
         }
     );
     until([&] { return !resource_id().isNull(); });
@@ -612,8 +616,11 @@ int main(int argc, char** argv)
 
     if (!render_only)
     {
-        auto headless = scenes.startPlay(id, ESceneRunMode::HEADLESS);
-        assert(headless && *headless != document->instance() && document->readOnly());
+        auto admitted = scenes.startPlay(id, ESceneRunMode::HEADLESS);
+        assert(admitted);
+        until([&] { return scenes.playInstance(id).valid(); });
+        const auto headless = std::optional{scenes.playInstance(id)};
+        assert(*headless != document->instance() && document->readOnly());
         assert(!runtime.borrowSystem<scene::RenderSystem>(*headless));
         until(
             [&]
@@ -662,6 +669,7 @@ int main(int argc, char** argv)
 
     auto graphical = scenes.startPlay(id, ESceneRunMode::GRAPHICAL);
     assert(graphical);
+    until([&] { return scenes.playInstance(id).valid(); });
     auto play_view = scenes.addViewport(id, 200, 150, true);
     assert(play_view);
     until([&] { return scenes.setViewportCameraTransform(*play_view, left); });

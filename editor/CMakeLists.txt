@@ -166,6 +166,7 @@ target_link_libraries(
     PUBLIC
         lux::engine::function::render
         lux::engine::scene::scene_render
+        lux::engine::scene::scene_render_builtin
     PRIVATE
         lux::engine::process::object_execution
         lux::engine::project::project_plugins
@@ -183,6 +184,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-context-render REQUIRED COMPONENTS engine_render_context)"
     "find_package(lux-engine-render REQUIRED COMPONENTS render)"
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
+    "find_package(lux-engine-scene-render-builtin REQUIRED COMPONENTS scene_render_builtin)"
 )
 
 lux_classify_target(TARGET lux_editor_app LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
@@ -252,6 +254,7 @@ target_link_libraries(
     lux_editor_scene_profiles
     PRIVATE
         lux::engine::scene::scene_render
+        lux::engine::scene::scene_render_builtin
         lux::engine::project::project_plugins
         lux::engine::scene::scene_transform
         lux::engine::scene::scene_world_loading
@@ -275,6 +278,7 @@ component_add_transitive_commands(lux_editor_scene_profiles
 component_add_transitive_commands(
     lux_editor_scene_profiles
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
+    "find_package(lux-engine-scene-render-builtin REQUIRED COMPONENTS scene_render_builtin)"
     "find_package(lux-engine-scene-transform REQUIRED COMPONENTS scene_transform)"
     "find_package(lux-engine-scene-world-loading REQUIRED COMPONENTS scene_world_loading)"
 )
@@ -484,6 +488,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
             lux_editor_scene_profiles
             lux::engine::engine_context
             lux::engine::scene::scene_render
+        lux::engine::scene::scene_render_builtin
             lux::engine::project::project_plugins
             lux::engine::scene::scene_transform
             lux::engine::scene::scene_world_loading

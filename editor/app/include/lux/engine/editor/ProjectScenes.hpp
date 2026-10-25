@@ -8,8 +8,8 @@
 #include <lux/engine/editor/SceneProfileRegistry.hpp>
 #include <lux/engine/error/Error.hpp>
 #include <lux/engine/scene/Camera.hpp>
-#include <lux/engine/scene/CameraTargetsComponent.hpp>
 #include <lux/engine/scene/ScenePackageFile.hpp>
+#include <lux/engine/scene/render/CameraTargetsComponent.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 
 #include <filesystem>
@@ -106,8 +106,9 @@ namespace lux::editor
         // Main snapshot -> CPU encoding -> blocking atomic write -> Main revision acknowledgement.
         [[nodiscard]] ProjectSceneResult<execution::TaskId> save(asset::AssetId) noexcept;
         [[nodiscard]] bool saving(asset::AssetId) const noexcept;
-        // Preview builds an independent Registry from the captured author revision, never copies Render IDs.
-        [[nodiscard]] ProjectSceneResult<scene::SceneInstanceId> startPlay(asset::AssetId, ESceneRunMode) noexcept;
+        // Admits a finite preview task. playInstance() becomes valid only after its capability plan and Scene adopt.
+        // The independent Registry is built from the author snapshot, never copied Render IDs.
+        [[nodiscard]] ProjectSceneResult<execution::TaskId> startPlay(asset::AssetId, ESceneRunMode) noexcept;
         void stopPlay(asset::AssetId) noexcept;
         [[nodiscard]] scene::SceneInstanceId playInstance(asset::AssetId) const noexcept;
         [[nodiscard]] bool stoppingPlay(asset::AssetId) const noexcept;

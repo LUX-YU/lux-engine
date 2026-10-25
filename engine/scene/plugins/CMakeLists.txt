@@ -23,10 +23,16 @@ install(TARGETS builtin_runtime_plugin RUNTIME DESTINATION bin LIBRARY DESTINATI
 
 if(TARGET scene_render)
     add_library(builtin_scene_render_exports OBJECT BuiltinSceneRenderExports.cpp)
-    target_link_libraries(builtin_scene_render_exports PUBLIC lux::engine::scene::scene_render)
+    target_link_libraries(
+        builtin_scene_render_exports
+        PUBLIC lux::engine::scene::scene_render lux::engine::scene::scene_camera
+    )
     lux_classify_target(TARGET builtin_scene_render_exports LAYER SCENE PRODUCT RUNTIME ROLE OBJECT)
     add_library(builtin_scene_render_plugin SHARED $<TARGET_OBJECTS:builtin_scene_render_exports>)
-    target_link_libraries(builtin_scene_render_plugin PRIVATE lux::engine::scene::scene_render)
+    target_link_libraries(
+        builtin_scene_render_plugin
+        PRIVATE lux::engine::scene::scene_render lux::engine::scene::scene_camera
+    )
     lux_classify_target(TARGET builtin_scene_render_plugin LAYER SCENE PRODUCT RUNTIME ROLE PLUGIN)
     add_executable(
         builtin_scene_render_description
@@ -35,7 +41,7 @@ if(TARGET scene_render)
     )
     target_link_libraries(
         builtin_scene_render_description
-        PRIVATE lux::engine::scene::scene_render nlohmann_json::nlohmann_json
+        PRIVATE lux::engine::scene::scene_render lux::engine::scene::scene_camera nlohmann_json::nlohmann_json
     )
     lux_classify_target(TARGET builtin_scene_render_description LAYER TOOLCHAIN PRODUCT SDK ROLE BUILD_TOOL)
     set(render_description "${CMAKE_CURRENT_BINARY_DIR}/scene-render.declaration.json")

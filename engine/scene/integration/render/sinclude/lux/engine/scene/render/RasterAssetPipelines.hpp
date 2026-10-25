@@ -3,6 +3,7 @@
 #include <lux/engine/context/render/RenderAssets.hpp>
 #include <lux/engine/render/inputs/ImageShape.hpp>
 #include <lux/engine/render/inputs/IndexedTriangleMeshInputs.hpp>
+#include <lux/engine/render/inputs/RasterMaterialInputs.hpp>
 #include <lux/engine/render/inputs/SampledTextureInputs.hpp>
 #include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 
@@ -52,6 +53,29 @@ namespace lux::scene
         static constexpr std::string_view name = "lux.scene.asset.cooked_material";
         execution::CpuScheduler cpu;
 
+        exec::task<render::RenderResult<Value>> load(engine::render::RenderAssetLoad) noexcept;
+        exec::task<render::RenderResult<void>> release(Value&) noexcept;
+    };
+
+    struct RenderMaterial final
+    {
+        render::MaterialId material;
+        engine::render::RenderAssetVersion source;
+        std::vector<engine::render::RenderAssetVersion> textures;
+        std::uint64_t program_hash = 0;
+    };
+
+    // Scene/destination-specific GPU representation. Dependencies must already be acquired and ready;
+    // its finite upload retains those actual cache references, never starts nested budgeted IO.
+    struct MaterialGpuPipeline final
+    {
+        using Value = RenderMaterial;
+        static constexpr std::string_view name = "lux.scene.asset.raster_material";
+        engine::render::RenderAssets& assets;
+        render::CapabilityInput input;
+        render::CapabilityInput textures;
+        engine::render::BoundCommand<render::CreateMaterial> create;
+        engine::render::BoundCommand<render::ReleaseMaterial> remove;
         exec::task<render::RenderResult<Value>> load(engine::render::RenderAssetLoad) noexcept;
         exec::task<render::RenderResult<void>> release(Value&) noexcept;
     };

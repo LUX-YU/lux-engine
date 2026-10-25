@@ -2,7 +2,7 @@
 
 #include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/scene/Camera.hpp>
-#include <lux/engine/scene/CameraTargetsComponent.hpp>
+#include <lux/engine/scene/render/CameraTargetsComponent.hpp>
 
 namespace lux::scene::detail
 {
@@ -26,18 +26,19 @@ namespace lux::scene::detail
     ) noexcept;
 
     // Stack preparation shared by this CameraMan's outputs at one Main stable point; no retained ECS borrow.
-    struct SceneCamera final
+    struct PreparedCamera final
     {
         Eigen::Matrix4d view;
         Eigen::Vector3d position, direction;
         float near_distance, far_distance;
     };
 
-    [[nodiscard]] render::RenderResult<SceneCamera> prepareSceneCamera(const Camera&, const Eigen::Affine3d&) noexcept;
+    [[nodiscard]] render::RenderResult<PreparedCamera>
+    prepareSceneCamera(const Camera&, const Eigen::Affine3d&) noexcept;
 
     // Each output supplies its own actual aspect/viewport. Returned shader values are owned.
     [[nodiscard]] render::RenderResult<render::CameraInput>
-    sceneParameters(const Camera&, const SceneCamera&, const CameraTarget&) noexcept;
+    sceneParameters(const Camera&, const PreparedCamera&, const CameraTarget&) noexcept;
 
     [[nodiscard]] bool sameParameters(const render::CameraInput&, const render::CameraInput&) noexcept;
 } // namespace lux::scene::detail

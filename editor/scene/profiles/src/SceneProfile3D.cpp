@@ -1,13 +1,14 @@
 #include <algorithm>
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/project/SceneRegistrations.hpp>
+#include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/scene/MeshQuerySystem.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/SceneCompatibility.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <map>
-#include <lux/engine/render/capabilities/LitScene.hpp>
 
 namespace lux::editor
 {

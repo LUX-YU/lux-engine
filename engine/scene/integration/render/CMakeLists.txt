@@ -8,7 +8,12 @@ add_component(
         src/DirectLightBinding.cpp
         src/DirectLightOperation.cpp
         src/DirectLightValues.cpp
-        src/SceneRenderInputs.cpp
+        src/MeshRenderBinding.cpp
+        src/RasterTransformOperation.cpp
+        src/LitSceneInputOperation.cpp
+        src/CameraViewBinding.cpp
+        src/CameraInputOperation.cpp
+        src/CameraParameters.cpp
 )
 
 component_include_directories(
@@ -16,7 +21,6 @@ component_include_directories(
     BUILD_TIME_SHARED
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../builtin_systems/render/include
         ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
     INSTALL_TIME include
@@ -27,6 +31,8 @@ target_link_libraries(
     PUBLIC
         lux::engine::engine_render_context
         lux::engine::process::process_render_upload
+        lux::engine::scene::scene_render
+        lux::engine::scene::scene_camera
         lux::engine::scene::scene_system
         lux::engine::simulation::ecs::transform
         lux::engine::simulation::ecs::visual
@@ -39,6 +45,9 @@ lux_classify_target(TARGET scene_render_builtin LAYER SCENE PRODUCT RUNTIME ROLE
 component_add_transitive_commands(
     scene_render_builtin
     "find_package(lux-engine-context-render REQUIRED COMPONENTS engine_render_context)"
+    "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
+    "find_package(lux-engine-scene-camera REQUIRED COMPONENTS scene_camera)"
+    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS transform visual)"
     "find_package(lux-engine-process-render-upload REQUIRED COMPONENTS process_render_upload)"
 )
 

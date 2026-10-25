@@ -11,7 +11,6 @@ namespace lux::scene::detail
         RenderBindingDeclaration declaration;
         std::unique_ptr<void, void (*)(void*)> object;
         std::vector<entt::scoped_connection> connections;
-        std::uint64_t observed_revision = 0;
 
         RenderBindingInstance(RenderBindingDeclaration description, void* instance) noexcept
             : declaration(std::move(description)), object(instance, declaration.destroy)

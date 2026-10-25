@@ -32,8 +32,7 @@ namespace lux::scene
         {
             return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
-        return std::unique_ptr<DirectLightBinding>{
-            new DirectLightBinding(context, input->destination, *create, *remove)
+        return std::unique_ptr<DirectLightBinding>{new DirectLightBinding(context, input->destination, *create, *remove)
         };
     }
 
@@ -44,7 +43,8 @@ namespace lux::scene
         BoundCommand<RemoveDirectLight> remove
     ) noexcept
         : registry_(context.registry), client_(context.client), execution_(context.execution), input_(input),
-          create_(create), remove_(remove)
+          create_(create), remove_(remove), revision_(context.input_revision),
+          adopted_revision_(context.adopted_input_revision)
     {
     }
 

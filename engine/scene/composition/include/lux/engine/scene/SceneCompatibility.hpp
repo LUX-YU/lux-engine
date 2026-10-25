@@ -17,6 +17,7 @@ namespace lux::scene
         system::SystemInstanceId instance;
         const system::SystemTypeDescription* description{};
         bool is_simulation{};
+        std::span<const system::SystemDataContract> additional_inputs;
     };
 
     enum class ESceneCompatibilityError : std::uint8_t

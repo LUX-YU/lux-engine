@@ -22,6 +22,10 @@ namespace lux::scene
             auto& client = execution.mainClient();
             for (;;)
             {
+                if (client.serverStopped())
+                {
+                    co_return RenderResult<void>{};
+                }
                 auto response = co_await client.request(command, input);
                 const bool frame_rejected =
                     response.error.type == kCommandCancelled || response.error.type == kFrameResynchronization;
@@ -227,4 +231,93 @@ namespace lux::scene
         assets.addInputs(installed.inputs);
         co_return RenderResult<void>{};
     }
+
+    exec::task<RenderResult<RenderMaterial>> MaterialGpuPipeline::load(RenderAssetLoad load) noexcept
+    {
+        const auto* cooked = cookedMaterial(assets, load.version);
+        if (!cooked)
+        {
+            co_return cxx::unexpected(RenderError{kRuntimeState});
+        }
+        auto retained = assets.acquire<MaterialAssetPipeline>(load.version);
+        if (!retained)
+        {
+            co_return cxx::unexpected(retained.error());
+        }
+        RenderMaterial value;
+        value.source = load.version;
+        MaterialWrite request{input, cooked->programs, cooked->programs.parameter_defaults};
+        for (const auto asset : cooked->texture_slot_ids)
+        {
+            RenderAssetVersion key{asset, load.version.revision, load.version.source};
+            if (asset.isNull())
+            {
+                value.textures.push_back(key);
+                request.textures.push_back({});
+                continue;
+            }
+            const auto* texture = assets.ready<TextureAssetPipeline>(key, textures);
+            auto acquired = texture ? assets.acquire<TextureAssetPipeline>(key, {}, {}, textures)
+                                    : RenderResult<void>{cxx::unexpected(RenderError{kRuntimeState})};
+            if (!acquired)
+            {
+                for (const auto held : value.textures)
+                {
+                    if (!held.asset.isNull())
+                    {
+                        assets.release<TextureAssetPipeline>(held, textures);
+                    }
+                }
+                assets.release<MaterialAssetPipeline>(load.version);
+                co_return cxx::unexpected(acquired.error());
+            }
+            value.textures.push_back(key);
+            request.textures.push_back(texture->texture);
+        }
+        auto response = co_await assets.executionContext().mainClient().request(create, request);
+        if (response.error.type != 0)
+        {
+            for (const auto held : value.textures)
+            {
+                if (!held.asset.isNull())
+                {
+                    assets.release<TextureAssetPipeline>(held, textures);
+                }
+            }
+            assets.release<MaterialAssetPipeline>(load.version);
+            co_return cxx::unexpected(response.error);
+        }
+        value.material = response.material;
+        value.program_hash = 14695981039346656037ULL;
+        for (const auto& program : cooked->programs.programs)
+        {
+            for (const auto& stage : program.shader.stages)
+            {
+                for (const auto word : stage.words)
+                {
+                    value.program_hash = (value.program_hash ^ word) * 1099511628211ULL;
+                }
+            }
+        }
+        co_return value;
+    }
+
+    exec::task<RenderResult<void>> MaterialGpuPipeline::release(Value& value) noexcept
+    {
+        auto released = co_await releaseResource(assets.executionContext(), remove, value.material);
+        if (!released)
+        {
+            co_return released;
+        }
+        for (const auto key : value.textures)
+        {
+            if (!key.asset.isNull())
+            {
+                assets.release<TextureAssetPipeline>(key, textures);
+            }
+        }
+        assets.release<MaterialAssetPipeline>(value.source);
+        co_return RenderResult<void>{};
+    }
+
 } // namespace lux::scene

@@ -75,7 +75,8 @@ namespace lux::scene
             const auto& selected = systems[index];
             const bool is_invalid_identity = !selected.instance.valid();
             const bool is_invalid_description = selected.description == nullptr ||
-                                                !system::validSystemTypeDescription(*selected.description);
+                                                !system::validSystemTypeDescription(*selected.description) ||
+                                                !system::validDataContracts(selected.additional_inputs);
             if (is_invalid_identity || is_invalid_description)
             {
                 return failed(ESceneCompatibilityError::INVALID_DECLARATION, index, {}, absent);
@@ -96,73 +97,76 @@ namespace lux::scene
         for (std::size_t index{}; index < systems.size(); ++index)
         {
             const auto& selected = systems[index];
-            for (const auto& input : selected.description->data_inputs)
+            for (const auto inputs : {selected.description->data_inputs, selected.additional_inputs})
             {
-                const bool is_schema = input.kind == system::ESystemDataKind::SCHEMA;
-                const bool is_simulation_phase = input.phase == system::ESystemDataPhase::SIMULATION;
-                if (!is_schema && is_simulation_phase != selected.is_simulation)
+                for (const auto& input : inputs)
                 {
-                    return failed(ESceneCompatibilityError::INVALID_DECLARATION, index, input.name, absent);
-                }
-                const auto found = sources.find({input.kind, input.name});
-                if (found == sources.end())
-                {
-                    return failed(
-                        is_schema ? ESceneCompatibilityError::MISSING_SCHEMA
-                                  : ESceneCompatibilityError::MISSING_PRODUCER,
-                        index,
-                        input.name,
-                        absent
-                    );
-                }
-                const DataSource* source{};
-                std::size_t matches{}, explicit_matches{};
-                for (const auto& candidate : found->second)
-                {
-                    if (candidate.contract->version != input.version)
+                    const bool is_schema = input.kind == system::ESystemDataKind::SCHEMA;
+                    const bool is_simulation_phase = input.phase == system::ESystemDataPhase::SIMULATION;
+                    if (!is_schema && is_simulation_phase != selected.is_simulation)
+                    {
+                        return failed(ESceneCompatibilityError::INVALID_DECLARATION, index, input.name, absent);
+                    }
+                    const auto found = sources.find({input.kind, input.name});
+                    if (found == sources.end())
+                    {
+                        return failed(
+                            is_schema ? ESceneCompatibilityError::MISSING_SCHEMA
+                                      : ESceneCompatibilityError::MISSING_PRODUCER,
+                            index,
+                            input.name,
+                            absent
+                        );
+                    }
+                    const DataSource* source{};
+                    std::size_t matches{}, explicit_matches{};
+                    for (const auto& candidate : found->second)
+                    {
+                        if (candidate.contract->version != input.version)
+                        {
+                            continue;
+                        }
+                        ++matches;
+                        if (is_schema)
+                        {
+                            source = &candidate;
+                            break;
+                        }
+                        if (candidate.system != absent && is_selected(candidate.system, index))
+                        {
+                            source = &candidate;
+                            ++explicit_matches;
+                        }
+                        else if (explicit_matches == 0)
+                        {
+                            source = &candidate;
+                        }
+                    }
+                    if (matches == 0)
+                    {
+                        return failed(ESceneCompatibilityError::VERSION_MISMATCH, index, input.name, absent);
+                    }
+                    if (is_schema)
                     {
                         continue;
                     }
-                    ++matches;
-                    if (is_schema)
+                    const bool is_ambiguous = explicit_matches > 1 || (explicit_matches == 0 && matches > 1);
+                    if (is_ambiguous)
                     {
-                        source = &candidate;
-                        break;
+                        return failed(ESceneCompatibilityError::AMBIGUOUS_PRODUCER, index, input.name, absent);
                     }
-                    if (candidate.system != absent && is_selected(candidate.system, index))
+                    if (source->contract->phase > input.phase)
                     {
-                        source = &candidate;
-                        ++explicit_matches;
+                        return failed(ESceneCompatibilityError::PHASE_INVERSION, index, input.name, source->system);
                     }
-                    else if (explicit_matches == 0)
+                    if (source->system != index)
                     {
-                        source = &candidate;
+                        inferred.push_back({source->system, index});
                     }
-                }
-                if (matches == 0)
-                {
-                    return failed(ESceneCompatibilityError::VERSION_MISMATCH, index, input.name, absent);
-                }
-                if (is_schema)
-                {
-                    continue;
-                }
-                const bool is_ambiguous = explicit_matches > 1 || (explicit_matches == 0 && matches > 1);
-                if (is_ambiguous)
-                {
-                    return failed(ESceneCompatibilityError::AMBIGUOUS_PRODUCER, index, input.name, absent);
-                }
-                if (source->contract->phase > input.phase)
-                {
-                    return failed(ESceneCompatibilityError::PHASE_INVERSION, index, input.name, source->system);
-                }
-                if (source->system != index)
-                {
-                    inferred.push_back({source->system, index});
-                }
-                else if (source->contract->phase == input.phase)
-                {
-                    return failed(ESceneCompatibilityError::DEPENDENCY_CYCLE, index, input.name, index);
+                    else if (source->contract->phase == input.phase)
+                    {
+                        return failed(ESceneCompatibilityError::DEPENDENCY_CYCLE, index, input.name, index);
+                    }
                 }
             }
         }

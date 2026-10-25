@@ -132,7 +132,7 @@ namespace lux::engine::render
             {
                 auto found = records.find(key);
                 auto& record = found->second;
-                if (!record.value || assets.rendering_.mainClient().serverStopped())
+                if (!record.value)
                 {
                     records.erase(found);
                     return;

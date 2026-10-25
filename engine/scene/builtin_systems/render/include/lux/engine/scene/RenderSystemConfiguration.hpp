@@ -18,10 +18,6 @@ namespace lux::scene
         render::SerializedRenderConfiguration configuration;
     };
 
-    // The Scene producer contract is independent of the selected Feature implementation.
-    [[nodiscard]] LUX_ENGINE_SCENE_RENDER_PUBLIC bool supportsSceneRenderInput(const render::
-                                                                                   RenderPayloadContract&) noexcept;
-
     [[nodiscard]] LUX_ENGINE_SCENE_RENDER_PUBLIC bool
     validRenderConfiguration(const RenderSystemConfiguration&) noexcept;
 

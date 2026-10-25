@@ -1,15 +1,18 @@
-#include <lux/engine/scene/render/BuiltinRenderBindings.hpp>
-#include <lux/engine/scene/render/RasterAssetPipelines.hpp>
 #include "../../../../../modules/function/material/test/MaterialTest.hpp"
+#include <lux/engine/scene/render/BuiltinRenderBindings.hpp>
+#include <lux/engine/scene/render/CameraViewBinding.hpp>
+#include <lux/engine/scene/render/MeshRenderBinding.hpp>
+#include <lux/engine/scene/render/RasterAssetPipelines.hpp>
+#include <lux/engine/scene/render/RenderBindingPlan.hpp>
 
+#include <lux/engine/context/render/RenderAssets.hpp>
+#include <lux/engine/context/render/RenderDiagnostics.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/material/Compiler.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
 #include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/render/inputs/RasterInstanceInputs.hpp>
-#include <lux/engine/context/render/RenderAssets.hpp>
-#include <lux/engine/context/render/RenderDiagnostics.hpp>
-#include <lux/engine/context/render/RenderExecution.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 #include <lux/engine/scene/Camera.hpp>
@@ -203,16 +206,23 @@ int main()
         take(RenderAssets::create(*rendering, endpoint->port(), {"test.scene.asset_source", 1, "test.scene.assets"}));
     bool pipelines_ready = false;
     CHECK(execution.spawn(stdexec::then(
-        execution::taskResult(stdexec::starts_on(execution.mainScheduler(),
+        execution::taskResult(stdexec::starts_on(
+            execution.mainScheduler(),
             scene::installRasterAssetPipelines(*assets, {"test.scene.asset_source", 1, "test.scene.assets"})
         )),
-        [&](auto result) noexcept { CHECK(result); pipelines_ready = true; }
+        [&](auto result) noexcept
+        {
+            CHECK(result);
+            pipelines_ready = true;
+        }
     )));
-    CHECK(execution.waitUntil([&]() noexcept
-    {
-        static_cast<void>(rendering->consumeResponses());
-        return pipelines_ready;
-    }));
+    CHECK(execution.waitUntil(
+        [&]() noexcept
+        {
+            static_cast<void>(rendering->consumeResponses());
+            return pipelines_ready;
+        }
+    ));
     TargetDesc capability_target{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
     const auto offscreen_support = call<ListCapabilities>(
         *rendering,
@@ -228,9 +238,11 @@ int main()
     CHECK(offscreen_support.implementations.front().selection != surface_support.implementations.front().selection);
     const auto resource_support = call<ListCapabilities>(*rendering, {"lux.render.capability.raster_assets", 1});
     auto borrowed_input = resource_support.implementations.front().capabilities.front().inputs.front();
-    CHECK(scene::supportsSceneRenderInput(borrowed_input));
+    scene::RenderBindingDeclarations bindings;
+    CHECK(scene::registerBuiltinRenderBindings(bindings));
+    CHECK(bindings.supports(borrowed_input));
     borrowed_input.lifetime = ERenderPayloadLifetime::MOVED_VALUE;
-    CHECK(!scene::supportsSceneRenderInput(borrowed_input));
+    CHECK(!bindings.supports(borrowed_input));
     CHECK(!resource_support.implementations.empty());
     CHECK(resource_support.implementations.front().capabilities.front().kind == ERenderCapabilityKind::RESOURCES);
     const auto catalog = call<ListCommands>(*rendering, {});
@@ -260,7 +272,8 @@ int main()
         ));
 
         CHECK(matching_notifications == 1 && unrelated_notifications == 0);
-        matching.observe<scene::TextureAssetPipeline>({texture_id, 1}); // Fold the already completed fact into a new subscription.
+        matching.observe<scene::TextureAssetPipeline>({texture_id, 1}
+        ); // Fold the already completed fact into a new subscription.
         CHECK(matching_notifications == 2 && unrelated_notifications == 0);
     }
 
@@ -268,9 +281,33 @@ int main()
     scene::CameraTarget view_request;
     view_request.description = {64, 64, rdesc::ETextureFormat::RGBA8_UNORM, 1};
     view_request.target = call<CreateTarget>(*rendering, {view_request.description}).target;
-    scene::RenderBindingDeclarations bindings;
-    CHECK(scene::registerBuiltinRenderBindings(bindings));
-    scene::RenderSystemDependencies dependencies{rendering->mainClient(), execution, *assets, inputs, bindings};
+    scene::RenderBindingPlan plan;
+    scene::RenderSystemDependencies dependencies{rendering->mainClient(), execution, *assets, inputs, plan};
+    const auto prepare_plan = [&](scene::RenderSystemConfiguration configuration)
+    {
+        std::optional<scene::RenderBindingPlan> prepared;
+        bool complete = false;
+        CHECK(execution.spawn(stdexec::then(
+            execution::taskResult(stdexec::starts_on(
+                execution.mainScheduler(),
+                scene::prepareRenderBindings(rendering->mainClient(), bindings, std::move(configuration))
+            )),
+            [&](auto result) noexcept
+            {
+                CHECK(result);
+                prepared.emplace(std::move(*result));
+                complete = true;
+            }
+        )));
+        CHECK(execution.waitUntil(
+            [&]() noexcept
+            {
+                static_cast<void>(rendering->consumeResponses());
+                return complete;
+            }
+        ));
+        return std::move(*prepared);
+    };
     simulation::ecs::Registry registry;
     const auto camera = registry.create();
     registry.emplace<scene::Camera>(camera, scene::Camera{{scene::PerspectiveProjection{}}, true});
@@ -340,10 +377,10 @@ int main()
         preset_bytes
     ));
     CHECK(preset_bytes == preserved_preset);
-    auto scene = std::make_unique<scene::RenderSystem>(registry, dependencies, scene_configuration);
-    const auto first_added = scene->addCameraTarget(camera, view_request);
-    CHECK(first_added);
-    const auto first_view = *first_added;
+    plan = prepare_plan(scene_configuration);
+    auto scene = std::make_unique<scene::RenderSystem>(registry, dependencies);
+    scene::CameraViewBinding* camera_binding = nullptr;
+    scene::MeshRenderBinding* mesh_binding = nullptr;
     bool expects_camera_parameters = true;
     std::vector<std::pair<AttachmentId, CameraInput>> published_views;
     std::uint64_t completed_frames = 0;
@@ -458,13 +495,23 @@ int main()
             }
         ));
     };
-    while (scene->attachment(camera, first_view).isNull() || !published(scene->attachment(camera, first_view)) ||
-           !scene->visualReady(first) || !scene->visualReady(second) || completed_frames < 12)
+    while (!(camera_binding = scene->binding<scene::CameraViewBinding>()))
+    {
+        drive(true);
+    }
+    mesh_binding = scene->binding<scene::MeshRenderBinding>();
+    CHECK(mesh_binding);
+    const auto first_added = camera_binding->addCameraTarget(camera, view_request);
+    CHECK(first_added);
+    const auto first_view = *first_added;
+    while (camera_binding->attachment(camera, first_view).isNull() ||
+           !published(camera_binding->attachment(camera, first_view)) || !mesh_binding->visualReady(first) ||
+           !mesh_binding->visualReady(second) || completed_frames < 12)
     {
         CHECK(std::chrono::steady_clock::now() < deadline);
         drive(true);
     }
-    const auto* initial_parameters = published(scene->attachment(camera, first_view));
+    const auto* initial_parameters = published(camera_binding->attachment(camera, first_view));
     CHECK(initial_parameters != nullptr);
     CHECK(std::abs(initial_parameters->view[14] + 3.F) < .0001F);
     const auto first_matrix = initial_parameters->view;
@@ -472,12 +519,12 @@ int main()
         camera,
         [](auto& pose) noexcept { pose.value.translation().x() = 1; }
     );
-    while (published(scene->attachment(camera, first_view))->view == first_matrix)
+    while (published(camera_binding->attachment(camera, first_view))->view == first_matrix)
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
-    CHECK(std::abs(published(scene->attachment(camera, first_view))->view[12] + 1.F) < .0001F);
+    CHECK(std::abs(published(camera_binding->attachment(camera, first_view))->view[12] + 1.F) < .0001F);
     // A second ordinary ECS CameraMan has no author primary role and owns an independent output.
     const auto editor_camera = registry.create();
     registry.emplace<scene::Camera>(editor_camera);
@@ -485,44 +532,47 @@ int main()
     scene::CameraTarget editor_view = view_request;
     editor_view.description.width = 128;
     editor_view.target = call<CreateTarget>(*rendering, {editor_view.description}).target;
-    const auto second_added = scene->addCameraTarget(editor_camera, editor_view);
+    const auto second_added = camera_binding->addCameraTarget(editor_camera, editor_view);
     CHECK(second_added);
     const auto second_view = *second_added;
-    while (scene->attachment(editor_camera, second_view).isNull() ||
-           !published(scene->attachment(editor_camera, second_view)))
+    while (camera_binding->attachment(editor_camera, second_view).isNull() ||
+           !published(camera_binding->attachment(editor_camera, second_view)))
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
     CHECK(
         std::abs(
-            published(scene->attachment(camera, first_view))->projection[0] /
-                published(scene->attachment(editor_camera, second_view))->projection[0] -
+            published(camera_binding->attachment(camera, first_view))->projection[0] /
+                published(camera_binding->attachment(editor_camera, second_view))->projection[0] -
             2.F
         ) < .0001F
     );
-    CHECK(std::abs(published(scene->attachment(editor_camera, second_view))->view[12]) < .0001F);
-    const auto first_attachment = scene->attachment(camera, first_view);
-    const auto second_attachment = scene->attachment(editor_camera, second_view);
+    CHECK(std::abs(published(camera_binding->attachment(editor_camera, second_view))->view[12]) < .0001F);
+    const auto first_attachment = camera_binding->attachment(camera, first_view);
+    const auto second_attachment = camera_binding->attachment(editor_camera, second_view);
     registry.patch<scene::Camera>(camera, [](auto& value) noexcept { value.primary = false; });
     drive(true);
-    CHECK(scene->attachment(camera, first_view) == first_attachment); // Selection belongs to Editor, not RenderSystem.
+    CHECK(
+        camera_binding->attachment(camera, first_view) == first_attachment
+    ); // Selection belongs to Editor, not RenderSystem.
     registry.remove<scene::Camera>(camera);
-    while (!scene->attachment(camera, first_view).isNull())
+    while (!camera_binding->attachment(camera, first_view).isNull())
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
-    CHECK(scene->cameraTargetError(camera, first_view).type != 0);
-    CHECK(scene->attachment(editor_camera, second_view) == second_attachment);
+    CHECK(camera_binding->cameraTargetError(camera, first_view).type != 0);
+    CHECK(camera_binding->attachment(editor_camera, second_view) == second_attachment);
     registry.emplace<scene::Camera>(camera);
-    while (scene->attachment(camera, first_view).isNull() || !published(scene->attachment(camera, first_view)))
+    while (camera_binding->attachment(camera, first_view).isNull() ||
+           !published(camera_binding->attachment(camera, first_view)))
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
-    CHECK(scene->attachment(camera, first_view) != first_attachment);
-    CHECK(scene->cameraTargetError(camera, first_view).type == 0);
+    CHECK(camera_binding->attachment(camera, first_view) != first_attachment);
+    CHECK(camera_binding->cameraTargetError(camera, first_view).type == 0);
     const auto submission_start = rendering->stats().submissions;
     for (unsigned frame = 0; frame < 12; ++frame)
     {
@@ -558,9 +608,9 @@ int main()
     }
     cpu_entered.wait();
     compilation_held = true;
-    const auto previous_attachment = scene->attachment(camera, first_view);
+    const auto previous_attachment = camera_binding->attachment(camera, first_view);
     view_request.target = call<CreateTarget>(*rendering, {view_request.description}).target;
-    CHECK(scene->updateCameraTarget(camera, first_view, view_request));
+    CHECK(camera_binding->updateCameraTarget(camera, first_view, view_request));
     while (!projected_during_compile)
     {
         CHECK(std::chrono::steady_clock::now() < deadline);
@@ -577,20 +627,21 @@ int main()
     const auto before_replacement_compile = call<QueryRenderStats>(*rendering, {}).compiled_graphs;
     // An unrelated output must retire while the replacement graph is waiting on CPU compilation.
     const auto remove_target = take(rendering->mainClient().bind<RemoveTarget>());
-    CHECK(scene->removeCameraTarget(editor_camera, second_view));
+    CHECK(camera_binding->removeCameraTarget(editor_camera, second_view));
     bool output_retired = false;
-    auto retired = execution::taskResult(
-        stdexec::starts_on(execution.mainScheduler(), scene->whenCameraTargetRetired(editor_camera, second_view))
-    );
+    auto retired = execution::taskResult(stdexec::starts_on(
+        execution.mainScheduler(),
+        camera_binding->whenCameraTargetRetired(editor_camera, second_view)
+    ));
     CHECK(execution.spawn(stdexec::then(
         std::move(retired),
         [&](auto&& result) noexcept
         {
-            CHECK(result && scene->cameraTargetRetired(editor_camera, second_view));
+            CHECK(result && camera_binding->cameraTargetRetired(editor_camera, second_view));
             output_retired = true;
         }
     )));
-    while (!scene->cameraTargetRetired(editor_camera, second_view))
+    while (!camera_binding->cameraTargetRetired(editor_camera, second_view))
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
@@ -626,7 +677,7 @@ int main()
     );
     compilation_held = false;
     release_cpu.release(2);
-    while (scene->attachment(camera, first_view) == previous_attachment)
+    while (camera_binding->attachment(camera, first_view) == previous_attachment)
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
@@ -671,19 +722,19 @@ int main()
     std::array<asset::MountLease, 1> previous_mount{std::move(mount)};
     const std::array<asset::MountDesc, 1> rejected_mount{{{"/assets", rejected_provider}}};
     auto rejected_registration = take(vfs.replaceMounts(previous_mount, rejected_mount));
-    const auto last_good = scene->attachment(camera, first_view);
+    const auto last_good = camera_binding->attachment(camera, first_view);
     const auto previous_asset_revision = inputs.revision;
     const auto last_mesh = assets->ready<scene::MeshAssetPipeline>({mesh_id, inputs.revision})->mesh;
     inputs.revision += 2; // Revision one was preloaded by the independent Asset Client check.
     inputs.snapshot = vfs.view().capture();
-    while (scene->assetError(first).type == 0)
+    while (mesh_binding->assetError(first).type == 0)
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
-    CHECK(scene->assetError(first).type == kDeviceArgument);
+    CHECK(mesh_binding->assetError(first).type == kDeviceArgument);
     CHECK(
-        scene->attachment(camera, first_view) == last_good &&
+        camera_binding->attachment(camera, first_view) == last_good &&
         assets->ready<scene::MeshAssetPipeline>({mesh_id, previous_asset_revision})->mesh == last_mesh
     );
     const auto continued = rendering->stats().submissions;
@@ -697,7 +748,7 @@ int main()
     ++inputs.revision;
     inputs.snapshot = vfs.view().capture();
     auto next_diagnostic = std::chrono::steady_clock::now() + 2s;
-    while (scene->attachment(camera, first_view) == last_good || scene->assetError(first).type != 0)
+    while (camera_binding->attachment(camera, first_view) == last_good || mesh_binding->assetError(first).type != 0)
     {
         drive(true);
         if (std::chrono::steady_clock::now() > next_diagnostic)
@@ -709,11 +760,15 @@ int main()
                 assets->ready<scene::MeshAssetPipeline>({mesh_id, inputs.revision}) != nullptr,
                 scene::cookedMaterial(*assets, {material_id, inputs.revision}) != nullptr,
                 assets->ready<scene::TextureAssetPipeline>({texture_id, inputs.revision}) != nullptr,
-                static_cast<unsigned long long>(scene->assetError(first).type),
+                static_cast<unsigned long long>(mesh_binding->assetError(first).type),
                 static_cast<unsigned long long>(rendering->stats().compiled_graphs),
                 rendering->mainClient().hasQueuedFrameCommands(),
-                static_cast<unsigned long long>(assets->failure<scene::MeshAssetPipeline>({mesh_id, inputs.revision}).type),
-                static_cast<unsigned long long>(assets->failure<scene::TextureAssetPipeline>({texture_id, inputs.revision}).type),
+                static_cast<unsigned long long>(
+                    assets->failure<scene::MeshAssetPipeline>({mesh_id, inputs.revision}).type
+                ),
+                static_cast<unsigned long long>(
+                    assets->failure<scene::TextureAssetPipeline>({texture_id, inputs.revision}).type
+                ),
                 static_cast<unsigned long long>(rendering->stats().commands)
             );
             next_diagnostic += 10s;
@@ -728,7 +783,10 @@ int main()
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
-    CHECK(assets->ready<scene::TextureAssetPipeline>(other_project)->texture != assets->ready<scene::TextureAssetPipeline>({texture_id, 1})->texture);
+    CHECK(
+        assets->ready<scene::TextureAssetPipeline>(other_project)->texture !=
+        assets->ready<scene::TextureAssetPipeline>({texture_id, 1})->texture
+    );
     assets->release<scene::TextureAssetPipeline>(other_project);
     // These are the real data formats emitted by model cooking for AO, metal/roughness and normals.
     for (const auto format :
@@ -760,7 +818,10 @@ int main()
         while (!assets->ready<scene::TextureAssetPipeline>(key))
         {
             drive(true);
-            CHECK(assets->failure<scene::TextureAssetPipeline>(key).type == 0 && std::chrono::steady_clock::now() < deadline);
+            CHECK(
+                assets->failure<scene::TextureAssetPipeline>(key).type == 0 &&
+                std::chrono::steady_clock::now() < deadline
+            );
         }
         CHECK(assets->ready<scene::TextureAssetPipeline>(key)->description.format == rdesc::textureImageFormat(format));
         assets->release<scene::TextureAssetPipeline>(key);
@@ -799,18 +860,24 @@ int main()
         selected.implementation = implementation;
         scene_stop = std::stop_source{};
         scene_retired = false;
-        scene = std::make_unique<scene::RenderSystem>(no_geometry, dependencies, std::move(selected));
+        plan = prepare_plan(std::move(selected));
+        scene = std::make_unique<scene::RenderSystem>(no_geometry, dependencies);
+        camera_binding = nullptr;
+        while (!(camera_binding = scene->binding<scene::CameraViewBinding>()))
+        {
+            drive(true);
+        }
         auto output = scene::CameraTarget{};
         output.description = view_request.description;
         output.target = call<CreateTarget>(*rendering, {output.description}).target;
-        const auto observation = take(scene->addCameraTarget(only_camera, output));
+        const auto observation = take(camera_binding->addCameraTarget(only_camera, output));
         const auto before = completed_frames;
-        while (scene->attachment(only_camera, observation).isNull() || completed_frames < before + 3)
+        while (camera_binding->attachment(only_camera, observation).isNull() || completed_frames < before + 3)
         {
             drive(true);
             CHECK(std::chrono::steady_clock::now() < deadline);
         }
-        const auto attached = scene->attachment(only_camera, observation);
+        const auto attached = camera_binding->attachment(only_camera, observation);
         no_geometry.patch<scene::Camera>(
             only_camera,
             [](auto& camera) noexcept { std::get<scene::PerspectiveProjection>(camera.projection).near_plane = 0.75; }
@@ -821,7 +888,7 @@ int main()
             drive(true);
             CHECK(std::chrono::steady_clock::now() < deadline);
         }
-        CHECK(scene->attachment(only_camera, observation) == attached);
+        CHECK(camera_binding->attachment(only_camera, observation) == attached);
         scene_stop.request_stop();
         while (!scene_retired)
         {

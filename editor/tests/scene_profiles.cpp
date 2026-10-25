@@ -10,6 +10,7 @@
 #include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/project/SceneRegistrations.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/ScenePackageFile.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>
 #include <lux/engine/scene/WorldLoadingConfiguration.hpp>

@@ -11,7 +11,8 @@ add_component(
     OUTPUT_NAME lux_engine_scene_render
     SOURCE_FILES
         src/RenderSystem.cpp
-        src/SceneCamera.cpp
+        src/RenderBindingDeclarations.cpp
+        src/RenderBindingPlan.cpp
         src/RenderSystemConfiguration.cpp
 )
 
@@ -31,20 +32,14 @@ target_compile_options(scene_render PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>)
 target_link_libraries(
     scene_render
     PUBLIC
-        scene_render_builtin
         lux::engine::engine_render_context
         lux::engine::scene::scene_composition
-        lux::engine::scene::scene_camera
-        lux::engine::simulation::ecs::transform
-        lux::engine::simulation::ecs::visual
 )
 
 component_add_transitive_commands(
     scene_render
     "find_package(lux-engine-context-render REQUIRED COMPONENTS engine_render_context)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
-    "find_package(lux-engine-scene-camera REQUIRED COMPONENTS scene_camera)"
-    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS transform visual)"
 )
 
 lux_classify_target(TARGET scene_render LAYER SCENE PRODUCT RUNTIME ROLE LIBRARY)
@@ -62,6 +57,7 @@ if(BUILD_TESTING)
         engine_scene_render_test
         PRIVATE
             scene_render
+            scene_render_builtin
             lux::engine::toolchain::toolchain_material_compiler
             lux::engine::function::render_extensions
     )

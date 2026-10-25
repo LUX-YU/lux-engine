@@ -32,6 +32,7 @@ target_compile_options(scene_render PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>)
 target_link_libraries(
     scene_render
     PUBLIC
+        scene_render_builtin
         lux::engine::engine_render_context
         lux::engine::scene::scene_composition
         lux::engine::scene::scene_camera

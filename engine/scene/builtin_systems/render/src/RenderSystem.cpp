@@ -1,3 +1,4 @@
+#include <lux/engine/scene/render/RasterAssetPipelines.hpp>
 #include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/render/capabilities/RasterAssets.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
@@ -299,6 +300,16 @@ namespace lux::scene
             }
             implementation = choices.implementations.front().selection;
             CapabilityInstallation install{implementation, scene, configuration.configuration};
+            if (instance_input_enabled || material_input_enabled)
+            {
+                auto prepared = co_await installRasterAssetPipelines(
+                    assets, assets.resourceCapability()
+                );
+                if (!prepared)
+                {
+                    co_return prepared;
+                }
+            }
             const auto asset_inputs = assets.inputs();
             install.source_inputs.assign(asset_inputs.begin(), asset_inputs.end());
             const auto installed = co_await request<InstallCapabilities>(client, install);
@@ -339,7 +350,7 @@ namespace lux::scene
 
         void releaseBinding(const MeshBinding& binding) noexcept
         {
-            assets.releaseMesh(assetKey(binding.visual.mesh, binding.revision));
+            assets.release<MeshAssetPipeline>(assetKey(binding.visual.mesh, binding.revision));
             --materials.find(assetKey(binding.visual.material, binding.revision))->second.references;
         }
 
@@ -347,7 +358,7 @@ namespace lux::scene
         {
             const auto mesh_key = assetKey(binding.visual.mesh, binding.revision);
             const auto material_key = assetKey(binding.visual.material, binding.revision);
-            auto acquired_mesh = assets.acquireMesh(mesh_key, source, assets_input.snapshot);
+            auto acquired_mesh = assets.acquire<MeshAssetPipeline>(mesh_key, source, assets_input.snapshot);
             if (!acquired_mesh)
             {
                 return acquired_mesh;
@@ -355,10 +366,10 @@ namespace lux::scene
             auto material = materials.find(material_key);
             if (material == materials.end())
             {
-                auto acquired = assets.acquireMaterial(material_key, source, assets_input.snapshot);
+                auto acquired = assets.acquire<MaterialAssetPipeline>(material_key, source, assets_input.snapshot);
                 if (!acquired)
                 {
-                    assets.releaseMesh(mesh_key);
+                    assets.release<MeshAssetPipeline>(mesh_key);
                     return acquired;
                 }
                 material = materials.emplace(material_key, MaterialEntry{.snapshot = assets_input.snapshot}).first;
@@ -366,8 +377,8 @@ namespace lux::scene
                 ready_materials.insert(material_key);
             }
             ++material->second.references;
-            asset_availability.observe(mesh_key);
-            asset_availability.observe(material_key);
+            asset_availability.observe<MeshAssetPipeline>(mesh_key);
+            asset_availability.observe<MaterialAssetPipeline>(material_key);
             return {};
         }
 
@@ -462,10 +473,10 @@ namespace lux::scene
                 {
                     continue;
                 }
-                const auto* cooked = assets.material(key);
+                const auto* cooked = cookedMaterial(assets, key);
                 if (!cooked)
                 {
-                    const auto error = assets.failure(key);
+                    const auto error = assets.failure<MaterialAssetPipeline>(key);
                     if (error.type != 0)
                     {
                         reject(error);
@@ -478,7 +489,7 @@ namespace lux::scene
                     const RenderAssetVersion texture{cooked->texture_slot_ids[i], key.revision, key.source};
                     if (!texture.asset.isNull())
                     {
-                        auto acquired = assets.acquireTexture(texture, source, entry.snapshot);
+                        auto acquired = assets.acquire<TextureAssetPipeline>(texture, source, entry.snapshot);
                         if (!acquired && acquired.error().type == kRuntimeCapacity)
                         {
                             blocked_materials.insert(key);
@@ -495,7 +506,7 @@ namespace lux::scene
                     if (!texture.asset.isNull())
                     {
                         material_demands[texture].insert(key);
-                        asset_availability.observe(texture);
+                        asset_availability.observe<TextureAssetPipeline>(texture);
                     }
                 }
                 if (entry.textures.size() != cooked->texture_slot_ids.size())
@@ -511,10 +522,10 @@ namespace lux::scene
                         input.textures.push_back({});
                         continue;
                     }
-                    const auto* uploaded = assets.texture(texture);
+                    const auto* uploaded = assets.ready<TextureAssetPipeline>(texture);
                     if (!uploaded)
                     {
-                        const auto error = assets.failure(texture);
+                        const auto error = assets.failure<TextureAssetPipeline>(texture);
                         if (error.type != 0)
                         {
                             reject(error);
@@ -1036,7 +1047,7 @@ namespace lux::scene
                     }
                     continue;
                 }
-                const auto* mesh = assets.mesh(assetKey(binding.visual.mesh, binding.revision));
+                const auto* mesh = assets.ready<MeshAssetPipeline>(assetKey(binding.visual.mesh, binding.revision));
                 const auto material = materials.find(assetKey(binding.visual.material, binding.revision));
                 input.description.mesh = mesh->mesh;
                 input.description.material = material->second.material;
@@ -1188,10 +1199,10 @@ namespace lux::scene
                 {
                     if (!texture.asset.isNull())
                     {
-                        assets.releaseTexture(texture);
+                        assets.release<TextureAssetPipeline>(texture);
                     }
                 }
-                assets.releaseMaterial(entry->first);
+                assets.release<MaterialAssetPipeline>(entry->first);
                 finishMaterial(entry->first, entry->second);
                 entry = materials.erase(entry);
             }
@@ -1280,10 +1291,10 @@ namespace lux::scene
                 {
                     if (!texture.asset.isNull())
                     {
-                        assets.releaseTexture(texture);
+                        assets.release<TextureAssetPipeline>(texture);
                     }
                 }
-                assets.releaseMaterial(entry->first);
+                assets.release<MaterialAssetPipeline>(entry->first);
                 materials.erase(entry);
             }
             pending_instances.clear();

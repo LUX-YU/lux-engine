@@ -1,3 +1,4 @@
+#include <lux/engine/scene/render/RasterAssetPipelines.hpp>
 #include <lux/engine/scene/SceneRenderInputs.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 
@@ -66,12 +67,12 @@ namespace lux::scene::detail
     {
         const RenderAssetVersion key{binding.visual.mesh, binding.revision, source};
         const auto& material = materials.find({binding.visual.material, binding.revision, source})->second;
-        failure = assets.failure(key);
+        failure = assets.failure<MeshAssetPipeline>(key);
         if (failure.type == 0)
         {
             failure = material.error;
         }
-        return failure.type == 0 && assets.mesh(key) && !material.material.isNull();
+        return failure.type == 0 && assets.ready<MeshAssetPipeline>(key) && !material.material.isNull();
     }
 
     static std::vector<RasterGeometryInput> prepareGeometryInputs(
@@ -104,9 +105,9 @@ namespace lux::scene::detail
         }
         for (const auto* binding : bindings)
         {
-            const auto& mesh = *assets.mesh(assetKey(binding->visual.mesh, binding->revision));
+            const auto& mesh = *assets.ready<MeshAssetPipeline>(assetKey(binding->visual.mesh, binding->revision));
             const auto& material = materials.find(assetKey(binding->visual.material, binding->revision))->second;
-            const auto& program = assets.material(assetKey(binding->visual.material, binding->revision))->programs;
+            const auto& program = cookedMaterial(assets, assetKey(binding->visual.material, binding->revision))->programs;
             const auto bucket = material.program_hash ^ mesh.mesh.hash();
             const auto [first, last] = group_indices.equal_range(bucket);
             auto found = first;
@@ -132,7 +133,7 @@ namespace lux::scene::detail
                 group.textures.clear();
                 for (const auto texture : material.textures)
                 {
-                    const auto* value = texture.asset.isNull() ? nullptr : assets.texture(texture);
+                    const auto* value = texture.asset.isNull() ? nullptr : assets.ready<TextureAssetPipeline>(texture);
                     group.textures.push_back(
                         value ? value->description : ImageShape{1, 1, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}
                     );
@@ -146,7 +147,7 @@ namespace lux::scene::detail
             // source-mesh winding conversion; mirrored instance transforms are handled by the Mesh Feature.
             for (const auto texture : material.textures)
             {
-                const auto* value = texture.asset.isNull() ? nullptr : assets.texture(texture);
+                const auto* value = texture.asset.isNull() ? nullptr : assets.ready<TextureAssetPipeline>(texture);
                 group.textures.push_back(
                     value ? value->description : ImageShape{1, 1, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM}
                 );

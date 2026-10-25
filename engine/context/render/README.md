@@ -71,14 +71,23 @@ A carrier released before submission cancels its queued commands; a lost respons
 `memory()` supports direct UI capture. Each carrier owns its data interval, backed by reusable standard PMR blocks.
 No live Scene/Pane buffer is borrowed after that object closes.
 
-`RenderAssets` owns only the Main asset/version-to-handle directory and actual Client use counts. VFS reads,
-CPU decode, Asset upload and Main adoption form finite standard Sender pipelines. Mesh conversion produces the
-actual static GPU vertex layout once; Texture/Mesh source bytes are released on real Response, before Main adoption.
+`RenderAssets` owns typed representation tables and actual Client use counts on Main. It starts empty; professional
+integration code installs `RenderAssetPipeline` implementations only when their resource inputs are needed.
+Each pipeline supplies its result type, finite load Sender and logical release Sender. Tables are distinguished by
+the full pipeline type and actual capability destination. Calls may omit the destination only when that pipeline
+has one installed representation; multiple destinations require an explicit choice.
+
+VFS reads, CPU decode, Asset upload and Main adoption form finite standard Sender pipelines. Professional Mesh
+conversion lives in `process/render_upload`, while Scene integration composes preparation with its Asset Client.
+The shared Context library includes no Mesh/Texture/Material tables or family-dependent release branches.
+Texture/Mesh source bytes remain owned by the finite operation until the actual Response ends the borrow.
 The first Scene projection consumes LOD0; animation/LOD selection is not fabricated by uploading all LOD indices.
 Different source revisions can coexist. Zero-reference transitions start finite release Senders; actual replies
 resume the operation. There is no RenderAssets::maintain call. AvailabilityConnection is a borrowed Main-thread
 subscription to actual load/release completion; its Scene receiver only marks pending demand and disconnects
-before RenderAssets destruction. It does not create a second asset or operation owner.
+before RenderAssets destruction. Notifications only record intent; subscribers do not release/acquire records
+inside the callback. Apply that intent at the existing Scene safe point. Pipeline implementation code must remain
+loaded until its table and accepted operations are destroyed. There is no second asset or operation owner.
 
 Close Scenes before closing their project task admission, drive their pending frame commands, then release asset
 references. After `RenderAssets::close()`, continue Main completion and maintenance frames until `settled()`.

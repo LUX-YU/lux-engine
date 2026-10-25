@@ -108,7 +108,15 @@ namespace
 
 int main(int argc, char** argv)
 {
-    assert(argc == 4 || argc == 5);
+    assert(argc >= 4 && argc <= 6);
+    bool render_only = false, fail_close = false;
+    for (int i = 4; i < argc; ++i)
+    {
+        const std::string_view option{argv[i]};
+        render_only |= option == "--render-only";
+        fail_close |= option == "--fault-close";
+        assert(option == "--render-only" || option == "--fault-close");
+    }
     std::mt19937 random{std::random_device{}()};
     uuids::uuid_random_generator generate{random};
     const auto root = std::filesystem::absolute(argv[3]) / uuids::to_string(generate());
@@ -504,48 +512,51 @@ int main(int argc, char** argv)
     until([&] { return !scenes.saving(id); });
     assert(!scenes.failure() && !document->dirty());
 
-    auto headless = scenes.startPlay(id, ESceneRunMode::HEADLESS);
-    assert(headless && *headless != document->instance() && document->readOnly());
-    assert(!runtime.borrowSystem<scene::RenderSystem>(*headless));
-    until(
-        [&]
-        {
-            auto clock = std::as_const(runtime).borrowClock(*headless);
-            return clock && std::visit([](const auto& value) { return value.snapshot().step_index > 0; }, clock->get());
-        }
-    );
-    bool mutated = false;
-    until(
-        [&]
-        {
-            auto change = [&](simulation::ecs::Registry& registry) noexcept
+    if (!render_only)
+    {
+        auto headless = scenes.startPlay(id, ESceneRunMode::HEADLESS);
+        assert(headless && *headless != document->instance() && document->readOnly());
+        assert(!runtime.borrowSystem<scene::RenderSystem>(*headless));
+        until(
+            [&]
             {
-                const auto* residency = registry.ctx().find<scene::WorldResidency>();
-                const auto* identities = residency ? &residency->identities() : nullptr;
-                if (!identities)
+                auto clock = std::as_const(runtime).borrowClock(*headless);
+                return clock && std::visit([](const auto& value) { return value.snapshot().step_index > 0; }, clock->get());
+            }
+        );
+        bool mutated = false;
+        until(
+            [&]
+            {
+                auto change = [&](simulation::ecs::Registry& registry) noexcept
                 {
-                    return;
-                }
-                const auto entity = identities->entity(root_object);
-                if (entity == simulation::ecs::NullEntity)
-                {
-                    return;
-                }
-                registry.patch<simulation::ecs::Transform3D>(entity, [](auto& value) { value.translation.x() = 900; });
-                mutated = true;
-            };
-            static_cast<void>(runtime.editInstance(*headless, change));
-            return mutated;
-        }
-    );
-    auto author = document->component(root_object, transform_schema);
-    assert(
-        author && static_cast<const simulation::ecs::Transform3D*>(author->data())->translation.x() ==
-                      edited_transform.translation.x()
-    );
-    scenes.stopPlay(id);
-    until([&] { return !scenes.playInstance(id).valid(); });
-    assert(!document->readOnly());
+                    const auto* residency = registry.ctx().find<scene::WorldResidency>();
+                    const auto* identities = residency ? &residency->identities() : nullptr;
+                    if (!identities)
+                    {
+                        return;
+                    }
+                    const auto entity = identities->entity(root_object);
+                    if (entity == simulation::ecs::NullEntity)
+                    {
+                        return;
+                    }
+                    registry.patch<simulation::ecs::Transform3D>(entity, [](auto& value) { value.translation.x() = 900; });
+                    mutated = true;
+                };
+                static_cast<void>(runtime.editInstance(*headless, change));
+                return mutated;
+            }
+        );
+        auto author = document->component(root_object, transform_schema);
+        assert(
+            author && static_cast<const simulation::ecs::Transform3D*>(author->data())->translation.x() ==
+                          edited_transform.translation.x()
+        );
+        scenes.stopPlay(id);
+        until([&] { return !scenes.playInstance(id).valid(); });
+        assert(!document->readOnly());
+    }
 
     auto graphical = scenes.startPlay(id, ESceneRunMode::GRAPHICAL);
     assert(graphical);
@@ -614,7 +625,7 @@ int main(int argc, char** argv)
     scene_projection = nullptr;
     fixture::modelSource(root / "Sources");
     assert(assets.reimport(imported.id));
-    if (argc == 5)
+    if (fail_close)
     {
         // A real Server execution failure while a project and an accepted source decode are alive.
         // No test backdoor fabricates a successful release or destroys a borrowed Registry.

@@ -1,3 +1,4 @@
+#include <lux/engine/scene/render/RasterAssetPipelines.hpp>
 #include "../../../../../modules/function/material/test/MaterialTest.hpp"
 
 #include <lux/engine/core/execution/TaskScope.hpp>
@@ -199,6 +200,18 @@ int main()
     auto rendering = take(RenderExecution::create(std::move(config), execution));
     auto assets =
         take(RenderAssets::create(*rendering, endpoint->port(), {"test.scene.asset_source", 1, "test.scene.assets"}));
+    bool pipelines_ready = false;
+    CHECK(execution.spawn(stdexec::then(
+        execution::taskResult(stdexec::starts_on(execution.mainScheduler(),
+            scene::installRasterAssetPipelines(*assets, {"test.scene.asset_source", 1, "test.scene.assets"})
+        )),
+        [&](auto result) noexcept { CHECK(result); pipelines_ready = true; }
+    )));
+    CHECK(execution.waitUntil([&]() noexcept
+    {
+        static_cast<void>(rendering->consumeResponses());
+        return pipelines_ready;
+    }));
     TargetDesc capability_target{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
     const auto offscreen_support = call<ListCapabilities>(
         *rendering,
@@ -228,25 +241,25 @@ int main()
         const auto capacity = +[](void*) noexcept {};
         RenderAssets::AvailabilityConnection matching{*assets, &matching_notifications, completed, capacity};
         RenderAssets::AvailabilityConnection unrelated{*assets, &unrelated_notifications, completed, capacity};
-        CHECK(assets->acquireTexture({texture_id, 1}));
-        matching.observe({texture_id, 1});
+        CHECK(assets->acquire<scene::TextureAssetPipeline>({texture_id, 1}));
+        matching.observe<scene::TextureAssetPipeline>({texture_id, 1});
         // Deliberately do not dispatch Main. Blocking read, CPU decode and Asset transport must still advance.
         while (rendering->stats().commands == before_upload)
         {
             CHECK(std::chrono::steady_clock::now() < deadline);
             std::this_thread::sleep_for(1ms);
         }
-        CHECK(!assets->texture({texture_id, 1}));
+        CHECK(!assets->ready<scene::TextureAssetPipeline>({texture_id, 1}));
         CHECK(execution.waitUntil(
             [&]() noexcept
             {
                 static_cast<void>(rendering->consumeResponses());
-                return assets->texture({texture_id, 1}) != nullptr;
+                return assets->ready<scene::TextureAssetPipeline>({texture_id, 1}) != nullptr;
             }
         ));
 
         CHECK(matching_notifications == 1 && unrelated_notifications == 0);
-        matching.observe({texture_id, 1}); // Fold the already completed fact into a new subscription.
+        matching.observe<scene::TextureAssetPipeline>({texture_id, 1}); // Fold the already completed fact into a new subscription.
         CHECK(matching_notifications == 2 && unrelated_notifications == 0);
     }
 
@@ -639,7 +652,7 @@ int main()
         drive(false);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
-    CHECK(assets->mesh({mesh_id, inputs.revision}) != nullptr);
+    CHECK(assets->ready<scene::MeshAssetPipeline>({mesh_id, inputs.revision}) != nullptr);
     // A valid layered asset reaches the real upload Handler, which rejects this single-layer
     // Storage contract. No previous instance/Effect is removed just because a candidate failed.
     auto rejected_provider = std::make_shared<CookedAssets>();
@@ -657,7 +670,7 @@ int main()
     auto rejected_registration = take(vfs.replaceMounts(previous_mount, rejected_mount));
     const auto last_good = scene->attachment(camera, first_view);
     const auto previous_asset_revision = inputs.revision;
-    const auto last_mesh = assets->mesh({mesh_id, inputs.revision})->mesh;
+    const auto last_mesh = assets->ready<scene::MeshAssetPipeline>({mesh_id, inputs.revision})->mesh;
     inputs.revision += 2; // Revision one was preloaded by the independent Asset Client check.
     inputs.snapshot = vfs.view().capture();
     while (scene->assetError(first).type == 0)
@@ -668,7 +681,7 @@ int main()
     CHECK(scene->assetError(first).type == kDeviceArgument);
     CHECK(
         scene->attachment(camera, first_view) == last_good &&
-        assets->mesh({mesh_id, previous_asset_revision})->mesh == last_mesh
+        assets->ready<scene::MeshAssetPipeline>({mesh_id, previous_asset_revision})->mesh == last_mesh
     );
     const auto continued = rendering->stats().submissions;
     while (rendering->stats().submissions < continued + 3)
@@ -690,14 +703,14 @@ int main()
                 stderr,
                 "Candidate recovery: mesh=%d material=%d texture=%d error=%llu graphs=%llu queued=%d mesh_error=%llu "
                 "texture_error=%llu commands=%llu\n",
-                assets->mesh({mesh_id, inputs.revision}) != nullptr,
-                assets->material({material_id, inputs.revision}) != nullptr,
-                assets->texture({texture_id, inputs.revision}) != nullptr,
+                assets->ready<scene::MeshAssetPipeline>({mesh_id, inputs.revision}) != nullptr,
+                scene::cookedMaterial(*assets, {material_id, inputs.revision}) != nullptr,
+                assets->ready<scene::TextureAssetPipeline>({texture_id, inputs.revision}) != nullptr,
                 static_cast<unsigned long long>(scene->assetError(first).type),
                 static_cast<unsigned long long>(rendering->stats().compiled_graphs),
                 rendering->mainClient().hasQueuedFrameCommands(),
-                static_cast<unsigned long long>(assets->failure({mesh_id, inputs.revision}).type),
-                static_cast<unsigned long long>(assets->failure({texture_id, inputs.revision}).type),
+                static_cast<unsigned long long>(assets->failure<scene::MeshAssetPipeline>({mesh_id, inputs.revision}).type),
+                static_cast<unsigned long long>(assets->failure<scene::TextureAssetPipeline>({texture_id, inputs.revision}).type),
                 static_cast<unsigned long long>(rendering->stats().commands)
             );
             next_diagnostic += 10s;
@@ -706,14 +719,14 @@ int main()
     }
     // Separate project generations must not alias the same revision in the shared upload cache.
     const RenderAssetVersion other_project{texture_id, 1, 9};
-    CHECK(assets->acquireTexture(other_project, endpoint->port(), inputs.snapshot));
-    while (!assets->texture(other_project))
+    CHECK(assets->acquire<scene::TextureAssetPipeline>(other_project, endpoint->port(), inputs.snapshot));
+    while (!assets->ready<scene::TextureAssetPipeline>(other_project))
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
-    CHECK(assets->texture(other_project)->texture != assets->texture({texture_id, 1})->texture);
-    assets->releaseTexture(other_project);
+    CHECK(assets->ready<scene::TextureAssetPipeline>(other_project)->texture != assets->ready<scene::TextureAssetPipeline>({texture_id, 1})->texture);
+    assets->release<scene::TextureAssetPipeline>(other_project);
     // These are the real data formats emitted by model cooking for AO, metal/roughness and normals.
     for (const auto format :
          {rdesc::ETexturePixelFormat::R8_UNORM,
@@ -740,16 +753,16 @@ int main()
         asset::AssetVfs format_vfs;
         auto format_mount = take(format_vfs.mount({"/assets", format_provider}));
         const RenderAssetVersion key{id, 1, 9};
-        CHECK(assets->acquireTexture(key, endpoint->port(), format_vfs.view().capture()));
-        while (!assets->texture(key))
+        CHECK(assets->acquire<scene::TextureAssetPipeline>(key, endpoint->port(), format_vfs.view().capture()));
+        while (!assets->ready<scene::TextureAssetPipeline>(key))
         {
             drive(true);
-            CHECK(assets->failure(key).type == 0 && std::chrono::steady_clock::now() < deadline);
+            CHECK(assets->failure<scene::TextureAssetPipeline>(key).type == 0 && std::chrono::steady_clock::now() < deadline);
         }
-        CHECK(assets->texture(key)->description.format == rdesc::textureImageFormat(format));
-        assets->releaseTexture(key);
+        CHECK(assets->ready<scene::TextureAssetPipeline>(key)->description.format == rdesc::textureImageFormat(format));
+        assets->release<scene::TextureAssetPipeline>(key);
     }
-    while (assets->mesh({mesh_id, previous_asset_revision}) != nullptr)
+    while (assets->ready<scene::MeshAssetPipeline>({mesh_id, previous_asset_revision}) != nullptr)
     {
         drive(true);
         CHECK(std::chrono::steady_clock::now() < deadline);
@@ -820,7 +833,7 @@ int main()
         drive(false);
         CHECK(std::chrono::steady_clock::now() < deadline);
     }
-    assets->releaseTexture({texture_id, 1});
+    assets->release<scene::TextureAssetPipeline>({texture_id, 1});
     assets->close();
     while (!assets->settled() || !frames.settled())
     {

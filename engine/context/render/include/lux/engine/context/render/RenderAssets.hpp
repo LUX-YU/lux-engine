@@ -1,62 +1,20 @@
 #pragma once
 
-#include <lux/engine/process/asset_loading/AssetRead.hpp>
-#include <lux/engine/render/inputs/ImageShape.hpp>
-#include <lux/engine/render/inputs/IndexedTriangleMeshInputs.hpp>
-#include <lux/engine/render/inputs/SampledTextureInputs.hpp>
-#include <lux/engine/resource/asset/material/MaterialAssets.hpp>
+#include <lux/cxx/compile_time/TypeToken.hpp>
+#include <lux/engine/context/render/RenderAssetPipeline.hpp>
+#include <lux/engine/context/render/RenderExecution.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
+
+#include <map>
 
 namespace lux::engine::render
 {
-    class RenderExecution;
-
-    struct RenderAssetVersion final
-    {
-        asset::AssetId asset;
-        std::uint64_t revision = 0;
-        // Caller-assigned source namespace. Distinguishes project/VFS generations with equal AssetId/revision.
-        std::uint64_t source = 0;
-
-        friend bool operator==(const RenderAssetVersion&, const RenderAssetVersion&) noexcept = default;
-
-        friend bool operator<(const RenderAssetVersion& left, const RenderAssetVersion& right) noexcept
-        {
-            if (left.source != right.source)
-            {
-                return left.source < right.source;
-            }
-            return left.asset < right.asset || (left.asset == right.asset && left.revision < right.revision);
-        }
-    };
-
-    struct RenderAssetLimits final
-    {
-        std::size_t in_flight = 8;
-        // One admitted load owns at most these encoded/decoded limits. The product of admission and
-        // decoder bounds limits temporary input, including while Main pauses. This is not GPU residency.
-        asset::AssetDecodeLimits decode{64 * 1024 * 1024, 128 * 1024 * 1024, 32};
-    };
-
-    struct RenderMesh final
-    {
-        lux::render::MeshId mesh;
-        lux::render::MeshDescription geometry;
-    };
-
-    struct RenderTexture final
-    {
-        lux::render::TextureId texture;
-        lux::render::ImageShape description;
-    };
-
-    // Main-thread asset/version authority. Reads and decode use the shared ExecutionRuntime;
-    // Texture/Mesh transport uses its fixed Asset Client. No Scene/Registry is captured by workers.
-    // One acquire/release pair represents one actual Client dependency. Versions may coexist.
+    // One Main-thread directory of actual asset representations. A table is identified by its
+    // pipeline and destination; neither Scene nor individual entities own duplicate caches.
     class RenderAssets final
     {
     public:
-        // Main-thread one-shot notifications, registered against an actual pending version or capacity wait.
-        // Delivery unlinks first; callbacks only record intent. The connection may disconnect during delivery.
         class AvailabilityConnection final
         {
         public:
@@ -70,9 +28,9 @@ namespace lux::engine::render
             AvailabilityConnection(const AvailabilityConnection&) = delete;
             AvailabilityConnection& operator=(const AvailabilityConnection&) = delete;
 
-            // Call after a successful acquire. Already completed versions deliver immediately.
-            void observe(RenderAssetVersion) noexcept;
-            // Only after a capacity rejection. A wake observes capacity; it does not reserve admission.
+            // Observe only an acquired representation. Completed values notify synchronously on Main.
+            template <RenderAssetPipeline P>
+            void observe(RenderAssetVersion key, lux::render::CapabilityInput destination = {}) noexcept;
             void whenCapacityAvailable() noexcept;
 
         private:
@@ -85,72 +43,347 @@ namespace lux::engine::render
             void (*capacity_available_)(void*) noexcept;
             std::vector<std::vector<AvailabilityConnection*>*> versions_;
             void disconnectCapacity() noexcept;
+            void subscribe(std::vector<AvailabilityConnection*>&, RenderAssetVersion, bool loading) noexcept;
         };
 
         using CreateResult = lux::render::RenderResult<std::unique_ptr<RenderAssets>>;
 
-        // Cold startup: the application selects the asset implementation. Its Mesh/Texture payload
-        // contracts are checked before installation; startup performs no asset read or upload.
+        // Creates an empty directory. The application installs only pipelines required by its bindings.
         [[nodiscard]] static CreateResult create(
-            RenderExecution& rendering,
-            process::asset_loading::AssetReadPort source,
-            lux::render::CapabilityQuery capability,
-            lux::render::VCapabilityConfiguration configuration = {},
-            RenderAssetLimits limits = {}
+            RenderExecution&,
+            process::asset_loading::AssetReadPort,
+            lux::render::CapabilityQuery = {},
+            RenderAssetLimits = {}
         ) noexcept;
-
-        // Public producer destinations for cold consumer installation, never Storage identities.
-        [[nodiscard]] std::span<const lux::render::CapabilitiesInstalled::Input> inputs() const noexcept;
-
-        // close(), continue maintenance frames and wait for settled() before destroying this object.
-        // RenderExecution and the file provider outlive all accepted source reads and protocol replies.
         ~RenderAssets() noexcept;
         RenderAssets(const RenderAssets&) = delete;
         RenderAssets& operator=(const RenderAssets&) = delete;
 
-        // An explicit project source is captured by this acquisition, so project candidates and old
-        // generations can load concurrently without mutating a shared current-source selector.
-        [[nodiscard]] lux::render::RenderResult<void> acquireMesh(
-            RenderAssetVersion,
-            process::asset_loading::AssetReadPort source = {},
-            asset::AssetVfsView snapshot = {}
-        ) noexcept;
-        [[nodiscard]] lux::render::RenderResult<void> acquireTexture(
-            RenderAssetVersion,
-            process::asset_loading::AssetReadPort source = {},
-            asset::AssetVfsView snapshot = {}
-        ) noexcept;
-        [[nodiscard]] lux::render::RenderResult<void> acquireMaterial(
-            RenderAssetVersion,
-            process::asset_loading::AssetReadPort source = {},
-            asset::AssetVfsView snapshot = {}
-        ) noexcept;
-        void releaseMesh(RenderAssetVersion) noexcept;
-        void releaseTexture(RenderAssetVersion) noexcept;
-        void releaseMaterial(RenderAssetVersion) noexcept;
+        // Cold registration. Equal pipeline/destination reuses the existing typed table.
+        template <RenderAssetPipeline P>
+        void install(P pipeline, lux::render::CapabilityInput destination = {}) noexcept;
 
-        // A null pointer means loading or absent. Inspect failure() separately; no query starts work.
-        // Borrows end at the next release of that version. Material data is the real Cooked contract.
-        [[nodiscard]] const RenderMesh* mesh(RenderAssetVersion) const noexcept;
-        [[nodiscard]] const RenderTexture* texture(RenderAssetVersion) const noexcept;
-        [[nodiscard]] const rdesc::MaterialDescription* material(RenderAssetVersion) const noexcept;
-        [[nodiscard]] lux::render::RenderError failure(RenderAssetVersion) const noexcept;
+        template <RenderAssetPipeline P>
+        [[nodiscard]] lux::render::RenderResult<void> acquire(
+            RenderAssetVersion,
+            process::asset_loading::AssetReadPort = {},
+            asset::AssetVfsView = {},
+            lux::render::CapabilityInput destination = {}
+        ) noexcept;
+        template <RenderAssetPipeline P>
+        void release(RenderAssetVersion, lux::render::CapabilityInput destination = {}) noexcept;
+        template <RenderAssetPipeline P>
+        [[nodiscard]] const typename P::Value* ready(RenderAssetVersion, lux::render::CapabilityInput destination = {})
+            const noexcept;
+        template <RenderAssetPipeline P>
+        [[nodiscard]] lux::render::RenderError failure(
+            RenderAssetVersion,
+            lux::render::CapabilityInput destination = {}
+        ) const noexcept;
 
-        // Stops new demands and decoding, not accepted GPU work. Successful late uploads are released
-        // through Main frames. Existing Scene material/instance references must already be removed.
+        // Public resource inputs used by dependent capability installation, never Storage identities.
+        void addInputs(std::span<const lux::render::CapabilitiesInstalled::Input>) noexcept;
+        [[nodiscard]] std::span<const lux::render::CapabilitiesInstalled::Input> inputs() const noexcept;
+        [[nodiscard]] RenderExecution& executionContext() const noexcept;
+        [[nodiscard]] const lux::render::CapabilityQuery& resourceCapability() const noexcept;
+
+        // Scene references end before close. Keep driving Main until settled, then destroy this
+        // directory before RenderExecution and the file provider. Failed releases remain diagnosable.
         void close() noexcept;
-        // Fault shutdown first ends reads/CPU preparation without discarding Scene reference pairs.
-        // Once loadsSettled(), no late producer can enqueue work on the Asset protocol thread.
         void stopLoads() noexcept;
         [[nodiscard]] bool loadsSettled() const noexcept;
-        // No outstanding reads or replies. Failed release records remain owned until final Server cleanup;
-        // completion is not success: inspect releaseFailure() before ending the rendering session.
         [[nodiscard]] bool settled() const noexcept;
         [[nodiscard]] lux::render::RenderError releaseFailure() const noexcept;
 
     private:
-        struct Impl;
-        explicit RenderAssets(std::unique_ptr<Impl>) noexcept;
-        std::unique_ptr<Impl> impl_;
+        struct Table
+        {
+            cxx::TypeToken type;
+            lux::render::CapabilityInput destination;
+            virtual ~Table() = default;
+            virtual void close() noexcept = 0;
+            [[nodiscard]] virtual bool settled() const noexcept = 0;
+        };
+
+        template <RenderAssetPipeline P> struct TypedTable final : Table
+        {
+            struct Record
+            {
+                std::optional<typename P::Value> value;
+                lux::render::RenderError error;
+                std::size_t references = 1;
+                bool loading = true;
+                bool releasing = false;
+                std::vector<AvailabilityConnection*> observers;
+            };
+
+            RenderAssets& assets;
+            P pipeline;
+            std::map<RenderAssetVersion, Record> records;
+
+            TypedTable(RenderAssets& assets, P pipeline, lux::render::CapabilityInput destination) noexcept
+                : assets(assets), pipeline(std::move(pipeline))
+            {
+                this->type = cxx::typeToken<P>();
+                this->destination = destination;
+            }
+
+            void releaseRecord(RenderAssetVersion key) noexcept
+            {
+                auto found = records.find(key);
+                auto& record = found->second;
+                if (!record.value || assets.rendering_.mainClient().serverStopped())
+                {
+                    records.erase(found);
+                    return;
+                }
+                record.releasing = true;
+                auto work = execution::taskResult(
+                    stdexec::starts_on(assets.rendering_.execution().mainScheduler(), pipeline.release(*record.value))
+                );
+                const auto accepted = assets.rendering_.execution().spawn(stdexec::then(
+                    std::move(work),
+                    [this, key](auto result) noexcept
+                    {
+                        const auto error = resultError(result);
+                        if (error.type != 0)
+                        {
+                            records.find(key)->second.error = error;
+                            assets.recordReleaseFailure(error, P::name);
+                        }
+                        else
+                        {
+                            records.erase(key);
+                        }
+                        assets.notifyCapacity();
+                    }
+                ));
+                if (!accepted)
+                {
+                    std::terminate();
+                }
+            }
+
+            void close() noexcept override
+            {
+                for (auto entry = records.begin(); entry != records.end();)
+                {
+                    auto& [key, record] = *entry++;
+                    if (std::exchange(record.references, 0) != 0 && !record.loading)
+                    {
+                        releaseRecord(key);
+                    }
+                }
+            }
+
+            bool settled() const noexcept override
+            {
+                return std::ranges::all_of(
+                    records,
+                    [](const auto& entry) noexcept
+                    {
+                        const auto& record = entry.second;
+                        return !record.loading && record.references == 0 && record.releasing && record.error.type != 0;
+                    }
+                );
+            }
+        };
+
+        template <class T>
+        static lux::render::RenderError resultError(const execution::TTaskResult<T, lux::render::RenderError>& result
+        ) noexcept
+        {
+            if (result)
+            {
+                return {};
+            }
+            if (const auto* domain = result.error().domainFailure())
+            {
+                return *domain;
+            }
+            return {result.error().isCancelled() ? lux::render::kCommandCancelled : lux::render::kRuntimeState};
+        }
+
+        template <RenderAssetPipeline P> TypedTable<P>* find(lux::render::CapabilityInput destination) const noexcept
+        {
+            TypedTable<P>* selected = nullptr;
+            for (const auto& table : tables_)
+            {
+                if (table->type != cxx::typeToken<P>())
+                {
+                    continue;
+                }
+                if (table->destination == destination)
+                {
+                    return static_cast<TypedTable<P>*>(table.get());
+                }
+                if (destination.implementation.isNull())
+                {
+                    if (selected)
+                    {
+                        return nullptr; // Multiple representations require an explicit destination.
+                    }
+                    selected = static_cast<TypedTable<P>*>(table.get());
+                }
+            }
+            return selected;
+        }
+
+        RenderAssets(
+            RenderExecution&,
+            process::asset_loading::AssetReadPort,
+            lux::render::CapabilityQuery,
+            RenderAssetLimits
+        ) noexcept;
+        static void notifyVersion(std::vector<AvailabilityConnection*>&, RenderAssetVersion) noexcept;
+        void notifyCapacity() noexcept;
+        void awaitTaskCapacity() noexcept;
+        void recordReleaseFailure(lux::render::RenderError, std::string_view) noexcept;
+
+        RenderExecution& rendering_;
+        process::asset_loading::AssetReadPort source_;
+        lux::render::CapabilityQuery resource_capability_;
+        RenderAssetLimits limits_;
+        execution::TaskScope tasks_;
+        std::stop_source stop_;
+        std::vector<std::unique_ptr<Table>> tables_;
+        std::vector<lux::render::CapabilitiesInstalled::Input> inputs_;
+        std::size_t in_flight_ = 0;
+        lux::render::RenderError release_failure_;
+        AvailabilityConnection* capacity_waiters_{};
+        std::size_t connection_count_ = 0;
+        bool capacity_notification_pending_ = false;
+        bool closing_ = false;
     };
+
+    template <RenderAssetPipeline P>
+    void RenderAssets::install(P pipeline, lux::render::CapabilityInput destination) noexcept
+    {
+        if (!find<P>(destination))
+        {
+            tables_.push_back(std::make_unique<TypedTable<P>>(*this, std::move(pipeline), destination));
+        }
+    }
+
+    template <RenderAssetPipeline P>
+    lux::render::RenderResult<void> RenderAssets::acquire(
+        RenderAssetVersion key,
+        process::asset_loading::AssetReadPort source,
+        asset::AssetVfsView snapshot,
+        lux::render::CapabilityInput destination
+    ) noexcept
+    {
+        auto* table = find<P>(destination);
+        if (closing_ || key.asset.isNull() || !table)
+        {
+            return cxx::unexpected(lux::render::RenderError{lux::render::kRuntimeState});
+        }
+        auto found = table->records.find(key);
+        if (found != table->records.end())
+        {
+            if (found->second.releasing)
+            {
+                const auto error = found->second.error.type != 0
+                                       ? found->second.error
+                                       : lux::render::RenderError{lux::render::kRuntimeCapacity};
+                return cxx::unexpected(error);
+            }
+            ++found->second.references;
+            return {};
+        }
+        if (in_flight_ == limits_.in_flight)
+        {
+            return cxx::unexpected(lux::render::RenderError{lux::render::kRuntimeCapacity});
+        }
+        auto [entry, inserted] = table->records.try_emplace(key);
+        ++in_flight_;
+        RenderAssetLoad
+            load{key, source ? std::move(source) : source_, std::move(snapshot), limits_.decode, stop_.get_token()};
+        auto task = tasks_.submit(
+            {.name = std::string(P::name), .category = "render.asset"},
+            [this, table, key, load = std::move(load)](execution::TaskReporter) mutable noexcept
+            {
+                auto result = execution::taskResult(
+                    stdexec::starts_on(rendering_.execution().mainScheduler(), table->pipeline.load(std::move(load)))
+                );
+                return stdexec::then(
+                    stdexec::continues_on(std::move(result), rendering_.execution().mainScheduler()),
+                    [this, table, key](auto result) noexcept
+                    {
+                        --in_flight_;
+                        auto& record = table->records.find(key)->second;
+                        record.loading = false;
+                        record.error = resultError(result);
+                        if (result)
+                        {
+                            record.value.emplace(std::move(*result));
+                        }
+                        notifyVersion(record.observers, key);
+                        // Connections only record intent; Registry edits and acquire/release run at a later safe point.
+                        if (record.references == 0)
+                        {
+                            table->releaseRecord(key);
+                        }
+                        notifyCapacity();
+                        return execution::taskState(result);
+                    }
+                );
+            }
+        );
+        if (!task)
+        {
+            --in_flight_;
+            table->records.erase(entry);
+            awaitTaskCapacity();
+            return cxx::unexpected(lux::render::RenderError{lux::render::kRuntimeCapacity});
+        }
+        return {};
+    }
+
+    template <RenderAssetPipeline P>
+    void RenderAssets::release(RenderAssetVersion key, lux::render::CapabilityInput destination) noexcept
+    {
+        auto& table = *find<P>(destination);
+        auto& record = table.records.find(key)->second;
+        if (--record.references == 0 && !record.loading)
+        {
+            table.releaseRecord(key);
+        }
+    }
+
+    template <RenderAssetPipeline P>
+    const typename P::Value* RenderAssets::ready(RenderAssetVersion key, lux::render::CapabilityInput destination)
+        const noexcept
+    {
+        const auto* table = find<P>(destination);
+        if (!table)
+        {
+            return nullptr;
+        }
+        const auto found = table->records.find(key);
+        return found != table->records.end() && found->second.value ? &*found->second.value : nullptr;
+    }
+
+    template <RenderAssetPipeline P>
+    lux::render::RenderError RenderAssets::failure(RenderAssetVersion key, lux::render::CapabilityInput destination)
+        const noexcept
+    {
+        const auto* table = find<P>(destination);
+        if (!table)
+        {
+            return {lux::render::kRuntimeUnsupported};
+        }
+        const auto found = table->records.find(key);
+        return found != table->records.end() ? found->second.error : lux::render::RenderError{};
+    }
+
+    template <RenderAssetPipeline P>
+    void RenderAssets::AvailabilityConnection::observe(
+        RenderAssetVersion key,
+        lux::render::CapabilityInput destination
+    ) noexcept
+    {
+        auto& record = assets_.find<P>(destination)->records.find(key)->second;
+        subscribe(record.observers, key, record.loading);
+    }
 } // namespace lux::engine::render

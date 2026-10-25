@@ -14,6 +14,7 @@ add_subdirectory(builtin_systems/transform)
 add_subdirectory(builtin_systems/mesh_query)
 add_subdirectory(components/camera)
 if(TARGET engine_render_context)
+    add_subdirectory(integration/render)
     add_subdirectory(builtin_systems/render)
 endif()
 

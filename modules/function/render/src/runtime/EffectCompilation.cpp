@@ -4,6 +4,7 @@
 #include <lux/engine/render/graph/GraphCompiler.hpp>
 #include <lux/engine/render/runtime/EffectCompilation.hpp>
 #include <map>
+#include <ranges>
 
 namespace lux::render::runtime_detail
 {
@@ -19,7 +20,8 @@ namespace lux::render::runtime_detail
         std::span<const StorageNameView> storage_types,
         const GraphEffectRequest& request,
         std::span<const FeatureEntry* const> registrations,
-        std::size_t max_config_bytes
+        std::size_t max_config_bytes,
+        std::vector<RenderEffect::StorageDependency> storage_dependencies
     ) noexcept
     {
         const auto* input = &request;
@@ -60,34 +62,88 @@ namespace lux::render::runtime_detail
         {
             live_resources[parameter.index] = true;
         }
-        const auto qualify = [&](const auto& group) noexcept
+        // Keep preparation-only inputs of live outputs, just as Attach does. Dead contributions
+        // cannot introduce allocations or conflicts into the adopted dependency set.
+        for (const auto& binding : assembly->bindings | std::views::reverse)
         {
-            for (const auto& binding : group)
+            if (std::ranges::any_of(binding.outputs, [&](auto id) { return live_resources[id.index]; }))
+            {
+                for (auto resource : binding.inputs)
+                {
+                    live_resources[resource.index] = true;
+                }
+            }
+        }
+        const auto public_count = storage_dependencies.size();
+        std::vector<bool> used_types(public_count);
+        const auto resolve = [&](auto& group, ECapabilityInputScope scope) noexcept -> RenderResult<void>
+        {
+            for (auto& binding : group)
             {
                 if (!live_resources[binding.resource.index])
                 {
                     continue;
                 }
-                const auto name = binding.storage.type.name();
-                const auto found = std::lower_bound(
+                auto& requirement = binding.storage;
+                if (requirement.key.empty())
+                {
+                    requirement.key = assembly->definition.resources()[binding.resource.index].key;
+                }
+                const auto name = requirement.type.name();
+                const auto factory = std::lower_bound(
                     storage_types.begin(),
                     storage_types.end(),
                     name,
                     [](StorageNameView type, std::string_view name) { return type.name() < name; }
                 );
-                if (found == storage_types.end() || found->name() != name)
+                if (factory == storage_types.end() || factory->name() != name)
                 {
-                    return false;
+                    return cxx::unexpected(RenderError{kStorageFactory});
+                }
+                for (std::size_t i = 0; i < public_count; ++i)
+                {
+                    used_types[i] = used_types[i] || storage_dependencies[i].requirement.type == requirement.type;
+                }
+                auto dependency = std::ranges::find_if(
+                    storage_dependencies,
+                    [&](const auto& value) noexcept
+                    {
+                        return value.scope == scope && value.requirement.type == requirement.type &&
+                               value.requirement.key == requirement.key;
+                    }
+                );
+                if (dependency == storage_dependencies.end())
+                {
+                    storage_dependencies.push_back({scope, std::move(requirement), {binding.resource}, {}});
+                }
+                else
+                {
+                    if (dependency->requirement.config != requirement.config)
+                    {
+                        return cxx::unexpected(RenderError{kStorageMismatch});
+                    }
+                    dependency->resources.push_back(binding.resource);
                 }
             }
-            return true;
+            return {};
         };
-        const auto& external = assembly->external_bindings;
-        const bool missing_factory = !qualify(external.global) || !qualify(external.scene) || !qualify(external.view) ||
-                                     !qualify(external.attachment);
-        if (missing_factory)
+        auto& external = assembly->external_bindings;
+        const std::array groups{&external.global, &external.scene, &external.view, &external.attachment};
+        for (std::size_t i = 0; i < groups.size(); ++i)
         {
-            return cxx::unexpected(RenderError{kStorageFactory});
+            if (auto resolved = resolve(*groups[i], static_cast<ECapabilityInputScope>(i)); !resolved)
+            {
+                return cxx::unexpected(resolved.error());
+            }
+        }
+        for (std::size_t i = 0; i < public_count; ++i)
+        {
+            // An upload-only input may legitimately be unused in an empty Effect. If its Storage
+            // type is consumed, however, the public destination must be one of those actual bindings.
+            if (used_types[i] && storage_dependencies[i].resources.empty())
+            {
+                return cxx::unexpected(RenderError{kStorageMismatch});
+            }
         }
         auto compiled = detail::GraphCompiler::compile(
             device,
@@ -110,7 +166,7 @@ namespace lux::render::runtime_detail
             std::make_unique<detail::RenderPlan>(std::move(*compiled)),
             std::move(assembly->definition),
             std::move(assembly->analysis),
-            std::move(assembly->external_bindings),
+            std::move(storage_dependencies),
             std::move(assembly->arguments),
             std::move(assembly->bindings),
             std::move(assembly->samplers)

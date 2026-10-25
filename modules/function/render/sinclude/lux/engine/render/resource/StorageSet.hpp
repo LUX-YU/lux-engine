@@ -91,7 +91,7 @@ namespace lux::render
         // Called after the containing business object's identity has been published.
         void bindScope(VRenderScope) noexcept;
         void bindInput(CapabilitySelection, std::uint32_t input, StorageId) noexcept;
-        using InputKey = std::tuple<std::uint32_t, std::uint32_t, std::uint32_t>;
+        using InputKey = std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>;
         [[nodiscard]] StorageId inputStorage(CapabilitySelection, std::uint32_t input) const noexcept;
         using NameKey = std::tuple<std::uint32_t, std::uint32_t, std::string>;
         using NameIndex = std::map<NameKey, StorageId, std::less<>>;

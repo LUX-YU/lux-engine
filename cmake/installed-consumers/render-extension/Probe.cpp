@@ -266,7 +266,15 @@ struct RejectedInstallation final
         {
             CapabilitySupport value;
             value.implementation = name.name();
-            value.capabilities.push_back(RenderCapability{"example.install.failure"});
+            RenderCapability capability{"example.install.failure"};
+            for (auto schema : {"example.buffer.bytes", "example.reject"})
+            {
+                RenderPayloadContract input;
+                input.schema = schema;
+                input.setCppType(cxx::typeToken<ProbeUpload::Request>());
+                capability.inputs.push_back(std::move(input));
+            }
+            value.capabilities.push_back(std::move(capability));
             return value;
         }();
         return result;
@@ -292,6 +300,63 @@ struct IncompatibleFeature final
             auto value = ProbeFeature<false>::capabilities();
             value.implementation = name.name();
             value.capabilities.front().inputs.front().setCppType(cxx::typeToken<std::uint64_t>());
+            return value;
+        }();
+        return result;
+    }
+};
+
+struct RemappedFeature final
+{
+    using Config = void;
+    using Storages = ProbeFeature<false>::Storages;
+    using Commands = ProbeFeature<false>::Commands;
+    static constexpr auto name = ProbeFeature<false>::name;
+
+    static const CapabilitySupport& capabilities() noexcept
+    {
+        return ProbeFeature<false>::capabilities();
+    }
+
+    static const FeatureGraphOps& graph(bool paged) noexcept
+    {
+        static const std::array inputs{CapabilityStorageInput{
+            "example.buffer.bytes",
+            1,
+            ECapabilityInputScope::GLOBAL,
+            ProbeStorage::Descriptor::descriptor.type,
+            "silently-remapped"
+        }};
+        static const auto value = [paged]() noexcept
+        {
+            auto result = ProbeFeature<false>::graph(paged);
+            result.storage_inputs = inputs;
+            return result;
+        }();
+        return value;
+    }
+};
+
+struct UndeclaredInputFeature final
+{
+    using Config = void;
+    using Storages = ProbeFeature<false>::Storages;
+    using Commands = std::tuple<>;
+    static constexpr FeatureName name{"example.undeclared-input"};
+
+    static const FeatureGraphOps& graph(bool paged) noexcept
+    {
+        return ProbeFeature<false>::graph(paged);
+    }
+
+    static const CapabilitySupport& capabilities() noexcept
+    {
+        static const auto result = []
+        {
+            auto value = ProbeFeature<false>::capabilities();
+            value.implementation = name.name();
+            value.capabilities.front().name = "example.undeclared-input";
+            value.capabilities.front().inputs.clear();
             return value;
         }();
         return result;
@@ -333,6 +398,10 @@ int main()
     take(server->registerFeature<RejectedInstallation>());
     const auto incompatible = server->registerFeature<IncompatibleFeature>();
     CHECK(!incompatible && incompatible.error().type == kFeatureResourceMismatch);
+    const auto remapped = server->registerFeature<RemappedFeature>();
+    CHECK(!remapped && remapped.error().type == kFeatureDuplicate);
+    const auto undeclared = server->registerFeature<UndeclaredInputFeature>();
+    CHECK(!undeclared && undeclared.error().type == kFeatureResourceMismatch);
     CHECK(ProbeStorage::allocations == 0);
     const auto list = take(server->commandId<ListCapabilities>());
     const auto install = take(server->commandId<InstallCapabilities>());

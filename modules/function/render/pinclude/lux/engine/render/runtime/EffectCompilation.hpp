@@ -39,6 +39,7 @@ namespace lux::render::runtime_detail
         std::span<const StorageNameView> storage_types,
         const GraphEffectRequest& request,
         std::span<const FeatureEntry* const> registrations,
-        std::size_t max_config_bytes
+        std::size_t max_config_bytes,
+        std::vector<RenderEffect::StorageDependency> storage_dependencies
     ) noexcept;
 } // namespace lux::render::runtime_detail

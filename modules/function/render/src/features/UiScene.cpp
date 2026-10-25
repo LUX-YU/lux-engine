@@ -23,6 +23,7 @@ namespace lux::render::detail
         }
 
         RenderResult<void> expandUi(
+            const RenderCapability&,
             const TargetDesc& target,
             const void* settings,
             const void* data,
@@ -121,6 +122,7 @@ namespace lux::render::detail
                 serialization::kPortableMetadataBudget
             );
             RenderCapability capability;
+            capability.kind = ERenderCapabilityKind::EFFECT;
             capability.name = kUiSceneCapability;
             capability.description = result.description;
             capability.inputs.push_back(RasterAssets::capabilities().capabilities.front().inputs[1]);

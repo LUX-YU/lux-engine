@@ -198,6 +198,22 @@ int main()
     config.device.multiple_queues = true;
     auto rendering = take(RenderExecution::create(std::move(config), execution));
     auto assets = take(RenderAssets::create(*rendering, endpoint->port()));
+    TargetDesc capability_target{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
+    const auto offscreen_support = call<ListCapabilities>(
+        *rendering,
+        {"test.scene.no_geometry", 1, "test.scene.no_geometry.a", capability_target}
+    );
+    const auto surface_support = call<ListCapabilities>(
+        *rendering,
+        {"test.scene.no_geometry.surface", 1, "test.scene.no_geometry.a", capability_target}
+    );
+    CHECK(offscreen_support.implementations.size() == 1 && surface_support.implementations.size() == 1);
+    CHECK(offscreen_support.implementations.front().unavailable.type == 0);
+    CHECK(surface_support.implementations.front().unavailable.type == kRuntimeUnsupported);
+    CHECK(offscreen_support.implementations.front().selection != surface_support.implementations.front().selection);
+    const auto resource_support = call<ListCapabilities>(*rendering, {"lux.render.capability.raster_assets", 1});
+    CHECK(!resource_support.implementations.empty());
+    CHECK(resource_support.implementations.front().capabilities.front().kind == ERenderCapabilityKind::RESOURCES);
     const auto catalog = call<ListCommands>(*rendering, {});
     const auto before_upload = rendering->stats().commands;
     const auto deadline = std::chrono::steady_clock::now() + 60s;

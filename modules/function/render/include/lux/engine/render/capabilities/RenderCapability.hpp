@@ -14,8 +14,8 @@ namespace lux::render
     class ResourceRegistry;
     class StorageSet;
 
-    // A choice of a stable implementation entry in this Server. Never serialize it;
-    // persist the implementation name/version and resolve them again when opening a session.
+    // One capability contract of a stable implementation entry in this Server. Never serialize it;
+    // persist both capability and implementation names/versions and resolve them in the next session.
     class CapabilitySelection final
     {
     public:
@@ -33,9 +33,13 @@ namespace lux::render
         friend class ResourceRegistry;
         friend class StorageSet;
 
-        explicit CapabilitySelection(FeatureId implementation) noexcept : implementation_(implementation) {}
+        CapabilitySelection(FeatureId implementation, std::uint32_t capability) noexcept
+            : implementation_(implementation), capability_(capability)
+        {
+        }
 
         FeatureId implementation_;
+        std::uint32_t capability_ = 0;
     };
 
     struct GlobalRenderScope final
@@ -63,6 +67,12 @@ namespace lux::render
         bool operator==(const CapabilityInput&) const noexcept = default;
     };
 
+    enum class ERenderCapabilityKind : std::uint8_t
+    {
+        RESOURCES,
+        EFFECT
+    };
+
     struct RenderCapability final
     {
         std::string name;
@@ -73,6 +83,8 @@ namespace lux::render
         std::vector<rdesc::ETextureFormat> target_formats;
         std::vector<std::uint32_t> target_samples;
         std::vector<ETargetKind> target_kinds;
+        // Resource outputs are logical assets, not evidence that this contract can create an Effect.
+        ERenderCapabilityKind kind = ERenderCapabilityKind::RESOURCES;
         bool operator==(const RenderCapability&) const noexcept = default;
     };
 
@@ -94,6 +106,8 @@ namespace lux::render
         std::string implementation;
         std::uint32_t implementation_version = 1;
         std::string description;
+        // Declarations may contain several contracts. Each query result contains exactly the selected
+        // contract, with its own selection and availability; constraints never combine across contracts.
         std::vector<RenderCapability> capabilities;
         RenderPayloadContract configuration;
         std::vector<std::byte> default_configuration;

@@ -177,18 +177,84 @@ namespace lux::render
             {
                 return cxx::unexpected(RenderError{kFeatureContract});
             }
-            for (const auto& capability : capabilities->capabilities)
+            for (std::size_t i = 0; i < capabilities->capabilities.size(); ++i)
             {
-                const bool invalid_capability =
-                    capability.name.empty() || capability.version == 0 ||
-                    std::ranges::any_of(
-                        capability.inputs,
-                        [](const auto& input) noexcept
-                        { return input.schema.empty() || input.version == 0 || !input.cppType().isValid(); }
-                    );
+                const auto& capability = capabilities->capabilities[i];
+                const bool effect = capability.kind == ERenderCapabilityKind::EFFECT;
+                const bool invalid_kind = capability.kind > ERenderCapabilityKind::EFFECT;
+                const bool missing_graph = effect && !graph.describe_ports && !graph.expand;
+                const bool missing_output =
+                    effect && (capability.outputs.empty() || capability.target_formats.empty() ||
+                               capability.target_samples.empty() || capability.target_kinds.empty());
+                const bool invalid_capability = capability.name.empty() || capability.version == 0 || invalid_kind ||
+                                                missing_graph || missing_output;
                 if (invalid_capability)
                 {
                     return cxx::unexpected(RenderError{kFeatureContract});
+                }
+                for (std::size_t previous = 0; previous < i; ++previous)
+                {
+                    const auto& other = capabilities->capabilities[previous];
+                    if (other.name == capability.name && other.version == capability.version)
+                    {
+                        return cxx::unexpected(RenderError{kFeatureDuplicate});
+                    }
+                }
+                cxx::TypeToken effect_input;
+                bool has_frame_input = false;
+                for (std::size_t j = 0; j < capability.inputs.size(); ++j)
+                {
+                    const auto& input = capability.inputs[j];
+                    const bool invalid_payload = input.schema.empty() || input.version == 0 ||
+                                                 !input.cppType().isValid() ||
+                                                 input.use > ERenderPayloadUse::RESOURCE_INPUT ||
+                                                 input.use == ERenderPayloadUse::CONFIGURATION ||
+                                                 input.lifetime > ERenderPayloadLifetime::UNTIL_RESPONSE;
+                    if (invalid_payload)
+                    {
+                        return cxx::unexpected(RenderError{kFeatureContract});
+                    }
+                    for (std::size_t previous = 0; previous < j; ++previous)
+                    {
+                        if (capability.inputs[previous].schema == input.schema)
+                        {
+                            return cxx::unexpected(RenderError{kFeatureDuplicate});
+                        }
+                    }
+                    if (input.use == ERenderPayloadUse::EFFECT_INPUT)
+                    {
+                        if (!effect || effect_input.isValid() || input.cppType() != graph.effect_input_type)
+                        {
+                            return cxx::unexpected(RenderError{kFeatureResourceMismatch});
+                        }
+                        effect_input = input.cppType();
+                    }
+                    else if (input.use == ERenderPayloadUse::FRAME_INPUT)
+                    {
+                        if (!effect)
+                        {
+                            return cxx::unexpected(RenderError{kFeatureResourceMismatch});
+                        }
+                        has_frame_input = true;
+                    }
+                    else
+                    {
+                        const auto mappings = std::ranges::count_if(
+                            graph.storage_inputs,
+                            [&](const auto& mapped) noexcept
+                            { return mapped.schema == input.schema && mapped.version == input.version; }
+                        );
+                        if (mappings != 1)
+                        {
+                            return cxx::unexpected(RenderError{kFeatureResourceMismatch});
+                        }
+                    }
+                }
+                const bool missing_effect_input = effect && effect_input != graph.effect_input_type;
+                const bool missing_frame_input = effect && graph.parameters && !has_frame_input;
+                if (missing_effect_input || missing_frame_input)
+                {
+                    return cxx::unexpected(RenderError{kFeatureResourceMismatch});
                 }
                 for (const auto& previous : features)
                 {
@@ -202,7 +268,8 @@ namespace lux::render
                             published.name == capability.name && published.version == capability.version;
                         const bool mismatched_payload =
                             same_contract &&
-                            (published.inputs != capability.inputs || published.outputs != capability.outputs ||
+                            (published.kind != capability.kind || published.inputs != capability.inputs ||
+                             published.outputs != capability.outputs ||
                              published.target_formats != capability.target_formats ||
                              published.target_samples != capability.target_samples ||
                              published.target_kinds != capability.target_kinds);
@@ -210,6 +277,36 @@ namespace lux::render
                         {
                             return cxx::unexpected(RenderError{kFeatureResourceMismatch});
                         }
+                    }
+                }
+            }
+            for (std::size_t i = 0; i < graph.storage_inputs.size(); ++i)
+            {
+                const auto& mapping = graph.storage_inputs[i];
+                const bool declared = std::ranges::any_of(
+                    capabilities->capabilities,
+                    [&](const auto& capability) noexcept
+                    {
+                        return std::ranges::any_of(
+                            capability.inputs,
+                            [&](const auto& input) noexcept
+                            {
+                                return input.use == ERenderPayloadUse::RESOURCE_INPUT &&
+                                       input.schema == mapping.schema && input.version == mapping.version;
+                            }
+                        );
+                    }
+                );
+                if (!declared)
+                {
+                    return cxx::unexpected(RenderError{kFeatureResourceMismatch});
+                }
+                for (std::size_t previous = 0; previous < i; ++previous)
+                {
+                    if (graph.storage_inputs[previous].schema == mapping.schema &&
+                        graph.storage_inputs[previous].version == mapping.version)
+                    {
+                        return cxx::unexpected(RenderError{kFeatureDuplicate});
                     }
                 }
             }
@@ -225,6 +322,7 @@ namespace lux::render
                                          previous.graph.decode_configuration != graph.decode_configuration ||
                                          previous.graph.effect_input_type != graph.effect_input_type ||
                                          !std::ranges::equal(previous.graph.dependencies, graph.dependencies) ||
+                                         !std::ranges::equal(previous.graph.storage_inputs, graph.storage_inputs) ||
                                          previous.capabilities != capabilities;
             if (is_incompatible)
             {

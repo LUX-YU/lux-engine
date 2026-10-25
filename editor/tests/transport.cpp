@@ -123,7 +123,12 @@ namespace
             {
                 CapabilitySupport value;
                 value.implementation = name.name();
-                value.capabilities.push_back(RenderCapability{"test.arm-view-failure"});
+                RenderCapability capability{"test.arm-view-failure"};
+                RenderPayloadContract input;
+                input.schema = "test.arm-view-failure";
+                input.setCppType(cxx::typeToken<EmptyRequest>());
+                capability.inputs.push_back(std::move(input));
+                value.capabilities.push_back(std::move(capability));
                 return value;
             }();
             return result;

@@ -101,6 +101,35 @@ namespace lux::render
         return instance;
     }
 
+    const RenderCapability* RenderServer::Impl::selectedCapability(CapabilitySelection selection) const noexcept
+    {
+        const auto* entry = features.find(selection.implementation_);
+        if (!entry || !entry->capabilities || selection.capability_ >= entry->capabilities->capabilities.size())
+        {
+            return nullptr;
+        }
+        return &entry->capabilities->capabilities[selection.capability_];
+    }
+
+    RenderError RenderServer::Impl::capabilityTargetError(
+        const RenderCapability& capability,
+        const TargetDesc& target
+    ) noexcept
+    {
+        if (const auto valid = target.validate(); !valid)
+        {
+            return valid.error();
+        }
+        const bool has_format =
+            std::ranges::find(capability.target_formats, target.format) != capability.target_formats.end();
+        const bool has_samples =
+            std::ranges::find(capability.target_samples, target.samples) != capability.target_samples.end();
+        const bool has_kind = std::ranges::find(capability.target_kinds, target.kind) != capability.target_kinds.end();
+        const bool supported =
+            capability.kind == ERenderCapabilityKind::EFFECT && has_format && has_samples && has_kind;
+        return supported ? RenderError{} : RenderError{kRuntimeUnsupported};
+    }
+
     void RenderServer::Impl::listCapabilities(
         const ListCapabilities::Request& input,
         ListCapabilities::Response& result
@@ -113,77 +142,126 @@ namespace lux::render
                 continue;
             }
             const auto& support = *entry.capabilities;
-            const bool matches =
-                input.capability.empty() ||
-                std::ranges::any_of(
-                    support.capabilities,
-                    [&](const auto& capability) noexcept
-                    { return capability.name == input.capability && capability.version == input.version; }
-                );
-            if (!matches)
+            for (std::uint32_t index = 0; index < support.capabilities.size(); ++index)
             {
-                continue;
-            }
-            auto& published = result.implementations.emplace_back(support);
-            published.selection = CapabilitySelection{entry.id};
-            published.portable_configuration =
-                !entry.config_type.isValid() || entry.graph.decode_configuration != nullptr;
-            for (const auto& declaration : entry.graph.storage_inputs)
-            {
-                if (!resources->factory(declaration.storage_type))
+                const auto& capability = support.capabilities[index];
+                const bool selected = input.capability.empty() ||
+                                      (capability.name == input.capability && capability.version == input.version);
+                if (!selected)
                 {
-                    published.unavailable = RenderError{kStorageCapability};
-                    break;
+                    continue;
                 }
-            }
-            for (const auto& schema : input.input_schemas)
-            {
-                const bool supported = std::ranges::any_of(
-                    support.capabilities,
-                    [&](const auto& capability) noexcept
+                auto& published = result.implementations.emplace_back();
+                published.selection = CapabilitySelection{entry.id, index};
+                published.implementation = support.implementation;
+                published.implementation_version = support.implementation_version;
+                published.description = support.description;
+                published.configuration = support.configuration;
+                published.default_configuration = support.default_configuration;
+                published.portable_configuration = !entry.config_type.isValid() || entry.graph.decode_configuration;
+                published.capabilities.push_back(capability);
+                for (const auto& declaration : entry.graph.storage_inputs)
+                {
+                    const bool consumed = std::ranges::any_of(
+                        capability.inputs,
+                        [&](const auto& payload) noexcept
+                        {
+                            return payload.use == ERenderPayloadUse::RESOURCE_INPUT &&
+                                   payload.schema == declaration.schema && payload.version == declaration.version;
+                        }
+                    );
+                    if (consumed && !resources->factory(declaration.storage_type))
                     {
-                        return std::ranges::any_of(
-                            capability.inputs,
-                            [&](const auto& payload) noexcept { return payload.schema == schema; }
-                        );
+                        published.unavailable = RenderError{kStorageCapability};
+                        break;
                     }
-                );
-                if (!supported)
-                {
-                    published.unavailable = RenderError{kFeatureResourceMismatch};
                 }
-            }
-            if (input.target)
-            {
-                const bool supported = std::ranges::any_of(
-                    support.capabilities,
-                    [&](const auto& capability) noexcept
+                for (const auto& schema : input.input_schemas)
+                {
+                    if (std::ranges::find(capability.inputs, schema, &RenderPayloadContract::schema) ==
+                        capability.inputs.end())
                     {
-                        const bool has_format = std::ranges::find(capability.target_formats, input.target->format) !=
-                                                capability.target_formats.end();
-                        const bool has_samples = std::ranges::find(capability.target_samples, input.target->samples) !=
-                                                 capability.target_samples.end();
-                        const bool has_kind = std::ranges::find(capability.target_kinds, input.target->kind) !=
-                                              capability.target_kinds.end();
-                        return has_format && has_samples && has_kind;
+                        published.unavailable = RenderError{kFeatureResourceMismatch};
                     }
-                );
-                auto valid = input.target->validate();
-                if (!valid || !supported)
-                {
-                    published.unavailable = valid ? RenderError{kRuntimeUnsupported} : valid.error();
                 }
-            }
-            for (auto dependency : entry.graph.dependencies)
-            {
-                if (!features_by_name.contains(dependency.name()))
+                if (input.target)
                 {
-                    published.unavailable = RenderError{kFeatureMissingProvider};
-                    break;
+                    if (auto error = capabilityTargetError(capability, *input.target); error.type != 0)
+                    {
+                        published.unavailable = error;
+                    }
+                }
+                for (auto dependency : entry.graph.dependencies)
+                {
+                    if (!features_by_name.contains(dependency.name()))
+                    {
+                        published.unavailable = RenderError{kFeatureMissingProvider};
+                        break;
+                    }
                 }
             }
         }
         result.error = {};
+    }
+
+    RenderResult<std::vector<RenderEffect::StorageDependency>> RenderServer::Impl::resolveCapabilityStorage(
+        const FeatureEntry& feature,
+        const RenderCapability& capability,
+        const ConfigValue& configuration
+    ) const noexcept
+    {
+        std::vector<RenderEffect::StorageDependency> result;
+        for (std::uint32_t index = 0; index < feature.graph.storage_inputs.size(); ++index)
+        {
+            const auto& declaration = feature.graph.storage_inputs[index];
+            const bool consumed = std::ranges::any_of(
+                capability.inputs,
+                [&](const auto& input) noexcept
+                {
+                    return input.use == ERenderPayloadUse::RESOURCE_INPUT && input.schema == declaration.schema &&
+                           input.version == declaration.version;
+                }
+            );
+            if (!consumed)
+            {
+                continue;
+            }
+            auto config = declaration.configuration ? declaration.configuration(configuration.data())
+                                                    : RenderResult<ConfigValue>{ConfigValue{}};
+            if (!config)
+            {
+                return cxx::unexpected(config.error());
+            }
+            const auto found = std::ranges::find_if(
+                result,
+                [&](const auto& dependency) noexcept
+                {
+                    return dependency.scope == declaration.scope &&
+                           dependency.requirement.type.view() == declaration.storage_type &&
+                           dependency.requirement.key == declaration.storage_key;
+                }
+            );
+            if (found == result.end())
+            {
+                result.push_back(
+                    {declaration.scope,
+                     {StorageName{declaration.storage_type.name()},
+                      std::string(declaration.storage_key),
+                      std::move(*config)},
+                     {},
+                     {index}}
+                );
+            }
+            else
+            {
+                if (found->requirement.config != *config)
+                {
+                    return cxx::unexpected(RenderError{kStorageMismatch});
+                }
+                found->inputs.push_back(index);
+            }
+        }
+        return result;
     }
 
     void RenderServer::Impl::installCapabilities(
@@ -192,7 +270,8 @@ namespace lux::render
     ) noexcept
     {
         const auto* feature = features.find(input.selection.implementation_);
-        if (!feature || !feature->capabilities)
+        const auto* capability = selectedCapability(input.selection);
+        if (!capability)
         {
             result.error = RenderError{kRuntimeIdentity};
             return;
@@ -207,6 +286,13 @@ namespace lux::render
         if (auto destination = findScope(input.scope); !destination)
         {
             result.error = destination.error();
+            return;
+        }
+
+        auto dependencies = resolveCapabilityStorage(*feature, *capability, **configuration);
+        if (!dependencies)
+        {
+            result.error = dependencies.error();
             return;
         }
 
@@ -250,11 +336,10 @@ namespace lux::render
 
         std::vector<Binding> bindings;
         const auto declarations = feature->graph.storage_inputs;
-        for (std::uint32_t i = 0; i < declarations.size(); ++i)
+        for (const auto& dependency : *dependencies)
         {
-            const auto& declaration = declarations[i];
             VRenderScope scope;
-            switch (declaration.scope)
+            switch (dependency.scope)
             {
             case ECapabilityInputScope::GLOBAL:
                 scope = GlobalRenderScope{};
@@ -282,21 +367,18 @@ namespace lux::render
                 break;
             }
             auto* set = *findScope(scope); // The enclosing scope and all ancestors were qualified above.
-            const auto type = resources->typeId(declaration.storage_type);
-            auto dependency_config = declaration.configuration ? declaration.configuration((*configuration)->data())
-                                                               : RenderResult<ConfigValue>{ConfigValue{}};
-            if (!dependency_config)
-            {
-                result.error = dependency_config.error();
-                return;
-            }
-            auto storage = ensureStorage(*set, type, declaration.storage_key, *dependency_config, created);
+            const auto& requirement = dependency.requirement;
+            const auto type = resources->typeId(requirement.type.view());
+            auto storage = ensureStorage(*set, type, requirement.key, requirement.config, created);
             if (!storage)
             {
                 result.error = storage.error();
                 return;
             }
-            bindings.push_back({set, *storage, i, std::move(scope)});
+            for (auto index : dependency.inputs)
+            {
+                bindings.push_back({set, *storage, index, scope});
+            }
         }
         // No fallible allocation or user factory remains. Publish all input relations together.
         for (const auto& binding : bindings)

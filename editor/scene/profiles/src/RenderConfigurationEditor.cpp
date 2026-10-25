@@ -103,7 +103,7 @@ namespace lux::editor
                 {
                     return "This implementation has no portable configuration codec";
                 }
-                if (capability.outputs.empty())
+                if (capability.kind != render::ERenderCapabilityKind::EFFECT)
                 {
                     return "Resource capability; it does not produce a Scene output";
                 }

@@ -12,6 +12,7 @@ namespace lux::render
     struct FeatureBuildContext;
     struct FeaturePorts;
     struct EffectDefinition;
+    struct RenderCapability;
     struct FeatureNameTag;
     using FeatureName = cxx::SchemaIdView<FeatureNameTag>;
 
@@ -35,6 +36,7 @@ namespace lux::render
         // Optional cold projection from Feature configuration to this dependency's concrete configuration.
         // The returned value is adopted as immutable Attach input, never a second Storage owner.
         RenderResult<ConfigValue> (*configuration)(const void*) noexcept = nullptr;
+        bool operator==(const CapabilityStorageInput&) const noexcept = default;
     };
 
     // Synchronous cold contributions. Callbacks may append, never finish/move/retain the Builder.
@@ -43,7 +45,7 @@ namespace lux::render
         using Build = RenderResult<void> (*)(const void*, std::string_view, FeatureBuildContext&) noexcept;
         using Describe = RenderResult<void> (*)(const void*, std::string_view, FeaturePorts&) noexcept;
         using Expand = RenderResult<
-            void> (*)(const TargetDesc&, const void*, const void*, std::span<const FeatureId>, EffectDefinition&) noexcept;
+            void> (*)(const RenderCapability&, const TargetDesc&, const void*, const void*, std::span<const FeatureId>, EffectDefinition&) noexcept;
         using Parameters =
             RenderResult<void> (*)(cxx::TypeToken, std::span<const std::byte>, std::span<std::byte>) noexcept;
 

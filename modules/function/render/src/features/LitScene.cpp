@@ -295,6 +295,7 @@ namespace lux::render::detail
 
         template <bool Clustered>
         RenderResult<void> expandScene(
+            const RenderCapability&,
             const TargetDesc& target,
             const void* configuration,
             const void* data,
@@ -468,6 +469,7 @@ namespace lux::render::detail
             );
             result.default_configuration = encodeLitSceneConfiguration(LitSceneConfiguration{})->bytes;
             RenderCapability capability;
+            capability.kind = ERenderCapabilityKind::EFFECT;
             capability.name = kLitSceneCapability;
             capability.description = result.description;
             capability.inputs = RasterAssets::capabilities().capabilities.front().inputs;

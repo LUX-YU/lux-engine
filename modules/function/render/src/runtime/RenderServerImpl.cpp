@@ -117,7 +117,7 @@ namespace lux::render
         FeatureGraphOps::Parameters project_parameters,
         RenderError initial_error,
         CapabilitySelection implementation,
-        std::vector<ConfigValue> installation_configurations
+        std::vector<RenderEffect::StorageDependency> storage_dependencies
     ) noexcept
     {
         std::vector<const FeatureEntry*> registrations;
@@ -176,7 +176,8 @@ namespace lux::render
                              storage_types = std::move(storage_types),
                              request = std::move(input),
                              entries = std::move(registrations),
-                             limit = config.max_config_bytes]() noexcept
+                             limit = config.max_config_bytes,
+                             storage_dependencies = std::move(storage_dependencies)]() mutable noexcept
                             {
                                 return compileEffect(
                                     *native,
@@ -190,25 +191,19 @@ namespace lux::render
                                     storage_types,
                                     request,
                                     entries,
-                                    limit
+                                    limit,
+                                    std::move(storage_dependencies)
                                 );
                             }
                         ) |
                         stdexec::continues_on(render_loop_.scheduler()) |
                         stdexec::let_value(
-                            [server = this,
-                             project_parameters,
-                             implementation,
-                             configurations = std::move(installation_configurations
-                             )](RenderResult<RenderEffect>& candidate) mutable noexcept
+                            [server = this, project_parameters, implementation](RenderResult<RenderEffect>& candidate
+                            ) mutable noexcept
                             {
                                 return stdexec::read_env(stdexec::get_stop_token) |
                                        stdexec::then(
-                                           [server,
-                                            &candidate,
-                                            project_parameters,
-                                            implementation,
-                                            configurations = std::move(configurations)](auto stop
+                                           [server, &candidate, project_parameters, implementation](auto stop
                                            ) mutable noexcept -> CreateGraphEffect::Response
                                            {
                                                if (!candidate)
@@ -221,7 +216,6 @@ namespace lux::render
                                                }
                                                candidate->project_parameters = project_parameters;
                                                candidate->implementation = implementation;
-                                               candidate->installation_configurations = std::move(configurations);
                                                const auto effect = server->effects.emplace(std::move(*candidate));
                                                ++server->compiled_graphs;
                                                return EffectCreated{{}, effect};
@@ -244,17 +238,23 @@ namespace lux::render
         GraphEffectRequest graph{input.description};
         RenderError error;
         FeatureGraphOps::Parameters project_parameters = nullptr;
-        std::vector<ConfigValue> installation_configurations;
+        std::vector<RenderEffect::StorageDependency> storage_dependencies;
         const auto* entry = features.find(input.implementation.implementation_);
-        if (!entry || !entry->capabilities)
+        const auto* capability = selectedCapability(input.implementation);
+        if (!capability)
         {
             error = RenderError{kRuntimeIdentity};
+        }
+        else if (auto target_error = capabilityTargetError(*capability, input.description); target_error.type != 0)
+        {
+            error = target_error;
         }
         else
         {
             ConfigValue decoded;
             auto configuration = qualifyConfiguration(*entry, input.configuration, decoded);
-            const bool invalid_inputs = input.inputs.type() != entry->graph.effect_input_type ||
+            const bool invalid_inputs = capability->kind != ERenderCapabilityKind::EFFECT ||
+                                        input.inputs.type() != entry->graph.effect_input_type ||
                                         input.inputs.retainedBytes() > config.max_config_bytes;
             if (!configuration || invalid_inputs)
             {
@@ -262,23 +262,14 @@ namespace lux::render
             }
             else
             {
-                if (std::ranges::any_of(
-                        entry->graph.storage_inputs,
-                        [](const auto& dependency) noexcept { return dependency.configuration != nullptr; }
-                    ))
+                auto dependencies = resolveCapabilityStorage(*entry, *capability, **configuration);
+                if (!dependencies)
                 {
-                    for (const auto& dependency : entry->graph.storage_inputs)
-                    {
-                        auto dependency_config = dependency.configuration
-                                                     ? dependency.configuration((*configuration)->data())
-                                                     : RenderResult<ConfigValue>{ConfigValue{}};
-                        if (!dependency_config)
-                        {
-                            error = dependency_config.error();
-                            break;
-                        }
-                        installation_configurations.push_back(std::move(*dependency_config));
-                    }
+                    error = dependencies.error();
+                }
+                else
+                {
+                    storage_dependencies = std::move(*dependencies);
                 }
                 if (error.type == 0 && entry->graph.expand)
                 {
@@ -296,6 +287,7 @@ namespace lux::render
                     if (error.type == 0)
                     {
                         const auto expanded = entry->graph.expand(
+                            *capability,
                             input.description,
                             (*configuration)->data(),
                             input.inputs.data(),
@@ -316,17 +308,9 @@ namespace lux::render
                     graph.definition.features.push_back(
                         {entry->id, "root", typed ? std::move(*typed) : std::move(decoded)}
                     );
-                    std::vector<std::string_view> outputs;
-                    for (const auto& capability : entry->capabilities->capabilities)
+                    for (const auto& output : capability->outputs)
                     {
-                        for (const auto& output : capability.outputs)
-                        {
-                            if (std::ranges::find(outputs, output) == outputs.end())
-                            {
-                                outputs.push_back(output);
-                                graph.definition.outputs.push_back({{0, output}});
-                            }
-                        }
+                        graph.definition.outputs.push_back({{0, output}});
                     }
                 }
                 else if (error.type == 0)
@@ -341,7 +325,7 @@ namespace lux::render
             project_parameters,
             error,
             input.implementation,
-            std::move(installation_configurations)
+            std::move(storage_dependencies)
         );
     }
 
@@ -435,32 +419,24 @@ namespace lux::render
                 }
             }
         );
-        const auto* implementation =
-            effect.implementation.isNull() ? nullptr : features.find(effect.implementation.implementation_);
         const std::array scope_sets{&*global_storages, &scene, &view, &attachment};
-        std::vector<StorageId> capability_inputs;
-        const ConfigValue default_configuration;
-        if (implementation)
+        std::vector<StorageId> dependency_storages;
+        dependency_storages.reserve(effect.storage_dependencies.size());
+        for (const auto& dependency : effect.storage_dependencies)
         {
-            const auto declarations = implementation->graph.storage_inputs;
-            capability_inputs.reserve(declarations.size());
-            for (std::size_t i = 0; i < declarations.size(); ++i)
+            const auto& requirement = dependency.requirement;
+            auto instance = ensureStorage(
+                *scope_sets[static_cast<std::size_t>(dependency.scope)],
+                resources->typeId(requirement.type.view()),
+                requirement.key,
+                requirement.config,
+                created_storages
+            );
+            if (!instance)
             {
-                const auto& declaration = declarations[i];
-                auto id = ensureStorage(
-                    *scope_sets[static_cast<std::size_t>(declaration.scope)],
-                    resources->typeId(declaration.storage_type),
-                    declaration.storage_key,
-                    effect.installation_configurations.empty() ? default_configuration
-                                                               : effect.installation_configurations[i],
-                    created_storages
-                );
-                if (!id)
-                {
-                    return cxx::unexpected(id.error());
-                }
-                capability_inputs.push_back(*id);
+                return cxx::unexpected(instance.error());
             }
+            dependency_storages.push_back(*instance);
         }
         EffectAttachment candidate;
         std::uint32_t parameter_bytes = 0;
@@ -538,24 +514,16 @@ namespace lux::render
         }
         candidate.storage_inputs.reserve(plan.resources().size());
         std::vector<StorageId> resolved(plan.resources().size());
-        const auto prepareGroup = [&](std::span<const GraphStorageBinding> bindings,
-                                      StorageSet* set) -> RenderResult<void>
+        for (std::size_t dependency_index = 0; dependency_index < effect.storage_dependencies.size();
+             ++dependency_index)
         {
-            for (const auto& binding : bindings)
+            const auto& dependency = effect.storage_dependencies[dependency_index];
+            const auto* factory = resources->factory(dependency.requirement.type.view());
+            const auto id = dependency_storages[dependency_index];
+            for (auto resource : dependency.resources)
             {
-                const auto i = binding.resource.index;
-                const auto& resource = plan.resources()[i];
-                if (!required[i])
-                {
-                    continue;
-                }
-                if (!set)
-                {
-                    return cxx::unexpected(RenderError{kStorageIdentity});
-                }
-                const auto* factory = dependencies.resources.factory(binding.storage.type.view());
-                const auto key = binding.storage.key.empty() ? resource.key : binding.storage.key;
-                const auto* argument = resolved_arguments[i];
+                const auto index = resource.index;
+                const auto* argument = resolved_arguments[index];
                 const auto type = argument ? argument->type() : cxx::TypeToken{};
                 if (type != factory->descriptor->binding_type)
                 {
@@ -563,39 +531,15 @@ namespace lux::render
                 }
                 const auto* value = argument ? argument->data() : nullptr;
                 const auto* ops = static_cast<const detail::StorageBindingOps*>(factory->binding_ops);
-                const auto storage_type = dependencies.resources.typeId(binding.storage.type.view());
-                auto instance = ensureStorage(*set, storage_type, key, binding.storage.config, created_storages);
-                if (!instance)
-                {
-                    return cxx::unexpected(instance.error());
-                }
-                const auto id = *instance;
-                resolved[i] = id;
+                resolved[index] = id;
                 if (auto bound =
-                        candidate.bindStorage(i, id, *ops, resources->storageInstance(id), value, frames->frameCount());
+                        candidate
+                            .bindStorage(index, id, *ops, resources->storageInstance(id), value, frames->frameCount());
                     !bound)
                 {
                     return cxx::unexpected(bound.error());
                 }
             }
-            return {};
-        };
-        const auto& groups = effect.storage_requirements;
-        if (auto r = prepareGroup(groups.global, &*global_storages); !r)
-        {
-            return cxx::unexpected(r.error());
-        }
-        if (auto r = prepareGroup(groups.scene, &scene); !r)
-        {
-            return cxx::unexpected(r.error());
-        }
-        if (auto r = prepareGroup(groups.view, &view); !r)
-        {
-            return cxx::unexpected(r.error());
-        }
-        if (auto r = prepareGroup(groups.attachment, &attachment); !r)
-        {
-            return cxx::unexpected(r.error());
         }
         for (const auto& binding : effect.bindings)
         {
@@ -649,12 +593,14 @@ namespace lux::render
             return cxx::unexpected(values.error());
         }
         candidate.instance->setViewport(input.viewport);
-        if (implementation)
+        for (std::size_t dependency_index = 0; dependency_index < effect.storage_dependencies.size();
+             ++dependency_index)
         {
-            for (std::uint32_t i = 0; i < capability_inputs.size(); ++i)
+            const auto& dependency = effect.storage_dependencies[dependency_index];
+            auto& set = *scope_sets[static_cast<std::size_t>(dependency.scope)];
+            for (auto input_index : dependency.inputs)
             {
-                const auto scope = implementation->graph.storage_inputs[i].scope;
-                scope_sets[static_cast<std::size_t>(scope)]->bindInput(effect.implementation, i, capability_inputs[i]);
+                set.bindInput(effect.implementation, input_index, dependency_storages[dependency_index]);
             }
         }
         rollback.release();
@@ -820,6 +766,19 @@ namespace lux::render
             for (std::uint32_t i = 0; i < implementation.graph.storage_inputs.size(); ++i)
             {
                 const auto& declaration = implementation.graph.storage_inputs[i];
+                const auto& capability = *selectedCapability(effect->implementation);
+                const bool consumed = std::ranges::any_of(
+                    capability.inputs,
+                    [&](const auto& input) noexcept
+                    {
+                        return input.use == ERenderPayloadUse::RESOURCE_INPUT && input.schema == declaration.schema &&
+                               input.version == declaration.version;
+                    }
+                );
+                if (!consumed)
+                {
+                    continue;
+                }
                 VRenderScope scope;
                 switch (declaration.scope)
                 {

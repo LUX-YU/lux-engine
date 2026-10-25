@@ -22,13 +22,17 @@ namespace lux::render
     void StorageSet::bindInput(CapabilitySelection selection, std::uint32_t input, StorageId storage) noexcept
     {
         const auto implementation = selection.implementation_;
-        input_bindings_.insert_or_assign(InputKey{implementation.index, implementation.gen, input}, storage);
+        input_bindings_.insert_or_assign(
+            InputKey{implementation.index, implementation.gen, selection.capability_, input},
+            storage
+        );
     }
 
     StorageId StorageSet::inputStorage(CapabilitySelection selection, std::uint32_t input) const noexcept
     {
         const auto implementation = selection.implementation_;
-        const auto found = input_bindings_.find(InputKey{implementation.index, implementation.gen, input});
+        const auto found =
+            input_bindings_.find(InputKey{implementation.index, implementation.gen, selection.capability_, input});
         return found == input_bindings_.end() ? StorageId{} : found->second;
     }
 

@@ -51,11 +51,15 @@ namespace
                 value.implementation = name.name();
                 value.configuration.use = ERenderPayloadUse::CONFIGURATION;
                 RenderCapability capability;
+                capability.kind = ERenderCapabilityKind::EFFECT;
                 capability.name = "test.scene.no_geometry";
                 capability.outputs = {"color"};
                 capability.target_formats = {rdesc::ETextureFormat::RGBA8_UNORM};
                 capability.target_samples = {1};
                 capability.target_kinds = {ETargetKind::OFFSCREEN};
+                value.capabilities.push_back(capability);
+                capability.name = "test.scene.no_geometry.surface";
+                capability.target_kinds = {ETargetKind::SURFACE};
                 value.capabilities.push_back(std::move(capability));
                 return value;
             }();

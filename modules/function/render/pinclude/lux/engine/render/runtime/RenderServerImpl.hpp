@@ -174,7 +174,7 @@ namespace lux::render
             FeatureGraphOps::Parameters,
             RenderError = {},
             CapabilitySelection = {},
-            std::vector<ConfigValue> = {}
+            std::vector<RenderEffect::StorageDependency> = {}
         ) noexcept;
         auto createCapabilityEffect(CreateEffect::Request&&) noexcept;
         [[nodiscard]] RenderResult<const ConfigValue*> qualifyConfiguration(
@@ -183,6 +183,11 @@ namespace lux::render
             ConfigValue& decoded
         ) const noexcept;
         void bindCreateEffectCommand() noexcept;
+
+        [[nodiscard]] const RenderCapability* selectedCapability(CapabilitySelection) const noexcept;
+        [[nodiscard]] static RenderError capabilityTargetError(const RenderCapability&, const TargetDesc&) noexcept;
+        [[nodiscard]] RenderResult<std::vector<RenderEffect::StorageDependency>>
+        resolveCapabilityStorage(const FeatureEntry&, const RenderCapability&, const ConfigValue&) const noexcept;
 
         void listCapabilities(const ListCapabilities::Request&, ListCapabilities::Response&) noexcept;
         void installCapabilities(const InstallCapabilities::Request&, InstallCapabilities::Response&) noexcept;

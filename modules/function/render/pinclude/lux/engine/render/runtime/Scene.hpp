@@ -68,14 +68,24 @@ namespace lux::render::runtime_detail
         std::unique_ptr<detail::RenderPlan> plan;
         RenderGraph graph;
         RenderGraphAnalysis analysis;
-        GraphStorageBindings storage_requirements;
+
+        // One cold-resolved dependency used by both public upload inputs and Graph resource bindings.
+        // These records own creation values only; the actual instances remain in the business StorageSets.
+        struct StorageDependency final
+        {
+            ECapabilityInputScope scope;
+            StorageRequirement requirement;
+            std::vector<GraphResourceId> resources;
+            std::vector<std::uint32_t> inputs;
+        };
+
+        std::vector<StorageDependency> storage_dependencies;
         std::vector<StorageArgument> arguments;
         std::vector<detail::FeatureFrameContribution> bindings;
         std::vector<SamplerDescription> samplers;
         std::vector<AttachmentId> attachments;
         FeatureGraphOps::Parameters project_parameters = nullptr;
         CapabilitySelection implementation;
-        std::vector<ConfigValue> installation_configurations; // Only projected creation values needed by late scopes.
     };
 
     struct EffectAttachment final

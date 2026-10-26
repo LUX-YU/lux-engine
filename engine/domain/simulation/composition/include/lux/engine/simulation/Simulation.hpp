@@ -112,6 +112,11 @@ namespace lux::simulation
         Simulation(const Simulation&) = delete;
         Simulation& operator=(const Simulation&) = delete;
 
+        // Cold declaration/configuration qualification, shared by Editor preflight and create().
+        // User constructors and actual task resources can still fail during construction.
+        [[nodiscard]] static cxx::expected<void, SimulationSystemBuildFailure>
+        validate(const SimulationDescription&, const SimulationSystemRegistry&) noexcept;
+
         [[nodiscard]] static lux::cxx::expected<Simulation, SimulationSystemBuildFailure> create(
             ecs::Registry& registry,
             std::shared_ptr<const SimulationDescription> description,

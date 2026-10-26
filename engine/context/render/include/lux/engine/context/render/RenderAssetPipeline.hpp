@@ -6,6 +6,7 @@
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <stop_token>
+#include <utility>
 
 namespace lux::engine::render
 {
@@ -52,5 +53,7 @@ namespace lux::engine::render
             pipeline.load(std::move(load))
         } noexcept -> std::same_as<exec::task<lux::render::RenderResult<typename T::Value>>>;
         { pipeline.release(value) } noexcept -> std::same_as<exec::task<lux::render::RenderResult<void>>>;
+        // Equal cache destinations may share a table only when all representation dependencies agree.
+        { std::as_const(pipeline).compatible(std::as_const(pipeline)) } noexcept -> std::same_as<bool>;
     };
 } // namespace lux::engine::render

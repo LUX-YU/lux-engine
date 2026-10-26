@@ -35,6 +35,23 @@ namespace lux::scene
         DESTROY
     };
 
+    enum class ERenderInputSource : std::uint8_t
+    {
+        SCENE,
+        VIEW,
+        ASSETS
+    };
+
+    // A cold selector, independent of a future SceneId/ViewId. Empty implementation/index
+    // requires a unique matching input; it never means "take the first".
+    struct RenderInputSelection final
+    {
+        std::string schema;
+        ERenderInputSource source = ERenderInputSource::SCENE;
+        render::CapabilitySelection implementation;
+        std::optional<std::uint32_t> index;
+    };
+
     // Borrowed only during construction. Implementations retain their precise dependencies,
     // never this temporary aggregate or a reference into the installation response.
     struct RenderBindingContext final
@@ -59,7 +76,12 @@ namespace lux::scene
         // A View provider calls bind_view after accepting its native View, at a Scene structural safe point.
         // Before removing that View, repeat finish_view until COMPLETE; it settles the selected VIEW operations.
         // Borrow these callbacks with lookup_context, not this temporary construction aggregate.
-        render::RenderResult<void> (*bind_view)(void*, render::ViewId, simulation::ecs::Entity) noexcept;
+        exec::task<render::RenderResult<std::vector<render::CapabilitiesInstalled::Input>>> (*prepare_view)(
+            void*,
+            render::ViewId
+        ) noexcept;
+        render::RenderResult<
+            void> (*bind_view)(void*, render::ViewId, simulation::ecs::Entity, std::span<const render::CapabilitiesInstalled::Input>) noexcept;
         SceneStageResult (*finish_view)(void*, render::ViewId, SceneStageContext&) noexcept;
         void* effect_input_object = nullptr;
         render::RenderResult<

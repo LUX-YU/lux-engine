@@ -1,5 +1,6 @@
 #pragma once
 #include <cassert>
+#include <lux/engine/context/render/RenderAssets.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/scene/render/RenderBindingDeclarations.hpp>
@@ -8,6 +9,38 @@
 namespace fixture
 {
     using namespace lux;
+
+    struct AssetTableProbe
+    {
+        using Value = unsigned;
+        static constexpr std::string_view name = "test.editor.table";
+        inline static unsigned destroyed = 0;
+        std::unique_ptr<unsigned> dependency;
+
+        explicit AssetTableProbe(unsigned value) : dependency(std::make_unique<unsigned>(value)) {}
+
+        AssetTableProbe(AssetTableProbe&&) noexcept = default;
+
+        ~AssetTableProbe() noexcept
+        {
+            destroyed += bool(dependency);
+        }
+
+        bool compatible(const AssetTableProbe& other) const noexcept
+        {
+            return *dependency == *other.dependency;
+        }
+
+        exec::task<lux::render::RenderResult<unsigned>> load(lux::engine::render::RenderAssetLoad) noexcept
+        {
+            co_return *dependency;
+        }
+
+        exec::task<lux::render::RenderResult<void>> release(unsigned&) noexcept
+        {
+            co_return lux::render::RenderResult<void>{};
+        }
+    };
 
     struct ViewObservation final
     {
@@ -64,6 +97,7 @@ namespace fixture
         static constexpr auto scope = scene::ERenderOperationScope::VIEW;
         inline static std::vector<std::pair<render::ViewId, std::uint32_t>> observations;
         inline static std::size_t created = 0, destroyed = 0, drained = 0;
+        inline static render::ViewId fail_retirement;
 
         static std::span<const render::RenderPayloadContract> inputs() noexcept
         {
@@ -115,6 +149,11 @@ namespace fixture
         scene::SceneStageResult maintain(scene::SceneStageContext& context) noexcept
         {
             assert(dependency_.valid());
+            if (context.stop.stop_requested() && fail_retirement == view_)
+            {
+                fail_retirement = {};
+                return cxx::unexpected(scene::SceneExecutionFailure{}); // Deliberately no domain cause.
+            }
             if (context.stop.stop_requested() && !stopped_)
             {
                 stopped_ = pending_ = true;

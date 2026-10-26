@@ -14,6 +14,7 @@
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/editor/SceneViewportPane.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
+#include <lux/engine/project/SceneRegistrations.hpp>
 #include <lux/engine/render/capabilities/LitScene.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <lux/engine/scene/Camera.hpp>
@@ -27,6 +28,8 @@
 #include <lux/engine/scene/render/MeshRenderResourceComponent.hpp>
 #include <lux/engine/scene/render/RasterTransformOperation.hpp>
 #include <lux/engine/scene/render/RenderBindingPlan.hpp>
+#include <lux/engine/simulation/Simulation.hpp>
+#include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
 #include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
@@ -57,10 +60,14 @@ namespace lux::ui
 
 namespace
 {
-    SceneCreateResult versionedProfile(const SceneCreateInfo& info, bool invalid_version) noexcept
+    SceneCreateResult versionedProfile(
+        const SceneCreateInfo& info,
+        bool invalid_version,
+        bool invalid_configuration = false
+    ) noexcept
     {
         auto package = sceneProfile3D().create(info);
-        if (!package || (info.selection && !invalid_version))
+        if (!package || (info.selection && !invalid_version && !invalid_configuration))
         {
             return package;
         }
@@ -83,13 +90,21 @@ namespace
         {
             const auto system = original.systemAt(i);
             const bool rendering = system.type().name == scene::RenderSystem::Description.canonical_name;
+            if (rendering && invalid_configuration)
+            {
+                scene::RenderSystemConfiguration configuration;
+                assert(scene::renderConfigurationCodec().decode(system.configurationPayload(), &configuration));
+                configuration.configuration.bytes = {std::byte{0xff}};
+                bytes.clear();
+                assert(scene::renderConfigurationCodec().encode(&configuration, bytes));
+            }
             assert(builder.addSystem(
                 system.instanceId(),
                 system.instanceName(),
                 system.type(),
                 rendering && invalid_version ? system.version() + 1 : system.version(),
                 system.configurationSchemaName(),
-                rendering && !invalid_version ? 1 : system.configurationSchemaVersion(),
+                rendering && !invalid_version && !invalid_configuration ? 1 : system.configurationSchemaVersion(),
                 rendering && !invalid_version ? std::span<const std::byte>{bytes} : system.configurationPayload()
             ));
             for (std::size_t j = 0; j < system.requirementBindingCount(); ++j)
@@ -117,6 +132,32 @@ namespace
     SceneCreateResult legacyProfile(const SceneCreateInfo& info) noexcept
     {
         return versionedProfile(info, false);
+    }
+
+    SceneCreateResult invalidConfigurationProfile(const SceneCreateInfo& info) noexcept
+    {
+        return versionedProfile(info, false, true);
+    }
+
+    SceneCreateResult invalidSimulationProfile(const SceneCreateInfo& info) noexcept
+    {
+        auto package = sceneProfile3D().create(info);
+        if (!package)
+        {
+            return package;
+        }
+        simulation::SimulationDescriptionBuilder builder;
+        simulation::SimulationSystemDescription unavailable{{"test.unavailable.simulation", 1}};
+        assert(builder.addSystem(system::SystemInstanceId{1}, "unavailable", unavailable));
+        auto simulation = std::move(builder).build();
+        assert(simulation);
+        return scene::createScenePackage(
+            info.id,
+            info.name,
+            package->world->data().schemas(),
+            std::make_shared<const simulation::SimulationDescription>(std::move(*simulation)),
+            package->scene->data()
+        );
     }
 
     SceneCreateResult invalidVersionProfile(const SceneCreateInfo& info) noexcept
@@ -163,6 +204,14 @@ int main(int argc, char** argv)
             invalid.id = "test.invalid.scene.version";
             invalid.create = &invalidVersionProfile;
             assert(composition.registerSceneProfile(std::move(invalid)));
+            auto configuration = sceneProfile3D();
+            configuration.id = "test.invalid.render.configuration";
+            configuration.create = &invalidConfigurationProfile;
+            assert(composition.registerSceneProfile(std::move(configuration)));
+            auto simulation = sceneProfile3D();
+            simulation.id = "test.invalid.simulation.type";
+            simulation.create = &invalidSimulationProfile;
+            assert(composition.registerSceneProfile(std::move(simulation)));
             assert(composition.registerSceneProfile(sceneProfile3D()));
             assert(registerComponentEditors3D(composition));
             assert(registerRenderConfigurationEditor(composition));
@@ -289,6 +338,28 @@ int main(int argc, char** argv)
             std::this_thread::yield();
         }
     };
+    {
+        // The shipped Scene profile has no Simulation systems. Qualify an external declaration
+        // using the same pure function that Scene preflight and Simulation construction now share.
+        simulation::SimulationSystemDescription description{{"test.simulation.qualifier", 1}};
+        simulation::SimulationSystemRegistry registrations;
+        simulation::SimulationSystemRegistration registration;
+        registration.type = system::systemTypeId(description.type.canonical_name);
+        registration.cpp_type = cxx::typeToken<fixture::ViewObservation>();
+        registration.description = &description;
+        registration.install =
+            +[](simulation::SimulationSystemInstaller&, simulation::SimulationSystemView
+             ) noexcept -> cxx::expected<void, simulation::SimulationSystemBuildFailure> { std::terminate(); };
+        assert(registrations.add(std::move(registration)));
+        simulation::SimulationDescriptionBuilder builder;
+        auto invalid = description;
+        ++invalid.type.version;
+        assert(builder.addSystem(system::SystemInstanceId{1}, "invalid", invalid));
+        auto value = std::move(builder).build();
+        assert(value);
+        auto qualified = simulation::Simulation::validate(*value, registrations);
+        assert(!qualified && qualified.error().code == simulation::ESimulationSystemBuildError::VERSION_MISMATCH);
+    }
     auto& context = host.project();
     auto* bindings = context.extensions().find<scene::RenderBindingDeclarations>();
     assert(bindings);
@@ -296,9 +367,29 @@ int main(int argc, char** argv)
     assert(scene::registerCapabilityOperation<fixture::ViewOperation>(*bindings));
     assert(scene::registerCapabilityOperation<fixture::StatelessObservation>(*bindings, {}, "test.signal.a"));
     assert(scene::registerCapabilityOperation<fixture::StatelessObservation>(*bindings, {}, "test.signal.b"));
-    const auto duplicate_camera =
-        scene::registerComponentBinding<scene::CameraViewBinding>(*bindings, {}, "test.camera.duplicate");
-    assert(!duplicate_camera && duplicate_camera.error() == scene::ERenderBindingDeclarationError::DUPLICATE_RESULT);
+    {
+        auto alternatives = *bindings;
+        const std::array names{std::string_view{"test.alternative.camera"}};
+        assert(scene::registerComponentBinding<
+               scene::CameraViewBinding>(alternatives, {}, "test.camera.alternative", {}, names));
+        render::RenderCapability isolated;
+        isolated.name = names.front();
+        isolated.kind = render::ERenderCapabilityKind::EFFECT;
+        auto alternate = scene::resolveRenderBindings(alternatives, isolated);
+        assert(alternate && alternate->declarations.size() == 1);
+        // Registration is not activation. Two actual writers still fail selected-Plan qualification.
+        auto contracts = render::RenderCapability{};
+        contracts.name = render::kLitSceneCapability;
+        // Both view providers explicitly activated: no fabricated GPU or System construction.
+        auto first = scene::detail::renderBindingDeclaration<scene::CameraViewBinding>();
+        first.role = "first";
+        first.capabilities = {contracts.name};
+        auto second = first;
+        second.role = "second";
+        scene::RenderBindingDeclarations writers;
+        assert(writers.add(std::move(first)) && writers.add(std::move(second)));
+        assert(!scene::resolveRenderBindings(writers, contracts));
+    }
     const std::array unused_capabilities{std::string_view{"test.unselected.capability"}};
     assert(scene::registerComponentBinding<
            scene::MeshRenderBinding>(*bindings, {}, "test.unselected.mesh", {}, unused_capabilities));
@@ -371,6 +462,30 @@ int main(int argc, char** argv)
     const auto* version_build = std::get_if<scene::SceneBuildFailure>(&version_failure->cause);
     assert(version_build && version_build->scene_system.code == scene::ESceneSystemBuildError::VERSION_MISMATCH);
     assert(!std::filesystem::exists(root / "bad-version.luxscene"));
+    for (const auto profile : {"test.invalid.render.configuration", "test.invalid.simulation.type"})
+    {
+        const auto before = context.manifest();
+        invalid_finished = false;
+        assert(scenes.create(
+            {asset::AssetId{generate()}, "Invalid configuration", "bad-config.luxscene", profile},
+            selection()
+        ));
+        until([&] { return invalid_finished; });
+        if (std::string_view{profile} == "test.invalid.render.configuration")
+        {
+            const auto* failure = std::get_if<render::RenderError>(&*scenes.failure());
+            assert(failure && failure->type == render::kInvalidConfig);
+        }
+        else
+        {
+            const auto* failure = std::get_if<scene::SceneRuntimeFailure>(&*scenes.failure());
+            assert(failure);
+            const auto* build = std::get_if<scene::SceneBuildFailure>(&failure->cause);
+            assert(build && build->simulation.code == simulation::ESimulationSystemBuildError::UNKNOWN_SYSTEM_TYPE);
+        }
+        assert(!std::filesystem::exists(root / "bad-config.luxscene"));
+        assert(context.manifest() == before && host.engine().sceneRuntime().instanceCount() == 0);
+    }
     assert(context.manifest() == before_dynamic && host.engine().sceneRuntime().instanceCount() == 0);
 
     const auto id = asset::AssetId{generate()};
@@ -401,6 +516,9 @@ int main(int argc, char** argv)
         }
     );
 
+    assert(host.renderAssets().install(fixture::AssetTableProbe{11}, scene_projection->instanceInput()));
+    assert(!host.renderAssets().install(fixture::AssetTableProbe{12}, scene_projection->instanceInput()));
+    const auto tables_destroyed = fixture::AssetTableProbe::destroyed;
     simulation::ecs::Transform3D left, right;
     left.translation = Eigen::Vector3d{0, 2, 8};
     right.translation = Eigen::Vector3d{5, 3, 8};
@@ -828,18 +946,42 @@ int main(int argc, char** argv)
             }
         };
         assert(inputs[0].destination != inputs[1].destination);
-        scene::RenderBindingPlan ambiguous;
-        ambiguous.declarations.emplace_back().inputs.push_back(scene::MeshRenderBinding::inputs().front());
-        auto selected = ambiguous;
-        selected.declarations.front().destinations.push_back(inputs[1]);
-        assert(!scene::resolveRenderBindingInputs(ambiguous, inputs, {}));
-        assert(scene::resolveRenderBindingInputs(selected, inputs, {}));
-        assert(selected.declarations.front().destinations.front().destination == inputs[1].destination);
+        scene::RenderBindingDeclaration declaration;
+        declaration.inputs.push_back(scene::MeshRenderBinding::inputs().front());
+        declaration.resource_inputs.push_back({declaration.inputs.front().schema});
+        assert(!scene::resolveRenderBindingInputs(declaration, inputs, {}, {}));
+        // Actual construction supplies only the current scope, never another Scene's candidates.
+        auto resolved = scene::resolveRenderBindingInputs(declaration, std::span{inputs}.subspan(1), {}, {});
+        assert(resolved && resolved->front().destination == inputs[1].destination);
     }
     scenes.stopPlay(id);
     until([&] { return !scenes.playInstance(id).valid(); });
     assert(scenes.viewport(*play_view).target.isNull() && scenes.viewport(*b).ready);
 
+    {
+        auto system = host.engine().sceneRuntime().borrowSystem<scene::RenderSystem>(editing_instance);
+        assert(system);
+        auto* cameras = (*system)->binding<scene::CameraViewBinding>();
+        assert(cameras);
+        const auto output = scenes.viewport(*a);
+        bool observed = false;
+        auto retire = [&](simulation::ecs::Registry& registry) noexcept
+        {
+            auto& resources = registry.get<scene::detail::CameraRenderResourceComponent>(output.camera);
+            const auto binding = std::ranges::find_if(
+                resources.bindings,
+                [&](const auto& value) noexcept { return value.adopted.target == output.target; }
+            );
+            assert(binding != resources.bindings.end());
+            fixture::ViewOperation::fail_retirement = binding->view;
+            assert(cameras->removeCameraTarget(output.camera, binding->id));
+            scene::SceneStageContext stage;
+            auto result = cameras->maintain(stage);
+            observed = !result && result.error().cause.type == 0;
+        };
+        until([&] { return host.engine().sceneRuntime().editInstance(editing_instance, retire).has_value(); });
+        assert(observed && fixture::ViewOperation::fail_retirement.isNull());
+    }
     scenes.closeViewport(*a);
     until([&] { return scenes.viewport(*a).target.isNull(); });
     assert(scenes.viewport(*b).ready);
@@ -853,6 +995,7 @@ int main(int argc, char** argv)
     assert(scenes.close(id));
     scene_projection = nullptr;
     until([&] { return host.engine().sceneRuntime().instanceCount() == 0 && scenes.settled(); });
+    assert(fixture::AssetTableProbe::destroyed == tables_destroyed + 1);
     assert(scenes.open(root / "Scenes/authored.luxscene"));
     until([&] { return scenes.find(id) != nullptr; });
     assert(scenes.find(id)->instance() != editing_instance);

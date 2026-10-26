@@ -22,6 +22,7 @@ namespace lux::scene
         RenderAssetInput& asset_input;
         process::asset_loading::AssetReadPort source;
         RenderBindingPlan plan;
+        std::vector<CapabilitiesInstalled::Input> scene_inputs;
         std::vector<detail::RenderBindingInstance> bindings;
 
         struct ViewBindings
@@ -208,6 +209,28 @@ namespace lux::scene
             }
         }
 
+        exec::task<RenderResult<std::vector<CapabilitiesInstalled::Input>>> installInputs(VRenderScope scope) noexcept
+        {
+            auto sources = selectRenderAssetInputs(plan, assets.inputs());
+            if (!sources)
+            {
+                co_return cxx::unexpected(sources.error());
+            }
+            auto install = client.bind<InstallCapabilities>();
+            if (!install)
+            {
+                co_return cxx::unexpected(install.error());
+            }
+            CapabilityInstallation request{plan.implementation, std::move(scope), plan.configuration.configuration};
+            request.source_inputs = std::move(*sources);
+            auto result = co_await client.request(*install, request);
+            if (result.error.type != 0)
+            {
+                co_return cxx::unexpected(result.error);
+            }
+            co_return std::move(result.inputs);
+        }
+
         exec::task<RenderResult<void>> initialize() noexcept
         {
             for (const auto& declaration : plan.declarations)
@@ -222,8 +245,7 @@ namespace lux::scene
                 }
             }
             auto create = client.bind<CreateScene>();
-            auto install = client.bind<InstallCapabilities>();
-            if (!create || !install)
+            if (!create)
             {
                 co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
             }
@@ -234,25 +256,18 @@ namespace lux::scene
                 co_return cxx::unexpected(created.error);
             }
             scene = created.scene;
-            CapabilityInstallation request{plan.implementation, scene, plan.configuration.configuration};
-            const auto inputs = assets.inputs();
-            request.source_inputs.assign(inputs.begin(), inputs.end());
-            auto result = co_await client.request(*install, request);
-            if (result.error.type != 0)
+            auto inputs = co_await installInputs(scene);
+            if (!inputs)
             {
-                co_return cxx::unexpected(result.error);
+                co_return cxx::unexpected(inputs.error());
             }
-            auto resolved = resolveRenderBindingInputs(plan, result.inputs, assets.inputs());
-            if (!resolved)
-            {
-                co_return resolved;
-            }
+            scene_inputs = std::move(*inputs);
             installed = true;
             co_return RenderResult<void>{};
         }
 
         RenderBindingContext bindingContext(
-            const RenderBindingDeclaration& declaration,
+            std::span<const CapabilitiesInstalled::Input> inputs,
             ViewId view,
             Entity entity
         ) noexcept
@@ -261,7 +276,7 @@ namespace lux::scene
                 registry,
                 client,
                 execution,
-                declaration.destinations,
+                inputs,
                 plan.contracts,
                 assets,
                 asset_input,
@@ -276,8 +291,13 @@ namespace lux::scene
                 { return static_cast<Impl*>(data)->find(type, role, view); },
                 [](void* data, cxx::TypeToken type, ViewId view, void* receiver, void (*apply)(void*, void*) noexcept
                 ) noexcept { static_cast<Impl*>(data)->visit(type, view, receiver, apply); },
-                [](void* data, ViewId view, Entity entity) noexcept
-                { return static_cast<Impl*>(data)->bindView(view, entity); },
+                [](void* data, ViewId view) noexcept
+                {
+                    auto& self = *static_cast<Impl*>(data);
+                    return self.installInputs(ViewRequest{self.scene, view});
+                },
+                [](void* data, ViewId view, Entity entity, std::span<const CapabilitiesInstalled::Input> inputs
+                ) noexcept { return static_cast<Impl*>(data)->bindView(view, entity, inputs); },
                 [](void* data, ViewId view, SceneStageContext& stage) noexcept
                 { return static_cast<Impl*>(data)->finishView(view, stage); }
             };
@@ -299,7 +319,8 @@ namespace lux::scene
             std::vector<detail::RenderBindingInstance>& output,
             ERenderOperationScope scope,
             ViewId view = {},
-            Entity entity = NullEntity
+            Entity entity = NullEntity,
+            std::span<const CapabilitiesInstalled::Input> view_inputs = {}
         ) noexcept
         {
             output.reserve(std::ranges::count(plan.declarations, scope, &RenderBindingDeclaration::scope));
@@ -309,7 +330,12 @@ namespace lux::scene
                 {
                     continue;
                 }
-                auto context = bindingContext(declaration, view, entity);
+                auto inputs = resolveRenderBindingInputs(declaration, scene_inputs, view_inputs, assets.inputs());
+                if (!inputs)
+                {
+                    return cxx::unexpected(inputs.error());
+                }
+                auto context = bindingContext(*inputs, view, entity);
                 context.role = declaration.role;
                 context.role_index = declaration.role_index;
                 auto created = declaration.create(context);
@@ -330,7 +356,11 @@ namespace lux::scene
             return connected;
         }
 
-        RenderResult<void> bindView(ViewId view, Entity entity) noexcept
+        RenderResult<void> bindView(
+            ViewId view,
+            Entity entity,
+            std::span<const CapabilitiesInstalled::Input> inputs
+        ) noexcept
         {
             if (closing || view.isNull())
             {
@@ -343,7 +373,7 @@ namespace lux::scene
                                                                    : cxx::unexpected(RenderError{kRuntimeIdentity});
             }
             auto& entry = views.emplace_back(view, entity);
-            auto result = constructBindings(entry.bindings, ERenderOperationScope::VIEW, view, entity);
+            auto result = constructBindings(entry.bindings, ERenderOperationScope::VIEW, view, entity, inputs);
             if (!result)
             {
                 // Constructors only capture dependencies; no accepted work precedes stage execution.
@@ -372,7 +402,14 @@ namespace lux::scene
             const auto found = std::ranges::find(views, view, &ViewBindings::view);
             if (found == views.end())
             {
-                return ESceneProgress::COMPLETE;
+                auto removed = assets.removeTables(ViewRequest{scene, view});
+                if (!removed)
+                {
+                    return cxx::unexpected(
+                        SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, removed.error()}
+                    );
+                }
+                return *removed ? ESceneProgress::COMPLETE : ESceneProgress::PENDING;
             }
             found->retiring = true;
             auto stopped = stoppedStage(stage);
@@ -388,6 +425,16 @@ namespace lux::scene
                 {
                     return result;
                 }
+            }
+            auto removed = assets.removeTables(ViewRequest{scene, view});
+            if (!removed)
+            {
+                return cxx::unexpected(SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, removed.error()}
+                );
+            }
+            if (!*removed)
+            {
+                return ESceneProgress::PENDING;
             }
             // Only after all accepted View work is settled can the provider remove its native View.
             views.erase(found);
@@ -509,6 +556,16 @@ namespace lux::scene
                 {
                     return result;
                 }
+            }
+            auto removed = self.assets.removeTables(self.scene);
+            if (!removed)
+            {
+                return cxx::unexpected(SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, removed.error()}
+                );
+            }
+            if (!*removed)
+            {
+                return ESceneProgress::PENDING;
             }
             for (auto& binding : self.bindings)
             {

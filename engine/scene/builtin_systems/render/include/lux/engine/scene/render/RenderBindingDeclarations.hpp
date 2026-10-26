@@ -10,8 +10,7 @@ namespace lux::scene
     {
         INVALID_DECLARATION,
         DUPLICATE_TYPE,
-        DUPLICATE_NAME,
-        DUPLICATE_RESULT
+        DUPLICATE_NAME
     };
 
     using RenderBindingRegistrationResult = cxx::expected<void, ERenderBindingDeclarationError>;
@@ -36,10 +35,9 @@ namespace lux::scene
         std::vector<render::RenderPayloadContract> inputs;
         // Optional cold selection. Empty capability names use exact payload matching.
         std::vector<std::string> capabilities;
-        // Schemas whose producer identities belong to shared asset tables, not Scene consumer aliases.
-        std::vector<std::string> asset_inputs;
-        // Explicit destinations are qualified against installation; unresolved entries are filled once.
-        std::vector<render::CapabilitiesInstalled::Input> destinations;
+        // Only inputs borrowed by this factory. Other payload contracts qualify capability
+        // selection; dependent operations borrow their producer's already resolved input.
+        std::vector<RenderInputSelection> resource_inputs;
         std::vector<system::SystemDataContract> data_inputs;
         bool each_frame = false;
         // Result records separate every active role/View instance; default components have one writer.
@@ -173,9 +171,10 @@ namespace lux::scene
             result.results = renderSourceTypes(std::type_identity<typename T::ResultComponents>{});
             const auto inputs = T::inputs();
             result.inputs.assign(inputs.begin(), inputs.end());
-            if constexpr (requires { T::asset_inputs; })
+            if constexpr (requires { T::resourceInputs(); })
             {
-                result.asset_inputs.assign(std::begin(T::asset_inputs), std::end(T::asset_inputs));
+                const auto inputs = T::resourceInputs();
+                result.resource_inputs.assign(inputs.begin(), inputs.end());
             }
             if constexpr (requires { T::data_inputs; })
             {
@@ -297,14 +296,17 @@ namespace lux::scene
         RenderBindingDeclarations& declarations,
         std::shared_ptr<const void> code_lifetime = {},
         std::string_view role = {},
-        std::span<const render::CapabilitiesInstalled::Input> destinations = {},
+        std::span<const RenderInputSelection> resource_inputs = {},
         std::span<const std::string_view> capabilities = {}
     ) noexcept
     {
         auto declaration = detail::renderBindingDeclaration<T>();
         declaration.code_lifetime = std::move(code_lifetime);
         declaration.role = role.empty() ? declaration.name : role;
-        declaration.destinations.assign(destinations.begin(), destinations.end());
+        if (!resource_inputs.empty())
+        {
+            declaration.resource_inputs.assign(resource_inputs.begin(), resource_inputs.end());
+        }
         declaration.capabilities.assign(capabilities.begin(), capabilities.end());
         return declarations.add(std::move(declaration));
     }
@@ -314,14 +316,17 @@ namespace lux::scene
         RenderBindingDeclarations& declarations,
         std::shared_ptr<const void> code_lifetime = {},
         std::string_view role = {},
-        std::span<const render::CapabilitiesInstalled::Input> destinations = {},
+        std::span<const RenderInputSelection> resource_inputs = {},
         std::span<const std::string_view> capabilities = {}
     ) noexcept
     {
         auto declaration = detail::renderBindingDeclaration<T>();
         declaration.code_lifetime = std::move(code_lifetime);
         declaration.role = role.empty() ? declaration.name : role;
-        declaration.destinations.assign(destinations.begin(), destinations.end());
+        if (!resource_inputs.empty())
+        {
+            declaration.resource_inputs.assign(resource_inputs.begin(), resource_inputs.end());
+        }
         declaration.capabilities.assign(capabilities.begin(), capabilities.end());
         declaration.scope = T::scope;
         return declarations.add(std::move(declaration));

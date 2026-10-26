@@ -28,6 +28,12 @@ namespace lux::scene
         [[nodiscard]] static render::RenderResult<std::unique_ptr<DirectLightBinding>>
         create(RenderBindingContext&) noexcept;
         ~DirectLightBinding() noexcept;
+        static std::span<const RenderInputSelection> resourceInputs() noexcept;
+
+        [[nodiscard]] render::CapabilityInput lightInput() const noexcept
+        {
+            return input_;
+        }
         [[nodiscard]] SceneStageResult maintain(SceneStageContext&) noexcept;
 
         template <class C>

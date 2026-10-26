@@ -150,7 +150,7 @@ namespace lux::scene
             return resolved;
         }
 
-        struct SceneDataPreparation final
+        struct SceneConstruction final
         {
             SceneDataDependencies scene;
             std::vector<detail::ResolvedSceneRequirement> requirements;
@@ -159,10 +159,10 @@ namespace lux::scene
             std::vector<std::size_t> order;
         };
 
-        cxx::expected<SceneDataPreparation, SceneBuildFailure> prepareDataDependencies(const SceneCreateInfo& info
+        cxx::expected<SceneConstruction, SceneBuildFailure> prepareDataDependencies(const SceneCreateInfo& info
         ) noexcept
         {
-            SceneDataPreparation result;
+            SceneConstruction result;
             std::vector<std::vector<system::SystemDataContract>> dynamic_inputs(info.scene->systemCount());
             const auto simulation_count = info.simulation->systemCount();
             std::vector<SceneSystemContract> systems;
@@ -285,7 +285,7 @@ namespace lux::scene
             return result;
         }
 
-        cxx::expected<SceneDataPreparation, SceneBuildFailure> validateDataDependencies(const SceneCreateInfo& info
+        cxx::expected<SceneConstruction, SceneBuildFailure> prepareSceneConstruction(const SceneCreateInfo& info
         ) noexcept
         {
             if (!info.scene)
@@ -299,6 +299,13 @@ namespace lux::scene
             if (!info.simulation)
             {
                 return lux::cxx::unexpected(buildFailure(ESceneBuildError::INVALID_SIMULATION));
+            }
+            auto simulation = simulation::Simulation::validate(*info.simulation, info.simulation_systems);
+            if (!simulation)
+            {
+                auto failure = buildFailure(ESceneBuildError::SIMULATION_BUILD_FAILURE);
+                failure.simulation = simulation.error();
+                return cxx::unexpected(failure);
             }
             for (std::size_t index{}; index < info.scene_systems.size(); ++index)
             {
@@ -502,7 +509,7 @@ namespace lux::scene
 
     cxx::expected<void, SceneBuildFailure> SceneInstance::validate(const SceneCreateInfo& info) noexcept
     {
-        auto prepared = validateDataDependencies(info);
+        auto prepared = prepareSceneConstruction(info);
         if (!prepared)
         {
             return cxx::unexpected(prepared.error());
@@ -515,7 +522,7 @@ namespace lux::scene
         SceneInstanceId id
     ) noexcept
     {
-        auto data_dependencies = validateDataDependencies(info);
+        auto data_dependencies = prepareSceneConstruction(info);
         if (!data_dependencies)
         {
             return cxx::unexpected(std::move(data_dependencies.error()));

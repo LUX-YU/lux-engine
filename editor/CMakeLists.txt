@@ -795,6 +795,7 @@ if(BUILD_TESTING)
     )
     target_link_libraries(engine_render_ui_test PRIVATE
         lux_editor_app lux::engine::engine_render_context lux::engine::function::render_extensions
+        lux::engine::scene::scene_render
     )
     add_test(NAME engine.render_ui COMMAND engine_render_ui_test)
     add_test(NAME engine.render_ui32 COMMAND engine_render_ui_test uint32)

@@ -206,6 +206,37 @@ namespace lux::engine::render
         return resource_capability_;
     }
 
+    RenderResult<bool> RenderAssets::removeTables(const VRenderScope& scope) noexcept
+    {
+        for (const auto& installed : tables_)
+        {
+            const auto& table = *installed.table;
+            if (table.destination.scope == scope && !table.empty())
+            {
+                if (table.settled())
+                {
+                    return cxx::unexpected(table.releaseFailure());
+                }
+                return false;
+            }
+        }
+        // Move the whole code-pinned unit out before vector compaction; default move assignment
+        // would otherwise release a pin before destroying the table that still uses its code.
+        for (auto entry = tables_.begin(); entry != tables_.end();)
+        {
+            if (entry->table->destination.scope == scope)
+            {
+                auto removed = std::move(*entry);
+                entry = tables_.erase(entry);
+            }
+            else
+            {
+                ++entry;
+            }
+        }
+        return true;
+    }
+
     void RenderAssets::close() noexcept
     {
         stopLoads();

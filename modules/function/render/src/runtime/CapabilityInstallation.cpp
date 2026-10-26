@@ -264,6 +264,29 @@ namespace lux::render
         return result;
     }
 
+    void RenderServer::Impl::validateCapabilityConfiguration(
+        const ValidateCapabilityConfiguration::Request& input,
+        ValidateCapabilityConfiguration::Response& result
+    ) noexcept
+    {
+        const auto* capability = selectedCapability(input.selection);
+        if (!capability)
+        {
+            result.error = RenderError{kRuntimeIdentity};
+            return;
+        }
+        const auto& feature = *features.find(input.selection.implementation_);
+        ConfigValue decoded;
+        auto configuration = qualifyConfiguration(feature, input.configuration, decoded);
+        if (!configuration)
+        {
+            result.error = configuration.error();
+            return;
+        }
+        auto dependencies = resolveCapabilityStorage(feature, *capability, **configuration);
+        result.error = dependencies ? RenderError{} : dependencies.error();
+    }
+
     void RenderServer::Impl::installCapabilities(
         const InstallCapabilities::Request& input,
         InstallCapabilities::Response& result
@@ -382,27 +405,25 @@ namespace lux::render
         }
         for (const auto& source : input.source_inputs)
         {
-            const auto destination = std::ranges::find_if(
-                bindings,
-                [&](const auto& binding) noexcept
-                {
-                    const auto& declaration = declarations[binding.input];
-                    return declaration.schema == source.schema;
-                }
-            );
-            if (destination == bindings.end())
+            bool consumes_schema = false;
+            bool compatible = false;
+            const auto storage = resources->inputStorage(source.destination);
+            for (const auto& binding : bindings)
             {
-                continue; // A consumer without this input does not acquire an asset dependency.
+                const auto& declaration = declarations[binding.input];
+                if (declaration.schema == source.schema)
+                {
+                    consumes_schema = true;
+                    compatible |= source.version == declaration.version && storage == binding.storage;
+                }
             }
-            const auto& declaration = declarations[destination->input];
-            const bool incompatible = source.version != declaration.version ||
-                                      resources->inputStorage(source.destination) != destination->storage;
-            if (incompatible)
+            if (consumes_schema && !compatible)
             {
                 result.error = RenderError{kFeatureResourceMismatch};
                 return;
             }
         }
+
         // No fallible allocation or user factory remains. Publish all input relations together.
         for (const auto& binding : bindings)
         {

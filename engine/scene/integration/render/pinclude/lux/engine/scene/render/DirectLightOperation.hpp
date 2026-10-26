@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/context/render/RenderRequester.hpp>
+#include <lux/engine/scene/render/DirectLightBinding.hpp>
 
 #include <entt/container/dense_set.hpp>
 #include <lux/engine/scene/render/LightRenderResourceComponent.hpp>
@@ -16,6 +17,7 @@ namespace lux::scene
         using SourceComponents = std::
             tuple<simulation::ecs::Light3D, simulation::ecs::WorldTransform3D, detail::LightRenderResourceComponent>;
         using ResultComponents = std::tuple<>;
+        using Dependencies = std::tuple<DirectLightBinding>;
         static constexpr std::string_view name = "lux.scene.operation.direct_light_parameters";
         static constexpr auto scope = ERenderOperationScope::SCENE;
 

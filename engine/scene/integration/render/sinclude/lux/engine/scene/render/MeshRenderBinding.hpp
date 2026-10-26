@@ -19,7 +19,7 @@ namespace lux::scene
         using SourceComponents = std::tuple<simulation::ecs::Mesh3D, simulation::ecs::WorldTransform3D>;
         using ResultComponents = std::tuple<detail::MeshRenderResourceComponent>;
         static constexpr bool partitioned_results = true;
-        static constexpr std::string_view asset_inputs[]{render::kIndexedMeshInput, render::kSampledTextureInput};
+        static std::span<const RenderInputSelection> resourceInputs() noexcept;
         static constexpr std::string_view name = "lux.scene.binding.raster_mesh";
         static constexpr system::SystemDataContract data_inputs[]{
             {"lux.ecs.Transform3D"},

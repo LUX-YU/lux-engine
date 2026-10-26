@@ -16,11 +16,6 @@ namespace lux::scene
         }
         for (const auto& existing : declarations_)
         {
-            const bool duplicate_result = std::ranges::any_of(
-                declaration.results,
-                [&](auto result) noexcept
-                { return std::ranges::find(existing.results, result) != existing.results.end(); }
-            );
             if (existing.type == declaration.type && existing.role == declaration.role)
             {
                 return cxx::unexpected(ERenderBindingDeclarationError::DUPLICATE_TYPE);
@@ -29,10 +24,23 @@ namespace lux::scene
             {
                 return cxx::unexpected(ERenderBindingDeclarationError::DUPLICATE_NAME);
             }
-            if (duplicate_result && (existing.role == declaration.role || !existing.partitioned_results ||
-                                     !declaration.partitioned_results))
+        }
+        for (std::size_t i = 0; i < declaration.resource_inputs.size(); ++i)
+        {
+            const auto& selection = declaration.resource_inputs[i];
+            const auto contract =
+                std::ranges::find(declaration.inputs, selection.schema, &render::RenderPayloadContract::schema);
+            const bool invalid_contract =
+                contract == declaration.inputs.end() || contract->use != render::ERenderPayloadUse::RESOURCE_INPUT;
+            const bool invalid_scope =
+                selection.source == ERenderInputSource::VIEW && declaration.scope != ERenderOperationScope::VIEW;
+            const bool duplicate = std::ranges::any_of(
+                std::span{declaration.resource_inputs}.first(i),
+                [&](const auto& previous) noexcept { return previous.schema == selection.schema; }
+            );
+            if (invalid_contract || invalid_scope || duplicate)
             {
-                return cxx::unexpected(ERenderBindingDeclarationError::DUPLICATE_RESULT);
+                return cxx::unexpected(ERenderBindingDeclarationError::INVALID_DECLARATION);
             }
         }
         declarations_.push_back(std::move(declaration));

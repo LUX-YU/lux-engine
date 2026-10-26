@@ -280,6 +280,88 @@ namespace lux::simulation
                 return std::move(*order);
             }
         }
+
+        struct SimulationConstruction final
+        {
+            std::vector<const SimulationSystemRegistration*> registrations;
+            std::vector<std::vector<std::size_t>> predecessors;
+            std::vector<std::size_t> order;
+        };
+
+        lux::cxx::expected<SimulationConstruction, SimulationSystemBuildFailure> prepareSimulationConstruction(
+            const SimulationDescription& description,
+            const SimulationSystemRegistry& system_types
+        ) noexcept
+        {
+            SimulationConstruction result;
+            auto order = dependencyOrder(description, result.predecessors);
+            if (!order)
+            {
+                return cxx::unexpected(order.error());
+            }
+            result.order = std::move(*order);
+            result.registrations.resize(description.systemCount());
+            for (std::size_t ordinal{}; ordinal < description.systemCount(); ++ordinal)
+            {
+                const auto system = description.systemAt(ordinal);
+                const auto* registration = system_types.find(system.type());
+                if (registration == nullptr)
+                {
+                    return lux::cxx::unexpected(
+                        buildFailure(ESimulationSystemBuildError::UNKNOWN_SYSTEM_TYPE, system.instanceId())
+                    );
+                }
+                if (registration->description == nullptr || registration->description->type.version != system.version())
+                {
+                    return lux::cxx::unexpected(
+                        buildFailure(ESimulationSystemBuildError::VERSION_MISMATCH, system.instanceId())
+                    );
+                }
+                if (!matchesSimulationSystemContract(system, *registration->description))
+                {
+                    return lux::cxx::unexpected(
+                        buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, system.instanceId())
+                    );
+                }
+                if (system.multiplicity() == lux::system::ESystemMultiplicity::SINGLE_PER_OWNER)
+                {
+                    for (std::size_t previous{}; previous < ordinal; ++previous)
+                    {
+                        const auto candidate = description.systemAt(previous);
+                        if (candidate.type() == system.type())
+                        {
+                            return lux::cxx::unexpected(buildFailure(
+                                ESimulationSystemBuildError::DUPLICATE_SYSTEM,
+                                system.instanceId(),
+                                candidate.instanceId()
+                            ));
+                        }
+                    }
+                }
+                if (registration->configuration.valid())
+                {
+                    std::vector<std::byte> checked;
+                    auto decoded = registration->configuration.reencode(
+                        system.configurationPayload(),
+                        registration->configuration.decode,
+                        checked
+                    );
+                    if (!decoded)
+                    {
+                        auto failure = buildFailure(
+                            ESimulationSystemBuildError::CONFIGURATION_DECODE_FAILURE,
+                            system.instanceId()
+                        );
+                        failure.configuration = decoded.error();
+                        return cxx::unexpected(failure);
+                    }
+                }
+                result.registrations[ordinal] = registration;
+            }
+
+            return result;
+        }
+
     } // namespace
 
     ecs::Registry& SimulationSystemInstaller::registry() noexcept
@@ -723,6 +805,19 @@ namespace lux::simulation
     Simulation& Simulation::operator=(Simulation&&) noexcept = default;
     Simulation::~Simulation() noexcept = default;
 
+    cxx::expected<void, SimulationSystemBuildFailure> Simulation::validate(
+        const SimulationDescription& description,
+        const SimulationSystemRegistry& system_types
+    ) noexcept
+    {
+        auto construction = prepareSimulationConstruction(description, system_types);
+        if (!construction)
+        {
+            return cxx::unexpected(construction.error());
+        }
+        return {};
+    }
+
     lux::cxx::expected<Simulation, SimulationSystemBuildFailure> Simulation::create(
         ecs::Registry& registry,
         std::shared_ptr<const SimulationDescription> description,
@@ -741,57 +836,21 @@ namespace lux::simulation
             impl->systems.reserve(impl->description->systemCount());
 
             SimulationSystemInstaller::Impl build(*impl);
-            auto order = dependencyOrder(*impl->description, build.predecessors);
-            if (!order)
+            auto construction = prepareSimulationConstruction(*impl->description, system_types);
+            if (!construction)
             {
-                return lux::cxx::unexpected(order.error());
+                return cxx::unexpected(construction.error());
             }
+            build.predecessors = std::move(construction->predecessors);
             build.primary_tasks.resize(impl->description->systemCount());
-
-            std::vector<const SimulationSystemRegistration*> registrations(impl->description->systemCount(), nullptr);
-            for (std::size_t ordinal{}; ordinal < impl->description->systemCount(); ++ordinal)
+            const auto& registrations = construction->registrations;
+            for (const auto* registration : registrations)
             {
-                const auto system = impl->description->systemAt(ordinal);
-                const auto* registration = system_types.find(system.type());
-                if (registration == nullptr)
-                {
-                    return lux::cxx::unexpected(
-                        buildFailure(ESimulationSystemBuildError::UNKNOWN_SYSTEM_TYPE, system.instanceId())
-                    );
-                }
-                if (registration->description == nullptr || registration->description->type.version != system.version())
-                {
-                    return lux::cxx::unexpected(
-                        buildFailure(ESimulationSystemBuildError::VERSION_MISMATCH, system.instanceId())
-                    );
-                }
-                if (!matchesSimulationSystemContract(system, *registration->description))
-                {
-                    return lux::cxx::unexpected(
-                        buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, system.instanceId())
-                    );
-                }
-                if (system.multiplicity() == lux::system::ESystemMultiplicity::SINGLE_PER_OWNER)
-                {
-                    for (std::size_t previous{}; previous < ordinal; ++previous)
-                    {
-                        const auto candidate = impl->description->systemAt(previous);
-                        if (candidate.type() == system.type())
-                        {
-                            return lux::cxx::unexpected(buildFailure(
-                                ESimulationSystemBuildError::DUPLICATE_SYSTEM,
-                                system.instanceId(),
-                                candidate.instanceId()
-                            ));
-                        }
-                    }
-                }
-                registrations[ordinal] = registration;
                 impl->code_owners.push_back(registration->code_lifetime);
             }
 
             SimulationSystemInstaller builder(build);
-            for (const std::size_t ordinal : *order)
+            for (const std::size_t ordinal : construction->order)
             {
                 build.current_ordinal = ordinal;
                 build.current_registration = registrations[ordinal];

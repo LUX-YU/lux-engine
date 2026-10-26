@@ -23,6 +23,12 @@ namespace lux::scene
         return contracts;
     }
 
+    std::span<const RenderInputSelection> DirectLightBinding::resourceInputs() noexcept
+    {
+        static const std::array inputs{RenderInputSelection{std::string(kDirectLightsInput)}};
+        return inputs;
+    }
+
     RenderResult<std::unique_ptr<DirectLightBinding>> DirectLightBinding::create(RenderBindingContext& context) noexcept
     {
         const auto input = context.input(kDirectLightsInput);

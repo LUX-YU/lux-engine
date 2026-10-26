@@ -59,17 +59,26 @@ Scene maintenance 仅在允许结构修改的安全点装入结果。结果组�
 从仍可读的组件中取出本角色句柄，不能释放别人的角色。候选集合只包含尚未完成的需求。
 内置 Mesh 与 Transform 操作使用 `raster.mesh` 角色；相同专业类型可按其它角色再次登记。
 各角色实例身份独立，实际相同 Pipeline/目的地/资产版本仍共享上传表示。
-只有明确声明 `partitioned_results = true`、实际按角色维护结果的实现才允许复用相同 ResultComponent；
-Light/Camera 等单例结果的第二生产者会在登记时拒绝。
-安装后 `resolveRenderBindingInputs()` 一次形成各角色的准确目的地。注册时可提供实际
-CapabilitiesInstalled::Input 作为显式选择；缺省选择必须唯一，歧义或过期选择在构造前失败。
-声明的 asset_inputs 明确选择共享资产表的生产者身份；其它资源输入使用 Scene 安装身份。
-不能用 Scene 的消费别名查询按生产者身份保存的共享资产表。VIEW 声明若产生 ResultComponent，
-也必须明确采用按实例分区的结果合同，不能让多个 View 覆盖同一个单值结果。
-专业工厂只用 `context.input(schema)`，Transform 从本角色 Mesh 生产者取得相同的实例目的地，
-不再各自取第一个/最后一个 Schema 匹配项。
+单写者资格在本次选中的 Plan 上检查，不在全局登记时排斥互斥能力的备用实现。
+只有明确声明 `partitioned_results = true`、实际按角色/View 分区的实现才能同时写同一结果组件。
+`Dependencies` 表示构造借用；观察结果组件只连接 EnTT，不隐式建立构造依赖。因此 Scene 观察者
+可以在 View 创建之前连接，随后收到 View 产生的组件事件。
+
+`resourceInputs()` 声明工厂实际借用的资源输入。每项包含 schema、SCENE/VIEW/ASSETS 来源，
+以及可选 implementation/index；缺省选择必须唯一。选择值不保存未来 Scene/View 的代际 ID。
+`inputs()` 仍表示能力匹配合同；仅通过已有生产者更新资源的操作不再重复声明目的地。
+Transform/Light 更新操作从所依赖的 Mesh/Light 生产者借用准确目的地。
+
+安装前从共享资产输入中只选出当前 Plan 使用的生产者，再调用 InstallCapabilities。安装后
+`resolveRenderBindingInputs()` 根据本次 Scene/View 结果产生临时的工厂借用，不修改声明 Plan。
+不能用 Scene 消费别名查询按生产者身份保存的资产表。多个同 schema 生产者必须明确选择，
+Render 仍检查所选生产者与实际 Storage 的相容性，未选择的生产者不会干扰安装。
+
 资产按 Pipeline、实际输入目的地、来源域和版本复用。CPU Cooked Material 与 GPU Material
 使用不同表示表；后者引用已就绪的 Cooked 和 Texture，不重复读取或解码。
+同 Pipeline/目的地再次安装时，Pipeline 的 `compatible()` 必须验证全部表示依赖（包括材质的
+Texture 来源）。Scene/View 停止生产并清偿全部记录后，在结构安全点移除对应表；不能在完成
+回调栈中删除表，也不把历史空表永久留到应用退出。Global 表继续由共享 RenderAssets 持有。
 
 新候选先准备依赖，再等待有关 View 采用可用几何/材质集合，然后创建或替换实例。
 完成后仍须匹配实体 generation 和当前需求代次。迟到成功不安装到过期实体；已接受的替换
@@ -121,3 +130,14 @@ Scene/View 实例借用该不可变声明，实例和删除回调结束后 Plan 
 外部 Pipeline 可在 `RenderAssets::install(pipeline, destination, code_lifetime)` 中提供代码 pin。
 它随实际表保存，晚于多态表析构及 foreign delete 返回释放；不按资源复制。内置静态代码传空 pin。
 这提供卸载寿命保护，不提供运行中替换某个已安装 Pipeline 的产品接口。
+
+## 资格与采用边界
+
+创建预校验使用同一 Scene/Simulation 构造资格算法，包括版本、合同、配置解码和依赖顺序。
+Render 的嵌套配置通过 ValidateCapabilityConfiguration 调用实际实现的 codec/依赖解析，
+不创建 Storage 或 GPU 资源。真实工厂、IO、设备分配失败仍属于后续实际执行结果。
+
+View 提供者先创建原生 View，再通过 `prepare_view` 安装其实际资源。有限候选拥有安装回复，
+到结构采用安全点才调用 `bind_view` 构造行为。失效候选走原有退出路径；Resize 不重建行为。
+局部 `finish_view` 的失败保留完整 SceneExecutionFailure，不能只提取可选的领域 cause。
+原生 View 删除之前先清偿其行为和资产表；Scene 删除遵循相同顺序。

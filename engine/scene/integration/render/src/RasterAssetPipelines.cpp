@@ -206,28 +206,40 @@ namespace lux::scene
         {
             co_return cxx::unexpected(installed.error);
         }
-        CapabilityInput mesh_input, texture_input;
+        bool has_mesh = false, has_texture = false;
         for (const auto& input : installed.inputs)
         {
+            RenderResult<void> installed_table;
             if (input.schema == kIndexedMeshInput)
             {
-                mesh_input = input.destination;
+                has_mesh = true;
+                installed_table = assets.install(
+                    MeshAssetPipeline{execution, input.destination, *mesh_create, *mesh_release},
+                    input.destination
+                );
             }
             else if (input.schema == kSampledTextureInput)
             {
-                texture_input = input.destination;
+                has_texture = true;
+                installed_table = assets.install(
+                    TextureAssetPipeline{execution, input.destination, *texture_create, *texture_release},
+                    input.destination
+                );
+            }
+            if (!installed_table)
+            {
+                co_return installed_table;
             }
         }
-        if (mesh_input.implementation.isNull() || texture_input.implementation.isNull())
+        if (!has_mesh || !has_texture)
         {
             co_return cxx::unexpected(RenderError{kRuntimeUnsupported});
         }
-        assets.install(MeshAssetPipeline{execution, mesh_input, *mesh_create, *mesh_release}, mesh_input);
-        assets.install(
-            TextureAssetPipeline{execution, texture_input, *texture_create, *texture_release},
-            texture_input
-        );
-        assets.install(MaterialAssetPipeline{execution.execution().cpu()});
+        auto material_table = assets.install(MaterialAssetPipeline{execution.execution().cpu()});
+        if (!material_table)
+        {
+            co_return material_table;
+        }
         assets.addInputs(installed.inputs);
         co_return RenderResult<void>{};
     }

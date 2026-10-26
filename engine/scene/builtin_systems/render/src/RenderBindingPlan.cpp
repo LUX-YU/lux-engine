@@ -4,77 +4,112 @@
 
 namespace lux::scene
 {
-    render::RenderResult<void> resolveRenderBindingInputs(
-        RenderBindingPlan& plan,
-        std::span<const render::CapabilitiesInstalled::Input> scene_inputs,
-        std::span<const render::CapabilitiesInstalled::Input> resource_inputs
-    ) noexcept
+    namespace
     {
-        using namespace render;
-        for (auto& declaration : plan.declarations)
+        using InstalledInput = render::CapabilitiesInstalled::Input;
+
+        render::RenderResult<std::optional<InstalledInput>> selectInput(
+            const RenderBindingDeclaration& declaration,
+            const RenderInputSelection& selection,
+            std::span<const InstalledInput> candidates
+        ) noexcept
         {
-            auto selected = std::move(declaration.destinations);
-            std::vector<CapabilitiesInstalled::Input> resolved;
-            for (const auto& contract : declaration.inputs)
+            const auto contract =
+                std::ranges::find(declaration.inputs, selection.schema, &render::RenderPayloadContract::schema);
+            if (contract == declaration.inputs.end() || contract->use != render::ERenderPayloadUse::RESOURCE_INPUT)
             {
-                if (contract.use != ERenderPayloadUse::RESOURCE_INPUT)
+                return cxx::unexpected(render::RenderError{render::kCommandContract});
+            }
+            const InstalledInput* found = nullptr;
+            for (const auto& input : candidates)
+            {
+                const bool matches_schema = input.schema == selection.schema && input.version == contract->version;
+                const bool matches_implementation =
+                    selection.implementation.isNull() || input.destination.implementation == selection.implementation;
+                const bool matches_index = !selection.index || input.destination.index == *selection.index;
+                const bool matches_scope = selection.source != ERenderInputSource::VIEW ||
+                                           std::holds_alternative<render::ViewRequest>(input.destination.scope);
+                if (!matches_schema || !matches_implementation || !matches_index || !matches_scope)
                 {
                     continue;
                 }
-                const auto chosen = std::ranges::find(selected, contract.schema, &CapabilitiesInstalled::Input::schema);
-                const CapabilitiesInstalled::Input* found = nullptr;
-                bool ambiguous = false;
-                const auto consider = [&](const auto& input) noexcept
+                if (found && found->destination != input.destination)
                 {
-                    if (input.schema != contract.schema || input.version != contract.version)
-                    {
-                        return;
-                    }
-                    if (chosen != selected.end() && input.destination != chosen->destination)
-                    {
-                        return;
-                    }
-                    ambiguous |= found && found->destination != input.destination;
-                    found = &input;
-                };
-                const bool from_assets =
-                    std::ranges::find(declaration.asset_inputs, contract.schema) != declaration.asset_inputs.end();
-                const auto candidates = from_assets ? resource_inputs : scene_inputs;
-                for (const auto& input : candidates)
-                {
-                    consider(input);
+                    return cxx::unexpected(render::RenderError{render::kRuntimeUnsupported});
                 }
-                if (ambiguous || (!found && (contract.required || chosen != selected.end())))
-                {
-                    return cxx::unexpected(RenderError{kRuntimeUnsupported});
-                }
-                if (found)
-                {
-                    resolved.push_back(*found);
-                }
+                found = &input;
             }
-            for (const auto& schema : declaration.asset_inputs)
+            if (found)
             {
-                const auto found = std::ranges::find(declaration.inputs, schema, &RenderPayloadContract::schema);
-                const bool invalid_source =
-                    found == declaration.inputs.end() || found->use != ERenderPayloadUse::RESOURCE_INPUT;
-                if (invalid_source)
-                {
-                    return cxx::unexpected(RenderError{kCommandContract});
-                }
+                return std::optional<InstalledInput>{*found};
             }
-            for (const auto& chosen : selected)
+            if (contract->required || selection.index || !selection.implementation.isNull())
             {
-                const auto count = std::ranges::count(selected, chosen.schema, &CapabilitiesInstalled::Input::schema);
-                const auto found = std::ranges::find(resolved, chosen.schema, &CapabilitiesInstalled::Input::schema);
-                if (count != 1 || found == resolved.end() || chosen.version != found->version)
-                {
-                    return cxx::unexpected(RenderError{kCommandContract});
-                }
+                return cxx::unexpected(render::RenderError{render::kRuntimeUnsupported});
             }
-            declaration.destinations = std::move(resolved);
+            return std::optional<InstalledInput>{};
         }
-        return {};
+    } // namespace
+
+    render::RenderResult<std::vector<render::CapabilitiesInstalled::Input>> resolveRenderBindingInputs(
+        const RenderBindingDeclaration& declaration,
+        std::span<const render::CapabilitiesInstalled::Input> scene_inputs,
+        std::span<const render::CapabilitiesInstalled::Input> view_inputs,
+        std::span<const render::CapabilitiesInstalled::Input> asset_inputs
+    ) noexcept
+    {
+        std::vector<InstalledInput> result;
+        for (const auto& selection : declaration.resource_inputs)
+        {
+            const auto candidates = selection.source == ERenderInputSource::ASSETS ? asset_inputs
+                                    : selection.source == ERenderInputSource::VIEW ? view_inputs
+                                                                                   : scene_inputs;
+            auto selected = selectInput(declaration, selection, candidates);
+            if (!selected)
+            {
+                return cxx::unexpected(selected.error());
+            }
+            if (*selected)
+            {
+                result.push_back(std::move(**selected));
+            }
+        }
+        return result;
+    }
+
+    render::RenderResult<std::vector<render::CapabilitiesInstalled::Input>> selectRenderAssetInputs(
+        const RenderBindingPlan& plan,
+        std::span<const render::CapabilitiesInstalled::Input> asset_inputs
+    ) noexcept
+    {
+        std::vector<InstalledInput> result;
+        for (const auto& declaration : plan.declarations)
+        {
+            for (const auto& selection : declaration.resource_inputs)
+            {
+                if (selection.source != ERenderInputSource::ASSETS)
+                {
+                    continue;
+                }
+                auto selected = selectInput(declaration, selection, asset_inputs);
+                if (!selected)
+                {
+                    return cxx::unexpected(selected.error());
+                }
+                if (*selected && std::ranges::none_of(
+                                     result,
+                                     [&](const auto& previous) noexcept
+                                     {
+                                         return previous.schema == (**selected).schema &&
+                                                previous.destination == (**selected).destination;
+                                     }
+                                 ))
+                {
+                    result.push_back(std::move(**selected));
+                }
+            }
+        }
+        return result;
     }
 
     render::RenderResult<RenderBindingPlan> resolveRenderBindings(
@@ -216,6 +251,31 @@ namespace lux::scene
                 return cxx::unexpected(RenderError{kRuntimeUnsupported});
             }
         }
+        for (std::size_t i = 0; i < declarations.size(); ++i)
+        {
+            if (!selected[i])
+            {
+                continue;
+            }
+            for (std::size_t j = 0; j < i; ++j)
+            {
+                if (!selected[j])
+                {
+                    continue;
+                }
+                const bool shares_result = std::ranges::any_of(
+                    declarations[i].results,
+                    [&](auto type) noexcept
+                    { return std::ranges::find(declarations[j].results, type) != declarations[j].results.end(); }
+                );
+                const bool single_writer = declarations[i].role == declarations[j].role ||
+                                           !declarations[i].partitioned_results || !declarations[j].partitioned_results;
+                if (shares_result && single_writer)
+                {
+                    return cxx::unexpected(render::RenderError{render::kCommandContract});
+                }
+            }
+        }
         std::size_t effect_source = declarations.size();
         for (std::size_t i = 0; i < declarations.size(); ++i)
         {
@@ -235,21 +295,6 @@ namespace lux::scene
                     return cxx::unexpected(RenderError{kRuntimeUnsupported});
                 }
                 effect_source = i;
-            }
-            // Signal observers of hidden results are connected after their producing binding.
-            for (std::size_t j = 0; j < declarations.size(); ++j)
-            {
-                if (!selected[j] || i == j)
-                {
-                    continue;
-                }
-                for (const auto source : declaration.sources)
-                {
-                    if (std::ranges::find(declarations[j].results, source) != declarations[j].results.end())
-                    {
-                        predecessors[i].push_back(j);
-                    }
-                }
             }
         }
         if (effect_source != declarations.size())
@@ -363,6 +408,17 @@ namespace lux::scene
         if (!plan)
         {
             co_return cxx::unexpected(plan.error());
+        }
+        auto validate = client.bind<ValidateCapabilityConfiguration>();
+        if (!validate)
+        {
+            co_return cxx::unexpected(validate.error());
+        }
+        ValidateCapabilityConfiguration::Request validation{support.selection, configuration.configuration};
+        const auto qualified = co_await client.request(*validate, validation);
+        if (qualified.error.type != 0)
+        {
+            co_return cxx::unexpected(qualified.error);
         }
         plan->configuration = std::move(configuration);
         plan->implementation = support.selection;

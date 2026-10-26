@@ -59,13 +59,17 @@ namespace lux::engine::render
         RenderAssets(const RenderAssets&) = delete;
         RenderAssets& operator=(const RenderAssets&) = delete;
 
-        // Cold registration. Equal pipeline/destination reuses the existing typed table.
+        // Cold registration. Reuse requires the same destination and compatible representation dependencies.
         template <RenderAssetPipeline P>
-        void install(
+        [[nodiscard]] lux::render::RenderResult<void> install(
             P pipeline,
             lux::render::CapabilityInput destination = {},
             std::shared_ptr<const void> code_lifetime = {}
         ) noexcept;
+
+        // Called at a structural safe point after this scope stops producing requests. False means
+        // accepted releases are still running; no table is erased from a completion callback's stack.
+        [[nodiscard]] lux::render::RenderResult<bool> removeTables(const lux::render::VRenderScope&) noexcept;
 
         template <RenderAssetPipeline P>
         [[nodiscard]] lux::render::RenderResult<void> acquire(
@@ -107,6 +111,8 @@ namespace lux::engine::render
             virtual ~Table() = default;
             virtual void close() noexcept = 0;
             [[nodiscard]] virtual bool settled() const noexcept = 0;
+            [[nodiscard]] virtual bool empty() const noexcept = 0;
+            [[nodiscard]] virtual lux::render::RenderError releaseFailure() const noexcept = 0;
         };
 
         template <RenderAssetPipeline P> struct TypedTable final : Table
@@ -191,6 +197,23 @@ namespace lux::engine::render
                     }
                 );
             }
+
+            bool empty() const noexcept override
+            {
+                return records.empty();
+            }
+
+            lux::render::RenderError releaseFailure() const noexcept override
+            {
+                for (const auto& [key, record] : records)
+                {
+                    if (record.releasing && record.error.type != 0)
+                    {
+                        return record.error;
+                    }
+                }
+                return {};
+            }
         };
 
         template <class T>
@@ -269,18 +292,26 @@ namespace lux::engine::render
     };
 
     template <RenderAssetPipeline P>
-    void RenderAssets::install(
+    lux::render::RenderResult<void> RenderAssets::install(
         P pipeline,
         lux::render::CapabilityInput destination,
         std::shared_ptr<const void> code_lifetime
     ) noexcept
     {
-        if (!find<P>(destination))
+        if (const auto* existing = find<P>(destination))
+        {
+            if (!existing->pipeline.compatible(pipeline))
+            {
+                return cxx::unexpected(lux::render::RenderError{lux::render::kCommandContract});
+            }
+        }
+        else
         {
             tables_.push_back(
                 {std::move(code_lifetime), std::make_unique<TypedTable<P>>(*this, std::move(pipeline), destination)}
             );
         }
+        return {};
     }
 
     template <RenderAssetPipeline P>

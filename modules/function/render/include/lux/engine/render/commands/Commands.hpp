@@ -162,6 +162,22 @@ namespace lux::render
         using Response = CapabilityList;
     };
 
+    // Checks the selected implementation's configuration without creating any resource or scope.
+    struct ValidateCapabilityConfiguration final
+    {
+        static constexpr std::string_view name = "render.capabilities.validate_configuration";
+        static constexpr bool frame_scoped = false;
+        static constexpr bool failure_safe = true;
+
+        struct Request final
+        {
+            CapabilitySelection selection;
+            VCapabilityConfiguration configuration;
+        };
+
+        using Response = AckResponse;
+    };
+
     struct InstallCapabilities final
     {
         static constexpr std::string_view name = "render.capabilities.install";

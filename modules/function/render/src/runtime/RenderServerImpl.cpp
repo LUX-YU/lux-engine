@@ -33,6 +33,7 @@ namespace lux::render
         bindFrameworkCommand<QueryExecutionProgress, &Impl::queryExecutionProgress>();
         bindFrameworkCommand<ListCapabilities, &Impl::listCapabilities>();
         bindFrameworkCommand<InstallCapabilities, &Impl::installCapabilities>();
+        bindFrameworkCommand<ValidateCapabilityConfiguration, &Impl::validateCapabilityConfiguration>();
         bindFrameworkCommand<ListCommands, &Impl::listCommands>();
         bindFrameworkCommand<ListCommandBindings, &Impl::listCommandBindings>();
         bindFrameworkCommand<SelectCommandBinding, &Impl::selectCommandBinding>();

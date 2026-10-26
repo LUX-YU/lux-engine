@@ -1,10 +1,11 @@
 #include "RenderTest.hpp"
 #include "SceneCapture.hpp"
+#include "support/RenderRoleInputs.hpp"
+#include <lux/engine/editor/UiDrawInput.hpp>
 #include <lux/engine/render/capabilities/RasterAssets.hpp>
 #include <lux/engine/render/capabilities/UiScene.hpp>
 #include <lux/engine/render/extensions/GraphCommands.hpp>
 #include <lux/engine/render/features/UiRasterFeature.hpp>
-#include <lux/engine/editor/UiDrawInput.hpp>
 
 using namespace lux;
 using namespace lux::render;
@@ -27,6 +28,11 @@ int main(int argc, char**)
     config.feature_registration = &graph_features;
     config.register_features = [](void* destination, RenderServer& server) noexcept -> RenderResult<void>
     {
+        auto roles = server.registerFeature<fixture::RoleFeature>();
+        if (!roles)
+        {
+            return cxx::unexpected(roles.error());
+        }
         auto registration = server.registerFeature<CaptureFeature>();
         if (!registration)
         {
@@ -42,6 +48,46 @@ int main(int argc, char**)
     };
     auto rendering = integration_test::take(RenderExecution::create(std::move(config), execution));
     auto& client = rendering->mainClient();
+    {
+        auto supports =
+            integration_test::call<ListCapabilities>(*rendering, {std::string(fixture::RoleFeature::name.name())});
+        const auto selected = supports.implementations.front().selection;
+        auto globals =
+            integration_test::call<InstallCapabilities>(*rendering, {selected, GlobalRenderScope{}, ConfigValue{}});
+        CHECK(globals.inputs.size() == 2 && fixture::RoleStorage::live == 2);
+        scene::RenderBindingPlan plan;
+        scene::RenderBindingDeclaration role;
+        role.inputs = fixture::RoleFeature::capabilities().capabilities.front().inputs;
+        role.resource_inputs.push_back({"test.role", scene::ERenderInputSource::ASSETS, selected, 1});
+        plan.declarations.push_back(role);
+        auto source = integration_test::take(scene::selectRenderAssetInputs(plan, globals.inputs));
+        CHECK(source.size() == 1 && source.front().destination.index == 1);
+        const auto scene_id = integration_test::call<CreateScene>(*rendering, {}).scene;
+        const auto a = integration_test::call<CreateView>(*rendering, {scene_id}).view;
+        const auto b = integration_test::call<CreateView>(*rendering, {scene_id}).view;
+        auto first = integration_test::call<InstallCapabilities>(
+            *rendering,
+            {selected, ViewRequest{scene_id, a}, ConfigValue{}, source}
+        );
+        auto second = integration_test::call<InstallCapabilities>(
+            *rendering,
+            {selected, ViewRequest{scene_id, b}, ConfigValue{}, source}
+        );
+        CHECK(fixture::RoleStorage::live == 4);
+        role.scope = scene::ERenderOperationScope::VIEW;
+        role.resource_inputs = {{"test.role", scene::ERenderInputSource::VIEW, selected, 2}};
+        auto inputs_a =
+            integration_test::take(scene::resolveRenderBindingInputs(role, {}, first.inputs, globals.inputs));
+        auto inputs_b =
+            integration_test::take(scene::resolveRenderBindingInputs(role, {}, second.inputs, globals.inputs));
+        CHECK(inputs_a.size() == 1 && inputs_b.size() == 1);
+        CHECK(inputs_a.front().destination != inputs_b.front().destination);
+        integration_test::call<RemoveView>(*rendering, {scene_id, a});
+        integration_test::call<RemoveView>(*rendering, {scene_id, b});
+        integration_test::call<RemoveScene>(*rendering, {scene_id});
+        CHECK(fixture::RoleStorage::live == 2);
+    }
+
     const auto choices = integration_test::call<ListCapabilities>(
         *rendering,
         {std::string(kUiSceneCapability), 1, "lux.render.scene.ui"}

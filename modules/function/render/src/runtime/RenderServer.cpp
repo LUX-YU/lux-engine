@@ -244,7 +244,7 @@ namespace lux::render
                             [&](const auto& mapped) noexcept
                             { return mapped.schema == input.schema && mapped.version == input.version; }
                         );
-                        if (mappings != 1)
+                        if (mappings == 0)
                         {
                             return cxx::unexpected(RenderError{kFeatureResourceMismatch});
                         }
@@ -303,8 +303,7 @@ namespace lux::render
                 }
                 for (std::size_t previous = 0; previous < i; ++previous)
                 {
-                    if (graph.storage_inputs[previous].schema == mapping.schema &&
-                        graph.storage_inputs[previous].version == mapping.version)
+                    if (graph.storage_inputs[previous] == mapping)
                     {
                         return cxx::unexpected(RenderError{kFeatureDuplicate});
                     }

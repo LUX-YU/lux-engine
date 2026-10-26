@@ -626,6 +626,17 @@ namespace lux::scene
         co_return co_await installRasterAssetPipelines(assets, assets.resourceCapability());
     }
 
+    std::span<const RenderInputSelection> MeshRenderBinding::resourceInputs() noexcept
+    {
+        static const std::array inputs{
+            RenderInputSelection{std::string(kRasterInstancesInput)},
+            RenderInputSelection{std::string(kRasterMaterialInput)},
+            RenderInputSelection{std::string(kIndexedMeshInput), ERenderInputSource::ASSETS},
+            RenderInputSelection{std::string(kSampledTextureInput), ERenderInputSource::ASSETS}
+        };
+        return inputs;
+    }
+
     MeshRenderBinding::MeshRenderBinding(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
     RenderResult<std::unique_ptr<MeshRenderBinding>> MeshRenderBinding::create(RenderBindingContext& context) noexcept
@@ -656,10 +667,14 @@ namespace lux::scene
         self.materials = *materials;
         self.meshes = *meshes;
         self.textures = *textures;
-        self.assets.install(
+        auto installed = self.assets.install(
             MaterialGpuPipeline{self.assets, self.materials, self.textures, *material_create, *material_remove},
             self.materials
         );
+        if (!installed)
+        {
+            return cxx::unexpected(installed.error());
+        }
         return result;
     }
 

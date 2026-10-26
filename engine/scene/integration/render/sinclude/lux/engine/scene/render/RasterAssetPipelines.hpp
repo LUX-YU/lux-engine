@@ -30,6 +30,11 @@ namespace lux::scene
         engine::render::BoundCommand<render::CreateMesh> create;
         engine::render::BoundCommand<render::ReleaseMesh> remove;
 
+        bool compatible(const MeshAssetPipeline& other) const noexcept
+        {
+            return &execution == &other.execution && input == other.input;
+        }
+
         exec::task<render::RenderResult<Value>> load(engine::render::RenderAssetLoad) noexcept;
         exec::task<render::RenderResult<void>> release(Value&) noexcept;
     };
@@ -43,6 +48,11 @@ namespace lux::scene
         engine::render::BoundCommand<render::CreateTexture> create;
         engine::render::BoundCommand<render::ReleaseTexture> remove;
 
+        bool compatible(const TextureAssetPipeline& other) const noexcept
+        {
+            return &execution == &other.execution && input == other.input;
+        }
+
         exec::task<render::RenderResult<Value>> load(engine::render::RenderAssetLoad) noexcept;
         exec::task<render::RenderResult<void>> release(Value&) noexcept;
     };
@@ -52,6 +62,11 @@ namespace lux::scene
         using Value = std::shared_ptr<const asset::MaterialAsset>;
         static constexpr std::string_view name = "lux.scene.asset.cooked_material";
         execution::CpuScheduler cpu;
+
+        bool compatible(const MaterialAssetPipeline& other) const noexcept
+        {
+            return cpu == other.cpu;
+        }
 
         exec::task<render::RenderResult<Value>> load(engine::render::RenderAssetLoad) noexcept;
         exec::task<render::RenderResult<void>> release(Value&) noexcept;
@@ -76,6 +91,12 @@ namespace lux::scene
         render::CapabilityInput textures;
         engine::render::BoundCommand<render::CreateMaterial> create;
         engine::render::BoundCommand<render::ReleaseMaterial> remove;
+
+        bool compatible(const MaterialGpuPipeline& other) const noexcept
+        {
+            return &assets == &other.assets && input == other.input && textures == other.textures;
+        }
+
         exec::task<render::RenderResult<Value>> load(engine::render::RenderAssetLoad) noexcept;
         exec::task<render::RenderResult<void>> release(Value&) noexcept;
     };

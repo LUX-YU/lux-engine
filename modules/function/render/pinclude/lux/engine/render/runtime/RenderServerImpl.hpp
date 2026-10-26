@@ -190,6 +190,8 @@ namespace lux::render
         resolveCapabilityStorage(const FeatureEntry&, const RenderCapability&, const ConfigValue&) const noexcept;
 
         void listCapabilities(const ListCapabilities::Request&, ListCapabilities::Response&) noexcept;
+        void
+        validateCapabilityConfiguration(const ValidateCapabilityConfiguration::Request&, ValidateCapabilityConfiguration::Response&) noexcept;
         void installCapabilities(const InstallCapabilities::Request&, InstallCapabilities::Response&) noexcept;
         [[nodiscard]] RenderResult<StorageSet*> findScope(const VRenderScope&) noexcept;
         [[nodiscard]] RenderResult<StorageId> ensureStorage(
